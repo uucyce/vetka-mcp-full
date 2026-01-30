@@ -1,0 +1,99 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-01-30T07:10:18.193513+00:00",
+  "auto_updated": true,
+  "current_phase": {
+    "number": 101,
+    "subphase": "2",
+    "name": "VetkaTree Indexing & Artifact Rendering",
+    "status": "COMPLETED",
+    "started": "2025-01-29",
+    "completed": "2025-01-30"
+  },
+  "summary": {
+    "headline": "Fixed VetkaTree indexing gap - dual Qdrant clients now synchronized",
+    "key_achievements": [
+      "FIX_101.2: MCP format_result now checks 'files' key (was 'results')",
+      "FIX_101.3: Added VetkaTree write in TripleWriteManager",
+      "FIX_101.4: Added parent_folder and depth to qdrant_updater",
+      "FIX_101.5: Fixed TreeStructureTool type check ('leaf' not 'file')",
+      "Backfilled 1759 files to VetkaTree collection",
+      "Cleaned 633 venv garbage files from vetka_elisya"
+    ],
+    "pending_items": [
+      "Unit tests for tree_routes.py",
+      "Unify metadata creation to shared function",
+      "Add ?source=vetka_tree param to /api/tree/data"
+    ]
+  },
+  "system_status": {
+    "vetka_elisya": {
+      "points": 1763,
+      "vectors": "none",
+      "hnsw_status": "active"
+    },
+    "vetka_tree": {
+      "points": 1760,
+      "vectors": "none",
+      "hierarchy": "enabled"
+    },
+    "mcp_server": {
+      "status": "running",
+      "port": 5001,
+      "tools_count": 15
+    }
+  },
+  "recent_fixes": [
+    {
+      "id": "FIX_101.5",
+      "file": "src/bridge/shared_tools.py",
+      "line": 331,
+      "description": "TreeStructureTool type mismatch - 'file' to 'leaf'"
+    },
+    {
+      "id": "FIX_101.3",
+      "file": "src/orchestration/triple_write_manager.py",
+      "line": 318,
+      "description": "Added VetkaTree write for hierarchical storage"
+    },
+    {
+      "id": "FIX_101.4",
+      "file": "src/scanners/qdrant_updater.py",
+      "line": 362,
+      "description": "Added parent_folder and depth fields"
+    },
+    {
+      "id": "FIX_101.2",
+      "file": "src/mcp/vetka_mcp_bridge.py",
+      "line": 1264,
+      "description": "format_result checks 'files' then 'results'"
+    }
+  ],
+  "architecture": {
+    "data_flow": "FileWatcher -> QdrantUpdater -> vetka_elisya + VetkaTree",
+    "search_pipeline": "MCP -> REST API -> HybridSearch -> Qdrant/Weaviate",
+    "triple_write": "Weaviate VetkaLeaf + Qdrant vetka_elisya + Qdrant VetkaTree"
+  },
+  "documentation": {
+    "phase_report": "docs/101_ph/PHASE_101_UNIFIED_REPORT.md",
+    "haiku_findings": "docs/101_ph/PHASE_101_HAIKU_FINDINGS.md",
+    "backfill_script": "scripts/backfill_vetka_tree.py"
+  },
+  "agent_instructions": {
+    "on_connect": "Read this digest for current project state before starting work",
+    "on_search_issues": "Check if VetkaTree has points, verify HNSW index active",
+    "on_file_indexing": "Ensure both vetka_elisya AND VetkaTree receive writes",
+    "methodology": "Use Haiku scouts for investigation, Sonnets for verification"
+  },
+  "quick_commands": {
+    "check_vetka_elisya": "curl localhost:6333/collections/vetka_elisya",
+    "check_vetka_tree": "curl localhost:6333/collections/VetkaTree",
+    "check_tree_api": "curl localhost:5001/api/tree/data",
+    "semantic_search": "curl -X POST localhost:5001/api/search/semantic -H 'Content-Type: application/json' -d '{\"query\": \"test\", \"limit\": 5}'"
+  },
+  "git": {
+    "branch": "main",
+    "commit": "931e07a2",
+    "dirty": true
+  }
+}
