@@ -1250,10 +1250,17 @@ Please provide a helpful response based on the file content shown above.""",
             real_provider = detected_provider.value
 
             # Phase 80.37: Check if xai key exists, fallback to openrouter
+            # MARKER_102.30_START: Fix model name normalization for OpenRouter fallback
             if real_provider == "xai":
                 if not APIKeyService().get_key("xai"):
                     real_provider = "openrouter"  # Fallback to OpenRouter
-                    print(f"      🔄 xai key not found, using OpenRouter fallback")
+                    # CRITICAL: Normalize model name for OpenRouter format
+                    # OpenRouter expects "x-ai/grok-X" not bare "grok-X" or "xai/grok-X"
+                    normalized_model = manual_model.replace("xai/", "").replace("x-ai/", "")
+                    if not normalized_model.startswith("x-ai/"):
+                        manual_model = f"x-ai/{normalized_model}"
+                    print(f"      🔄 xai key not found, using OpenRouter fallback: {manual_model}")
+            # MARKER_102.30_END
 
             routing = {"provider": real_provider, "model": manual_model}
             print(
@@ -1345,11 +1352,12 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
             print(f"      ❌ {agent_type} LLM/Tool error: {str(e)}")
 
             # Phase 100.1: Auto-rotate key on auth/rate-limit errors
-            error_str = str(e)
-            if any(code in error_str for code in ("401", "402", "403", "429")):
-                from src.utils.unified_key_manager import get_key_manager, ProviderKey
+            # MARKER_102.33_FIX: Extended error detection + fixed ProviderKey -> ProviderType
+            error_str = str(e).upper()
+            if any(code in error_str for code in ("401", "402", "403", "429", "OPENROUTER", "EXHAUSTED")):
+                from src.utils.unified_key_manager import get_key_manager, ProviderType
                 km = get_key_manager()
-                km.rotate_to_next(ProviderKey.OPENROUTER)
+                km.rotate_to_next()  # No argument needed - rotates OpenRouter by default
                 print(f"      🔄 Key rotated due to error, retrying...")
                 try:
                     llm_response = await self._call_llm_with_tools_loop(
@@ -2374,6 +2382,9 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
                     "model": model_id,
                 }
 
+            # MARKER_102.34: Removed nested retry loop (was MARKER_102.32)
+            # OpenRouterProvider.call() already handles 13-key rotation internally
+            # Nested loops caused "All OpenRouter keys exhausted" error
             try:
                 # Run single agent with Elisya integration
                 if hasattr(self, "_run_agent_with_elisya_async"):
@@ -2386,6 +2397,7 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
                     updated_state = state
 
                 return {"output": output, "state": updated_state, "status": "done"}
+
             finally:
                 # Restore routing
                 if old_routing:

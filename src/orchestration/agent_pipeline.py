@@ -64,12 +64,16 @@ class AgentPipeline:
     Auto-triggers Grok researcher on any "?" or needs_research=True.
     """
 
-    def __init__(self):
+    def __init__(self, chat_id: Optional[str] = None):
         self.llm_tool = None  # Lazy load
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
         self.stm_limit = 5  # Keep last 5 results
         # MARKER_102.23_END
+        # MARKER_102.26_START: Progress streaming to chat
+        self.chat_id = chat_id or "5e2198c2-8b1a-45df-807f-5c73c5496aa8"  # Default: Lightning chat
+        self.progress_hooks: List[Any] = []  # Callback hooks for progress
+        # MARKER_102.26_END
         self._load_prompts()
 
     def _load_prompts(self):
@@ -140,6 +144,48 @@ Respond with implementation plan or code."""
                 logger.warning("LLMCallTool not available, using fallback")
                 self.llm_tool = None
         return self.llm_tool
+
+    # MARKER_102.27_START: Progress emission to VETKA chat
+    def _emit_progress(self, role: str, message: str, subtask_idx: int = 0, total: int = 0):
+        """
+        Emit progress update to VETKA chat.
+
+        Args:
+            role: @architect, @researcher, @coder, or @pipeline
+            message: Status message
+            subtask_idx: Current subtask index (1-based for display)
+            total: Total subtasks count
+        """
+        try:
+            import httpx
+
+            # Format progress message
+            progress = f"[{subtask_idx}/{total}] " if total > 0 else ""
+            full_message = f"{role}: {progress}{message}"
+
+            # Send to VETKA chat (fire-and-forget, don't block pipeline)
+            with httpx.Client(timeout=5.0) as client:
+                client.post(
+                    "http://localhost:5001/api/chat/send",
+                    json={
+                        "group_id": self.chat_id,
+                        "sender_id": "@pipeline",
+                        "content": full_message,
+                        "message_type": "system"
+                    }
+                )
+            logger.debug(f"[Pipeline] Emitted: {full_message[:50]}...")
+        except Exception as e:
+            # Don't fail pipeline on emit errors
+            logger.debug(f"[Pipeline] Emit failed (non-fatal): {e}")
+
+        # Call registered hooks
+        for hook in self.progress_hooks:
+            try:
+                hook(role, message, subtask_idx, total)
+            except Exception as e:
+                logger.debug(f"[Pipeline] Hook error: {e}")
+    # MARKER_102.27_END
 
     # MARKER_102.17_START: Robust JSON extraction from LLM responses
     def _extract_json(self, text: str) -> Dict[str, Any]:
@@ -279,13 +325,19 @@ Respond with implementation plan or code."""
 
         logger.info(f"[Pipeline] Starting {phase_type} pipeline for: {task[:50]}...")
 
+        # MARKER_102.28_START: Progress emission during execution
+        self._emit_progress("@pipeline", f"🚀 Starting {phase_type} pipeline...")
+
         try:
             # Phase 1: Architect breaks down task
+            self._emit_progress("@architect", "📋 Breaking down task into subtasks...")
             plan = await self._architect_plan(task, phase_type)
             pipeline_task.subtasks = [
                 Subtask(**st) if isinstance(st, dict) else st
                 for st in plan.get("subtasks", [])
             ]
+            total_subtasks = len(pipeline_task.subtasks)
+            self._emit_progress("@architect", f"✅ Plan ready: {total_subtasks} subtasks")
             pipeline_task.status = "executing"
             self._update_task(pipeline_task)
 
@@ -307,6 +359,7 @@ Respond with implementation plan or code."""
                 if subtask.needs_research:
                     subtask.status = "researching"
                     self._update_task(pipeline_task)
+                    self._emit_progress("@researcher", f"🔍 Researching: {subtask.description[:40]}...", i+1, total_subtasks)
 
                     # Use description as question if no explicit question
                     question = subtask.question or subtask.description
@@ -326,10 +379,12 @@ Respond with implementation plan or code."""
                 # Execute subtask
                 subtask.status = "executing"
                 self._update_task(pipeline_task)
+                self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks)
 
                 result = await self._execute_subtask(subtask, phase_type)
                 subtask.result = result
                 subtask.status = "done"
+                self._emit_progress("@coder", f"✅ Done: {subtask.marker or f'step_{i+1}'}", i+1, total_subtasks)
 
                 # Add to STM for next subtask
                 self._add_to_stm(subtask.marker or f"step_{i+1}", result)
@@ -347,7 +402,11 @@ Respond with implementation plan or code."""
             }
             self._update_task(pipeline_task)
 
-            logger.info(f"[Pipeline] Completed: {pipeline_task.results['subtasks_completed']}/{pipeline_task.results['subtasks_total']} subtasks")
+            completed = pipeline_task.results['subtasks_completed']
+            total = pipeline_task.results['subtasks_total']
+            logger.info(f"[Pipeline] Completed: {completed}/{total} subtasks")
+            self._emit_progress("@pipeline", f"🎉 Pipeline complete! {completed}/{total} subtasks done")
+            # MARKER_102.28_END
 
             return asdict(pipeline_task)
 
@@ -356,6 +415,7 @@ Respond with implementation plan or code."""
             pipeline_task.status = "failed"
             pipeline_task.results = {"error": str(e)}
             self._update_task(pipeline_task)
+            self._emit_progress("@pipeline", f"❌ Pipeline failed: {str(e)[:50]}")
             return asdict(pipeline_task)
     # MARKER_102.4_END
 
@@ -564,14 +624,19 @@ Execute this subtask. Provide clear, actionable output."""}
 
 
 # MARKER_102.8_START: Convenience functions
-async def spawn_pipeline(task: str, phase_type: str = "research") -> Dict[str, Any]:
+async def spawn_pipeline(task: str, phase_type: str = "research", chat_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Convenience function for MCP tool.
+
+    Args:
+        task: Task description
+        phase_type: "research" | "fix" | "build"
+        chat_id: Optional chat ID for progress streaming
 
     Usage:
         result = await spawn_pipeline("Implement UI artifacts for VetkaTree", "build")
     """
-    pipeline = AgentPipeline()
+    pipeline = AgentPipeline(chat_id=chat_id)
     return await pipeline.execute(task, phase_type)
 
 
