@@ -764,8 +764,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     tree_data = data.get("tree", {})
                     nodes = tree_data.get("nodes", [])
 
-                    # Count by type
-                    file_count = sum(1 for n in nodes if n.get("type") == "file")
+                    # Count by type - FIX_101.6: API returns "leaf" not "file"
+                    file_count = sum(1 for n in nodes if n.get("type") in ["file", "leaf"])
                     folder_count = sum(1 for n in nodes if n.get("type") in ["branch", "folder"])
 
                     summary = (
