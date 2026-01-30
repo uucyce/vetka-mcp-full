@@ -1229,8 +1229,52 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 return [TextContent(type="text", text=f"❌ Error in execute_workflow: {e}")]
 
         elif name == "vetka_workflow_status":
-            # Get workflow status
+            # MARKER_102.21_START: Combined workflow + pipeline status
+            # Get workflow status OR pipeline task status
             try:
+                workflow_id = arguments.get("workflow_id", "")
+
+                # Check if it's a pipeline task (starts with "task_")
+                if workflow_id.startswith("task_"):
+                    from src.orchestration.agent_pipeline import AgentPipeline
+                    pipeline = AgentPipeline()
+                    task_data = pipeline.get_task_status(workflow_id)
+
+                    if task_data:
+                        # Format pipeline task status
+                        subtasks = task_data.get("subtasks", [])
+                        completed = sum(1 for s in subtasks if s.get("status") == "done")
+                        result_text = (
+                            f"📋 Pipeline Task Status\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"ID: {workflow_id}\n"
+                            f"Status: {task_data.get('status', 'unknown')}\n"
+                            f"Phase: {task_data.get('phase_type', 'N/A')}\n"
+                            f"Subtasks: {completed}/{len(subtasks)} completed\n\n"
+                        )
+
+                        for i, st in enumerate(subtasks, 1):
+                            status_icon = "✅" if st.get("status") == "done" else "⏳" if st.get("status") == "executing" else "📋"
+                            result_text += f"{status_icon} {i}. {st.get('description', 'N/A')[:60]}...\n"
+
+                        return [TextContent(type="text", text=result_text)]
+                    else:
+                        return [TextContent(type="text", text=f"❌ Pipeline task not found: {workflow_id}")]
+
+                # If no workflow_id, show recent pipeline tasks
+                if not workflow_id:
+                    from src.orchestration.agent_pipeline import AgentPipeline
+                    pipeline = AgentPipeline()
+                    recent = pipeline.get_recent_tasks(5)
+
+                    if recent:
+                        result_text = "📋 Recent Pipeline Tasks\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        for task in recent:
+                            status_icon = "✅" if task.get("status") == "done" else "⏳" if task.get("status") == "executing" else "❌"
+                            result_text += f"{status_icon} {task.get('task_id')}: {task.get('task', 'N/A')[:40]}...\n"
+                        return [TextContent(type="text", text=result_text)]
+
+                # Fall back to original workflow status
                 from src.mcp.tools.workflow_tools import vetka_workflow_status
                 result = await vetka_workflow_status(**arguments)
                 duration_ms = (time.time() - start_time) * 1000
@@ -1238,24 +1282,51 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
             except Exception as e:
                 return [TextContent(type="text", text=f"❌ Error in workflow_status: {e}")]
+            # MARKER_102.21_END
 
-        # MARKER_102.10_START: Agent Pipeline handler
+        # MARKER_102.10_START: Agent Pipeline handler (fire-and-forget)
         elif name == "vetka_spawn_pipeline":
-            # Spawn fractal agent pipeline
+            # MARKER_102.19_START: Async fire-and-forget pipeline
+            # Phase 102.2: Don't wait for completion - return task_id immediately
+            # Pipeline runs in background, results saved to pipeline_tasks.json
             try:
-                from src.orchestration.agent_pipeline import spawn_pipeline
+                from src.orchestration.agent_pipeline import AgentPipeline
+                import time as time_module
+
                 task = arguments.get("task", "")
                 phase_type = arguments.get("phase_type", "research")
 
-                result = await spawn_pipeline(task, phase_type)
-                duration_ms = (time.time() - start_time) * 1000
-                await log_mcp_response(name, result, request_id, duration_ms)
+                # Create pipeline and get task_id without waiting
+                pipeline = AgentPipeline()
+                task_id = f"task_{int(time_module.time())}"
 
-                # Format result
-                return [TextContent(type="text", text=format_pipeline_result(result))]
+                # Fire-and-forget: schedule execution without awaiting
+                async def run_pipeline_background():
+                    try:
+                        await pipeline.execute(task, phase_type)
+                        logger.info(f"[MCP] Pipeline {task_id} completed")
+                    except Exception as e:
+                        logger.error(f"[MCP] Pipeline {task_id} failed: {e}")
+
+                # Schedule background execution
+                asyncio.create_task(run_pipeline_background())
+
+                # Return immediately with task_id
+                response_text = (
+                    f"🚀 Pipeline Started\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"Task ID: {task_id}\n"
+                    f"Phase: {phase_type}\n"
+                    f"Task: {task[:80]}...\n\n"
+                    f"Pipeline running in background.\n"
+                    f"Check status: vetka_workflow_status or read data/pipeline_tasks.json"
+                )
+
+                return [TextContent(type="text", text=response_text)]
             except Exception as e:
                 logger.error(f"[MCP] vetka_spawn_pipeline error: {e}")
                 return [TextContent(type="text", text=f"❌ Pipeline error: {e}")]
+            # MARKER_102.19_END
         # MARKER_102.10_END
 
         else:

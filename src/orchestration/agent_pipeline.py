@@ -209,6 +209,23 @@ Respond with implementation plan or code."""
         tasks = self._load_tasks()
         tasks[task.task_id] = asdict(task)
         self._save_tasks(tasks)
+
+    # MARKER_102.20_START: Public status method
+    def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Get status of a pipeline task by ID"""
+        tasks = self._load_tasks()
+        return tasks.get(task_id)
+
+    def get_recent_tasks(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """Get most recent tasks"""
+        tasks = self._load_tasks()
+        sorted_tasks = sorted(
+            tasks.values(),
+            key=lambda t: t.get("timestamp", 0),
+            reverse=True
+        )
+        return sorted_tasks[:limit]
+    # MARKER_102.20_END
     # MARKER_102.3_END
 
     # MARKER_102.4_START: Core pipeline methods
