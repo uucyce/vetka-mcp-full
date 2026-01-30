@@ -676,6 +676,32 @@ async def list_tools() -> list[Tool]:
                 "required": ["context"]
             }
         ),
+        # MARKER_102.9_START: Agent Pipeline tool
+        Tool(
+            name="vetka_spawn_pipeline",
+            description=(
+                "Spawn fractal agent pipeline for task execution. "
+                "Auto-triggers Grok researcher on unclear parts (?). "
+                "Phases: research (explore), fix (debug), build (implement)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task": {
+                        "type": "string",
+                        "description": "Task description to execute through pipeline"
+                    },
+                    "phase_type": {
+                        "type": "string",
+                        "enum": ["research", "fix", "build"],
+                        "description": "Pipeline type: research (explore), fix (debug), build (implement)",
+                        "default": "research"
+                    }
+                },
+                "required": ["task"]
+            }
+        ),
+        # MARKER_102.9_END
     ]
 
     # Phase 55.1: Register new MCP tools
@@ -1213,6 +1239,25 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             except Exception as e:
                 return [TextContent(type="text", text=f"❌ Error in workflow_status: {e}")]
 
+        # MARKER_102.10_START: Agent Pipeline handler
+        elif name == "vetka_spawn_pipeline":
+            # Spawn fractal agent pipeline
+            try:
+                from src.orchestration.agent_pipeline import spawn_pipeline
+                task = arguments.get("task", "")
+                phase_type = arguments.get("phase_type", "research")
+
+                result = await spawn_pipeline(task, phase_type)
+                duration_ms = (time.time() - start_time) * 1000
+                await log_mcp_response(name, result, request_id, duration_ms)
+
+                # Format result
+                return [TextContent(type="text", text=format_pipeline_result(result))]
+            except Exception as e:
+                logger.error(f"[MCP] vetka_spawn_pipeline error: {e}")
+                return [TextContent(type="text", text=f"❌ Pipeline error: {e}")]
+        # MARKER_102.10_END
+
         else:
             return [TextContent(
                 type="text",
@@ -1674,6 +1719,65 @@ def format_arc_suggestions(result: dict) -> str:
         lines.append(f"  Avg Score: {stats.get('avg_score', 0.0):.2f}")
 
     return "\n".join(lines)
+
+
+# MARKER_102.11_START: Pipeline result formatter
+def format_pipeline_result(result: dict) -> str:
+    """Format agent pipeline result (Phase 102)"""
+    status = result.get("status", "unknown")
+    status_icons = {
+        "pending": "⏳",
+        "planning": "📋",
+        "executing": "🔄",
+        "done": "✅",
+        "failed": "❌"
+    }
+    icon = status_icons.get(status, "❓")
+
+    lines = [
+        f"{icon} Agent Pipeline Result",
+        "━" * 40,
+        f"Task ID: {result.get('task_id', '?')}",
+        f"Status: {status}",
+        f"Phase Type: {result.get('phase_type', '?')}",
+        f"Task: {result.get('task', '?')[:80]}...",
+        ""
+    ]
+
+    # Subtasks summary
+    subtasks = result.get("subtasks", [])
+    if subtasks:
+        done_count = len([s for s in subtasks if s.get("status") == "done"])
+        lines.append(f"Subtasks: {done_count}/{len(subtasks)} completed")
+        lines.append("")
+
+        for i, st in enumerate(subtasks[:5], 1):  # Show first 5
+            st_status = st.get("status", "?")
+            st_icon = "✅" if st_status == "done" else "🔄" if st_status == "executing" else "🔍" if st_status == "researching" else "⏳"
+            desc = st.get("description", "?")[:50]
+            lines.append(f"  {i}. {st_icon} {desc}")
+
+            # Show research insights if available
+            if st.get("context") and st["context"].get("insights"):
+                for insight in st["context"]["insights"][:2]:
+                    lines.append(f"      💡 {insight[:60]}")
+
+        if len(subtasks) > 5:
+            lines.append(f"  ... and {len(subtasks) - 5} more")
+
+    # Results summary
+    results = result.get("results", {})
+    if results:
+        lines.append("")
+        if results.get("error"):
+            lines.append(f"Error: {results['error']}")
+        else:
+            lines.append(f"Execution order: {results.get('execution_order', '?')}")
+            complexity = results.get("plan", {}).get("estimated_complexity", "?")
+            lines.append(f"Complexity: {complexity}")
+
+    return "\n".join(lines)
+# MARKER_102.11_END
 
 
 # ============================================================================
