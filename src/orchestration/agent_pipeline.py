@@ -137,6 +137,61 @@ Respond with implementation plan or code."""
                 self.llm_tool = None
         return self.llm_tool
 
+    # MARKER_102.17_START: Robust JSON extraction from LLM responses
+    def _extract_json(self, text: str) -> Dict[str, Any]:
+        """
+        Extract JSON from LLM response with multiple fallbacks.
+        Handles: raw JSON, markdown code blocks, JSON embedded in prose.
+        """
+        import re
+
+        if not text or not text.strip():
+            return {}
+
+        text = text.strip()
+
+        # Try 1: Direct JSON parse
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # Try 2: Extract from ```json ... ``` block
+        json_block = re.search(r'```json\s*([\s\S]*?)\s*```', text)
+        if json_block:
+            try:
+                return json.loads(json_block.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # Try 3: Extract from ``` ... ``` block
+        code_block = re.search(r'```\s*([\s\S]*?)\s*```', text)
+        if code_block:
+            try:
+                return json.loads(code_block.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # Try 4: Find JSON object in text (greedy match from { to })
+        json_match = re.search(r'\{[\s\S]*\}', text)
+        if json_match:
+            try:
+                return json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                pass
+
+        # Try 5: Find JSON starting from first {
+        first_brace = text.find('{')
+        if first_brace != -1:
+            try:
+                return json.loads(text[first_brace:])
+            except json.JSONDecodeError:
+                pass
+
+        logger.warning(f"[Pipeline] Could not extract JSON from: {text[:100]}...")
+        raise json.JSONDecodeError("No valid JSON found", text, 0)
+    # MARKER_102.17_END
+
     # MARKER_102.3_START: Task storage
     def _load_tasks(self) -> Dict[str, Any]:
         """Load tasks from JSON storage"""
@@ -271,24 +326,35 @@ Respond with implementation plan or code."""
             "max_tokens": 2000
         })
 
-        # Parse JSON response
+        # MARKER_102.16_START: Parse JSON response with robust extraction
         try:
-            response_text = result.get("response", "{}")
-            # Extract JSON from response (handle markdown code blocks)
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0]
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0]
+            # LLMCallTool returns: {"success": bool, "result": {"content": str, ...}, "error": str}
+            if not result.get("success"):
+                logger.warning(f"[Pipeline] Architect LLM call failed: {result.get('error')}")
+                raise ValueError(result.get("error", "Unknown error"))
 
-            plan = json.loads(response_text.strip())
+            response_text = result.get("result", {}).get("content", "{}")
+            plan = self._extract_json(response_text)
+
+            # Validate required fields
+            if "subtasks" not in plan:
+                plan["subtasks"] = [{"description": task, "needs_research": True, "marker": "MARKER_102.1"}]
+            if "execution_order" not in plan:
+                plan["execution_order"] = "sequential"
+            if "estimated_complexity" not in plan:
+                plan["estimated_complexity"] = "medium"
+
+            logger.info(f"[Pipeline] Architect plan: {len(plan.get('subtasks', []))} subtasks, {plan.get('execution_order')}")
             return plan
-        except json.JSONDecodeError as e:
+
+        except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"[Pipeline] Failed to parse architect response: {e}")
             return {
                 "subtasks": [{"description": task, "needs_research": True, "question": task, "marker": "MARKER_102.1"}],
                 "execution_order": "sequential",
                 "estimated_complexity": "medium"
             }
+    # MARKER_102.16_END
     # MARKER_102.5_END
 
     # MARKER_102.6_START: Grok researcher
@@ -330,25 +396,37 @@ Respond with implementation plan or code."""
             }
         })
 
-        # Parse JSON response
+        # MARKER_102.18_START: Parse researcher JSON with robust extraction
         try:
-            response_text = result.get("response", "{}")
-            if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0]
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0]
+            if not result.get("success"):
+                logger.warning(f"[Pipeline] Researcher LLM call failed: {result.get('error')}")
+                raise ValueError(result.get("error", "Unknown error"))
 
-            research = json.loads(response_text.strip())
+            response_text = result.get("result", {}).get("content", "{}")
+            research = self._extract_json(response_text)
+
+            # Validate and set defaults
+            if "insights" not in research:
+                research["insights"] = ["No specific insights"]
+            if "enriched_context" not in research:
+                research["enriched_context"] = response_text[:500]
+            if "confidence" not in research:
+                research["confidence"] = 0.7
+
             logger.info(f"[Pipeline] Research confidence: {research.get('confidence', 'N/A')}")
             return research
-        except json.JSONDecodeError:
+
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning(f"[Pipeline] Failed to parse researcher response: {e}")
             # Fallback: use raw text as enriched context
+            raw_content = result.get("result", {}).get("content", question) if result.get("success") else question
             return {
                 "insights": ["See enriched_context"],
                 "actionable_steps": [],
-                "enriched_context": result.get("response", question),
+                "enriched_context": raw_content[:500] if raw_content else question,
                 "confidence": 0.6
             }
+    # MARKER_102.18_END
     # MARKER_102.6_END
 
     # MARKER_102.7_START: Subtask execution

@@ -1,0 +1,83 @@
+{
+  "task_1769767868": {
+    "task_id": "task_1769767868",
+    "task": "Test pipeline: analyze structure of agent_pipeline.py",
+    "phase_type": "research",
+    "status": "failed",
+    "subtasks": [],
+    "timestamp": 1769767868.5529852,
+    "results": {
+      "error": "object dict can't be used in 'await' expression"
+    }
+  },
+  "task_1769768201": {
+    "task_id": "task_1769768201",
+    "task": "Analyze the structure of VETKA MCP tools and list the main categories",
+    "phase_type": "research",
+    "status": "done",
+    "subtasks": [],
+    "timestamp": 1769768201.242271,
+    "results": {
+      "plan": {},
+      "subtasks_completed": 0,
+      "subtasks_total": 0,
+      "execution_order": "sequential"
+    }
+  },
+  "task_1769770313": {
+    "task_id": "task_1769770313",
+    "task": "Audit and improve vetka_spawn_pipeline system: 1) What context injection is currently implemented (CAM, Engram, STM, Digest)? 2) How do subtasks get context from parent? 3) What's missing for full fractal awareness?",
+    "phase_type": "research",
+    "status": "done",
+    "subtasks": [],
+    "timestamp": 1769770313.308144,
+    "results": {
+      "plan": {},
+      "subtasks_completed": 0,
+      "subtasks_total": 0,
+      "execution_order": "sequential"
+    }
+  },
+  "task_1769770810": {
+    "task_id": "task_1769770810",
+    "task": "Audit: Analyze how phases work in agent_pipeline.py. Phase1 only - just research.",
+    "phase_type": "research",
+    "status": "done",
+    "subtasks": [],
+    "timestamp": 1769770810.344613,
+    "results": {
+      "plan": {},
+      "subtasks_completed": 0,
+      "subtasks_total": 0,
+      "execution_order": "sequential"
+    }
+  },
+  "task_1769771050": {
+    "task_id": "task_1769771050",
+    "task": "Test: list 3 improvements for the agent pipeline system",
+    "phase_type": "research",
+    "status": "done",
+    "subtasks": [],
+    "timestamp": 1769771050.030411,
+    "results": {
+      "plan": {},
+      "subtasks_completed": 0,
+      "subtasks_total": 0,
+      "execution_order": "sequential"
+    }
+  },
+  "task_1769771273": {
+    "task_id": "task_1769771273",
+    "task": "Analyze: What are 3 key improvements needed for the VETKA agent pipeline?",
+    "phase_type": "research",
+    "status": "done",
+    "subtasks": [],
+    "timestamp": 1769771273.607758,
+    "results": {
+      "plan": {},
+      "subtasks_completed": 0,
+      "subtasks_total": 0,
+      "execution_order": "sequential"
+    }
+  }
+}

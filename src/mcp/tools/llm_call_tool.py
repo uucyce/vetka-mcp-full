@@ -380,6 +380,115 @@ class LLMCallTool(BaseMCPTool):
         return f"<vetka_context>\n{full_context}\n</vetka_context>"
     # MARKER_55.2_END
 
+    # MARKER_102.15_START: Synchronous OpenRouter call with key rotation
+    def _call_openrouter_sync(
+        self,
+        messages: List[Dict],
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: int = 4096
+    ) -> Dict[str, Any]:
+        """
+        Phase 102: Synchronous OpenRouter call with proper key rotation.
+
+        Mirrors the logic from provider_registry._stream_openrouter but synchronous.
+        This works inside MCP's running event loop.
+        """
+        import httpx
+        from src.utils.unified_key_manager import get_key_manager, ProviderType
+
+        km = get_key_manager()
+        max_retries = km.get_openrouter_keys_count()
+
+        if max_retries == 0:
+            raise ValueError("No OpenRouter API keys configured")
+
+        last_error = None
+
+        for attempt in range(max_retries):
+            # Get key with rotation on retry
+            api_key = km.get_openrouter_key(rotate=(attempt > 0))
+            if not api_key:
+                raise ValueError("OpenRouter API key not found")
+
+            logger.info(f"[MCP_OPENROUTER] Calling {model} (key: ****{api_key[-4:]}, attempt {attempt + 1}/{max_retries})")
+
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://vetka.ai",
+                "X-Title": "VETKA MCP",
+            }
+
+            # Clean model name (remove openrouter/ prefix if present)
+            clean_model = model.replace("openrouter/", "")
+
+            payload = {
+                "model": clean_model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+
+            try:
+                with httpx.Client(timeout=120.0) as client:
+                    response = client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers=headers,
+                        json=payload,
+                    )
+
+                    # Handle key errors with rotation
+                    if response.status_code in (401, 402, 403):
+                        logger.warning(f"[MCP_OPENROUTER] Key failed ({response.status_code}), rotating...")
+                        # Mark key as rate-limited
+                        for record in km.keys.get(ProviderType.OPENROUTER, []):
+                            if record.key == api_key:
+                                record.mark_rate_limited()
+                                logger.info(f"[MCP_OPENROUTER] Key {record.mask()} marked rate-limited (24h)")
+                                break
+                        km.rotate_to_next()
+                        last_error = f"Key error {response.status_code}"
+                        continue
+
+                    if response.status_code == 429:
+                        logger.warning(f"[MCP_OPENROUTER] Rate limited (429), rotating...")
+                        km.rotate_to_next()
+                        last_error = "Rate limited (429)"
+                        continue
+
+                    response.raise_for_status()
+                    data = response.json()
+
+                    # Success!
+                    logger.info(f"[MCP_OPENROUTER] ✅ Success")
+
+                    choice = data.get("choices", [{}])[0]
+                    message = choice.get("message", {})
+
+                    return {
+                        "message": {
+                            "content": message.get("content", ""),
+                            "tool_calls": message.get("tool_calls"),
+                            "role": message.get("role", "assistant"),
+                        },
+                        "model": clean_model,
+                        "provider": "openrouter",
+                        "usage": data.get("usage"),
+                    }
+
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (401, 402, 403, 429):
+                    logger.warning(f"[MCP_OPENROUTER] HTTP error ({e.response.status_code}), rotating...")
+                    km.rotate_to_next()
+                    last_error = e
+                    continue
+                raise
+
+        # All retries exhausted
+        raise ValueError(f"All OpenRouter keys exhausted after {max_retries} attempts. Last error: {last_error}")
+    # MARKER_102.15_END
+
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute LLM call through VETKA provider registry"""
 
@@ -511,36 +620,16 @@ class LLMCallTool(BaseMCPTool):
             self._emit_request_to_chat(model, messages, temperature, max_tokens)
             # MARKER_90.4.0_END
 
-            # Call model asynchronously
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If event loop is already running, use run_in_executor
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(
-                        asyncio.run,
-                        call_model_v2(
-                            messages=messages,
-                            model=model,
-                            provider=provider_enum,
-                            tools=tools,
-                            temperature=temperature,
-                            max_tokens=max_tokens
-                        )
-                    )
-                    response = future.result()
-            else:
-                # No event loop running, create one
-                response = asyncio.run(
-                    call_model_v2(
-                        messages=messages,
-                        model=model,
-                        provider=provider_enum,
-                        tools=tools,
-                        temperature=temperature,
-                        max_tokens=max_tokens
-                    )
-                )
+            # MARKER_102.14_START: Sync OpenRouter call with key rotation
+            # Phase 102: MCP runs inside event loop, can't use async.
+            # Use synchronous httpx with manual key rotation (same logic as _stream_openrouter).
+            response = self._call_openrouter_sync(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            # MARKER_102.14_END
 
             # Extract response content
             message_data = response.get('message', {})
