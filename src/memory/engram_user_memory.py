@@ -22,10 +22,27 @@ Features:
 
 import logging
 import math
+import uuid
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 
 from .user_memory import UserPreferences, create_user_preferences
+
+
+def _user_id_to_point_id(user_id: str) -> int:
+    """
+    Convert string user_id to integer point ID for Qdrant REST API.
+
+    Qdrant REST API requires integer IDs. This function provides deterministic
+    conversion using UUID5 hash.
+
+    Args:
+        user_id: String user identifier (e.g., "danila")
+
+    Returns:
+        Integer point ID for Qdrant
+    """
+    return uuid.uuid5(uuid.NAMESPACE_DNS, user_id).int & 0x7FFFFFFFFFFFFFFF
 
 logger = logging.getLogger(__name__)
 
@@ -290,8 +307,9 @@ class EngramUserMemory:
             return None
 
         try:
+            point_id = _user_id_to_point_id(user_id)
             results = self.qdrant.retrieve(
-                collection_name=self.COLLECTION_NAME, ids=[user_id], with_payload=True
+                collection_name=self.COLLECTION_NAME, ids=[point_id], with_payload=True
             )
 
             if results:
@@ -310,8 +328,9 @@ class EngramUserMemory:
             return None
 
         try:
+            point_id = _user_id_to_point_id(user_id)
             results = self.qdrant.retrieve(
-                collection_name=self.COLLECTION_NAME, ids=[user_id], with_payload=True
+                collection_name=self.COLLECTION_NAME, ids=[point_id], with_payload=True
             )
 
             if results:
@@ -331,8 +350,15 @@ class EngramUserMemory:
             # Create dummy embedding (preferences are retrieved by ID, not vector)
             embedding = [0.0] * self.VECTOR_SIZE
 
+            # Convert string user_id to integer for Qdrant REST API
+            point_id = _user_id_to_point_id(user_id)
+
+            # Store user_id in payload for reverse lookup
+            payload = preferences.to_dict()
+            payload["_user_id"] = user_id
+
             point = PointStruct(
-                id=user_id, vector=embedding, payload=preferences.to_dict()
+                id=point_id, vector=embedding, payload=payload
             )
 
             self.qdrant.upsert(collection_name=self.COLLECTION_NAME, points=[point])
