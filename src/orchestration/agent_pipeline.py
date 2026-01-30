@@ -66,6 +66,10 @@ class AgentPipeline:
 
     def __init__(self):
         self.llm_tool = None  # Lazy load
+        # MARKER_102.23_START: Short-Term Memory for context passing
+        self.stm: List[Dict[str, str]] = []  # Last N subtask results
+        self.stm_limit = 5  # Keep last 5 results
+        # MARKER_102.23_END
         self._load_prompts()
 
     def _load_prompts(self):
@@ -226,6 +230,29 @@ Respond with implementation plan or code."""
         )
         return sorted_tasks[:limit]
     # MARKER_102.20_END
+
+    # MARKER_102.25_START: STM (Short-Term Memory) helpers
+    def _add_to_stm(self, marker: str, result: str):
+        """Add subtask result to short-term memory"""
+        self.stm.append({
+            "marker": marker,
+            "result": result[:500] if result else ""  # Truncate for efficiency
+        })
+        # Keep only last N
+        if len(self.stm) > self.stm_limit:
+            self.stm.pop(0)
+
+    def _get_stm_summary(self) -> str:
+        """Get summary of previous subtask results for context injection"""
+        if not self.stm:
+            return ""
+
+        summary_parts = ["Previous results:"]
+        for item in self.stm[-3:]:  # Last 3 for brevity
+            summary_parts.append(f"- [{item['marker']}]: {item['result'][:200]}...")
+
+        return "\n".join(summary_parts)
+    # MARKER_102.25_END
     # MARKER_102.3_END
 
     # MARKER_102.4_START: Core pipeline methods
@@ -262,24 +289,39 @@ Respond with implementation plan or code."""
             pipeline_task.status = "executing"
             self._update_task(pipeline_task)
 
-            # Phase 2: Execute each subtask (with research triggers)
+            # MARKER_102.24_START: Phase 2 with STM context passing
+            # Phase 2: Execute each subtask (with research triggers + STM)
+            self.stm = []  # Reset STM for new pipeline
+
             for i, subtask in enumerate(pipeline_task.subtasks):
                 logger.info(f"[Pipeline] Subtask {i+1}/{len(pipeline_task.subtasks)}: {subtask.description[:40]}...")
 
-                # Auto-trigger research on "?"
-                if subtask.needs_research and subtask.question:
+                # Inject STM context from previous subtasks
+                if self.stm:
+                    stm_summary = self._get_stm_summary()
+                    if subtask.context is None:
+                        subtask.context = {}
+                    subtask.context["previous_results"] = stm_summary
+
+                # Auto-trigger research on needs_research flag
+                if subtask.needs_research:
                     subtask.status = "researching"
                     self._update_task(pipeline_task)
 
-                    research = await self._research(subtask.question)
-                    subtask.context = research
+                    # Use description as question if no explicit question
+                    question = subtask.question or subtask.description
+                    research = await self._research(question)
+
+                    if subtask.context is None:
+                        subtask.context = {}
+                    subtask.context.update(research)
 
                     # Recursive: if researcher has further questions with low confidence
                     if research.get("confidence", 1.0) < 0.7:
                         for fq in research.get("further_questions", [])[:2]:  # Max 2 recursions
                             sub_research = await self._research(fq)
-                            if subtask.context.get("enriched_context"):
-                                subtask.context["enriched_context"] += f"\n\nFollow-up ({fq}):\n{sub_research.get('enriched_context', '')}"
+                            enriched = subtask.context.get("enriched_context", "")
+                            subtask.context["enriched_context"] = enriched + f"\n\nFollow-up ({fq}):\n{sub_research.get('enriched_context', '')}"
 
                 # Execute subtask
                 subtask.status = "executing"
@@ -288,7 +330,12 @@ Respond with implementation plan or code."""
                 result = await self._execute_subtask(subtask, phase_type)
                 subtask.result = result
                 subtask.status = "done"
+
+                # Add to STM for next subtask
+                self._add_to_stm(subtask.marker or f"step_{i+1}", result)
+
                 self._update_task(pipeline_task)
+            # MARKER_102.24_END
 
             # Phase 3: Compile results
             pipeline_task.status = "done"
@@ -480,6 +527,7 @@ Respond with implementation plan or code."""
         temperature = prompt.get("temperature", 0.4)
         system_prompt = prompt.get("system", "Execute the subtask. Be concise.")
 
+        # MARKER_102.22_START: Fixed LLM call + context passing
         # LLMCallTool.execute is synchronous
         result = tool.execute({
             "model": model,
@@ -492,13 +540,26 @@ Marker: {subtask.marker or 'MARKER_102.X'}
 
 {context_str}
 
-Execute this subtask. Provide clear output."""}
+Execute this subtask. Provide clear, actionable output."""}
             ],
             "temperature": temperature,
             "max_tokens": 2000
         })
 
-        return result.get("response", "No response")
+        # Extract content from LLMCallTool response format
+        if result.get("success"):
+            content = result.get("result", {}).get("content", "")
+            if content:
+                logger.info(f"[Pipeline] Subtask result: {content[:100]}...")
+                return content
+            else:
+                logger.warning(f"[Pipeline] Subtask returned empty content")
+                return "Subtask completed (no content)"
+        else:
+            error = result.get("error", "Unknown error")
+            logger.warning(f"[Pipeline] Subtask LLM call failed: {error}")
+            return f"Error: {error}"
+    # MARKER_102.22_END
     # MARKER_102.7_END
 
 
