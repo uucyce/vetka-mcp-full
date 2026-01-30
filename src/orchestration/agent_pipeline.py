@@ -257,7 +257,8 @@ Respond with implementation plan or code."""
 
         prompt = self.prompts["architect"]
 
-        result = await tool.execute({
+        # LLMCallTool.execute is synchronous
+        result = tool.execute({
             "model": "claude-sonnet-4-5",  # Sonnet for planning
             "messages": [
                 {"role": "system", "content": prompt["system"]},
@@ -306,7 +307,8 @@ Respond with implementation plan or code."""
 
         logger.info(f"[Pipeline] Researching: {question[:50]}...")
 
-        result = await tool.execute({
+        # LLMCallTool.execute is synchronous
+        result = tool.execute({
             "model": "grok-4",  # Grok for deep research
             "messages": [
                 {"role": "system", "content": prompt["system"]},
@@ -372,7 +374,8 @@ Respond with implementation plan or code."""
         prompt = self.prompts.get("coder", {})
         system_prompt = prompt.get("system", "Execute the subtask. Be concise.")
 
-        result = await tool.execute({
+        # LLMCallTool.execute is synchronous
+        result = tool.execute({
             "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},

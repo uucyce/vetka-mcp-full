@@ -78,6 +78,7 @@ def _get_memory_manager(request: Request):
 @router.get("/data")
 async def get_tree_data(
     mode: str = Query("directory", description="Layout mode: directory, semantic, or both"),
+    source: str = Query("vetka_elisya", description="Qdrant collection: vetka_elisya or vetka_tree"),
     request: Request = None
 ):
     """
@@ -85,6 +86,7 @@ async def get_tree_data(
 
     Query params:
     - mode: 'directory' (default), 'semantic', or 'both'
+    - source: 'vetka_elisya' (default) or 'vetka_tree' (Phase 101 hierarchical)
 
     Returns:
     - tree: {nodes, edges}
@@ -94,6 +96,10 @@ async def get_tree_data(
     from qdrant_client.models import Filter, FieldCondition, MatchValue
     from datetime import datetime
     import math
+
+    # MARKER_101.8_START: Source collection selection
+    collection_name = "VetkaTree" if source == "vetka_tree" else "vetka_elisya"
+    # MARKER_101.8_END
 
     try:
         memory = _get_memory_manager(request)
@@ -123,7 +129,7 @@ async def get_tree_data(
 
         while True:
             results, offset = qdrant.scroll(
-                collection_name='vetka_elisya',
+                collection_name=collection_name,  # MARKER_101.8: Use selected source
                 scroll_filter=Filter(
                     must=[
                         FieldCondition(key="type", match=MatchValue(value="scanned_file")),
@@ -139,7 +145,7 @@ async def get_tree_data(
             if offset is None:
                 break
 
-        print(f"[API] Found {len(all_files)} files in Qdrant")
+        print(f"[API] Found {len(all_files)} files in {collection_name}")
 
         if not all_files:
             return {'tree': {'nodes': [], 'edges': []}}
