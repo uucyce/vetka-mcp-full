@@ -1,0 +1,235 @@
+DATA FLOW ANALYSIS: From File System to 3D Tree Visualization
+=============================================================
+
+CURRENT FLOW (WITH BUG):
+━━━━━━━━━━━━━━━━━━━━━━━
+
+1. FILE SYSTEM (REAL):
+   ┌─────────────────────────────────────────────────────┐
+   │ src/                                                 │
+   │  ├─ __init__.py                                     │
+   │  ├─ api/                                            │
+   │  │  ├─ __init__.py                                  │
+   │  │  ├─ routes/                                      │
+   │  │  │  ├─ tree_routes.py          ← File at level 3│
+   │  │  │  └─ ...                                       │
+   │  │  └─ handlers/                                    │
+   │  │     └─ user_message_handler.py  ← File at level 3│
+   │  ├─ layout/                                         │
+   │  │  └─ fan_layout.py                ← File at level 2│
+   │  └─ memory/                                         │
+   │     └─ qdrant_client.py             ← File at level 2│
+   └─────────────────────────────────────────────────────┘
+
+
+2. RESCAN SCRIPT - FILE DATA COLLECTION (BUG HERE):
+   ┌─────────────────────────────────────────────────────┐
+   │ For each file, collect metadata:                     │
+   │                                                      │
+   │ file_path = "...../src/api/routes/tree_routes.py"   │
+   │ rel_path = "src/api/routes/tree_routes.py"          │
+   │                                                      │
+   │ depth = len(rel_path.split(os.sep))                 │
+   │       = len(['src', 'api', 'routes', 'tree_routes.py']) │
+   │       = 4  ✅ CORRECT                               │
+   │                                                      │
+   │ parent_folder = rel_path.split(os.sep)[0]           │
+   │               = 'src'              ❌ ONLY TOP LEVEL! │
+   │                                                      │
+   │ ❌ SHOULD BE: parent_folder = os.path.dirname(rel_path) │
+   │              = 'src/api/routes'    ✅ FULL PATH     │
+   └─────────────────────────────────────────────────────┘
+         │
+         │ Writes: {
+         │   'path': 'src/api/routes/tree_routes.py',
+         │   'name': 'tree_routes.py',
+         │   'depth': 4,           ← Correct
+         │   'parent_folder': 'src' ← WRONG! Should be 'src/api/routes'
+         │ }
+         ↓
+
+
+3. QDRANT COLLECTION (vetka_elisya):
+   ┌─────────────────────────────────────────────────────┐
+   │ Point ID: 123456                                     │
+   │ Payload: {                                           │
+   │   'path': 'src/api/routes/tree_routes.py',           │
+   │   'parent_folder': 'src',    ← WRONG STORED         │
+   │   'depth': 4,                ← Stored but ignored    │
+   │   'name': 'tree_routes.py'                           │
+   │ }                                                    │
+   │ Vector: [0.123, 0.456, ...]  ← Embedding            │
+   └─────────────────────────────────────────────────────┘
+         │
+         ↓ tree_routes.py queries Qdrant
+
+
+4. TREE ROUTES API - FOLDER HIERARCHY RECONSTRUCTION:
+   ┌─────────────────────────────────────────────────────┐
+   │ Line 177: parent_folder = point.get('parent_folder')│
+   │           = 'src'         ← Gets wrong value        │
+   │                                                      │
+   │ Line 178-181: Fallback reconstruction               │
+   │   if not parent_folder and file_path:               │
+   │       parent_folder = '/'.join(file_path.split('/')... │
+   │                                                      │
+   │ ❌ PROBLEM: parent_folder='src' is NOT empty!       │
+   │    So fallback NEVER triggers!                       │
+   │                                                      │
+   │ Result: Treats all files as children of 'src':      │
+   │   'src' folder (depth=0)                            │
+   │   ├─ tree_routes.py (depth=1) ← WRONG depth!       │
+   │   ├─ fan_layout.py (depth=1)  ← WRONG depth!       │
+   │   └─ ... 2088 other files (all depth=1)             │
+   └─────────────────────────────────────────────────────┘
+         │
+         ↓ fan_layout.py processes
+
+
+5. FAN LAYOUT ALGORITHM (WORKING CORRECTLY):
+   ┌─────────────────────────────────────────────────────┐
+   │ Input: 2088 files, all at depth=1 under 'src'       │
+   │                                                      │
+   │ Algorithm: "Let's arrange these files under 'src'"   │
+   │                                                      │
+   │ For each folder (src, tests, docs, ...):            │
+   │   - Position folder (root spreading ✅ Phase 76.5)   │
+   │   - Position all files vertically under it           │
+   │     using time-based Y-offset                        │
+   │                                                      │
+   │ Result positions:                                    │
+   │   src (x=-972.8, y=0)                               │
+   │   ├─ __init__.py        (x=-1540, y=-3262) stacked  │
+   │   ├─ __init__.py        (x=-1540, y=-3237) ← sorted│
+   │   ├─ tree_routes.py     (x=-1540, y=-3212) by time │
+   │   ├─ fan_layout.py      (x=-1540, y=-3187)         │
+   │   ├─ qdrant_client.py   (x=-1540, y=-3162)         │
+   │   ├─ ... 2083 more files vertically stacked...     │
+   │   └─ [LAST FILE]        (x=-1540, y=+7912)         │
+   │                                                      │
+   │ ✅ ALGORITHM WORKS CORRECTLY                         │
+   │    BUT INPUT IS WRONG                               │
+   └─────────────────────────────────────────────────────┘
+         │
+         ↓ Returns to browser
+
+
+6. BROWSER VISUALIZATION:
+   ┌─────────────────────────────────────────────────────┐
+   │ Client receives nodes with positions:               │
+   │   - 21 root folders spread horizontally ✅           │
+   │   - 2088 files in vertical bands under each         │
+   │   - No sub-folder organization (depth always 1)     │
+   │                                                      │
+   │ Visual result: "Mash" - disorganized looks          │
+   │   User sees dense vertical bands instead of         │
+   │   organized hierarchical tree                        │
+   │                                                      │
+   │ What user says: "Все на нулевой точке"             │
+   │ (Actually: all files are siblings under folders)    │
+   └─────────────────────────────────────────────────────┘
+
+
+EXPECTED FLOW (AFTER FIX):
+━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. FILE SYSTEM (SAME):
+   src/
+   ├─ api/
+   │  ├─ routes/
+   │  │  └─ tree_routes.py
+
+2. RESCAN SCRIPT - CORRECTED:
+   ┌─────────────────────────────────────────────────────┐
+   │ parent_folder = os.path.dirname(rel_path)           │
+   │              = 'src/api/routes'   ✅ FULL PATH      │
+   │                                                      │
+   │ Writes: {                                            │
+   │   'path': 'src/api/routes/tree_routes.py',           │
+   │   'depth': 4,                                        │
+   │   'parent_folder': 'src/api/routes' ✅ CORRECT      │
+   │ }                                                    │
+   └─────────────────────────────────────────────────────┘
+
+3. QDRANT (CORRECT DATA):
+   ┌─────────────────────────────────────────────────────┐
+   │ Payload: {                                           │
+   │   'parent_folder': 'src/api/routes' ✅               │
+   │   'depth': 4                                         │
+   │ }                                                    │
+   └─────────────────────────────────────────────────────┘
+
+4. TREE ROUTES - FOLDER CREATION:
+   ┌─────────────────────────────────────────────────────┐
+   │ When processing file with parent_folder='src/api/routes':│
+   │                                                      │
+   │ Auto-create folder structure:                        │
+   │   src (depth=0) - already exists                     │
+   │   src/api (depth=1) - create if needed              │
+   │   src/api/routes (depth=2) - create if needed       │
+   │                                                      │
+   │ Result hierarchy:                                    │
+   │   src (depth=0)                                      │
+   │   ├─ api (depth=1)                                   │
+   │   │  ├─ routes (depth=2)                            │
+   │   │  │  └─ tree_routes.py (depth=3)  ✅ CORRECT    │
+   │   │  ├─ handlers (depth=2)                          │
+   │   │  │  └─ user_message_handler.py (depth=3)        │
+   │   │  └─ ...                                          │
+   │   ├─ layout (depth=1)                               │
+   │   │  └─ fan_layout.py (depth=2) ✅ CORRECT         │
+   │   └─ memory (depth=1)                               │
+   │      └─ qdrant_client.py (depth=2) ✅ CORRECT      │
+   └─────────────────────────────────────────────────────┘
+
+5. FAN LAYOUT - PROPER TREE:
+   ┌─────────────────────────────────────────────────────┐
+   │ Input: Hundreds of folders + files at proper depths │
+   │                                                      │
+   │ Algorithm: Creates branching tree structure         │
+   │                                                      │
+   │ Result: Organized hierarchy                         │
+   │   src (x=-972.8, y=0)                               │
+   │   ├─ api (x=-1100, y=100)                           │
+   │   │  ├─ routes (x=-1200, y=200)                     │
+   │   │  │  ├─ tree_routes.py (x=-1300, y=250)          │
+   │   │  │  └─ ...                                       │
+   │   │  └─ handlers (x=-900, y=200)                    │
+   │   │     └─ user_message_handler.py (x=-950, y=250)  │
+   │   ├─ layout (x=-800, y=100)                         │
+   │   │  └─ fan_layout.py (x=-850, y=200)               │
+   │   └─ memory (x=-700, y=100)                         │
+   │      └─ qdrant_client.py (x=-750, y=200)            │
+   │                                                      │
+   │ ✅ CLEAN TREE STRUCTURE                             │
+   └─────────────────────────────────────────────────────┘
+
+6. BROWSER VISUALIZATION:
+   ┌─────────────────────────────────────────────────────┐
+   │ User sees:                                           │
+   │ - Organized hierarchical tree                        │
+   │ - Subfolders visible and spread                      │
+   │ - Files at proper depth levels                       │
+   │ - Clean visual hierarchy                            │
+   │                                                      │
+   │ Result: Beautiful Sugiyama-style tree layout ✅      │
+   └─────────────────────────────────────────────────────┘
+
+
+THE ONE-LINE FIX:
+═════════════════
+
+File: scripts/rescan_project.py
+Line: 392
+
+CHANGE FROM:
+  parent_folder = rel_path.split(os.sep)[0] if os.sep in rel_path else ''
+
+CHANGE TO:
+  parent_folder = os.path.dirname(rel_path)
+
+IMPACT:
+  - Captures full path: 'src/api/routes' instead of just 'src'
+  - Enables tree_routes to rebuild proper hierarchy
+  - Allows fan_layout to create organized tree structure
+  - Result: Clean 3D visualization instead of "mash"

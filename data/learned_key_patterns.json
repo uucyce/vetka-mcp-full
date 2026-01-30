@@ -1,0 +1,50 @@
+{
+  "tavily": {
+    "provider": "tavily",
+    "prefix": "tvly-dev-",
+    "suffix": null,
+    "length_min": 31,
+    "length_max": 51,
+    "charset": "base64",
+    "separator": "-",
+    "confidence": 0.85,
+    "learned_at": "2026-01-10T14:52:12.950345",
+    "example_masked": "tvly-dev...eM9F"
+  },
+  "xai": {
+    "provider": "xai",
+    "prefix": "xai-",
+    "suffix": null,
+    "length_min": 74,
+    "length_max": 94,
+    "charset": "base64",
+    "separator": "-",
+    "confidence": 0.85,
+    "learned_at": "2026-01-10T15:31:27.613301",
+    "example_masked": "xai-OezI...ty5o"
+  },
+  "openai": {
+    "provider": "openai",
+    "prefix": "sk-proj-",
+    "suffix": null,
+    "length_min": 154,
+    "length_max": 174,
+    "charset": "base64",
+    "separator": "-",
+    "confidence": 0.85,
+    "learned_at": "2026-01-10T15:57:45.257256",
+    "example_masked": "sk-proj-...J4UA"
+  },
+  "poe": {
+    "provider": "poe",
+    "prefix": null,
+    "suffix": null,
+    "length_min": 33,
+    "length_max": 53,
+    "charset": "base64",
+    "separator": "-",
+    "confidence": 0.85,
+    "learned_at": "2026-01-19T19:34:49.872297",
+    "example_masked": "kwodYaOP...uLqo"
+  }
+}

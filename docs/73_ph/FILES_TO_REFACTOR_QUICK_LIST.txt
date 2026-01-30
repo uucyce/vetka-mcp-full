@@ -1,0 +1,161 @@
+================================================================================
+QUICK LIST: FILES FOR REFACTORING (Copy-Paste Ready)
+================================================================================
+
+🔴 CRITICAL (Send First):
+
+1. src/layout/knowledge_layout.py (2502 lines)
+   Issue: GOD OBJECT + NOT in __init__.py exports
+   Split into: tags.py, edges.py, chains.py, positions.py
+
+2. src/api/handlers/user_message_handler.py (1666 lines)
+   Issue: Main Socket.IO handler, partially refactored
+   Extract: remaining group logic to group_message_handler.py
+   Break: main dispatcher function
+
+3. src/elisya/api_key_detector.py (723 lines)
+   Issue: 70+ providers in one class
+   Create: providers/ folder + BaseProvider abstract
+   Use: factory pattern
+
+4. src/scanners/dependency_calculator.py (703 lines)
+   Issue: All scoring in one class
+   Extract: scorers/ folder (import_scorer, semantic_scorer, temporal_scorer, centrality_scorer)
+
+5. client/src/components/search/UnifiedSearchBar.tsx (1181 lines)
+   Issue: EVERYTHING in one component
+   Extract: SearchInput, SearchResults, SearchResultItem, SearchHoverPreview, etc.
+   Create: hooks/ and utils/ folders
+
+================================================================================
+
+🟡 HIGH PRIORITY (Send Second):
+
+6. src/elisya/api_gateway.py (600 lines)
+   Issue: All routing logic in one file
+   Extract: routing rules, rate limiting
+
+7. src/elisya/model_router_v2.py (568 lines)
+   Issue: All model logic in one router
+   Extract: strategies, use RoutingStrategy pattern
+
+8. src/api/handlers/group_message_handler.py (642 lines)
+   Issue: [GROUP_DEBUG] markers NOT removed, debug prints left
+   Action: Remove ALL debug code, use logging instead
+
+9. src/search/hybrid_search.py (513 lines)
+   Issue: No intermediate abstraction
+   Extract: SearchStrategy interface, separate searchers/
+   Move: weights to configuration
+
+================================================================================
+
+🟢 MEDIUM PRIORITY (Send Third):
+
+10. src/scanners/qdrant_updater.py (553 lines)
+    Issue: Update strategies mixed together
+    Extract: strategies folder
+
+11. src/scanners/file_watcher.py (525 lines)
+    Issue: Event handlers not well organized
+    Extract: handlers folder, use observer pattern
+
+12. src/scanners/import_resolver.py (484 lines)
+    Issue: Path resolution mixed
+    Extract: resolution strategies
+
+13. src/layout/semantic_sugiyama.py (642 lines)
+    Issue: Layering + positioning + crossing reduction mixed
+    Extract: separate algorithms
+
+14. src/layout/fan_layout.py (634 lines)
+    Issue: Angle + position + radius mixed
+    Extract: separate calculations
+
+================================================================================
+
+CRITICAL FIXES NEEDED:
+
+[ ] EXPORT ISSUE: src/layout/__init__.py
+    - Must export: KnowledgeTag, KnowledgeEdge, PrerequisiteChain, build_* functions
+    - Currently: NOT in __all__
+    - But imported as: from src.layout.knowledge_layout import ...
+
+[ ] DEBUG CODE REMOVAL:
+    - src/api/handlers/group_message_handler.py contains [GROUP_DEBUG] markers
+    - Remove all print() statements (use logging)
+    - Search: grep -r "\[GROUP_DEBUG\]" src/
+    - Search: grep -r "print(" src/ | grep -v "logger"
+
+[ ] TODO/FIXME MARKERS (5 places):
+    1. src/elisya/api_aggregator_v3.py:186 - Implement providers
+    2. src/api/handlers/workflow_socket_handler.py:87 - Get from orchestrator
+    3. src/mcp/vetka_mcp_bridge.py:432 - File listing endpoint
+    4. src/mcp/vetka_mcp_bridge.py:470 - File search endpoint
+    5. src/orchestration/cam_event_handler.py:341 - ChatHistoryManager implementation
+
+================================================================================
+
+TOTAL STATS:
+
+Total lines to refactor: ~10,000 lines
+Expected reduction: 50-80% for god objects
+Total god objects (>500 lines): 6
+Total large files (>400 lines): 20
+
+By refactoring this list:
+- knowledge_layout.py: 2502 → 400-500 (80% reduction)
+- user_message_handler.py: 1666 → 400-500 (70% reduction)
+- UnifiedSearchBar.tsx: 1181 → 200 (83% reduction)
+- api_key_detector.py: 723 → 150 (80% reduction)
+- dependency_calculator.py: 703 → 200 (70% reduction)
+
+Total: ~7,000 lines can be split into ~100+ smaller, focused files
+
+================================================================================
+
+PROMPT FOR FREE MODELS (Claude/Gemini/Grok):
+
+"Here's a [SIZE]-line Python/TypeScript file that needs refactoring.
+
+Current Issues:
+[ISSUE FROM LIST ABOVE]
+
+Please refactor with:
+1. Split into separate modules/components
+2. Extract common patterns
+3. Add type hints (Python) or proper types (TS)
+4. Add comprehensive docstrings
+5. Move utility functions to utils/
+6. Use appropriate design patterns
+7. Break functions >250 lines
+8. Add logging instead of prints
+9. Create __init__.py exports
+10. Provide migration guide
+
+Deliverables:
+- Refactored file structure
+- Each new file
+- Updated __init__.py
+- Migration guide for imports
+- Test examples if applicable"
+
+================================================================================
+
+HOW TO USE:
+
+1. Pick one file from above (start with 🔴 CRITICAL)
+2. Run: cat [FILE_PATH]
+3. Copy output
+4. Paste to Claude/Grok/Gemini with prompt above
+5. Get refactored files back
+6. Apply to project incrementally
+7. Run tests: pytest tests/
+8. Move to next file
+
+================================================================================
+
+READY TO SEND! Copy each file path above and send to free AI models.
+
+Generated: 2026-01-20
+Status: Ready for refactoring

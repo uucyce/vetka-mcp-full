@@ -1,0 +1,114 @@
+{
+  "msg_1766740112575_like": {
+    "message_id": "msg_1766740112575",
+    "reaction": "like",
+    "timestamp": "2025-12-26T12:09:23.986847",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_1766789627451_like": {
+    "message_id": "msg_1766789627451",
+    "reaction": "like",
+    "timestamp": "2025-12-27T01:55:09.056170",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_1766795932496_like": {
+    "message_id": "msg_1766795932496",
+    "reaction": "like",
+    "timestamp": "2025-12-27T03:39:58.813303",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_1766798749623_like": {
+    "message_id": "msg_1766798749623",
+    "reaction": "like",
+    "timestamp": "2025-12-27T04:26:49.533025",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_1766799734385_like": {
+    "message_id": "msg_1766799734385",
+    "reaction": "like",
+    "timestamp": "2025-12-27T04:42:45.910554",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_1766801763688_like": {
+    "message_id": "msg_1766801763688",
+    "reaction": "like",
+    "timestamp": "2025-12-27T05:16:19.450770",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_1766801823578_like": {
+    "message_id": "msg_1766801823578",
+    "reaction": "like",
+    "timestamp": "2025-12-27T05:17:34.908582",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_1766802965577_like": {
+    "message_id": "msg_1766802965577",
+    "reaction": "like",
+    "timestamp": "2025-12-27T05:36:46.856859",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_hist_3_1766804930360_like": {
+    "message_id": "msg_hist_3_1766804930360",
+    "reaction": "like",
+    "timestamp": "2025-12-27T06:08:56.549992",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_1766811646068_like": {
+    "message_id": "msg_1766811646068",
+    "reaction": "like",
+    "timestamp": "2025-12-27T08:01:55.269447",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_1766968164360_like": {
+    "message_id": "msg_1766968164360",
+    "reaction": "like",
+    "timestamp": "2025-12-29T03:29:55.527395",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_1767073355125_dislike": {
+    "message_id": "msg_1767073355125",
+    "reaction": "dislike",
+    "timestamp": "2025-12-30T08:44:04.621932",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_1767073354973_like": {
+    "message_id": "msg_1767073354973",
+    "reaction": "like",
+    "timestamp": "2025-12-30T08:44:07.762425",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  },
+  "msg_1767073355281_dislike": {
+    "message_id": "msg_1767073355281",
+    "reaction": "dislike",
+    "timestamp": "2025-12-30T08:44:09.137552",
+    "node_path": "",
+    "agent": "",
+    "user": "default"
+  }
+}

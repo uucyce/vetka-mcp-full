@@ -1,0 +1,234 @@
+════════════════════════════════════════════════════════════════════════════════
+                     BRIDGE ENDPOINTS - QUICK REFERENCE
+════════════════════════════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. VETKA MCP BRIDGE TOOLS (20 Total)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📖 READ-ONLY TOOLS (8):
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Tool                    │ Parameters              │ Returns               │
+├─────────────────────────┼────────────────────────┼──────────────────────┤
+│ vetka_search_semantic   │ query, limit(10-50)    │ Search results       │
+│ vetka_read_file         │ file_path              │ File content+lines   │
+│ vetka_get_tree          │ format(tree/summary)   │ Tree structure       │
+│ vetka_health            │ (none)                 │ Component status     │
+│ vetka_list_files        │ path, pattern, recur   │ File list            │
+│ vetka_search_files      │ query, type, limit     │ Search results       │
+│ vetka_get_metrics       │ type(dashboard/all)    │ Metrics data         │
+│ vetka_get_knowledge_graph │ format(json/summary) │ Graph structure      │
+└─────────────────────────┴────────────────────────┴──────────────────────┘
+
+✏️ WRITE TOOLS (5):
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Tool                    │ Key Parameters         │ Safety               │
+├─────────────────────────┼────────────────────────┼──────────────────────┤
+│ vetka_edit_file         │ path, content, mode    │ dry_run=true (default)
+│ vetka_git_commit        │ message, files         │ dry_run=true (default)
+│ vetka_run_tests         │ path, pattern, timeout │ Max 300s timeout     │
+│ vetka_camera_focus      │ target, zoom, highlight│ Requires UI session  │
+│ vetka_git_status        │ (none)                 │ Read-only            │
+└─────────────────────────┴────────────────────────┴──────────────────────┘
+
+🧠 SPECIALIZED TOOLS (7):
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Tool                    │ Purpose                │ Category             │
+├─────────────────────────┼────────────────────────┼──────────────────────┤
+│ vetka_call_model        │ LLM inference          │ Multi-provider       │
+│ vetka_read_group_messages │ Chat access          │ Messaging            │
+│ vetka_get_conversation_context │ Context + compress │ Memory (ELISION)   │
+│ vetka_get_user_preferences │ User memory         │ Memory (Engram)      │
+│ vetka_get_memory_summary │ CAM + Elisium stats  │ Memory (Compression) │
+└─────────────────────────┴────────────────────────┴──────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. OPENCODE BRIDGE ENDPOINTS (4 Total)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔗 API ENDPOINTS:
+
+GET /api/bridge/openrouter/health
+└─ Purpose: Health check for bridge
+└─ Response: { status: "healthy", bridge_enabled: true, provider: "openrouter" }
+└─ Status: ✅ ACTIVE
+
+GET /api/bridge/openrouter/keys
+└─ Purpose: List available keys (masked) for UI display
+└─ Response: { enabled: true, provider: "openrouter", keys: [...], total: 10 }
+└─ Returns: 10 keys (9 free tier + 1 paid)
+└─ Status: ✅ ACTIVE
+
+POST /api/bridge/openrouter/invoke
+└─ Purpose: Invoke model with automatic key rotation
+└─ Required: { model_id: "...", messages: [...] }
+└─ Optional: temperature, max_tokens, top_p, tools
+└─ Behavior: Auto-rotates keys on rate limit
+└─ Status: ✅ ACTIVE
+
+GET /api/bridge/openrouter/stats
+└─ Purpose: Get rotation statistics
+└─ Response: {
+      enabled: true,
+      provider: "openrouter",
+      stats: {
+        total_keys: 10,
+        active_keys: 10,
+        rate_limited_keys: 0,
+        current_key_index: 0,
+        last_rotation: null
+      }
+    }
+└─ Status: ✅ ACTIVE
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. SYSTEM HEALTH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SERVER STATUS:
+  • VETKA Server:         ✅ RUNNING on port 5001
+  • Version:              2.0.0
+  • Phase:                39.8
+  • Framework:            FastAPI
+
+COMPONENTS:
+  ✅ Metrics Engine       ✅ Qdrant Vector DB
+  ✅ Model Router         ✅ Feedback Loop
+  ✅ Elisya Aggregator    ✅ Smart Learner
+  ✅ Hope Enhancer        ✅ Student System
+  ⚠️  API Gateway         (Disabled - expected)
+
+BRIDGES:
+  ✅ VETKA MCP Bridge:    20 tools, logging active
+  ✅ OpenCode Bridge:     4 endpoints, 10 keys loaded
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. ROUTER REGISTRATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CORE ROUTERS (19):
+  1. config_router        (16 routes)
+  2. metrics_router       (6 routes)
+  3. files_router         (5 routes)
+  4. tree_router          (5 routes)
+  5. eval_router          (5 routes)
+  6. semantic_router      (11 routes)
+  7. chat_router          (3 routes)
+  8. chat_history_router  (9 routes)
+  9. knowledge_router     (9 routes)
+  10. ocr_router          (4 routes)
+  11. file_ops_router     (1 route)
+  12. triple_write_router (3 routes)
+  13. workflow_router     (3 routes)
+  14. embeddings_router   (3 routes)
+  15. health_router       (7 routes)
+  16. watcher_router      (9 routes)
+  17. model_router        (14 routes)
+  18. group_router        (11 routes)
+  19. debug_router        (14 routes)
+
+BRIDGE ROUTER (Conditional):
+  20. bridge_router       (4 routes) - Enabled via OPENCODE_BRIDGE_ENABLED=true
+
+Total Endpoints: ~115+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. CONFIGURATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ENVIRONMENT VARIABLES:
+  OPENCODE_BRIDGE_ENABLED=true    (currently enabled)
+  VETKA_BASE_URL=localhost:5001   (MCP bridge target)
+  VETKA_TIMEOUT=30.0              (HTTP timeout)
+
+FILE LOCATIONS:
+  MCP Bridge:    /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/
+                 src/mcp/vetka_mcp_bridge.py
+  
+  Bridge Routes: /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/
+                 src/opencode_bridge/routes.py
+  
+  Route Registry: /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/
+                  src/api/routes/__init__.py
+
+PORT MAPPING:
+  VETKA API Server:   5001 ✅
+  MCP Bridge:         stdio ✅
+  OpenCode Bridge:    /api/bridge ✅
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. TEST COMMANDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+QUICK TESTS:
+
+curl -s http://localhost:5001/api/health
+└─ Test: Server health check
+
+curl -s http://localhost:5001/api/bridge/openrouter/health
+└─ Test: Bridge health check
+
+curl -s http://localhost:5001/api/bridge/openrouter/keys
+└─ Test: Available keys
+
+curl -s http://localhost:5001/api/bridge/openrouter/stats
+└─ Test: Rotation statistics
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. COMMON ISSUES & SOLUTIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ Bridge endpoints not found?
+   → Check: OPENCODE_BRIDGE_ENABLED=true in environment
+   → Restart: python main.py
+
+❌ MCP tool returns connection error?
+   → Check: Is VETKA server running? (curl http://localhost:5001/api/health)
+   → Check: MCP bridge configuration (VETKA_BASE_URL, VETKA_TIMEOUT)
+   → Restart: MCP server in Claude Code/Desktop
+
+❌ All OpenRouter keys rate limited?
+   → Automatic rotation will try next key
+   → Check: stats endpoint for rate_limited_keys count
+   → Solution: Add more keys to OPENCODE_BRIDGE_ENABLED rotation pool
+
+⚠️ Write tool returns dry_run preview?
+   → Normal behavior: set dry_run=false to actually execute
+   → Example: { dry_run: false } in tool arguments
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. USAGE EXAMPLES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+EXAMPLE 1: Search codebase semantically
+  Tool: vetka_search_semantic
+  Args: { query: "authentication flow", limit: 10 }
+  Returns: Top 10 matching code snippets with scores
+
+EXAMPLE 2: Preview file edit (dry run)
+  Tool: vetka_edit_file
+  Args: { path: "src/main.py", content: "...", dry_run: true }
+  Returns: Preview of changes (file not modified)
+
+EXAMPLE 3: Call Claude through VETKA
+  Tool: vetka_call_model
+  Args: { model: "claude-opus-4-5", messages: [{role: "user", content: "..."}] }
+  Returns: Claude response with token usage
+
+EXAMPLE 4: Check file tree structure
+  Tool: vetka_get_tree
+  Args: { format: "summary" }
+  Returns: Tree statistics (node count, file/folder breakdown)
+
+EXAMPLE 5: Monitor OpenRouter key rotation
+  Endpoint: GET /api/bridge/openrouter/stats
+  Returns: Current active key, rate limit status, rotation history
+
+════════════════════════════════════════════════════════════════════════════════
+
+Full audit report:
+  /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/95_ph/
+  BRIDGE_ENDPOINTS_AUDIT.md
+
+Last updated: 2026-01-26
+Status: ALL SYSTEMS OPERATIONAL ✅

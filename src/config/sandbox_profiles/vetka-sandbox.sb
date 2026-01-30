@@ -1,0 +1,57 @@
+;;
+;; VETKA Sandbox Profile (macOS Seatbelt)
+;; Phase 20: Self-Building Foundation
+;;
+;; Usage: sandbox-exec -f vetka-sandbox.sb <command>
+;;
+;; Strategy: Allow default, then deny specific dangerous operations
+;; This is more practical for Python execution than deny-all approach
+;;
+
+(version 1)
+
+;; Start with allow-all baseline
+(allow default)
+
+;; ============================================================
+;; NETWORK BLOCKING - Critical security measure
+;; ============================================================
+(deny network*)
+
+;; ============================================================
+;; PROTECT CRITICAL PROJECT FILES FROM WRITES
+;; ============================================================
+
+;; Protect .git directory from any writes
+(deny file-write*
+    (subpath "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.git")
+)
+
+;; Protect main.py from writes
+(deny file-write*
+    (literal "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/main.py")
+)
+
+;; Protect critical config files
+(deny file-write*
+    (literal "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.env")
+    (literal "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/config.json")
+)
+
+;; ============================================================
+;; PROTECT SYSTEM FROM AGENT MODIFICATIONS
+;; ============================================================
+
+;; Deny writes to system directories
+(deny file-write*
+    (subpath "/System")
+    (subpath "/Library")
+    (subpath "/usr")
+    (subpath "/bin")
+    (subpath "/sbin")
+)
+
+;; Deny writes to home directory root (prevent dotfile modifications)
+(deny file-write*
+    (regex #"^/Users/danilagulin/\.[^/]+$")
+)

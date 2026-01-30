@@ -1,0 +1,310 @@
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                   VETKA CONTEXT ASSEMBLY ARCHITECTURE MAP                   ┃
+┃                        Phase 66 Audit Visualization                         ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           USER MESSAGE ENTRY                                │
+│                                                                             │
+│  {                                                                          │
+│    text: "How does this work?",                                            │
+│    pinned_files: [                                                         │
+│      {id: "f1", path: "src/module.py", type: "file"},                      │
+│      {id: "f2", path: "src/utils.ts", type: "file"}                        │
+│    ]                                                                        │
+│  }                                                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│           user_message_handler.py:250-280 [DECISION POINT]                  │
+│                                                                             │
+│   Detect model: requested_model = extract_model(text)                      │
+│                                                                             │
+│   Routes to:                                                               │
+│   ├─ Ollama local  [if model is "qwen2:7b", "llama3:8b", etc.]            │
+│   ├─ OpenRouter    [if model is "anthropic/claude-3", etc.]               │
+│   └─ Agent prompt  [if @mention or role detection]                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+
+
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                      🚀 CONTEXT ASSEMBLY PIPELINE 🚀                        ║
+║                                                                             ║
+║  user_message_handler.py:259                                               ║
+║  └─ pinned_context = build_pinned_context(pinned_files)                   ║
+║                                                                             ║
+║     message_utils.py:97-138                                                ║
+║     ├─ for each pinned_file in pinned_files[:max_files=10]:               ║
+║     │                                                                       ║
+║     │  🔴 load_pinned_file_content(file_path, max_chars=3000)             ║
+║     │     ├─ Read full file                                               ║
+║     │     └─ if len(content) > 3000:                                      ║
+║     │        └─ content = content[:3000] + "... [truncated]"              ║
+║     │           ↓                                                          ║
+║     │           ⚠️  NAIVE TRUNCATION - NO INTELLIGENCE!                   ║
+║     │           ⚠️  Cuts mid-function, mid-JSON, mid-class!               ║
+║     │           ⚠️  Breaks syntax!                                        ║
+║     │           ⚠️  Ignores ALL available tools:                          ║
+║     │              - Qdrant semantic search ❌ NOT USED                    ║
+║     │              - CAM activation scores ❌ NOT USED                     ║
+║     │              - Elisya LOD levels ❌ NOT USED                        ║
+║     │              - Token counting ❌ NOT DONE                           ║
+║     │              - AST parsing ❌ NOT DONE                              ║
+║     │                                                                       ║
+║     └─ wrap in XML: <pinned_file path="...">content</pinned_file>         ║
+║                                                                             ║
+║  Returns: XML with ~10 files × 3000 chars = ~30KB max                     ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+                                    ↓
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│             chat_handler.py:117 [PROMPT BUILDING]                          │
+│                                                                             │
+│  build_model_prompt(text, context_for_model, pinned_context, history)      │
+│                                                                             │
+│  Returns formatted string:                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────┐  │
+│  │ You are a helpful AI assistant. Analyze the following context...    │  │
+│  │                                                                     │  │
+│  │ {context_for_model}           ← File/node context                   │  │
+│  │                                                                     │  │
+│  │ {pinned_context}              ← TRUNCATED FILES ⚠️                 │  │
+│  │                                                                     │  │
+│  │ {history_context}             ← Chat history                        │  │
+│  │                                                                     │  │
+│  │ ## CURRENT USER QUESTION                                            │  │
+│  │ How does this work?                                                │  │
+│  │                                                                     │  │
+│  │ Provide helpful answer:                                           │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  ⚠️  WARNING: NO TOKEN COUNTING HERE!                                      │
+│      Prompt could exceed model's token limit silently                      │
+│      (Ollama: 2K, Claude: 100K, GPT-4: 128K, but unchecked)               │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    SEND TO LLM (MULTIPLE PATHS)                            │
+│                                                                             │
+│  Path 1: OLLAMA (Local)  [user_message_handler.py:288]                    │
+│  ├─ ollama.chat(                                                           │
+│  │   model=requested_model,                                               │
+│  │   messages=[{role: 'user', content: model_prompt}],                   │
+│  │   stream=False                                                         │
+│  │ )                                                                       │
+│  └─ Returns: full response text                                           │
+│                                                                             │
+│  Path 2: OpenRouter  [user_message_handler.py:404]                        │
+│  ├─ httpx.post(                                                            │
+│  │   'https://openrouter.ai/api/v1/chat/completions',                   │
+│  │   json={                                                               │
+│  │     model: requested_model,                                            │
+│  │     messages: [{role: 'user', content: model_prompt}],                │
+│  │     stream: False                                                      │
+│  │   }                                                                     │
+│  │ )                                                                       │
+│  └─ Returns: streamed response chunks                                      │
+│                                                                             │
+│  ⚠️  PROBLEM: Prompt could be over token limit!                            │
+│      - No check before sending                                             │
+│      - Silent failure if exceeded                                          │
+│      - Truncated/malformed context never acknowledged                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   SAVE RESPONSE + EMIT EVENTS                              │
+│                                                                             │
+│  user_message_handler.py:318-333                                           │
+│  ├─ save_chat_message(node_path, {                                         │
+│  │   role: 'assistant',                                                    │
+│  │   agent: requested_model,                                              │
+│  │   text: full_response,                                                 │
+│  │   node_id: node_id                                                     │
+│  │ })  ← Store in chat history                                            │
+│  │                                                                         │
+│  └─ emit_cam_event("message_sent", {...})  ← Surprise calculation          │
+│     ↓                                                                       │
+│     cam_event_handler.py:442                                               │
+│     └─ CAMEventHandler.handle_event()                                      │
+│        ├─ _handle_message_sent()                                          │
+│        └─ Calculate surprise/entropy                                       │
+│           (For CAM tree learning, not for context!)                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              UNUSED SYSTEMS (Exist but not in context pipeline)             │
+│                                                                             │
+│  1️⃣  CAM ENGINE                                                             │
+│      ├─ Location: src/orchestration/cam_engine.py:128                      │
+│      ├─ Status: ✅ FULLY IMPLEMENTED                                        │
+│      ├─ Does: Tree optimization (prune, merge, activate)                   │
+│      ├─ Used for: Knowledge maintenance (after workflows)                  │
+│      └─ NOT used for: Context selection ❌                                 │
+│                                                                             │
+│  2️⃣  ELISYA MIDDLEWARE                                                      │
+│      ├─ Location: src/elisya/middleware.py                                 │
+│      ├─ Status: ✅ FULLY IMPLEMENTED                                        │
+│      ├─ Does: Context adaptation via LODLevel (DETAILED/SUMMARY/MINIMAL)  │
+│      ├─ Used for: Agent prompt adaptation                                  │
+│      └─ NOT used for: Pinned context ❌                                    │
+│                                                                             │
+│  3️⃣  QDRANT SEMANTIC SEARCH                                                │
+│      ├─ Location: src/knowledge_graph/graph_builder.py                     │
+│      ├─ Status: ✅ FULLY IMPLEMENTED                                        │
+│      ├─ Does: Vector similarity search in knowledge graph                  │
+│      ├─ Used for: Standalone vetka_search_knowledge tool                   │
+│      └─ NOT used for: Pinned context relevance ❌                          │
+│                                                                             │
+│  4️⃣  CAM ACTIVATION SCORES                                                  │
+│      ├─ Location: src/orchestration/cam_engine.py:69                       │
+│      ├─ Status: ✅ TRACKED & CALCULATED                                     │
+│      ├─ Does: Track "hotness" of nodes (0.0-1.0 relevance)               │
+│      ├─ Used for: Tree pruning decisions                                   │
+│      └─ NOT used for: File prioritization ❌                               │
+│                                                                             │
+│  5️⃣  WEAVIATE GRAPH DB                                                      │
+│      ├─ Location: Documentation only (no code!)                            │
+│      ├─ Status: 🔴 NEVER IMPLEMENTED                                        │
+│      ├─ Was planned: "Triple Write" (ChangeLog + Weaviate + Qdrant)       │
+│      ├─ Reality: Only ChangeLog + Qdrant (Dual Write)                     │
+│      └─ Purpose: Store entity relationships (never built)                  │
+│                                                                             │
+│  6️⃣  ELISYA SEMANTIC PATHS                                                 │
+│      ├─ Location: src/elisya/semantic_path.py                              │
+│      ├─ Status: ✅ FULLY IMPLEMENTED                                        │
+│      ├─ Does: Generate semantic navigation paths                           │
+│      ├─ Used for: Agent routing, context paths                             │
+│      └─ NOT used for: Pinned file navigation ❌                            │
+│                                                                             │
+│  7️⃣  TOKEN COUNTING                                                         │
+│      ├─ Location: NOWHERE!                                                 │
+│      ├─ Status: 🔴 NOT IMPLEMENTED                                         │
+│      ├─ Does: Calculate tokens before sending to LLM                       │
+│      └─ Needed for: Safe prompt assembly                                   │
+│                                                                             │
+│  8️⃣  AST PARSING FOR CODE                                                   │
+│      ├─ Location: NOWHERE!                                                 │
+│      ├─ Status: 🔴 NOT IMPLEMENTED                                         │
+│      ├─ Does: Parse code syntax to find function/class boundaries          │
+│      └─ Needed for: Smart truncation of code files                         │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        MEMORY SYSTEMS (Triple Write)                       │
+│                                                                             │
+│  MemoryManager (src/orchestration/memory_manager.py:52)                    │
+│  ├─ 1️⃣  ChangeLog (JSON JSONL)  ✅ WORKING                                 │
+│  │   ├─ Immutable audit trail                                              │
+│  │   ├─ All events sequentially                                            │
+│  │   ├─ Source of truth on conflicts                                       │
+│  │   └─ File: data/changelog.jsonl                                         │
+│  │                                                                          │
+│  ├─ 2️⃣  Weaviate (Graph DB)  ❌ NEVER BUILT                               │
+│  │   ├─ Was supposed to: Store entity relationships                        │
+│  │   ├─ Metadata: score, student_level, etc.                              │
+│  │   └─ Status: Documentation artifact only                               │
+│  │                                                                          │
+│  └─ 3️⃣  Qdrant (Vector DB)  ✅ WORKING                                     │
+│      ├─ Embeddings: Gemma:300m (768D vectors)                              │
+│      ├─ Semantic search for knowledge retrieval                            │
+│      ├─ Metadata: file paths, timestamps, scores                          │
+│      └─ Used by: graph_builder, standalone search tool                    │
+│                                                                             │
+│  Reality: DUAL WRITE (not Triple)                                          │
+│  ├─ ChangeLog: Immutable events                                            │
+│  └─ Qdrant: Semantic search                                                │
+│                                                                             │
+│  Missing: Weaviate graph relationships                                     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   WHAT SHOULD HAPPEN (Ideal Flow)                          │
+│                                                                             │
+│  Smart Context Assembly:                                                   │
+│  ├─ Step 1: Get pinned files & user query                                  │
+│  ├─ Step 2: Score each file by:                                            │
+│  │   ├─ Query relevance [Qdrant semantic search]                           │
+│  │   ├─ CAM activation [from activation_score]                             │
+│  │   └─ Recent activity [from CAM timestamps]                              │
+│  ├─ Step 3: Select top 5 files (by relevance score)                        │
+│  ├─ Step 4: For each file:                                                 │
+│  │   ├─ Parse syntax (AST for code, DOM for HTML, etc.)                    │
+│  │   ├─ Extract relevant sections (not dumb truncation!)                   │
+│  │   └─ Limit to 2000 TOKENS (not 3000 chars!)                             │
+│  ├─ Step 5: Apply Elisya LOD levels:                                       │
+│  │   ├─ Check target model capacity                                        │
+│  │   ├─ Adjust detail: DETAILED/SUMMARY/MINIMAL                            │
+│  │   └─ Filter context accordingly                                         │
+│  ├─ Step 6: Count total tokens:                                            │
+│  │   ├─ Before sending to LLM                                              │
+│  │   ├─ Ensure < model_limit                                               │
+│  │   └─ Warn/truncate if needed                                            │
+│  └─ Step 7: Build prompt & send to LLM                                     │
+│                                                                             │
+│  Current Reality: Steps 1-7 are reduced to:                                │
+│  ├─ Load all files                                                         │
+│  ├─ Truncate at 3000 chars (dumb!)                                         │
+│  └─ Wrap in XML and hope for the best                                      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         SUMMARY: WHAT'S MISSING                            │
+│                                                                             │
+│  ✅ Built & Working:                                                        │
+│     ├─ CAM Engine (knowledge optimization)                                  │
+│     ├─ Elisya (routing & middleware)                                        │
+│     ├─ Qdrant (vector DB)                                                   │
+│     ├─ ChangeLog (immutable audit trail)                                    │
+│     └─ Knowledge Graph Builder                                              │
+│                                                                             │
+│  ❌ Missing / Not Connected:                                                │
+│     ├─ Weaviate (graph DB - never built)                                    │
+│     ├─ Token counting (critical gap!)                                       │
+│     ├─ AST parsing (for smart code truncation)                              │
+│     ├─ Semantic relevance scoring (Qdrant not used)                         │
+│     ├─ CAM awareness (activation scores not used)                           │
+│     ├─ Elisya LOD integration (not applied to pinned context)               │
+│     └─ Query-aware file selection (all files treated equally)               │
+│                                                                             │
+│  🔧 The Fix:                                                                │
+│     Short: Replace 3000-char truncation with token-aware truncation        │
+│     Medium: Add Qdrant semantic scoring + file selection                    │
+│     Long: Full CAM + Elisya + LOD integration                               │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Report: docs/65_phases/PHASE_66_CAM_ELISYA_AUDIT.md (full analysis)
+Summary: docs/65_phases/PHASE_66_SUMMARY.txt (executive brief)
+This file: Architecture visualization and integration map
+
+Audit Date: 2026-01-18
+Status: ✅ READ-ONLY ANALYSIS COMPLETE (No changes made)
+
+═══════════════════════════════════════════════════════════════════════════════

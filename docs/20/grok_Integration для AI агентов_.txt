@@ -1,0 +1,373 @@
+Вот полный анализ и исследование по твоим вопросам для Phase 20–23: **Self-Building AI IDE в VETKA**.  
+Я провёл поиск по состоянию на конец 2025 года (open-source, self-hosted, безопасность, минимализм). Всё актуально для Mac M-чипов, Flask/Socket.IO, Qdrant/Weaviate.
+
+### 1. Git Integration для AI агентов
+
+**Лучшее решение 2025**  
+**gitoxide** (https://github.com/Byron/gitoxide) — Rust-библиотека, полностью безопасная, без shell.  
++ **libgit2** (C) с bindings (nodegit, pygit2) — классика, но gitoxide быстрее и безопаснее.
+
+**Open-source альтернатива**  
+gitoxide (Rust) → Python bindings через PyO3 (или subprocess с ограничениями).
+
+**Применимость к VETKA**  
+- Агент вызывает gitoxide через subprocess или Rust binary  
+- Approval flow: Socket.IO → UI prompt → user approve → commit/push  
+- Ограничения: no force push, no rm -rf, branch protection (main protected)
+
+**Код/конфиг пример** (Python + gitoxide via subprocess)
+
+```python
+# src/tools/git_tool.py
+import subprocess
+from pathlib import Path
+
+def git_commit(message: str, files: list[str], branch: str = "agent-dev"):
+    repo_path = Path("/path/to/vetka/repo")
+    cmd = ["gitoxide", "commit", "-m", message, "--branch", branch]
+    cmd.extend(files)
+    
+    try:
+        result = subprocess.run(cmd, cwd=repo_path, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            return {"success": True, "output": result.stdout}
+        else:
+            return {"success": False, "error": result.stderr}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Git timeout"}
+```
+
+**Риски/ограничения**  
+- Prompt injection → shell escape → gitoxide решает (без shell)  
+- User approval — **обязательно** для push/commit
+
+### 2. Sandboxed Code Execution
+
+**Лучшее решение 2025**  
+**E2B** (open-source версия) или **Firecracker** (AWS) + **bubblewrap** (Linux/Mac)  
+Bubblewrap — самый лёгкий и быстрый для Mac (sandbox без Docker).
+
+**Open-source альтернатива**  
+- bubblewrap (https://github.com/containers/bubblewrap) — Mac/Linux  
+- nsjail (https://github.com/google/nsjail) — более строгий, но сложнее на Mac  
+- gVisor (Google) — тяжёлый, но безопасный
+
+**Применимость к VETKA**  
+- execute_code → bubblewrap + Python interpreter  
+- Filesystem: только /tmp/sandbox + read-only project dir  
+- Network: --unshare-net  
+- Timeout: 30s
+
+**Код/конфиг пример** (bubblewrap)
+
+```python
+# src/tools/execute_code.py
+import subprocess
+
+def execute_sandboxed(code: str):
+    cmd = [
+        "bwrap",
+        "--ro-bind", "/usr/bin/python3", "/usr/bin/python3",
+        "--tmpfs", "/tmp",
+        "--unshare-net",
+        "--die-with-parent",
+        "--", "python3", "-c", code
+    ]
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        return {"stdout": result.stdout, "stderr": result.stderr, "success": result.returncode == 0}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Execution timeout"}
+```
+
+**Риски/ограничения**  
+- Mac: bubblewrap через brew, но не 100% native (лучше на Linux-сервере)  
+- Approval flow — **обязательно** для exec
+
+### 3. Browser/Terminal доступ для агентов
+
+**Лучшее решение 2025**  
+**Playwright MCP** (https://github.com/microsoft/playwright-mcp) — open-source, self-hosted  
+Chrome DevTools Protocol + WebSocket → агенты видят DOM/console.
+
+**Open-source альтернатива**  
+- Playwright + Browserless (self-hosted)  
+- Puppeteer + chrome-remote-interface
+
+**Применимость к VETKA**  
+- Агент запускает headless Chrome → видит console.log, DOM changes  
+- Передача логов → Socket.IO → Artifact Panel (real-time)
+
+**Код/конфиг пример** (Playwright MCP)
+
+```python
+# src/tools/browser_tool.py
+from playwright.async_api import async_playwright
+
+async def execute_browser_task(url: str, script: str):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(url)
+        result = await page.evaluate(script)
+        console_logs = []
+        page.on("console", lambda msg: console_logs.append(msg.text))
+        await browser.close()
+        return {"result": result, "console": console_logs}
+```
+
+**Риски/ограничения**  
+- Headless Chrome → ~200–500 MB RAM  
+- Network — изолировать (proxy)
+
+### 4. Documentation Library (альтернатива Context7)
+
+**Лучшее решение 2025**  
+**Всё в VETKA** — векторизация docs (Qdrant) + SearchSemanticTool  
+- Загружаешь docs библиотек (numpy, pandas, flask) в VETKA → embeddings  
+- Агент ищет: "как использовать pandas.DataFrame.groupby"
+
+**Open-source альтернатива**  
+- LlamaIndex + Weaviate — уже у тебя есть  
+- Haystack (deepset) — мощный RAG
+
+**Применимость к VETKA**  
+- **Не нужен** внешний MCP — VETKA уже RAG-система  
+- Docs → отдельная коллекция в Qdrant ("docs_lib")  
+- Агент вызывает SearchTool с query="pandas merge docs"
+
+**Риски/ограничения**  
+- Объём — 100+ библиотек → +10–20 GB индекса  
+- Обновление — cron job
+
+### 5. Agent Observability (без платных SaaS)
+
+**Лучшее решение 2025**  
+**OpenTelemetry + Jaeger** (self-hosted) + custom traces в Weaviate  
+- Agent → span (tool call, LLM call) → OTLP → Jaeger UI
+
+**Open-source альтернатива**  
+- Phoenix (Arize) — open-source tracing  
+- Langfuse self-hosted
+
+**Применимость к VETKA**  
+- Agent → trace → Jaeger (UI) + Weaviate (vector search по traces)  
+- Diff visualization → git diff → Artifact Panel
+
+**Риски/ограничения**  
+- Jaeger — ~500 MB RAM  
+- Логи → структурировать (structlog)
+
+### 6. Permission Model
+
+**Лучшее решение 2025**  
+**Least privilege + human-in-the-loop**  
+- Read: всегда  
+- Write/Exec: approval (UI prompt)  
+- Git push: manual approve + branch protection
+
+**Open-source альтернатива**  
+- OPA (Open Policy Agent) — policy-as-code
+
+**Применимость к VETKA**  
+- Permission level в tool schema (read/write/execute/external)
+- Approval flow → Socket.IO → UI modal → user approve/reject
+
+**Риски/ограничения**  
+- Prompt injection → escape → RestrictedPython + approval
+
+### 7. Tasks as Tree Nodes
+
+**Лучшее решение 2025**  
+**Weaviate GraphQL + custom schema**  
+- Task → class "Task" → properties: title, status, agent, files (cross-ref), chat (array)
+
+**Open-source альтернатива**  
+- TaskWeaver / AutoGen patterns — task как node
+
+**Применимость к VETKA**  
+- Task = leaf node → чат → messages array  
+- Связи: task → files (prerequisite), task → agent
+
+**Риски/ограничения**  
+- Масштаб — 1000+ tasks → Weaviate справится
+
+### Итог приоритетов
+
+1. **Git + sandbox** — core для self-building  
+2. **Observability** — Jaeger + Weaviate traces  
+3. **Permission + approval** — безопасность  
+4. **Tasks as nodes** — UX  
+5. **Docs in VETKA** — RAG  
+
+**Рекомендация**:  
+Начать с **gitoxide + bubblewrap** + **approval flow** — это основа self-building.
+
+Если хочешь — давай детальный план Phase 20 (git + sandbox + approval).
+
+Вот актуальный (декабрь 2025) анализ по всем 5 gaps, с учётом твоей архитектуры (Mac M-чипы, Three.js + Flask + Socket.IO + Weaviate/Qdrant, безопасность, минимализм).
+
+### Gap 1: macOS Sandbox (альтернативы Bubblewrap)
+
+**Bubblewrap** действительно **не работает** на macOS (Seatbelt / sandbox-exec — native, но bubblewrap — Linux-only).
+
+**Актуальные альтернативы на Mac M-чипах (Apple Silicon)**:
+
+| Решение                     | Уровень изоляции | Overhead (RAM/CPU) | Установка / доступность | Применимость к VETKA | Рекомендация |
+|-----------------------------|-------------------|---------------------|---------------------------|-----------------------|--------------|
+| **sandbox-exec** (Seatbelt) | Высокий (native macOS) | Очень низкий (~10–50 MB) | Уже встроен в macOS | **Лучший выбор** | Да — используй |
+| **Colima + Docker** (VM)    | Очень высокий     | Высокий (1–2 GB RAM) | brew install colima docker | Хорошая альтернатива | Да, если нужен Docker |
+| **OrbStack**                | Высокий (native VM) | Средний (~500 MB)   | brew install orbstack     | Хорошая альтернатива | Да, если нужен GUI |
+| **Firejail**                | Средний           | Низкий              | brew install firejail     | Слабая (Linux-oriented) | Нет |
+| **nsjail**                  | Высокий           | Низкий              | brew install nsjail       | Средняя (Linux-oriented) | Нет |
+
+**Лучшее решение**: **sandbox-exec** (Seatbelt) — native, лёгкий, безопасный.
+
+**Пример sandbox-exec profile** (vetka-sandbox.sb):
+
+```plaintext
+(version 1)
+(allow default)
+
+; Разрешаем только нужное
+(deny file-write* file-read* process-exec*
+  (subpath "/"))
+
+(allow file-read* file-write*
+  (literal "/tmp")
+  (subpath "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tmp_sandbox"))
+
+(allow process-exec*
+  (literal "/usr/bin/python3")
+  (literal "/usr/local/bin/python3"))
+
+(deny network*)
+
+(allow mach-lookup
+  (global-name "com.apple.system.logger"))
+```
+
+Запуск:
+
+```bash
+sandbox-exec -f vetka-sandbox.sb python3 -c "print('Hello from sandbox')"
+```
+
+**Overhead**:  
+- RAM: +20–100 MB  
+- CPU: +5–15%  
+- Startup: < 50 мс
+
+**Вывод**: Используй **sandbox-exec** — это **native macOS**, **без Docker**, **без VM**.  
+Colima/OrbStack — только если нужен полный Docker.
+
+### Gap 2: Agent Activity в 3D UI (Three.js)
+
+**Лучшее решение 2025**  
+**Custom Three.js + Socket.IO** — badge/notification + activity stream.
+
+**Как визуализировать**:
+
+1. **Badge/notification на узлах**  
+   - При tool call (git/commit, execute_code) → добавить sprite/icon над mesh  
+   - Цвета: green (success), red (error), yellow (running)  
+   - Анимация: pulse scale 1.0 → 1.2
+
+2. **Activity stream** (боковая панель или bottom bar)  
+   - Socket.IO → emit('agent_activity', { agent, action, file, status })  
+   - React/Vue компонент → список (timestamp, agent, icon, file path, result)
+
+3. **Real-time updates**  
+   - Socket.IO room per branch/file  
+   - joinRoom(branchId) → receive updates
+
+**Пример** (Three.js + Socket.IO):
+
+```javascript
+// В tree_renderer.py (Three.js)
+socket.on('agent_activity', (data) => {
+  const { branchId, agent, action, status } = data;
+  const node = nodeObjects.get(branchId);
+  if (node) {
+    // Добавить badge
+    const badge = createBadgeSprite(status);
+    badge.position.set(node.position.x, node.position.y + 1.5, node.position.z);
+    scene.add(badge);
+    setTimeout(() => scene.remove(badge), 5000); // 5s
+  }
+});
+```
+
+**Риски**  
+- Performance: >50 badges → WebGL overload → limit to 10–15 active
+
+### Gap 3: Context Selection UX («выдели код → отправь агенту»)
+
+**Лучшее решение 2025**  
+**VS Code / Cursor patterns** — Selection → Context Menu → "Send to Agent"
+
+**Как реализуют**:
+- VS Code Copilot: выделил код → Ctrl+L → Copilot Chat → context = selected text + file path
+- Cursor: выделил → Cmd+K → Agent prompt → context = selected + surrounding lines
+
+**Применимость к VETKA**:
+- Artifact Panel (CodeViewer / RichTextEditor) → onSelectionChange → emit('selection', { text, range })
+- Socket.IO → agent получает context → prompt = "Continue from:\n{selected_text}"
+
+**Реализация**:
+- CodeMirror → onSelectionChange → getSelection()
+- Tiptap → editor.state.selection → editor.getText()
+
+### Gap 4: Проверка актуальности (декабрь 2025)
+
+| Технология             | Актуальность | pip install / status | Комментарий |
+|------------------------|--------------|----------------------|-------------|
+| **gitoxide Python bindings** | Есть (PyO3) | pip install gitoxide-py (0.1.x) | Активно, 2025 — 1.0.0+ |
+| **Phoenix Arize**      | Self-hosted free | Yes (docker-compose) | Open-source версия — бесплатная, 2025 активно развивается |
+| **TaskWeaver**         | Активен      | pip install taskweaver | Microsoft, 2025 — v0.4+, self-hosted |
+
+**Вывод**:  
+- gitoxide-py — есть, используй  
+- Phoenix — self-hosted free, рекомендую  
+- TaskWeaver — активно, можно взять patterns
+
+### Gap 5: Approval Flow UI
+
+**Лучшее решение 2025**  
+**Modal + diff preview** — Socket.IO + React/Vanilla modal
+
+**Как сделать**:
+- Агент вызывает tool (write_file/git_commit) → emit('approval_needed', { tool, args, diff })
+- UI: modal с diff (diff2html или Monaco diff viewer)
+- Кнопки: Approve / Reject / Edit
+
+**Пример** (Vanilla JS):
+
+```javascript
+socket.on('approval_needed', (data) => {
+  const modal = document.createElement('div');
+  modal.innerHTML = `
+    <div class="modal">
+      <h3>Approve action: ${data.tool}</h3>
+      <pre class="diff">${data.diff}</pre>
+      <button onclick="approve(${data.id})">Approve</button>
+      <button onclick="reject(${data.id})">Reject</button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+});
+
+function approve(id) {
+  socket.emit('approval_response', { id, approved: true });
+}
+```
+
+**Риски**  
+- Timeout policy — 60–120 сек → auto-reject  
+- Diff preview — git diff или Monaco (тяжёлый)
+
+**Рекомендация**:  
+Начать с **gitoxide + bubblewrap** + **approval modal** — это основа self-building.
+
+Готов детальный план Phase 20? (git + sandbox + approval)

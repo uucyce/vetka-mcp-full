@@ -1,0 +1,852 @@
+"""VETKA Phase 7.4.1 - Optimized Flask Backend (ChatGPT & Qwen feedback applied)"""
+from flask import Flask, request, jsonify, render_template, g
+from flask_socketio import SocketIO, emit, disconnect, join_room, leave_room
+import uuid
+import time
+import sys
+import os
+import atexit
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
+# Add project to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import VETKA components
+try:
+    from src.orchestration.orchestrator_with_elisya import OrchestratorWithElisya as AgentOrchestrator
+    ELISYA_ENABLED = True
+    PARALLEL_MODE = True
+    print("✅ Sprint 1.5: Orchestrator with Elisya Integration loaded")
+except ImportError as e:
+    print(f"⚠️  Elisya orchestrator not available: {e}")
+    print("   Falling back to parallel orchestrator")
+    ELISYA_ENABLED = False
+    try:
+        from src.orchestration.agent_orchestrator_parallel import AgentOrchestrator
+        PARALLEL_MODE = True
+        print("✅ Phase 7 Parallel Orchestrator loaded")
+    except ImportError:
+        print("⚠️  Parallel orchestrator not available, falling back to sequential")
+        from src.orchestration.agent_orchestrator import AgentOrchestrator
+        PARALLEL_MODE = False
+
+from src.orchestration.memory_manager import MemoryManager
+from src.agents.eval_agent import EvalAgent
+
+# ============ PHASE 7.4 MODULES ============
+print("\n🚀 PHASE 7.4.1 INITIALIZATION (Optimized)...")
+
+# Metrics Engine
+try:
+    from src.monitoring.metrics_engine import init_metrics_engine, get_metrics_engine
+    METRICS_AVAILABLE = True
+    print("✅ Metrics Engine module found")
+except ImportError as e:
+    print(f"⚠️  Metrics Engine not available: {e}")
+    METRICS_AVAILABLE = False
+
+# Model Router v2
+try:
+    from src.elisya.model_router_v2 import init_model_router, get_model_router
+    MODEL_ROUTER_V2_AVAILABLE = True
+    print("✅ Model Router v2 module found")
+except ImportError as e:
+    print(f"⚠️  Model Router v2 not available: {e}")
+    MODEL_ROUTER_V2_AVAILABLE = False
+
+# Qdrant Auto-Retry
+try:
+    from src.memory.qdrant_auto_retry import init_qdrant_auto_retry, get_qdrant_auto_retry
+    QDRANT_AUTO_RETRY_AVAILABLE = True
+    print("✅ Qdrant Auto-Retry module found")
+except ImportError as e:
+    print(f"⚠️  Qdrant Auto-Retry not available: {e}")
+    QDRANT_AUTO_RETRY_AVAILABLE = False
+
+# Feedback Loop v2
+try:
+    from src.orchestration.feedback_loop_v2 import init_feedback_loop, get_feedback_loop
+    FEEDBACK_LOOP_V2_AVAILABLE = True
+    print("✅ Feedback Loop v2 module found")
+except ImportError as e:
+    print(f"⚠️  Feedback Loop v2 not available: {e}")
+    FEEDBACK_LOOP_V2_AVAILABLE = False
+
+# Initialize Flask
+app = Flask(__name__, 
+            template_folder='frontend/templates',
+            static_folder='frontend/static')
+app.config['SECRET_KEY'] = 'vetka-secret-key-2025'
+
+# Initialize Socket.IO
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+# ThreadPoolExecutor for background workflows
+executor = ThreadPoolExecutor(max_workers=4)
+
+# ✅ Graceful shutdown for executor
+def shutdown_executor():
+    """Gracefully shutdown executor on app termination"""
+    print("\n⏹  Shutting down ThreadPoolExecutor...")
+    executor.shutdown(wait=True)
+    print("✅ ThreadPoolExecutor shut down")
+
+atexit.register(shutdown_executor)
+
+
+# ============ PHASE 7.4 INITIALIZATION ============
+
+# Initialize Metrics Engine
+metrics_engine = None
+if METRICS_AVAILABLE:
+    try:
+        metrics_engine = init_metrics_engine(max_history=500, window_size=100)
+        
+        # Register Socket.IO callback for real-time updates
+        def emit_metrics_to_ui(event_type: str, data: dict):
+            """Emit metric updates to connected clients via Socket.IO"""
+            try:
+                socketio.emit(event_type, data, broadcast=True)
+            except Exception as e:
+                pass  # Silently handle if no clients connected
+        
+        metrics_engine.register_callback(emit_metrics_to_ui)
+        print("✅ Metrics Engine initialized with Socket.IO callback")
+    except Exception as e:
+        print(f"⚠️  Metrics Engine initialization failed: {e}")
+        METRICS_AVAILABLE = False
+
+# Initialize Model Router v2
+model_router = None
+if MODEL_ROUTER_V2_AVAILABLE:
+    try:
+        model_router = init_model_router(redis_host='localhost', redis_port=6379)
+        print("✅ Model Router v2 initialized")
+    except Exception as e:
+        print(f"⚠️  Model Router v2 initialization failed (Redis fallback): {e}")
+        print("   → Using in-memory mode for Model Router")
+        MODEL_ROUTER_V2_AVAILABLE = False
+
+# Initialize Qdrant Auto-Retry
+qdrant_manager = None
+if QDRANT_AUTO_RETRY_AVAILABLE:
+    try:
+        def on_qdrant_connected():
+            """Callback when Qdrant successfully connects"""
+            print("🎉 Qdrant is now connected! VetkaTree available.")
+            if METRICS_AVAILABLE and metrics_engine:
+                metrics_engine.record_event("qdrant_connected", {"status": "connected"})
+            socketio.emit('qdrant_connected', {
+                'status': 'connected',
+                'timestamp': time.time()
+            }, broadcast=True)
+        
+        # Try to connect to Qdrant (use 127.0.0.1 for localhost connections via Docker)
+        qdrant_manager = init_qdrant_auto_retry(
+            host='127.0.0.1',
+            port=6333,
+            max_retries=5,
+            on_connected=on_qdrant_connected
+        )
+        print("✅ Qdrant Auto-Retry started (background)")
+    except Exception as e:
+        print(f"⚠️  Qdrant Auto-Retry initialization failed: {e}")
+        QDRANT_AUTO_RETRY_AVAILABLE = False
+
+# Initialize Feedback Loop v2
+feedback_loop = None
+if FEEDBACK_LOOP_V2_AVAILABLE:
+    try:
+        feedback_loop = init_feedback_loop()
+        print("✅ Feedback Loop v2 initialized")
+    except Exception as e:
+        print(f"⚠️  Feedback Loop v2 initialization failed: {e}")
+        FEEDBACK_LOOP_V2_AVAILABLE = False
+
+
+def get_orchestrator():
+    """Get or create orchestrator with SocketIO (thread-safe via Flask g)"""
+    if 'orchestrator' not in g:
+        g.orchestrator = AgentOrchestrator(socketio=socketio, use_parallel=True)
+    return g.orchestrator
+
+
+def get_memory_manager():
+    """Get or create memory manager (thread-safe via Flask g)"""
+    if 'memory_manager' not in g:
+        g.memory_manager = MemoryManager()
+    return g.memory_manager
+
+
+def get_eval_agent():
+    """Get or create EvalAgent instance with dynamic model selection"""
+    if 'eval_agent' not in g:
+        memory_manager = get_memory_manager()
+        
+        # Try to get model from Model Router v2
+        model = "deepseek-coder:6.7b"  # default
+        if MODEL_ROUTER_V2_AVAILABLE and model_router:
+            try:
+                selected_model, metadata = model_router.select_model("eval_scoring", "MEDIUM")
+                if selected_model:
+                    model = selected_model
+                    print(f"🎯 Model Router selected: {model} (provider: {metadata.get('provider', 'unknown')})")
+            except Exception as e:
+                print(f"⚠️  Model Router failed, using default: {e}")
+        
+        g.eval_agent = EvalAgent(model=model, memory_manager=memory_manager)
+    return g.eval_agent
+
+
+@app.route("/", methods=["GET"])
+def index():
+    """Serve main UI"""
+    return render_template("index.html")
+
+
+@app.route("/3d", methods=["GET"])
+def vetka_tree_3d():
+    """Serve 3D Tree visualization (Phase 7.5) - Live workflow tree with metrics"""
+    return render_template("vetka_tree_3d.html")
+
+
+@app.route("/chat", methods=["GET"])
+def chat_ui():
+    """Serve Wayne Mode Chat UI (Phase 7.7) - Agent interaction with minimal design"""
+    return render_template("chat.html")
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    """Health check endpoint"""
+    memory = get_memory_manager()
+    return jsonify({
+        "status": "ok",
+        "service": "vetka-phase-7-4-1",
+        "weaviate": "connected" if memory.health_check() else "disconnected",
+        "timestamp": time.time()
+    })
+
+
+@app.route("/api/system/summary", methods=["GET"])
+def system_summary():
+    """Get system health summary for DevOps (NEW - ChatGPT suggestion)"""
+    try:
+        qdrant_status = "not initialized"
+        if QDRANT_AUTO_RETRY_AVAILABLE and qdrant_manager:
+            try:
+                qdrant_status = qdrant_manager.get_status().get('status', 'unknown')
+            except:
+                qdrant_status = "error"
+        
+        return jsonify({
+            "timestamp": time.time(),
+            "modules": {
+                "metrics_engine": METRICS_AVAILABLE,
+                "model_router_v2": MODEL_ROUTER_V2_AVAILABLE,
+                "qdrant_auto_retry": QDRANT_AUTO_RETRY_AVAILABLE,
+                "feedback_loop_v2": FEEDBACK_LOOP_V2_AVAILABLE,
+                "elisya_enabled": ELISYA_ENABLED
+            },
+            "services": {
+                "weaviate": get_memory_manager().health_check(),
+                "qdrant": qdrant_status,
+                "executor_queue_size": executor._work_queue.qsize(),
+                "max_workers": 4
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/workflow/history", methods=["GET"])
+def get_history():
+    """Get workflow history"""
+    limit = request.args.get('limit', 10, type=int)
+    history = get_orchestrator().get_workflow_history(limit)
+    return jsonify(history)
+
+
+@app.route("/api/workflow/stats", methods=["GET"])
+def get_stats():
+    """Get workflow statistics"""
+    stats = get_orchestrator().get_agent_statistics()
+    return jsonify(stats)
+
+
+@app.route("/api/workflow/<workflow_id>", methods=["GET"])
+def get_workflow(workflow_id):
+    """Get specific workflow details"""
+    history = get_orchestrator().get_workflow_history(100)
+    
+    for item in history.get('local_history', []):
+        if item.get('workflow_id') == workflow_id:
+            return jsonify(item)
+    
+    for item in history.get('weaviate_history', []):
+        if item.get('workflow_id') == workflow_id:
+            return jsonify(item)
+    
+    return jsonify({"error": "Workflow not found"}), 404
+
+
+# ============ EVALAGENT ENDPOINTS ============
+
+@app.route("/api/eval/score", methods=["POST"])
+def evaluate_output():
+    """Evaluate agent output"""
+    try:
+        data = request.json or {}
+        task = data.get('task', '')
+        output = data.get('output', '')
+        complexity = data.get('complexity', 'MEDIUM')
+        
+        if not task or not output:
+            return jsonify({'error': 'task and output are required'}), 400
+        
+        evaluator = get_eval_agent()
+        result = evaluator.evaluate(
+            task=task,
+            output=output,
+            complexity=complexity
+        )
+        
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/eval/score/with-retry", methods=["POST"])
+def evaluate_with_retry():
+    """Evaluate with automatic retry"""
+    try:
+        data = request.json or {}
+        task = data.get('task', '')
+        output = data.get('output', '')
+        complexity = data.get('complexity', 'MEDIUM')
+        
+        if not task or not output:
+            return jsonify({'error': 'task and output are required'}), 400
+        
+        evaluator = get_eval_agent()
+        result = evaluator.evaluate_with_retry(
+            task=task,
+            output=output,
+            complexity=complexity
+        )
+        
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/eval/history", methods=["GET"])
+def get_eval_history():
+    """Get EvalAgent history"""
+    try:
+        limit = request.args.get('limit', 10, type=int)
+        evaluator = get_eval_agent()
+        history = evaluator.get_history(limit=limit)
+        return jsonify({'history': history}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/eval/stats", methods=["GET"])
+def get_eval_stats():
+    """Get EvalAgent statistics"""
+    try:
+        evaluator = get_eval_agent()
+        stats = evaluator.get_stats()
+        return jsonify(stats), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/eval/feedback/submit", methods=["POST"])
+def submit_eval_feedback():
+    """Submit user feedback on evaluation"""
+    try:
+        data = request.json or {}
+        eval_id = data.get('evaluation_id', '')
+        task = data.get('task', '')
+        output = data.get('output', '')
+        rating = data.get('rating', '')
+        correction = data.get('correction', '')
+        score = data.get('score', None)
+        
+        if not eval_id:
+            return jsonify({'error': 'evaluation_id is required'}), 400
+        
+        memory = get_memory_manager()
+        success = memory.save_feedback(
+            evaluation_id=eval_id,
+            task=task,
+            output=output,
+            rating=rating,
+            correction=correction,
+            score=score
+        )
+        
+        # Also store in Feedback Loop v2 if available
+        feedback_loop_success = False
+        if FEEDBACK_LOOP_V2_AVAILABLE and feedback_loop:
+            try:
+                feedback_loop_success = feedback_loop.submit_feedback(
+                    eval_id=eval_id,
+                    task=task,
+                    output=output,
+                    rating=rating,
+                    score=score or 0.0,
+                    correction=correction
+                )
+                if feedback_loop_success:
+                    print(f"✅ Feedback saved to FeedbackLoopV2: {eval_id}")
+                else:
+                    print(f"⚠️  FeedbackLoopV2 returned False: {eval_id}")
+            except Exception as e:
+                print(f"⚠️  FeedbackLoopV2 error (fallback): {e}")
+        
+        if success:
+            print(f"📝 Feedback saved: {eval_id} → {rating}")
+            return jsonify({
+                'status': 'success',
+                'message': f'Feedback saved to learning system ({rating})',
+                'evaluation_id': eval_id,
+                'learning_context': 'This will improve future similar tasks',
+                'weaviate_saved': True,
+                'feedback_loop_saved': feedback_loop_success
+            }), 200
+        else:
+            print(f"❌ Failed to save feedback: {eval_id}")
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to save feedback',
+                'evaluation_id': eval_id
+            }), 500
+            
+    except Exception as e:
+        print(f"❌ Feedback endpoint error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@socketio.on('connect')
+def handle_connect():
+    """Handle client connection"""
+    client_id = request.sid[:8]
+    print(f"✅ Client connected: {client_id}")
+    emit('connect_response', {
+        'data': 'Connected to VETKA Phase 7.4.1',
+        'timestamp': time.time()
+    })
+
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnection"""
+    client_id = request.sid[:8]
+    print(f"❌ Client disconnected: {client_id}")
+
+
+def run_workflow_async(feature, workflow_id):
+    """Execute workflow in background thread"""
+    with app.app_context():
+        thread_name = f"WORKFLOW-{workflow_id}"
+        threading.current_thread().name = thread_name
+        print(f"[THREAD] Started workflow thread: {thread_name}")
+        
+        try:
+            print(f"\n{'='*70}")
+            print(f"🚀 WORKFLOW BACKGROUND EXECUTION: {workflow_id}")
+            print(f"📝 Feature: {feature[:100]}...")
+            print(f"{'='*70}")
+            
+            # Record workflow start in metrics
+            if METRICS_AVAILABLE and metrics_engine:
+                metrics_engine.record_workflow_start(workflow_id, feature)
+            
+            # Execute workflow with streaming
+            orchestrator = get_orchestrator()
+            result = orchestrator.execute_full_workflow_streaming(feature, workflow_id)
+            
+            # Record workflow completion in metrics
+            if METRICS_AVAILABLE and metrics_engine:
+                metrics_engine.record_workflow_complete(
+                    workflow_id,
+                    success=result.get('success', False)
+                )
+            
+            # Emit completion to room subscribers only
+            socketio.emit('workflow_complete', {
+                'workflow_id': workflow_id,
+                'result': result,
+                'timestamp': time.time()
+            }, room=workflow_id)
+            
+            print(f"✅ WORKFLOW COMPLETE: {workflow_id}")
+            print(f"   Duration: {result.get('duration', 0):.2f}s")
+            print(f"{'='*70}\n")
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"❌ WORKFLOW ERROR in background thread: {error_msg}")
+            import traceback
+            traceback.print_exc()
+            
+            # Log error
+            try:
+                memory = get_memory_manager()
+                memory.log_error(workflow_id, 'Orchestrator', error_msg)
+            except:
+                pass
+            
+            # Emit error to room subscribers only
+            socketio.emit('workflow_error', {
+                'workflow_id': workflow_id,
+                'error': error_msg,
+                'timestamp': time.time()
+            }, room=workflow_id)
+
+
+@socketio.on('start_workflow')
+def handle_workflow(data):
+    """Start agent workflow with real-time streaming"""
+    feature = data.get('feature', '')
+    workflow_id = data.get('workflow_id', str(uuid.uuid4())[:8])
+    
+    if not feature.strip():
+        emit('workflow_error', {
+            'workflow_id': workflow_id,
+            'error': 'Feature description is empty',
+            'timestamp': time.time()
+        })
+        return
+    
+    queue_size = executor._work_queue.qsize()
+    if queue_size > 10:
+        print(f"⚠️  Server busy: {queue_size} workflows in queue")
+        emit('workflow_error', {
+            'workflow_id': workflow_id,
+            'error': f'Server busy: {queue_size} workflows queued',
+            'timestamp': time.time()
+        })
+        return
+    
+    print(f"\n{'='*70}")
+    print(f"📋 WORKFLOW QUEUED: {workflow_id}")
+    print(f"📝 Feature: {feature[:100]}...")
+    print(f"📊 Queue size: {queue_size + 1}/10")
+    print(f"{'='*70}")
+    
+    join_room(workflow_id)
+    
+    emit('workflow_started', {
+        'workflow_id': workflow_id,
+        'feature': feature,
+        'timestamp': time.time()
+    }, room=workflow_id)
+    
+    executor.submit(run_workflow_async, feature, workflow_id)
+    
+    print(f"✅ Workflow submitted to executor: {workflow_id}")
+
+
+@socketio.on('cancel_workflow')
+def handle_cancel(data):
+    """Cancel running workflow"""
+    workflow_id = data.get('workflow_id', 'unknown')
+    print(f"⏹  Workflow cancelled: {workflow_id}")
+    emit('workflow_cancelled', {
+        'workflow_id': workflow_id,
+        'timestamp': time.time()
+    }, room=workflow_id)
+
+
+@socketio.on('get_status')
+def handle_status():
+    """Get current system status (ENHANCED - ChatGPT suggestion)"""
+    try:
+        memory = get_memory_manager()
+        orchestrator = get_orchestrator()
+        stats = orchestrator.get_agent_statistics()
+        
+        # Get metrics from engine if available
+        metrics_data = {}
+        if METRICS_AVAILABLE and metrics_engine:
+            try:
+                agent_stats = metrics_engine.get_agent_stats()
+                metrics_data = {
+                    'avg_latency': agent_stats.get('avg_latency', 0),
+                    'active_workflows': agent_stats.get('active_workflows', 0)
+                }
+            except:
+                pass
+        
+        emit('status_update', {
+            'weaviate_connected': memory.health_check(),
+            'total_workflows': stats.get('total_workflows', 0),
+            'successful_workflows': stats.get('successful', 0),
+            'failed_workflows': stats.get('failed', 0),
+            'executor_queue': executor._work_queue.qsize(),
+            'metrics': metrics_data,
+            'timestamp': time.time()
+        })
+    except Exception as e:
+        print(f"⚠️  Status handler error: {e}")
+        emit('status_update', {'error': str(e)})
+
+
+# ============ PHASE 7.4 METRICS ENDPOINTS ============
+
+@app.route("/api/metrics/dashboard", methods=["GET"])
+def metrics_dashboard():
+    """Get complete metrics dashboard data"""
+    if not METRICS_AVAILABLE or not metrics_engine:
+        return jsonify({'error': 'Metrics engine not available'}), 503
+    
+    try:
+        return jsonify(metrics_engine.get_dashboard_data()), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/metrics/timeline/<workflow_id>", methods=["GET"])
+def metrics_timeline(workflow_id):
+    """Get timeline for specific workflow"""
+    if not METRICS_AVAILABLE or not metrics_engine:
+        return jsonify({'error': 'Metrics engine not available'}), 503
+    
+    try:
+        return jsonify(metrics_engine.get_timeline_data(workflow_id)), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/metrics/agents", methods=["GET"])
+def metrics_agents():
+    """Get per-agent statistics"""
+    if not METRICS_AVAILABLE or not metrics_engine:
+        return jsonify({'error': 'Metrics engine not available'}), 503
+    
+    try:
+        return jsonify(metrics_engine.get_agent_stats()), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/metrics/models", methods=["GET"])
+def metrics_models():
+    """Get model router statistics"""
+    if not MODEL_ROUTER_V2_AVAILABLE or not model_router:
+        return jsonify({'error': 'Model router not available'}), 503
+    
+    try:
+        return jsonify(model_router.get_model_stats()), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/metrics/providers", methods=["GET"])
+def metrics_providers():
+    """Get provider health status"""
+    if not MODEL_ROUTER_V2_AVAILABLE or not model_router:
+        return jsonify({'error': 'Model router not available'}), 503
+    
+    try:
+        return jsonify(model_router.get_provider_health()), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/metrics/feedback", methods=["GET"])
+def metrics_feedback():
+    """Get feedback loop statistics"""
+    if not FEEDBACK_LOOP_V2_AVAILABLE or not feedback_loop:
+        return jsonify({'error': 'Feedback loop not available'}), 503
+    
+    try:
+        return jsonify(feedback_loop.get_feedback_summary()), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route("/api/qdrant/status", methods=["GET"])
+def qdrant_status():
+    """Get Qdrant connection status"""
+    if not QDRANT_AUTO_RETRY_AVAILABLE or not qdrant_manager:
+        return jsonify({'status': 'not initialized'}), 200
+    
+    try:
+        return jsonify(qdrant_manager.get_status()), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============ KEY MANAGEMENT ENDPOINTS (FIXED - Qwen suggestion) ============
+try:
+    from src.orchestration.key_management_api import KeyManagementAPI
+    
+    # Use ModelRouterV2 if available, fallback to old ModelRouter
+    if MODEL_ROUTER_V2_AVAILABLE and model_router:
+        key_api = KeyManagementAPI(model_router)
+        print("✅ Key Management API using ModelRouter v2")
+    else:
+        from src.elisya.model_router import ModelRouter
+        model_router_old = ModelRouter()
+        key_api = KeyManagementAPI(model_router_old)
+        print("⚠️  Key Management API using fallback ModelRouter")
+    
+    key_api.register(app)
+    print("✅ Key Management API registered with 9 OpenRouter + 1 Gemini keys")
+except ImportError as e:
+    print(f"⚠️  Key Management API not available: {e}")
+except Exception as e:
+    print(f"⚠️  Error loading Key Management API: {e}")
+
+
+# ============ AUTOGEN + EVALAGENT ENDPOINT (Phase 7) ============
+@app.route("/api/workflow/autogen", methods=["POST"])
+def start_autogen_workflow():
+    """Start Autogen workflow with EvalAgent integration"""
+    try:
+        data = request.json or {}
+        feature = data.get('feature', '')
+        workflow_id = data.get('workflow_id', str(uuid.uuid4())[:8])
+        
+        if not feature.strip():
+            return jsonify({'error': 'Feature description is required'}), 400
+        
+        from src.orchestration.autogen_extension import AutogenExtension
+        orchestrator = get_orchestrator()
+        autogen_ext = AutogenExtension(orchestrator)
+        
+        join_room(workflow_id)
+        
+        def run_autogen():
+            with app.app_context():
+                threading.current_thread().name = f"AUTOGEN-{workflow_id}"
+                try:
+                    print(f"\n{'='*70}")
+                    print(f"🤖 AUTOGEN WORKFLOW STARTED: {workflow_id}")
+                    print(f"📝 Feature: {feature[:100]}...")
+                    print(f"{'='*70}\n")
+                    
+                    result = autogen_ext.execute_autogen_workflow_with_eval(
+                        feature_request=feature,
+                        workflow_id=workflow_id
+                    )
+                    
+                    socketio.emit('autogen_workflow_complete', {
+                        'workflow_id': workflow_id,
+                        'result': result,
+                        'timestamp': time.time()
+                    }, room=workflow_id)
+                    
+                    print(f"\n✅ AUTOGEN WORKFLOW COMPLETE: {workflow_id}")
+                    print(f"   Score: {result.get('evaluation', {}).get('score', 0):.2f}")
+                    print(f"{'='*70}\n")
+                    
+                except Exception as e:
+                    error_msg = str(e)
+                    print(f"\n❌ AUTOGEN WORKFLOW ERROR: {error_msg}")
+                    socketio.emit('autogen_workflow_error', {
+                        'workflow_id': workflow_id,
+                        'error': error_msg,
+                        'timestamp': time.time()
+                    }, room=workflow_id)
+        
+        executor.submit(run_autogen)
+        
+        return jsonify({
+            'workflow_id': workflow_id,
+            'status': 'started',
+            'message': 'Autogen workflow started (Phase 7)',
+            'timestamp': time.time()
+        }), 202
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============ ELISYA ENDPOINTS ============
+if ELISYA_ENABLED:
+    try:
+        from src.orchestration.elisya_endpoints import register_elisya_endpoints
+        register_elisya_endpoints(app, get_orchestrator)
+        print("✅ Elisya endpoints registered")
+    except ImportError as e:
+        print(f"⚠️  Elisya endpoints not available: {e}")
+
+
+# Error handlers
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({"error": "Not found"}), 404
+
+
+@app.errorhandler(500)
+def server_error(error):
+    return jsonify({"error": "Internal server error"}), 500
+
+
+if __name__ == "__main__":
+    print("\n" + "="*70)
+    print("🌳 VETKA PHASE 7.4.1 - OPTIMIZED (ChatGPT & Qwen Feedback Applied)")
+    print("="*70)
+    print("\n📊 Services:")
+    print("   • Flask API: http://localhost:5001")
+    print("   • Socket.IO: ws://localhost:5001/socket.io/")
+    print("   • Weaviate: http://localhost:8080")
+    print("   • Ollama: http://localhost:11434")
+    print("   • Qdrant: http://127.0.0.1:6333 (auto-connecting...)")
+    print("\n📈 Workflow Endpoints:")
+    print("   • POST /api/workflow/start - Start standard workflow (Socket.IO)")
+    print("   • POST /api/workflow/autogen - Start Autogen workflow")
+    print("   • GET /api/workflow/history - Workflow history")
+    print("   • GET /api/workflow/stats - Workflow statistics")
+    print("\n📈 EvalAgent Endpoints:")
+    print("   • POST /api/eval/score - Evaluate output")
+    print("   • POST /api/eval/score/with-retry - Evaluate with retry")
+    print("   • GET /api/eval/history - Evaluation history")
+    print("   • GET /api/eval/stats - Statistics")
+    print("   • POST /api/eval/feedback/submit - User feedback")
+    print("\n📊 **Phase 7.4.1 Metrics Endpoints:**")
+    print("   • GET /api/metrics/dashboard - Complete dashboard data")
+    print("   • GET /api/metrics/timeline/<workflow_id> - Workflow timeline")
+    print("   • GET /api/metrics/agents - Per-agent statistics")
+    print("   • GET /api/metrics/models - Model router stats")
+    print("   • GET /api/metrics/providers - Provider health")
+    print("   • GET /api/metrics/feedback - Feedback loop statistics")
+    print("   • GET /api/qdrant/status - Qdrant connection status")
+    print("   • GET /api/system/summary - DevOps health check ⭐ NEW")
+    print("\n🚀 **Phase 7.7 New Features:**")
+    print("   ✅ Wayne Mode Chat UI at /chat")
+    print("   ✅ 3D VetkaTree visualization at /3d")
+    print("   ✅ System metrics in real-time")
+    print("   ✅ Workflow history in sidebar")
+    print("\n🚀 Starting Flask server...")
+    print("="*70 + "\n")
+    
+    # Verify services WITH app context
+    with app.app_context():
+        try:
+            memory = get_memory_manager()
+            if memory.health_check():
+                print("✅ Weaviate is connected")
+            else:
+                print("⚠️  Weaviate is NOT connected (will try to connect later)")
+        except Exception as e:
+            print(f"⚠️  Health check failed: {e}")
+    
+    print()
+    
+    # Run with Socket.IO
+    socketio.run(
+        app,
+        host="0.0.0.0",
+        port=5001,
+        debug=True,
+        use_reloader=False,
+        allow_unsafe_werkzeug=True
+    )

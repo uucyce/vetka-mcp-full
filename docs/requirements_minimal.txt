@@ -1,0 +1,29 @@
+# Core Framework - минимальные зависимости
+flask==3.0.0
+flask-socketio==5.3.6
+python-socketio==5.11.0
+python-dotenv==1.0.0
+
+# LangGraph & Agents - основные компоненты
+langgraph==0.2.45
+langchain==0.3.27
+langchain-core==0.3.75
+langchain-community==0.3.29
+crewai==0.201.1
+crewai-tools==0.75.0
+
+# Memory & Vectors
+weaviate-client==4.9.3
+
+# LLM Providers
+ollama==0.5.3
+openai==1.99.9
+anthropic==0.66.0
+
+# Utilities - только необходимые
+httpx==0.28.1
+pydantic==2.11.10
+numpy==1.26.4
+
+# Testing
+pytest==8.3.4

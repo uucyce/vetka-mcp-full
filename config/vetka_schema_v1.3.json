@@ -1,0 +1,512 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://vetka.io/schema/v1.3.json",
+  "title": "VETKA-JSON Schema v1.3",
+  "description": "Schema for VETKA Phase 10 3D visualization format",
+  "type": "object",
+  "required": ["$schema", "format", "version", "origin", "created_at", "tree"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://vetka.io/schema/v1.3.json"
+    },
+    "format": {
+      "type": "string",
+      "const": "vetka-v1.3"
+    },
+    "version": {
+      "type": "string",
+      "const": "1.3"
+    },
+    "compatibility": {
+      "$ref": "#/$defs/Compatibility"
+    },
+    "origin": {
+      "$ref": "#/$defs/Origin"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tree": {
+      "$ref": "#/$defs/VetkaTree"
+    }
+  },
+  "$defs": {
+    "Compatibility": {
+      "type": "object",
+      "properties": {
+        "reads": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "writes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "Origin": {
+      "type": "object",
+      "required": ["source", "workflow_id"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["phase9", "import", "human"]
+        },
+        "workflow_id": {
+          "type": "string"
+        }
+      }
+    },
+    "VetkaTree": {
+      "type": "object",
+      "required": ["id", "name", "root_node_id", "nodes", "edges"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "root_node_id": { "type": "string" },
+        "nodes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/VetkaNode" }
+        },
+        "edges": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/VetkaEdge" }
+        },
+        "promote_history": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PromoteEvent" }
+        },
+        "metadata": {
+          "$ref": "#/$defs/TreeMetadata"
+        }
+      }
+    },
+    "VetkaNode": {
+      "type": "object",
+      "required": ["id", "type", "branch_type", "name", "content", "metadata", "visual_hints"],
+      "properties": {
+        "id": { "type": "string" },
+        "parent_id": { "type": ["string", "null"] },
+        "type": {
+          "type": "string",
+          "enum": ["root", "branch", "leaf"]
+        },
+        "branch_type": {
+          "type": "string",
+          "enum": ["memory", "task", "data", "control"]
+        },
+        "name": { "type": "string" },
+        "content": { "$ref": "#/$defs/NodeContent" },
+        "metadata": { "$ref": "#/$defs/NodeMetadata" },
+        "visual_hints": { "$ref": "#/$defs/NodeVisualHints" },
+        "lod_hints": { "$ref": "#/$defs/LODHints" },
+        "version_history": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "children_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "promote_triggers": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/PromoteTriggers" }
+          ]
+        },
+        "promoted_to": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/PromotedTo" }
+          ]
+        }
+      }
+    },
+    "NodeContent": {
+      "type": "object",
+      "required": ["type", "data"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["text", "code", "image", "diagram", "metrics"]
+        },
+        "data": { "type": "object" },
+        "preview": { "type": "string" },
+        "download_url": { "type": ["string", "null"] }
+      }
+    },
+    "NodeMetadata": {
+      "type": "object",
+      "required": ["agent", "eval_score", "entropy", "completion_rate", "timestamp"],
+      "properties": {
+        "agent": {
+          "type": "string",
+          "enum": ["PM", "Dev", "QA", "ARC", "Human", "System"],
+          "description": "Agent type. IMPORTANT: Elisya is middleware, NOT an agent!"
+        },
+        "eval_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "entropy": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "completion_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "student_level": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "version": { "type": "string" },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "phase9_source": { "$ref": "#/$defs/Phase9Source" },
+        "context_source": { "$ref": "#/$defs/ContextSource" },
+        "learning_context": { "$ref": "#/$defs/LearningContext" },
+        "model_provenance": { "$ref": "#/$defs/ModelProvenance" },
+        "learning_feedback": { "$ref": "#/$defs/LearningFeedback" },
+        "storage_status": { "$ref": "#/$defs/StorageStatus" },
+        "arc_execution": { "$ref": "#/$defs/ARCExecution" }
+      }
+    },
+    "Phase9Source": {
+      "type": "object",
+      "properties": {
+        "field": { "type": "string" },
+        "index": { "type": ["integer", "null"] },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "ContextSource": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["elisya", "direct", "manual"]
+        },
+        "reframe_applied": { "type": "boolean" },
+        "query_sources": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "elisya_details": { "$ref": "#/$defs/ElisyaDetails" }
+      }
+    },
+    "ElisyaDetails": {
+      "type": "object",
+      "properties": {
+        "elisya_version": { "type": "string" },
+        "lod_level_requested": { "type": "string" },
+        "lod_level_applied": { "type": "string" },
+        "weaviate_queries": { "type": "object" },
+        "qdrant_queries": { "type": "object" },
+        "total_assembly_time_ms": { "type": "integer" },
+        "reframe_operations": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "degradation_occurred": { "type": "boolean" }
+      }
+    },
+    "LearningContext": {
+      "type": "object",
+      "properties": {
+        "created_by_learner": { "type": "string" },
+        "learner_model_version": { "type": "string" },
+        "is_training_exemplar": { "type": "boolean" },
+        "learner_confidence": { "type": "number" },
+        "exemplar_portfolio_id": { "type": "string" },
+        "models_improved_by_this": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      }
+    },
+    "ModelProvenance": {
+      "type": "object",
+      "properties": {
+        "primary_model": { "type": "string" },
+        "model_version": { "type": "string" },
+        "api_provider": { "type": "string" },
+        "api_key_index": { "type": "integer" },
+        "fallback_used": { "type": "boolean" },
+        "local_model_fallback": { "type": ["string", "null"] },
+        "tokens_input": { "type": "integer" },
+        "tokens_output": { "type": "integer" },
+        "tokens_total": { "type": "integer" },
+        "estimated_cost_usd": { "type": "number" },
+        "execution_time_ms": { "type": "integer" },
+        "routing_decision": { "type": "object" }
+      }
+    },
+    "LearningFeedback": {
+      "type": "object",
+      "properties": {
+        "eval_score": { "type": "number" },
+        "eval_agent_model": { "type": "string" },
+        "eval_timestamp": { "type": "string" },
+        "qualifies_for_training": { "type": "boolean" },
+        "training_decision": { "type": "string" },
+        "retry_info": { "type": "object" },
+        "saved_examples": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "feedback_source": { "type": "string" }
+      }
+    },
+    "StorageStatus": {
+      "type": "object",
+      "properties": {
+        "changelog": { "type": "object" },
+        "weaviate": { "type": "object" },
+        "qdrant": { "type": "object" },
+        "overall_status": { "type": "string" },
+        "degradation_mode": { "type": "boolean" }
+      }
+    },
+    "ARCExecution": {
+      "type": "object",
+      "properties": {
+        "solver_model": { "type": "string" },
+        "solver_model_version": { "type": "string" },
+        "prompt_template_version": { "type": "string" },
+        "candidates": { "type": "object" },
+        "best_candidate": { "type": "object" },
+        "code_fixes_applied": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "training_examples_saved": { "type": "object" },
+        "timing": { "type": "object" }
+      }
+    },
+    "NodeVisualHints": {
+      "type": "object",
+      "required": ["size_multiplier", "color", "opacity", "animation", "icon"],
+      "properties": {
+        "size_multiplier": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 3.0
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "animation": {
+          "type": "string",
+          "enum": ["static", "pulse", "glow", "flicker"]
+        },
+        "animation_params": { "$ref": "#/$defs/AnimationParams" },
+        "icon": {
+          "type": "string",
+          "enum": ["document", "code", "test", "suggestion", "file"]
+        },
+        "position_hint": { "$ref": "#/$defs/PositionHint" }
+      }
+    },
+    "AnimationParams": {
+      "type": "object",
+      "properties": {
+        "scale": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "opacity": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "period_ms": { "type": "integer" }
+      }
+    },
+    "PositionHint": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" },
+        "calculation": {
+          "type": "string",
+          "enum": ["phylotaxis", "manual", "auto"]
+        }
+      }
+    },
+    "LODHints": {
+      "type": "object",
+      "properties": {
+        "forest": { "type": "object" },
+        "tree": { "type": "object" },
+        "branch": { "type": "object" }
+      }
+    },
+    "PromoteTriggers": {
+      "type": "object",
+      "properties": {
+        "node_count": { "type": "integer" },
+        "entropy": { "type": "number" },
+        "user_action": { "type": ["string", "null"] },
+        "threshold_reached": { "type": "boolean" }
+      }
+    },
+    "PromotedTo": {
+      "type": "object",
+      "properties": {
+        "event": { "type": "string" },
+        "new_tree_id": { "type": "string" },
+        "root_edge_id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "animation_duration_ms": { "type": "integer" },
+        "animation_type": {
+          "type": "string",
+          "enum": ["seed_detaches", "roots_spread", "tree_grows"]
+        }
+      }
+    },
+    "VetkaEdge": {
+      "type": "object",
+      "required": ["id", "from", "to", "type", "semantics", "flow_weight"],
+      "properties": {
+        "id": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["liana", "root", "control"]
+        },
+        "semantics": {
+          "type": "string",
+          "enum": ["informs", "influences", "creates", "depends", "supersedes", "references"]
+        },
+        "flow_weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "age": { "type": "string" },
+        "direction": {
+          "type": "string",
+          "enum": ["forward", "backward", "bidirectional"]
+        },
+        "visual_hints": { "$ref": "#/$defs/EdgeVisualHints" },
+        "metadata": { "type": "object" },
+        "parallel_execution": { "$ref": "#/$defs/ParallelExecution" }
+      }
+    },
+    "EdgeVisualHints": {
+      "type": "object",
+      "properties": {
+        "thickness": { "type": "number" },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "style": {
+          "type": "string",
+          "enum": ["solid", "dashed", "dotted"]
+        },
+        "curvature": { "type": "number" },
+        "arrow_type": {
+          "type": ["string", "null"],
+          "enum": ["triangle", "diamond", null]
+        }
+      }
+    },
+    "ParallelExecution": {
+      "type": "object",
+      "properties": {
+        "executed_concurrently": { "type": "boolean" },
+        "dev_start_time": { "type": "string" },
+        "dev_end_time": { "type": "string" },
+        "qa_start_time": { "type": "string" },
+        "qa_end_time": { "type": "string" },
+        "overlap_ms": { "type": "integer" },
+        "elisya_reframe_occurred": { "type": "boolean" },
+        "reframe_timestamp": { "type": "string" },
+        "reframe_trigger": { "type": "string" },
+        "reframe_impact": { "type": "string" },
+        "shared_context_tokens": { "type": "integer" },
+        "context_updates_during_execution": { "type": "integer" },
+        "elisya_recommendations": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "PromoteEvent": {
+      "type": "object",
+      "required": ["id", "source_node_id", "event", "timestamp"],
+      "properties": {
+        "id": { "type": "string" },
+        "source_node_id": { "type": "string" },
+        "event": {
+          "type": "string",
+          "enum": ["seed_detached", "roots_spread", "tree_grows"]
+        },
+        "timestamp": { "type": "string" },
+        "new_tree_id": { "type": "string" },
+        "root_edge_id": { "type": "string" },
+        "triggers": { "$ref": "#/$defs/PromoteTriggers" },
+        "animation_duration_ms": { "type": "integer" }
+      }
+    },
+    "TreeMetadata": {
+      "type": "object",
+      "properties": {
+        "phase": { "type": "string" },
+        "total_nodes": { "type": "integer" },
+        "total_edges": { "type": "integer" },
+        "max_depth": { "type": "integer" },
+        "completion_rate": { "type": "number" },
+        "cost_optimization": { "$ref": "#/$defs/CostOptimization" }
+      }
+    },
+    "CostOptimization": {
+      "type": "object",
+      "properties": {
+        "total_tokens_used": { "type": "integer" },
+        "total_cost_usd": { "type": "number" },
+        "baseline_cost_if_gpt4": { "type": "number" },
+        "savings_usd": { "type": "number" },
+        "savings_percent": { "type": "number" },
+        "cost_by_agent": { "type": "object" },
+        "routing_summary": {
+          "type": "object",
+          "properties": {
+            "local_model_used": { "type": "integer" },
+            "api_model_used": { "type": "integer" },
+            "fallback_triggered": { "type": "integer" }
+          }
+        }
+      }
+    }
+  }
+}

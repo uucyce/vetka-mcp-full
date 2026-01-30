@@ -1,0 +1,174 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║         PHASE 68-69 DOCUMENTATION — FILES IN THIS DIRECTORY              ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+📂 docs/68_ph/
+│
+├─ 00_START_HERE.md ⭐ BEGIN HERE
+│  Quick navigation guide to all documents
+│  Time: 5 min read
+│
+├─ PHASE_69_TOTAL_AUDIT.md (14 KB)
+│  COMPLETE TECHNICAL AUDIT
+│  - Section 1: Context file limit (5 files pinned)
+│  - Section 2: Socket handler registration (51 handlers)
+│  - Section 3: Scanner module (cleanup functions)
+│  - Section 4: 3D tree highlight (single mode limitation)
+│  - Section 5: Git status
+│  - Critical findings (7 issues identified)
+│  - Recommendations (immediate, short-term, long-term)
+│  Lines: 422
+│  Time: 30 min read
+│
+├─ AUDIT_FINDINGS.md (4.5 KB)
+│  EXECUTIVE SUMMARY
+│  - 4 critical points analyzed
+│  - Issues discovered (table format)
+│  - What works well
+│  - Next steps checklist
+│  Lines: 180
+│  Time: 5 min read
+│
+├─ AUDIT_QUICK_REFERENCE.txt (5.2 KB) 📋 DEVELOPER CHEAT SHEET
+│  - Quick answers to all 4 audit questions
+│  - Critical issues summary
+│  - Environment variables
+│  - How to add socket handlers
+│  - Key file locations
+│  Lines: 119
+│  Time: 2 min lookup
+│
+├─ AUDIT_INDEX.md (3.4 KB)
+│  NAVIGATION GUIDE
+│  - How to use documents
+│  - File organization
+│  - Next actions
+│  Lines: 180
+│
+├─ README.md
+│  INDEX OF PHASE 68-69 DOCUMENTS
+│  Quick navigation to all files
+│
+├─ PHASE_68_SEARCH_AUDIT.md (17 KB)
+│  UnifiedSearchBar Architecture Audit
+│  Search integration analysis
+│
+├─ MCP_AUDIT_RESULTS.md (24 KB)
+│  COMPREHENSIVE MCP AUDIT
+│  All tools and servers analyzed
+│
+├─ MCP_AUDIT_SUMMARY.txt (8.5 KB)
+│  MCP AUDIT SUMMARY
+│  Key findings from MCP audit
+│
+└─ FILES_IN_THIS_DIRECTORY.txt (THIS FILE)
+   File index and description
+
+═══════════════════════════════════════════════════════════════════════════
+
+📊 DOCUMENT STATISTICS
+
+Phase 69 Audit Documents:    4 files
+Phase 68 Audit Documents:    3 files
+Navigation Documents:        3 files
+────────────────────────────────────
+Total files:                 10 files
+Total lines:                 ~1200 lines
+Total size:                  ~80 KB
+
+═══════════════════════════════════════════════════════════════════════════
+
+🎯 QUICK START
+
+1. START HERE:
+   → Read: 00_START_HERE.md
+
+2. QUICK OVERVIEW (5 min):
+   → Read: AUDIT_FINDINGS.md
+
+3. FAST LOOKUP (2 min):
+   → Read: AUDIT_QUICK_REFERENCE.txt
+
+4. DEEP DIVE (30 min):
+   → Read: PHASE_69_TOTAL_AUDIT.md
+
+5. NAVIGATION:
+   → Read: AUDIT_INDEX.md or README.md
+
+═══════════════════════════════════════════════════════════════════════════
+
+🚨 KEY FINDINGS SUMMARY
+
+1. Context file limit: 5 files (hardcoded)
+   File: src/api/handlers/message_utils.py:415
+
+2. Socket handler registration: 51 handlers
+   File: src/api/handlers/__init__.py:74-88
+
+3. Scanner cleanup: Manual (not automatic)
+   File: src/scanners/qdrant_updater.py:342-459
+
+4. 3D highlight: Single only (not multi-select)
+   File: client/src/store/useStore.ts:91
+
+═══════════════════════════════════════════════════════════════════════════
+
+✅ CRITICAL ISSUES (5 FOUND)
+
+1. Single highlight bottleneck (HIGH)
+   → Can't show related files together
+
+2. Inconsistent file limits 5 vs 10 (MEDIUM)
+   → New: 5, Legacy: 10 (should consolidate)
+
+3. Manual cleanup required (MEDIUM)
+   → No background scheduler
+
+4. Qdrant collections undocumented (LOW)
+   → VetkaTree, VetkaLeaf, VetkaChangeLog purposes unclear
+
+5. 51 handlers complexity (MEDIUM)
+   → Distributed registration, should use discovery pattern
+
+═══════════════════════════════════════════════════════════════════════════
+
+📍 HOW TO ACCESS
+
+From project root:
+  cd docs/68_ph/
+  cat PHASE_69_TOTAL_AUDIT.md
+
+Or directly from docs/:
+  docs/68_ph/AUDIT_QUICK_REFERENCE.txt
+  docs/68_ph/PHASE_69_TOTAL_AUDIT.md
+
+═══════════════════════════════════════════════════════════════════════════
+
+🔗 RELATED DOCUMENTATION
+
+In docs/:
+  - README.md (project overview)
+  - INSTALL.md (setup instructions)
+  - START_HERE.md (getting started)
+  - MIGRATION_SUMMARY.md (this migration)
+  - audits/ (general audits)
+
+In docs/66_ph/, docs/67_ph/, etc.:
+  - Phase-specific documentation
+
+═══════════════════════════════════════════════════════════════════════════
+
+✨ AUDIT METADATA
+
+Audit Date:     2026-01-19
+Audit Type:     Total System Audit
+Components:     4 critical points
+Issues Found:   5 critical issues
+Recommendations: 3 groups (immediate, short-term, long-term)
+Status:         Complete (no code changes, documentation only)
+
+═══════════════════════════════════════════════════════════════════════════
+
+Last updated: 2026-01-19
+Next phase: Phase 70 (implementation planning based on audit findings)
+

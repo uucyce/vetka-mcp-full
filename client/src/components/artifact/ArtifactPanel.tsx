@@ -1,0 +1,522 @@
+/**
+ * ArtifactPanel - File and content viewer with editing support.
+ * Displays files, raw content, and markdown with lazy-loaded viewers.
+ *
+ * @status active
+ * @phase 96
+ * @depends react, lucide-react, ./utils/fileTypes, ./viewers/*, ./Toolbar
+ * @used_by ArtifactWindow, ChatPanel
+ */
+
+import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
+import { getViewerType } from './utils/fileTypes';
+import { MarkdownViewer } from './viewers/MarkdownViewer';
+import { Toolbar } from './Toolbar';
+import { Loader2 } from 'lucide-react';
+
+// Lazy load heavy viewers
+const CodeViewer = lazy(() => import('./viewers/CodeViewer').then(m => ({ default: m.CodeViewer })));
+const ImageViewer = lazy(() => import('./viewers/ImageViewer').then(m => ({ default: m.ImageViewer })));
+
+function ViewerLoading() {
+  return (
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#0a0a0a'
+    }}>
+      <Loader2 size={32} color="#666" style={{ animation: 'spin 1s linear infinite' }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+interface FileInfo {
+  path: string;
+  name: string;
+  extension?: string;
+}
+
+interface FileData {
+  path: string;
+  content: string;
+  mimeType: string;
+  hasChanges: boolean;
+  fileSize?: number;
+}
+
+// Phase 48.5.1: Raw content for chat responses
+interface RawContent {
+  content: string;
+  title: string;
+  type?: 'text' | 'markdown' | 'code';
+}
+
+interface Props {
+  file?: FileInfo | null;
+  rawContent?: RawContent | null;  // Phase 48.5.1: Direct content display
+  onClose?: () => void;
+  // Phase 60.4: Allow editing raw content
+  onContentChange?: (content: string) => void;
+}
+
+export function ArtifactPanel({ file, rawContent, onClose, onContentChange }: Props) {
+  const [fileData, setFileData] = useState<FileData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Phase 60.4: Editable raw content state
+  const [editableContent, setEditableContent] = useState<string>('');
+  const [rawHasChanges, setRawHasChanges] = useState(false);
+
+  // Phase 60.4: Undo history (max 10 states)
+  const MAX_UNDO_HISTORY = 10;
+  const undoHistoryRef = useRef<string[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+
+  // Phase 48.5.1: Handle raw content mode
+  const isRawContentMode = !!rawContent;
+
+  // Phase 60.4: Sync editable content when rawContent changes
+  useEffect(() => {
+    if (rawContent?.content) {
+      setEditableContent(rawContent.content);
+      setRawHasChanges(false);
+      // Reset undo history
+      undoHistoryRef.current = [rawContent.content];
+      setCanUndo(false);
+    }
+  }, [rawContent?.content]);
+
+  // Phase 60.4: Push to undo history
+  const pushToUndoHistory = useCallback((content: string) => {
+    const history = undoHistoryRef.current;
+    // Don't push if same as last
+    if (history[history.length - 1] === content) return;
+
+    history.push(content);
+    // Keep max 10 states
+    if (history.length > MAX_UNDO_HISTORY) {
+      history.shift();
+    }
+    setCanUndo(history.length > 1);
+  }, []);
+
+  // Phase 60.4: Undo action
+  const handleUndo = useCallback(() => {
+    const history = undoHistoryRef.current;
+    if (history.length <= 1) return;
+
+    // Remove current state
+    history.pop();
+    // Get previous state
+    const previousState = history[history.length - 1];
+    if (previousState !== undefined) {
+      setEditableContent(previousState);
+      setRawHasChanges(previousState !== rawContent?.content);
+    }
+    setCanUndo(history.length > 1);
+  }, [rawContent?.content]);
+
+  // Load file content
+  const loadFile = useCallback(async (path: string) => {
+    if (!path) return;
+
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/files/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+
+      if (!response.ok) throw new Error('Failed to load');
+      const data = await response.json();
+
+      setFileData({
+        path,
+        content: data.content,
+        mimeType: data.mimeType || 'text/plain',
+        hasChanges: false,
+        fileSize: data.size,
+      });
+    } catch (err) {
+      console.error('[ArtifactPanel] Load error:', err);
+      // Fallback for demo mode
+      setFileData({
+        path,
+        content: `// Could not load file: ${path}\n// Backend not available`,
+        mimeType: 'text/plain',
+        hasChanges: false,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Load file when selection changes
+  useEffect(() => {
+    if (file?.path) {
+      loadFile(file.path);
+    } else {
+      setFileData(null);
+    }
+  }, [file?.path, loadFile]);
+
+  // Update content
+  const updateContent = useCallback((content: string) => {
+    setFileData(prev => prev ? { ...prev, content, hasChanges: true } : null);
+  }, []);
+
+  // Save file
+  const saveFile = useCallback(async () => {
+    if (!fileData) return;
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/files/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: fileData.path, content: fileData.content }),
+      });
+      if (!response.ok) throw new Error('Save failed');
+      setFileData(prev => prev ? { ...prev, hasChanges: false } : null);
+    } catch (err) {
+      console.error('[ArtifactPanel] Save error:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [fileData]);
+
+  // Actions
+  const handleCopy = () => navigator.clipboard.writeText(fileData?.content || '');
+  const handleDownload = () => {
+    if (!fileData) return;
+    const filename = fileData.path.split('/').pop() || 'file';
+    const blob = new Blob([fileData.content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Phase 48.5.1: Render raw content
+  // Phase 60.4: Added editing support
+  const renderRawContent = () => {
+    if (!rawContent) return null;
+
+    const contentToShow = isEditing ? editableContent : rawContent.content;
+
+    // Phase 60.4: Editing mode - textarea for all types
+    if (isEditing) {
+      return (
+        <div style={{
+          height: '100%',
+          overflow: 'auto',
+          padding: 12,
+          background: '#0a0a0a'
+        }}>
+          <textarea
+            value={editableContent}
+            onChange={(e) => {
+              setEditableContent(e.target.value);
+              setRawHasChanges(true);
+            }}
+            onBlur={() => {
+              // Phase 60.4: Save state to undo history on blur (not every keystroke)
+              pushToUndoHistory(editableContent);
+            }}
+            onKeyDown={(e) => {
+              // Phase 60.4: Ctrl+Z / Cmd+Z for undo
+              if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                e.preventDefault();
+                handleUndo();
+              }
+            }}
+            style={{
+              width: '100%',
+              height: '100%',
+              minHeight: 300,
+              padding: 16,
+              background: '#111',
+              border: '1px solid #333',
+              borderRadius: 8,
+              color: '#e0e0e0',
+              fontSize: 14,
+              lineHeight: 1.6,
+              fontFamily: 'monospace',
+              resize: 'none',
+              outline: 'none',
+            }}
+            placeholder="Edit content here..."
+          />
+        </div>
+      );
+    }
+
+    // View mode
+    switch (rawContent.type) {
+      case 'markdown':
+        return <MarkdownViewer content={contentToShow} />;
+      case 'code':
+        return (
+          <Suspense fallback={<ViewerLoading />}>
+            <CodeViewer
+              content={contentToShow}
+              filename="response.txt"
+              readOnly={true}
+              onChange={() => {}}
+            />
+          </Suspense>
+        );
+      default:
+        // Plain text - use pre with styling
+        return (
+          <div style={{
+            height: '100%',
+            overflow: 'auto',
+            padding: 20,
+            background: '#0a0a0a'
+          }}>
+            <pre style={{
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              color: '#e0e0e0',
+              fontSize: 14,
+              lineHeight: 1.6,
+              margin: 0,
+              fontFamily: 'inherit'
+            }}>
+              {contentToShow}
+            </pre>
+          </div>
+        );
+    }
+  };
+
+  // Render viewer based on file type
+  const renderViewer = () => {
+    if (!fileData || !file) return null;
+    const { content, path } = fileData;
+    const filename = file.name;
+    const fileType = getViewerType(filename);
+    const fileUrl = `/api/files/raw?path=${encodeURIComponent(path)}`;
+
+    switch (fileType) {
+      case 'code':
+        return (
+          <Suspense fallback={<ViewerLoading />}>
+            <CodeViewer
+              content={content}
+              filename={filename}
+              readOnly={!isEditing}
+              onChange={updateContent}
+            />
+          </Suspense>
+        );
+      case 'markdown':
+        // Phase 60.4: Support editing for markdown files
+        if (isEditing) {
+          return (
+            <div style={{
+              height: '100%',
+              overflow: 'auto',
+              padding: 12,
+              background: '#0a0a0a'
+            }}>
+              <textarea
+                value={content}
+                onChange={(e) => updateContent(e.target.value)}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  minHeight: 400,
+                  padding: 16,
+                  background: '#111',
+                  border: '1px solid #333',
+                  borderRadius: 8,
+                  color: '#e0e0e0',
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  fontFamily: 'monospace',
+                  resize: 'none',
+                  outline: 'none',
+                }}
+                placeholder="Edit markdown here..."
+              />
+            </div>
+          );
+        }
+        return <MarkdownViewer content={content} />;
+      case 'image':
+        return (
+          <Suspense fallback={<ViewerLoading />}>
+            <ImageViewer url={fileUrl} filename={filename} />
+          </Suspense>
+        );
+      default:
+        return (
+          <Suspense fallback={<ViewerLoading />}>
+            <CodeViewer
+              content={content}
+              filename={filename}
+              readOnly={!isEditing}
+              onChange={updateContent}
+            />
+          </Suspense>
+        );
+    }
+  };
+
+  // Phase 48.5.1: Copy raw content
+  // Phase 60.4: Copy current content (edited or original)
+  const handleCopyRaw = () => navigator.clipboard.writeText(isEditing ? editableContent : (rawContent?.content || ''));
+
+  // Phase 60.4: Save edited raw content
+  const handleSaveRaw = () => {
+    if (onContentChange && rawHasChanges) {
+      onContentChange(editableContent);
+      setRawHasChanges(false);
+      setIsEditing(false);
+    }
+  };
+
+  // Phase 60.4: Open file in Finder (macOS)
+  const handleOpenInFinder = async () => {
+    if (!fileData?.path) return;
+    try {
+      await fetch('/api/files/open-in-finder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: fileData.path }),
+      });
+    } catch (err) {
+      console.error('[ArtifactPanel] Open in Finder error:', err);
+    }
+  };
+
+  // Phase 60.4: Save As / Duplicate - download with custom name
+  const handleSaveAs = () => {
+    const content = isRawContentMode
+      ? (isEditing ? editableContent : rawContent?.content || '')
+      : (fileData?.content || '');
+    const defaultName = isRawContentMode
+      ? 'artifact.md'
+      : (fileData?.path.split('/').pop() || 'file.txt');
+
+    const newName = prompt('Save as:', defaultName);
+    if (!newName) return;
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = newName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      background: '#0a0a0a',
+      position: 'relative',
+    }}>
+      {/* Loading overlay */}
+      {isLoading && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(10, 10, 10, 0.8)',
+          zIndex: 50,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <Loader2 size={32} color="#666" style={{ animation: 'spin 1s linear infinite' }} />
+        </div>
+      )}
+
+      {/* Phase 48.5.1: Raw content mode */}
+      {/* Phase 60.4: Added editing support */}
+      {isRawContentMode && rawContent && (
+        <>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            {renderRawContent()}
+          </div>
+          <Toolbar
+            filename={rawContent.title}
+            fileSize={isEditing ? editableContent.length : rawContent.content.length}
+            isEditing={isEditing}
+            hasChanges={rawHasChanges}
+            isSaving={false}
+            canUndo={canUndo}
+            onEdit={() => setIsEditing(!isEditing)}
+            onUndo={handleUndo}
+            onSave={handleSaveRaw}
+            onSaveAs={handleSaveAs}
+            onCopy={handleCopyRaw}
+            onDownload={() => {
+              const content = isEditing ? editableContent : rawContent.content;
+              const blob = new Blob([content], { type: 'text/plain' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'response.txt';
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            onRefresh={() => {}}
+            onClose={onClose}
+          />
+        </>
+      )}
+
+      {/* File mode - Empty state */}
+      {!isRawContentMode && !file && !isLoading && (
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#666',
+        }}>
+          <p>Select a file to view</p>
+        </div>
+      )}
+
+      {/* File mode - Viewer */}
+      {!isRawContentMode && fileData && (
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          {renderViewer()}
+        </div>
+      )}
+
+      {/* File mode - Toolbar */}
+      {!isRawContentMode && fileData && (
+        <Toolbar
+          filename={file?.name || ''}
+          filePath={fileData.path}
+          fileSize={fileData.fileSize}
+          isEditing={isEditing}
+          hasChanges={fileData.hasChanges}
+          isSaving={isSaving}
+          onEdit={() => setIsEditing(!isEditing)}
+          onSave={saveFile}
+          onSaveAs={handleSaveAs}
+          onCopy={handleCopy}
+          onDownload={handleDownload}
+          onOpenInFinder={handleOpenInFinder}
+          onRefresh={() => file && loadFile(file.path)}
+          onClose={onClose}
+        />
+      )}
+    </div>
+  );
+}

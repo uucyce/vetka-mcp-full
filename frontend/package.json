@@ -1,0 +1,33 @@
+{
+  "name": "vetka-frontend",
+  "version": "0.3.0",
+  "description": "VETKA Live 0.3 Frontend with 3D Visualization",
+  "main": "static/js/tree_view.js",
+  "scripts": {
+    "install-deps": "npm install",
+    "dev": "python -m http.server 3000",
+    "build": "echo 'No build process needed for static files'",
+    "test": "echo 'No tests specified'"
+  },
+  "dependencies": {
+    "3d-force-graph": "^1.70.0",
+    "d3": "^7.9.0"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  },
+  "keywords": [
+    "vetka",
+    "3d",
+    "visualization",
+    "knowledge-tree",
+    "three.js",
+    "force-graph"
+  ],
+  "author": "VETKA Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vetka-project/vetka-live-03"
+  }
+}

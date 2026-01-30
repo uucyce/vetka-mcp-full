@@ -1,0 +1,448 @@
+# Phase 94.4: Model Data Flow - Visual Diagram
+
+## Current Architecture (Without Duplication)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    BACKEND DATA SOURCES                      │
+└─────────────────────────────────────────────────────────────┘
+
+┌──────────────────────┐
+│ ModelRegistry        │
+│ (Static Hardcoded)   │
+│                      │
+│ DEFAULT_MODELS = [   │
+│   qwen2:7b           │◄──── Local Ollama
+│   llama3:8b          │
+│   deepseek-coder     │
+│                      │
+│   deepseek/r1:free   │◄──── OpenRouter free
+│   llama-3.1-405b     │
+│                      │
+│   elevenlabs/bella   │◄──── Voice models
+│   whisper/local      │
+│                      │
+│   mcp/claude_code    │◄──── MCP agents
+│   mcp/browser_haiku  │
+│ ]                    │
+└──────┬───────────────┘
+       │
+       │ registry.get_all()
+       │
+       ▼
+┌──────────────────────┐
+│ /api/models          │◄──── Frontend fetches
+│                      │
+│ Returns:             │
+│ { models: [...] }    │
+└──────┬───────────────┘
+       │
+       │
+┌──────▼───────────────┐
+│ FRONTEND             │
+│ ModelDirectory.tsx   │
+│                      │
+│ allModels = [        │
+│   ...localModels,    │
+│   ...mcpAgents,      │
+│   ...models          │
+│ ]                    │
+└──────────────────────┘
+```
+
+---
+
+## Dynamic Model Sources (NOT USED YET)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              UNUSED DYNAMIC MODEL DISCOVERY                  │
+└─────────────────────────────────────────────────────────────┘
+
+┌──────────────────────┐
+│ OpenRouter API       │
+│ GET /v1/models       │
+│                      │
+│ Returns ~500 models: │
+│  - openai/gpt-4o     │
+│  - anthropic/claude  │
+│  - x-ai/grok-2       │
+│  - meta-llama/...    │
+│  - google/gemini     │
+└──────┬───────────────┘
+       │
+       │ model_fetcher.py
+       │ fetch_openrouter_models()
+       ▼
+┌──────────────────────┐
+│ data/                │
+│ models_cache.json    │◄──── 24h cache
+│                      │
+│ {                    │
+│   cached_at: "...",  │
+│   models: [500+ ...]│
+│ }                    │
+└──────┬───────────────┘
+       │
+       │ PROBLEM: Frontend doesn't use this!
+       ▼
+   [UNUSED]
+```
+
+---
+
+## Provider Routing Logic
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│           PROVIDER DETECTION (provider_registry.py)          │
+└─────────────────────────────────────────────────────────────┘
+
+User calls model:
+    "grok-2-latest"
+
+         │
+         ▼
+┌────────────────────┐
+│ detect_provider()  │
+│                    │
+│ IF startswith:     │
+│  - openai/         │──► Provider.OPENAI
+│  - gpt-            │
+│  - o1              │
+│                    │
+│  - anthropic/      │──► Provider.ANTHROPIC
+│  - claude-         │
+│                    │
+│  - google/         │──► Provider.GOOGLE
+│  - gemini          │
+│                    │
+│  - xai/            │──► Provider.XAI (Phase 80.35)
+│  - x-ai/           │
+│  - grok            │
+│                    │
+│  - ELSE            │──► Provider.OPENROUTER (default)
+└────────────────────┘
+         │
+         ▼
+┌────────────────────┐
+│ Route to API:      │
+│                    │
+│ xAI Direct:        │
+│ api.x.ai/v1/...    │
+│                    │
+│ OR                 │
+│                    │
+│ OpenRouter:        │
+│ openrouter.ai/...  │
+└────────────────────┘
+```
+
+---
+
+## Proposed Architecture (WITH Duplication)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   BACKEND (NEW FLOW)                         │
+└─────────────────────────────────────────────────────────────┘
+
+┌──────────────────────┐
+│ ModelRegistry        │
+│ base models          │
+│                      │
+│ grok-2-latest        │
+│ gpt-4o               │
+│ claude-3-5-sonnet    │
+└──────┬───────────────┘
+       │
+       │ registry.get_all()
+       ▼
+┌──────────────────────┐
+│ ModelDuplicator      │◄──── NEW SERVICE
+│                      │
+│ For each model:      │
+│                      │
+│ IF has_xai_key():    │
+│   ✅ grok-2-latest   │──► id: "grok-2-latest"
+│      (Direct)        │    provider: "xai"
+│                      │    source: "direct"
+│                      │    name: "Grok 2 (Direct)"
+│ ALWAYS:              │
+│   ✅ x-ai/grok-2     │──► id: "x-ai/grok-2-latest"
+│      (OpenRouter)    │    provider: "openrouter"
+│                      │    source: "openrouter"
+│                      │    name: "Grok 2 (OR)"
+└──────┬───────────────┘
+       │
+       │ create_duplicates()
+       ▼
+┌──────────────────────┐
+│ /api/models          │
+│                      │
+│ Returns:             │
+│ {                    │
+│   models: [          │
+│     {id: "grok-2",   │
+│      source: "direct"│
+│      name: "...(D)"} │
+│     {id: "x-ai/...", │
+│      source: "or",   │
+│      name: "...(OR)"} │
+│   ],                 │
+│   duplicates: 12     │
+│ }                    │
+└──────┬───────────────┘
+       │
+       │ Frontend fetches
+       ▼
+┌──────────────────────┐
+│ FRONTEND             │
+│ ModelDirectory.tsx   │
+│                      │
+│ Shows:               │
+│                      │
+│ 🟢 Grok 2 (Direct)   │◄──── Badge: "Direct API"
+│    xai · 32K ctx     │
+│                      │
+│ 🟢 Grok 2 (OR)       │◄──── Badge: "OpenRouter"
+│    openrouter · 32K  │
+└──────────────────────┘
+```
+
+---
+
+## Key Availability Logic
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              KEY MANAGER INTEGRATION                         │
+└─────────────────────────────────────────────────────────────┘
+
+┌──────────────────────┐
+│ unified_key_manager  │
+│                      │
+│ has_active_key():    │
+│  - XAI: ✅ sk-xxx    │
+│  - OPENAI: ✅ sk-xxx │
+│  - ANTHROPIC: ❌     │
+│  - OPENROUTER: ✅    │
+└──────┬───────────────┘
+       │
+       │ Check availability
+       ▼
+┌──────────────────────┐
+│ ModelDuplicator      │
+│ Decision tree:       │
+│                      │
+│ grok-2-latest:       │
+│  has_xai_key? ✅     │
+│  ✅ Show Direct      │
+│  ✅ Show OR          │
+│                      │
+│ gpt-4o:              │
+│  has_openai_key? ✅  │
+│  ✅ Show Direct      │
+│  ✅ Show OR          │
+│                      │
+│ claude-3-5:          │
+│  has_anthropic? ❌   │
+│  ❌ Hide Direct      │
+│  ✅ Show OR only     │
+└──────────────────────┘
+```
+
+---
+
+## User Click Flow
+
+```
+User clicks model in phonebook:
+    "Grok 2 (Direct)"
+    id: "grok-2-latest"
+    provider: "xai"
+
+         │
+         ▼
+┌────────────────────┐
+│ handleSelect()     │
+│                    │
+│ Sends:             │
+│  model_id:         │
+│   "grok-2-latest"  │
+└────────┬───────────┘
+         │
+         ▼
+┌────────────────────┐
+│ provider_registry  │
+│ detect_provider()  │
+│                    │
+│ "grok-2-latest"    │
+│  → starts with     │
+│     "grok"         │
+│  → Provider.XAI    │
+└────────┬───────────┘
+         │
+         ▼
+┌────────────────────┐
+│ XaiProvider.call() │
+│                    │
+│ POST               │
+│ api.x.ai/v1/...    │
+│                    │
+│ Headers:           │
+│  Authorization:    │
+│   Bearer sk-xxx    │
+└────────────────────┘
+
+
+User clicks:
+    "Grok 2 (OR)"
+    id: "x-ai/grok-2-latest"
+    provider: "openrouter"
+
+         │
+         ▼
+┌────────────────────┐
+│ detect_provider()  │
+│                    │
+│ "x-ai/grok-2..."   │
+│  → has "/"         │
+│  → NOT openai/...  │
+│  → Provider.       │
+│     OPENROUTER     │
+└────────┬───────────┘
+         │
+         ▼
+┌────────────────────┐
+│ OpenRouterProvider │
+│ .call()            │
+│                    │
+│ POST               │
+│ openrouter.ai/...  │
+│                    │
+│ Model:             │
+│  "x-ai/grok-2"     │
+└────────────────────┘
+```
+
+---
+
+## Badge Rendering Logic
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    FRONTEND BADGES                           │
+└─────────────────────────────────────────────────────────────┘
+
+Model object from API:
+{
+  id: "grok-2-latest",
+  name: "Grok 2 Latest (Direct)",
+  provider: "xai",
+  source: "direct",  ◄──── NEW FIELD
+  isLocal: false
+}
+
+         │
+         ▼
+┌────────────────────┐
+│ Badge rendering:   │
+│                    │
+│ IF source =        │
+│   "direct"         │
+│  ✅ Show badge:    │
+│     [Direct API]   │
+│     color: #aaa    │
+│                    │
+│ IF source =        │
+│   "openrouter"     │
+│  ✅ Show badge:    │
+│     [OpenRouter]   │
+│     color: #888    │
+└────────────────────┘
+
+Visual result:
+
+┌──────────────────────────────────────┐
+│ 🟢 Grok 2 Latest (Direct)            │
+│    grok-2-latest                     │
+│    [Direct API] Free · 32K · xai     │
+└──────────────────────────────────────┘
+
+┌──────────────────────────────────────┐
+│ 🟢 Grok 2 Latest (OR)                │
+│    x-ai/grok-2-latest                │
+│    [OpenRouter] Free · 32K · or      │
+└──────────────────────────────────────┘
+```
+
+---
+
+## Filter Behavior
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  PROVIDER FILTERS (Phase 94)                 │
+└─────────────────────────────────────────────────────────────┘
+
+User clicks filter: "xai_direct"
+
+         │
+         ▼
+┌────────────────────┐
+│ filteredModels     │
+│                    │
+│ Filter logic:      │
+│  provider === "xai"│
+│  OR                │
+│  id.startsWith     │
+│    ("xai/")        │
+└────────┬───────────┘
+         │
+         ▼
+┌────────────────────┐
+│ Shows:             │
+│                    │
+│ ✅ Grok 2 (Direct) │◄── provider: "xai"
+│ ❌ Grok 2 (OR)     │    (hidden - provider: "openrouter")
+└────────────────────┘
+
+
+User clicks filter: "openrouter"
+
+         │
+         ▼
+┌────────────────────┐
+│ Filter logic:      │
+│  provider ===      │
+│   "openrouter"     │
+│  AND has "/"       │
+└────────┬───────────┘
+         │
+         ▼
+┌────────────────────┐
+│ Shows:             │
+│                    │
+│ ❌ Grok 2 (Direct) │    (hidden - provider: "xai")
+│ ✅ Grok 2 (OR)     │◄── provider: "openrouter"
+└────────────────────┘
+```
+
+---
+
+## Summary
+
+**Before**: 1 model entry → ambiguous routing
+**After**: 2 model entries → explicit routing with visual badges
+
+**Benefits**:
+- ✅ User knows which API they're calling
+- ✅ Can choose based on pricing/rate limits
+- ✅ Can test Direct vs OpenRouter behavior
+- ✅ Clear visibility into API key availability
+
+**Trade-offs**:
+- List becomes longer (more scrolling)
+- Need to maintain duplication mapping
+- Slight API overhead (key checks)

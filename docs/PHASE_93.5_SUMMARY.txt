@@ -1,0 +1,92 @@
+================================================================================
+PHASE 93.5: MCP SERVER 429 ERROR DEBUG & FIX
+================================================================================
+
+PROBLEM
+-------
+MCP server returns 429 "Too Many Requests" error when calling gpt-4o-mini via
+vetka_call_model, even after server restart.
+
+ROOT CAUSE IDENTIFIED
+---------------------
+Singleton key manager in MCP subprocess retains rate-limited state across
+multiple tool calls. When a key's 24h cooldown expires, the rate_limited_at
+timestamp isn't reset, preventing key reuse.
+
+Timeline:
+1. Call 1: gpt-4o-mini → Key #0 → 429 error → marked rate-limited (24h cooldown)
+2. Wait 24+ hours...
+3. Call 2: gpt-4o-mini → Key #0 still rate-limited (timestamp never reset)
+4. Result: 429 error again ✗
+
+SOLUTION IMPLEMENTED
+--------------------
+Reset expired rate-limit cooldowns at start of each MCP tool call.
+
+CHANGES
+-------
+1. llm_call_tool.py - MARKER_93.5_MCP_KEY_RESET
+   - Resets expired cooldowns before API call
+   - Checks cooldown_remaining() to verify expiration
+   - Lines: 221-236
+
+2. llm_call_tool.py - MARKER_93.5_MCP_DIAGNOSTIC
+   - Logs key availability status before call
+   - Shows which keys are available/rate-limited
+   - Lines: 287-298
+
+3. provider_registry.py - MARKER_93.5
+   - Enhanced diagnostic output in OpenAIProvider.call()
+   - Prints key status to server logs
+   - Lines: 127-138
+
+TEST RESULTS
+------------
+✅ Key Cooldown Reset - PASSED
+✅ MCP Tool Cooldown Reset - PASSED
+✅ Key Availability Information - PASSED
+
+Result: 3/3 tests passed
+File: test_mcp_gpt4o_mini.py
+
+FILES MODIFIED
+---------------
+1. src/mcp/tools/llm_call_tool.py
+2. src/elisya/provider_registry.py
+
+FILES CREATED
+---------------
+1. docs/93_ph/DEBUG_MCP_429.md (detailed analysis)
+2. docs/93_ph/PHASE_93.5_MCP_429_FIX.md (implementation summary)
+3. test_mcp_gpt4o_mini.py (test suite)
+
+HOW IT WORKS AFTER FIX
+----------------------
+Call 1: gpt-4o-mini → Key #0 → 429 error → marked rate-limited
+Wait 24+ hours...
+Call 2: gpt-4o-mini
+  ↓ MARKER_93.5_MCP_KEY_RESET checks all keys
+  ↓ Finds Key #0's cooldown expired (24h+ passed)
+  ↓ Resets rate_limited_at = None
+  ↓ Key #0 now available!
+  ↓ API call succeeds ✓
+
+VERIFICATION
+------------
+1. Check logs for [MCP_KEY_RESET] messages
+2. Check logs for [MCP_KEY_DEBUG] messages
+3. Test gpt-4o-mini via MCP - should work
+4. Make 5+ consecutive calls - should use key rotation
+
+NEXT STEPS (FUTURE PHASES)
+--------------------------
+- Phase 93.6: Add thread-safe locks for concurrent calls
+- Phase 93.7: Persist rate-limit state to config.json
+- Phase 93.8: Move to per-call registry instances
+- Phase 93.9: Implement key pooling with rotation
+
+STATUS: ✅ COMPLETE & TESTED
+DATE: 2026-01-25
+PHASE: 93.5
+
+================================================================================

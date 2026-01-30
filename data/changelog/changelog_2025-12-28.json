@@ -1,0 +1,1157 @@
+[
+  {
+    "operation": "index_file",
+    "file_path": "src/__init__.py",
+    "file_id": "b909665e-d16d-52b8-96bc-110e428dfee7",
+    "timestamp": "2025-12-28T02:25:01.386291",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/main.py",
+    "file_id": "813d375f-435a-5680-ac86-2ac7059e9607",
+    "timestamp": "2025-12-28T02:25:01.405435",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/knowledge_graph/position_calculator.py",
+    "file_id": "79b04d44-a6f9-52dd-b812-674c9181bbd7",
+    "timestamp": "2025-12-28T02:25:01.413260",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/knowledge_graph/__init__.py",
+    "file_id": "f7727ee1-48dc-5bc3-b8d1-19e1533b1564",
+    "timestamp": "2025-12-28T02:25:01.419555",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/knowledge_graph/graph_builder.py",
+    "file_id": "bac11fe6-728e-5fdc-b3a9-54fbde9ac5fb",
+    "timestamp": "2025-12-28T02:25:01.427378",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/knowledge_graph/semantic_tagger.py",
+    "file_id": "c0634457-ab33-589b-9103-d4972f55be01",
+    "timestamp": "2025-12-28T02:25:01.434311",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/tools/__init__.py",
+    "file_id": "c26621ee-988f-5c69-b3fe-e30aabad9742",
+    "timestamp": "2025-12-28T02:25:01.440421",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/tools/code_tools.py",
+    "file_id": "0bd62051-1590-57c4-9e0d-df9a122076ee",
+    "timestamp": "2025-12-28T02:25:01.446320",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/tools/base_tool.py",
+    "file_id": "04b4667c-ffe6-5fae-ad93-876a10336d67",
+    "timestamp": "2025-12-28T02:25:01.455709",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/tools/executor.py",
+    "file_id": "21ac1084-4c6d-5e23-beac-7f4cbabfa9ac",
+    "timestamp": "2025-12-28T02:25:01.462178",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/memory/vetka_weaviate_config.py",
+    "file_id": "3c75004d-5f2f-5fc1-b9b0-c01713b0af99",
+    "timestamp": "2025-12-28T02:25:01.468508",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/memory/test_hybrid_search.py",
+    "file_id": "7b7cbc02-5fc7-5567-97b4-12695d714ad6",
+    "timestamp": "2025-12-28T02:25:01.474535",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/memory/vetka_validate_endpoints.py",
+    "file_id": "b038b7e2-a113-51bf-ad5d-d3776ef0994f",
+    "timestamp": "2025-12-28T02:25:01.479147",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/memory/qdrant_auto_retry.py",
+    "file_id": "8c205f47-32fe-5810-ba8a-4d5714232ecc",
+    "timestamp": "2025-12-28T02:25:01.484240",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/memory/vetka_create_collections.py",
+    "file_id": "f9ddf495-dc43-5f78-a561-76149844accd",
+    "timestamp": "2025-12-28T02:25:01.494599",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/memory/__init__.py",
+    "file_id": "9d641334-f3ab-5f4c-943d-8facfe6a5858",
+    "timestamp": "2025-12-28T02:25:01.500210",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/memory/vetka_weaviate_helper.py",
+    "file_id": "881c8899-95a6-5463-b76a-9f98e9575903",
+    "timestamp": "2025-12-28T02:25:01.505710",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/memory/qdrant_client.py",
+    "file_id": "09497197-25b0-5d59-a6e7-5792c939d4b8",
+    "timestamp": "2025-12-28T02:25:01.510987",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/memory/create_collections.py",
+    "file_id": "ba848dd7-4766-58e4-8b93-ca1279b44ac5",
+    "timestamp": "2025-12-28T02:25:01.516296",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/memory/weaviate_helper.py",
+    "file_id": "4ac9e628-c777-593f-9d28-108897c99893",
+    "timestamp": "2025-12-28T02:25:01.523071",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/chat/__init__.py",
+    "file_id": "282e7ad9-b34e-5ff5-ba7b-3b070102a911",
+    "timestamp": "2025-12-28T02:25:01.531074",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/chat/chat_manager.py",
+    "file_id": "3a027c85-f35a-5a6f-9bd6-4fc900b26e3a",
+    "timestamp": "2025-12-28T02:25:01.537736",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/elisya/key_manager.py",
+    "file_id": "a629ea2e-a9e4-5df0-9dab-1e58c44b3088",
+    "timestamp": "2025-12-28T02:25:01.543030",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/elisya/api_gateway.py",
+    "file_id": "22df43d6-5622-5492-a468-21151cfcec35",
+    "timestamp": "2025-12-28T02:25:01.547826",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/elisya/semantic_path.py",
+    "file_id": "59949929-1ef3-59d6-8c05-3459dfc0c3fe",
+    "timestamp": "2025-12-28T02:25:01.552679",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/elisya/llm_executor_bridge.py",
+    "file_id": "9856dfda-3741-51a0-95d9-80d18bcec4c2",
+    "timestamp": "2025-12-28T02:25:01.562901",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/elisya/__init__.py",
+    "file_id": "7e31c9e6-e913-5f5d-bf35-fa77dccb6ddf",
+    "timestamp": "2025-12-28T02:25:01.568976",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/elisya/api_aggregator_v3.py",
+    "file_id": "8d34ea64-ec71-5925-81f4-ad9f00c320c6",
+    "timestamp": "2025-12-28T02:25:01.575539",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/elisya/model_router.py",
+    "file_id": "07ab9c5f-cea4-57a2-a01c-18976e41259f",
+    "timestamp": "2025-12-28T02:25:01.580855",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/elisya/model_router_v2.py",
+    "file_id": "e54e3586-aca9-5e3e-addb-5e71a332de83",
+    "timestamp": "2025-12-28T02:25:01.586223",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/elisya/middleware.py",
+    "file_id": "bb02507d-ab83-55ae-a573-b4eb695735e6",
+    "timestamp": "2025-12-28T02:25:01.592148",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/elisya/state.py",
+    "file_id": "0dfedd59-d4f3-58e3-ba15-a32b0add581f",
+    "timestamp": "2025-12-28T02:25:01.597683",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/layout/fan_layout.py",
+    "file_id": "9e107148-9795-547a-a35e-d5b4d2ff08be",
+    "timestamp": "2025-12-28T02:25:01.602785",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/layout/knowledge_layout.py",
+    "file_id": "12108c7e-3b78-575d-97e7-0b1ba652ea9e",
+    "timestamp": "2025-12-28T02:25:01.608011",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/layout/__init__.py",
+    "file_id": "c0e78e3a-5a9c-5411-8a5d-d5216c4fef0c",
+    "timestamp": "2025-12-28T02:25:01.612684",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/layout/semantic_sugiyama.py",
+    "file_id": "02b9fcb3-e84c-581b-a9ce-e662115a562f",
+    "timestamp": "2025-12-28T02:25:01.625283",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/layout/incremental.py",
+    "file_id": "07acdc85-b111-5093-889f-3ec999fe2396",
+    "timestamp": "2025-12-28T02:25:01.631862",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/graph/langgraph_workflow_v2.py",
+    "file_id": "a8e536c2-517f-5e88-93b8-2bcea8435c07",
+    "timestamp": "2025-12-28T02:25:01.637691",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/workflows/__init__.py",
+    "file_id": "d4d35940-c50e-5477-87c4-59ae9c5912d4",
+    "timestamp": "2025-12-28T02:25:01.643871",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/workflows/langgraph_builder.py",
+    "file_id": "2e514778-132d-5ba6-a75e-f6e40e0fe03d",
+    "timestamp": "2025-12-28T02:25:01.651809",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/workflows/langgraph_nodes.py",
+    "file_id": "4df3eab3-f291-5375-b62b-7adef4d4184f",
+    "timestamp": "2025-12-28T02:25:01.657036",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/workflows/router.py",
+    "file_id": "030f16e3-28b4-5357-a7ff-eed73b4ce123",
+    "timestamp": "2025-12-28T02:25:01.663012",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/vetka_visual.py",
+    "file_id": "de7625ae-41f3-55b0-82f7-a606493470a7",
+    "timestamp": "2025-12-28T02:25:01.668825",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/learner_initializer.py",
+    "file_id": "86fc9ca1-130f-5550-9edf-3e7a2a036caa",
+    "timestamp": "2025-12-28T02:25:01.673551",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/pixtral_learner.py",
+    "file_id": "1b1c5480-febb-54e2-a315-d61e2172c85e",
+    "timestamp": "2025-12-28T02:25:01.679612",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/student_level_system.py",
+    "file_id": "9774f7f9-edf2-5607-adc7-5d9e4af31d2a",
+    "timestamp": "2025-12-28T02:25:01.684707",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/vetka_ops.py",
+    "file_id": "6cb39c8b-53b3-5ff5-943f-56c36054412b",
+    "timestamp": "2025-12-28T02:25:01.689459",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/learner_agent_init.py",
+    "file_id": "9e7eb2c9-2384-5787-a50c-90c012ab24aa",
+    "timestamp": "2025-12-28T02:25:01.698960",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/base_agent.py",
+    "file_id": "02a50137-0779-5565-9008-6500ba7fbfaf",
+    "timestamp": "2025-12-28T02:25:01.705873",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/tools.py",
+    "file_id": "b66ccef6-a745-52b4-b980-35add849afef",
+    "timestamp": "2025-12-28T02:25:01.712122",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "test/sample.py",
+    "file_id": "0bc47e50-cbda-5b14-9c92-3ba11f9c625e",
+    "timestamp": "2025-12-28T02:25:27.932852",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/package-lock.json",
+    "file_id": "67efe7f9-2d6f-5546-b927-da1658af5e74",
+    "timestamp": "2025-12-28T02:27:35.224391",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/package.json",
+    "file_id": "440da08c-e4f2-5acc-9df7-0b96b7f11674",
+    "timestamp": "2025-12-28T02:27:35.239525",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/metrics_dashboard.html",
+    "file_id": "cf2a6db8-79ce-5755-8607-81cec4c35a31",
+    "timestamp": "2025-12-28T02:27:35.250424",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/static/css/style.css",
+    "file_id": "39f2b3d8-d4f3-5617-bd7c-9c6d253888ee",
+    "timestamp": "2025-12-28T02:27:35.262437",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/static/js/tree_view.js",
+    "file_id": "677589d3-e4bf-5a73-8456-ae725ca68812",
+    "timestamp": "2025-12-28T02:27:35.268112",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/static/js/socket_handler.js",
+    "file_id": "2f9b8ec5-a9cb-5cb6-875b-d053058f710e",
+    "timestamp": "2025-12-28T02:27:35.274159",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/static/js/config.js",
+    "file_id": "1208844d-34dd-5ef7-bb20-ff6e77a2d090",
+    "timestamp": "2025-12-28T02:27:35.279792",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/static/js/artifact_panel.js",
+    "file_id": "29b015a5-bee5-5316-bdb0-2870fea0bdca",
+    "timestamp": "2025-12-28T02:27:35.285972",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/static/js/zoom_manager.js",
+    "file_id": "1fb7bae4-158e-55f2-974c-18c58c844e84",
+    "timestamp": "2025-12-28T02:27:35.292424",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/static/js/ui/chat_panel.js",
+    "file_id": "1a6bd968-7df1-51cb-a038-5bf9288483d6",
+    "timestamp": "2025-12-28T02:27:35.299035",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/static/js/renderer/lod.js",
+    "file_id": "59dca5e8-c927-5a40-8664-28664ac0500f",
+    "timestamp": "2025-12-28T02:27:35.305298",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/static/js/modes/knowledge_mode.js",
+    "file_id": "9fe5db36-26cc-57bc-b5d4-5de4529b3ba7",
+    "timestamp": "2025-12-28T02:27:35.314055",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/static/js/layout/sugiyama.js",
+    "file_id": "5bbe7437-77b5-5839-857f-dec6c89e7ae4",
+    "timestamp": "2025-12-28T02:27:35.320160",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/templates/index.html",
+    "file_id": "f077513c-6ef0-528b-a71c-b041f778faa3",
+    "timestamp": "2025-12-28T02:27:35.327522",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/templates/onboarding.html",
+    "file_id": "2744e49f-5a24-5bab-a1dc-8244edabc965",
+    "timestamp": "2025-12-28T02:27:35.333571",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/templates/chat.html",
+    "file_id": "be39af3a-67d6-5fdb-a482-9cb0796c2bf6",
+    "timestamp": "2025-12-28T02:27:35.340153",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/src/types/vetka.ts",
+    "file_id": "fcc04455-ac56-556a-ba0e-d7b04e7357b0",
+    "timestamp": "2025-12-28T02:27:35.345637",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "frontend/src/config/design_system.ts",
+    "file_id": "0240a92a-bd3c-503d-b2f3-84c3211b4018",
+    "timestamp": "2025-12-28T02:27:35.353885",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/visualizer/position_calculator.py",
+    "file_id": "f525a1c6-a571-514b-9b01-647ecb9b589b",
+    "timestamp": "2025-12-28T02:34:20.529833",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/visualizer/kg_layout.py",
+    "file_id": "382854ca-b8c4-5778-8419-652138c828df",
+    "timestamp": "2025-12-28T02:34:20.556971",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/visualizer/__init__.py",
+    "file_id": "c1e1c97b-4acc-56b5-869d-90043b75b5a3",
+    "timestamp": "2025-12-28T02:34:20.569820",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/visualizer/procrustes_interpolation.py",
+    "file_id": "07c56c5f-0f73-5a78-bf31-3d0a235ed8bc",
+    "timestamp": "2025-12-28T02:34:20.591099",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/vetka_visual.py",
+    "file_id": "de7625ae-41f3-55b0-82f7-a606493470a7",
+    "timestamp": "2025-12-28T02:36:47.335692",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/learner_initializer.py",
+    "file_id": "86fc9ca1-130f-5550-9edf-3e7a2a036caa",
+    "timestamp": "2025-12-28T02:36:47.352784",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/pixtral_learner.py",
+    "file_id": "1b1c5480-febb-54e2-a315-d61e2172c85e",
+    "timestamp": "2025-12-28T02:36:47.366695",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/student_level_system.py",
+    "file_id": "9774f7f9-edf2-5607-adc7-5d9e4af31d2a",
+    "timestamp": "2025-12-28T02:36:47.378926",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/vetka_ops.py",
+    "file_id": "6cb39c8b-53b3-5ff5-943f-56c36054412b",
+    "timestamp": "2025-12-28T02:36:47.385813",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/learner_agent_init.py",
+    "file_id": "9e7eb2c9-2384-5787-a50c-90c012ab24aa",
+    "timestamp": "2025-12-28T02:36:47.391420",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/base_agent.py",
+    "file_id": "02a50137-0779-5565-9008-6500ba7fbfaf",
+    "timestamp": "2025-12-28T02:36:47.397881",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/tools.py",
+    "file_id": "b66ccef6-a745-52b4-b980-35add849afef",
+    "timestamp": "2025-12-28T02:36:47.404082",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/agentic_tools.py",
+    "file_id": "a8b0168a-2965-544a-a705-5a0599ee8a5e",
+    "timestamp": "2025-12-28T02:36:47.410530",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "src/agents/vetka_qa.py",
+    "file_id": "f8b1ad80-df54-5812-9805-124e669b6e15",
+    "timestamp": "2025-12-28T02:36:47.416922",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/vetka_weaviate_config.py",
+    "file_id": "d05f8158-42da-5641-ac20-7cbcd7a245c2",
+    "timestamp": "2025-12-28T02:57:34.445046",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/test_hybrid_search.py",
+    "file_id": "18e276ef-ab6f-52ff-9cd9-04024b16b199",
+    "timestamp": "2025-12-28T02:57:34.996381",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/vetka_validate_endpoints.py",
+    "file_id": "de94a5c2-9ec5-5669-a70f-eec6592be5a5",
+    "timestamp": "2025-12-28T02:57:35.221795",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/qdrant_auto_retry.py",
+    "file_id": "31a85c74-601d-51ee-aa1f-b6a895ade27d",
+    "timestamp": "2025-12-28T02:57:42.112287",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/vetka_create_collections.py",
+    "file_id": "bb5d12bf-60ef-589a-9dec-bdd6ccd7649d",
+    "timestamp": "2025-12-28T02:57:43.136773",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/__init__.py",
+    "file_id": "655ff43e-afcb-5578-8abc-403d4be50f08",
+    "timestamp": "2025-12-28T02:57:43.200099",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/vetka_weaviate_helper.py",
+    "file_id": "628d0e9b-cb62-5f44-9dfa-281cd96e66f3",
+    "timestamp": "2025-12-28T02:57:46.594648",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/qdrant_client.py",
+    "file_id": "55c63575-de92-5e0b-8ca1-2e3aed2d8f97",
+    "timestamp": "2025-12-28T02:57:56.034199",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/create_collections.py",
+    "file_id": "e6280124-6ff1-5aba-85e1-84c753a42702",
+    "timestamp": "2025-12-28T02:57:56.718801",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/weaviate_helper.py",
+    "file_id": "e47d52e2-52ca-5589-b36b-54a525906141",
+    "timestamp": "2025-12-28T02:58:03.494237",
+    "results": {
+      "weaviate": false,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/server/app_factory.py",
+    "file_id": "cfbbfc62-4adb-5621-b837-b7c52e9e9681",
+    "timestamp": "2025-12-28T03:01:55.015217",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/server/__init__.py",
+    "file_id": "4ff9b96e-750b-5e23-9b1e-fc180bdb58d7",
+    "timestamp": "2025-12-28T03:01:55.097537",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/server/routes/scan_routes.py",
+    "file_id": "fb072e22-df04-550d-aa0e-8b2a9194ddcb",
+    "timestamp": "2025-12-28T03:02:03.555770",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/server/routes/tree_routes.py",
+    "file_id": "d4c3ef36-fe2d-5474-8267-3116fe76687f",
+    "timestamp": "2025-12-28T03:02:10.235853",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/server/routes/__init__.py",
+    "file_id": "80cf2cb0-1ca2-5464-98f9-9d21e6e2f442",
+    "timestamp": "2025-12-28T03:02:10.943600",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/server/routes/chat_routes.py",
+    "file_id": "47f1137e-9ccf-53c7-a837-065f25ca7fac",
+    "timestamp": "2025-12-28T03:02:11.159119",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/server/routes/health_routes.py",
+    "file_id": "2a031061-9012-5aa1-9f14-0af95cf6d550",
+    "timestamp": "2025-12-28T03:02:19.560146",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/17-6_chat/PHASE_17M_ARTIFACT_PANEL_COMPLETE.md",
+    "file_id": "04073c92-6049-5532-a56a-d93c5eb73d10",
+    "timestamp": "2025-12-28T03:05:19.222334",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/17-6_chat/PHASE_17L_AGENT_TOOLS_COMPLETE.md",
+    "file_id": "ea74362d-4581-518e-a110-01d64b8e4280",
+    "timestamp": "2025-12-28T03:05:20.705481",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/17-6_chat/DIAGNOSTIC_REPORT.md",
+    "file_id": "bbff68fb-7e64-550a-bafa-6628d6daf31e",
+    "timestamp": "2025-12-28T03:05:22.604196",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/17-6_chat/MIGRATION_REPORT.md",
+    "file_id": "85b34812-3732-582f-a7ca-5caf4ea58f70",
+    "timestamp": "2025-12-28T03:05:26.263076",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/17-6_chat/PHASE_17M_DRAG_RESIZE_FIX.md",
+    "file_id": "3b6ee974-97c2-5300-8f49-d22cc1d5673d",
+    "timestamp": "2025-12-28T03:05:27.764935",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  }
+]

@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "text": "Camera focus к файлу где есть такой код \"\"compatibility\": {\n    \"reads\": [\n      \"1.0\",\n      \"1.1\",\n      \"1.2\"\n    ],\n    \"writes\": [\n      \"1.2\"\n    ]\n  },\n  \"origin\": {\n    \"source\": \"phase9\",\n    \"workflow_id\": \"chat_mj7o88sg\"\n  },\n  \"created_at\": \"2025-12-16T00:35:38.979737Z\",\n  \"tree\": {\n    \"id\": \"tree_chat_mj7o88sg\",\n    \"name\": \"Workflow chat_mj7o88sg\",\n    \"root_node_id\": \"root_chat_mj7o88sg\",\n    \"nodes\": [\n      {\n        \"id\": \"root_chat_mj7o88sg\",\n        \"parent_id\": null,\"",
+    "node_id": "3522114740609063247",
+    "node_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/output/vetka_chat_mj7o88sg.json",
+    "timestamp": "2025-12-30T13:56:30.220108",
+    "read": true
+  }
+]

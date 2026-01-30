@@ -1,0 +1,164 @@
+{
+  "analysis_metadata": {
+    "date": "2026-01-07",
+    "total_files_analyzed": 191,
+    "init_files_with_special_handling": 28,
+    "files_with_unused_imports": 77,
+    "total_unused_imports": 149,
+    "analysis_method": "Python AST with __all__ and re-export detection"
+  },
+  "summary": {
+    "top_offenders": [
+      {
+        "file": "src/initialization/dependency_check.py",
+        "unused_count": 12,
+        "note": "Contains dynamic imports in try/except blocks - many are intentionally imported for side-effects"
+      },
+      {
+        "file": "src/orchestration/orchestrator_with_elisya.py",
+        "unused_count": 10,
+        "note": "Large orchestrator file with many imports, some may be legacy"
+      },
+      {
+        "file": "src/orchestration/agent_orchestrator_parallel.py",
+        "unused_count": 5,
+        "note": "Parallel orchestrator variant"
+      }
+    ],
+    "common_patterns": {
+      "typing_imports": {
+        "Optional": 18,
+        "Tuple": 10,
+        "Any": 9,
+        "List": 8,
+        "Dict": 7
+      },
+      "standard_library": {
+        "os": 9,
+        "json": 7,
+        "datetime": 8,
+        "math": 3,
+        "time": 3,
+        "asyncio": 2
+      },
+      "third_party": {
+        "ollama": 3
+      }
+    }
+  },
+  "safe_to_remove": [
+    {
+      "file": "src/tools/code_tools.py",
+      "line": 4,
+      "import": "import os",
+      "reason": "Not used anywhere in file, no os. references found"
+    },
+    {
+      "file": "src/tools/code_tools.py",
+      "line": 5,
+      "import": "import asyncio",
+      "reason": "Not used anywhere in file, all async methods use native async/await"
+    },
+    {
+      "file": "src/tools/code_tools.py",
+      "line": 7,
+      "import": "from typing import Optional",
+      "reason": "Imported but never used in type annotations"
+    },
+    {
+      "file": "src/orchestration/orchestrator_with_elisya.py",
+      "line": 31,
+      "import": "from src.agents.streaming_agent import StreamingAgent",
+      "reason": "Only appears in import line, never instantiated or referenced"
+    },
+    {
+      "file": "src/orchestration/orchestrator_with_elisya.py",
+      "line": 32,
+      "import": "from src.orchestration.progress_tracker import ProgressTracker",
+      "reason": "Only appears in import line, never instantiated or referenced"
+    },
+    {
+      "file": "src/orchestration/orchestrator_with_elisya.py",
+      "line": 34,
+      "import": "from src.orchestration.query_dispatcher import RouteStrategy",
+      "reason": "Only appears in import line (get_dispatcher is used, but not RouteStrategy)"
+    },
+    {
+      "file": "src/orchestration/agent_orchestrator_parallel.py",
+      "line": 20,
+      "import": "from src.agents.streaming_agent import StreamingAgent",
+      "reason": "Duplicate of above pattern"
+    },
+    {
+      "file": "src/orchestration/agent_orchestrator_parallel.py",
+      "line": 21,
+      "import": "from src.orchestration.progress_tracker import ProgressTracker",
+      "reason": "Duplicate of above pattern"
+    }
+  ],
+  "requires_manual_review": [
+    {
+      "file": "src/initialization/dependency_check.py",
+      "lines": [99, 106, 113, 120],
+      "imports": ["ollama", "openai", "anthropic", "google.generativeai"],
+      "reason": "These are imported in try/except blocks for availability checking. The import itself is the purpose (not the usage). These are INTENTIONALLY unused - they're checking if packages are installed.",
+      "recommendation": "Add # noqa: F401 comment or keep as-is since they serve a purpose"
+    },
+    {
+      "file": "src/initialization/dependency_check.py",
+      "lines": [285, 286],
+      "imports": ["PixtralLearner", "QwenLearner"],
+      "reason": "Imported to trigger @register decorators (side-effect imports). Comment indicates this is intentional.",
+      "recommendation": "Keep - these are needed for decorator registration. Consider adding # noqa: F401"
+    },
+    {
+      "file": "src/initialization/dependency_check.py",
+      "lines": [342, 343, 344, 345],
+      "imports": ["student_level_system_factory", "student_portfolio_factory", "student_promotion_engine_factory", "simpo_training_loop_factory"],
+      "reason": "May be stored in modules dict for later use",
+      "recommendation": "Check if modules['student_system'] dict is ever accessed elsewhere"
+    }
+  ],
+  "systematic_issues": {
+    "typing_imports_never_used": {
+      "description": "Many files import typing types but never use them in annotations",
+      "files_affected": 18,
+      "recommendation": "Consider enabling stricter type checking or remove unused typing imports"
+    },
+    "standard_library_imports": {
+      "description": "Common pattern of importing os, json, datetime but not using them",
+      "files_affected": 24,
+      "recommendation": "These may be remnants from refactoring or copy-paste"
+    },
+    "legacy_imports": {
+      "description": "Some imports appear to be from older versions of the code",
+      "examples": [
+        "StreamingAgent (appears unused in 2 files)",
+        "ProgressTracker (appears unused in 2 files)"
+      ],
+      "recommendation": "Check git history to see if these were used in previous versions"
+    }
+  },
+  "cleanup_priority": {
+    "high_priority": [
+      "src/tools/code_tools.py - 3 unused imports, small file, easy cleanup",
+      "src/orchestration/orchestrator_with_elisya.py - 10 unused imports, large impact",
+      "src/orchestration/agent_orchestrator_parallel.py - 5 unused imports"
+    ],
+    "medium_priority": [
+      "All files with unused typing imports (Optional, Tuple, etc.) - 18 files affected",
+      "Files with unused os/json/datetime imports - 24 files affected"
+    ],
+    "low_priority_or_skip": [
+      "src/initialization/dependency_check.py - Many 'unused' imports are intentional for availability checking",
+      "__init__.py files - Already handled with special re-export logic"
+    ]
+  },
+  "estimated_impact": {
+    "safe_removals": 50,
+    "needs_verification": 99,
+    "intentional_unused": 15,
+    "lines_of_code_reduction": 149,
+    "risk_level": "low for typing/stdlib imports, medium for project imports"
+  }
+}

@@ -1,0 +1,335 @@
+================================================================================
+PROVIDER SYSTEMS USAGE MATRIX - Complete Inventory
+================================================================================
+Generated: 2026-01-26
+Status: ProviderRegistry is the canonical production system
+
+================================================================================
+1. MAIN PRODUCTION IMPORTERS: ProviderRegistry
+================================================================================
+
+✅ PRODUCTION USAGE - call_model_v2()
+────────────────────────────────────────────────────────────────────────────
+
+src/api/handlers/user_message_handler.py
+  Line 63-68:    import call_model_v2, call_model_v2_stream, Provider, XaiKeysExhausted
+  Line 363:      call_model_v2(messages, model, provider)
+  Line 537:      async for token in call_model_v2_stream(messages, model)
+  Line 559:      async for token in call_model_v2_stream(messages, model)
+  Line 789:      ollama_response = await call_model_v2(messages, model, Provider.OLLAMA, tools=tools)
+  Line 871:      result = await call_model_v2(messages, model, provider)
+  Line 882:      result = await call_model_v2(messages, model, provider)
+
+src/orchestration/orchestrator_with_elisya.py
+  Line 44-50:    import call_model_v2, Provider, ProviderRegistry, get_registry, XaiKeysExhausted
+  Line 1023:     response = await call_model_v2(messages, model, provider=provider)
+  Line 1032:     response = await call_model_v2(messages, model, provider=provider)
+
+src/api/handlers/chat_handler.py
+  Line 62:       import ProviderRegistry, Provider
+  (Uses for provider detection)
+
+src/mcp/tools/llm_call_tool.py
+  Line 271:      import call_model_v2, Provider
+  Line 310:      call_model_v2(...)
+  Line 323:      call_model_v2(...)
+
+src/opencode_bridge/open_router_bridge.py
+  Line 15:       import ProviderRegistry, Provider, call_model_v2
+  (Uses for OpenRouter integration)
+
+src/api/routes/model_routes.py
+  Line 171:      import ProviderRegistry
+
+================================================================================
+2. LEGACY IMPORTERS: APIAggregator (api_aggregator_v3.py)
+================================================================================
+
+⚠️ LIMITED USAGE - Mostly for HOST_HAS_OLLAMA flag
+────────────────────────────────────────────────────────────────────────────
+
+src/api/handlers/user_message_handler.py
+  Line 60:       import HOST_HAS_OLLAMA
+  Line 1591:     use_streaming = single_mode and HOST_HAS_OLLAMA and len(responses) == 0
+
+src/api/handlers/streaming_handler.py
+  Line 59:       import call_model_stream
+  Line 74:       async for token in call_model_stream(prompt, model_name)
+  STATUS: Uses legacy call_model_stream() for Ollama streaming
+
+src/api/handlers/di_container.py
+  Line 34:       import HOST_HAS_OLLAMA
+  Line 106:      HOST_HAS_OLLAMA=HOST_HAS_OLLAMA (passed to DI)
+
+src/api/handlers/user_message_handler_legacy.py
+  Line 60:       import HOST_HAS_OLLAMA
+  Line 1739:     use_streaming = single_mode and HOST_HAS_OLLAMA and len(responses) == 0
+
+src/api/handlers/orchestration/agent_orchestrator.py
+  Line 39:       HOST_HAS_OLLAMA: bool (parameter)
+  Line 65:       self.HOST_HAS_OLLAMA = HOST_HAS_OLLAMA
+
+src/orchestration/orchestrator_with_elisya.py
+  Line 53:       import call_model as call_model_legacy
+  STATUS: Imported but NOT USED (fallback only)
+
+src/agents/arc_solver_agent.py
+  Line 1115:     import APIAggregator
+  STATUS: Imported but NOT USED (dead code)
+
+================================================================================
+3. ORPHANED IMPORTERS: APIGateway (api_gateway.py)
+================================================================================
+
+❌ NO ACTIVE USAGE - Only initialization, never called
+────────────────────────────────────────────────────────────────────────────
+
+src/initialization/dependency_check.py
+  Line 243:      import init_api_gateway, get_api_gateway
+  Line 246:      'init': init_api_gateway
+  Line 247:      'get': get_api_gateway
+  STATUS: Initialized during system startup but never used
+
+src/initialization/components_init.py
+  Line 192-193:  init_api_gateway = modules['api_gateway']['init']
+                 api_gateway = init_api_gateway(model_router_v2=model_router, timeout=10)
+  STATUS: Created but no references to it
+
+src/initialization/singletons.py
+  Line 19:       get_api_gateway
+  Line 127:      'get_api_gateway'
+  STATUS: Listed as singleton but never accessed
+
+src/dependencies.py
+  Line 97:       def get_api_gateway(request: Request) -> Optional[Any]
+  STATUS: Defined but no routes use it
+
+src/api/handlers/models/model_client.py
+  Line 114:      await self._call_openrouter(...)
+  Line 223:      async def _call_openrouter(...)
+  STATUS: Custom implementation (not using api_gateway.py)
+
+src/api/handlers/mention/mention_handler.py
+  Line 238:      response_text = await self._call_openrouter_model(...)
+  Line 416:      async def _call_openrouter_model(...)
+  STATUS: Custom implementation (not using api_gateway.py)
+
+================================================================================
+4. PROVIDER DETECTION INTEGRATION
+================================================================================
+
+ProviderRegistry.detect_provider() is used in:
+────────────────────────────────────────────────────────────────────────────
+
+src/api/handlers/user_message_handler.py
+  Line 533, 868: call ProviderRegistry.detect_provider() for auto-detection
+
+src/api/handlers/chat_handler.py
+  Implicit (via ProviderRegistry usage)
+
+src/mcp/tools/llm_call_tool.py
+  Line 283:      provider_enum = None  # Let call_model_v2 auto-detect
+
+================================================================================
+5. OPENROUTER SPECIFIC USAGE
+================================================================================
+
+Direct OpenRouter calls:
+────────────────────────────────────────────────────────────────────────────
+
+provider_registry.py:OpenRouterProvider.call()
+  Line 695-798:  Full async implementation with:
+                 - Auto-rotation on 401/402/403 (MARKER_93.4)
+                 - 24h cooldown marking
+                 - Model name cleanup (Line 730-732)
+                 - Proper SSE streaming support
+
+provider_registry.py:_stream_openrouter()
+  Line 1580-1677: SSE streaming with:
+                  - Key rotation
+                  - Rate limit detection
+                  - Token parsing
+
+provider_registry.py:call_model_v2() fallback
+  Line 1104-1118: XAI 403 → OpenRouter automatic fallback
+  Line 1120-1143: ValueErrors (missing keys) → OpenRouter fallback
+  Line 1148-1183: HTTPStatusError → OpenRouter fallback
+
+api_aggregator_v3.py
+  Line 370-384:  call_openai_direct, call_anthropic_direct, call_google_direct
+                 (imports from api_gateway.py for direct API calls)
+                 → NOT used in practice (ProviderRegistry handles this)
+
+api_gateway.py
+  Line 395-441:  _call_openrouter() - sync version
+                 STATUS: Orphaned - never called
+
+================================================================================
+6. STREAMING INTEGRATION
+================================================================================
+
+Provider Streaming Support:
+────────────────────────────────────────────────────────────────────────────
+
+✅ call_model_v2_stream() (ProviderRegistry - PRODUCTION)
+  - Provider: OLLAMA
+    Via: _stream_ollama() (Line 1405-1462)
+    Supports: native Ollama streaming
+
+  - Provider: OPENROUTER
+    Via: _stream_openrouter() (Line 1580-1677)
+    Supports: SSE with key rotation
+
+  - Provider: XAI
+    Via: _stream_xai_direct() (Line 1465-1577)
+    Supports: Direct x.ai streaming (Phase 94.1)
+
+  - Provider: OPENAI/ANTHROPIC
+    Via: _stream_openrouter() (Line 1328-1367)
+    Routes through OpenRouter for streaming
+
+⚠️ call_model_stream() (api_aggregator_v3 - LEGACY)
+  - Only supports: Ollama native streaming
+  - Uses: OLLAMA_HOST HTTP API
+  - Features: Anti-loop detection (MARKER_90.2)
+  - Used by: streaming_handler.py
+
+================================================================================
+7. TOOL SUPPORT MATRIX
+================================================================================
+
+Tool-aware providers (in ProviderRegistry):
+────────────────────────────────────────────────────────────────────────────
+
+OpenAIProvider:           supports_tools = True
+AnthropicProvider:        supports_tools = True
+GoogleProvider:           supports_tools = True
+OllamaProvider:           supports_tools = True (with fallback)
+OpenRouterProvider:       supports_tools = False
+XaiProvider:              supports_tools = True
+
+Tool calling in user_message_handler.py:
+  Line 789:      call_model_v2(..., tools=tools)
+  Line 871:      call_model_v2(..., tools=tools)
+
+Tool calling in chat_handler.py:
+  Implicit (via ProviderRegistry)
+
+================================================================================
+8. ERROR HANDLING & FALLBACK CHAINS
+================================================================================
+
+ProviderRegistry error handling:
+────────────────────────────────────────────────────────────────────────────
+
+XaiKeysExhausted exception:
+  Line 1104-1118: Falls back to OpenRouter
+                  Format: grok-4 → x-ai/grok-4
+
+ValueError (API key not found):
+  Line 1120-1143: Falls back to OpenRouter
+                  Handles: OpenAI, Anthropic, Google, XAI
+
+HTTPStatusError (401/402/403/404/429):
+  Line 1148-1183: Falls back to OpenRouter
+                  Includes: model status update tracking
+
+================================================================================
+9. KEY MANAGER INTEGRATION
+================================================================================
+
+Unified Key Manager usage:
+────────────────────────────────────────────────────────────────────────────
+
+In all provider implementations:
+  Line 121-128:  get_key_manager()
+  Line 148-151:  Auto-rotation on error
+  Line 183-201:  Mark rate-limited with 24h cooldown
+  Line 254-256:  Max retries = available keys count
+
+Providers affected:
+  ✅ OpenAIProvider (Line 125, 148)
+  ✅ AnthropicProvider (Line 254)
+  ✅ GoogleProvider (Line 405)
+  ✅ OpenRouterProvider (Line 710-758)
+  ✅ XaiProvider (Line 865-877)
+
+================================================================================
+10. SUMMARY: WHO USES WHAT
+================================================================================
+
+PRODUCTION (✅ Active, maintained):
+────────────────────────────────────────────────────────────────────────────
+System:           ProviderRegistry (provider_registry.py)
+Entry points:     call_model_v2(), call_model_v2_stream()
+Used by:          user_message_handler, orchestrator, chat_handler, mcp tools
+Providers:        OpenAI, Anthropic, Google, Ollama, OpenRouter, XAI
+Features:         Auto-rotation, fallback, streaming, tools, error handling
+
+LEGACY (⚠️ Active but not preferred):
+────────────────────────────────────────────────────────────────────────────
+System:           api_aggregator_v3 (api_aggregator_v3.py)
+Entry points:     call_model_stream(), HOST_HAS_OLLAMA
+Used by:          streaming_handler (streaming only)
+Providers:        Ollama only
+Features:         Streaming, anti-loop detection
+
+ORPHANED (❌ Not used):
+────────────────────────────────────────────────────────────────────────────
+System:           api_gateway (api_gateway.py)
+Entry points:     None (init_api_gateway never called)
+Used by:          None
+Providers:        Orphaned implementations
+Features:         Sync versions, never reached
+
+================================================================================
+OPENROUTER VERDICT
+================================================================================
+
+Status:    FULL PRODUCTION (via ProviderRegistry.OpenRouterProvider)
+Where:     src/elisya/provider_registry.py lines 684-798
+Function:  async def call() with full feature set
+Used by:   ✅ user_message_handler
+           ✅ orchestrator
+           ✅ chat_handler
+           ✅ All tools using call_model_v2()
+
+Features:  ✅ 24h cooldown on errors
+           ✅ Auto-rotation
+           ✅ SSE streaming
+           ✅ Model name cleanup
+           ✅ Fallback from XAI 403
+           ✅ Tool support (limited, by design)
+           ✅ Proper error propagation
+
+Do NOT use:
+  ❌ api_aggregator_v3.OpenRouterProvider (stub)
+  ❌ api_gateway._call_openrouter() (orphaned sync)
+  ❌ APIGateway (not integrated)
+
+================================================================================
+RECOMMENDATION FOR MAINTENANCE
+================================================================================
+
+1. KEEP
+   - ProviderRegistry and all its implementations
+   - call_model_v2() and call_model_v2_stream()
+   - All provider classes
+
+2. MIGRATE
+   - streaming_handler.py: call_model_stream() → call_model_v2_stream()
+   - Remove dependency on HOST_HAS_OLLAMA flag
+
+3. REMOVE (Dead code)
+   - api_aggregator_v3.OpenRouterProvider stub class
+   - api_gateway.py (orphaned infrastructure)
+   - api_gateway._call_openrouter() sync version
+   - init_api_gateway() initialization code
+   - APIAggregator class (never instantiated)
+
+4. DOCUMENT
+   - Use QUICK_PROVIDER_REFERENCE.md as development guide
+   - Mark api_aggregator_v3.py as DEPRECATED (streaming only)
+   - Mark api_gateway.py as ORPHANED
+
+================================================================================

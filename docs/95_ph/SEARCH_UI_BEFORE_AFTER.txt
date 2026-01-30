@@ -1,0 +1,175 @@
+SEARCH UI: BEFORE vs AFTER - PHASE 95
+======================================
+
+┌─────────────────────────────────────────────────────────────┐
+│                         BEFORE                               │
+└─────────────────────────────────────────────────────────────┘
+
+┌─ VETKA Search ──────────────────────────────────────────────┐
+│ 🔍 vetka/ semantic query...                            [×]  │
+├─────────────────────────────────────────────────────────────┤
+│ HYB SEM KEY FILE │ 42 results │ 125ms │ ↓ ⋮                │
+│ ^unclear which is active                                    │
+├─────────────────────────────────────────────────────────────┤
+│ 📄 component.tsx               250 KB  Jan 24  92%  ⭐      │
+│    ^no source indication                                    │
+│                                                              │
+│ 📄 utils.ts                    125 KB  Jan 23  88%  ⭐      │
+│    ^no source indication                                    │
+│                                                              │
+│ 📄 config.json                 15 KB   Jan 22  95%  ⭐      │
+│    ^no source indication                                    │
+└─────────────────────────────────────────────────────────────┘
+
+Issues:
+❌ Can't tell which search mode is active
+❌ Can't see which backend returned each result
+❌ Sort works but wasn't documented
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                          AFTER                               │
+└─────────────────────────────────────────────────────────────┘
+
+┌─ VETKA Search ──────────────────────────────────────────────┐
+│ 🔍 vetka/ semantic query...                            [×]  │
+├─────────────────────────────────────────────────────────────┤
+│ [SEM] │ HYB SEM KEY FILE │ 42 results │ 125ms │ ↓ ⋮        │
+│   ^NEW: Active mode badge clearly shows SEMANTIC is active  │
+├─────────────────────────────────────────────────────────────┤
+│ 📄 [QD] component.tsx          250 KB  Jan 24  92%  ⭐      │
+│     ^NEW: Qdrant vector search                              │
+│                                                              │
+│ 📄 [WV] utils.ts               125 KB  Jan 23  88%  ⭐      │
+│     ^NEW: Weaviate keyword search                           │
+│                                                              │
+│ 📄 [HYB] config.json           15 KB   Jan 22  95%  ⭐      │
+│     ^NEW: Hybrid RRF combined result                        │
+└─────────────────────────────────────────────────────────────┘
+
+Improvements:
+✅ Clear active mode indicator [SEM]
+✅ Source badges show search backend [QD] [WV] [HYB]
+✅ Sort fully documented and tested
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                      MODE SWITCHING                          │
+└─────────────────────────────────────────────────────────────┘
+
+User clicks "KEY" button:
+
+┌─ VETKA Search ──────────────────────────────────────────────┐
+│ [KEY] │ HYB SEM KEY FILE │ 42 results │ 125ms │ ↓ ⋮        │
+│   ^Indicator automatically updates to show KEYWORD active   │
+├─────────────────────────────────────────────────────────────┤
+│ 📄 [WV] utils.ts               125 KB  Jan 23  88%  ⭐      │
+│     ^More results from Weaviate in keyword mode             │
+└─────────────────────────────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                    SORT DEMONSTRATION                        │
+└─────────────────────────────────────────────────────────────┘
+
+Sort by NAME (ascending ↑):
+┌────────────────────────────────────┐
+│ 📄 [QD] a_config.json      92% ⭐  │
+│ 📄 [WV] b_utils.ts         88% ⭐  │
+│ 📄 [HYB] c_component.tsx   95% ⭐  │
+│ 📄 [QD] d_test.py          85% ⭐  │
+└────────────────────────────────────┘
+
+Click ↓ to toggle direction:
+
+Sort by NAME (descending ↓):
+┌────────────────────────────────────┐
+│ 📄 [QD] d_test.py          85% ⭐  │
+│ 📄 [HYB] c_component.tsx   95% ⭐  │
+│ 📄 [WV] b_utils.ts         88% ⭐  │
+│ 📄 [QD] a_config.json      92% ⭐  │
+└────────────────────────────────────┘
+
+Sort by SIZE (descending ↓):
+┌────────────────────────────────────┐
+│ 📄 [QD] big.db      1.2 GB  92% ⭐ │
+│ 📄 [WV] medium.json 450 MB  88% ⭐ │
+│ 📄 [HYB] small.ts   125 KB  95% ⭐ │
+│ 📄 [QD] tiny.txt    2 KB    85% ⭐ │
+└────────────────────────────────────┘
+
+Sort by DATE (descending ↓ - newest first):
+┌────────────────────────────────────┐
+│ 📄 [QD] file_today.ts  Today    92% │
+│ 📄 [WV] file_yest.py   Yest    88% │
+│ 📄 [HYB] file_week.ts  Wed     95% │
+│ 📄 [QD] file_month.py  Jan 15  85% │
+└────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                    EDGE CASE HANDLING                        │
+└─────────────────────────────────────────────────────────────┘
+
+Missing source field:
+┌────────────────────────────────────┐
+│ 📄 component.tsx       250 KB  92% │
+│    ^No badge (gracefully omitted)  │
+└────────────────────────────────────┘
+
+Unknown source "elasticsearch":
+┌────────────────────────────────────┐
+│ 📄 [ELA] component.tsx 250 KB  92% │
+│     ^Shows first 3 letters uppercase│
+└────────────────────────────────────┘
+
+Missing size/date:
+┌────────────────────────────────────┐
+│ 📄 [QD] component.tsx          92% │
+│         ^Size/date omitted if N/A  │
+└────────────────────────────────────┘
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                    TECHNICAL DETAILS                         │
+└─────────────────────────────────────────────────────────────┘
+
+Source Badge Logic:
+  result.source === 'qdrant'   → [QD]
+  result.source === 'weaviate' → [WV]
+  result.source === 'hybrid'   → [HYB]
+  result.source === 'other'    → [OTH]
+  result.source === undefined  → (no badge)
+
+Active Mode Badge Logic:
+  searchMode === 'hybrid'   → [HYB]
+  searchMode === 'semantic' → [SEM]
+  searchMode === 'keyword'  → [KEY]
+  searchMode === 'filename' → [FILE]
+
+Sort Options:
+  - Relevance (default descending)
+  - Name (A-Z or Z-A)
+  - Type (file/code/doc)
+  - Date (newest/oldest)
+  - Size (largest/smallest)
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                    CODE CHANGES SUMMARY                      │
+└─────────────────────────────────────────────────────────────┘
+
+UnifiedSearchBar.tsx:
+  + 17 lines: Active mode indicator badge
+  + 18 lines: Source badge display logic
+  - 4 lines: Removed TODO comments
+
+useSearch.ts:
+  ~ 2 lines: Updated comments for clarity
+
+Total impact: ~35 lines added, 0 breaking changes
+
+
+═══════════════════════════════════════════════════════════════
+END OF VISUAL COMPARISON | Phase 95 | Sonnet 4.5 | 2026-01-26
+═══════════════════════════════════════════════════════════════

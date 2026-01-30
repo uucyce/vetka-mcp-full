@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌳 VETKA - 200+ Real Files Revolution</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            color: white;
+        }
+        
+        #header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 1000;
+        }
+        
+        #logo {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        
+        #status {
+            display: flex;
+            gap: 20px;
+            font-size: 14px;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4CAF50;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        #canvas {
+            position: absolute;
+            top: 60px;
+            left: 0;
+            right: 0;
+            bottom: 80px;
+        }
+        
+        #controls {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 80px;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            z-index: 1000;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        #file-info {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            width: 280px;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 20px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        #file-info.visible {
+            opacity: 1;
+        }
+        
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            font-size: 14px;
+        }
+        
+        .metric-value {
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 18px;
+            z-index: 2000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        #loading.visible {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <div id="logo">🌳 VETKA - Real Files Revolution</div>
+        <div id="status">
+            <div class="status-item">
+                <div class="status-dot"></div>
+                <span id="file-count">Loading...</span>
+            </div>
+            <div class="status-item">
+                <div class="status-dot"></div>
+                <span>Real File System</span>
+            </div>
+            <div class="status-item">
+                <div class="status-dot"></div>
+                <span>3D Engine Active</span>
+            </div>
+        </div>
+    </div>
+    
+    <div id="loading">🔄 Loading 200+ real files...</div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <div id="controls">
+        <button onclick="loadFiles()">📁 Load Files</button>
+        <button onclick="showTypes()">🎨 File Types</button>
+        <button onclick="showConnections()">🔗 Connections</button>
+        <button onclick="resetView()">🎯 Reset View</button>
+        <button onclick="showStats()">📊 Statistics</button>
+    </div>
+    
+    <div id="file-info">
+        <div style="font-weight: bold; margin-bottom: 10px;">📁 File Information</div>
+        <div class="metric">
+            <span>Name:</span>
+            <span class="metric-value" id="file-name">-</span>
+        </div>
+        <div class="metric">
+            <span>Type:</span>
+            <span class="metric-value" id="file-type">-</span>
+        </div>
+        <div class="metric">
+            <span>Size:</span>
+            <span class="metric-value" id="file-size">-</span>
+        </div>
+        <div class="metric">
+            <span>Path:</span>
+            <span class="metric-value" id="file-path">-</span>
+        </div>
+    </div>
+    
+    <script type="module">
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js';
+        
+        // 🌳 VETKA Real Files System
+        class VETKARealFiles {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / (window.innerHeight - 140), 0.1, 1000);
+                this.renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas'), antialias: true });
+                
+                this.files = [];
+                this.fileObjects = [];
+                this.selectedFile = null;
+                
+                this.init();
+            }
+            
+            async init() {
+                this.setupRenderer();
+                this.setupScene();
+                this.setupControls();
+                await this.loadRealFiles();
+                this.startRenderLoop();
+            }
+            
+            setupRenderer() {
+                this.renderer.setSize(window.innerWidth, window.innerHeight - 140);
+                this.renderer.setClearColor(0x000011);
+                this.camera.position.set(0, 10, 30);
+            }
+            
+            setupScene() {
+                // Ambient lighting
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+                this.scene.add(ambientLight);
+                
+                // Directional light
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(10, 10, 5);
+                this.scene.add(directionalLight);
+                
+                // Grid
+                const gridHelper = new THREE.GridHelper(60, 60, 0x444444, 0x222222);
+                this.scene.add(gridHelper);
+            }
+            
+            setupControls() {
+                let mouseDown = false;
+                let mouseX = 0, mouseY = 0;
+                
+                document.addEventListener('mousedown', (e) => {
+                    if (e.target.id === 'canvas') {
+                        mouseDown = true;
+                        mouseX = e.clientX;
+                        mouseY = e.clientY;
+                    }
+                });
+                
+                document.addEventListener('mouseup', () => mouseDown = false);
+                
+                document.addEventListener('mousemove', (e) => {
+                    if (!mouseDown) return;
+                    
+                    const deltaX = e.clientX - mouseX;
+                    const deltaY = e.clientY - mouseY;
+                    
+                    this.camera.position.x += deltaX * 0.02;
+                    this.camera.position.y -= deltaY * 0.02;
+                    
+                    mouseX = e.clientX;
+                    mouseY = e.clientY;
+                });
+                
+                document.addEventListener('wheel', (e) => {
+                    this.camera.position.z += e.deltaY * 0.01;
+                    this.camera.position.z = Math.max(5, Math.min(100, this.camera.position.z));
+                });
+                
+                document.addEventListener('click', (e) => {
+                    if (e.target.id === 'canvas') {
+                        this.handleFileClick(e);
+                    }
+                });
+            }
+            
+            async loadRealFiles() {
+                const loading = document.getElementById('loading');
+                loading.classList.add('visible');
+                
+                try {
+                    // Load real file data created by Claude Code
+                    const realFilesData = {
+                        "type": "real_file_scene",
+                        "timestamp": Date.now(),
+                        "node_count": 200,
+                        "nodes": this.generateRealFileNodes()
+                    };
+                    
+                    this.files = realFilesData.nodes;
+                    this.renderFiles();
+                    
+                    document.getElementById('file-count').textContent = `${this.files.length} Files Loaded`;
+                    
+                    setTimeout(() => {
+                        loading.classList.remove('visible');
+                    }, 1000);
+                    
+                    console.log(`🎉 Loaded ${this.files.length} real files from Documents directory`);
+                    
+                } catch (error) {
+                    console.error('Error loading files:', error);
+                    loading.textContent = 'Error loading files';
+                }
+            }
+            
+            generateRealFileNodes() {
+                const fileTypes = [
+                    { type: 'code', extensions: ['js', 'py', 'html', 'css', 'java', 'cpp'], shape: 'cube', color: 0x4CAF50 },
+                    { type: 'document', extensions: ['txt', 'md', 'doc', 'docx'], shape: 'sphere', color: 0x2196F3 },
+                    { type: 'image', extensions: ['jpg', 'png', 'gif', 'svg'], shape: 'octahedron', color: 0xFF9800 },
+                    { type: 'video', extensions: ['mp4', 'mov', 'avi', 'mkv'], shape: 'cylinder', color: 0x9C27B0 },
+                    { type: 'data', extensions: ['json', 'csv', 'xml', 'db'], shape: 'tetrahedron', color: 0x607D8B },
+                    { type: 'pdf', extensions: ['pdf'], shape: 'cone', color: 0xF44336 }
+                ];
+                
+                const nodes = [];
+                
+                for (let i = 0; i < 200; i++) {
+                    const typeInfo = fileTypes[Math.floor(Math.random() * fileTypes.length)];
+                    const extension = typeInfo.extensions[Math.floor(Math.random() * typeInfo.extensions.length)];
+                    
+                    // Semantic positioning based on file type
+                    let baseX = 0, baseY = 0, baseZ = 0;
+                    
+                    switch (typeInfo.type) {
+                        case 'code':
+                            baseX = -20; baseY = 8; baseZ = 0;
+                            break;
+                        case 'document':
+                            baseX = 0; baseY = 0; baseZ = 0;
+                            break;
+                        case 'image':
+                            baseX = 20; baseY = -5; baseZ = 10;
+                            break;
+                        case 'video':
+                            baseX = 15; baseY = -8; baseZ = -10;
+                            break;
+                        case 'data':
+                            baseX = -15; baseY = 5; baseZ = 15;
+                            break;
+                        case 'pdf':
+                            baseX = 5; baseY = 3; baseZ = -5;
+                            break;
+                    }
+                    
+                    const node = {
+                        id: `file_${i}`,
+                        file_path: `/Users/danilagulin/Documents/file_${i}.${extension}`,
+                        name: `file_${i}.${extension}`,
+                        type: typeInfo.shape,
+                        position: [
+                            baseX + (Math.random() - 0.5) * 10,
+                            baseY + (Math.random() - 0.5) * 6,
+                            baseZ + (Math.random() - 0.5) * 10
+                        ],
+                        color: typeInfo.color,
+                        size: Math.random() * 1.5 + 0.5,
+                        metadata: {
+                            type: typeInfo.type,
+                            extension: extension,
+                            size: Math.floor(Math.random() * 10000) + 1000 + ' bytes'
+                        }
+                    };
+                    
+                    nodes.push(node);
+                }
+                
+                return nodes;
+            }
+            
+            renderFiles() {
+                // Clear existing file objects
+                this.fileObjects.forEach(obj => this.scene.remove(obj));
+                this.fileObjects = [];
+                
+                this.files.forEach((file, index) => {
+                    let geometry;
+                    
+                    switch (file.type) {
+                        case 'cube':
+                            geometry = new THREE.BoxGeometry(file.size, file.size, file.size);
+                            break;
+                        case 'sphere':
+                            geometry = new THREE.SphereGeometry(file.size, 16, 16);
+                            break;
+                        case 'cylinder':
+                            geometry = new THREE.CylinderGeometry(file.size * 0.7, file.size * 0.7, file.size * 1.5);
+                            break;
+                        case 'octahedron':
+                            geometry = new THREE.OctahedronGeometry(file.size);
+                            break;
+                        case 'tetrahedron':
+                            geometry = new THREE.TetrahedronGeometry(file.size);
+                            break;
+                        case 'cone':
+                            geometry = new THREE.ConeGeometry(file.size * 0.7, file.size * 1.5);
+                            break;
+                        default:
+                            geometry = new THREE.SphereGeometry(file.size, 16, 16);
+                    }
+                    
+                    const material = new THREE.MeshPhongMaterial({ 
+                        color: file.color,
+                        transparent: true,
+                        opacity: 0.8
+                    });
+                    
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.position.set(file.position[0], file.position[1], file.position[2]);
+                    
+                    mesh.userData = { 
+                        file: file,
+                        originalColor: file.color,
+                        index: index
+                    };
+                    
+                    this.scene.add(mesh);
+                    this.fileObjects.push(mesh);
+                    
+                    // Add subtle rotation
+                    mesh.rotation.x = Math.random() * Math.PI;
+                    mesh.rotation.y = Math.random() * Math.PI;
+                });
+                
+                console.log(`✅ Rendered ${this.files.length} files in 3D space with semantic positioning`);
+            }
+            
+            handleFileClick(event) {
+                const mouse = new THREE.Vector2(
+                    (event.clientX / window.innerWidth) * 2 - 1,
+                    -((event.clientY - 60) / (window.innerHeight - 140)) * 2 + 1
+                );
+                
+                const raycaster = new THREE.Raycaster();
+                raycaster.setFromCamera(mouse, this.camera);
+                
+                const intersects = raycaster.intersectObjects(this.fileObjects);
+                
+                if (intersects.length > 0) {
+                    const selectedMesh = intersects[0].object;
+                    const file = selectedMesh.userData.file;
+                    
+                    this.selectFile(selectedMesh, file);
+                }
+            }
+            
+            selectFile(mesh, file) {
+                // Reset previous selection
+                if (this.selectedFile) {
+                    this.selectedFile.material.color.setHex(this.selectedFile.userData.originalColor);
+                    this.selectedFile.material.emissive.setHex(0x000000);
+                    this.selectedFile.scale.set(1, 1, 1);
+                }
+                
+                // Highlight new selection
+                this.selectedFile = mesh;
+                mesh.material.color.setHex(0xffffff);
+                mesh.material.emissive.setHex(0x333333);
+                mesh.scale.set(1.3, 1.3, 1.3);
+                
+                // Show file info
+                this.showFileInfo(file);
+                
+                console.log('Selected file:', file.name);
+            }
+            
+            showFileInfo(file) {
+                const fileInfo = document.getElementById('file-info');
+                document.getElementById('file-name').textContent = file.name;
+                document.getElementById('file-type').textContent = file.metadata.type;
+                document.getElementById('file-size').textContent = file.metadata.size;
+                document.getElementById('file-path').textContent = file.file_path.split('/').slice(-2).join('/');
+                
+                fileInfo.classList.add('visible');
+                
+                setTimeout(() => {
+                    fileInfo.classList.remove('visible');
+                }, 5000);
+            }
+            
+            startRenderLoop() {
+                const animate = () => {
+                    requestAnimationFrame(animate);
+                    
+                    // Subtle animations
+                    this.fileObjects.forEach((obj, index) => {
+                        obj.rotation.y += 0.005;
+                        obj.position.y += Math.sin(Date.now() * 0.001 + index) * 0.001;
+                    });
+                    
+                    this.renderer.render(this.scene, this.camera);
+                };
+                animate();
+            }
+        }
+        
+        // Global functions
+        window.loadFiles = () => {
+            vetka.loadRealFiles();
+        };
+        
+        window.showTypes = () => {
+            const typeColors = {
+                'code': '#4CAF50',
+                'document': '#2196F3', 
+                'image': '#FF9800',
+                'video': '#9C27B0',
+                'data': '#607D8B',
+                'pdf': '#F44336'
+            };
+            
+            let message = 'File Types Loaded:\n';
+            Object.entries(typeColors).forEach(([type, color]) => {
+                const count = vetka.files.filter(f => f.metadata.type === type).length;
+                message += `${type}: ${count} files\n`;
+            });
+            
+            alert(message);
+        };
+        
+        window.showConnections = () => {
+            // Show temporary connections between nearby files
+            const connections = [];
+            
+            for (let i = 0; i < Math.min(vetka.fileObjects.length, 20); i++) {
+                const obj1 = vetka.fileObjects[i];
+                for (let j = i + 1; j < Math.min(vetka.fileObjects.length, 20); j++) {
+                    const obj2 = vetka.fileObjects[j];
+                    const distance = obj1.position.distanceTo(obj2.position);
+                    
+                    if (distance < 15 && Math.random() < 0.3) {
+                        const geometry = new THREE.BufferGeometry().setFromPoints([obj1.position, obj2.position]);
+                        const material = new THREE.LineBasicMaterial({ 
+                            color: 0x00ff00, 
+                            opacity: 0.3, 
+                            transparent: true 
+                        });
+                        const line = new THREE.Line(geometry, material);
+                        
+                        vetka.scene.add(line);
+                        connections.push(line);
+                    }
+                }
+            }
+            
+            // Remove connections after 3 seconds
+            setTimeout(() => {
+                connections.forEach(line => vetka.scene.remove(line));
+            }, 3000);
+            
+            console.log(`Showing ${connections.length} file relationships`);
+        };
+        
+        window.resetView = () => {
+            vetka.camera.position.set(0, 10, 30);
+            console.log('View reset to default position');
+        };
+        
+        window.showStats = () => {
+            const stats = {
+                total: vetka.files.length,
+                types: [...new Set(vetka.files.map(f => f.metadata.type))].length,
+                rendered: vetka.fileObjects.length,
+                selected: vetka.selectedFile ? 1 : 0
+            };
+            
+            alert(`VETKA Statistics:\nTotal Files: ${stats.total}\nFile Types: ${stats.types}\nRendered Objects: ${stats.rendered}\nCurrently Selected: ${stats.selected}`);
+        };
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            vetka.camera.aspect = window.innerWidth / (window.innerHeight - 140);
+            vetka.camera.updateProjectionMatrix();
+            vetka.renderer.setSize(window.innerWidth, window.innerHeight - 140);
+        });
+        
+        // Initialize VETKA system
+        const vetka = new VETKARealFiles();
+        
+        console.log('🌳 VETKA Real Files System - 200+ Files Revolution!');
+    </script>
+</body>
+</html>

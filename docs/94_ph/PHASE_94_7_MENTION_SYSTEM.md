@@ -1,0 +1,208 @@
+# Phase 94.7: @ Mention Popup System
+
+**Date:** 2026-01-26
+**Status:** RESEARCH COMPLETE
+
+---
+
+## 1. COMPONENT ARCHITECTURE
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| **MentionPopup** | `client/src/components/chat/MentionPopup.tsx` | Popup UI |
+| **MessageInput** | `client/src/components/chat/MessageInput.tsx` | @ detection |
+| **ChatPanel** | `client/src/components/chat/ChatPanel.tsx` | Data source |
+
+---
+
+## 2. @ DETECTION TRIGGER
+
+**File:** `MessageInput.tsx:300-312`
+
+```typescript
+// User types @ → useEffect detects
+const lastAtIndex = value.lastIndexOf('@');
+const textAfterAt = value.slice(lastAtIndex + 1);
+
+if (!textAfterAt.includes(' ') && textAfterAt.length < 50) {
+  setShowMentions(true);
+  setMentionFilter(textAfterAt.toLowerCase());
+}
+```
+
+---
+
+## 3. DATA SOURCES BY MODE
+
+### Group Mode (MentionPopup.tsx:119-221)
+**Source:** `currentGroupParticipants` from API
+
+```
+ChatPanel.tsx:381-411
+  ↓
+fetch /api/groups/{groupId}
+  ↓
+Extract participants[]
+  ↓
+Pass to MentionPopup
+```
+
+**Shows:**
+- Group participants (filtered by search)
+- Always includes "Hostess" if matches
+
+### Solo Mode (MentionPopup.tsx:54-115)
+**Source:** `soloModels` from chat history
+
+```
+ChatPanel.tsx:95-110
+  ↓
+useMemo extracts unique models from chatMessages
+  ↓
+Adds selectedModel if active
+  ↓
+Pass to MentionPopup
+```
+
+**Shows:**
+- Models used in current chat
+- Currently selected model
+- "No models" invitation if empty
+
+---
+
+## 4. SELECTION HANDLER
+
+**File:** `MessageInput.tsx:314-323`
+
+```typescript
+handleMentionSelect = (alias: string) => {
+  // alias = "@PM" or "@openai/gpt-4o"
+  const lastAtIndex = value.lastIndexOf('@');
+  const newValue = value.slice(0, lastAtIndex) + alias + ' ';
+  onChange(newValue);
+  setShowMentions(false);
+}
+```
+
+---
+
+## 5. FILTERING LOGIC
+
+### Group Filtering (MentionPopup.tsx:122-126)
+```typescript
+participants.filter(p =>
+  p.agent_id.toLowerCase().includes(filter) ||
+  p.display_name.toLowerCase().includes(filter)
+)
+```
+
+### Solo Filtering (MentionPopup.tsx:55-57)
+```typescript
+soloModels.filter(model =>
+  model.toLowerCase().includes(filter)
+)
+```
+
+---
+
+## 6. PARTICIPANT REFRESH
+
+**Triggers (ChatPanel.tsx:415-457):**
+- Initial load when `activeGroupId` changes
+- System message detected
+- "Added" keyword in message
+- "Use @" pattern detected
+
+```typescript
+// Phase 80.26-80.32
+if (msg.content.includes('Added') || msg.content.includes('Use @')) {
+  refetchGroupParticipants();
+}
+```
+
+---
+
+## 7. INTEGRATION MARKERS
+
+### MARKER_94.7_MENTION_DROPDOWN
+`client/src/components/chat/MentionPopup.tsx:54-222`
+
+### MARKER_94.7_AT_DETECTION
+`client/src/components/chat/MessageInput.tsx:300-312`
+
+### MARKER_94.7_PARTICIPANT_FETCH
+`client/src/components/chat/ChatPanel.tsx:381-411`
+
+### MARKER_94.7_SOLO_MODELS
+`client/src/components/chat/ChatPanel.tsx:95-110`
+
+---
+
+## 8. DATA FLOW DIAGRAM
+
+```
+┌─────────────────────────────────────────┐
+│           ChatPanel.tsx                  │
+├─────────────────────────────────────────┤
+│ soloModels ← chatMessages + selectedModel│
+│ groupParticipants ← /api/groups/:id      │
+│ activeGroupId ← group selection          │
+└─────────────────┬───────────────────────┘
+                  ↓
+┌─────────────────────────────────────────┐
+│         MessageInput.tsx                 │
+├─────────────────────────────────────────┤
+│ showMentions (state)                     │
+│ mentionFilter (state)                    │
+│ Detects @ typing                         │
+└─────────────────┬───────────────────────┘
+                  ↓
+┌─────────────────────────────────────────┐
+│         MentionPopup.tsx                 │
+├─────────────────────────────────────────┤
+│ filter: string                           │
+│ groupParticipants[] (group mode)         │
+│ soloModels[] (solo mode)                 │
+│ isGroupMode: boolean                     │
+│                                          │
+│ → Filters by search term                 │
+│ → Renders popup list                  │
+│ → onSelect callback                      │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## 9. DEPENDENCIES FOR MODEL DUPLICATION
+
+For Phase 94.4:
+
+1. **Solo mode** shows models from `soloModels[]` - need to add source info
+2. **Group mode** shows from `participants[].model_id` - same
+3. **Display format** could show "(Direct)" or "(OR)" suffix
+4. **Selection** passes full alias - routing happens on backend
+
+### Changes needed:
+- Add `source` field to model display
+- Update filtering to include source in search
+- Backend returns duplicated models with source markers
+
+---
+
+## 10. PHASE HISTORY
+
+| Phase | Feature |
+|-------|---------|
+| 57.8.3 | Group participant type |
+| 80.22 | Dynamic popup based on mode |
+| 80.26 | Refetch on member add |
+| 80.30 | Solo chat mode |
+| 80.31 | Full model ID matching |
+| 80.32 | Force refetch after add |
+| 80.33 | Empty solo invitation |
+
+---
+
+**Generated by:** Explore Agent
+**Phase:** 94.7

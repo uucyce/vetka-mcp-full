@@ -1,0 +1,147 @@
+## 🔥 СТРАТЕГИЧЕСКОЕ РЕШЕНИЕ: ОПЦИЯ C (ГИБРИД) + ФОКУС НА ДЕЙСТВИИ
+
+**Данила, ты абсолютно прав** — это Гордиев узел, и его нужно разрубить одним точным ударом. Но не "ядерным", а **хирургическим**.
+
+## 🎯 МОЯ РЕКОМЕНДАЦИЯ: **ФАЗА 72.1 - ТОЧЕЧНЫЙ УДАР**
+
+> **Сделать минимально необходимое для запуска DEP формулы, без переписывания всей системы**
+
+### 💡 КЛЮЧЕВОЙ ИНСАЙТ: 
+Вам **НЕ НУЖЕН** полноценный Multi-Input Scanner сейчас. Вам нужен **рабочий DEP механизм** на существующих данных.
+
+---
+
+## ⚡ ФАЗА 72.1: MINIMAL VIABLE DEP (4-6 часов)
+
+### 1. Быстрый Фикс Сканнера (30 минут)
+```python
+# src/scanners/local_scanner.py - добавить 5 строк
+def _extract_imports_quick(self, content: str, ext: str) -> List[str]:
+    """Быстрая регулярка для базовых imports"""
+    if ext == '.py':
+        return re.findall(r'^(?:import|from)\s+([\w\.]+)', content, re.MULTILINE)[:10]  # max 10
+    elif ext in ['.js', '.ts']:
+        return re.findall(r"(?:import|require).*?['\"]([^'\"]+)['\"]", content)[:10]
+    return []
+```
+
+### 2. Обновить Qdrant Payload (1 час)
+```python
+# Добавить в payload без изменения структуры
+payload = {
+    'imports': imports[:10],  # Ограничить для начала
+    'import_depth': 0,        # Будет вычислено позже
+    'temporal_score': 1.0     # Пока константа
+}
+```
+
+### 3. DEP Формула в Действии (2 часа)
+```python
+# src/layout/dep_calculator.py - новый файл
+def calculate_dep_score(source_node, target_node) -> float:
+    """Ваша формула DEP(A→B) = σ(...)"""
+    
+    # Берём данные из Qdrant
+    A_imports = source_node.get('imports', [])
+    B_imports = target_node.get('imports', [])
+    
+    # I(A,B) = B imports A?
+    I = 1.0 if source_node['path'] in B_imports else 0.0
+    
+    # S(A,B) = cosine similarity (уже есть в embeddings)
+    S = cosine_similarity(source_node['vector'], target_node['vector'])
+    
+    # ΔT = временная разница
+    A_time = source_node['timestamp']
+    B_time = target_node['timestamp']
+    delta_days = max(0, (B_time - A_time) / 86400)
+    E = 0.2 + 0.8 * math.exp(-delta_days/30)
+    
+    # Применяем формулу
+    raw_score = 0.4*I + 0.35*S*E + 0.2*0 + 0.05*1.0  # R и RRF пока константы
+    final_score = sigmoid(raw_score, center=0.35)
+    
+    return max(0.0, min(1.0, final_score))
+```
+
+### 4. Интеграция в Layout (2 часа)
+```python
+# В knowledge_layout.py - заменить edge calculation
+def build_prerequisite_edges_real(files_data):
+    """Новые рёбра на основе DEP формулы"""
+    edges = []
+    
+    for i, file_a in enumerate(files_data):
+        for j, file_b in enumerate(files_data):
+            if i == j: continue
+            
+            dep_score = calculate_dep_score(file_a, file_b)
+            
+            if dep_score > 0.6:  # threshold
+                edges.append(KnowledgeEdge(
+                    source=file_a['path'],      # Причина
+                    target=file_b['path'],      # Следствие
+                    weight=dep_score,
+                    type='import_dependency'
+                ))
+    
+    return edges
+```
+
+---
+
+## 🎯 ЧТО ПОЛУЧИТЕ ЧЕРЕЗ 6 ЧАСОВ
+
+✅ **Рабочая DEP формула** на реальных данных  
+✅ **Import extraction** для Python/JS (базовый)  
+✅ **Новые рёбра** в knowledge graph  
+✅ **Sugiyama layout** начнёт выстраиваться правильно  
+✅ **Никакого downtime** — всё инкрементально  
+
+---
+
+## 📊 ПОЧЕМУ ЭТО РАЗРУБИТ УЗЕЛ
+
+| Проблема | Решение 72.1 |
+|----------|--------------|
+| **Сканнер не парсит imports** | Быстрая регулярка (30 мин) |
+| **Нет dependency данных** | Добавляем в Qdrant payload |
+| **Edges из similarity** | DEP формула вместо similarity |
+| **Пересечения рёбер** | Real dependencies → cleaner DAG |
+| **Knowledge Level не работает** | Теперь = import depth (real) |
+
+---
+
+## 🚀 СЛЕДУЮЩИЙ ШАГ (после 72.1)
+
+**Фаза 72.2:** Multi-Input Scanners (когда будет время)  
+**Фаза 72.3:** Tree Physics (spring forces, collision)  
+**Фаза 72.4:** BMAD Integration (3D task nodes)
+
+---
+
+## ⚡ РЕШЕНИЕ: НАЧАТЬ СЕЙЧАС
+
+**Claude Code готов?** Да! У него уже есть:
+
+- ✅ Полный аудит (все места для изменений)
+- ✅ DEP формула (готова)
+- ✅ Примеры кода (в аудите)
+
+**Промпт для Claude Code:**
+```markdown
+# Phase 72.1: Minimal Viable DEP
+# Goal: Make DEP formula work in 6 hours
+# Strategy: Minimal changes, maximum impact
+
+1. Add import extraction to local_scanner.py (30 min)
+2. Update Qdrant payload with imports (1 hour)  
+3. Create dep_calculator.py with DEP formula (2 hours)
+4. Integrate DEP edges into knowledge_layout.py (2 hours)
+5. Test that new edges appear in layout
+
+NO full scanner rewrite, NO nuclear rescan, NO downtime.
+Just make the formula work with existing data.
+```
+
+**Данила, давай начнём!** Это разрубит Гордиев узел без риска и даст рабочую систему через 6 часов. 🎯

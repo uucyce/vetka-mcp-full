@@ -1,0 +1,319 @@
+/**
+ * MCP Console Styles
+ *
+ * @file mcp_console.css
+ * @status ACTIVE
+ * @phase Phase 80.41
+ * @created 2026-01-22
+ *
+ * Dark theme styles matching VETKA's existing design.
+ */
+
+/* Main Console Container */
+.mcp-console {
+    position: fixed;
+    top: 50px;
+    right: 20px;
+    width: 600px;
+    max-height: 80vh;
+    background: rgba(34, 34, 34, 0.98);
+    border: 1px solid #444;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    z-index: 2000;
+    backdrop-filter: blur(10px);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.mcp-console.hidden {
+    transform: translateX(650px);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Console Header */
+.mcp-console-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: rgba(0, 0, 0, 0.4);
+    border-bottom: 1px solid #444;
+    border-radius: 8px 8px 0 0;
+}
+
+.mcp-console-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mcp-console-header h3::before {
+    content: '🤖';
+}
+
+/* Console Controls */
+.mcp-console-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.mcp-btn {
+    background: rgba(74, 158, 255, 0.2);
+    border: 1px solid rgba(74, 158, 255, 0.4);
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+.mcp-btn:hover {
+    background: rgba(74, 158, 255, 0.4);
+    border-color: #4a9eff;
+}
+
+.mcp-btn:active {
+    transform: scale(0.95);
+}
+
+/* Stats Bar */
+.mcp-console-stats {
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid #333;
+    font-size: 11px;
+    color: #999;
+}
+
+.mcp-console-stats span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Log Container */
+.mcp-log-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    max-height: calc(80vh - 120px);
+}
+
+.mcp-log-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.mcp-log-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+.mcp-log-container::-webkit-scrollbar-thumb {
+    background: rgba(74, 158, 255, 0.3);
+    border-radius: 4px;
+}
+
+.mcp-log-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(74, 158, 255, 0.5);
+}
+
+/* Log Pair Container */
+.mcp-log-pair {
+    margin-bottom: 16px;
+    border: 1px solid #333;
+    border-radius: 6px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.mcp-log-pair:last-child {
+    margin-bottom: 0;
+}
+
+/* Request Section */
+.mcp-log-request {
+    border-bottom: 1px solid #333;
+}
+
+/* Response Section */
+.mcp-log-response {
+    /* No border needed */
+}
+
+/* Log Header */
+.mcp-log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.4);
+    border-bottom: 1px solid #333;
+    font-size: 11px;
+}
+
+.mcp-log-header.success {
+    background: rgba(76, 175, 80, 0.1);
+    border-bottom-color: rgba(76, 175, 80, 0.3);
+}
+
+.mcp-log-header.error {
+    background: rgba(244, 67, 54, 0.1);
+    border-bottom-color: rgba(244, 67, 54, 0.3);
+}
+
+.mcp-log-type {
+    font-weight: 600;
+    color: #4a9eff;
+    letter-spacing: 0.5px;
+}
+
+.mcp-log-time {
+    color: #999;
+    font-family: monospace;
+}
+
+.mcp-log-duration {
+    color: #4CAF50;
+    font-weight: 500;
+}
+
+.mcp-log-tokens {
+    color: #FF9800;
+    font-weight: 500;
+}
+
+/* Log Info */
+.mcp-log-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: #ccc;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.mcp-log-info strong {
+    color: #4a9eff;
+}
+
+/* Log Arguments/Results */
+.mcp-log-args,
+.mcp-log-result {
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.mcp-log-args pre,
+.mcp-log-result pre {
+    margin: 0;
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 11px;
+    color: #e0e0e0;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-x: auto;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.mcp-log-args pre::-webkit-scrollbar,
+.mcp-log-result pre::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.mcp-log-args pre::-webkit-scrollbar-track,
+.mcp-log-result pre::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.mcp-log-args pre::-webkit-scrollbar-thumb,
+.mcp-log-result pre::-webkit-scrollbar-thumb {
+    background: rgba(74, 158, 255, 0.3);
+    border-radius: 3px;
+}
+
+/* Error Display */
+.mcp-error {
+    color: #f44336;
+    font-size: 12px;
+    padding: 8px;
+    background: rgba(244, 67, 54, 0.1);
+    border: 1px solid rgba(244, 67, 54, 0.3);
+    border-radius: 4px;
+    font-family: monospace;
+}
+
+/* Toggle Button in Top Bar */
+#mcp-toggle-btn {
+    margin-right: 10px;
+    background: rgba(74, 158, 255, 0.2);
+    border: 1px solid rgba(74, 158, 255, 0.4);
+    color: #fff;
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+#mcp-toggle-btn:hover {
+    background: rgba(74, 158, 255, 0.4);
+    border-color: #4a9eff;
+}
+
+#mcp-toggle-btn.active {
+    background: #4a9eff;
+    border-color: #4a9eff;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .mcp-console {
+        width: 90vw;
+        right: 5vw;
+        max-height: 70vh;
+    }
+
+    .mcp-console.hidden {
+        transform: translateX(100vw);
+    }
+}
+
+/* Animation for new logs */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.mcp-log-pair {
+    animation: slideIn 0.3s ease;
+}
+
+/* Empty state */
+.mcp-log-container:empty::before {
+    content: 'No MCP logs yet...';
+    display: block;
+    text-align: center;
+    padding: 40px;
+    color: #666;
+    font-style: italic;
+}

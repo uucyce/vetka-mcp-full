@@ -1,0 +1,1214 @@
+/**
+ * UnifiedSearchBar - Real-time search bar with hybrid search (Qdrant + Weaviate + RRF).
+ * Supports multi-select, hover preview, sorting, and multiple search contexts.
+ * Nolan-style dark minimal design with SVG icons.
+ *
+ * @status active
+ * @phase 96
+ * @depends react, useSearch, useStore
+ * @used_by ChatSidebar
+ */
+
+import React, { useCallback, useRef, useEffect, useState } from 'react';
+import { useSearch } from '../../hooks/useSearch';
+import { useStore } from '../../store/useStore';
+import type { SearchResult } from '../../types/chat';
+
+interface Props {
+  /** Called when user clicks on a result */
+  onSelectResult?: (result: SearchResult) => void;
+  /** Called when user pins a result to context */
+  onPinResult?: (result: SearchResult) => void;
+  /** Called to open artifact view */
+  onOpenArtifact?: (result: SearchResult) => void;
+  /** Placeholder text */
+  placeholder?: string;
+  /** Default context prefix (e.g., "vetka/") */
+  contextPrefix?: string;
+  /** Compact mode for tight spaces */
+  compact?: boolean;
+}
+
+// Inline SVG icons (no external dependencies - Nolan style)
+const SearchIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="11" cy="11" r="8" />
+    <path d="m21 21-4.35-4.35" />
+  </svg>
+);
+
+const CloseIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M18 6 6 18M6 6l12 12" />
+  </svg>
+);
+
+const PinIcon = ({ filled }: { filled?: boolean }) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+    <path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
+  </svg>
+);
+
+// Chest icon for artifact view
+const ChestIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 10 L4 7 Q4 4 12 4 Q20 4 20 7 L20 10" />
+    <rect x="3" y="10" width="18" height="8" rx="1" />
+    <circle cx="12" cy="14" r="1.5" fill="currentColor" />
+  </svg>
+);
+
+const FileIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+  </svg>
+);
+
+const CodeIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="16 18 22 12 16 6" />
+    <polyline points="8 6 2 12 8 18" />
+  </svg>
+);
+
+const DocIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
+    <line x1="10" y1="9" x2="8" y2="9" />
+  </svg>
+);
+
+const LoadingSpinner = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="search-spinner">
+    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+  </svg>
+);
+
+// Sort icon
+const SortIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M3 6h18M6 12h12M9 18h6" />
+  </svg>
+);
+
+// Phase 68.3: SVG icons for search contexts
+// VETKA symbol: Y-shaped tree branch in circle - curved branches for organic look
+const VetkaIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 512 512" fill="none" stroke="currentColor" strokeLinecap="round">
+    {/* Outer circle */}
+    <circle cx="256" cy="256" r="180" strokeWidth="20" strokeOpacity="0.6" />
+    {/* Central vertical stem */}
+    <line x1="256" y1="120" x2="256" y2="380" strokeWidth="22" />
+    {/* Left branch (curved, V-like) */}
+    <path d="M256 260 C230 200, 190 160, 160 120" strokeWidth="20" fill="none" />
+    {/* Right branch (curved, V-like) */}
+    <path d="M256 260 C282 200, 322 160, 352 120" strokeWidth="20" fill="none" />
+  </svg>
+);
+
+const WebIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </svg>
+);
+
+const FolderIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+  </svg>
+);
+
+const CloudIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+  </svg>
+);
+
+const UsersIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
+
+const LocationIcon = () => (
+  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+  </svg>
+);
+
+function getTypeIcon(type: string) {
+  switch (type) {
+    case 'code':
+      return <CodeIcon />;
+    case 'doc':
+      return <DocIcon />;
+    default:
+      return <FileIcon />;
+  }
+}
+
+type SortMode = 'relevance' | 'name' | 'type' | 'date' | 'size';
+type SearchModeType = 'hybrid' | 'semantic' | 'keyword' | 'filename';
+
+// Phase 69.4: Format bytes helper (Finder-style)
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+// Phase 69.4: Format date helper (compact Finder-style)
+function formatDate(timestamp: number): string {
+  if (!timestamp || timestamp === 0) return '';
+  const date = new Date(timestamp * 1000);
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return date.toLocaleDateString('en-US', { weekday: 'short' });
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// Phase 68.2: Search mode labels
+const SEARCH_MODE_LABELS: Record<SearchModeType, string> = {
+  hybrid: 'Hybrid',
+  semantic: 'Semantic',
+  keyword: 'Keyword',
+  filename: 'Filename',
+};
+
+const SEARCH_MODE_DESCRIPTIONS: Record<SearchModeType, string> = {
+  hybrid: 'Combined semantic + keyword (RRF)',
+  semantic: 'Vector similarity (Qdrant)',
+  keyword: 'BM25 text match (Weaviate)',
+  filename: 'Search by file name',
+};
+
+// Phase 68.3: Search context paths
+type SearchContext = 'vetka' | 'web' | 'file' | 'cloud' | 'social';
+
+// SVG icon components for each context
+const CONTEXT_ICONS: Record<SearchContext, () => React.ReactElement> = {
+  vetka: VetkaIcon,
+  web: WebIcon,
+  file: FolderIcon,
+  cloud: CloudIcon,
+  social: UsersIcon,
+};
+
+const SEARCH_CONTEXTS: Array<{
+  id: SearchContext;
+  prefix: string;
+  label: string;
+  description: string;
+  available: boolean;
+}> = [
+  { id: 'vetka', prefix: 'vetka/', label: 'VETKA', description: 'Search in indexed codebase', available: true },
+  { id: 'web', prefix: 'web/', label: 'Web', description: 'Search the internet (requires API)', available: false },
+  { id: 'file', prefix: 'file/', label: 'Filesystem', description: 'Search local files', available: false },
+  { id: 'cloud', prefix: 'cloud/', label: 'Cloud', description: 'Search cloud storage', available: false },
+  { id: 'social', prefix: 'social/', label: 'Social', description: 'Search social networks', available: false },
+];
+
+export function UnifiedSearchBar({
+  onSelectResult,
+  onPinResult,
+  onOpenArtifact,
+  placeholder = 'Search...',
+  contextPrefix = 'vetka/',
+  compact = false
+}: Props) {
+  const {
+    query,
+    setQuery,
+    results,
+    isSearching,
+    error,
+    totalResults,
+    searchTime,
+    searchMode,
+    setSearchMode,
+    clearResults,
+    isConnected,
+    displayLimit,
+    loadMore,
+    hasMore
+  } = useSearch({ debounceMs: 300, defaultLimit: 100 }); // Fetch up to 100, paginate in UI
+
+  const inputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+
+  // Hover preview state
+  const [hoveredResult, setHoveredResult] = useState<SearchResult | null>(null);
+  const [previewPosition, setPreviewPosition] = useState<{ x: number; y: number } | null>(null);
+
+  // Sort state
+  const [sortMode, setSortMode] = useState<SortMode>('relevance');
+  const [sortAscending, setSortAscending] = useState(false); // false = descending (default)
+  const [showSortMenu, setShowSortMenu] = useState(false);
+
+  // Phase 68.3: Search context state
+  const [searchContext, setSearchContext] = useState<SearchContext>('vetka');
+  const [showContextMenu, setShowContextMenu] = useState(false);
+
+  // Phase 68.3: Selected file path display
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+
+  // Get pinned files from store to show visual state
+  const pinnedFileIds = useStore((s) => s.pinnedFileIds);
+  const nodes = useStore((s) => s.nodes);
+
+  // Check if a result is pinned
+  const isPinned = useCallback((result: SearchResult) => {
+    const nodeId = Object.keys(nodes).find(id => nodes[id]?.path === result.path);
+    return nodeId ? pinnedFileIds.includes(nodeId) : false;
+  }, [nodes, pinnedFileIds]);
+
+  // Sort results and apply display limit (pagination)
+  const sortedResults = React.useMemo(() => {
+    const sorted = [...results];
+    // Direction multiplier: 1 for ascending, -1 for descending
+    const dir = sortAscending ? 1 : -1;
+
+    switch (sortMode) {
+      case 'name':
+        sorted.sort((a, b) => dir * a.name.localeCompare(b.name));
+        break;
+      case 'type':
+        sorted.sort((a, b) => dir * a.type.localeCompare(b.type));
+        break;
+      case 'date':
+        // Sort by modification time
+        sorted.sort((a, b) => {
+          const timeA = (a as any).modified_time || (a as any).created_time || 0;
+          const timeB = (b as any).modified_time || (b as any).created_time || 0;
+          return dir * (timeB - timeA);
+        });
+        break;
+      case 'size':
+        // Sort by size
+        sorted.sort((a, b) => {
+          const sizeA = (a as any).size || 0;
+          const sizeB = (b as any).size || 0;
+          return dir * (sizeB - sizeA);
+        });
+        break;
+      case 'relevance':
+      default:
+        sorted.sort((a, b) => dir * (b.relevance - a.relevance));
+        break;
+    }
+    // Apply display limit for pagination
+    return sorted.slice(0, displayLimit);
+  }, [results, sortMode, sortAscending, displayLimit]);
+
+  // Handle result click with multi-select
+  const handleSelect = useCallback((result: SearchResult, index: number, e: React.MouseEvent) => {
+    if (e.shiftKey && lastSelectedIndex !== null) {
+      // Range select
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      const newSelected = new Set(selectedIds);
+      for (let i = start; i <= end; i++) {
+        newSelected.add(sortedResults[i].id);
+      }
+      setSelectedIds(newSelected);
+    } else if (e.ctrlKey || e.metaKey) {
+      // Toggle single selection
+      const newSelected = new Set(selectedIds);
+      if (newSelected.has(result.id)) {
+        newSelected.delete(result.id);
+      } else {
+        newSelected.add(result.id);
+      }
+      setSelectedIds(newSelected);
+      setLastSelectedIndex(index);
+    } else {
+      // Normal click - select only this one and trigger navigation
+      setSelectedIds(new Set([result.id]));
+      setLastSelectedIndex(index);
+      // Phase 68.3: Show selected file path
+      setSelectedFilePath(result.path);
+      onSelectResult?.(result);
+    }
+  }, [lastSelectedIndex, selectedIds, sortedResults, onSelectResult]);
+
+  // Handle pin click
+  const handlePin = useCallback((e: React.MouseEvent, result: SearchResult) => {
+    e.stopPropagation();
+    onPinResult?.(result);
+  }, [onPinResult]);
+
+  // Handle artifact click
+  const handleArtifact = useCallback((e: React.MouseEvent, result: SearchResult) => {
+    e.stopPropagation();
+    onOpenArtifact?.(result);
+  }, [onOpenArtifact]);
+
+  // Handle Enter key - pin selected or all results
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && sortedResults.length > 0 && onPinResult) {
+      e.preventDefault();
+      // Pin selected items, or all if none selected
+      const toPinIds = selectedIds.size > 0 ? selectedIds : new Set(sortedResults.map(r => r.id));
+      sortedResults
+        .filter(r => toPinIds.has(r.id))
+        .forEach(result => onPinResult(result));
+      // Clear after pinning
+      clearResults();
+      setSelectedIds(new Set());
+    }
+    if (e.key === 'Escape') {
+      clearResults();
+      setSelectedIds(new Set());
+      inputRef.current?.blur();
+    }
+  }, [sortedResults, onPinResult, clearResults, selectedIds]);
+
+  // Hover preview handlers
+  const handleMouseEnter = useCallback((result: SearchResult, e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    hoverTimerRef.current = setTimeout(() => {
+      setHoveredResult(result);
+      setPreviewPosition({ x: rect.right + 8, y: rect.top });
+    }, 300);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setHoveredResult(null);
+    setPreviewPosition(null);
+  }, []);
+
+  // Focus input on mount if not compact
+  useEffect(() => {
+    if (!compact) {
+      inputRef.current?.focus();
+    }
+  }, [compact]);
+
+  // Clear selection when results change
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setLastSelectedIndex(null);
+  }, [results]);
+
+  const [isFocused, setIsFocused] = useState(false);
+
+  // Styles (Nolan dark minimal - grayscale only)
+  const styles = {
+    container: {
+      padding: compact ? '6px 8px' : '8px 12px',
+      borderBottom: '1px solid #222',
+      background: '#0f0f0f',
+      position: 'relative' as const,
+      // Phase 69.4: Wider container - removed maxWidth constraint
+      width: '100%',
+      minWidth: '380px',
+    },
+    inputWrapper: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      background: '#1a1a1a',
+      borderRadius: '6px',
+      padding: compact ? '6px 10px' : '8px 12px',
+      borderWidth: '1px',
+      borderStyle: 'solid',
+      borderColor: '#333',
+      transition: 'border-color 0.15s',
+    },
+    inputWrapperFocused: {
+      borderColor: '#555',
+    },
+    contextPrefix: {
+      color: '#555',
+      fontSize: compact ? '12px' : '13px',
+      fontFamily: 'monospace',
+      userSelect: 'none' as const,
+    },
+    input: {
+      flex: 1,
+      background: 'transparent',
+      border: 'none',
+      outline: 'none',
+      color: '#fff',
+      fontSize: compact ? '13px' : '14px',
+      fontFamily: 'inherit',
+      minWidth: 0,
+    },
+    iconButton: {
+      background: 'none',
+      border: 'none',
+      color: '#555',
+      cursor: 'pointer',
+      padding: '4px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: '4px',
+      transition: 'color 0.15s, background 0.15s',
+    },
+    resultsContainer: {
+      marginTop: '8px',
+      maxHeight: compact ? '200px' : '350px',
+      overflowY: 'auto' as const,
+      background: '#1a1a1a',
+      borderRadius: '6px',
+      border: '1px solid #333',
+    },
+    resultItem: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: compact ? '6px 10px' : '8px 12px',
+      cursor: 'pointer',
+      borderBottom: '1px solid #222',
+      transition: 'background 0.15s',
+    },
+    resultItemSelected: {
+      background: '#252525',
+    },
+    resultLeft: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      flex: 1,
+      minWidth: 0,
+    },
+    resultTypeIcon: {
+      color: '#555',
+      flexShrink: 0,
+    },
+    resultInfo: {
+      flex: 1,
+      minWidth: 0,
+    },
+    resultName: {
+      color: '#fff',
+      fontSize: compact ? '12px' : '13px',
+      fontWeight: 500,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap' as const,
+    },
+    resultPath: {
+      color: '#555',
+      fontSize: compact ? '10px' : '11px',
+      marginTop: '2px',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap' as const,
+    },
+    resultRight: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      flexShrink: 0,
+    },
+    resultRelevance: {
+      color: '#666',
+      fontSize: '10px',
+      minWidth: '30px',
+      textAlign: 'right' as const,
+    },
+    sortButton: {
+      background: 'none',
+      border: '1px solid #333',
+      borderRadius: '3px',
+      padding: '2px 6px',
+      color: '#666',
+      fontSize: '10px',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px',
+    },
+    sortMenu: {
+      position: 'absolute' as const,
+      bottom: '100%',
+      right: '12px',
+      background: '#1a1a1a',
+      border: '1px solid #333',
+      borderRadius: '4px',
+      padding: '4px 0',
+      zIndex: 1000,
+    },
+    sortMenuItem: {
+      padding: '6px 12px',
+      fontSize: '11px',
+      color: '#888',
+      cursor: 'pointer',
+      transition: 'background 0.15s',
+    },
+    error: {
+      color: '#888',
+      fontSize: '12px',
+      padding: '8px 12px',
+      fontStyle: 'italic' as const,
+    },
+    disconnected: {
+      color: '#666',
+      fontSize: '11px',
+      textAlign: 'center' as const,
+      padding: '8px',
+    },
+    preview: {
+      position: 'fixed' as const,
+      background: '#1a1a1a',
+      border: '1px solid #333',
+      borderRadius: '6px',
+      padding: '12px',
+      maxWidth: '400px',
+      maxHeight: '300px',
+      overflow: 'auto',
+      zIndex: 2000,
+      boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+    },
+    previewTitle: {
+      color: '#fff',
+      fontSize: '13px',
+      fontWeight: 500,
+      marginBottom: '8px',
+      borderBottom: '1px solid #333',
+      paddingBottom: '8px',
+    },
+    previewContent: {
+      color: '#888',
+      fontSize: '12px',
+      fontFamily: 'monospace',
+      whiteSpace: 'pre-wrap' as const,
+      wordBreak: 'break-all' as const,
+    },
+    selectedCount: {
+      color: '#888',
+      fontSize: '10px',
+      padding: '2px 6px',
+      background: '#252525',
+      borderRadius: '3px',
+    },
+  };
+
+  // Phase 68.3: Get current context config
+  const currentContext = SEARCH_CONTEXTS.find(c => c.id === searchContext) || SEARCH_CONTEXTS[0];
+
+  return (
+    <div style={styles.container}>
+      {/* Search Input */}
+      <div style={{ ...styles.inputWrapper, ...(isFocused ? styles.inputWrapperFocused : {}), position: 'relative' }}>
+        <span style={{ color: isSearching ? '#888' : '#555' }}>
+          {isSearching ? <LoadingSpinner /> : <SearchIcon />}
+        </span>
+
+        {/* Phase 68.3: Clickable context prefix */}
+        <button
+          onClick={() => setShowContextMenu(!showContextMenu)}
+          style={{
+            ...styles.contextPrefix,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '2px 4px',
+            borderRadius: 3,
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#252525';
+            e.currentTarget.style.color = '#888';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = '#555';
+          }}
+          title="Change search context"
+        >
+          {currentContext.prefix}
+        </button>
+
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            // Show context menu when input becomes empty
+            if (e.target.value === '') {
+              setShowContextMenu(true);
+            } else {
+              setShowContextMenu(false);
+            }
+          }}
+          onKeyDown={handleKeyDown}
+          onFocus={() => {
+            setIsFocused(true);
+            // Show context menu when focused and empty
+            if (!query) {
+              setShowContextMenu(true);
+            }
+          }}
+          onBlur={() => {
+            setIsFocused(false);
+            // Delay hiding to allow click on menu
+            setTimeout(() => setShowContextMenu(false), 200);
+          }}
+          placeholder={placeholder}
+          style={styles.input}
+        />
+
+        {query && (
+          <button
+            onClick={clearResults}
+            style={{ ...styles.iconButton, color: '#888' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = '#888')}
+            title="Clear search"
+          >
+            <CloseIcon />
+          </button>
+        )}
+
+        {/* Phase 68.3: Context selector dropdown - vetka/ active, others need backend */}
+        {showContextMenu && !query && (
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            marginTop: 4,
+            background: '#1a1a1a',
+            border: '1px solid #333',
+            borderRadius: 6,
+            padding: '4px 0',
+            zIndex: 1000,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          }}>
+            {SEARCH_CONTEXTS.map(ctx => {
+              const IconComponent = CONTEXT_ICONS[ctx.id];
+              return (
+                <div
+                  key={ctx.id}
+                  onClick={() => {
+                    if (ctx.available) {
+                      setSearchContext(ctx.id);
+                      setShowContextMenu(false);
+                      inputRef.current?.focus();
+                    }
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '8px 12px',
+                    cursor: ctx.available ? 'pointer' : 'not-allowed',
+                    opacity: ctx.available ? 1 : 0.5,
+                    background: searchContext === ctx.id ? '#252525' : 'transparent',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (ctx.available) e.currentTarget.style.background = '#252525';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (ctx.available && searchContext !== ctx.id) e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  <span style={{ color: ctx.available ? '#888' : '#555', display: 'flex', alignItems: 'center' }}>
+                    <IconComponent />
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: ctx.available ? '#fff' : '#666', fontSize: 12, fontWeight: 500 }}>
+                      {ctx.prefix}
+                    </div>
+                    <div style={{ color: '#555', fontSize: 10 }}>
+                      {ctx.description}
+                      {!ctx.available && ' (coming soon)'}
+                    </div>
+                  </div>
+                  {searchContext === ctx.id && (
+                    <span style={{ color: '#888', fontSize: 12 }}>✓</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Phase 68.3: Selected file path breadcrumb */}
+      {selectedFilePath && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          marginTop: 4,
+          padding: '4px 8px',
+          background: '#1a1a1a',
+          borderRadius: 4,
+          fontSize: 10,
+          color: '#666',
+          overflow: 'hidden',
+        }}>
+          <span style={{ color: '#555', display: 'flex', alignItems: 'center' }}><LocationIcon /></span>
+          <span style={{
+            flex: 1,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontFamily: 'monospace',
+          }} title={selectedFilePath}>
+            {currentContext.prefix}{selectedFilePath}
+          </span>
+          <button
+            onClick={() => setSelectedFilePath(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#555',
+              cursor: 'pointer',
+              padding: 2,
+              fontSize: 10,
+              lineHeight: 1,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = '#555')}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Connection status */}
+      {!isConnected && (
+        <div style={styles.disconnected}>Connecting to server...</div>
+      )}
+
+      {/* Error */}
+      {error && <div style={styles.error}>{error}</div>}
+
+      {/* Phase 68.3: Search mode + sort controls - single row, no wrap */}
+      {query && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          marginTop: '6px',
+          position: 'relative',
+        }}>
+          {/* Phase 95: Active mode indicator badge */}
+          <span style={{
+            fontSize: '9px',
+            color: '#fff',
+            background: '#444',
+            padding: '3px 6px',
+            borderRadius: '3px',
+            fontWeight: 600,
+            letterSpacing: '0.5px',
+            flexShrink: 0,
+          }} title={`Active mode: ${SEARCH_MODE_LABELS[searchMode]}`}>
+            {searchMode === 'hybrid' && 'HYB'}
+            {searchMode === 'semantic' && 'SEM'}
+            {searchMode === 'keyword' && 'KEY'}
+            {searchMode === 'filename' && 'FILE'}
+          </span>
+
+          {/* Mode buttons - ultra compact with abbreviations */}
+          {(['hybrid', 'semantic', 'keyword', 'filename'] as SearchModeType[]).map((mode) => {
+            // Short labels for compact display
+            const shortLabels: Record<SearchModeType, string> = {
+              hybrid: 'HYB',
+              semantic: 'SEM',
+              keyword: 'KEY',
+              filename: 'FILE',
+            };
+            return (
+              <button
+                key={mode}
+                onClick={() => setSearchMode(mode)}
+                title={`${SEARCH_MODE_LABELS[mode]}: ${SEARCH_MODE_DESCRIPTIONS[mode]}`}
+                style={{
+                  padding: '2px 5px',
+                  fontSize: '9px',
+                  fontWeight: searchMode === mode ? 600 : 400,
+                  color: searchMode === mode ? '#fff' : '#555',
+                  background: searchMode === mode ? '#333' : 'transparent',
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  borderColor: searchMode === mode ? '#444' : '#2a2a2a',
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  letterSpacing: '0.5px',
+                }}
+                onMouseEnter={(e) => {
+                  if (searchMode !== mode) {
+                    e.currentTarget.style.background = '#222';
+                    e.currentTarget.style.borderColor = '#333';
+                    e.currentTarget.style.color = '#888';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (searchMode !== mode) {
+                    e.currentTarget.style.background = 'transparent';
+                    e.currentTarget.style.borderColor = '#2a2a2a';
+                    e.currentTarget.style.color = '#555';
+                  }
+                }}
+              >
+                {shortLabels[mode]}
+              </button>
+            );
+          })}
+
+          {/* Separator */}
+          <span style={{ color: '#333', margin: '0 2px' }}>|</span>
+
+          {/* Stats - compact */}
+          <span style={{ fontSize: '10px', color: '#555', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {isSearching ? '...' : `${totalResults}`}
+          </span>
+
+          {searchTime > 0 && (
+            <span style={{ fontSize: '9px', color: '#444', whiteSpace: 'nowrap', flexShrink: 0 }}>{searchTime}ms</span>
+          )}
+
+          {selectedIds.size > 0 && (
+            <span style={{ ...styles.selectedCount, flexShrink: 0 }}>{selectedIds.size}sel</span>
+          )}
+
+          {/* Phase 95: Sort direction toggle - Finder style (before sort dropdown) */}
+          <button
+            onClick={() => setSortAscending(!sortAscending)}
+            title={sortAscending ? 'Ascending (smallest/oldest first)' : 'Descending (largest/newest first)'}
+            style={{
+              background: 'transparent',
+              border: '1px solid #333',
+              borderRadius: '4px',
+              padding: '4px 6px',
+              color: '#666',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transition: 'all 0.15s',
+              minWidth: '24px',
+              minHeight: '22px',
+              fontSize: '12px',
+              flexShrink: 0,
+              marginLeft: 'auto',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#333';
+              e.currentTarget.style.color = '#fff';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#666';
+            }}
+          >
+            {sortAscending ? '↑' : '↓'}
+          </button>
+
+          {/* Phase 95: Sort dropdown - icon only (at edge) - handlers implemented */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <button
+              style={{
+                background: showSortMenu ? '#333' : 'transparent',
+                border: '1px solid #333',
+                borderRadius: '4px',
+                padding: '4px 6px',
+                color: showSortMenu ? '#fff' : '#666',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.15s',
+                minWidth: '28px',
+                minHeight: '22px',
+              }}
+              onClick={() => setShowSortMenu(!showSortMenu)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#333';
+                e.currentTarget.style.color = '#fff';
+              }}
+              onMouseLeave={(e) => {
+                if (!showSortMenu) {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = '#666';
+                }
+              }}
+              title={`Sort by: ${sortMode}`}
+            >
+              <SortIcon />
+            </button>
+
+            {showSortMenu && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: '4px',
+                background: '#1a1a1a',
+                border: '1px solid #444',
+                borderRadius: '4px',
+                padding: '4px 0',
+                zIndex: 9999,
+                minWidth: '110px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+              }}>
+                {(['relevance', 'name', 'type', 'date', 'size'] as SortMode[]).map(mode => (
+                  <div
+                    key={mode}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '11px',
+                      color: sortMode === mode ? '#fff' : '#888',
+                      background: sortMode === mode ? '#252525' : 'transparent',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s',
+                    }}
+                    onClick={() => {
+                      setSortMode(mode);
+                      setShowSortMenu(false);
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#252525')}
+                    onMouseLeave={(e) => {
+                      if (sortMode !== mode) e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TODO_CAM_UI: Add CAM suggestions panel here (backend: /api/cam/suggestions)
+          Display contextually relevant files based on CAM activation levels.
+          Should show hot/warm/cold memory nodes alongside search results.
+          Integration: GET /api/cam/suggestions?context={searchContext}&limit=5
+          Display as separate section above results with "From Context Memory" header. */}
+
+      {/* Results */}
+      {sortedResults.length > 0 && (
+        <div ref={resultsRef} style={styles.resultsContainer}>
+          {sortedResults.map((result, index) => {
+            const isSelected = selectedIds.has(result.id);
+            const pinned = isPinned(result);
+
+            return (
+              <div
+                key={result.id}
+                style={{
+                  ...styles.resultItem,
+                  ...(isSelected ? styles.resultItemSelected : {}),
+                  background: isSelected ? '#252525' : 'transparent',
+                }}
+                onClick={(e) => handleSelect(result, index, e)}
+                onMouseEnter={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = '#1f1f1f';
+                  handleMouseEnter(result, e);
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) e.currentTarget.style.background = 'transparent';
+                  handleMouseLeave();
+                }}
+              >
+                <div style={styles.resultLeft}>
+                  <span style={styles.resultTypeIcon}>{getTypeIcon(result.type)}</span>
+                  <div style={styles.resultInfo}>
+                    <div style={styles.resultName}>{result.name}</div>
+                    <div style={styles.resultPath}>{result.path}</div>
+                  </div>
+                </div>
+
+                <div style={styles.resultRight}>
+                  {/* Phase 95: Source badge display */}
+                  {result.source && (
+                    <span style={{
+                      fontSize: '8px',
+                      color: '#888',
+                      background: '#252525',
+                      padding: '2px 4px',
+                      borderRadius: '2px',
+                      fontWeight: 600,
+                      letterSpacing: '0.5px',
+                      marginRight: '4px',
+                    }}>
+                      {result.source === 'qdrant' && 'QD'}
+                      {result.source === 'qdrant_filename' && 'QDF'}
+                      {result.source === 'weaviate' && 'WV'}
+                      {result.source === 'hybrid' && 'HYB'}
+                      {!['qdrant', 'qdrant_filename', 'weaviate', 'hybrid'].includes(result.source) && result.source?.toUpperCase().slice(0, 3)}
+                    </span>
+                  )}
+
+                  {/* Phase 69.4: Always show size + date (Finder-style) */}
+                  <span style={{ color: '#666', fontSize: '10px', minWidth: '55px', textAlign: 'right' as const }}>
+                    {formatBytes(result.size || 0)}
+                  </span>
+                  <span style={{ color: '#666', fontSize: '10px', minWidth: '60px', textAlign: 'right' as const }}>
+                    {formatDate(result.modified_time || 0)}
+                  </span>
+
+                  {/* Show relevance % or type based on sort mode */}
+                  {(sortMode === 'relevance' || sortMode === 'name') && (
+                    <span style={styles.resultRelevance}>
+                      {Math.round(result.relevance * 100)}%
+                    </span>
+                  )}
+                  {sortMode === 'type' && (
+                    <span style={{ ...styles.resultRelevance, fontFamily: 'monospace', minWidth: '40px' }}>
+                      .{result.name.split('.').pop() || '?'}
+                    </span>
+                  )}
+
+                  {/* Artifact button */}
+                  {onOpenArtifact && (
+                    <button
+                      onClick={(e) => handleArtifact(e, result)}
+                      style={{ ...styles.iconButton, color: '#444' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.color = '#888')}
+                      onMouseLeave={(e) => (e.currentTarget.style.color = '#444')}
+                      title="View content"
+                    >
+                      <ChestIcon />
+                    </button>
+                  )}
+
+                  {/* Pin button with filled state */}
+                  <button
+                    onClick={(e) => handlePin(e, result)}
+                    style={{
+                      ...styles.iconButton,
+                      color: pinned ? '#fff' : '#555',
+                      background: pinned ? '#333' : 'transparent',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!pinned) e.currentTarget.style.color = '#fff';
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!pinned) e.currentTarget.style.color = '#555';
+                    }}
+                    title={pinned ? 'Unpin from context' : 'Pin to context'}
+                  >
+                    <PinIcon filled={pinned} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+        </div>
+      )}
+
+      {/* Load more button */}
+      {hasMore && sortedResults.length > 0 && (
+        <button
+          onClick={loadMore}
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            marginTop: '4px',
+            background: '#1a1a1a',
+            border: '1px solid #333',
+            borderRadius: '4px',
+            color: '#888',
+            fontSize: '12px',
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#252525';
+            e.currentTarget.style.color = '#fff';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = '#1a1a1a';
+            e.currentTarget.style.color = '#888';
+          }}
+        >
+          Load more ({results.length - displayLimit} remaining)
+        </button>
+      )}
+
+      {/* No results message */}
+      {query && !isSearching && sortedResults.length === 0 && !error && (
+        <div style={styles.error}>No results found</div>
+      )}
+
+      {/* Phase 68.3: Enhanced hover preview with metadata */}
+      {hoveredResult && previewPosition && (
+        <div
+          style={{
+            ...styles.preview,
+            left: Math.min(previewPosition.x, window.innerWidth - 420),
+            top: Math.min(previewPosition.y, window.innerHeight - 320),
+          }}
+        >
+          <div style={styles.previewTitle}>{hoveredResult.name}</div>
+
+          {/* Metadata row */}
+          <div style={{
+            display: 'flex',
+            gap: 12,
+            fontSize: 10,
+            color: '#666',
+            marginBottom: 8,
+            paddingBottom: 8,
+            borderBottom: '1px solid #333',
+          }}>
+            <span>Type: <b style={{ color: '#888' }}>{hoveredResult.type}</b></span>
+            <span>Ext: <b style={{ color: '#888' }}>.{hoveredResult.name.split('.').pop() || '?'}</b></span>
+            <span>Score: <b style={{ color: '#888' }}>{Math.round(hoveredResult.relevance * 100)}%</b></span>
+            {hoveredResult.modified_time ? (
+              <span>Modified: <b style={{ color: '#888' }}>{new Date(hoveredResult.modified_time * 1000).toLocaleDateString('ru-RU')}</b></span>
+            ) : null}
+          </div>
+
+          {/* Path */}
+          <div style={{ fontSize: 10, color: '#555', marginBottom: 8, wordBreak: 'break-all' }}>
+            {hoveredResult.path}
+          </div>
+
+          {/* Preview content */}
+          <div style={styles.previewContent}>
+            {hoveredResult.preview || 'No preview available'}
+          </div>
+        </div>
+      )}
+
+      {/* CSS for spinner animation */}
+      <style>{`
+        .search-spinner {
+          animation: search-spin 1s linear infinite;
+        }
+        @keyframes search-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+export default UnifiedSearchBar;

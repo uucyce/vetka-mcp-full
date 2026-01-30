@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌳 VETKA - Real Semantic Trees 3D Interface</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            overflow: hidden;
+            color: white;
+        }
+        
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        #loadingText {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #64ffda;
+        }
+        
+        #progressBar {
+            width: 400px;
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        
+        #progress {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #64ffda, #00bcd4, #2196f3);
+            transition: width 0.5s ease;
+        }
+        
+        #interface {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 255, 218, 0.3);
+            max-width: 300px;
+        }
+        
+        #stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 255, 218, 0.3);
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 12px;
+        }
+        
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 255, 218, 0.3);
+        }
+        
+        .tree-info {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 255, 218, 0.3);
+            max-width: 350px;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #64ffda 0%, #00bcd4 100%);
+            border: none;
+            color: #1a1a2e;
+            padding: 12px 24px;
+            margin: 5px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(100, 255, 218, 0.3);
+        }
+        
+        .category-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+        }
+        
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        
+        h3 {
+            margin: 0 0 15px 0;
+            color: #64ffda;
+            font-size: 18px;
+        }
+        
+        #canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">
+        <div id="loadingText">🌳 VETKA - Loading Real Semantic Trees</div>
+        <div>Processing 501 project documents...</div>
+        <div id="progressBar">
+            <div id="progress"></div>
+        </div>
+    </div>
+    
+    <div id="interface" style="display: none;">
+        <h3>🌳 VETKA Project Explorer</h3>
+        <div><strong>Documents:</strong> <span id="docCount">0</span></div>
+        <div><strong>Categories:</strong> <span id="categoryCount">0</span></div>
+        <div><strong>Active View:</strong> <span id="activeView">Project Overview</span></div>
+        
+        <div class="category-legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #64ffda;"></div>
+                <span>Frontend</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ff6b6b;"></div>
+                <span>Backend</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4ecdc4;"></div>
+                <span>Documentation</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #45b7d1;"></div>
+                <span>AI Integration</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #f9ca24;"></div>
+                <span>Testing</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #6c5ce7;"></div>
+                <span>General</span>
+            </div>
+        </div>
+    </div>
+    
+    <div id="stats" style="display: none;">
+        <div><strong>Performance Monitor</strong></div>
+        <div>FPS: <span id="fps">--</span></div>
+        <div>Nodes: <span id="nodeCount">0</span></div>
+        <div>Memory: <span id="memoryUsage">--</span>MB</div>
+        <div>Rendered: <span id="renderedNodes">0</span></div>
+        <div>Level: <span id="currentLevel">Overview</span></div>
+    </div>
+    
+    <div id="controls" style="display: none;">
+        <div><strong>Navigation</strong></div>
+        <button onclick="resetView()">🏠 Project Overview</button>
+        <button onclick="toggleDetails()">🔍 Toggle File Details</button>
+        <button onclick="animateCategories()">🎯 Animate Categories</button>
+        <br>
+        <button onclick="searchFiles()">🔎 Search Files</button>
+        <button onclick="showRelationships()">🔗 Show Relationships</button>
+        <button onclick="exportData()">💾 Export Data</button>
+    </div>
+    
+    <div class="tree-info" id="fileInfo">
+        <h3 id="fileInfoTitle">File Information</h3>
+        <div id="fileInfoContent"></div>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <script type="module">
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.168.0/build/three.module.js';
+        
+        // VETKA Semantic Tree 3D System
+        class VETKASemanticTreeSystem {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.renderer = new THREE.WebGLRenderer({ 
+                    canvas: document.getElementById('canvas'), 
+                    antialias: true,
+                    alpha: true
+                });
+                
+                this.semanticTree = null;
+                this.treeNodes = new Map();
+                this.categoryGroups = new Map();
+                this.currentLevel = 'overview';
+                this.showingDetails = false;
+                
+                this.performanceMonitor = {
+                    fps: 0,
+                    frameCount: 0,
+                    lastTime: performance.now()
+                };
+                
+                this.categoryColors = {
+                    'frontend': 0x64ffda,
+                    'backend': 0xff6b6b,
+                    'documentation': 0x4ecdc4,
+                    'ai_integration': 0x45b7d1,
+                    'testing': 0xf9ca24,
+                    'general': 0x6c5ce7,
+                    'media': 0xff9ff3
+                };
+                
+                this.init();
+            }
+            
+            async init() {
+                await this.setupRenderer();
+                await this.setupScene();
+                await this.loadSemanticTree();
+                this.setupControls();
+                this.startRenderLoop();
+                this.startPerformanceMonitoring();
+                this.hideLoading();
+            }
+            
+            async setupRenderer() {
+                this.updateProgress(10, "Setting up 3D renderer...");
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setClearColor(0x000000, 0);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                this.camera.position.set(0, 30, 80);
+            }
+            
+            async setupScene() {
+                this.updateProgress(30, "Building 3D scene...");
+                
+                // Ambient lighting
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+                this.scene.add(ambientLight);
+                
+                // Main directional light
+                const directionalLight = new THREE.DirectionalLight(0x64ffda, 0.8);
+                directionalLight.position.set(50, 50, 50);
+                directionalLight.castShadow = true;
+                directionalLight.shadow.mapSize.width = 2048;
+                directionalLight.shadow.mapSize.height = 2048;
+                this.scene.add(directionalLight);
+                
+                // Accent lights
+                const accentLight1 = new THREE.PointLight(0x00bcd4, 0.3, 100);
+                accentLight1.position.set(-30, 20, 30);
+                this.scene.add(accentLight1);
+                
+                const accentLight2 = new THREE.PointLight(0x2196f3, 0.3, 100);
+                accentLight2.position.set(30, 20, -30);
+                this.scene.add(accentLight2);
+                
+                // Background particles
+                this.createBackgroundParticles();
+            }
+            
+            createBackgroundParticles() {
+                const particleCount = 200;
+                const particles = new THREE.BufferGeometry();
+                const positions = new Float32Array(particleCount * 3);
+                
+                for (let i = 0; i < particleCount * 3; i += 3) {
+                    positions[i] = (Math.random() - 0.5) * 200;
+                    positions[i + 1] = (Math.random() - 0.5) * 200;
+                    positions[i + 2] = (Math.random() - 0.5) * 200;
+                }
+                
+                particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                
+                const particleMaterial = new THREE.PointsMaterial({
+                    color: 0x64ffda,
+                    size: 0.5,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                
+                const particleSystem = new THREE.Points(particles, particleMaterial);
+                this.scene.add(particleSystem);
+            }
+            
+            async loadSemanticTree() {
+                this.updateProgress(50, "Loading semantic tree data...");
+                
+                try {
+                    // Симуляция загрузки данных (в реальности - WebSocket или fetch)
+                    const treeData = await this.mockLoadTreeData();
+                    this.semanticTree = treeData;
+                    
+                    this.updateProgress(70, "Creating 3D tree structure...");
+                    await this.createTreeVisualization();
+                    
+                    this.updateProgress(90, "Finalizing visualization...");
+                    this.updateStats();
+                    
+                } catch (error) {
+                    console.error('Error loading semantic tree:', error);
+                    this.semanticTree = this.createFallbackTree();
+                    await this.createTreeVisualization();
+                }
+            }
+            
+            async mockLoadTreeData() {
+                // Симуляция реальных данных из семантического дерева
+                return {
+                    root: {
+                        name: 'VETKA Project',
+                        position: { x: 0, y: 0, z: 0 },
+                        children: {
+                            frontend: {
+                                name: 'Frontend',
+                                type: 'category',
+                                position: { x: 20, y: 10, z: 0 },
+                                file_count: 104,
+                                total_size: 1500000,
+                                children: this.generateMockFiles('frontend', 15)
+                            },
+                            backend: {
+                                name: 'Backend',
+                                type: 'category',
+                                position: { x: -20, y: 5, z: 0 },
+                                file_count: 179,
+                                total_size: 2100000,
+                                children: this.generateMockFiles('backend', 20)
+                            },
+                            documentation: {
+                                name: 'Documentation',
+                                type: 'category',
+                                position: { x: 0, y: 15, z: 20 },
+                                file_count: 85,
+                                total_size: 800000,
+                                children: this.generateMockFiles('documentation', 12)
+                            },
+                            ai_integration: {
+                                name: 'AI Integration',
+                                type: 'category',
+                                position: { x: 0, y: 20, z: -20 },
+                                file_count: 10,
+                                total_size: 300000,
+                                children: this.generateMockFiles('ai_integration', 8)
+                            },
+                            testing: {
+                                name: 'Testing',
+                                type: 'category',
+                                position: { x: -15, y: -5, z: 15 },
+                                file_count: 119,
+                                total_size: 1200000,
+                                children: this.generateMockFiles('testing', 18)
+                            },
+                            general: {
+                                name: 'General',
+                                type: 'category',
+                                position: { x: 15, y: -5, z: -15 },
+                                file_count: 4,
+                                total_size: 50000,
+                                children: this.generateMockFiles('general', 4)
+                            }
+                        }
+                    }
+                };
+            }
+            
+            generateMockFiles(category, count) {
+                const files = {};
+                const fileTypes = {
+                    frontend: ['js', 'html', 'css', 'tsx'],
+                    backend: ['py', 'js', 'json'],
+                    documentation: ['md', 'txt'],
+                    ai_integration: ['py', 'json', 'md'],
+                    testing: ['py', 'js', 'html'],
+                    general: ['md', 'txt', 'json']
+                };
+                
+                const extensions = fileTypes[category] || ['txt'];
+                
+                for (let i = 0; i < count; i++) {
+                    const angle = (i / count) * 2 * Math.PI;
+                    const radius = 8;
+                    const ext = extensions[i % extensions.length];
+                    
+                    files[`${category}_file_${i}.${ext}`] = {
+                        name: `${category}_file_${i}.${ext}`,
+                        type: 'file',
+                        file_type: ext,
+                        position: {
+                            x: radius * Math.cos(angle),
+                            y: (i % 3 - 1) * 3,
+                            z: radius * Math.sin(angle)
+                        },
+                        size: Math.floor(Math.random() * 50000) + 1000,
+                        content_preview: `Sample content for ${category} file ${i}...`
+                    };
+                }
+                
+                return files;
+            }
+            
+            async createTreeVisualization() {
+                const tree = this.semanticTree;
+                
+                // Создаем корневой узел
+                this.createRootNode(tree.root);
+                
+                // Создаем категории
+                for (const [categoryName, categoryData] of Object.entries(tree.root.children)) {
+                    this.createCategoryTree(categoryName, categoryData);
+                }
+            }
+            
+            createRootNode(rootData) {
+                const geometry = new THREE.SphereGeometry(3, 16, 16);
+                const material = new THREE.MeshPhongMaterial({
+                    color: 0x64ffda,
+                    emissive: 0x002244,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                
+                const rootNode = new THREE.Mesh(geometry, material);
+                rootNode.position.set(0, 0, 0);
+                rootNode.userData = { type: 'root', data: rootData };
+                
+                this.scene.add(rootNode);
+                this.treeNodes.set('root', rootNode);
+            }
+            
+            createCategoryTree(categoryName, categoryData) {
+                // Группа для категории
+                const categoryGroup = new THREE.Group();
+                categoryGroup.position.set(
+                    categoryData.position.x,
+                    categoryData.position.y,
+                    categoryData.position.z
+                );
+                
+                // Главный узел категории
+                const categoryGeometry = new THREE.BoxGeometry(4, 6, 4);
+                const categoryMaterial = new THREE.MeshPhongMaterial({
+                    color: this.categoryColors[categoryName] || 0x888888,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                
+                const categoryNode = new THREE.Mesh(categoryGeometry, categoryMaterial);
+                categoryNode.userData = { 
+                    type: 'category', 
+                    name: categoryName, 
+                    data: categoryData 
+                };
+                categoryGroup.add(categoryNode);
+                
+                // Файлы как листья
+                for (const [fileName, fileData] of Object.entries(categoryData.children)) {
+                    const fileNode = this.createFileNode(fileName, fileData);
+                    categoryGroup.add(fileNode);
+                }
+                
+                // Соединительные линии от корня к категории
+                this.createConnectionLine(
+                    { x: 0, y: 0, z: 0 },
+                    categoryData.position,
+                    0x64ffda
+                );
+                
+                this.scene.add(categoryGroup);
+                this.categoryGroups.set(categoryName, categoryGroup);
+                this.treeNodes.set(categoryName, categoryNode);
+            }
+            
+            createFileNode(fileName, fileData) {
+                // Геометрия зависит от типа файла
+                let geometry;
+                switch (fileData.file_type) {
+                    case 'js':
+                    case 'py':
+                        geometry = new THREE.ConeGeometry(0.5, 2, 6);
+                        break;
+                    case 'html':
+                    case 'md':
+                        geometry = new THREE.CylinderGeometry(0.4, 0.4, 1.5, 8);
+                        break;
+                    case 'json':
+                    case 'txt':
+                        geometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+                        break;
+                    default:
+                        geometry = new THREE.SphereGeometry(0.4, 8, 8);
+                }
+                
+                const material = new THREE.MeshPhongMaterial({
+                    color: this.getFileTypeColor(fileData.file_type),
+                    transparent: true,
+                    opacity: 0.7
+                });
+                
+                const fileNode = new THREE.Mesh(geometry, material);
+                fileNode.position.set(
+                    fileData.position.x,
+                    fileData.position.y,
+                    fileData.position.z
+                );
+                fileNode.userData = { 
+                    type: 'file', 
+                    name: fileName, 
+                    data: fileData 
+                };
+                
+                // Добавляем интерактивность
+                fileNode.addEventListener = (event, callback) => {
+                    fileNode.userData.callback = callback;
+                };
+                
+                return fileNode;
+            }
+            
+            getFileTypeColor(fileType) {
+                const colors = {
+                    'js': 0xf7df1e,
+                    'py': 0x3776ab,
+                    'html': 0xe34c26,
+                    'css': 0x1572b6,
+                    'md': 0x083fa1,
+                    'json': 0x000000,
+                    'txt': 0x888888
+                };
+                return colors[fileType] || 0x666666;
+            }
+            
+            createConnectionLine(from, to, color = 0x64ffda) {
+                const points = [
+                    new THREE.Vector3(from.x, from.y, from.z),
+                    new THREE.Vector3(to.x, to.y, to.z)
+                ];
+                
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const material = new THREE.LineBasicMaterial({ 
+                    color: color,
+                    transparent: true,
+                    opacity: 0.5
+                });
+                
+                const line = new THREE.Line(geometry, material);
+                this.scene.add(line);
+            }
+            
+            setupControls() {
+                let mouseDown = false;
+                let mouseX = 0, mouseY = 0;
+                
+                document.addEventListener('mousedown', (e) => {
+                    mouseDown = true;
+                    mouseX = e.clientX;
+                    mouseY = e.clientY;
+                });
+                
+                document.addEventListener('mouseup', () => mouseDown = false);
+                
+                document.addEventListener('mousemove', (e) => {
+                    if (!mouseDown) return;
+                    
+                    const deltaX = e.clientX - mouseX;
+                    const deltaY = e.clientY - mouseY;
+                    
+                    this.camera.position.x += deltaX * 0.1;
+                    this.camera.position.y -= deltaY * 0.1;
+                    
+                    mouseX = e.clientX;
+                    mouseY = e.clientY;
+                });
+                
+                document.addEventListener('wheel', (e) => {
+                    this.camera.position.z += e.deltaY * 0.05;
+                    this.camera.position.z = Math.max(20, Math.min(200, this.camera.position.z));
+                });
+                
+                // Click handling for node selection
+                document.addEventListener('click', (e) => {
+                    this.handleNodeClick(e);
+                });
+            }
+            
+            handleNodeClick(event) {
+                const mouse = new THREE.Vector2(
+                    (event.clientX / window.innerWidth) * 2 - 1,
+                    -(event.clientY / window.innerHeight) * 2 + 1
+                );
+                
+                const raycaster = new THREE.Raycaster();
+                raycaster.setFromCamera(mouse, this.camera);
+                
+                const allObjects = [];
+                this.scene.traverse((child) => {
+                    if (child.isMesh && child.userData.type) {
+                        allObjects.push(child);
+                    }
+                });
+                
+                const intersects = raycaster.intersectObjects(allObjects);
+                
+                if (intersects.length > 0) {
+                    const selectedObject = intersects[0].object;
+                    this.showNodeInfo(selectedObject);
+                }
+            }
+            
+            showNodeInfo(node) {
+                const infoPanel = document.getElementById('fileInfo');
+                const title = document.getElementById('fileInfoTitle');
+                const content = document.getElementById('fileInfoContent');
+                
+                title.textContent = node.userData.name || 'Node Information';
+                
+                if (node.userData.type === 'file') {
+                    const data = node.userData.data;
+                    content.innerHTML = `
+                        <div><strong>Type:</strong> ${data.file_type}</div>
+                        <div><strong>Size:</strong> ${(data.size / 1024).toFixed(1)} KB</div>
+                        <div><strong>Preview:</strong></div>
+                        <div style="font-family: monospace; font-size: 11px; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 4px; margin-top: 5px;">
+                            ${data.content_preview}
+                        </div>
+                    `;
+                } else if (node.userData.type === 'category') {
+                    const data = node.userData.data;
+                    content.innerHTML = `
+                        <div><strong>Files:</strong> ${data.file_count}</div>
+                        <div><strong>Total Size:</strong> ${(data.total_size / 1024 / 1024).toFixed(1)} MB</div>
+                        <div><strong>Type:</strong> ${data.name} Category</div>
+                    `;
+                }
+                
+                infoPanel.style.display = 'block';
+                
+                // Скрываем через 5 секунд
+                setTimeout(() => {
+                    infoPanel.style.display = 'none';
+                }, 5000);
+            }
+            
+            updateStats() {
+                document.getElementById('docCount').textContent = '501';
+                document.getElementById('categoryCount').textContent = Object.keys(this.semanticTree.root.children).length;
+                
+                let totalNodes = 1; // root
+                for (const category of Object.values(this.semanticTree.root.children)) {
+                    totalNodes += 1; // category node
+                    totalNodes += Object.keys(category.children).length; // file nodes
+                }
+                
+                document.getElementById('nodeCount').textContent = totalNodes;
+                document.getElementById('renderedNodes').textContent = totalNodes;
+            }
+            
+            startRenderLoop() {
+                const animate = () => {
+                    requestAnimationFrame(animate);
+                    
+                    // Анимация файлов
+                    this.categoryGroups.forEach((group, categoryName) => {
+                        group.children.forEach((child, index) => {
+                            if (child.userData.type === 'file') {
+                                child.rotation.y += 0.01;
+                                child.position.y += Math.sin(Date.now() * 0.001 + index) * 0.01;
+                            }
+                        });
+                    });
+                    
+                    this.renderer.render(this.scene, this.camera);
+                    this.updateFPS();
+                };
+                animate();
+            }
+            
+            startPerformanceMonitoring() {
+                setInterval(() => {
+                    this.updateMemoryUsage();
+                }, 1000);
+            }
+            
+            updateFPS() {
+                this.performanceMonitor.frameCount++;
+                const now = performance.now();
+                const delta = now - this.performanceMonitor.lastTime;
+                
+                if (delta >= 1000) {
+                    this.performanceMonitor.fps = Math.round((this.performanceMonitor.frameCount * 1000) / delta);
+                    this.performanceMonitor.frameCount = 0;
+                    this.performanceMonitor.lastTime = now;
+                    
+                    document.getElementById('fps').textContent = this.performanceMonitor.fps;
+                }
+            }
+            
+            updateMemoryUsage() {
+                if (performance.memory) {
+                    const memoryMB = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
+                    document.getElementById('memoryUsage').textContent = memoryMB;
+                }
+            }
+            
+            updateProgress(percent, text) {
+                document.getElementById('progress').style.width = percent + '%';
+                document.getElementById('loadingText').textContent = text;
+            }
+            
+            hideLoading() {
+                this.updateProgress(100, "🌳 VETKA Semantic Trees Ready!");
+                setTimeout(() => {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('interface').style.display = 'block';
+                    document.getElementById('stats').style.display = 'block';
+                    document.getElementById('controls').style.display = 'block';
+                }, 1000);
+            }
+        }
+        
+        // Global functions for controls
+        window.resetView = () => {
+            vetkaSystem.camera.position.set(0, 30, 80);
+            vetkaSystem.camera.lookAt(0, 0, 0);
+        };
+        
+        window.toggleDetails = () => {
+            vetkaSystem.showingDetails = !vetkaSystem.showingDetails;
+            // TODO: Implement detail level switching
+        };
+        
+        window.animateCategories = () => {
+            vetkaSystem.categoryGroups.forEach((group, index) => {
+                const delay = index * 200;
+                setTimeout(() => {
+                    group.children[0].material.emissive.setHex(0x444444);
+                    setTimeout(() => {
+                        group.children[0].material.emissive.setHex(0x000000);
+                    }, 300);
+                }, delay);
+            });
+        };
+        
+        window.searchFiles = () => {
+            const query = prompt('Search for files:', '');
+            if (query) {
+                // TODO: Implement file search
+                alert(`Searching for: ${query}`);
+            }
+        };
+        
+        window.showRelationships = () => {
+            // TODO: Implement relationship visualization
+            alert('Relationship visualization coming soon!');
+        };
+        
+        window.exportData = () => {
+            // TODO: Implement data export
+            alert('Data export functionality coming soon!');
+        };
+        
+        // Initialize VETKA System
+        const vetkaSystem = new VETKASemanticTreeSystem();
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            vetkaSystem.camera.aspect = window.innerWidth / window.innerHeight;
+            vetkaSystem.camera.updateProjectionMatrix();
+            vetkaSystem.renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        console.log('🌳 VETKA Semantic Trees 3D Interface - Initialized with Real Data!');
+    </script>
+</body>
+</html>

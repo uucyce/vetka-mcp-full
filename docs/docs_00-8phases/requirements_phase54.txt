@@ -1,0 +1,35 @@
+# Phase 5.4 - Enhanced Agents with Composio + Sequential Thinking
+
+# Base
+flask==3.0.0
+flask-socketio==5.3.6
+python-socketio==5.11.0
+python-dotenv>=1.1.1
+
+# Orchestration
+langgraph==0.2.45
+langchain==0.3.27
+langchain-core==0.3.75
+langchain-community==0.3.29
+crewai==0.201.1
+crewai-tools==0.75.0
+
+# Vector DB
+weaviate-client==4.9.3
+
+# NEW: Composio SDK (500+ actions)
+composio-core>=0.2.0
+composio-openai>=0.1.0
+composio-langchain>=0.1.0
+
+# NEW: Sequential Thinking (via MCP)
+# Note: Sequential Thinking runs as separate MCP server (npx-based)
+# This is the Python client wrapper
+mcp>=1.0.0
+
+# Utilities
+httpx>=0.25.0,<=0.27.0
+pydantic==1.10.15
+pytest==8.3.4
+aiohttp>=3.8.0
+asyncio>=3.4.3

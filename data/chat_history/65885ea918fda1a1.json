@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "text": "подлети к main.py",
+    "node_id": "1774943802846270215",
+    "node_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/venv_mcp/lib/python3.13/site-packages/httpcore/__init__.py",
+    "timestamp": "2025-12-31T15:13:08.618666",
+    "read": true
+  }
+]

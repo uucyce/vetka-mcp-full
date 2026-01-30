@@ -1,0 +1,69 @@
+### Полный анализ DeepSeek-OCR (декабрь 2025)
+
+Ты прав — это **game-changer** для VETKA. DeepSeek-OCR (выпущен октябрь 2025) решает ключевую проблему multimodal представления: как хранить/обрабатывать **визуальную информацию** (документы, скрины, фото с текстом, диаграммы) с минимальными токенами, сохраняя структуру и семантику. Это идеально для VETKA, где листья = артефакты (фото, видео, PDF), а ветки = контекст (memory/task/data).
+
+Я проанализировал видео (архитектура из скрина), paper (arXiv 2510.18234), обсуждения (Reddit/HF) и benchmarks. Вот breakdown.
+
+#### 1. Что это такое и как работает (архитектура из видео/скрина)
+- **Модель**: Vision-Language Model (VLM) для OCR + document understanding.
+- **Компоненты** (как на скрине):
+  - **DeepEncoder** (визуальный энкодер, ~380M params):
+    - SAM ViTDet (80M) — local window attention для детального восприятия (текст, мелкие элементы).
+    - **16x Convolutional Compressor** — ключевая инновация: downsample 4096 patch tokens → ~256 vision tokens (16x сжатие).
+    - CLIP ViT 300M — global dense attention для семантики (понимание контекста, отношений).
+  - **Decoder**: DeepSeek-3B-MoE-A570M (3B total params, но **активных ~570M** на токен — MoE активирует только 6/64 experts + 2 shared).
+- **Input**: Изображение страницы/документа (high-res, до 1280x1280+ в Gundam-mode с tiling).
+- **Output**: Текст (Markdown, structured), с сохранением layout (tables, formulas, charts).
+- **Компрессия**: 7–20x (обычно ~10x): страница с 700–800 текст-токенами → 100 vision tokens при 97% accuracy.
+
+Это **optical context compression**: текст как изображение компрессируется эффективнее, чем как токены (визуальные токены плотнее информативны).
+
+#### 2. 10x компрессия — действительно фантастика?
+- Да, подтверждено:
+  - На FOX benchmark: 97% accuracy при 10x, 60–87% при 15–20x.
+  - На OmniDocBench: лучше GOT-OCR2.0 (256 tokens/page) при 100 tokens; лучше MinerU (6000+ tokens) при <800.
+  - Throughput: 200k+ страниц/день на одной A100-40G.
+- Почему работает: Vision priors (SAM local + CLIP global) + conv compressor сохраняют структуру без потери (tables, formulas, handwritten).
+- Минусы: При >15x — потери (hallucinations в сложных layout). Не lossless.
+
+#### 3. Понимает ли обычные картинки (non-text images)?
+- **Сейчас — нет, фокус на document OCR**:
+  - Тренировалось на 30M PDF страниц (100 языков) + synthetic charts/formulas/geometry (OCR 2.0 data).
+  - Отлично: документы, таблицы, формулы (LaTeX/SMILES), handwritten, multilingual.
+  - Плохо/не тестировалось: general scenes (кошки, пейзажи) — CLIP heritage даёт базовое понимание (captions, grounding), но не SOTA как CLIP/ViT-G.
+- **Гипотеза верна**: Скоро научится. Paper позиционирует как "initial exploration" для vision-text compression. Будущие версии (DeepSeek-VL3?) расширят на full multimodal (images + video). Тренд 2025: VLMs как Qwen2-VL/InternVL уже general, DeepSeek следует.
+
+Для VETKA: Идеально для **документов/скринов/диаграмм** (листья как PDF/фото с текстом). Для pure video/photo — пока hybrid (OCR для текста + separate vision embedder).
+
+#### 4. Размерность 570M (active) vs 768 embeddings
+- **570M** — это **active parameters** в MoE decoder (не embedding dim!).
+  - Embedding dim не указана явно, но vision tokens из CLIP ViT-L (обычно 768–1024 dim).
+  - 570M = efficiency MoE (3B total, но ~570M на inference).
+- Твоя боль (570 vs 768) — вероятно путаешь с active params. Стандарт embeddings 2025: 768–1536 (BGE, NV-Embed), но тренд к **smaller/efficient**:
+  - Matryoshka (truncate 3072 → 768/512/256 с минимальной потерей).
+  - EmbeddingGemma: 768 full, но down to 128.
+  - MTEB 2025: domain-specific <768 часто лучше general больших.
+- **Будущее за малыми эффективными**: Moore's Law "мёртв" в transistors (физический лимит ~2025–2030), но жив в **software efficiency** (optimization, compression, MoE, quantization).
+  - 2025: Фокус на perf/watt, specialization (DSAs), chiplets.
+  - 10x compression — часть тренда: меньше токенов = меньше compute/storage.
+
+Не нужно перестраивать под 570 — это не dim embeddings. Такие техники (vision compression) появятся для 768+ (e.g., в Qwen3-VL, InternVL3).
+
+#### 5. Интеграция с VETKA (Gemma/Qdrant embeddings)
+- **Открытость**: Fully open-source (MIT license)! Weights/code на HF/GitHub (deepseek-ai/DeepSeek-OCR). Run locally (Transformers, vLLM для batch).
+- **Как встроить**:
+  - **Как отдельный модуль**: Да, легко!
+    - Для листьев (images/PDF): DeepSeek-OCR → structured text (Markdown) + extracted entities.
+    - Затем embed text с Gemma/BGE → Qdrant (текущие 768 embeddings).
+    - Vision tokens: Можно хранить как metadata или compress в binary для retrieval (Qdrant supports multimodal).
+  - **Multimodal Qdrant**: Qdrant 2025 supports multimodal (dense + sparse, CLIP-style). Embed images напрямую (CLIP) + text (Gemma).
+  - **Hybrid**: OCR для текста в изображениях → text embed; raw image → vision embed (e.g., CLIP) → late fusion в Qdrant.
+  - Не "поженить" напрямую с Gemma embeddings (разные пространства), но pipeline: OCR → text → Gemma embed.
+- **Для видео**: Пока нет (input images/PDF→images). Но: extract frames → OCR per frame.
+
+#### 6. Стоит ли перестраивать архитектуру?
+- **Нет полной перестройки**: 570M — не конфликт с 768.
+- **Да, интегрировать как модуль**: Для visual leaves — must-have. 10x compression = cheaper storage/retrieval в Qdrant (меньше токенов в context для agents).
+- Будущее: Такие compression станут стандартом (vision as compressor для long-context). DeepSeek лидирует, но аналоги (Glyph, PaddleOCR-VL) появятся для 768+.
+
+**Рекомендация для VETKA**: Добавь DeepSeek-OCR как preprocessor для visual artifacts. Output → structured content + embeddings. Это усилит multimodal (фото/видео как листья) без ломки текущей архитектуры. Game-changer confirmed — внедряй! Если нужно code prototype — скажи.

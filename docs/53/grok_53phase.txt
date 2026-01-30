@@ -1,0 +1,250 @@
+Вот полный, свежий (на январь 2026) и максимально практичный ответ на все вопросы из твоего промпта.  
+Я опираюсь на текущие лучшие практики 2025–2026 годов (LangChain, LlamaIndex, MemGPT, A-MEM, production-системы типа Cursor/Devin/Claude Projects), адаптированные под твою архитектуру VETKA (FastAPI + React + Qdrant + Weaviate + CAM Engine).
+
+### ТЕМА 1: File Previews Generation
+
+#### 1. Best Practice 2025 — когда генерировать превью
+**Lazy + On-Demand with background queue** — стандарт 2025–2026 для knowledge-систем (Cursor, Replit, Devin, Claude Projects).  
+Eager (при сканировании) → убивает производительность при большом количестве файлов (1334+ у тебя).  
+Lazy (при первом доступе) + background regeneration при изменении — оптимальный баланс.
+
+Trade-offs:
+
+| Подход          | Плюсы                                   | Минусы                                    | Когда применять в VETKA          |
+|-----------------|-----------------------------------------|-------------------------------------------|----------------------------------|
+| Eager           | Превью сразу доступно                   | Долгое первое сканирование, CPU/IO spike  | Только для <200 файлов           |
+| Lazy            | Быстрый импорт, нет нагрузки на старте  | Первое открытие — задержка (0.5–3 с)      | Текущий этап — основной          |
+| Background queue| Превью генерируется асинхронно          | Нужно Celery/RQ + Redis                   | После первого открытия — must    |
+
+**Рекомендация для VETKA прямо сейчас**:  
+- При первом GET /api/files/preview/{path} → генерировать lazy + отправлять задачу в Celery/RQ на background re-generation (если файл изменился).  
+- Хранить превью на диске (./data/previews/{hash(path)}.webp) или в S3-совместимом (MinIO).  
+- Инвалидация: webhook на file change → invalidate + re-generate.
+
+#### 2. Concrete Implementation
+
+```python
+# src/server/services/preview_service.py
+from pathlib import Path
+import hashlib
+from PIL import Image
+import fitz  # PyMuPDF for PDF
+from playwright.async_api import async_playwright  # для рендера MD/HTML
+
+PREVIEW_DIR = Path("data/previews")
+PREVIEW_DIR.mkdir(exist_ok=True)
+
+async def generate_preview(file_path: Path, max_size=(256, 256)) -> Path:
+    hash_name = hashlib.sha256(str(file_path).encode()).hexdigest()[:16]
+    preview_path = PREVIEW_DIR / f"{hash_name}.webp"
+
+    if preview_path.exists():
+        # Простая проверка свежести (mtime)
+        if preview_path.stat().st_mtime > file_path.stat().st_mtime:
+            return preview_path
+
+    ext = file_path.suffix.lower()
+
+    if ext in {'.png', '.jpg', '.jpeg', '.gif', '.webp'}:
+        img = Image.open(file_path)
+        img.thumbnail(max_size)
+        img.save(preview_path, "WEBP", quality=80)
+
+    elif ext == '.pdf':
+        doc = fitz.open(file_path)
+        page = doc.load_page(0)
+        pix = page.get_pixmap(dpi=72)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        img.thumbnail(max_size)
+        img.save(preview_path, "WEBP", quality=80)
+
+    elif ext in {'.md', '.txt', '.py', '.js', '.ts', '.html'}:
+        # Рендер первых 200 строк с подсветкой (playwright → screenshot)
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            page = await browser.new_page()
+            content = file_path.read_text()[:2000]
+            if ext == '.md':
+                html = markdown.markdown(content)  # + pygments highlight
+            else:
+                html = f"<pre><code>{content}</code></pre>"
+            await page.set_content(f"<body style='padding:16px; font-family:monospace;'>{html}</body>")
+            await page.screenshot(path=preview_path, type='webp', quality=80, clip={'x':0,'y':0,'width':512,'height':256})
+            await browser.close()
+
+    else:
+        # Fallback: иконка по типу
+        preview_path = Path(f"static/icons/{ext[1:]}.png")
+
+    return preview_path
+```
+
+#### 3. Pitfalls to Avoid
+- Генерация превью в синхронном endpoint → timeout / UI freeze.
+- Хранение превью в БД (Qdrant/Weaviate) → overhead.
+- Нет инвалидации → старые превью после git pull / file change.
+
+#### 4. Performance Considerations
+- Lazy + queue → первое открытие 0.5–2 с, последующие <50 мс.
+- WEBP 256×256 ≈ 15–40 КБ → приемлемо даже для 10k файлов.
+- Queue: Celery/RQ + Redis — 1 worker хватает на 100+ превью/мин.
+
+#### 5. Integration with VETKA
+- Добавить endpoint `/api/files/preview/{path}` → возвращает URL превью (nginx static serve).
+- В 3D-дереве (React Three Fiber): `<Image url={previewUrl} />` на hover/click.
+- При сканировании/импорте: enqueue background task generate_preview для каждого файла.
+- Инвалидация: Git webhook / file watcher → invalidate cache + re-generate.
+
+### ТЕМА 2: Artifact → Real Code Workflow
+
+#### 1. Best Practice 2025
+Git-branch-per-artifact + diff preview + auto-test + human approve — де-факто стандарт в 2025–2026 (Cursor, Devin, Aider, Continue.dev, Claude Code).  
+Temporary dir / virtual FS — устарело (сложно rollback). Git — самый надёжный и привычный для разработчика.
+
+#### 2. Concrete Implementation
+
+```python
+# src/server/services/artifact_apply_service.py
+from git import Repo
+import tempfile
+import difflib
+
+class ArtifactApplier:
+    def __init__(self, repo_path: str):
+        self.repo = Repo(repo_path)
+        self.original_branch = self.repo.active_branch.name
+
+    async def preview_diff(self, artifact: dict) -> str:
+        """Возвращает unified diff"""
+        file_path = artifact['target_path']
+        new_content = artifact['content']
+
+        if not Path(file_path).exists():
+            return f"New file:\n{new_content}"
+
+        with open(file_path) as f:
+            old = f.readlines()
+
+        new = new_content.splitlines(keepends=True)
+        diff = difflib.unified_diff(old, new, fromfile=file_path, tofile=file_path)
+        return ''.join(diff)
+
+    async def apply_with_safety(self, artifact: dict, user_confirm: bool = True) -> dict:
+        if user_confirm:
+            diff = await self.preview_diff(artifact)
+            # Отправить diff в UI → ждём подтверждения через websocket
+            # Предполагаем, что подтверждение уже получено
+
+        # 1. Создаём feature branch
+        branch_name = f"vetka-artifact-{artifact['id'][:8]}"
+        self.repo.create_head(branch_name)
+        self.repo.git.checkout(branch_name)
+
+        # 2. Backup original
+        backup_path = f"{artifact['target_path']}.vetka.bak"
+        Path(artifact['target_path']).rename(backup_path)
+
+        # 3. Write new content
+        Path(artifact['target_path']).write_text(artifact['content'])
+
+        # 4. Auto-test (pytest / ruff / mypy)
+        test_result = await run_tests([artifact['target_path']])
+        lint_result = await run_lint([artifact['target_path']])
+
+        if not test_result['passed'] or not lint_result['passed']:
+            # Rollback
+            Path(artifact['target_path']).unlink()
+            Path(backup_path).rename(artifact['target_path'])
+            self.repo.git.checkout(self.original_branch)
+            self.repo.delete_head(branch_name, force=True)
+            return {"status": "failed", "reason": "Tests/lint failed"}
+
+        # 5. Commit & push (optional auto-commit)
+        self.repo.index.add([artifact['target_path']])
+        self.repo.index.commit(f"Apply artifact {artifact['id']}")
+        # self.repo.git.push('origin', branch_name)  # PR flow
+
+        return {"status": "applied", "branch": branch_name, "diff": await self.preview_diff(artifact)}
+```
+
+#### 3. Pitfalls to Avoid
+- Apply без branch → загрязняет main.
+- Нет rollback → потеря кода при fail.
+- Auto-commit без тестов → deploy buggy code.
+- Нет diff preview → пользователь не понимает, что применяет.
+
+#### 4. Performance Considerations
+- Git ops: <100 мс на apply.
+- Tests/lint: 1–10 с (зависит от проекта).
+- UI: WebSocket для real-time test progress.
+
+#### 5. Integration with VETKA
+- Artifact → dict с target_path, content.
+- В UI (React): Artifact panel → "Preview Diff" → "Apply" button → WebSocket emit('apply_artifact', artifact_id).
+- Backend: WebSocket handler → ArtifactApplier.apply_with_safety → emit result.
+- Git branch → PR в UI (ссылка на GitHub/GitLab).
+
+### ТЕМА 3: Semantic Tagging & Knowledge Graph
+
+#### 1. Best Practice 2025
+Automatic multi-level tagging + hybrid graph (directed + undirected).  
+2025–2026: Tag extraction via LLM (small/fast) + rule-based (imports, TODO) + embedding clustering.  
+Virtual tag folders (no physical move) + separate knowledge graph view [web:0, web:1, web:2, web:3, web:4, web:5, web:6, web:7, web:8].
+
+#### 2. Concrete Implementation
+
+```python
+# src/server/services/tagging_service.py
+async def generate_tags(file_path: Path) -> List[str]:
+    content = file_path.read_text()
+    ext = file_path.suffix.lower()
+
+    tags = set()
+
+    # Rule-based (fast)
+    if ext in {'.py', '.js', '.ts'}:
+        tree = ast.parse(content) if ext == '.py' else None
+        tags.update(extract_imports(tree) if tree else [])
+        tags.update(extract_classes_functions(content))
+        if 'TODO' in content or 'FIXME' in content:
+            tags.add('todo')
+
+    # LLM-based (small model, e.g., qwen2.5:1.5b)
+    llm_tags = await llm_extract_tags(content[:4000], file_path.name)
+    tags.update(llm_tags)
+
+    # Clustering (optional, periodic)
+    if len(tags) > 5:
+        tags.update(cluster_tags(tags))  # DBSCAN on embeddings
+
+    return list(tags)
+
+# Hook in import/scan
+async def on_file_import(file_path: Path):
+    tags = await generate_tags(file_path)
+    qdrant.upsert(
+        id=file_path.stem,
+        vector=embed_file(file_path),
+        payload={'tags': tags, 'path': str(file_path)}
+    )
+```
+
+#### 3. Pitfalls to Avoid
+- Только LLM → дорого и медленно.
+- Нет rule-based fallback → пропуск TODO/imports.
+- Physical folders по тегам → дубли файлов.
+- Нет UI toggle directed/undirected → confusion.
+
+#### 4. Performance Considerations
+- Rule-based: <50 мс.
+- LLM: 0.5–2 с (small model + 4k context).
+- Clustering: Batch nightly (Celery).
+
+#### 5. Integration with VETKA
+- Tag generation → on import/scan (lazy, background).
+- UI: Sidebar tags filter (React: MultiSelect).
+- Knowledge Graph: Separate mode (force-directed + directed toggle).
+- 3D Tree: Tag badges on nodes, filter by tag.
+
+Это всё можно внедрять **прямо сейчас** без архитектурных проблем — lazy + background.  
+Если пришлёшь кусок scan/import кода — подгоню точные хуки. 🚀

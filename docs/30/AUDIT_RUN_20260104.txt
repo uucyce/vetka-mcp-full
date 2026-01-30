@@ -1,0 +1,37 @@
+=== VETKA CODE AUDIT ===
+Date: Sun Jan  4 05:43:03 MSK 2026
+
+FILE COUNTS:
+  Python files: 749
+  TypeScript files: 66
+
+ZOMBIE FILES (0 imports in src/agents/):
+  WARNING: src/agents/base_agent.py (0 imports)
+  WARNING: src/agents/base_learner.py (0 imports)
+  WARNING: src/agents/vetka_architect.py (0 imports)
+  WARNING: src/agents/vetka_dev.py (0 imports)
+  WARNING: src/agents/vetka_pm.py (0 imports)
+  WARNING: src/agents/vetka_qa.py (0 imports)
+
+DUPLICATE FUNCTION NAMES (in agents):
+  None found
+
+ORPHANED INTEGRATIONS (not called):
+
+TOP 10 LARGEST FILES:
+  242025 total
+    8841 ./venv_mcp/lib/python3.13/site-packages/idna/uts46data.py
+    8681 ./venv_mcp/lib/python3.13/site-packages/pip/_vendor/idna/uts46data.py
+    7550 ./main.py
+    5189 ./archive/backups/main_backup_day1.py
+    4309 ./venv_mcp/lib/python3.13/site-packages/idna/idnadata.py
+    4243 ./venv_mcp/lib/python3.13/site-packages/pip/_vendor/idna/idnadata.py
+    3676 ./venv_mcp/lib/python3.13/site-packages/pip/_vendor/pkg_resources/__init__.py
+    3610 ./venv_mcp/lib/python3.13/site-packages/pip/_vendor/rich/_emoji_codes.py
+    2967 ./venv_mcp/lib/python3.13/site-packages/anyio/_backends/_asyncio.py
+    2680 ./venv_mcp/lib/python3.13/site-packages/pip/_vendor/rich/console.py
+
+CRITICAL METHOD CHECK:
+  OK: semantic_search exists in memory_manager.py
+
+=== AUDIT COMPLETE ===

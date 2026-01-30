@@ -1,0 +1,270 @@
+================================================================================
+ФАЗА 90.9.2: ТИПЫ МОДЕЛЕЙ И МАРШРУТИЗАЦИЯ - РАЗВЕДКА
+ИТОГОВЫЙ ОТЧЁТ
+================================================================================
+
+СТАТУС: РАЗВЕДКА ЗАВЕРШЕНА ✓
+ДАТА: 2026-01-23
+ВЕРСИЯ: 1.0
+АВТОР: Claude Haiku 4.5
+
+================================================================================
+КЛЮЧЕВЫЕ НАХОДКИ
+================================================================================
+
+1. ЧЕТЫРЕ НЕЗАВИСИМЫХ МАРШРУТА МАРШРУТИЗАЦИИ
+   ├─ Solo Chat: user_message_handler.py
+   │  └─ Прямой вызов LLM с detect_provider()
+   │
+   ├─ Group Chat: group_message_handler.py
+   │  └─ Делегирует оркестратору с model_id
+   │
+   ├─ MCP Tools: llm_call_tool.py
+   │  └─ Прямой вызов provider registry ✅ UNIFIED
+   │
+   └─ Orchestrator: orchestrator_with_elisya.py
+      └─ Manual + auto-detection маршрутизация ⚠️ NEEDS UNIFICATION
+
+2. СЕМЬ ПОДДЕРЖИВАЕМЫХ ПРОВАЙДЕРОВ
+   ├─ OpenAI (gpt-4o, gpt-4-turbo)           ✅ Tools
+   ├─ Anthropic (claude-opus-4-5)            ✅ Tools
+   ├─ Google Gemini (gemini-2.0-flash)       ✅ Tools
+   ├─ Ollama (llama3:8b, qwen2:7b)           ⚠️ Selective tools
+   ├─ OpenRouter (aggregator)                ❌ Limited tools
+   ├─ xAI/Grok (grok-4)                      ✅ Tools
+   └─ Legacy (deepseek, groq) - deprecated
+
+3. ГЛАВНАЯ ПРОБЛЕМА: СЛИШКОМ МНОГО ЭНДПОИНТОВ ДЛЯ ГРУППЫ
+   ├─ CRUD группы: 5 эндпоинтов
+   ├─ Сообщения: 2 эндпоинта
+   ├─ Настройки: 1+ эндпоинтов
+   ├─ MCP @mention: 1+ обработчик
+   ├─ Инструменты: 1+ обработчик
+   ├─ Streaming: 1+ обработчик
+   ├─ Выбор агентов: 1+ обработчик
+   └─ РИСК: Очень хрупко при добавлении новых типов моделей
+
+4. СТАБИЛЬНОСТЬ МАРШРУТИЗАЦИИ
+   ├─ ✅ UNIFIED: llm_call_tool._detect_provider() (фаза 90.1.4.1)
+   ├─ ✅ UNIFIED: chat_handler.detect_provider() (фаза 90.1.4.1)
+   ├─ ⚠️ PARTIAL: orchestrator (ещё использует inline логику)
+   └─ ✅ CANONICAL: provider_registry.detect_provider()
+
+5. CRITICAL ISSUES
+   ├─ Orchestrator НЕ использует canonical detect_provider (строки 1113-1144)
+   ├─ XAI key detection разбросана в 2 местах
+   ├─ Model ID format слишком ambiguous
+   ├─ Tool support check разнообразный (нет unified API)
+   └─ Группа чата управление фрагментировано
+
+================================================================================
+АРХИТЕКТУРНЫЕ КОМПОНЕНТЫ
+================================================================================
+
+CORE: src/elisya/provider_registry.py
+├─ class Provider(Enum) - 7 типов
+├─ class BaseProvider(ABC) - interface
+├─ def detect_provider() [CANONICAL] - ✅ обновлено в 90.1.4.1
+├─ def call_model_v2() - unified entry point
+├─ 6+ provider implementations
+│  ├─ OpenAIProvider
+│  ├─ AnthropicProvider
+│  ├─ GoogleProvider
+│  ├─ OllamaProvider (фаза 80.5 - tool check)
+│  ├─ OpenRouterProvider
+│  └─ XaiProvider (фаза 80.35+)
+└─ get_registry() - singleton
+
+ROUTING: 4 paths
+├─ Solo Chat → user_message_handler.py
+├─ Group Chat → group_message_handler.py
+├─ MCP Tools → llm_call_tool.py
+└─ Orchestrator → orchestrator_with_elisya.py
+
+SERVICES:
+├─ api_key_service.py - управление ключами + ротация
+├─ unified_key_manager.py - хранилище + выбор активного
+├─ model_router_v2.py - task-based selection
+└─ group_chat_manager.py - управление группами
+
+================================================================================
+СПИСОК ФАЙЛОВ
+================================================================================
+
+ОСНОВНЫЕ:
+ 1. /src/elisya/provider_registry.py (915 строк)
+    - CORE: все провайдеры, реестр, detection, call
+    - MARKERS: 90.1.4.1_START, 80.5, 80.39, 80.40
+
+ 2. /src/orchestration/services/api_key_service.py (219 строк)
+    - API key management + mapping (80.38 - complete)
+
+ 3. /src/api/handlers/chat_handler.py (100+ строк)
+    - detect_provider() WRAPPER (90.1.4.1)
+
+ 4. /src/api/handlers/user_message_handler.py (1695 строк)
+    - Solo chat routing + streaming
+
+ 5. /src/api/handlers/group_message_handler.py (893 строки)
+    - Group chat routing + MCP @mentions
+
+ 6. /src/mcp/tools/llm_call_tool.py (259 строк)
+    - MCP provider detection (90.1.4.1 - UNIFIED ✅)
+
+ 7. /src/orchestration/orchestrator_with_elisya.py (2500+ строк)
+    - Agent orchestration (90.1.4.1 - NEEDS FIX ⚠️)
+
+ 8. /src/elisya/model_router_v2.py (100+ строк)
+    - Task-based routing (фаза 29)
+
+ВСПОМОГАТЕЛЬНЫЕ:
+ 9. /src/utils/unified_key_manager.py
+    - Key storage + rotation
+
+10. /src/services/group_chat_manager.py (973 строки)
+    - Group management
+
+КОНФИГУРАЦИЯ:
+11. /data/config.json - API ключи
+12. /data/models_cache.json - Кэш моделей
+13. /data/groups.json - Сохраненные группы
+
+================================================================================
+MARKERS И ФАЗЫ
+================================================================================
+
+MARKER_90.1.4.1_START: CANONICAL detect_provider (UNIFIED)
+  Location: provider_registry.py (786-810), chat_handler.py (48-86), llm_call_tool.py (95-111)
+  Status: ✅ IMPLEMENTED
+  Scope: Lines 48-86 (chat_handler), 95-111 (llm_call_tool), 786-810 (provider_registry)
+
+MARKER_90.1.4.2_START: XAI key exhaustion + fallback
+  Location: provider_registry.py (677-706), orchestrator_with_elisya.py (1121-1125)
+  Status: ✅ IMPLEMENTED
+  Phases: 80.35, 80.37, 80.38, 80.39, 80.40
+
+MARKER_90.4.0_START: VETKA chat streaming
+  Location: llm_call_tool.py
+  Status: ✅ IMPLEMENTED
+  Streams results to "Молния" group (5e2198c2-8b1a-45df-807f-5c73c5496aa8)
+
+MARKER_80.5: Ollama tool support checking
+  Location: provider_registry.py (OllamaProvider)
+  Status: ✅ IMPLEMENTED
+  Models without tools: deepseek-llm, llama2, codellama, mistral, phi, gemma, etc.
+
+================================================================================
+ПРОБЛЕМЫ И РИСКИ
+================================================================================
+
+ВЫСОКИЙ ПРИОРИТЕТ:
+
+1. Orchestrator.py НЕ использует canonical (строки 1113-1144)
+   └─ ДЕЙСТВИЕ: Обновить для использования ProviderRegistry.detect_provider()
+
+2. XAI key detection разбросана (2 места)
+   └─ ДЕЙСТВИЕ: Консолидировать в XaiProvider
+
+3. Model ID format слишком вариативен
+   └─ Действие: Стандартизировать на "provider/model"
+
+СРЕДНИЙ ПРИОРИТЕТ:
+
+4. Слишком много эндпоинтов для группы (11+)
+   └─ ДЕЙСТВИЕ: Консолидировать CRUD операции
+
+5. Tool support check разнообразный
+   └─ ДЕЙСТВИЕ: Создать unified API
+
+6. Fallback chain не документирована
+   └─ ДЕЙСТВИЕ: Явно документировать порядок fallback
+
+================================================================================
+РЕКОМЕНДАЦИИ
+================================================================================
+
+IMMEDIATE (Сегодня):
+  □ Обновить orchestrator для использования canonical detect_provider
+  □ Удалить inline логику из orchestrator (строки 1113-1144)
+  □ Проверить xai fallback логику на консистентность
+
+SHORT TERM (1-2 недели):
+  □ Унифицировать XAI key detection
+  □ Документировать model_id format requirements
+  □ Создать unified tool support API
+  □ Добавить инструменты для debug маршрутизации
+
+MEDIUM TERM (1 месяц):
+  □ Консолидировать group chat endpoints
+  □ Refactor routing для лучшей расширяемости
+  □ Добавить metrics для маршрутизации
+  □ Реализовать plugin architecture для провайдеров
+
+LONG TERM (Стратегические):
+  □ Plugin architecture для провайдеров
+  □ Unified model catalog с metadata
+  □ Declarative routing rules (YAML)
+  □ A/B testing support для маршрутизации
+
+================================================================================
+СТАТИСТИКА
+================================================================================
+
+Файлы с логикой маршрутизации:        7
+Реализации detect_provider():          3 (1 canonical + 2 wrappers)
+Поддерживаемые провайдеры:             7
+API эндпоинтов (группа):              11+
+Строк кода маршрутизации:             3000+
+Фаз включённых:                        15+ (Phase 29 → 90.4.0)
+Критичность (0-10):                    8/10
+
+================================================================================
+СВЯЗАННЫЕ ДОКУМЕНТЫ
+================================================================================
+
+ОСНОВНОЙ ОТЧЁТ:
+ → /docs/90_ph/PHASE_90.9.2_MODEL_TYPES_RECON.md (ОСНОВНОЙ)
+
+МАТРИЦА ЗАВИСИМОСТЕЙ:
+ → /docs/90_ph/PHASE_90.9.2_DEPENDENCIES.md
+
+СВЯЗАННАЯ ИСТОРИЯ:
+ → /docs/90_ph/PHASE_90.1.4.1_ROUTING_AUDIT.md (Audit base)
+ → /docs/80_ph_mcp_agents/PHASE_80_10_PROVIDER_REGISTRY.md (Architecture)
+ → /docs/80_ph_mcp_agents/SCOUT_API_KEY_ROUTING.md (Key management)
+
+================================================================================
+ЗАКЛЮЧЕНИЕ
+================================================================================
+
+VETKA имеет ХОРОШУЮ архитектуру маршрутизации с:
+  ✅ Canonical detect_provider в provider_registry.py
+  ✅ Unified call_model_v2() entry point
+  ✅ Clean separation of concerns (Provider pattern)
+  ✅ Graceful fallback chains (OpenRouter fallback)
+
+НО имеет ПРОБЛЕМЫ с:
+  ⚠️ Orchestrator всё ещё использует inline логику
+  ⚠️ Слишком много эндпоинтов для управления группой
+  ⚠️ Ambiguous model_id format
+  ⚠️ Фрагментированная XAI логика
+
+РЕШЕНИЕ:
+  1. Обновить orchestrator (1-2 часа)
+  2. Консолидировать endpoints (1-2 дня)
+  3. Стандартизировать format (1-2 часа)
+  4. Добавить unified tool API (1 день)
+
+РИСК ЕСЛИ НЕ ДЕЙСТВОВАТЬ:
+  → Добавление нового провайдера займёт 4+ часа вместо 1 часа
+  → Разрывы при миграции моделей между провайдерами
+  → Сложность отладки маршрутизации растёт экспоненциально
+
+================================================================================
+NEXT PHASE: 90.9.3 - План унификации
+================================================================================
+
+Дата создания: 2026-01-23
+Статус: РАЗВЕДКА ЗАВЕРШЕНА
+Версия: 1.0
+Автор: Claude Haiku 4.5

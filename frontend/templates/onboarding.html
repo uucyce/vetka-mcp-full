@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VETKA - Onboarding</title>
+    <style>
+        /* ═══════════════════════════════════════════════════════════════
+           VETKA Onboarding - Dark Nolan/Batman Palette (Itten contrast)
+           ═══════════════════════════════════════════════════════════════ */
+        :root {
+            --bg-primary: #0a0e14;
+            --bg-secondary: #12171f;
+            --bg-card: rgba(18, 23, 31, 0.95);
+            --bg-input: rgba(26, 33, 44, 0.9);
+            --bg-hover: rgba(45, 65, 95, 0.3);
+
+            --text-primary: #c8cdd4;
+            --text-secondary: #7a8494;
+            --text-muted: #505866;
+
+            --accent-blue: #3d5a80;
+            --accent-blue-light: #4a7a9f;
+            --accent-hover: #4d6a90;
+
+            --success: #5a8060;
+            --error: #905050;
+            --warning: #907050;
+
+            --border: rgba(61, 90, 128, 0.3);
+            --border-focus: #3d5a80;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(160deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 600px;
+            width: 90%;
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+            border: 1px solid var(--border);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            font-size: 2.5em;
+            color: var(--accent-blue-light);
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+
+        .logo p {
+            color: var(--text-secondary);
+            margin-top: 8px;
+        }
+
+        .step {
+            display: none;
+        }
+
+        .step.active {
+            display: block;
+        }
+
+        .step-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .step-number {
+            width: 36px;
+            height: 36px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 16px;
+            color: var(--text-primary);
+        }
+
+        .step-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .step-description {
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+            font-size: 0.9em;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 14px 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 1em;
+            transition: border-color 0.2s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: var(--border-focus);
+        }
+
+        .checkbox-group {
+            margin-bottom: 16px;
+        }
+
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            background: var(--bg-input);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .checkbox-group label:hover {
+            background: var(--bg-hover);
+            border-color: var(--border);
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--accent-blue);
+        }
+
+        .checkbox-group .check-label {
+            flex: 1;
+        }
+
+        .checkbox-group .check-label strong {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--text-primary);
+        }
+
+        .checkbox-group .check-label span {
+            font-size: 0.85em;
+            color: var(--text-muted);
+        }
+
+        .buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 30px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary {
+            background: var(--bg-input);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            color: var(--text-primary);
+            border: 1px solid var(--accent-blue-light);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-cancel {
+            background: var(--error);
+            color: var(--text-primary);
+            border: 1px solid rgba(144, 80, 80, 0.5);
+            flex: 0 0 auto;
+            padding: 14px 20px;
+        }
+
+        .btn-cancel:hover {
+            background: #a05858;
+        }
+
+        /* Progress */
+        .progress-container {
+            margin: 20px 0;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .progress-phase {
+            font-size: 0.85em;
+            color: var(--accent-blue-light);
+            font-weight: 500;
+        }
+
+        .progress-speed {
+            font-size: 0.8em;
+            color: var(--text-muted);
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: var(--bg-input);
+            border-radius: 3px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-blue-light));
+            width: 0%;
+            transition: width 0.3s ease-out;
+        }
+
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 0.85em;
+            color: var(--text-secondary);
+        }
+
+        .scan-log {
+            max-height: 180px;
+            overflow-y: auto;
+            background: rgba(8, 10, 14, 0.9);
+            border-radius: 8px;
+            padding: 14px;
+            margin-top: 16px;
+            font-family: 'SF Mono', 'Menlo', monospace;
+            font-size: 0.8em;
+            line-height: 1.5;
+            border: 1px solid var(--border);
+        }
+
+        .scan-log::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .scan-log::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        .scan-log::-webkit-scrollbar-thumb {
+            background: var(--accent-blue);
+            border-radius: 3px;
+        }
+
+        .scan-log .log-item {
+            color: var(--success);
+            margin-bottom: 2px;
+        }
+
+        .scan-log .log-error {
+            color: var(--error);
+        }
+
+        .scan-log .log-info {
+            color: var(--text-muted);
+        }
+
+        /* Success */
+        .success-icon {
+            text-align: center;
+            font-size: 3.5em;
+            margin-bottom: 20px;
+            filter: grayscale(20%);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+            margin: 24px 0;
+        }
+
+        .stat-card {
+            background: var(--bg-input);
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+
+        .stat-card .value {
+            font-size: 1.6em;
+            font-weight: 600;
+            color: var(--accent-blue-light);
+        }
+
+        .stat-card .label {
+            font-size: 0.8em;
+            color: var(--text-muted);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Connection status indicator */
+        .connection-status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75em;
+            color: var(--text-muted);
+        }
+
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--error);
+        }
+
+        .connection-dot.connected {
+            background: var(--success);
+        }
+    </style>
+</head>
+<body>
+    <!-- Connection status indicator -->
+    <div class="connection-status">
+        <div class="connection-dot" id="connection-dot"></div>
+        <span id="connection-text">Connecting...</span>
+    </div>
+
+    <div class="container">
+        <div class="logo">
+            <h1>VETKA</h1>
+            <p>Knowledge Tree Onboarding</p>
+        </div>
+
+        <!-- Step 1: Choose folder -->
+        <div class="step active" id="step1">
+            <div class="step-header">
+                <div class="step-number">1</div>
+                <div class="step-title">Choose Data Folder</div>
+            </div>
+            <p class="step-description">
+                Select the folder containing your documents, notes, or code that you want to index into your knowledge tree.
+            </p>
+            <div class="input-group">
+                <label>Folder Path</label>
+                <input type="text" id="folder-path" placeholder="/Users/username/Documents" value="/Users/danilagulin/Documents/VETKA_Project/docs">
+            </div>
+            <div class="buttons">
+                <button class="btn btn-primary" onclick="nextStep(2)">Continue →</button>
+            </div>
+        </div>
+
+        <!-- Step 2: Data sources -->
+        <div class="step" id="step2">
+            <div class="step-header">
+                <div class="step-number">2</div>
+                <div class="step-title">Select Data Sources</div>
+            </div>
+            <p class="step-description">
+                Choose which types of files to scan and index.
+            </p>
+            <div class="checkbox-group">
+                <label>
+                    <input type="checkbox" id="source-docs" checked>
+                    <div class="check-label">
+                        <strong>Documents</strong>
+                        <span>.md, .txt, .rst, .org files</span>
+                    </div>
+                </label>
+            </div>
+            <div class="checkbox-group">
+                <label>
+                    <input type="checkbox" id="source-code" checked>
+                    <div class="check-label">
+                        <strong>Code Files</strong>
+                        <span>.py, .js, .ts, .html, .css, .json</span>
+                    </div>
+                </label>
+            </div>
+            <div class="checkbox-group">
+                <label>
+                    <input type="checkbox" id="source-config">
+                    <div class="check-label">
+                        <strong>Config Files</strong>
+                        <span>.yaml, .yml, .ini, .env, .conf</span>
+                    </div>
+                </label>
+            </div>
+            <div class="buttons">
+                <button class="btn btn-secondary" onclick="prevStep(1)">← Back</button>
+                <button class="btn btn-primary" onclick="nextStep(3)">Start Scanning →</button>
+            </div>
+        </div>
+
+        <!-- Step 3: Scanning -->
+        <div class="step" id="step3">
+            <div class="step-header">
+                <div class="step-number">3</div>
+                <div class="step-title">Scanning & Indexing</div>
+            </div>
+            <p class="step-description" id="scan-description">
+                Preparing to scan files...
+            </p>
+            <div class="progress-container">
+                <div class="progress-header">
+                    <span class="progress-phase" id="progress-phase">Initializing...</span>
+                    <span class="progress-speed" id="progress-speed"></span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <div class="progress-text">
+                    <span id="progress-current">0 / 0 files</span>
+                    <span id="progress-percent">0%</span>
+                </div>
+            </div>
+            <div class="scan-log" id="scan-log">
+                <div class="log-info">Waiting for scan to start...</div>
+            </div>
+            <div class="buttons">
+                <button class="btn btn-cancel" id="cancel-btn" onclick="cancelScan()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Step 4: Complete -->
+        <div class="step" id="step4">
+            <div class="success-icon">✅</div>
+            <div class="step-header" style="justify-content: center;">
+                <div class="step-title">Onboarding Complete!</div>
+            </div>
+            <p class="step-description" style="text-align: center;">
+                Your knowledge tree has been populated with your files.
+            </p>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="value" id="stat-files">0</div>
+                    <div class="label">Files Indexed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value" id="stat-size">0 MB</div>
+                    <div class="label">Total Size</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value" id="stat-embeddings">0</div>
+                    <div class="label">Embeddings</div>
+                </div>
+                <div class="stat-card">
+                    <div class="value" id="stat-time">0s</div>
+                    <div class="label">Time Taken</div>
+                </div>
+            </div>
+            <div class="buttons">
+                <button class="btn btn-primary" onclick="window.location.href='/3d'">View Your Tree →</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script>
+        // ═══════════════════════════════════════════════════════════════
+        // VETKA Onboarding - Scan Progress Handler
+        // Features: Socket.IO + Polling Fallback + Cancel Support
+        // ═══════════════════════════════════════════════════════════════
+
+        let currentStep = 1;
+        let socket = null;
+        let currentScanId = null;
+        let pollInterval = null;
+        let socketConnected = false;
+        let scanStartTime = null;
+        let lastFileCount = 0;
+        let lastUpdateTime = null;
+        let scanCancelled = false;
+
+        // ═══════════════════════════════════════════════════════════════
+        // SOCKET.IO - Initialize IMMEDIATELY on page load
+        // ═══════════════════════════════════════════════════════════════
+
+        function initSocket() {
+            if (socket) return;
+
+            console.log('[SOCKET] Initializing Socket.IO...');
+            socket = io({
+                reconnection: true,
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000
+            });
+
+            socket.on('connect', () => {
+                console.log('[SOCKET] Connected:', socket.id);
+                socketConnected = true;
+                updateConnectionStatus(true);
+            });
+
+            socket.on('disconnect', () => {
+                console.log('[SOCKET] Disconnected');
+                socketConnected = false;
+                updateConnectionStatus(false);
+            });
+
+            socket.on('connect_error', (err) => {
+                console.log('[SOCKET] Connection error:', err.message);
+                socketConnected = false;
+                updateConnectionStatus(false);
+            });
+
+            // Listen for scan progress events
+            socket.on('scan_progress', (data) => {
+                console.log('[SOCKET] scan_progress:', data);
+                handleScanProgress(data);
+            });
+        }
+
+        function updateConnectionStatus(connected) {
+            const dot = document.getElementById('connection-dot');
+            const text = document.getElementById('connection-text');
+            if (connected) {
+                dot.classList.add('connected');
+                text.textContent = 'Connected';
+            } else {
+                dot.classList.remove('connected');
+                text.textContent = 'Reconnecting...';
+            }
+        }
+
+        // Initialize socket on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            initSocket();
+        });
+
+        // ═══════════════════════════════════════════════════════════════
+        // NAVIGATION
+        // ═══════════════════════════════════════════════════════════════
+
+        function nextStep(step) {
+            document.getElementById('step' + currentStep).classList.remove('active');
+            document.getElementById('step' + step).classList.add('active');
+            currentStep = step;
+
+            if (step === 3) {
+                startScan();
+            }
+        }
+
+        function prevStep(step) {
+            document.getElementById('step' + currentStep).classList.remove('active');
+            document.getElementById('step' + step).classList.add('active');
+            currentStep = step;
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // LOGGING
+        // ═══════════════════════════════════════════════════════════════
+
+        function addLog(message, type = 'item') {
+            const log = document.getElementById('scan-log');
+            const item = document.createElement('div');
+            item.className = 'log-' + type;  // log-item, log-error, log-info
+            item.textContent = message;
+            log.appendChild(item);
+            log.scrollTop = log.scrollHeight;
+
+            // Keep only last 50 log entries
+            while (log.children.length > 50) {
+                log.removeChild(log.firstChild);
+            }
+        }
+
+        function clearLog() {
+            const log = document.getElementById('scan-log');
+            log.innerHTML = '';
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // PROGRESS UPDATE
+        // ═══════════════════════════════════════════════════════════════
+
+        function updateProgress(current, total, percent, phase = 'scanning') {
+            document.getElementById('progress-fill').style.width = percent + '%';
+            document.getElementById('progress-current').textContent = current + ' / ' + total + ' files';
+            document.getElementById('progress-percent').textContent = Math.round(percent) + '%';
+
+            // Update phase label
+            const phaseEl = document.getElementById('progress-phase');
+            switch (phase) {
+                case 'scanning':
+                    phaseEl.textContent = 'Scanning files...';
+                    break;
+                case 'scanning_complete':
+                    phaseEl.textContent = 'Preparing embeddings...';
+                    break;
+                case 'embedding':
+                    phaseEl.textContent = 'Generating embeddings...';
+                    break;
+                case 'complete':
+                    phaseEl.textContent = 'Complete!';
+                    break;
+                default:
+                    phaseEl.textContent = 'Processing...';
+            }
+
+            // Calculate speed
+            if (scanStartTime && current > 0) {
+                const elapsed = (Date.now() - scanStartTime) / 1000;
+                const speed = (current / elapsed).toFixed(1);
+                document.getElementById('progress-speed').textContent = speed + ' files/sec';
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // HANDLE SCAN PROGRESS (from Socket or Polling)
+        // ═══════════════════════════════════════════════════════════════
+
+        function handleScanProgress(data) {
+            // Ignore events for other scans
+            if (data.scan_id && data.scan_id !== currentScanId) return;
+
+            // Ignore if cancelled
+            if (scanCancelled) return;
+
+            const status = data.status;
+            console.log('[PROGRESS] Status:', status, 'Data:', data);
+
+            if (status === 'scanning') {
+                if (data.current_file) {
+                    addLog('Scanning: ' + data.current_file, 'item');
+                }
+                updateProgress(
+                    data.scanned || 0,
+                    data.total || data.scanned || 0,
+                    data.percent || 0,
+                    'scanning'
+                );
+                lastFileCount = data.scanned || 0;
+                lastUpdateTime = Date.now();
+
+            } else if (status === 'scanning_complete') {
+                addLog('Scan complete: ' + data.scanned + ' files (' + (data.total_mb || 0).toFixed(1) + ' MB)', 'item');
+                updateProgress(data.scanned, data.total, 50, 'scanning_complete');
+
+            } else if (status === 'embedding') {
+                if (data.current_file) {
+                    addLog('Embedding: ' + data.current_file, 'info');
+                }
+                updateProgress(
+                    data.embedded || 0,
+                    data.total || 0,
+                    data.percent || 50,
+                    'embedding'
+                );
+
+            } else if (status === 'complete') {
+                addLog('All embeddings created!', 'item');
+                updateProgress(data.files_scanned, data.files_scanned, 100, 'complete');
+                stopPolling();
+                showComplete(data);
+
+            } else if (status === 'error') {
+                addLog('Error: ' + data.error, 'error');
+                stopPolling();
+
+            } else if (status === 'cancelled') {
+                addLog('Scan cancelled', 'info');
+                stopPolling();
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // POLLING FALLBACK (if Socket.IO events not received)
+        // ═══════════════════════════════════════════════════════════════
+
+        function startPolling() {
+            if (pollInterval) return;
+
+            console.log('[POLLING] Starting fallback polling...');
+            addLog('Using polling fallback...', 'info');
+
+            pollInterval = setInterval(async () => {
+                if (!currentScanId || scanCancelled) {
+                    stopPolling();
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/scan/status/' + currentScanId);
+                    if (response.ok) {
+                        const data = await response.json();
+                        data.scan_id = currentScanId;  // Ensure scan_id is set
+                        handleScanProgress(data);
+                    }
+                } catch (e) {
+                    console.log('[POLLING] Error:', e);
+                }
+            }, 500);  // Poll every 500ms
+        }
+
+        function stopPolling() {
+            if (pollInterval) {
+                console.log('[POLLING] Stopping...');
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // START SCAN
+        // ═══════════════════════════════════════════════════════════════
+
+        async function startScan() {
+            const folderPath = document.getElementById('folder-path').value;
+            const includeDocs = document.getElementById('source-docs').checked;
+            const includeCode = document.getElementById('source-code').checked;
+            const includeConfig = document.getElementById('source-config').checked;
+
+            // Reset state
+            clearLog();
+            scanCancelled = false;
+            scanStartTime = Date.now();
+            lastFileCount = 0;
+            lastUpdateTime = null;
+
+            addLog('Starting scan of: ' + folderPath, 'info');
+            document.getElementById('scan-description').textContent = 'Scanning: ' + folderPath;
+
+            try {
+                const response = await fetch('/api/scan/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        path: folderPath,
+                        include_docs: includeDocs,
+                        include_code: includeCode,
+                        include_config: includeConfig
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.error) {
+                    addLog('Error: ' + result.error, 'error');
+                    return;
+                }
+
+                currentScanId = result.scan_id;
+                addLog('Scan ID: ' + result.scan_id, 'info');
+
+                // Start polling fallback after 2 seconds if no socket events
+                setTimeout(() => {
+                    if (currentScanId && !scanCancelled && lastFileCount === 0) {
+                        console.log('[FALLBACK] No socket events received, starting polling...');
+                        startPolling();
+                    }
+                }, 2000);
+
+            } catch (error) {
+                addLog('Error: ' + error.message, 'error');
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // CANCEL SCAN
+        // ═══════════════════════════════════════════════════════════════
+
+        async function cancelScan() {
+            if (!currentScanId) {
+                prevStep(2);
+                return;
+            }
+
+            scanCancelled = true;
+            stopPolling();
+            addLog('Cancelling scan...', 'info');
+
+            try {
+                const response = await fetch('/api/scan/cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scan_id: currentScanId })
+                });
+
+                const result = await response.json();
+
+                if (result.error) {
+                    addLog('Cancel error: ' + result.error, 'error');
+                } else {
+                    addLog('Scan cancelled', 'item');
+                }
+            } catch (e) {
+                addLog('Cancel failed: ' + e.message, 'error');
+            }
+
+            currentScanId = null;
+
+            // Return to step 2 after 1 second
+            setTimeout(() => prevStep(2), 1000);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // SHOW COMPLETE
+        // ═══════════════════════════════════════════════════════════════
+
+        function showComplete(stats) {
+            // Validate stats have real data
+            const filesScanned = stats.files_scanned || 0;
+            const totalMb = stats.total_mb || 0;
+            const embeddingsCreated = stats.embeddings_created || 0;
+            const timeSec = stats.time_sec || 0;
+            const skipped = stats.skipped_unchanged || 0;
+
+            document.getElementById('stat-files').textContent = filesScanned;
+            document.getElementById('stat-size').textContent = totalMb.toFixed(1) + ' MB';
+            document.getElementById('stat-embeddings').textContent = embeddingsCreated;
+            document.getElementById('stat-time').textContent = timeSec.toFixed(1) + 's';
+
+            if (skipped > 0) {
+                addLog('Skipped ' + skipped + ' unchanged files', 'info');
+            }
+
+            addLog('Indexing complete! Redirecting to 3D view...', 'item');
+
+            // Switch to completion step
+            setTimeout(() => {
+                nextStep(4);
+            }, 500);
+
+            // Auto-redirect to /3d with reset parameter
+            setTimeout(() => {
+                window.location.href = '/3d?reset=true';
+            }, 2500);
+        }
+    </script>
+</body>
+</html>

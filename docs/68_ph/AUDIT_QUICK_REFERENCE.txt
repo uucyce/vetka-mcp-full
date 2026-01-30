@@ -1,0 +1,119 @@
+═════════════════════════════════════════════════════════════════════════════
+VETKA PHASE 69 — TOTAL AUDIT — QUICK REFERENCE
+═════════════════════════════════════════════════════════════════════════════
+
+✅ 1. CONTEXT FILE LIMIT — 5 FILES (PINNED)
+   Location: src/api/handlers/message_utils.py:415
+   Parameter: max_files = 5
+   Status: HARDCODED (not env var configurable directly)
+   Environment: VETKA_MAX_CONTEXT_TOKENS=4000 (token budget, configurable)
+
+✅ 2. SOCKET HANDLERS REGISTRATION
+   Master file: src/api/handlers/__init__.py:74-88
+   Pattern: Create file → Define register_*_handlers(sio) → Add to __init__
+   Total handlers: 51 across 12 categories
+   Key files:
+     - voice_socket_handler.py (16 handlers)
+     - user_message_handler.py (main chat)
+     - workflow_socket_handler.py (5 handlers)
+
+✅ 3. SCANNER MODULE
+   Path: src/scanners/
+   Cleanup functions:
+     • soft_delete(file_path) — Mark as deleted
+     • hard_delete(file_path) — Permanently remove
+     • cleanup_deleted(older_than_hours=24) — Batch cleanup
+   Status: MANUAL (not automatic, no background task)
+   Qdrant collections: VetkaTree, VetkaLeaf, VetkaChangeLog
+
+✅ 4. 3D TREE HIGHLIGHT
+   Store: client/src/store/useStore.ts:91
+   Type: highlightNode(id: string | null)
+   Limitation: SINGLE highlight only (not multi-select highlight)
+   Visual: Client.src/components/canvas/TreeEdges.tsx:28
+   Duration: 3 seconds auto-clear
+   Socket events: file_highlighted, file_unhighlighted
+
+═════════════════════════════════════════════════════════════════════════════
+
+🚨 CRITICAL ISSUES FOUND
+
+1. SINGLE HIGHLIGHT BOTTLENECK
+   → Can't highlight related files together (e.g., imports + usages)
+   → Store: highlightedId: string | null (not array/set)
+   
+2. INCONSISTENT PINNED FILE LIMITS
+   → New: max_files=5 (Phase 67)
+   → Legacy: max_files=10 (fallback)
+   → Should consolidate to env variable
+
+3. SCANNER CLEANUP NOT AUTOMATIC
+   → Manual calls required: soft_delete(), hard_delete(), cleanup_deleted()
+   → No background task or scheduler
+   → Risk of stale deleted entries accumulating
+
+4. QDRANT COLLECTIONS UNDOCUMENTED
+   → VetkaTree: purpose unclear
+   → VetkaLeaf: relationship unclear
+   → VetkaChangeLog: audit trail but when used?
+
+5. 51 SOCKET HANDLERS
+   → Risk: Complex distributed registration
+   → Solution: Handler registry with self-discovery
+
+═════════════════════════════════════════════════════════════════════════════
+
+🔧 ENVIRONMENT VARIABLES (CONFIGURABLE)
+
+VETKA_MAX_CONTEXT_TOKENS=4000          # Token budget
+VETKA_MAX_TOKENS_PER_FILE=1000         # Per-file limit
+VETKA_QDRANT_WEIGHT=0.7                # Qdrant importance (0.0-1.0)
+VETKA_CAM_WEIGHT=0.3                   # CAM importance (0.0-1.0)
+VETKA_DEBUG_CONTEXT=false              # Debug logging
+
+═════════════════════════════════════════════════════════════════════════════
+
+📋 HOW TO ADD NEW SOCKET HANDLER
+
+1. Create: src/api/handlers/my_handlers.py
+   
+   def register_my_handlers(sio: AsyncServer, app=None):
+       @sio.on('my_event')
+       async def handle_my_event(sid, data):
+           pass
+
+2. Register in: src/api/handlers/__init__.py
+   
+   from .my_handlers import register_my_handlers
+   
+   def register_all_socket_handlers(sio, app):
+       ...
+       register_my_handlers(sio, app)
+
+═════════════════════════════════════════════════════════════════════════════
+
+📊 KEY FILE LOCATIONS
+
+Context Assembly:
+  → src/api/handlers/message_utils.py (build_pinned_context)
+  → src/elisya/middleware.py (ElisyaMiddleware)
+
+Socket Handlers:
+  → src/api/handlers/__init__.py (master registration)
+  → src/api/handlers/*.py (individual handlers)
+
+3D Highlight:
+  → client/src/store/useStore.ts (state)
+  → client/src/components/canvas/CameraController.tsx (usage)
+  → client/src/components/canvas/TreeEdges.tsx (rendering)
+
+Scanner/Qdrant:
+  → src/scanners/qdrant_updater.py (cleanup functions)
+  → src/memory/qdrant_client.py (collections)
+
+═════════════════════════════════════════════════════════════════════════════
+
+✨ AUDIT COMPLETED: 2026-01-19
+No code changes made - documentation only
+Full report: PHASE_69_TOTAL_AUDIT.md
+

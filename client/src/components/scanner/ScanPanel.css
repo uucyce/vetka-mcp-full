@@ -1,0 +1,780 @@
+/**
+ * Unified Scan Panel Styles - Phase 92.4
+ * Combined styles from ScannerPanel + ScanProgressPanel
+ *
+ * @file ScanPanel.css
+ * @phase Phase 92.4 - Unified scan panel
+ * @lastUpdate 2026-01-25
+ */
+
+/* Phase 92.7: Unified with GroupCreator panel style */
+/* Phase 92.8: Removed max-height transition - was causing sluggish resize */
+.scan-panel {
+  position: relative;
+  background: #0a0a0a;
+  border-bottom: 1px solid #222;
+  transition: opacity 0.2s ease;
+  z-index: 10;
+  font-family: inherit;
+  display: flex;
+  flex-direction: column;
+  min-height: 48px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* Phase 92.9: Panel always expanded, height controlled by inline style */
+/* Removed .expanded/.collapsed classes - no longer used */
+
+/* ============== HEADER ============== */
+
+.scan-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  min-height: 48px;
+  border-bottom: 1px solid #222;
+  background: #0f0f0f;
+  flex-shrink: 0;
+}
+
+/* Mini carousel in header */
+.source-carousel-mini {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.carousel-btn-mini {
+  background: transparent;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.carousel-btn-mini:hover {
+  color: #aaa;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.source-display-mini {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+}
+
+.source-icon-mini {
+  color: #ccc;
+  display: flex;
+  align-items: center;
+}
+
+.source-name-mini {
+  font-size: 12px;
+  font-weight: 500;
+  color: #ccc;
+  white-space: nowrap;
+}
+
+/* Controls section */
+.scan-panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scan-stats {
+  font-size: 11px;
+  color: #ccc;
+  font-family: inherit;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+
+/* Phase I9: Gray file counter (Phase 92.9 blue removed) */
+.scan-stats.complete {
+  color: #aaa;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Phase 92.7: White/gray trash icon like GroupCreator buttons */
+.clear-btn {
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.clear-btn:hover:not(:disabled) {
+  background: #222;
+  border-color: #444;
+  color: #ccc;
+}
+
+.clear-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.clear-btn.clearing {
+  color: #555;
+}
+
+.collapse-btn {
+  background: transparent;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.collapse-btn:hover {
+  color: #aaa;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ============== PROGRESS BAR (10px) ============== */
+
+.scan-progress-bar {
+  height: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+  margin: 0 12px 8px 12px;
+  border-radius: 5px;
+}
+
+/* Phase 92.8: Light blue progress bar instead of bright green */
+.scan-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #5c8aaa 0%, #7ab3d4 100%);
+  transition: width 0.3s ease;
+  box-shadow: 0 0 8px rgba(122, 179, 212, 0.3);
+  border-radius: 5px;
+}
+
+.scan-progress-fill.indeterminate {
+  width: 30% !important;
+  animation: indeterminate 1.5s ease-in-out infinite;
+}
+
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+/* ============== CONTENT AREA ============== */
+
+.scan-panel-content {
+  padding: 12px 16px 16px 16px;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 12px;
+}
+
+/* ============== INLINE PATH INPUT ============== */
+
+.path-input-row {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Phase 92.7: Input like GroupCreator */
+.path-input {
+  flex: 1;
+  padding: 10px 12px;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ccc;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.path-input::placeholder {
+  color: #555;
+}
+
+.path-input:focus {
+  border-color: #555;
+}
+
+.path-input:disabled {
+  opacity: 0.5;
+  background: #0a0a0a;
+}
+
+/* Phase 92.7: Button like GroupCreator */
+.add-folder-btn {
+  width: 38px;
+  height: 38px;
+  padding: 8px;
+  background: #333;
+  border: none;
+  border-radius: 4px;
+  color: #ccc;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.add-folder-btn:hover:not(:disabled) {
+  background: #333;
+  border-color: #666;
+}
+
+.add-folder-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.add-folder-btn.adding {
+  color: #888;
+}
+
+/* ============== PHASE I3: BROWSE FOLDER BUTTON ============== */
+
+.browse-folder-btn {
+  width: 38px;
+  height: 38px;
+  padding: 8px;
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.browse-folder-btn:hover:not(:disabled) {
+  background: #2a2a2a;
+  border-color: #444;
+  color: #ccc;
+}
+
+.browse-folder-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Phase I9: Full-width browse button for Tauri mode (no path input) - gray tones */
+.browse-folder-btn-full {
+  flex: 1;
+  height: 42px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #1a1a1a 0%, #222 100%);
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: #ccc;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.2s;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.browse-folder-btn-full:hover:not(:disabled) {
+  background: linear-gradient(135deg, #242424 0%, #2a2a2a 100%);
+  border-color: #555;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
+}
+
+.browse-folder-btn-full:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.browse-folder-btn-full:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.browse-folder-btn-full svg {
+  width: 20px;
+  height: 20px;
+}
+
+.browse-folder-btn-full .browse-label {
+  color: #aaa;
+}
+
+/* ============== WATCHED DIRECTORIES LIST ============== */
+
+.watched-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.watched-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.watched-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.watched-status {
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.watched-status.watching {
+  color: #4ade80;
+}
+
+.watched-status.scanning {
+  color: #facc15;
+  animation: pulse 1s infinite;
+}
+
+.watched-status.error {
+  color: #f87171;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.watched-path {
+  font-size: 12px;
+  color: #999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  font-family: inherit;
+}
+
+.files-count {
+  font-size: 10px;
+  color: #666;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.remove-btn {
+  background: transparent;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.remove-btn:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+}
+
+/* ============== SCANNED FILES SECTION ============== */
+
+.scanned-files-section {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.scanned-files-label {
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.scanned-files-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+}
+
+/* Phase 92.7: File items like GroupCreator agent slots */
+.scanned-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #111;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid #222;
+  flex-shrink: 0;
+  position: relative;
+  animation: slideIn 0.2s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.scanned-file-item:hover {
+  background: #151515;
+  border-color: #333;
+}
+
+.scanned-file-item:active {
+  background: #1a1a1a;
+}
+
+.check-icon {
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.scanned-file-item:hover .check-icon {
+  opacity: 1;
+}
+
+.file-name {
+  font-size: 11px;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  transition: color 0.15s ease;
+}
+
+.scanned-file-item:hover .file-name {
+  color: #fff;
+}
+
+.file-path {
+  font-size: 9px;
+  color: #555;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 150px;
+}
+
+/* Phase 92.4: File meta (size + date) like search results */
+.file-meta {
+  font-size: 10px;
+  color: #666;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+.fly-indicator {
+  font-size: 10px;
+  color: #aaa;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.scanned-file-item:hover .fly-indicator {
+  opacity: 1;
+}
+
+/* ============== PIN BUTTON (Phase I9: gray tones) ============== */
+
+.pin-btn {
+  background: transparent;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.scanned-file-item:hover .pin-btn {
+  opacity: 1;
+}
+
+.pin-btn:hover {
+  color: #aaa;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.pin-btn.pinned {
+  color: #aaa;
+  opacity: 1;
+}
+
+.pin-btn.pinned:hover {
+  color: #999;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Pinned file item highlight */
+.scanned-file-item.pinned {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.scanned-file-item.pinned .check-icon {
+  color: #aaa;
+}
+
+/* ============== EMPTY STATE (Phase 92.6) ============== */
+
+.empty-scan-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 20px;
+  text-align: center;
+  flex: 1;
+  min-height: 100px;
+}
+
+.empty-scan-text {
+  font-size: 13px;
+  color: #666;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.empty-scan-hint {
+  font-size: 11px;
+  color: #555;
+}
+
+/* ============== COMING SOON PANEL ============== */
+
+.coming-soon-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  flex: 1;
+}
+
+.coming-soon-text {
+  font-size: 14px;
+  color: #666;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.coming-soon-hint {
+  font-size: 12px;
+  color: #555;
+}
+
+/* ============== RESIZE HANDLE (Phase 92.8: Instant response, no transition lag) ============== */
+
+.scan-resize-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 12px;
+  cursor: ns-resize;
+  background: transparent;
+  z-index: 20;
+}
+
+.scan-resize-handle:hover,
+.scan-resize-handle.dragging {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.scan-resize-handle::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 50px;
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+}
+
+.scan-resize-handle:hover::after,
+.scan-resize-handle.dragging::after {
+  background: #555;
+}
+
+/* ============== HOVER PREVIEW POPUP ============== */
+
+.file-preview-popup {
+  position: fixed;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 200px;
+  max-width: 350px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #333;
+}
+
+.preview-icon {
+  color: #aaa;
+}
+
+.preview-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+.preview-meta span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.preview-path {
+  font-size: 10px;
+  color: #666;
+  font-family: inherit;
+  word-break: break-all;
+}
+
+/* ============== SCROLLBAR ============== */
+
+.watched-list::-webkit-scrollbar,
+.scanned-files-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.watched-list::-webkit-scrollbar-track,
+.scanned-files-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.watched-list::-webkit-scrollbar-thumb,
+.scanned-files-list::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+.watched-list::-webkit-scrollbar-thumb:hover,
+.scanned-files-list::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* ============== PHASE 100.2: DRAG & DROP (Phase I9: gray tones) ============== */
+
+.scan-panel.drag-over {
+  border: 2px dashed #666;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.scan-panel.drag-over::after {
+  content: 'Drop files or folders here';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 14px;
+  color: #aaa;
+  font-weight: 500;
+  pointer-events: none;
+  z-index: 100;
+}

@@ -1,0 +1,104 @@
+# ==========================================
+# VETKA Project .gitignore
+# Phase 12K - December 2025
+# ==========================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.pyc
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+venv_mac/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.code-workspace
+
+# OS Files
+.DS_Store
+Thumbs.db
+*.bak
+
+# Logs & Databases
+*.log
+*.db
+*.sqlite
+server.log
+logs/
+diagnostics/
+
+# VETKA Specific
+data/raw/*
+data/logs/*.log
+*.changelog.json
+collections/
+output/
+uploads/
+instance/
+
+# Backups
+backups/
+ARCHIVEback/
+*.backup
+*.backup_*
+*_backup.py
+
+# Secrets & Config
+.env
+.env.local
+*.key
+config/api_keys.json
+claude_desktop_config.json
+
+# Docker
+docker/volumes/
+docker-compose.override.yml
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+dxt_build/
+
+# Static files (generated) - but NOT frontend/static
+static/
+templates/
+!frontend/static/
+!frontend/templates/
+
+# Test outputs
+test_results.json
+*.html.test
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Media (large files)
+media/**/*.mp4
+media/**/*.mov
+media/**/*.avi
+
+# Keep structure folders
+!data/raw/.gitkeep
+!logs/.gitkeep
+archive/
+node_modules/
+
+# Phase 44.7: File cleanup
+_trash/
+
+# Tauri build artifacts
+client/src-tauri/target/

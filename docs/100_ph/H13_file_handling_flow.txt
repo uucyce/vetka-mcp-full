@@ -1,0 +1,395 @@
+VETKA FILE HANDLING ARCHITECTURE - PHASE 100.4
+================================================
+
+COMPONENT LAYERS
+================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 1: USER INPUT                                                         │
+│ ─────────────────────────────────────────────────────────────────────────── │
+│                                                                             │
+│  [Drag & Drop Files]     [Manual Path Input]     [API Call]               │
+│         ↓                        ↓                    ↓                     │
+│  Real Finder/Explorer   ScanPanel Input Box    curl /api/watcher/add      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 2: RUNTIME ENVIRONMENT DETECTION                                      │
+│ ─────────────────────────────────────────────────────────────────────────── │
+│                                                                             │
+│                         isTauri() check                                     │
+│                              ↓                                              │
+│                    ┌─────────┴──────────┐                                   │
+│                    ↓                    ↓                                   │
+│              [TAURI MODE]         [BROWSER MODE]                           │
+│              Desktop App          Web Browser                              │
+│              Real Paths           Virtual Paths                            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                    ↓                          ↓
+┌────────────────────────────────┐  ┌────────────────────────────────┐
+│ TAURI MODE PATH FLOW           │  │ BROWSER MODE PATH FLOW         │
+│ ───────────────────────────────│  │ ──────────────────────────────│
+│                                │  │                               │
+│ User drops file/folder         │  │ User drops file/folder        │
+│ (from Finder/Explorer)         │  │ (from any source)             │
+│        ↓                        │  │        ↓                      │
+│ Tauri DragDropEvent            │  │ HTML5 DragEvent               │
+│ (main.rs:46-72)                │  │ (DropZoneRouter:190)          │
+│        ↓                        │  │        ↓                      │
+│ Window emits "files-dropped"   │  │ FileSystemHandle API          │
+│ with REAL paths:               │  │ (getAsFile / getAsFileSystem) │
+│ ["/Users/app.ts", ...]         │  │        ↓                      │
+│        ↓                        │  │ Create FAKE paths:            │
+│ Frontend onFilesDropped()       │  │ ["browser://app.ts", ...]    │
+│ (DropZoneRouter:123)           │  │        ↓                      │
+│        ↓                        │  │ Frontend onFilesDropped()     │
+│ handleDropPaths() Tauri cmd    │  │ (DropZoneRouter:123)          │
+│ (file_system.rs:192)           │  │        ↓                      │
+│        ↓                        │  │ NO Tauri command available    │
+│ Read FileInfo (real paths)     │  │        ↓                      │
+│ {path, name, size, ...}        │  │ FileInfo with fake paths      │
+│        ↓                        │  │ {path: "browser://...", ...}  │
+│ ┌─────────────────────┐         │  │        ↓                      │
+│ │ READY FOR INDEXING  │         │  │ ┌──────────────────────────┐ │
+│ │ Real paths exist    │         │  │ │ NEEDS RESOLUTION         │ │
+│ │ on filesystem       │         │  │ │ Must find actual files   │ │
+│ └─────────────────────┘         │  │ └──────────────────────────┘ │
+│                                │  │                               │
+└────────────────────────────────┘  └────────────────────────────────┘
+         ↓                                      ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 3: FRONTEND ROUTING (DropZoneRouter.tsx)                             │
+│ ─────────────────────────────────────────────────────────────────────────── │
+│                                                                             │
+│  Determine Drop Zone:                                                      │
+│  - Is chat panel visible? (yes→left/right, no→tree only)                   │
+│  - Calculate mouse position at drop time                                    │
+│  - Dispatch to appropriate zone handler                                    │
+│                                                                             │
+│  ┌─────────────┬──────────────┐                                            │
+│  ↓             ↓              ↓                                             │
+│ [Chat Zone]  [Tree Zone]  [Custom Handler]                                 │
+│  Pin file    Add to tree     (application-specific)                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+         ↓ (both zones)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 4: SCAN PANEL PROCESSING (ScanPanel.tsx)                             │
+│ ─────────────────────────────────────────────────────────────────────────── │
+│                                                                             │
+│  Phase 100.2: Process dropped files                                        │
+│  (ScanPanel:295-359)                                                       │
+│                                                                             │
+│  For each dropped item:                                                    │
+│  ┌─────────────────────────────────────────────────────────────┐           │
+│  │ IF is_directory:                                            │           │
+│  │   → Separate into 'directories' array                       │           │
+│  │                                                              │           │
+│  │ IF is_file:                                                 │           │
+│  │   → Add to 'scannedFiles' state (recent files list)        │           │
+│  │   → NOT indexed yet (preview only)                          │           │
+│  └─────────────────────────────────────────────────────────────┘           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+         ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 5: BACKEND PATH RESOLUTION                                           │
+│ ─────────────────────────────────────────────────────────────────────────── │
+│                                                                             │
+│  Tauri Paths (real):                    Browser Paths (fake):             │
+│  /Users/danilo/app.ts                   browser://app.ts                  │
+│       ↓                                        ↓                           │
+│  Validate path exists                   POST /api/files/resolve-path      │
+│  (Python os.path.exists())              (files_routes.py:361)            │
+│       ↓                                        ↓                           │
+│  ✅ PATH FOUND                          3-Tier Search:                     │
+│                                         1. Watched directories             │
+│                                         2. macOS mdfind (Spotlight)        │
+│                                         3. Home directory find             │
+│                                              ↓                             │
+│                                         IF FOUND: Real path returned       │
+│                                         IF NOT: Error response             │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+         ↓ (both: real path or resolved path)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 6: WATCHER INTEGRATION (watcher_routes.py)                           │
+│ ─────────────────────────────────────────────────────────────────────────── │
+│                                                                             │
+│  POST /api/watcher/add                                                     │
+│  {                                                                          │
+│    "path": "/Users/danilo/project",     ← REAL filesystem path            │
+│    "recursive": true                    ← Watch subdirectories             │
+│  }                                                                          │
+│       ↓                                                                     │
+│  Validate:                                                                 │
+│  ✓ Path exists                                                             │
+│  ✓ Is directory (for watching)                                             │
+│  ✓ Not already watched                                                     │
+│       ↓                                                                     │
+│  Add to watchdog observer:                                                 │
+│  ┌────────────────────────────┐                                            │
+│  │ FileSystemEventHandler     │                                            │
+│  │ (file_watcher.py:73-96)    │                                            │
+│  │                            │                                            │
+│  │ Monitors for:              │                                            │
+│  │ • File created             │                                            │
+│  │ • File modified            │                                            │
+│  │ • File deleted             │                                            │
+│  │ • Directory changed        │                                            │
+│  └────────────────────────────┘                                            │
+│       ↓                                                                     │
+│  Debounce events (400ms):                                                  │
+│  (file_watcher.py:82-95)                                                   │
+│  Coalse rapid edits & bulk operations                                      │
+│       ↓                                                                     │
+│  Emit to Socket.IO:                                                        │
+│  Real-time UI updates                                                      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+         ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 7: QDRANT INDEXING (qdrant_updater.py)                               │
+│ ─────────────────────────────────────────────────────────────────────────── │
+│                                                                             │
+│  For each file event:                                                      │
+│                                                                             │
+│  ┌──────────────────────────────────────────────┐                          │
+│  │ 1. Read file content                         │                          │
+│  │ 2. Extract metadata (size, ext, mtime)       │                          │
+│  │ 3. Generate embeddings (if text)             │                          │
+│  │ 4. Create Qdrant vectors                     │                          │
+│  │ 5. Store with metadata (path, tags, etc)    │                          │
+│  │ 6. Emit "scan_progress" to UI               │                          │
+│  └──────────────────────────────────────────────┘                          │
+│       ↓                                                                     │
+│  Qdrant Collection Updated:                                                │
+│  {                                                                          │
+│    "id": "hash(path)",                                                     │
+│    "vector": [0.234, -0.432, ...],       ← Semantic embedding             │
+│    "payload": {                                                            │
+│      "path": "/Users/.../app.ts",                                          │
+│      "filename": "app.ts",                                                 │
+│      "type": "file",                                                       │
+│      "size": 2048,                                                         │
+│      "extension": ".ts",                                                   │
+│      "content_hash": "abc123...",                                          │
+│      "indexed_at": 1706470000                                              │
+│    }                                                                        │
+│  }                                                                          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+         ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ LAYER 8: 3D VISUALIZATION (Scene.tsx + FileCard.tsx)                        │
+│ ─────────────────────────────────────────────────────────────────────────── │
+│                                                                             │
+│  Qdrant vectors transformed to 3D positions:                               │
+│                                                                             │
+│  Vector Space (Semantic):     3D Canvas (Visual):                          │
+│  [x, y, z, ...]          →    Position in 3D tree                          │
+│  Related files close           Similar files positioned near               │
+│  Distant files far             Different files positioned far              │
+│                                                                             │
+│  FileCard component:                                                       │
+│  ┌────────────────────────────────────────────┐                            │
+│  │ LOD System (10 levels Google Maps style):  │                            │
+│  │ • Zoom far: Tiny dot                       │                            │
+│  │ • Zoom mid: File name + icon               │                            │
+│  │ • Zoom close: Preview + metadata           │                            │
+│  │                                            │                            │
+│  │ Interactions:                              │                            │
+│  │ • Click: Fly-to + open artifact panel     │                            │
+│  │ • Shift+Click: Pin to chat                 │                            │
+│  │ • Ctrl+Drag: Reposition manually           │                            │
+│  └────────────────────────────────────────────┘                            │
+│                                                                             │
+│  ✅ FILE APPEARS IN 3D TREE                                                 │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+PATH VALIDATION FLOWCHART
+=========================
+
+User drops file
+     ↓
+     ├─→ Tauri mode?
+     │   ├─ YES: Real path from DragDrop event
+     │   │        ↓
+     │   │   Is path allowed? (is_allowed_path)
+     │   │   ├─ YES: Continue
+     │   │   └─ NO: Skip file
+     │   │        ↓
+     │   └─→ Backend: os.path.exists(path)?
+     │        ├─ YES: ✅ Add to watcher
+     │        └─ NO: ❌ Error (file deleted?)
+     │
+     └─→ Browser mode?
+         ├─ YES: Fake path "browser://filename"
+         │        ↓
+         │   POST /api/files/resolve-path
+         │   {filename, contentHash, fileSize, relativePath}
+         │        ↓
+         │   Search in watched dirs
+         │   ├─ FOUND: Use matched path
+         │   │   ↓
+         │   └─→ Continue to backend check
+         │        │
+         │   NOT FOUND: Use mdfind (Spotlight)
+         │        │
+         │        ├─ FOUND: Return candidates
+         │        │   (user picks one)
+         │        │        ↓
+         │        └─→ Continue to backend check
+         │             │
+         │        NOT FOUND: Search home directory
+         │             │
+         │             ├─ FOUND: candidates[:10]
+         │             └─ NOT FOUND: Error
+
+
+FILE TYPE HANDLING
+==================
+
+┌──────────────────────────────────────────────────────────┐
+│ TEXT FILES (previewable)                                │
+│ ─────────────────────────────────────────────────────── │
+│ .py, .js, .ts, .tsx, .jsx, .json, .yaml, .md, .txt     │
+│ .html, .css, .sql, .sh, .java, .go, .rs, .rb, .php     │
+│                                                          │
+│ ✓ Read content via readFileNative()                    │
+│ ✓ Display in artifact panel                            │
+│ ✓ Index to Qdrant with embeddings                      │
+│ ✓ Search + semantic navigation                         │
+└──────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────┐
+│ BINARY FILES (not previewable)                          │
+│ ─────────────────────────────────────────────────────── │
+│ Images: .png, .jpg, .gif, .svg, .webp                 │
+│ Video: .mp4, .mov, .avi, .mkv, .webm                  │
+│ Audio: .mp3, .wav, .ogg, .flac, .aac                  │
+│ Archive: .zip, .tar, .gz, .rar, .7z                   │
+│ Other: .exe, .dll, .db, .pdf, .doc, .xls              │
+│                                                          │
+│ ✗ Read content (too large / not text)                 │
+│ ✓ Index metadata (name, size, type)                   │
+│ ✓ Display as 3D node (no preview)                     │
+│ ✓ Include in semantic search (by name/type)           │
+│ ✓ Open in external viewer                             │
+└──────────────────────────────────────────────────────────┘
+
+
+TAURI COMMANDS MAPPING
+======================
+
+Frontend API                          Rust Command                Result
+─────────────────────────────────────────────────────────────────────────
+readFileNative(path)          →      read_file_native            FileContent
+writeFileNative(path, content)→      write_file_native           String
+removeFileNative(path)        →      remove_file_native          String
+listDirectoryNative(path)     →      list_directory              FileInfo[]
+handleDropPaths(paths)        →      handle_drop_paths           FileInfo[]
+watchDirectory(path)          →      watch_directory             String
+onFilesDropped(callback)      ←      files-dropped event         String[]
+onFileChange(callback)        ←      file-change event           FileChangeEvent
+onHeartbeat(callback)         ←      heartbeat event             HeartbeatPayload
+
+
+KEY FILES REFERENCE
+===================
+
+Frontend (TypeScript/React):
+├── client/src/config/tauri.ts (68-70)          ← isTauri() runtime check
+├── client/src/components/DropZoneRouter.tsx    ← Drop zone routing
+│   ├── onFilesDropped() setup (115-148)
+│   ├── handleDropPaths() call (127)
+│   ├── Browser drag handlers (150-283)
+│   └── Drop zone rendering (285-376)
+├── client/src/components/scanner/ScanPanel.tsx ← File processing
+│   ├── Native drop listener (286-370)
+│   ├── Directory/file separation (301-304)
+│   └── Watcher add call (309-323)
+└── client/src/components/canvas/FileCard.tsx   ← 3D visualization
+
+Backend (Python/FastAPI):
+├── src/api/routes/files_routes.py
+│   ├── POST /api/files/read (101-163)         ← Read file content
+│   ├── POST /api/files/save (166-210)         ← Save file content
+│   ├── GET /api/files/raw (213-251)           ← Serve raw files
+│   ├── POST /api/files/resolve-path (361-532)← Browser path resolution
+│   └── _resolve_path() helper (71-94)         ← Path normalization
+├── src/api/routes/watcher_routes.py
+│   ├── POST /api/watcher/add                  ← Add directory watch
+│   ├── GET /api/watcher/status                ← Check watched dirs
+│   └── Watcher singleton integration
+└── src/scanners/file_watcher.py
+    ├── VetkaFileHandler (73-190)              ← Debounced event handler
+    ├── on_any_event() (97-xxx)                ← Event capture
+    └── Event dispatch to qdrant_updater
+
+Tauri Rust (Desktop):
+├── client/src-tauri/src/main.rs
+│   ├── DragDrop event handler (46-72)        ← Native drop detection
+│   ├── files-dropped emission (58)
+│   └── Setup in main builder (34-76)
+├── client/src-tauri/src/file_system.rs
+│   ├── read_file_native() (29-52)            ← Direct file read
+│   ├── write_file_native() (141-173)         ← Direct file write
+│   ├── handle_drop_paths() (192-222)         ← Process drops
+│   ├── is_allowed_path() (224-232)           ← Security check
+│   └── list_directory() (55-94)              ← Dir listing
+└── client/src-tauri/src/commands.rs
+    ├── get_backend_url() (31-44)              ← Backend config
+    ├── check_backend_health() (48-71)         ← Health check
+    └── get_system_info() (75-82)              ← System info
+
+
+FILE SIZE LIMITS
+================
+
+Tauri Native Read:  10 MB max
+Tauri Native Write: 10 MB max
+HTTP POST:          Limited by server config (default: unlimited)
+Qdrant Vector:      Unlimited (semantic embeddings)
+Preview Panel:      Truncated to 50KB for display
+
+
+SUPPORTED FILE EXTENSIONS
+=========================
+
+Code Files (Text Preview):
+  Python: .py
+  JavaScript/TypeScript: .js, .jsx, .ts, .tsx
+  Data: .json, .yaml, .yml, .xml, .csv
+  Markup: .html, .md, .txt
+  Styling: .css, .scss, .less
+  Databases: .sql
+  Shell: .sh, .bash
+  Compiled: .java, .cpp, .c, .h, .go, .rs, .rb, .php, .swift, .kt, .scala, .vue, .svelte
+
+Binary Files (Metadata Only):
+  Images: .png, .jpg, .jpeg, .gif, .bmp, .ico, .svg, .webp, .tiff
+  Video: .mp4, .avi, .mov, .mkv, .webm, .flv
+  Audio: .mp3, .wav, .ogg, .flac, .aac
+  Fonts: .ttf, .otf, .woff, .woff2, .eot
+  Archives: .zip, .tar, .gz, .rar, .7z
+  Binary: .exe, .dll, .so, .dylib, .bin, .dat, .pyc, .class, .o, .a
+
+
+SKIP PATTERNS (Watcher)
+=======================
+
+Directories:
+  .git, node_modules, __pycache__, .venv, venv, site-packages,
+  .env, dist, build, .idea, .vscode, .DS_Store, Pods, .gradle,
+  target, data/changelog
+
+Files:
+  .pyc, .pyo, changelog_*, watcher_state.json, models_cache.json,
+  groups.json, chat_history.json
+
+Prevents infinite loops and unnecessary indexing.

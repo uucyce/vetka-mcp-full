@@ -1,0 +1,72 @@
+HAIKU RECONNAISSANCE H6 - MISSING CHAT HEADER
+==============================================
+
+INVESTIGATION RESULT: NOT REMOVED - INACTIVE
+
+The chat header/title component that users report as "исчезнул" (disappeared)
+is actually fully present in the codebase but simply not visible in normal usage.
+
+KEY FINDINGS:
+============
+
+1. HEADER CODE EXISTS
+   - Location: client/src/components/chat/ChatPanel.tsx:1869-1957
+   - Fully implemented with all features
+   - Editable via prompt dialog (handleRenameChatFromHeader function)
+   - Supports rename, clear, context icons
+
+2. WHY HEADER IS INVISIBLE
+   - Render condition requires currentChatInfo state to be truthy
+   - currentChatInfo is only set in 2 cases:
+     a) Loading a chat from history sidebar
+     b) Creating a new group chat
+   - currentChatInfo is NOT set when starting a fresh solo chat
+   - Result: Header condition fails, nothing renders
+
+3. CODE FLOW ANALYSIS
+   - handleSend() - no currentChatInfo initialization (GAP)
+   - handleSelectChat() - sets currentChatInfo for history loads
+   - handleCreateGroup() - sets currentChatInfo for group creation
+   - Rename function - fully implemented and working
+
+4. NO CODE REMOVAL DETECTED
+   - Phase 74 introduced this feature (fffa4a4d)
+   - Phase 74.5 added conditional to avoid duplication
+   - Last modified Jan 28, 2026 (6f866f38) - no changes to header
+   - All original code still present
+
+ROOT CAUSE:
+===========
+Missing state initialization in solo chat flow. When user:
+1. Opens chat tab
+2. Sends first message without loading from history
+→ currentChatInfo stays null
+→ Header render condition fails
+→ Header invisible (not removed)
+
+RENDER CONDITION (Line 1871-1872):
+{(activeTab === 'chat' || activeTab === 'group') && currentChatInfo && ...}
+                                                      ↑
+                                                    null → FALSE → no render
+
+SOLUTION OPTIONS:
+=================
+
+A) FRONTEND TEMP CREATION (Quick fix)
+   - Create temp currentChatInfo on first message send
+   - ID generated locally until backend persistence
+
+B) BACKEND AUTO-CREATE (Recommended)
+   - Backend creates chat record on first message
+   - Returns chat_id to client
+   - Client sets currentChatInfo after confirmation
+   - Aligns with Phase 74 chat history design
+
+C) KEEP AS-IS (Intentional)
+   - Document that solo chats are transient
+   - Headers only for persistent chats
+
+STATUS: READY FOR DECISION
+Next step: Implement Option A, B, or confirm Option C is intended behavior.
+
+Full report: /docs/100_ph/H6_chat_header_recon.md

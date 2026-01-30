@@ -1,0 +1,223 @@
+/**
+ * Chat Sidebar Styles - Phase 50
+ */
+
+/* Phase 62.1: Semi-transparent with light blur - 3D canvas visible through */
+.chat-sidebar {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 380px;
+  height: 100vh;
+  background: rgba(10, 10, 10, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-right: 1px solid rgba(34, 34, 34, 0.8);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3);
+}
+
+/* Header */
+.chat-sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid #222;
+  background: #0f0f0f;
+}
+
+.chat-sidebar-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ccc;
+  letter-spacing: 0.5px;
+}
+
+.chat-sidebar-close {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 2px 4px;
+  transition: color 0.2s;
+}
+
+.chat-sidebar-close:hover {
+  color: #aaa;
+}
+
+/* Search */
+.chat-sidebar-search {
+  padding: 8px;
+  border-bottom: 1px solid #222;
+}
+
+.chat-sidebar-search-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ccc;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.chat-sidebar-search-input:focus {
+  border-color: #555;
+  box-shadow: 0 0 0 2px rgba(85, 85, 85, 0.1);
+}
+
+/* List Container */
+.chat-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.chat-sidebar-loading,
+.chat-sidebar-empty {
+  padding: 16px 12px;
+  text-align: center;
+  color: #666;
+  font-size: 12px;
+}
+
+/* Chat Item */
+.chat-sidebar-item {
+  padding: 10px 8px;
+  border-bottom: 1px solid #1a1a1a;
+  cursor: pointer;
+  background: transparent;
+  transition: background-color 0.15s;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-sidebar-item:hover {
+  background-color: #1a1a1a;
+}
+
+.chat-sidebar-item.active {
+  background-color: #222;
+  border-left: 3px solid #0EA5E9;
+  padding-left: 5px;
+}
+
+.chat-sidebar-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-sidebar-item-name {
+  font-weight: 500;
+  color: #ddd;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+
+.chat-sidebar-item-meta {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  color: #666;
+}
+
+.chat-sidebar-item-time,
+.chat-sidebar-item-count {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Phase 74: Actions container */
+.chat-sidebar-item-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.chat-sidebar-item:hover .chat-sidebar-item-actions {
+  opacity: 1;
+}
+
+.chat-sidebar-item-edit,
+.chat-sidebar-item-delete {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 14px;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+
+.chat-sidebar-item-edit:hover {
+  color: #0EA5E9;
+}
+
+.chat-sidebar-item-delete:hover {
+  color: #f87171;
+}
+
+/* Footer */
+.chat-sidebar-footer {
+  padding: 8px;
+  border-top: 1px solid #222;
+  background: #0f0f0f;
+}
+
+.chat-sidebar-refresh {
+  width: 100%;
+  padding: 8px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #aaa;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chat-sidebar-refresh:hover:not(:disabled) {
+  background: #222;
+  color: #ccc;
+  border-color: #444;
+}
+
+.chat-sidebar-refresh:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Scrollbar styling */
+.chat-sidebar-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-sidebar-list::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+.chat-sidebar-list::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+.chat-sidebar-list::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}

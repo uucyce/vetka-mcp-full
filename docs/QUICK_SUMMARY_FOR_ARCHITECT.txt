@@ -1,0 +1,66 @@
+🚨 CRITICAL ISSUE FOUND - ONE-PAGE SUMMARY
+==========================================
+
+PROBLEM:
+--------
+3D tree shows old data (2474 stale points) despite nuclear rescan completing successfully (2246 files, 2438 imports scanned).
+
+ROOT CAUSE:
+-----------
+Collection name mismatch + broken data pipeline:
+
+  Rescan Script                Tree Visualization
+  ├─ Deletes: vetka_nodes     ├─ Queries: vetka_elisya ✅
+  ├─ Creates: vetka_nodes      ├─ Result: 2474 OLD POINTS ❌
+  ├─ Scans: 2246 files ✅      └─ Renders: OLD TREE
+  ├─ Embeds: ❌ NOT HAPPENING
+  └─ Upserts: ❌ NOT HAPPENING
+
+CRITICAL MISSING:
+-----------------
+1. Rescan doesn't delete vetka_elisya (still has 2474 old points)
+2. Rescan never calls embedding pipeline
+3. Fresh data from scan NEVER gets embedded/upserted to Qdrant
+
+FILES TO FIX:
+-------------
+1. scripts/rescan_project.py (line 103-104)
+   - Add "vetka_elisya" to delete_collections list
+   - Add embedding pipeline call after import extraction
+
+2. src/scanners/embedding_pipeline.py (exists, never called)
+   - Integrate process_files() into rescan flow
+
+DOCKER STATUS:
+--------------
+✅ Qdrant: Running (port 6333, 8 collections)
+✅ Backend: Running (port 5001, FastAPI)
+✅ Frontend: Connected (localhost:3000)
+✅ MCP: Running (port 5097)
+
+But: vetka_elisya collection has 2474 STALE points (from old runs, not from rescan)
+
+FIX EFFORT:
+-----------
+Low complexity, high impact:
+- 1-2 hours implementation
+- Change ~5 lines in rescan script
+- Add 1 function call
+- Write integration test
+
+VERIFICATION:
+--------------
+After fix:
+1. Run: python scripts/rescan_project.py
+2. Check: curl http://localhost:6333/collections/vetka_elisya
+3. Should show: ~2246 fresh points (from rescan)
+4. Open: localhost:3000
+5. See: Updated 3D tree with organized structure ✅
+
+DETAILED REPORT:
+----------------
+See: docs/CRITICAL_FINDINGS_ARCHITECTURE_ISSUE.md
+
+---
+Status: Ready for architect implementation
+Priority: CRITICAL - blocks visualization feature

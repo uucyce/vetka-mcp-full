@@ -1,0 +1,613 @@
+/**
+ * Main application component with 3D canvas, chat panel, and artifact viewer.
+ * Handles file tree visualization, search, and user interactions.
+ *
+ * @status active
+ * @phase 100.4
+ * @depends react, @react-three/fiber, @react-three/drei, three, lucide-react
+ * @depends ./components/canvas/FileCard, ./components/canvas/TreeEdges, ./components/canvas/CameraController
+ * @depends ./components/chat, ./components/artifact, ./components/search/UnifiedSearchBar
+ * @depends ./components/DropZoneRouter
+ * @depends ./store/useStore, ./hooks/useTreeData, ./hooks/useSocket
+ * @used_by ./main.tsx
+ */
+import { useState, useEffect, useCallback } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
+import * as THREE from 'three';
+import { MessageSquare } from 'lucide-react';
+import { FileCard } from './components/canvas/FileCard';
+import { TreeEdges } from './components/canvas/TreeEdges';
+import { CameraController } from './components/canvas/CameraController';
+import { ChatPanel } from './components/chat';
+import { ArtifactWindow } from './components/artifact';
+import { UnifiedSearchBar } from './components/search/UnifiedSearchBar';
+import { DropZoneRouter, type DropZoneEvent } from './components/DropZoneRouter';
+import { useStore } from './store/useStore';
+import { useTreeData } from './hooks/useTreeData';
+import { useSocket } from './hooks/useSocket';
+import type { SearchResult } from './types/chat';
+
+export default function App() {
+  useTreeData();  // Initialize tree data
+  useSocket();    // Initialize socket connection
+  const [isArtifactOpen, setIsArtifactOpen] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [leftPanel, setLeftPanel] = useState<'none' | 'history' | 'models'>('none');
+
+  // Phase 68.2: Artifact content for search preview
+  const [artifactFile, setArtifactFile] = useState<{ path: string; name: string; extension?: string } | null>(null);
+  const [artifactContent, setArtifactContent] = useState<{ content: string; title: string; type?: 'text' | 'markdown' | 'code' } | null>(null);
+
+  const nodes = useStore((state) => Object.values(state.nodes));
+  const selectedId = useStore((state) => state.selectedId);
+  const selectNode = useStore((state) => state.selectNode);
+  const selectedNode = useStore((state) =>
+    state.selectedId ? state.nodes[state.selectedId] : null
+  );
+  const isDraggingAny = useStore((state) => state.isDraggingAny);
+  const highlightedId = useStore((state) => state.highlightedId);
+
+  // Phase 65: Grab mode for Blender-style node movement
+  const grabMode = useStore((state) => state.grabMode);
+  const setGrabMode = useStore((state) => state.setGrabMode);
+
+  // Phase 54.6: Show path selector for multiple matches
+  const [pathSelectorData, setPathSelectorData] = useState<{
+    filename: string;
+    candidates: string[];
+    onSelect: (path: string) => void;
+  } | null>(null);
+
+  // Phase 52.4: Handle click on empty space to deselect
+  const handleCanvasClick = () => {
+    // console.log('[App] Click on empty space - clearing selection');
+    selectNode(null);
+    // Note: Chat will be cleared by ChatPanel's useEffect when selectedNode becomes null
+  };
+
+  // Phase 50.3: Calculate icon container left position based on chat + sidebar state
+  const getIconsLeft = () => {
+    if (!isChatOpen) {
+      return 20;  // Чат закрыт - слева
+    }
+    if (leftPanel !== 'none') {
+      return 380 + 360 + 20;  // Чат + sidebar открыты (760px)
+    }
+    return 360 + 20;  // Только чат открыт (380px)
+  };
+
+  // Phase 68: Search handlers for standalone search bar
+  const setCameraCommand = useStore((state) => state.setCameraCommand);
+  const togglePinFile = useStore((state) => state.togglePinFile);
+  const allNodes = useStore((state) => state.nodes);
+
+  const handleSearchSelect = useCallback((result: SearchResult) => {
+    // Find node by path and select it
+    const nodeId = Object.keys(allNodes).find(id => allNodes[id]?.path === result.path);
+    if (nodeId) {
+      selectNode(nodeId);
+    }
+    // Fly camera to result
+    setCameraCommand({ target: result.path, zoom: 'close', highlight: true });
+  }, [allNodes, selectNode, setCameraCommand]);
+
+  const handleSearchPin = useCallback((result: SearchResult) => {
+    // Find node by path and toggle pin
+    const nodeId = Object.keys(allNodes).find(id => allNodes[id]?.path === result.path);
+    if (nodeId) {
+      togglePinFile(nodeId);
+    }
+  }, [allNodes, togglePinFile]);
+
+  // Phase 100.4: Drop zone handlers
+  const handleDropToTree = useCallback(async (event: DropZoneEvent) => {
+    // console.log('[App] Drop to tree:', event);
+    const { files, paths } = event;
+    if (files.length === 0) return;
+
+    // Open chat to show scan results
+    if (!isChatOpen) {
+      setIsChatOpen(true);
+    }
+
+    // For real file paths (Tauri mode), use index-file endpoint
+    const realPaths = paths.filter(p => !p.startsWith('browser://'));
+
+    if (realPaths.length > 0) {
+      // Index files via backend
+      for (const filePath of realPaths) {
+        try {
+          const response = await fetch('/api/watcher/index-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              path: filePath,
+              recursive: files.find(f => f.path === filePath)?.is_dir || false,
+            }),
+          });
+
+          if (response.ok) {
+            // console.log('[App] Indexed file:', filePath);
+          }
+        } catch (err) {
+          console.error('[App] Failed to index file:', err);
+        }
+      }
+
+      // Fly camera to first file's parent
+      const firstName = files[0]?.name || 'dropped';
+      window.dispatchEvent(new CustomEvent('camera-fly-to-folder', {
+        detail: { folderName: firstName, filesCount: files.length },
+      }));
+
+      // Switch to scanner tab
+      window.dispatchEvent(new CustomEvent('vetka-switch-to-scanner'));
+    } else {
+      // Browser mode - use virtual paths
+      const rootName = files[0]?.name || 'browser-drop';
+      try {
+        const response = await fetch('/api/watcher/add-from-browser', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rootName,
+            files: files.map(f => ({
+              name: f.name,
+              relativePath: f.path.replace('browser://', ''),
+              size: f.size,
+              type: 'application/octet-stream',
+              lastModified: f.modified || Date.now(),
+            })),
+            timestamp: Date.now(),
+          }),
+        });
+
+        if (response.ok) {
+          window.dispatchEvent(new CustomEvent('camera-fly-to-folder', {
+            detail: { folderName: rootName, filesCount: files.length },
+          }));
+          window.dispatchEvent(new CustomEvent('vetka-switch-to-scanner'));
+        }
+      } catch (err) {
+        console.error('[App] Error indexing dropped files:', err);
+      }
+    }
+  }, [isChatOpen]);
+
+  const handleDropToChat = useCallback(async (event: DropZoneEvent) => {
+    // console.log('[App] Drop to chat:', event);
+    const { files } = event;
+    if (files.length === 0) return;
+
+    // Open chat if not open
+    if (!isChatOpen) {
+      setIsChatOpen(true);
+    }
+
+    // Dispatch event for ChatPanel to handle pinning
+    // The actual pinning will be implemented in I5
+    window.dispatchEvent(new CustomEvent('vetka-chat-drop', {
+      detail: { files },
+    }));
+  }, [isChatOpen]);
+
+  // Phase 65: G key for grab mode (Blender-style node movement)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // G = Toggle grab mode (also Russian 'п')
+      if (e.key === 'g' || e.key === 'G' || e.key === 'п' || e.key === 'П') {
+        e.preventDefault();
+        setGrabMode(!grabMode);
+      }
+
+      // Escape = Cancel grab mode
+      if (e.key === 'Escape' && grabMode) {
+        setGrabMode(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [grabMode, setGrabMode]);
+
+  // Phase 50.2: ChestIcon component
+  const ChestIcon = ({ isOpen }: { isOpen: boolean }) => (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      {isOpen ? (
+        <>
+          <path d="M4 14 L4 11 Q4 8 12 8 Q20 8 20 11 L20 14" />
+          <path d="M4 11 L4 8 Q4 5 12 3 Q20 5 20 8 L20 11" />
+          <rect x="3" y="14" width="18" height="6" rx="1" />
+        </>
+      ) : (
+        <>
+          <path d="M4 10 L4 7 Q4 4 12 4 Q20 4 20 7 L20 10" />
+          <rect x="3" y="10" width="18" height="8" rx="1" />
+          <circle cx="12" cy="14" r="1.5" fill="currentColor" />
+        </>
+      )}
+    </svg>
+  );
+
+  return (
+    <DropZoneRouter
+      isChatOpen={isChatOpen}
+      chatPanelWidth={420}
+      chatPosition="left"
+      onDropToTree={handleDropToTree}
+      onDropToChat={handleDropToChat}
+    >
+    <div style={{ width: '100vw', height: '100vh', background: '#0a0a0a' }}>
+      <Canvas
+        camera={{
+          position: [0, 500, 1000],
+          fov: 60,
+          near: 0.1,
+          far: 10000  // Phase 27.10: Extended far plane for large trees
+        }}
+        gl={{ antialias: true, powerPreference: 'default' }}
+        onPointerMissed={handleCanvasClick}
+      >
+        <color attach="background" args={['#0a0a0a']} />
+        <ambientLight intensity={0.5} />
+        <directionalLight position={[10, 10, 5]} intensity={1} />
+
+        <OrbitControls
+          ref={(controls) => {
+            // Phase 52.4: Store ref for CameraController sync
+            if (controls) {
+              (window as any).__orbitControls = controls;
+            }
+          }}
+          enabled={!isDraggingAny}
+          enableDamping
+          dampingFactor={0.05}
+          enableZoom={true}
+          zoomSpeed={1.2}
+          minDistance={50}      // Phase 27.10: Close enough to inspect files
+          maxDistance={5000}    // Phase 27.10: Far enough to see whole forest
+          target={[0, 200, 0]}
+          // FIX_95.9.5: Pan by default (left mouse), Rotate on right mouse (Divstral recommendation)
+          mouseButtons={{
+            LEFT: THREE.MOUSE.PAN,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.ROTATE
+          }}
+        />
+
+        {/* Phase 52.2: Camera controller for smooth focus animations */}
+        <CameraController />
+
+        {/* Phase 27.10: Larger grid for bigger trees */}
+        <gridHelper args={[2000, 100, '#1a1a1a', '#1a1a1a']} position={[0, -5, 0]} />
+
+        <TreeEdges />
+
+        {nodes.map((node) => (
+          <FileCard
+            key={node.id}
+            id={node.id}
+            name={node.name}
+            path={node.path}
+            type={node.type}
+            position={[node.position.x, node.position.y, node.position.z]}
+            isSelected={selectedId === node.id}
+            isHighlighted={highlightedId === node.id}
+            onClick={() => selectNode(node.id)}
+            children={node.children}
+            depth={node.depth}
+          />
+        ))}
+      </Canvas>
+
+      <ChatPanel
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        leftPanel={leftPanel}
+        setLeftPanel={setLeftPanel}
+      />
+      <ArtifactWindow
+        isOpen={isArtifactOpen}
+        onClose={() => {
+          setIsArtifactOpen(false);
+          setArtifactFile(null);
+          setArtifactContent(null);
+        }}
+        file={artifactFile}
+        rawContent={artifactContent}
+      />
+
+      {/* Phase 68.3: Search bar + icons container (top-left) */}
+      {!isChatOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 16,
+          left: 16,
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 12,
+          zIndex: 100,
+        }}>
+          {/* Search bar */}
+          <div style={{ width: 360 }}>
+            <UnifiedSearchBar
+              onSelectResult={handleSearchSelect}
+              onPinResult={handleSearchPin}
+              onOpenArtifact={(result) => {
+                // Phase 68.2: Open artifact viewer with file from search
+                const ext = result.name.includes('.') ? result.name.split('.').pop() : undefined;
+                setArtifactFile({
+                  path: result.path,
+                  name: result.name,
+                  extension: ext
+                });
+                setArtifactContent(null); // Clear any raw content
+                setIsArtifactOpen(true);
+              }}
+              placeholder="Search..."
+              contextPrefix="vetka/"
+              compact={false}
+            />
+          </div>
+
+          {/* Icons next to search bar */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            paddingTop: 4,
+          }}>
+            {/* Chat toggle button */}
+            <button
+              onClick={() => {
+                if (!isChatOpen) {
+                  setLeftPanel('none');
+                }
+                setIsChatOpen(!isChatOpen);
+              }}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                background: '#1a1a1a',
+                border: '1px solid #333',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s',
+                color: '#888',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#252525';
+                e.currentTarget.style.color = '#fff';
+                e.currentTarget.style.borderColor = '#444';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#1a1a1a';
+                e.currentTarget.style.color = '#888';
+                e.currentTarget.style.borderColor = '#333';
+              }}
+              title="Open chat"
+            >
+              <MessageSquare size={16} />
+            </button>
+
+            {/* Artifact/Chest button */}
+            <button
+              onClick={() => setIsArtifactOpen(!isArtifactOpen)}
+              disabled={!selectedNode}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                background: selectedNode ? '#1a1a1a' : 'transparent',
+                border: `1px solid ${selectedNode ? '#333' : '#222'}`,
+                cursor: selectedNode ? 'pointer' : 'not-allowed',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s',
+                color: selectedNode ? '#888' : '#444',
+                opacity: selectedNode ? 1 : 0.5,
+              }}
+              onMouseEnter={(e) => {
+                if (selectedNode) {
+                  e.currentTarget.style.background = '#252525';
+                  e.currentTarget.style.color = '#fff';
+                  e.currentTarget.style.borderColor = '#444';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = selectedNode ? '#1a1a1a' : 'transparent';
+                e.currentTarget.style.color = selectedNode ? '#888' : '#444';
+                e.currentTarget.style.borderColor = selectedNode ? '#333' : '#222';
+              }}
+              title={selectedNode ? 'View artifact' : 'Select a file first'}
+            >
+              <ChestIcon isOpen={isArtifactOpen} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Icon container when chat is OPEN - near chat panel */}
+      {isChatOpen && (
+        <div style={{
+          position: 'fixed',
+          bottom: 20,
+          left: getIconsLeft(),
+          display: 'flex',
+          gap: 12,
+          zIndex: 200,
+          transition: 'left 0.3s ease',
+        }}>
+          {/* Chat toggle button (to close) */}
+          <button
+            onClick={() => setIsChatOpen(false)}
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: '50%',
+              background: '#333',
+              border: 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+              transition: 'background 0.2s',
+              color: '#fff',
+            }}
+            title="Close chat"
+          >
+            <MessageSquare size={22} />
+          </button>
+
+          {/* Artifact/Chest button */}
+          <button
+            onClick={() => setIsArtifactOpen(!isArtifactOpen)}
+            disabled={!selectedNode}
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: '50%',
+              background: 'transparent',
+              border: 'none',
+              cursor: selectedNode ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: isArtifactOpen ? '0 0 20px rgba(255,255,255,0.4)' : 'none',
+              transition: 'all 0.3s ease',
+              color: (selectedNode && !isArtifactOpen) ? '#fff' : (selectedNode ? '#ccc' : '#666'),
+              opacity: selectedNode ? 1 : 0.3,
+              filter: (selectedNode && !isArtifactOpen) ? 'drop-shadow(0 0 6px rgba(255,255,255,0.6))' : 'none',
+            }}
+            title={selectedNode ? 'View artifact' : 'Select a file first'}
+          >
+            <ChestIcon isOpen={isArtifactOpen} />
+          </button>
+        </div>
+      )}
+
+      {/* Phase 65: Grab mode indicator */}
+      {grabMode && (
+        <div style={{
+          position: 'fixed',
+          top: 10,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(74, 158, 255, 0.9)',
+          color: 'white',
+          padding: '8px 16px',
+          borderRadius: '4px',
+          fontSize: '14px',
+          fontWeight: 'bold',
+          zIndex: 1000,
+          boxShadow: '0 2px 10px rgba(74, 158, 255, 0.4)',
+        }}>
+          🖐️ GRAB MODE (G to toggle, Esc to cancel)
+        </div>
+      )}
+
+      {/* Phase 50.3: Minimal info panel in top right - one line */}
+      <div style={{
+        position: 'fixed',
+        top: 16,
+        right: 16,
+        color: '#888',
+        fontSize: 13,
+        zIndex: 10,
+        display: 'flex',
+        gap: 16,
+        alignItems: 'center',
+        whiteSpace: 'nowrap'
+      }}>
+        <span style={{ color: '#999' }}>Nodes: {nodes.length}</span>
+        <span style={{ color: '#666', fontSize: 12 }}>Click=Select • Shift+Click=Pin • Ctrl+Drag/G=Move • Drag=Pan • RightDrag=Rotate</span>
+      </div>
+
+      {/* Phase 54.6: Path Selector Modal */}
+      {pathSelectorData && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+        }}>
+          <div style={{
+            background: '#1a1a1a',
+            borderRadius: 12,
+            padding: 24,
+            maxWidth: 600,
+            width: '90%',
+            maxHeight: '70vh',
+            overflow: 'auto',
+            border: '1px solid #333',
+          }}>
+            <h3 style={{ color: '#fff', marginTop: 0, marginBottom: 16 }}>
+              Multiple files found: "{pathSelectorData.filename}"
+            </h3>
+            <p style={{ color: '#888', marginBottom: 16 }}>
+              Select the correct file location:
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {pathSelectorData.candidates.map((path, i) => (
+                <button
+                  key={i}
+                  onClick={() => pathSelectorData.onSelect(path)}
+                  style={{
+                    background: '#252525',
+                    border: '1px solid #444',
+                    borderRadius: 8,
+                    padding: '12px 16px',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'background 0.2s',
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    wordBreak: 'break-all',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = '#252525'}
+                >
+                  {path}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setPathSelectorData(null)}
+              style={{
+                marginTop: 16,
+                background: 'transparent',
+                border: '1px solid #666',
+                borderRadius: 8,
+                padding: '8px 16px',
+                color: '#888',
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+    </DropZoneRouter>
+  );
+}

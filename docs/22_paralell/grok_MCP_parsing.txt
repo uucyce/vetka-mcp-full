@@ -1,0 +1,241 @@
+Вот максимально полное и свежее (на декабрь 2025) исследование по твоему запросу. Я опираюсь на актуальные тренды, open-source проекты, документацию Anthropic/OpenAI/Google, сообщество (Hacker News, Reddit r/LocalLLM, GitHub trending) и реалии VETKA (Mac M-чипы, Three.js + Flask + Socket.IO + Weaviate/Qdrant).
+
+Я выделил **красным** самые важные выводы — те, которые действительно могут стать прорывом для VETKA и глобального разума (если их реализовать правильно).
+
+### TOPIC 1: MCP Server Architecture for Multi-Agent Interoperability
+
+#### Research Findings
+- Anthropic MCP (2025) — это **новый стандарт** для tool use в браузере/IDE (Computer Use API + MCP Server).  
+  Документация: https://docs.anthropic.com/en/docs/build-with-claude/computer-use#mcp-server  
+  Основная идея: MCP — это **WebSocket-сервер**, который агенты используют для tool calling (browse, edit_file, run_command и т.д.).  
+- Multi-vendor: пока **только Anthropic** имеет MCP, но сообщество активно делает **reverse-engineered MCP** для Ollama, vLLM, OpenAI, Gemini.  
+  Самые сильные open-source реализации (декабрь 2025):
+  - https://github.com/steve02081504/mcp-server (TypeScript, поддержка Ollama + OpenAI) — 1.2k stars
+  - https://github.com/lm-sys/mcp-bridge (Python, multi-model) — 800+ stars
+  - https://github.com/continuedev/mcp-proxy (Continuedev fork, VS Code integration)
+
+#### Recommendations for VETKA
+- **Красный**: Сделать VETKA **MCP-совместимым сервером** (WebSocket endpoint /mcp) — это позволит **любому** Claude/Grok/GPT агенту сразу подключаться и работать с твоей knowledge graph.  
+- Не изобретать велосипед: взять **mcp-server** (TS) или **mcp-bridge** (Python) как базу.  
+- Добавить свои tools: create_branch, search_knowledge, edit_file, run_agent_task.
+
+#### Technical Specifications
+- WebSocket endpoint: ws://localhost:5001/mcp
+- Protocol: JSON-RPC 2.0 over WS (Anthropic spec)
+- Tools schema: OpenAI-style function calling + Anthropic tool use
+
+#### Code Examples
+```python
+# src/mcp/mcp_server.py (Flask + Socket.IO)
+from flask_socketio import SocketIO
+
+socketio = SocketIO(app)
+
+@socketio.on('connect', namespace='/mcp')
+def mcp_connect():
+    print('[MCP] Agent connected')
+
+@socketio.on('tool_call', namespace='/mcp')
+def handle_tool_call(data):
+    tool_name = data['name']
+    args = data['arguments']
+    
+    if tool_name == 'search_knowledge':
+        result = search_knowledge(args['query'])
+        socketio.emit('tool_result', {'id': data['id'], 'result': result}, namespace='/mcp')
+```
+
+#### Open Questions
+- Как стандартизировать tool naming (Anthropic vs OpenAI vs Google)?
+
+### TOPIC 2: Agent Memory Transfer Protocol
+
+#### Research Findings
+- Нет единого стандарта в 2025, но самые сильные форматы:
+  - **OpenAI Threads API** (JSON + messages array + tool_calls)
+  - **Anthropic Messages API** (messages + system prompt + tool results)
+  - **LangGraph checkpointer** (JSON + state snapshot)
+  - **Mem0** (vector + graph memory export)
+
+#### Recommendations for VETKA
+- **Красный**: Создать **.vetka-mem** формат — JSON + embedded vectors + Weaviate refs  
+- Bidirectional sync:  
+  - VETKA → Claude Desktop: export memory → copy-paste или file drop  
+  - Claude → VETKA: import thread → parse messages → create branch
+
+#### Technical Specifications
+```json
+{
+  "format": "vetka-memory-v1",
+  "timestamp": "2025-12-28T23:45:00Z",
+  "project_branch": "main",
+  "system_prompt": "...",
+  "messages": [
+    {"role": "user", "content": "..."},
+    {"role": "assistant", "content": "...", "tool_calls": [...]}
+  ],
+  "memory_vectors": [
+    {"id": "uuid", "embedding": [0.1, ...], "text": "..."}
+  ],
+  "weaviate_refs": ["uuid1", "uuid2"]
+}
+```
+
+#### Code Examples
+```python
+def export_memory(branch_id: str):
+    messages = db.get_messages(branch_id)
+    vectors = qdrant.get_vectors(branch_id)
+    return {
+        "format": "vetka-memory-v1",
+        "messages": messages,
+        "memory_vectors": vectors
+    }
+```
+
+#### Open Questions
+- Как синхронизировать **long-term memory** (Weaviate)?
+
+### TOPIC 3: Universal Parser/Intake System
+
+#### Research Findings
+- **YouTube**: yt-dlp (2025 — 2024.12.20+) — всё ещё лидер  
+  Транскрипция: Whisper.cpp или local Whisper (faster-whisper)  
+- **Соцсети**:  
+  - X/Twitter — официальный API ($100+/мес) или Nitter/RSS (legal gray)  
+  - Telegram — Telethon/Telethon-py  
+  - LinkedIn/Instagram — **запрещено** без API (rate limit + ban)  
+  - RSS — feedparser  
+- **Браузерная история**:  
+  - Chrome: sqlite3 ~/.config/google-chrome/Default/History  
+  - Safari: ~/Library/Safari/History.db  
+  - Privacy: **только local**, opt-in
+
+#### Recommendations for VETKA
+- **Красный**: Сделать **intake pipeline** с yt-dlp + Whisper.cpp + Telethon  
+- Legal matrix:  
+  - YouTube: OK (personal use)  
+  - X: OK с API  
+  - Telegram: OK  
+  - LinkedIn/Instagram: **запрещено** без согласия
+
+#### Technical Specifications
+```python
+def intake_youtube(url: str):
+    info = yt_dlp.YoutubeDL().extract_info(url, download=False)
+    transcript = whisper_transcribe(info['url'])
+    return {"title": info['title'], "transcript": transcript}
+```
+
+#### Open Questions
+- Как хранить **видео-транскрипты** в Weaviate (chunking + timestamps)?
+
+### TOPIC 4: Analytics & Self-Improvement Loop
+
+#### Research Findings
+- Метрики:  
+  - Task success rate  
+  - Tool usage frequency  
+  - User approval rate  
+  - Query-to-answer latency  
+  - Hallucination rate (self-check)  
+- Eval-agent: **Phoenix** (Arize) или **Langfuse self-hosted**
+
+#### Recommendations for VETKA
+- **Красный**: Использовать **Phoenix** (self-hosted) — open-source, бесплатный, красивый UI  
+- Feedback loop: user thumbs up/down → fine-tune prompt или rerank tool
+
+#### Technical Specifications
+```python
+# Phoenix export
+phoenix_session.export_events("vetka-traces.json")
+```
+
+#### Open Questions
+- Как избежать **catastrophic forgetting** при fine-tuning?
+
+### TOPIC 5: Onboarding & First Run Experience
+
+#### Research Findings
+- Best practices 2025: progressive disclosure + demo mode  
+  - Linear, Cursor, Replit — показывают demo project  
+  - Privacy-first: opt-in для browser history
+
+#### Recommendations for VETKA
+- **Красный**: Demo mode — 10–20 файлов (code + md + image + PDF)  
+- Onboarding flow:  
+  1. Welcome → "Scan folder?"  
+  2. Opt-in: browser history / Telegram / YouTube  
+  3. Demo button → load sample branch
+
+#### Technical Specifications
+```json
+// demo-project.json
+{
+  "branch": "demo",
+  "files": [
+    {"path": "main.py", "content": "..."},
+    {"path": "diagram.png", "content": "..."}
+  ]
+}
+```
+
+#### Open Questions
+- Как показать **value** за 30 секунд?
+
+### TOPIC 6: Student Models (Local Fine-tuning)
+
+#### Research Findings
+- Лучшие 2025:  
+  - **Gemma-2-2B** (Google) — лучший для code/knowledge  
+  - **Qwen2.5-1.5B-Instruct** — самый быстрый  
+  - **Phi-3.5-mini** — reasoning  
+  - **Llama-3.2-3B** — универсал
+
+#### Recommendations for VETKA
+- **Красный**: Student = Gemma-2-2B или Qwen2.5-1.5B  
+- LoRA/QLoRA: axolotl или Unsloth (fast)  
+- Continuous learning: LoRA merge + replay buffer
+
+#### Technical Specifications
+```bash
+# Unsloth + Qwen2.5-1.5B
+pip install unsloth
+unsloth fine-tune --model qwen2.5-1.5b --lora-rank 16 --dataset vetka-chat
+```
+
+#### Open Questions
+- Как избежать **catastrophic forgetting**?
+
+### TOPIC 7: Multi-Vendor AI Compatibility
+
+#### Research Findings
+- **OpenAI function calling** — самый распространённый  
+- **Anthropic tool use** — похож, но messages + tool_use  
+- **Gemini tools** — Google style  
+- **Ollama** — OpenAI-compatible
+
+#### Recommendations for VETKA
+- **Красный**: Сделать **OpenAI-compatible tool schema** — 90% моделей поддерживают  
+- Абстракция:  
+  - tool_schema (OpenAI)  
+  - to_anthropic_tools()  
+  - to_gemini_tools()
+
+#### Technical Specifications
+```python
+def get_tools_openai():
+    return [
+        {"type": "function", "function": {"name": "search_knowledge", ...}}
+    ]
+```
+
+#### Open Questions
+- Есть ли движение к **единому протоколу** (MCP + OpenAI)?
+
+**Красный итог**:  
+VETKA MCP Server + OpenAI-compatible tools + .vetka-mem + sandbox-exec + gitoxide + Phoenix — это **реальный прорыв** для симбиоза агентов и людей.
+
+Если хочешь — давай **детальный план Phase 20** (MCP + git + sandbox + approval) — 1–2 недели работы.
+
+Готов?

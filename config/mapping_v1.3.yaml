@@ -1,0 +1,493 @@
+# VETKA-JSON v1.3 Mapping Configuration
+# =====================================
+# Defines mappings from Phase 9 output to VETKA-JSON format
+#
+# Principle: "ПРИРАСТАЕТ, НЕ ЛОМАЕТСЯ"
+# - Transformer READS from Phase 9, does NOT modify it
+# - All new fields are OPTIONAL for backward compatibility
+
+version: "1.3"
+schema_url: "https://vetka.io/schema/v1.3.json"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PHASE 9 → VETKA FIELD MAPPINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+phase9_to_vetka:
+  # Top-level mappings
+  workflow_id:
+    target: tree.id
+    transform: "prefix:tree_"
+    also:
+      - origin.workflow_id
+
+  # PM Result mappings
+  pm_result:
+    node_type: branch
+    branch_type: memory
+    agent: PM
+    mappings:
+      plan:
+        target: content.data.plan
+        transform: direct
+      risks:
+        target: content.data.risks
+        transform: direct
+      eval_score:
+        target: metadata.eval_score
+        transform: direct
+
+  # Architect Result mappings
+  architect_result:
+    node_type: branch
+    branch_type: memory
+    agent: PM  # or Dev
+    mappings:
+      diagram:
+        target: content.data.diagram
+        transform: direct
+      description:
+        target: content.data.description
+        transform: direct
+      score:
+        target: metadata.eval_score
+        transform: direct
+
+  # Dev Result mappings
+  dev_result:
+    node_type: branch
+    branch_type: task
+    agent: Dev
+    mappings:
+      files:
+        target: children
+        transform: create_leaves
+        child_config:
+          node_type: leaf
+          branch_type: data
+          agent: Dev
+      eval_score:
+        target: metadata.eval_score
+        transform: direct
+
+  # QA Result mappings
+  qa_result:
+    node_type: branch
+    branch_type: task
+    agent: QA
+    mappings:
+      coverage:
+        target: content.data.coverage
+        transform: direct
+      passed:
+        target: content.data.passed
+        transform: direct
+      failed:
+        target: content.data.failed
+        transform: direct
+      tests:
+        target: children
+        transform: create_leaves
+        child_config:
+          node_type: leaf
+          branch_type: data
+          agent: QA
+      eval_score:
+        target: metadata.eval_score
+        transform: direct
+    completion_rate:
+      formula: "passed / (passed + failed)"
+
+  # ARC Suggestions mappings
+  arc_suggestions:
+    node_type: branch
+    branch_type: control
+    agent: ARC
+    is_array: true
+    item_mappings:
+      transformation:
+        target: content.data.transformation
+        transform: direct
+      success:
+        target: metadata.eval_score
+        transform: direct
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AGENT COLORS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+agent_colors:
+  PM: "#FFB347"       # warm orange
+  Dev: "#6495ED"      # cold blue
+  QA: "#9370DB"       # purple
+  ARC: "#32CD32"      # green
+  Human: "#FFD700"    # gold
+  System: "#A9A9A9"   # gray
+  # CRITICAL: NO ELISYA - it's middleware, not an agent!
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EDGE STYLES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+edge_styles:
+  informs:
+    color: "#FFB347"
+    thickness: 1.0
+    style: dashed
+    arrow_type: null
+  influences:
+    color: "#DC143C"
+    thickness: 2.0
+    style: solid
+    arrow_type: null
+  creates:
+    color: "#8B4513"
+    thickness: 3.0
+    style: solid
+    arrow_type: null
+  depends:
+    color: "#4169E1"
+    thickness: 1.5
+    style: solid
+    arrow_type: triangle
+  supersedes:
+    color: "#808080"
+    thickness: 1.0
+    style: dotted
+    arrow_type: null
+  references:
+    color: "#9370DB"
+    thickness: 0.5
+    style: dashed
+    arrow_type: null
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# EDGE CREATION RULES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+edge_rules:
+  - from: root
+    to: [pm, architect, dev, qa, arc]
+    type: root
+    semantics: creates
+    flow_weight: 1.0
+
+  - from: pm
+    to: dev
+    type: liana
+    semantics: informs
+    flow_weight: 0.6
+
+  - from: pm
+    to: qa
+    type: liana
+    semantics: informs
+    flow_weight: 0.5
+
+  - from: architect
+    to: dev
+    type: liana
+    semantics: influences
+    flow_weight: 0.8
+
+  - from: qa
+    to: dev
+    type: liana
+    semantics: depends
+    flow_weight: 0.8
+    note: "QA depends on Dev"
+
+  - from: arc
+    to: dev
+    type: control
+    semantics: influences
+    flow_weight: 0.7
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ANIMATION RULES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+animation_rules:
+  # Task in progress
+  - condition:
+      completion_rate: "< 1.0"
+      branch_type: task
+    animation: pulse
+
+  # Low quality - needs attention
+  - condition:
+      eval_score: "< 0.5"
+    animation: flicker
+
+  # High entropy - complex
+  - condition:
+      entropy: "> 0.7"
+    animation: glow
+
+  # Default
+  - condition: default
+    animation: static
+
+animation_params:
+  static:
+    scale: [1.0, 1.0]
+    opacity: [1.0, 1.0]
+    period_ms: 0
+  pulse:
+    scale: [1.0, 1.1]
+    opacity: [1.0, 1.0]
+    period_ms: 2000
+  glow:
+    scale: [1.0, 1.0]
+    opacity: [0.7, 1.0]
+    period_ms: 1500
+  flicker:
+    scale: [1.0, 1.0]
+    opacity: [0.3, 1.0]
+    period_ms: 500
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROMOTE THRESHOLDS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+promote_thresholds:
+  node_count: 50        # Trigger if tree has > 50 nodes
+  entropy: 0.8          # Trigger if branch entropy > 0.8
+  user_actions:
+    - dive              # User clicks dive button
+
+promote_animation:
+  total_duration_ms: 1800
+  phases:
+    seed_forms:
+      duration_ms: 300
+      description: "Small sphere appears at branch tip"
+    seed_detaches:
+      duration_ms: 500
+      description: "Sphere separates, starts falling"
+    roots_spread:
+      duration_ms: 400
+      description: "Lines extend from seed into ground (Y < 0)"
+    tree_grows:
+      duration_ms: 800
+      description: "Trunk and branches emerge upward"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEFAULT VALUES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+default_values:
+  eval_score: 0.5
+  entropy: 0.3
+  completion_rate: 0.0
+  student_level: 0
+  flow_weight: 0.5
+
+  # Clamping rules
+  clamp:
+    eval_score:
+      min: 0.0
+      max: 1.0
+    entropy:
+      min: 0.0
+      max: 1.0
+    completion_rate:
+      min: 0.0
+      max: 1.0
+    flow_weight:
+      min: 0.0
+      max: 1.0
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LAYOUT CONSTANTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+layout_constants:
+  layer_height: 100       # Y distance between tree levels
+  min_distance: 50        # Minimum X/Z distance between siblings
+  golden_angle: 137.5     # Phylotaxis spiral angle
+  max_deviation: 15       # Maximum random offset in degrees
+  gravity_pull: 0.8       # How strongly nodes stay near parent axis
+  base_unit: 8            # UI spacing base (8px grid)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LOD CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+lod_thresholds:
+  cluster: 500    # Very far: show as meta-node cluster
+  dot: 200        # Far: show as simple colored dot
+  icon: 50        # Medium: show icon + label
+  full: 0         # Close: show full content with preview
+
+agent_lod_defaults:
+  PM:
+    default_level: FOREST
+    max_depth: 3
+    focus_types: [memory, task]
+  Dev:
+    default_level: BRANCH
+    max_depth: 10
+    focus_types: [task, data]
+  QA:
+    default_level: BRANCH
+    max_depth: 8
+    focus_types: [task, data]
+    filter_tags: [test, bug, quality]
+  ARC:
+    default_level: TREE
+    max_depth: 5
+    focus_types: [control, task]
+  Human:
+    default_level: FOREST
+    max_depth: 3
+    focus_types: [memory]
+  System:
+    default_level: FOREST
+    max_depth: 2
+    focus_types: [memory, control]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ICON MAPPING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+branch_type_icons:
+  memory: document
+  task: code
+  data: file
+  control: suggestion
+
+file_extension_icons:
+  ".py": code
+  ".js": code
+  ".ts": code
+  ".tsx": code
+  ".jsx": code
+  ".json": file
+  ".yaml": file
+  ".yml": file
+  ".md": document
+  ".txt": document
+  ".png": file
+  ".jpg": file
+  ".svg": file
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# VISUAL FORMULAS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+visual_formulas:
+  size_multiplier:
+    formula: "1.0 + (entropy * 0.5)"
+    range: [1.0, 1.5]
+
+  opacity:
+    formula: "0.2 + (completion_rate * 0.8)"
+    range: [0.2, 1.0]
+
+  color_saturation:
+    high_quality:
+      condition: "eval_score > 0.8"
+      saturation: 1.0
+    medium_quality:
+      condition: "eval_score > 0.5"
+      saturation: 0.7
+    low_quality:
+      condition: "eval_score <= 0.5"
+      saturation: 0.4
+
+  entropy:
+    formula: |
+      min(1.0, (
+        child_count / 20 * 0.4 +
+        unique_agents / 5 * 0.3 +
+        (1 - avg_eval_score) * 0.3
+      ))
+    leaf_default: 0.1
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# INFRASTRUCTURE OPTIONAL FIELDS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+infrastructure_fields:
+  learning:
+    enabled: true
+    maps_to: metadata.learning_context
+    fields:
+      - learner_model
+      - model_version
+      - confidence
+      - portfolio_id
+      - improvements
+
+  routing:
+    enabled: true
+    maps_to: metadata.model_provenance
+    fields:
+      - model
+      - version
+      - provider
+      - key_index
+      - fallback_used
+      - tokens_input
+      - tokens_output
+      - cost_usd
+      - time_ms
+
+  storage:
+    enabled: true
+    maps_to: metadata.storage_status
+    fields:
+      - changelog
+      - weaviate
+      - qdrant
+      - overall_status
+      - degradation_mode
+
+  feedback:
+    enabled: true
+    maps_to: metadata.learning_feedback
+    fields:
+      - eval_model
+      - timestamp
+      - decision
+      - retry_count
+      - saved_examples
+
+  elisya:
+    enabled: true
+    maps_to: metadata.context_source.elisya_details
+    fields:
+      - version
+      - lod_requested
+      - lod_applied
+      - weaviate_stats
+      - qdrant_stats
+      - assembly_time_ms
+      - reframe_operations
+      - degradation
+
+  arc:
+    enabled: true
+    maps_to: metadata.arc_execution
+    fields:
+      - solver_model
+      - model_version
+      - template_version
+      - candidates
+      - best_candidate
+      - fixes
+      - saved_examples
+      - timing
+
+  parallel:
+    enabled: true
+    maps_to: edge.parallel_execution
+    fields:
+      - dev_start_time
+      - dev_end_time
+      - qa_start_time
+      - qa_end_time
+      - overlap_ms
+      - elisya_reframe_occurred
+      - reframe_timestamp

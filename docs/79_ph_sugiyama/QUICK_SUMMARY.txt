@@ -1,0 +1,158 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                   PHASE 79: WHY TREE LOOKS LIKE "MASH"                     ║
+║                              QUICK SUMMARY                                 ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+STATUS: 🔴 ROOT CAUSE IDENTIFIED + FIX CLEAR
+
+
+WHAT'S HAPPENING:
+═════════════════
+
+You see:         Dense vertical bands of files
+                 Instead of organized hierarchical tree
+                 All 2145 nodes appear disorganized
+
+You were right to notice: "Это не Сугияма" (This isn't Sugiyama)
+But actually:            Sugiyama is working perfectly ✅
+                         The INPUT DATA is wrong ❌
+
+
+THE ROOT CAUSE (ONE-LINE BUG):
+══════════════════════════════
+
+File:     scripts/rescan_project.py
+Line:     392
+Current:  parent_folder = rel_path.split(os.sep)[0]
+Problem:  Takes ONLY first folder segment
+
+Example:
+  ❌ Real file:     src/api/routes/tree_routes.py
+  ❌ Stored as:     parent_folder = "src" (only this!)
+  ✅ Should be:     parent_folder = "src/api/routes" (all of it)
+
+Result:   All 2088 files become siblings under "src"
+          Instead of properly nested under subdirectories
+
+
+DATA FLOW:
+══════════
+
+1. File: src/api/routes/tree_routes.py
+         └─ parent_folder: "src" ❌
+
+2. Qdrant stores: parent_folder: "src"
+                  depth: 4 (but ignored)
+
+3. tree_routes.py reads: parent_folder = "src"
+   Thinks: "This file belongs to 'src' folder"
+   Creates: File under src (depth=1)
+
+4. fan_layout.py receives: 2088 files at depth=1
+   Creates: Vertical stacks under each folder
+   Result: "Mash" instead of tree
+
+
+WHY SUGIYAMA ISN'T BROKEN:
+══════════════════════════
+
+The algorithm works perfectly IF hierarchy is correct.
+
+Sugiyama does what you ask:
+  Input:   "2088 files, all children of 'src'"
+  Output:  "Stack them vertically under src" ✅ CORRECT BEHAVIOR!
+
+Problem:  We're giving it wrong input!
+
+
+THE FIX (LITERALLY 1 LINE):
+═══════════════════════════
+
+File: scripts/rescan_project.py
+Line: 392
+
+CHANGE FROM:
+  parent_folder = rel_path.split(os.sep)[0] if os.sep in rel_path else ''
+
+CHANGE TO:
+  parent_folder = os.path.dirname(rel_path)
+
+IMPACT:
+  ✅ Captures: "src/api/routes" instead of just "src"
+  ✅ Allows tree_routes to rebuild proper hierarchy
+  ✅ Enables fan_layout to create organized tree
+  ✅ Result: Beautiful Sugiyama visualization
+
+
+VERIFICATION:
+══════════════
+
+Check current state (should show BUG):
+  curl -s 'http://localhost:5001/api/tree/data?mode=directory' | \
+    python3 -c "import json, sys; d=json.load(sys.stdin); \
+    leaves=[n for n in d['tree']['nodes'] if n['type']=='leaf']; \
+    from collections import Counter; \
+    depths = Counter(n['metadata']['depth'] for n in leaves); \
+    print('Files by depth:', dict(depths))"
+
+Expected output showing bug:
+  Files by depth: {1: 2088, 6: 27, 2: 1, 3: 1, 4: 1, 5: 1}
+                   ↑ 98.8% at depth=1!
+
+
+AFTER FIX:
+══════════
+
+Expected output (hypothesis):
+  Files distributed across depths 1-8
+  Hundreds of subdirectories created
+  Tree visualization becomes organized
+  User sees proper hierarchical structure
+
+
+NEXT STEPS:
+════════════
+
+1. Apply one-line fix to rescan_project.py
+2. Re-run: python scripts/rescan_project.py
+3. Wait for 2246 files to embed (~30 minutes)
+4. Check browser: tree should now look organized
+5. Verify: Subfolders visible, proper hierarchy
+
+
+FILES INVOLVED:
+═══════════════
+
+Primary (needs fix):
+  - scripts/rescan_project.py line 392
+
+Secondary (already correct):
+  - src/layout/fan_layout.py (algorithm correct)
+  - src/api/routes/tree_routes.py (logic correct, just needs data)
+
+
+CONCLUSION:
+════════════
+
+The visualization isn't broken because Sugiyama is broken.
+It's broken because we're feeding it flat data.
+
+Once we fix the data source (one line!), Sugiyama will do its job perfectly.
+
+
+CONFIDENCE LEVEL: 🟢 99% (BUG DEFINITELY IDENTIFIED)
+═══════════════════════════════════════════════════
+
+Evidence:
+✅ Only 26 folders exist (should be ~500)
+✅ 98.8% of files at depth=1 (should be 2-8)
+✅ All files have parent_folder="src" (should be nested paths)
+✅ Line 392 code is mathematically wrong (confirmed)
+✅ Fix is obvious and one-line change
+✅ Phase 76.5 root spreading working correctly ✅
+
+
+═════════════════════════════════════════════════════════════════════════════
+Report created: 2026-01-21
+Location: docs/79_ph_sugiyama/
+═════════════════════════════════════════════════════════════════════════════

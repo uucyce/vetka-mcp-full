@@ -1,0 +1,142 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                  VETKA DOCUMENTATION — QUICK LINKS                        ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+🚀 PHASE 69 AUDIT (Latest - Jan 19, 2026)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+→ docs/68_ph/00_START_HERE.md
+  BEGIN HERE: Quick navigation to all Phase 69 audit docs
+
+→ docs/68_ph/PHASE_69_TOTAL_AUDIT.md
+  FULL AUDIT: Complete technical analysis (422 lines)
+
+→ docs/68_ph/AUDIT_FINDINGS.md
+  SUMMARY: Executive overview and critical issues (180 lines)
+
+→ docs/68_ph/AUDIT_QUICK_REFERENCE.txt
+  CHEAT SHEET: Quick answers to all audit questions (119 lines)
+
+═════════════════════════════════════════════════════════════════════════════
+
+📚 PROJECT OVERVIEW
+━━━━━━━━━━━━━━━━━━
+
+→ docs/README.md
+  Project overview and documentation index
+
+→ docs/INSTALL.md
+  Setup and installation instructions
+
+→ docs/START_HERE.md
+  Getting started guide for new developers
+
+→ docs/MIGRATION_SUMMARY.md
+  Documentation organization (this migration)
+
+═════════════════════════════════════════════════════════════════════════════
+
+🔍 PHASE-SPECIFIC DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Phase 68 (Search & MCP):
+→ docs/68_ph/PHASE_68_SEARCH_AUDIT.md
+→ docs/68_ph/MCP_AUDIT_RESULTS.md
+
+Phase 67:
+→ docs/67_ph/
+
+Phase 66:
+→ docs/66_ph/PHASE_66_AUDIT_INDEX.txt
+
+Phase 57:
+→ docs/57_ph/PHASE_57_9_ANALYSIS.md
+
+Phase 56:
+→ docs/56_ph/PHASE_56_5_QUICKSTART.md
+
+Phase 55:
+→ docs/55_ph/KNOWN_LIMITATIONS_PHASE_55.md
+
+Phase 29:
+→ docs/29_ph/PHASE_29_RECONNAISSANCE_REPORT.md
+
+═════════════════════════════════════════════════════════════════════════════
+
+🔬 GENERAL AUDITS
+━━━━━━━━━━━━━━━━
+
+All general audits and analysis:
+→ docs/audits/
+  - DEAD_CODE_AUDIT.md
+  - SCANNER_DEBUG_REPORT.md
+  - DEPENDENCY_MAP.md
+  - (15 files total)
+
+═════════════════════════════════════════════════════════════════════════════
+
+📋 FILES IN PHASE 69 AUDIT (docs/68_ph/)
+
+1. 00_START_HERE.md              ⭐ Navigation guide
+2. PHASE_69_TOTAL_AUDIT.md       Full technical audit
+3. AUDIT_FINDINGS.md             Executive summary
+4. AUDIT_QUICK_REFERENCE.txt     Developer cheat sheet
+5. AUDIT_INDEX.md                File navigation
+6. README.md                      Phase 68-69 index
+7. FILES_IN_THIS_DIRECTORY.txt   Directory index
+8. PHASE_68_SEARCH_AUDIT.md      Search audit
+9. MCP_AUDIT_RESULTS.md          MCP comprehensive audit
+10. MCP_AUDIT_SUMMARY.txt        MCP summary
+
+═════════════════════════════════════════════════════════════════════════════
+
+🎯 QUICK NAVIGATION BY NEED
+
+Need to understand VETKA's architecture?
+→ docs/68_ph/PHASE_69_TOTAL_AUDIT.md (30 min)
+
+Need quick answers about context/handlers/scanner/3D?
+→ docs/68_ph/AUDIT_QUICK_REFERENCE.txt (2 min)
+
+Need critical issues summary?
+→ docs/68_ph/AUDIT_FINDINGS.md (5 min)
+
+Need to find something specific?
+→ docs/68_ph/00_START_HERE.md or docs/QUICK_LINKS.txt (this file)
+
+New to VETKA?
+→ docs/START_HERE.md or docs/README.md
+
+═════════════════════════════════════════════════════════════════════════════
+
+📊 PHASE 69 AUDIT FINDINGS
+
+Critical Point 1: Context file limit = 5 files
+  → src/api/handlers/message_utils.py:415
+
+Critical Point 2: Socket handlers = 51 total
+  → src/api/handlers/__init__.py:74-88
+
+Critical Point 3: Scanner cleanup = Manual
+  → src/scanners/qdrant_updater.py:342-459
+
+Critical Point 4: 3D highlight = Single only
+  → client/src/store/useStore.ts:91
+
+Issues Found: 5 critical issues documented
+
+═════════════════════════════════════════════════════════════════════════════
+
+💡 HOW TO USE THIS FILE
+
+1. Bookmark this file for quick access
+2. Use relative paths from project root
+3. Start with 00_START_HERE.md
+4. Reference specific sections as needed
+
+═════════════════════════════════════════════════════════════════════════════
+
+Last updated: 2026-01-19
+Documentation: 35 files organized in /docs/
+Total lines: 1200+ lines across all documents
+

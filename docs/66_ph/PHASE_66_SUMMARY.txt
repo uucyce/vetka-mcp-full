@@ -1,0 +1,196 @@
+═══════════════════════════════════════════════════════════════════════════════
+  PHASE 66: CAM/ELISYA CONTEXT AUDIT - EXECUTIVE SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 THE PROBLEM (Что ломается)
+─────────────────────────────────────────────────────────────────────────────
+Пользователь пинит файлы → AI получает ОБРЕЗАННЫЙ контекст (~800-1200 токенов)
+- Каждый файл обрезается на 3000 символах (CHARACTER truncation, не tokens!)
+- Обрезка происходит ПОСЕРЕДИНЕ функции / JSON / класса
+- Структура и синтаксис ломаются
+- Потеря информации неизбежна
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔍 ДВА ОТДЕЛЬНЫХ СИСТЕМЫ (что есть в коде)
+─────────────────────────────────────────────────────────────────────────────
+
+1️⃣ CAM ENGINE
+   ├─ Location: src/orchestration/cam_engine.py:128
+   ├─ Status: ✅ ПОЛНОСТЬЮ РЕАЛИЗОВАН (500+ строк)
+   ├─ Используется для:
+   │  ├─ Оптимизация дерева знаний (pruning, merging)
+   │  ├─ Отслеживание активности узлов (activation_score)
+   │  └─ Реакция на события (artifact_created, message_sent)
+   │
+   ├─ НЕ используется для:
+   │  └─ ❌ Сборка контекста для prompt'а
+   │
+   └─ Как работает:
+      VETKACAMEngine.handle_new_artifact() ← Triggered by CAMEventHandler
+        → prune_low_entropy() [удалить ненужные ветки]
+        → merge_similar_subtrees() [объединить дубликаты]
+
+2️⃣ ELISYA (Middleware/Routing)
+   ├─ Location: src/elisya/
+   ├─ Status: ✅ ПОЛНОСТЬЮ РЕАЛИЗОВАНА
+   ├─ Используется для:
+   │  ├─ Маршрутизация к моделям (ModelRouter)
+   │  ├─ Управление API ключами (KeyManager)
+   │  ├─ Переопределение контекста по LOD уровням (ElisyaMiddleware)
+   │  └─ Семантические пути (SemanticPathGenerator)
+   │
+   ├─ НЕ используется для:
+   │  └─ ❌ Сборка pinned_context в user_message_handler
+   │
+   └─ LODLevel идея: Context detail ← Model capacity
+      но в pinned context не применяется
+
+3️⃣ WEAVIATE (Graph DB) ⚠️ КРИТИЧНО!
+   ├─ Location: документация только (no code!)
+   ├─ Status: 🔴 НЕ РЕАЛИЗОВАНА
+   ├─ Упомянута как: "Triple Write" (ChangeLog + Weaviate + Qdrant)
+   ├─ Реальность: Dual Write (ChangeLog + Qdrant)
+   │
+   └─ ❌ Weaviate - это АРХИТЕКТУРНАЯ ФАНТАЗИЯ, не реальная система!
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🛑 ГДЕ ИМЕННО ПРОИСХОДИТ ОБРЕЗКА (The Smoking Gun)
+─────────────────────────────────────────────────────────────────────────────
+
+File: src/api/handlers/message_utils.py
+Line: 88-89
+
+    def load_pinned_file_content(file_path: str, max_chars: int = 3000):
+        content = f.read()
+        if len(content) > max_chars:
+            content = content[:max_chars] + "\n... [truncated]"  ← ЗДЕСЬ!
+        return content
+
+Проблемы:
+  ❌ Hardcoded 3000 chars (не tokens!)
+  ❌ Naive string slicing (может разрезать код посредине)
+  ❌ Нет AST parsing
+  ❌ Нет семантического выбора (query-aware)
+  ❌ Игнорирует Qdrant, CAM, Elisya все разом!
+
+Flow:
+  user_message_handler.py:259
+    → build_pinned_context(pinned_files)
+      → load_pinned_file_content() [MAX 3000 CHARS!] ← СТОП!
+      → wrap in <pinned_file> XML
+    → build_model_prompt()
+    → отправить в LLM (Ollama/OpenRouter)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 ИНСТРУМЕНТЫ ЧТО ЕСТЬ НО НЕ ИСПОЛЬЗУЮТСЯ
+─────────────────────────────────────────────────────────────────────────────
+
+✅ Существуют & Работают:
+├─ Qdrant (Vector DB) — хранит embeddings, можно делать semantic search
+├─ MemoryManager — Triple Write to ChangeLog + Qdrant
+├─ CAM activation scores — отслеживает "горячие" узлы
+└─ Elisya LODLevel — адаптация контекста по модели
+
+❌ НЕ используются в pinned_context:
+├─ Qdrant semantic search [для relevance scoring]
+├─ CAM activation scores [для приоритизации]
+├─ Elisya LOD levels [для адаптации детали]
+├─ Token counting [не проверяем лимиты]
+└─ AST parsing [для умной обрезки кода]
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔧 КАК ИСПРАВИТЬ (быстро)
+─────────────────────────────────────────────────────────────────────────────
+
+QUICK FIX (1-2 days):
+  Replace naive char truncation with:
+  1. Token-aware truncation (not char-aware)
+  2. Keep complete functions/classes (AST parsing for .py/.js)
+  3. Keep complete JSON/XML objects
+  4. Add token counter before send to LLM
+
+MEDIUM FIX (3-5 days):
+  Use Qdrant to score files by relevance to user query:
+  1. Embed user question
+  2. Score each pinned file by similarity
+  3. Keep only top 5 files (not 10)
+  4. Each file: 2000 tokens max (not 3000 chars)
+
+PROPER FIX (1-2 weeks):
+  Integrate CAM + Elisya + Qdrant into context pipeline:
+  1. Get CAM activation scores for each node
+  2. Score by: query relevance + recent activity + semantic importance
+  3. Apply Elisya LOD levels based on target model
+  4. Assemble intelligently, not naively
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 ОТВЕТЫ НА КЛЮЧЕВЫЕ ВОПРОСЫ
+─────────────────────────────────────────────────────────────────────────────
+
+Q: CAM вообще существует как код?
+A: ✅ ДА — полная реализация в cam_engine.py
+
+Q: CAM вызывается где-то?
+A: ✅ ДА — CAMEventHandler вызывает после workflow completion
+
+Q: Используется ли CAM для assembly контекста?
+A: ❌ НЕТ — используется только для tree maintenance
+
+Q: Qdrant для context или только для search tool?
+A: 🔴 ТОЛЬКО для search tool — context builder не использует!
+
+Q: Есть ли token counting?
+A: ❌ НЕТ — полный gap в архитектуре!
+
+Q: Как Weaviate участвует в архитектуре?
+A: ❌ НИКАК — она не реализована, только в документации!
+
+Q: Есть ли short-term / long-term memory?
+A: ✅ ChangeLog (JSON) — immutable audit trail
+   ✅ Qdrant — vector storage
+   ❌ Weaviate — never built
+
+Q: Почему контекст обрезается?
+A: Потому что build_pinned_context() использует naive char truncation
+   без использования доступных инструментов (CAM, Qdrant, Elisya)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📁 ГЛАВНЫЕ ФАЙЛЫ (в порядке importance)
+─────────────────────────────────────────────────────────────────────────────
+
+WHERE IT BREAKS:
+  src/api/handlers/message_utils.py:88-89 ← THE SMOKING GUN
+
+WHERE IT'S CALLED:
+  src/api/handlers/user_message_handler.py:259, 392, 619, 1295
+
+WHERE PROMPT IS BUILT:
+  src/api/handlers/chat_handler.py:117-144
+
+CAM ENGINE:
+  src/orchestration/cam_engine.py:128-500+
+
+ELISYA:
+  src/elisya/__init__.py (exports)
+  src/elisya/middleware.py (LOD levels)
+  src/elisya/model_router_v2.py (routing)
+
+MEMORY:
+  src/orchestration/memory_manager.py (ChangeLog + Qdrant)
+  src/orchestration/cam_event_handler.py (event routing)
+  src/orchestration/services/cam_integration.py (maintenance cycle)
+
+QDRANT:
+  src/knowledge_graph/graph_builder.py (semantic graph)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ AUDIT COMPLETE — ALL READ-ONLY (no changes made)
+
+Report: docs/65_phases/PHASE_66_CAM_ELISYA_AUDIT.md (comprehensive)

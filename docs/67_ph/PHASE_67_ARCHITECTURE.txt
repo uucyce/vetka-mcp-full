@@ -1,0 +1,217 @@
+================================================================================
+                    PHASE 67: CONTEXT ASSEMBLY ARCHITECTURE
+================================================================================
+
+BEFORE (Phase 61):
+==================
+
+User Message ──► build_pinned_context(pinned_files)
+                        │
+                        ▼
+                ┌───────────────────┐
+                │ for file in files │
+                │   read(file)      │
+                │   truncate(3000)  │
+                └───────────────────┘
+                        │
+                        ▼
+                   XML Context
+
+
+AFTER (Phase 67):
+=================
+
+User Message ──► build_pinned_context(pinned_files, user_query=text)
+                        │
+                        ▼
+         ┌──────────────────────────────────────┐
+         │         _rank_pinned_files()         │
+         │                                      │
+         │  ┌─────────────────────────────┐    │
+         │  │    EmbeddingService         │    │
+         │  │    get_embedding(query)     │    │
+         │  └─────────────────────────────┘    │
+         │              │                      │
+         │              ▼                      │
+         │  ┌─────────────────────────────┐    │
+         │  │    _get_qdrant_relevance()  │    │
+         │  │    search_by_vector()       │    │
+         │  │    → qdrant_score           │    │
+         │  └─────────────────────────────┘    │
+         │              │                      │
+         │              ▼                      │
+         │  ┌─────────────────────────────┐    │
+         │  │    _get_cam_activation()    │    │
+         │  │    calculate_activation()   │    │
+         │  │    → cam_score              │    │
+         │  └─────────────────────────────┘    │
+         │              │                      │
+         │              ▼                      │
+         │  relevance = 0.7*qd + 0.3*cam      │
+         │                                      │
+         └──────────────────────────────────────┘
+                        │
+                        ▼
+                 Sort by relevance
+                        │
+                        ▼
+                 Select top 5 files
+                        │
+                        ▼
+         ┌──────────────────────────────────────┐
+         │         _smart_truncate()            │
+         │                                      │
+         │    ┌────────────────────────┐        │
+         │    │ content[:60%]          │ HEAD   │
+         │    ├────────────────────────┤        │
+         │    │ ... [truncated] ...    │        │
+         │    ├────────────────────────┤        │
+         │    │ content[-40%:]         │ TAIL   │
+         │    └────────────────────────┘        │
+         │                                      │
+         └──────────────────────────────────────┘
+                        │
+                        ▼
+              Token budget check
+              (max 4000 tokens)
+                        │
+                        ▼
+              XML Context with
+              relevance scores
+
+
+================================================================================
+                         COMPONENT LOCATIONS
+================================================================================
+
+CORE FUNCTION:
+  src/api/handlers/message_utils.py:268
+  └── build_pinned_context()
+
+HELPER FUNCTIONS:
+  src/api/handlers/message_utils.py:97   → _estimate_tokens()
+  src/api/handlers/message_utils.py:110  → _smart_truncate()
+  src/api/handlers/message_utils.py:140  → _get_qdrant_relevance()
+  src/api/handlers/message_utils.py:178  → _get_cam_activation()
+  src/api/handlers/message_utils.py:207  → _rank_pinned_files()
+
+LEGACY FALLBACK:
+  src/api/handlers/message_utils.py:376  → build_pinned_context_legacy()
+
+CALL SITES (user_message_handler.py):
+  Line 259  → Direct model call (Ollama local)
+  Line 392  → OpenRouter API call
+  Line 619  → @mention direct model call
+  Line 1295 → Agent chain (PM/Dev/QA)
+
+DEPENDENCIES:
+  src/memory/qdrant_client.py:410        → get_qdrant_client()
+  src/orchestration/cam_engine.py:128    → VETKACAMEngine
+  src/utils/embedding_service.py:114     → get_embedding()
+
+
+================================================================================
+                         SCORING BREAKDOWN
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           RELEVANCE SCORE                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   relevance = 0.7 * qdrant_score + 0.3 * cam_score                         │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   QDRANT SCORE (70% weight):                                               │
+│   ─────────────────────────                                                │
+│   - Cosine similarity between query embedding and file embeddings          │
+│   - Range: 0.0 (unrelated) to 1.0 (identical)                              │
+│   - Default: 0.5 if Qdrant unavailable                                     │
+│   - Default: 0.3 if file not in Qdrant index                               │
+│                                                                             │
+│   CAM ACTIVATION SCORE (30% weight):                                       │
+│   ──────────────────────────────────                                       │
+│   - Based on historical query relevance                                    │
+│   - Components:                                                            │
+│     • avg_relevance: similarity to last 20 queries                         │
+│     • connectivity_bonus: +0.02 per child (max 0.2)                        │
+│     • recency_bonus: +0.1 decaying over 24h                                │
+│   - Range: 0.0 to 1.0                                                      │
+│   - Default: 0.5 if CAM unavailable                                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+                         TRUNCATION STRATEGY
+================================================================================
+
+Old Strategy (char-based):
+─────────────────────────
+  content[:3000] + "... [truncated]"
+
+  Problem: Loses potentially important end-of-file content
+           (exports, main functions, entry points)
+
+
+New Strategy (token-based, head+tail):
+──────────────────────────────────────
+  max_chars = max_tokens * 4
+
+  head = content[:max_chars * 0.6]    # 60% from beginning
+  tail = content[-max_chars * 0.4:]   # 40% from end
+
+  result = head + "\n\n... [truncated N chars] ...\n\n" + tail
+
+  Benefit: Preserves imports (head) AND exports/main logic (tail)
+
+
+Example (1000 token limit = 4000 chars):
+────────────────────────────────────────
+  Original file: 10000 chars
+
+  Head: first 2400 chars (60%)
+  Tail: last 1600 chars (40%)
+  Truncated: 6000 chars (middle removed)
+
+  Output:
+  ┌────────────────────────────────────┐
+  │ # imports, docstrings, class defs  │ ← 2400 chars
+  ├────────────────────────────────────┤
+  │ ... [truncated 6000 chars] ...     │
+  ├────────────────────────────────────┤
+  │ # exports, main(), __all__         │ ← 1600 chars
+  └────────────────────────────────────┘
+
+
+================================================================================
+                         ERROR HANDLING
+================================================================================
+
+┌───────────────────────────────────────────────────────────────────────────┐
+│                        GRACEFUL DEGRADATION                               │
+├───────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  try:                                                                     │
+│      embedding = get_embedding(query)  # May fail                        │
+│  except:                                                                  │
+│      embedding = None                                                     │
+│                                                                           │
+│  if embedding:                                                            │
+│      qdrant_score = _get_qdrant_relevance(path, embedding)               │
+│  else:                                                                    │
+│      qdrant_score = 0.5  # Neutral                                       │
+│                                                                           │
+│  try:                                                                     │
+│      cam_score = _get_cam_activation(path)                               │
+│  except:                                                                  │
+│      cam_score = 0.5  # Neutral                                          │
+│                                                                           │
+│  # System always produces output, even with all services down            │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+
+
+================================================================================
+                              END OF FILE
+================================================================================

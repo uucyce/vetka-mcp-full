@@ -1,0 +1,332 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                        HANDOFF: PHASE 6.3 PART 3 - STEPS 3-5                  ║
+║                    Current Status: Steps 1-2 COMPLETE ✅                       ║
+║                    Remaining: Step 3 (Prompts) + Step 4 (Endpoint) + Step 5    ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+📍 ТЕКУЩЕЕ СОСТОЯНИЕ (Phase 6.3 Part 3 - EXECUTION):
+
+PROJECT: /Users/danilagulin/Documents/VETKA_Project/vetka_live_03
+Flask: ✅ RUNNING на localhost:5001 (PID 73242)
+Weaviate: ✅ RUNNING на localhost:8080
+Ollama: ✅ READY на localhost:11434
+
+COMPLETED ✅:
+  [STEP 1] MemoryManager - 5 новых методов добавлены (218→247 lines)
+    • save_feedback() - сохранить feedback в VetkaUserFeedback
+    • retrieve_past_feedback() - получить past feedback for In-Context Learning  
+    • query_high_score_examples() - получить примеры score > 0.8 for Few-Shot
+    • save_evaluation_result() - сохранить результат в VetkaLeaf
+    • create_few_shot_prompt_section() - форматировать примеры для prompt injection
+    
+  [STEP 2] AgentOrchestrator - 2 новых метода добавлены
+    • _build_context_section() - собрать контекст из feedback + examples
+    • execute_full_workflow_with_learning() - выполнить workflow с learning context
+
+REMAINING ⏳:
+  [STEP 3] Agent Prompts - обновить PM/Dev/QA agents (15 min)
+  [STEP 4] Feedback Endpoint - завершить /api/eval/feedback/submit (5 min)
+  [STEP 5] Tests - создать и запустить E2E тесты (5 min)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 СЛЕДУЮЩИЕ ШАГИ С ОТВЕТАМИ НА ВОПРОСЫ:
+
+STEP 3: Agent Prompts Enhancement (15 min) 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❓ Вопрос: "Какие именно PM/Dev/QA prompts нужно обновить?"
+
+✅ ОТВЕТ:
+  Нужно обновить 3 файла:
+  1. /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/agents/vetka_pm.py
+     → Метод execute() добавить параметр context_section
+     → Включить в system_prompt инструкции: "If context provided, review feedback and learn patterns"
+  
+  2. /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/agents/vetka_dev.py
+     → Метод execute() добавить параметр context_section
+     → Включить в system_prompt инструкции для использования примеров
+  
+  3. /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/agents/vetka_qa.py
+     → Метод execute() добавить параметр context_section
+     → Включить в system_prompt инструкции для проверки по примерам
+
+PATTERN ДЛЯ ВСЕХ 3 ФАЙЛОВ:
+  Current:  def execute(self, task: str) -> dict:
+  New:      def execute(self, task: str, context_section: str = "") -> dict:
+  
+  Modify system_prompt:
+    if context_section:
+        system_prompt += f"\\n{context_section}"
+        system_prompt += "\\nLearn from provided context and avoid past mistakes."
+
+НЕ нужно:
+  ✗ Добавлять инструкции про EvalAgent scoring (это делает orchestrator)
+  ✗ Добавлять retry логику в agents (это делает orchestrator)
+  ✗ Добавлять логику сохранения примеров в agents (это делает orchestrator)
+  
+AGENTS отвечают только за:
+  ✓ Получить context_section параметр
+  ✓ Включить его в prompt
+  ✓ Выполнить с enhanced context
+
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 4: Complete Feedback Endpoint (5 min)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❓ Вопрос: "Feedback endpoint — текущая версия Flask уже имеет эндпоинт `/api/feedback`?"
+
+✅ ОТВЕТ:
+  ✓ YES! Endpoint EXISTS в main.py (смотреть: /api/eval/feedback/submit)
+  ✓ Текущий endpoint: POST /api/eval/feedback/submit
+  ✓ НУЖНО ОБНОВИТЬ существующий, НЕ создавать новый
+
+ТЕКУЩИЙ ENDPOINT (в main.py):
+  @app.route("/api/eval/feedback/submit", methods=["POST"])
+  def submit_eval_feedback():
+      # TODO: Save to Weaviate VetkaUserFeedback ← ТВОЯ ЗАДАЧА
+
+EXPECTED REQUEST BODY:
+  {
+    "evaluation_id": "eval_20251027_120000",  ← unique ID от EvalAgent
+    "task": "Add login button",
+    "output": "Button implementation code",
+    "rating": "👍",  ← or "👎"
+    "correction": "Perfect error handling", ← optional comment
+    "score": 0.85  ← optional score from EvalAgent
+  }
+
+EXPECTED RESPONSE:
+  {
+    "status": "success",
+    "message": "Feedback saved to learning system (👍)",
+    "evaluation_id": "eval_20251027_120000",
+    "learning_context": "This will improve future similar tasks"
+  }
+
+IMPLEMENTATION:
+  1. В /api/eval/feedback/submit route
+  2. Получить data из request.json
+  3. Вызвать memory.save_feedback() с параметрами
+  4. Вернуть success response
+  5. ГОТОВО!
+
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 5: E2E Tests (5 min)
+━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❓ Вопрос: "Tests в `tests/phase5_3_test.py` — нужно ли тестировать новые методы?"
+
+✅ ОТВЕТ:
+  Создай НОВЫЙ файл: tests/test_phase63_part3_learning.py
+  
+  НЕ обновляй phase5_3_test.py (оставь как есть)
+  
+  WHAT TO TEST:
+    ✓ save_feedback() - saves and retrieves
+    ✓ retrieve_past_feedback() - gets past feedback
+    ✓ query_high_score_examples() - gets high-score examples
+    ✓ _build_context_section() - formats context correctly
+    ✓ E2E: feedback → context → improved next task
+    
+  ✗ НЕ НУЖНО:
+    ✗ Тестировать EvalAgent (это уже работает в Phase 6.3 Part 2)
+    ✗ Тестировать agents напрямую (используй mocks)
+    ✗ Полный pipeline с LLM (too slow, используй fixtures)
+
+ТЕСТЫ ДОЛЖНЫ БЫТЬ БЫСТРЫМИ:
+  Target: < 30 seconds for all tests
+  Use: pytest, mocking, fixtures
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 ПРИОРИТЕТ И ПОРЯДОК ВЫПОЛНЕНИЯ:
+
+РЕКОМЕНДАЦИЯ: "Super Mode" - ВСЁ ВМЕСТЕ В ОДНОМ GO
+
+Timeline:
+  T+0-5 min:   STEP 3 - Update 3 agent files (PM/Dev/QA)
+  T+5-10 min:  STEP 4 - Complete feedback endpoint
+  T+10-15 min: STEP 5 - Create and run tests
+  T+15 min:    VERIFICATION - curl test + Flask logs check
+  T+15-20 min: DONE! 🎉 Phase 6.3 Part 3 Complete
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 DETAILED IMPLEMENTATION CHECKLIST:
+
+STEP 3: Agent Prompts (15 min)
+─────────────────────────────
+
+File 1: vetka_pm.py
+  [ ] Open: /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/agents/vetka_pm.py
+  [ ] Find: def execute(self, task: str)
+  [ ] Change to: def execute(self, task: str, context_section: str = "")
+  [ ] In system_prompt, add at end:
+      if context_section:
+          system_prompt += f"\n{context_section}"
+          system_prompt += "\nIncorporate learnings from past tasks into this plan."
+  [ ] Test: Verify file syntax OK
+
+File 2: vetka_dev.py
+  [ ] Open: /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/agents/vetka_dev.py
+  [ ] Find: def execute(self, plan: str) [or similar]
+  [ ] Change to: def execute(self, plan: str, context_section: str = "")
+  [ ] In system_prompt, add at end:
+      if context_section:
+          system_prompt += f"\n{context_section}"
+          system_prompt += "\nFollow patterns from high-quality examples."
+  [ ] Test: Verify file syntax OK
+
+File 3: vetka_qa.py
+  [ ] Open: /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/agents/vetka_qa.py
+  [ ] Find: def execute(self, implementation: str)
+  [ ] Change to: def execute(self, implementation: str, context_section: str = "")
+  [ ] In system_prompt, add at end:
+      if context_section:
+          system_prompt += f"\n{context_section}"
+          system_prompt += "\nUse past test scenarios as reference."
+  [ ] Test: Verify file syntax OK
+
+STEP 4: Feedback Endpoint (5 min)
+─────────────────────────────────
+
+File: main.py
+  [ ] Open: /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/main.py
+  [ ] Find: @app.route("/api/eval/feedback/submit", methods=["POST"])
+  [ ] Replace route handler with:
+      
+      @app.route("/api/eval/feedback/submit", methods=["POST"])
+      def submit_eval_feedback():
+          try:
+              data = request.json or {}
+              eval_id = data.get('evaluation_id', '')
+              
+              if not eval_id:
+                  return jsonify({'error': 'evaluation_id required'}), 400
+              
+              memory = get_memory_manager()
+              success = memory.save_feedback(
+                  evaluation_id=eval_id,
+                  task=data.get('task', ''),
+                  output=data.get('output', ''),
+                  rating=data.get('rating', ''),
+                  correction=data.get('correction', ''),
+                  score=data.get('score')
+              )
+              
+              if success:
+                  return jsonify({
+                      'status': 'success',
+                      'message': f'Feedback saved ({data.get("rating")})',
+                      'evaluation_id': eval_id
+                  }), 200
+              else:
+                  return jsonify({'error': 'Failed to save'}), 500
+          except Exception as e:
+              return jsonify({'error': str(e)}), 500
+  
+  [ ] Test: Verify no syntax errors
+
+STEP 5: Tests (5 min)
+─────────────────────
+
+Create new file: tests/test_phase63_part3_learning.py
+  
+  [ ] Create tests directory if not exists:
+      mkdir -p /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tests
+  
+  [ ] Create file with test code (see TESTING COMMANDS below)
+  
+  [ ] Run tests:
+      cd /Users/danilagulin/Documents/VETKA_Project/vetka_live_03
+      python3 -m pytest tests/test_phase63_part3_learning.py -v
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🧪 TESTING COMMANDS:
+
+After STEP 5, verify with:
+
+Test 1: Check MemoryManager methods exist
+  python3 -c "from src.orchestration.memory_manager import MemoryManager; m = MemoryManager(); assert hasattr(m, 'save_feedback'); print('✅ Methods OK')"
+
+Test 2: Check orchestrator methods exist
+  python3 -c "from src.orchestration.agent_orchestrator import AgentOrchestrator; o = AgentOrchestrator(None); assert hasattr(o, '_build_context_section'); print('✅ Orchestrator OK')"
+
+Test 3: Test feedback endpoint
+  curl -X POST http://localhost:5001/api/eval/feedback/submit \
+    -H "Content-Type: application/json" \
+    -d '{
+      "evaluation_id": "test_001",
+      "task": "Test task",
+      "output": "Test output",
+      "rating": "👍",
+      "correction": "Good",
+      "score": 0.85
+    }'
+
+Test 4: Run full test suite
+  cd /Users/danilagulin/Documents/VETKA_Project/vetka_live_03
+  python3 -m pytest tests/test_phase63_part3_learning.py -v --tb=short
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 FINAL VERIFICATION CHECKLIST:
+
+After completing all 5 steps, verify:
+
+  [ ] MemoryManager has 5 new methods ✅
+  [ ] AgentOrchestrator has 2 new methods ✅
+  [ ] vetka_pm.py accepts context_section parameter
+  [ ] vetka_dev.py accepts context_section parameter
+  [ ] vetka_qa.py accepts context_section parameter
+  [ ] /api/eval/feedback/submit endpoint works
+  [ ] Tests pass: pytest tests/test_phase63_part3_learning.py
+  [ ] Flask logs show no errors
+  [ ] Weaviate has saved feedback entries
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🚀 QUICK START FOR NEXT CLAUDE:
+
+If you're continuing this task:
+
+1. Read this entire prompt (5 min)
+2. Execute STEP 3 (15 min) - Update agent files
+3. Execute STEP 4 (5 min) - Feedback endpoint
+4. Execute STEP 5 (5 min) - Tests
+5. Verify with testing commands above
+6. Done! ✅
+
+Total time remaining: ~30 minutes
+
+═══════════════════════════════════════════════════════════════════════════════
+
+💾 FILES TO MODIFY (Summary):
+
+1. /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/agents/vetka_pm.py
+   Action: Add context_section parameter to execute()
+
+2. /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/agents/vetka_dev.py
+   Action: Add context_section parameter to execute()
+
+3. /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/agents/vetka_qa.py
+   Action: Add context_section parameter to execute()
+
+4. /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/main.py
+   Action: Complete /api/eval/feedback/submit endpoint
+
+5. /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tests/test_phase63_part3_learning.py
+   Action: Create new test file with E2E tests
+
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ STATUS: Ready for STEP 3 (Agent Prompts)
+
+Next Action: Open vetka_pm.py and add context_section parameter
+Estimated Time: 30 minutes for all remaining steps
+
+Good luck! 🚀

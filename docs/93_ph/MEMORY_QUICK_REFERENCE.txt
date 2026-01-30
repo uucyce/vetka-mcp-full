@@ -1,0 +1,151 @@
+VETKA MEMORY SYSTEMS - QUICK REFERENCE
+======================================
+
+DOCUMENT: MEMORY_SYSTEMS_SUMMARY.md (1103 lines, 36KB)
+Created: January 25, 2026
+
+THREE CORE SYSTEMS:
+===================
+
+1. ELISIUM (Compression)
+   - Location: src/memory/compression.py (504 lines)
+   - Purpose: Age-based embedding compression (768D → 64D)
+   - Schedule: 0d(768D) → 7d(768D) → 30d(384D) → 90d(256D) → 180d(64D)
+   - Key Class: MemoryCompression, CompressedNodeState
+   - Integration: JARVIS Enricher, Memory Sync, CAM Operations
+
+2. CAM (Context-Aware Memory)
+   - Location: src/orchestration/cam_engine.py (1312 lines)
+   - Purpose: Dynamic tree restructuring (NeurIPS 2025 paper)
+   - Operations: Branch, Prune, Merge, Accommodate
+   - Key Class: VETKACAMEngine, VETKANode, CAMOperation
+   - Thresholds: Novel=0.7, Merge=0.92, Prune=0.2
+   - Surprise Metric: 0.0 (predictable) to 1.0 (novel)
+
+3. ENGRAM (User Memory)
+   - Location: src/memory/engram_user_memory.py (678 lines)
+   - Purpose: User preferences with O(1) RAM + Qdrant
+   - Levels: 1(RAM), 2(CAM+ELISION), 3(Temporal), 4(Cross-session), 5(APIs)
+   - Key Class: EngramUserMemory, UserPreferences
+   - Offload: After 5 accesses → promote to RAM
+   - Decay: Exponential (-0.05/week)
+
+INTEGRATION POINT:
+==================
+1. Scanner detects change
+2. CAM engine triggered → handle_new_artifact()
+3. Surprise calculated (0-1 scale)
+4. Decision: Branch/Merge/Append
+5. Tree restructures (Accommodation)
+6. Engram updates user patterns
+7. Age timer starts
+8. Compression applied when age threshold reached
+
+KEY FILES:
+==========
+src/memory/
+├── compression.py          # Elisium (768D → 64D)
+├── dep_compression.py      # Dependency pruning
+├── engram_user_memory.py   # User preferences
+├── jarvis_prompt_enricher.py   # JARVIS enrichment
+├── snapshot.py             # Memory snapshots (Phase 77.1)
+├── diff.py                 # Diff algorithm (Phase 77.2)
+└── trash.py                # Soft delete (Phase 77.6)
+
+src/orchestration/
+├── cam_engine.py           # CAM core
+├── cam_event_handler.py    # Event processing
+└── services/cam_integration.py   # Maintenance cycle
+
+API ENDPOINTS:
+==============
+GET  /api/search                    # Hybrid search
+GET  /api/engram/preferences/{user} # User prefs
+POST /api/engram/preference/{path}  # Set pref
+GET  /api/cam/surprise/{artifact}   # Surprise score
+GET  /api/tree                      # Tree with CAM metrics
+GET  /api/compression/quality-report # Quality metrics
+
+MEMORY COMPRESSION SAVINGS:
+===========================
+0-7 days:     768D (full quality)    = 3.0 KB
+7-30 days:    384D (90% quality)     = 1.5 KB
+30-90 days:   256D (80% quality)     = 1.0 KB
+90-180 days:  64D  (60% quality)     = 0.25 KB
+
+With 1000 nodes:
+- Original: 3 MB
+- Compressed: 2.2 MB (27% savings)
+- After 6mo: 50-70% total savings
+
+PHASES INVOLVED:
+================
+Phase 14-15:  CAM Research
+Phase 16:     CAM Metrics
+Phase 17:     Surprise Metric
+Phase 35:     CAM Engine
+Phase 51.3:   Event Handler
+Phase 54.1:   Integration Service
+Phase 66:     Elisium Design
+Phase 76.3:   Engram + JARVIS
+Phase 77-78:  Memory Sync Protocol
+Phase 90.8:   Scanner/Watcher Working
+Phase 91:     Audit Reports
+Phase 92:     ELISION Integration
+Phase 93:     This Summary
+
+CONFIGURATION:
+==============
+# Thresholds
+CAM_SIMILARITY_NOVEL=0.7
+CAM_SIMILARITY_MERGE=0.92
+CAM_ACTIVATION_PRUNE=0.2
+
+# Engram
+ENGRAM_OFFLOAD_THRESHOLD=5
+ENGRAM_DECAY_RATE=0.05
+ENGRAM_MIN_CONFIDENCE=0.1
+
+# Compression
+ACTIVE_MEMORY_THRESHOLD_DAYS=7
+ARCHIVE_MEMORY_THRESHOLD_DAYS=30
+TRASH_TTL_DAYS=90
+
+PERFORMANCE:
+============
+Engram L1 (RAM):      < 1 ms (O(1))
+Engram L4 (Qdrant):   5-50 ms (O(1) by user_id)
+CAM Branching:        50-2000 ms (O(n))
+CAM Merging:          100-500 ms (O(n²))
+Compression:          ~100ms per 1000 nodes
+Surprise Calc:        1-50 ms
+
+UNIQUE FEATURES:
+================
+✓ Three-layer memory (Elisium + CAM + Engram)
+✓ Active → Archived → Trash lifecycle
+✓ Eternal memory (survives model changes)
+✓ O(1) user preference lookups
+✓ Age-based compression (27-70% savings)
+✓ Dynamic tree restructuring
+✓ Automatic pruning + merging
+✓ Temporal decay with exponential formula
+✓ 23-43% token savings in prompt enrichment
+
+TESTING:
+========
+- src/tests/test_cam_integration.py - Main tests
+- Mock implementations for ELISION (Phase 92)
+- Quality tracking via metrics
+- No external dependencies for core compression
+
+FUTURE (Phase 94+):
+===================
+- Real ELISION algorithm (replace mock)
+- Procrustes animation for layout
+- Level 5 Engram implementation
+- Security layer (HMAC/AES)
+- expand_folder implementation
+- Persistence for CAM tool memory
+
+For full details, see: MEMORY_SYSTEMS_SUMMARY.md

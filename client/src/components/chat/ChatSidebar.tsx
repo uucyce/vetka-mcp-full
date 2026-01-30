@@ -1,0 +1,293 @@
+/**
+ * Chat Sidebar Component - Phase 50
+ * Displays chat history and allows switching between conversations.
+ *
+ * @file ChatSidebar.tsx
+ * @status ACTIVE
+ * @phase Phase 50 - Chat History + Sidebar UI
+ * @lastUpdate 2026-01-06
+ *
+ * Features:
+ * - Load and display all chats
+ * - Search/filter chats by file name
+ * - Select chat to load message history
+ * - Show message count and last updated timestamp
+ * - Delete chat (optional)
+ */
+
+import React, { useState, useEffect } from 'react';
+import './ChatSidebar.css';
+
+interface Chat {
+  id: string;
+  file_name: string;
+  file_path: string;
+  display_name?: string;  // Phase 74: Custom chat name
+  context_type?: string;  // Phase 74: "file" | "folder" | "group" | "topic"
+  items?: string[];       // Phase 74: File paths for groups
+  topic?: string;         // Phase 74: Topic for file-less chats
+  created_at: string;
+  updated_at: string;
+  message_count?: number;
+  // TODO_CAM_INDICATOR: Add CAM activation field here (hot/warm/cold status from /api/cam/activation?chat_id=...)
+  cam_activation?: 'hot' | 'warm' | 'cold';  // Show memory priority in sidebar
+}
+
+interface ChatSidebarProps {
+  isOpen: boolean;
+  onSelectChat: (chatId: string, filePath: string, fileName: string) => void;
+  currentChatId?: string;
+  onClose?: () => void;
+}
+
+export const ChatSidebar: React.FC<ChatSidebarProps> = ({
+  isOpen,
+  onSelectChat,
+  currentChatId,
+  onClose
+}) => {
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Load chats when sidebar opens
+  useEffect(() => {
+    if (isOpen) {
+      loadChats();
+    }
+  }, [isOpen]);
+
+  const loadChats = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/chats');
+      if (response.ok) {
+        const data = await response.json();
+        setChats(data.chats || []);
+        // console.log(`[ChatSidebar] Loaded ${data.chats?.length || 0} chats`);
+      } else {
+        console.error(`[ChatSidebar] Error loading chats: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('[ChatSidebar] Error fetching chats:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredChats = chats.filter(chat =>
+    chat.file_name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return date.toLocaleDateString();
+    } catch {
+      return dateString.split('T')[0];
+    }
+  };
+
+  const handleDeleteChat = async (e: React.MouseEvent, chatId: string) => {
+    e.stopPropagation();
+
+    if (!confirm('Delete this chat? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/chats/${chatId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        setChats(chats.filter(c => c.id !== chatId));
+        // console.log(`[ChatSidebar] Deleted chat ${chatId}`);
+      } else {
+        console.error(`[ChatSidebar] Error deleting chat: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('[ChatSidebar] Error deleting chat:', error);
+    }
+  };
+
+  // Phase 74: Rename chat functionality
+  const handleRenameChat = async (e: React.MouseEvent, chat: Chat) => {
+    e.stopPropagation();
+
+    const currentName = chat.display_name || chat.file_name;
+    const newName = prompt('Enter new name for this chat:', currentName);
+
+    if (!newName || newName.trim() === '' || newName.trim() === currentName) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/chats/${chat.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ display_name: newName.trim() })
+      });
+
+      if (response.ok) {
+        // Update local state
+        setChats(chats.map(c =>
+          c.id === chat.id ? { ...c, display_name: newName.trim() } : c
+        ));
+      } else {
+        console.error(`[ChatSidebar] Error renaming chat: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('[ChatSidebar] Error renaming chat:', error);
+    }
+  };
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="chat-sidebar">
+      {/* Header */}
+      <div className="chat-sidebar-header">
+        <h3 className="chat-sidebar-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          Chat History
+        </h3>
+        {onClose && (
+          <button className="chat-sidebar-close" onClick={onClose}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {/* Search */}
+      <div className="chat-sidebar-search">
+        <input
+          type="text"
+          placeholder="Search chats..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="chat-sidebar-search-input"
+        />
+      </div>
+
+      {/* Chats List */}
+      <div className="chat-sidebar-list">
+        {loading && (
+          <div className="chat-sidebar-loading">Loading chats...</div>
+        )}
+
+        {!loading && filteredChats.length === 0 && (
+          <div className="chat-sidebar-empty">
+            {chats.length === 0 ? 'No chats yet' : 'No matches found'}
+          </div>
+        )}
+
+        {!loading && filteredChats.map((chat) => (
+          <div
+            key={chat.id}
+            className={`chat-sidebar-item ${
+              currentChatId === chat.id ? 'active' : ''
+            }`}
+            onClick={() =>
+              onSelectChat(chat.id, chat.file_path, chat.file_name)
+            }
+          >
+            <div className="chat-sidebar-item-content">
+              <div className="chat-sidebar-item-name">
+                {/* Phase 74.3: Context-aware SVG icons */}
+                {chat.context_type === 'folder' ? (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                ) : chat.context_type === 'group' ? (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                ) : chat.context_type === 'topic' ? (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    <circle cx="12" cy="10" r="1" fill="currentColor"/><circle cx="8" cy="10" r="1" fill="currentColor"/><circle cx="16" cy="10" r="1" fill="currentColor"/>
+                  </svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                )}
+                <span style={{ marginLeft: 6 }}>{chat.display_name || chat.file_name}</span>
+              </div>
+              <div className="chat-sidebar-item-meta">
+                <span className="chat-sidebar-item-time">
+                  {formatDate(chat.updated_at)}
+                </span>
+                {chat.message_count !== undefined && (
+                  <span className="chat-sidebar-item-count">
+                    {chat.message_count} msg
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Phase 74.3: Actions with SVG icons */}
+            <div className="chat-sidebar-item-actions">
+              <button
+                className="chat-sidebar-item-edit"
+                onClick={(e) => handleRenameChat(e, chat)}
+                title="Rename chat"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+              </button>
+              <button
+                className="chat-sidebar-item-delete"
+                onClick={(e) => handleDeleteChat(e, chat.id)}
+                title="Delete chat"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Refresh Button */}
+      <div className="chat-sidebar-footer">
+        <button
+          className="chat-sidebar-refresh"
+          onClick={loadChats}
+          disabled={loading}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6 }}>
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          {loading ? 'Loading...' : 'Refresh'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default ChatSidebar;

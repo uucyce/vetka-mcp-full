@@ -1,0 +1,202 @@
+[
+  {
+    "task": "Change button color from blue to green",
+    "complexity": "MICRO",
+    "reason": "Simple UI element change",
+    "actions": ["button_css_update"],
+    "estimated_time_seconds": 30,
+    "category": "ui-tweak"
+  },
+  {
+    "task": "Fix typo in error message",
+    "complexity": "MICRO",
+    "reason": "Text replacement task",
+    "actions": ["text_find_replace"],
+    "estimated_time_seconds": 15,
+    "category": "bugfix-trivial"
+  },
+  {
+    "task": "Create new GitHub issue tracking a bug",
+    "complexity": "MICRO",
+    "reason": "Single API call using Composio",
+    "actions": ["github_create_issue"],
+    "estimated_time_seconds": 45,
+    "category": "integration-simple"
+  },
+  {
+    "task": "Send Slack notification to team",
+    "complexity": "MICRO",
+    "reason": "One-time message via Composio",
+    "actions": ["slack_send_message"],
+    "estimated_time_seconds": 30,
+    "category": "notification-simple"
+  },
+  {
+    "task": "Add input validation to login form",
+    "complexity": "SMALL",
+    "reason": "Requires validation logic but straightforward",
+    "actions": ["form_validation", "error_handling"],
+    "estimated_time_seconds": 180,
+    "category": "feature-small"
+  },
+  {
+    "task": "Create database migration to add new column",
+    "complexity": "SMALL",
+    "reason": "Standard migration with schema change",
+    "actions": ["database_migration", "schema_update"],
+    "estimated_time_seconds": 300,
+    "category": "database-schema"
+  },
+  {
+    "task": "Set up GitHub webhook to post commit messages to Slack",
+    "complexity": "SMALL",
+    "reason": "Two-service integration, straightforward setup",
+    "actions": ["github_webhook", "slack_integration"],
+    "estimated_time_seconds": 420,
+    "category": "integration-medium"
+  },
+  {
+    "task": "Implement user authentication with OAuth2",
+    "complexity": "MEDIUM",
+    "reason": "Requires auth flow, multiple components",
+    "actions": ["oauth_setup", "auth_service", "session_management"],
+    "estimated_time_seconds": 1200,
+    "category": "auth-complex"
+  },
+  {
+    "task": "Build real-time dashboard with WebSocket updates",
+    "complexity": "MEDIUM",
+    "reason": "Requires backend/frontend sync, state management",
+    "actions": ["websocket_setup", "state_management", "frontend_update"],
+    "estimated_time_seconds": 1800,
+    "category": "feature-realtime"
+  },
+  {
+    "task": "Refactor monolithic service into microservices",
+    "complexity": "LARGE",
+    "reason": "Architecture change, multiple components, coordination",
+    "actions": ["service_decomposition", "api_gateway", "service_discovery"],
+    "estimated_time_seconds": 28800,
+    "category": "architecture-major"
+  },
+  {
+    "task": "Implement distributed caching layer with Redis",
+    "complexity": "LARGE",
+    "reason": "Infrastructure change, configuration, testing",
+    "actions": ["redis_setup", "cache_strategy", "monitoring"],
+    "estimated_time_seconds": 14400,
+    "category": "infrastructure-optimization"
+  },
+  {
+    "task": "Design and implement full notification system with retry logic, fallbacks, and 3 channels",
+    "complexity": "LARGE",
+    "reason": "Multiple components: queuing, retries, failover, channels",
+    "actions": ["notification_service", "queue_system", "retry_logic", "channel_integration"],
+    "estimated_time_seconds": 21600,
+    "category": "system-design"
+  },
+  {
+    "task": "Complete platform migration from monolith to cloud-native architecture",
+    "complexity": "EPIC",
+    "reason": "Massive undertaking: infrastructure, code, data migration",
+    "actions": ["infrastructure_redesign", "code_refactor", "data_migration", "testing_strategy"],
+    "estimated_time_seconds": 604800,
+    "category": "platform-transformation"
+  },
+  {
+    "task": "Build AI-powered agent system with tool calling and memory",
+    "complexity": "EPIC",
+    "reason": "New subsystem: LLM integration, tool orchestration, state management",
+    "actions": ["llm_integration", "agent_framework", "memory_system", "tool_registry"],
+    "estimated_time_seconds": 432000,
+    "category": "ai-system"
+  },
+  {
+    "task": "Implement and deploy machine learning pipeline end-to-end",
+    "complexity": "EPIC",
+    "reason": "Data pipeline, model training, serving, monitoring",
+    "actions": ["data_pipeline", "model_training", "model_serving", "ml_monitoring"],
+    "estimated_time_seconds": 518400,
+    "category": "ml-pipeline"
+  },
+  {
+    "task": "Add keyboard shortcut Ctrl+S to save form",
+    "complexity": "MICRO",
+    "reason": "Single keyboard event handler",
+    "actions": ["keyboard_event"],
+    "estimated_time_seconds": 45,
+    "category": "ui-interaction"
+  },
+  {
+    "task": "Create Linear ticket from GitHub issue automatically",
+    "complexity": "SMALL",
+    "reason": "Automation with two-service sync",
+    "actions": ["github_webhook", "linear_create_ticket"],
+    "estimated_time_seconds": 600,
+    "category": "workflow-automation"
+  },
+  {
+    "task": "Build API rate limiting middleware",
+    "complexity": "MEDIUM",
+    "reason": "Requires state tracking, rate calculation, request handling",
+    "actions": ["middleware", "rate_limiting", "redis_cache"],
+    "estimated_time_seconds": 1800,
+    "category": "performance-optimization"
+  },
+  {
+    "task": "Implement comprehensive test coverage strategy for codebase",
+    "complexity": "LARGE",
+    "reason": "Across multiple modules, integration points, requires tool selection",
+    "actions": ["test_framework", "ci_cd_setup", "coverage_monitoring"],
+    "estimated_time_seconds": 36000,
+    "category": "quality-assurance"
+  },
+  {
+    "task": "Reorganize monorepo structure for 50+ microservices",
+    "complexity": "EPIC",
+    "reason": "Massive refactoring, tooling, process changes",
+    "actions": ["monorepo_setup", "build_system", "dependency_management"],
+    "estimated_time_seconds": 864000,
+    "category": "devops-massive"
+  },
+  {
+    "task": "Update npm package version",
+    "complexity": "MICRO",
+    "reason": "Single file update",
+    "actions": ["version_update"],
+    "estimated_time_seconds": 30,
+    "category": "maintenance"
+  },
+  {
+    "task": "Add logging to function",
+    "complexity": "MICRO",
+    "reason": "Add print statements or logger calls",
+    "actions": ["logging_add"],
+    "estimated_time_seconds": 45,
+    "category": "debugging"
+  },
+  {
+    "task": "Create API documentation with Swagger",
+    "complexity": "SMALL",
+    "reason": "Schema definition and documentation setup",
+    "actions": ["swagger_setup", "api_documentation"],
+    "estimated_time_seconds": 480,
+    "category": "documentation"
+  },
+  {
+    "task": "Optimize database queries for performance",
+    "complexity": "MEDIUM",
+    "reason": "Analysis, index creation, query rewriting",
+    "actions": ["query_analysis", "index_optimization"],
+    "estimated_time_seconds": 1200,
+    "category": "database-optimization"
+  },
+  {
+    "task": "Implement role-based access control system",
+    "complexity": "LARGE",
+    "reason": "Permission model, database changes, enforcement across system",
+    "actions": ["rbac_design", "permission_system", "auth_enforcement"],
+    "estimated_time_seconds": 28800,
+    "category": "security-system"
+  }
+]

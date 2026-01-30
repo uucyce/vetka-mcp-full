@@ -1,0 +1,300 @@
+═══════════════════════════════════════════════════════════════════════════════
+PHASE 73 - Context Assembly API Reference (Quick)
+═══════════════════════════════════════════════════════════════════════════════
+
+File: src/api/handlers/message_utils.py
+────────────────────────────────────────────────────────────────────────────────
+
+MAIN FUNCTION:
+  build_pinned_context(
+      pinned_files: list,              # [{id, path, name, type}]
+      user_query: str = "",            # For ranking (Phase 67.2)
+      max_files: int = 10,             # VETKA_MAX_PINNED_FILES
+      max_tokens_per_file: int = 1000,
+      max_total_tokens: int = 4000
+  ) -> str                              # XML: <pinned_context>...</pinned_context>
+
+WHAT IT DOES:
+  1. Filters folders (keeps only files)
+  2. Batch ranks files by relevance:
+     - Qdrant semantic search (single query, 100 results)
+     - CAM activation scores (single batch call)
+     - LRU cache (max 100 entries)
+     - Combined score: 0.7 * qdrant + 0.3 * cam
+  3. Smart truncate (60% head + 40% tail)
+  4. Returns XML with files
+
+INTEGRATIONS:
+  ✅ Qdrant: get_qdrant_client() -> search_by_vector(embedding, limit=100)
+  ✅ CAM: get_cam_engine() -> calculate_activation_score(node_id)
+  ✅ Embedding: get_embedding(user_query) -> List[float]
+  ✅ FALLBACKS: All have default scores
+
+HELPERS:
+  _rank_pinned_files(files, user_query) -> [(file, score)] sorted
+  _batch_get_qdrant_relevance(paths, embedding) -> {path: score}
+  _batch_get_cam_activations(paths) -> {path: score}
+  _smart_truncate(content, max_tokens) -> str
+  load_pinned_file_content(path, max_chars) -> str
+  format_history_for_prompt(messages, max_messages) -> str
+
+CACHE API:
+  clear_relevance_cache()
+  get_cache_stats() -> {size, hits, misses, hit_rate}
+
+CONFIG (env):
+  VETKA_QDRANT_WEIGHT=0.7
+  VETKA_CAM_WEIGHT=0.3
+  VETKA_MAX_CONTEXT_TOKENS=4000
+  VETKA_MAX_TOKENS_PER_FILE=1000
+  VETKA_MAX_PINNED_FILES=10
+  VETKA_DEBUG_CONTEXT=false
+
+═══════════════════════════════════════════════════════════════════════════════
+
+File: src/api/handlers/chat_handler.py
+────────────────────────────────────────────────────────────────────────────────
+
+MAIN FUNCTION:
+  build_model_prompt(
+      text: str,                      # User message
+      context_for_model: str,         # Node/file context
+      pinned_context: str = "",       # From build_pinned_context()
+      history_context: str = "",      # From format_history_for_prompt()
+      viewport_summary: str = ""      # Phase 71: spatial context
+  ) -> str                             # Formatted prompt
+
+WHAT IT DOES:
+  Builds system prompt with sections in order:
+    1. System instructions
+    2. context_for_model (file/node)
+    3. [JSON Context Builder SHOULD GO HERE] ← Phase 73 integration point
+    4. pinned_context (XML)
+    5. viewport_summary (Phase 71 spatial)
+    6. history_context (chat history)
+    7. User's current question
+    8. Instructions for response
+
+PHASE 71 INTEGRATION:
+  ✅ viewport_summary parameter added
+  ✅ Wraps in "## 3D VIEWPORT CONTEXT" section if present
+  ✅ Line 117-158
+
+HELPER FUNCTIONS:
+  detect_provider(model_name) -> ModelProvider enum
+    - Detects: Ollama, OpenRouter, Gemini, xAI, Deepseek, Groq, Anthropic, OpenAI
+
+  call_ollama_model(model_name, prompt) -> (response_text, tool_calls)
+  call_openrouter_model(model_name, prompt, api_key) -> (response_text, tokens, error)
+  get_agent_short_name(model_name) -> str
+  emit_model_response(sio, sid, response_text, model_name, ...) -> None
+  emit_stream_wrapper(sio, sid, model_name, full_response, prompt) -> None
+
+═══════════════════════════════════════════════════════════════════════════════
+
+File: src/scanners/dependency_calculator.py
+────────────────────────────────────────────────────────────────────────────────
+
+MAIN CLASS:
+  DependencyCalculator(config=None, semantic_provider=None)
+
+API:
+  calculate(input_data: ScoringInput) -> ScoringResult
+    Single A→B dependency score calculation
+
+  calculate_batch(inputs: List[ScoringInput]) -> List[ScoringResult]
+    Multiple calculations in order (no aggregation)
+
+  find_dependencies(
+      target_file: FileMetadata,
+      candidate_sources: List[FileMetadata],
+      import_scores: Dict[str, float] = None,
+      semantic_scores: Dict[str, float] = None,
+      reference_paths: List[str] = None
+  ) -> List[ScoringResult]
+    Find all significant dependencies for a file
+    Returns sorted by score descending, only is_significant=True (>= 0.6)
+
+INPUT DATA STRUCTURES:
+
+  FileMetadata:
+    path: str
+    created_at: Optional[datetime] = None
+    modified_at: Optional[datetime] = None
+    rrf_score: float = 0.5
+    has_references: bool = False
+
+  ScoringInput:
+    source_file: FileMetadata
+    target_file: FileMetadata
+    import_confidence: float = 0.0       # From PythonScanner
+    semantic_score: float = 0.0          # From Qdrant
+    has_explicit_reference: bool = False
+
+OUTPUT DATA STRUCTURE:
+
+  ScoringResult:
+    source_path: str
+    target_path: str
+    raw_score: float              # Before sigmoid
+    final_score: float            # 0-1 normalized
+    is_significant: bool          # >= 0.6
+    components: Dict[str, float]  # Debug info
+    to_dependency() -> Dependency
+
+FORMULA (Kimi K2, Phase 72.5):
+
+  DEP(A→B) = σ( w₁·I + w₂·S'·E(ΔT) + w₃·R + w₄·RRF )
+
+  where:
+    I              = import_confidence (0-1)
+    S'             = max(0, (S - 0.5) / 0.5)  # Semantic gating
+    E(ΔT)          = 0.2 + 0.8·e^(-ΔT/τ)      # Temporal decay with floor
+    R              = 1.0 if explicit_ref else 0.0
+    RRF            = source importance (0-1)
+    w = [0.4, 0.33, 0.2, 0.07]  (sum = 1.0)
+    σ(x) = 1/(1+e^(-12(x-0.35)))  # Sigmoid, center 0.35
+
+  Score interpretation:
+    0.8-1.0: Strong dependency (explicit import)
+    0.6-0.8: Significant link (semantic + temporal)
+    0.4-0.6: Weak link (semantic only)
+    0.0-0.4: No dependency
+
+STATUS: ✅ STABLE (just made yesterday, formula 6-AI validated)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+File: src/memory/qdrant_client.py
+────────────────────────────────────────────────────────────────────────────────
+
+MAIN CLASS:
+  QdrantVetkaClient(host="localhost", port=6333)
+
+API:
+
+  search_by_vector(
+      query_vector: List[float],
+      limit: int = 10,
+      score_threshold: float = 0.7,
+      collection: str = None,
+      file_types_only: bool = True
+  ) -> List[Dict]
+    Returns [{id, node_id, path, name, content, type, score, size, ...}]
+    Default collection: 'vetka_elisya'
+    Filters to scanned_file type by default
+
+  search_by_path(
+      path_prefix: str,
+      limit: int = 10,
+      score_threshold: float = 0.5
+  ) -> List[Dict]
+    Hierarchical path search
+
+  search_by_filename(
+      filename_pattern: str,
+      limit: int = 50,
+      collection: str = None
+  ) -> List[Dict]
+    Substring match (case-insensitive)
+
+  triple_write(
+      workflow_id, node_id, path, content, metadata, vector,
+      weaviate_write_func=None
+  ) -> Dict[str, bool]
+    Atomic write to: Weaviate + Qdrant + ChangeLog
+
+  health_check() -> bool
+  get_collection_stats() -> Dict[str, Any]
+
+SINGLETON:
+  from src.memory.qdrant_client import get_qdrant_client
+  qdrant = get_qdrant_client()
+
+COLLECTIONS:
+  'VetkaTree'     - Hierarchical storage
+  'VetkaLeaf'     - Detailed data
+  'VetkaChangeLog' - Audit trail
+  'vetka_elisya'  - Phase 68 main (default)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+PHASE 73 INTEGRATION POINT
+────────────────────────────────────────────────────────────────────────────────
+
+WHERE: src/api/handlers/chat_handler.py line 151
+
+BEFORE (current):
+  return f"""You are a helpful AI assistant...
+
+  {context_for_model}
+
+  {pinned_context}{spatial_section}{history_context}...
+  """
+
+AFTER (Phase 73):
+  json_context = build_json_context(node_path, dependencies, viewport_context)
+
+  return f"""You are a helpful AI assistant...
+
+  {context_for_model}
+
+  {json_context}  ← PHASE 73 JSON CONTEXT
+
+  {pinned_context}{spatial_section}{history_context}...
+  """
+
+═══════════════════════════════════════════════════════════════════════════════
+
+WHAT TO REUSE (Phase 73)
+────────────────────────────────────────────────────────────────────────────────
+
+✅ DO REUSE:
+  - build_pinned_context() batch Qdrant queries (NOT N calls!)
+  - message_utils LRU cache pattern
+  - message_utils smart truncation algorithm
+  - dependency_calculator.find_dependencies() for batch scoring
+  - dependency_calculator.calculate_batch() API
+  - qdrant_client.search_by_vector() (single call, Phase 68.2 filtering)
+  - All fallback patterns (when service unavailable)
+  - Token-based truncation (not char-based!)
+
+❌ DON'T CREATE:
+  - New Qdrant search functions (they exist!)
+  - New scoring algorithms (use dependency_calculator)
+  - New ranking algorithms (use message_utils)
+  - Separate batch calls per component
+
+✅ DO CREATE:
+  - build_json_context(file_path, dependencies, viewport) in message_utils.py
+  - Call in chat_handler.py line 151
+  - Optional env config for JSON context depth/size
+
+═══════════════════════════════════════════════════════════════════════════════
+
+IMPLEMENTATION ESTIMATE
+────────────────────────────────────────────────────────────────────────────────
+
+build_json_context() function:     100-150 lines (1 hour)
+Integration in chat_handler:       10 lines (5 min)
+Testing + fallbacks:               30-50 lines (1-2 hours)
+Decomposition + cleanup:           50+ lines (1 hour)
+
+TOTAL: 3-4 hours (NOT 8-10 like refactoring would be)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+KEY INSIGHT
+────────────────────────────────────────────────────────────────────────────────
+
+ALL infrastructure for Phase 73 is ALREADY IN PLACE:
+✅ Qdrant integration = ready
+✅ Batch operations = ready
+✅ Caching = ready
+✅ Fallbacks = ready
+✅ Config system = ready
+✅ Token budgeting = ready
+
+You only need to COMPOSE JSON from existing pieces!
+
+═══════════════════════════════════════════════════════════════════════════════

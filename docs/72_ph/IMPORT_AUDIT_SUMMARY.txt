@@ -1,0 +1,89 @@
+IMPORT PATTERNS AUDIT - QUICK REFERENCE
+=======================================
+
+LOCATION: /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/72_ph/IMPORT_PATTERNS_AUDIT.md
+
+DOCUMENT STRUCTURE:
+===================
+
+1. EXECUTIVE SUMMARY
+   - 238 Python files scanned
+   - 65 TypeScript/JavaScript files scanned
+   - 4 main import pattern categories per language
+
+2. PYTHON IMPORTS (src/)
+   ✓ Absolute Imports: 1,156 total (246 unique)
+     Examples: Standard library, third-party packages
+   
+   ✓ Relative Imports: 160 total (132 unique)
+     Examples: from .module import Class
+   
+   ✓ Local Project Imports: 302 total (189 unique)
+     Examples: from src.agents import LearnerAgent
+   
+   ✓ Dynamic Imports: 4 instances
+     Examples: __import__(package), importlib usage
+   
+   ✓ Conditional Imports: 3 instances (TYPE_CHECKING)
+     Examples: Circular dependency breaking
+
+3. JAVASCRIPT/TYPESCRIPT IMPORTS (client/src/)
+   ✓ Absolute Imports: 143 total (112 unique)
+     Examples: from 'react', 'socket.io-client'
+   
+   ✓ Relative Imports: 58 total (57 unique)
+     Examples: from './ChatPanel', from '../../store'
+   
+   ✓ Dynamic Imports: 4 instances (code splitting)
+     Examples: React.lazy(), import() patterns
+   
+   ✓ Barrel Exports: Extensive use
+     Examples: export { Component } from './index.ts'
+
+4. EDGE CASES
+   ✓ Circular Dependencies: 2 patterns detected and resolved
+   ✓ Optional Dependencies: Try/except patterns for umap, hdbscan
+   ✓ Try/Except Imports: Graceful degradation
+
+5. TEST FIXTURES
+   ✓ 7 Python import pattern tests with code examples
+   ✓ 7 TypeScript import pattern tests with code examples
+   ✓ Ready for Phase 72.3 implementation
+
+6. STATISTICS
+   ✓ By module breakdown (top consumers listed)
+   ✓ Risk assessment per pattern
+   ✓ Recommendations for improvements
+
+KEY FINDINGS:
+=============
+
+PYTHON:
+- Healthy use of relative imports to avoid circular deps
+- TYPE_CHECKING properly used for type hints only
+- Optional dependencies handled gracefully
+- Dependency hierarchy is clean: main → api → orchestration → services
+
+TYPESCRIPT:
+- Good use of barrel exports for clean module boundaries
+- Lazy loading implemented for code splitting
+- Relative imports with proper directory traversal
+- Type-only imports properly separated
+
+RISKS (ALL LOW):
+- 2 circular dependencies: MITIGATED with TYPE_CHECKING
+- 0 critical import issues
+- No missing imports detected
+
+RECOMMENDATIONS:
+- Consider path aliases (@/) for TypeScript to reduce ../../../
+- Add pre-commit import ordering checks
+- Monitor for new circular dependencies
+- Document import order standards
+
+PHASE 72.3 READY:
+✓ All fixtures created
+✓ Real code examples included
+✓ Edge cases documented
+✓ Statistics complete
+✓ Ready for test implementation

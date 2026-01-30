@@ -1,0 +1,79 @@
+================================================================================
+HAIKU-MARKERS-1: ARC Integration Gap Markers - Quick Summary
+================================================================================
+
+COMPLETED ACTIONS
+================================================================================
+
+Three TODO markers have been added to identify ARC integration gaps:
+
+1. TODO_ARC_GROUP
+   File: src/api/handlers/group_message_handler.py (line 807)
+   Purpose: Integrate ARC suggestions for group chat
+   Context: After context building, before agent calls
+   
+2. TODO_ARC_MCP  
+   File: src/mcp/vetka_mcp_bridge.py (line 621)
+   Purpose: Add vetka_arc_suggest tool for MCP clients
+   Context: In tool registration list before compound tools
+   
+3. TODO_ARC_GAP
+   File: src/orchestration/orchestrator_with_elisya.py (line 2329)
+   Purpose: Implement conceptual gap detection before agent calls
+   Context: After context assignment, before agent execution
+
+VERIFICATION COMMANDS
+================================================================================
+
+grep -n "TODO_ARC" src/api/handlers/group_message_handler.py
+grep -n "TODO_ARC" src/mcp/vetka_mcp_bridge.py
+grep -n "TODO_ARC" src/orchestration/orchestrator_with_elisya.py
+
+MARKER PROPERTIES
+================================================================================
+
+Format:     Standard TODO comments with context
+Placement:  At integration points (not in middle of logic)
+Comments:   Include brief explanation + implementation guidance
+Status:     Ready for implementation
+Complexity: Low/Medium/High (mix of effort levels)
+
+RELATED ARTIFACTS
+================================================================================
+
+Arc Solver Agent:   src/agents/arc_solver_agent.py (1197 lines)
+  - suggest_connections() method (line 136)
+  - Few-shot learning support (20 examples max)
+  - Safe code execution with validation
+
+Group Chat Handler: src/api/handlers/group_message_handler.py (1018 lines)
+  - Group message processing (line 532)
+  - Context building for agents (lines 784-805)
+  
+MCP Bridge:         src/mcp/vetka_mcp_bridge.py (1550 lines)
+  - Tool registration (line 183)
+  - Tool execution routing (line 655)
+
+Orchestrator:       src/orchestration/orchestrator_with_elisya.py
+  - Single agent execution (line 2273)
+  - Context management (lines 2318-2327)
+
+DOCUMENTATION
+================================================================================
+
+Full Report: docs/95_ph/HAIKU_MARKERS_1_ARC_GAPS.md
+  - Detailed analysis of each marker
+  - Implementation roadmap (3 phases)
+  - Integration priority matrix
+  - Success metrics
+  - Complete checklist
+
+STATUS
+================================================================================
+
+Markers Added:       3/3 ✓
+Files Modified:      3/3 ✓
+Documentation:       Complete ✓
+Ready for Review:    Yes ✓
+
+================================================================================
