@@ -256,15 +256,18 @@ Respond with implementation plan or code."""
             }
 
         prompt = self.prompts["architect"]
+        # MARKER_102.13: Read model from prompts config (default: OpenRouter)
+        model = prompt.get("model", "anthropic/claude-sonnet-4")
+        temperature = prompt.get("temperature", 0.3)
 
         # LLMCallTool.execute is synchronous
         result = tool.execute({
-            "model": "claude-sonnet-4-5",  # Sonnet for planning
+            "model": model,
             "messages": [
                 {"role": "system", "content": prompt["system"]},
                 {"role": "user", "content": f"Phase type: {phase_type}\n\nTask to break down:\n{task}"}
             ],
-            "temperature": 0.3,
+            "temperature": temperature,
             "max_tokens": 2000
         })
 
@@ -304,17 +307,20 @@ Respond with implementation plan or code."""
             }
 
         prompt = self.prompts["researcher"]
+        # MARKER_102.13: Read model from prompts config (default: OpenRouter)
+        model = prompt.get("model", "x-ai/grok-4")
+        temperature = prompt.get("temperature", 0.3)
 
         logger.info(f"[Pipeline] Researching: {question[:50]}...")
 
         # LLMCallTool.execute is synchronous
         result = tool.execute({
-            "model": "grok-4",  # Grok for deep research
+            "model": model,
             "messages": [
                 {"role": "system", "content": prompt["system"]},
                 {"role": "user", "content": f"Research this for VETKA project:\n\n{question}"}
             ],
-            "temperature": 0.3,
+            "temperature": temperature,
             "max_tokens": 1500,
             "inject_context": {
                 "semantic_query": question,
@@ -368,10 +374,15 @@ Respond with implementation plan or code."""
 
         context_str = "\n\n".join(context_parts) if context_parts else "No additional context."
 
-        # Select model based on phase
-        model = "claude-sonnet-4-5" if phase_type in ["fix", "build"] else "grok-4"
+        # MARKER_102.13: Select model from prompts config based on phase
+        # fix/build -> coder (Claude), research -> researcher (Grok)
+        if phase_type in ["fix", "build"]:
+            prompt = self.prompts.get("coder", {})
+        else:
+            prompt = self.prompts.get("researcher", {})
 
-        prompt = self.prompts.get("coder", {})
+        model = prompt.get("model", "anthropic/claude-sonnet-4")
+        temperature = prompt.get("temperature", 0.4)
         system_prompt = prompt.get("system", "Execute the subtask. Be concise.")
 
         # LLMCallTool.execute is synchronous
@@ -388,7 +399,7 @@ Marker: {subtask.marker or 'MARKER_102.X'}
 
 Execute this subtask. Provide clear output."""}
             ],
-            "temperature": 0.4,
+            "temperature": temperature,
             "max_tokens": 2000
         })
 
