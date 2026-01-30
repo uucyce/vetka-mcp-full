@@ -677,13 +677,15 @@ async def list_tools() -> list[Tool]:
             }
         ),
         # MARKER_102.9_START: Agent Pipeline tool
+        # MARKER_103.5: Added auto_write parameter
         Tool(
             name="vetka_spawn_pipeline",
             description=(
                 "Spawn fractal agent pipeline for task execution. "
                 "Auto-triggers Grok researcher on unclear parts (?). "
                 "Phases: research (explore), fix (debug), build (implement). "
-                "Progress streams to chat in real-time!"
+                "Progress streams to chat in real-time! "
+                "Use auto_write=false for staging mode (safe review before file creation)."
             ),
             inputSchema={
                 "type": "object",
@@ -701,6 +703,11 @@ async def list_tools() -> list[Tool]:
                     "chat_id": {
                         "type": "string",
                         "description": "Optional chat ID for progress streaming (default: Lightning chat)"
+                    },
+                    "auto_write": {
+                        "type": "boolean",
+                        "description": "If true (default), write files immediately. If false, save to JSON for later review with retro_apply_spawn.py",
+                        "default": True
                     }
                 },
                 "required": ["task"]
@@ -1295,6 +1302,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             # Phase 102.2: Don't wait for completion - return task_id immediately
             # Pipeline runs in background, results saved to pipeline_tasks.json
             # MARKER_102.29: Added chat_id for progress streaming
+            # MARKER_103.5: Added auto_write flag for staging mode
             try:
                 from src.orchestration.agent_pipeline import AgentPipeline
                 import time as time_module
@@ -1302,9 +1310,13 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 task = arguments.get("task", "")
                 phase_type = arguments.get("phase_type", "research")
                 chat_id = arguments.get("chat_id", MCP_LOG_GROUP_ID)  # Use MCP log group as default
+                # MARKER_103.5: auto_write flag
+                # True (default): Write files to disk immediately
+                # False: Only save to JSON, use retro_apply_spawn.py later
+                auto_write = arguments.get("auto_write", True)
 
                 # Create pipeline with chat_id for progress streaming
-                pipeline = AgentPipeline(chat_id=chat_id)
+                pipeline = AgentPipeline(chat_id=chat_id, auto_write=auto_write)
                 task_id = f"task_{int(time_module.time())}"
 
                 # Fire-and-forget: schedule execution without awaiting
@@ -1319,13 +1331,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 asyncio.create_task(run_pipeline_background())
 
                 # Return immediately with task_id
+                mode_text = "Auto-write: ON (files created immediately)" if auto_write else "Staging mode: ON (use retro_apply_spawn.py)"
                 response_text = (
                     f"🚀 Pipeline Started\n"
                     f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
                     f"Task ID: {task_id}\n"
                     f"Phase: {phase_type}\n"
                     f"Task: {task[:80]}...\n"
-                    f"Streaming to: {chat_id[:8]}...\n\n"
+                    f"Streaming to: {chat_id[:8]}...\n"
+                    f"{mode_text}\n\n"
                     f"Pipeline running in background.\n"
                     f"Progress will stream to chat in real-time!\n"
                     f"Check status: vetka_workflow_status or read data/pipeline_tasks.json"

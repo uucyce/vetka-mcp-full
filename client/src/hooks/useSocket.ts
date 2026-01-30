@@ -174,6 +174,37 @@ interface ServerToClientEvents {
     model_id: string;
     available: boolean;
   }) => void;
+  // === PHASE 103.6: ARTIFACT STAGING EVENTS ===
+  artifacts_staged: (data: {
+    group_id: string;
+    agent: string;
+    count: number;
+    task_ids: string[];
+    qa_score: number;
+  }) => void;
+  artifacts_applied: (data: {
+    group_id: string;
+    task_ids: string[];
+    files: string[];
+    success: boolean;
+  }) => void;
+  // === PHASE 103.7: CHAT PERSISTENCE EVENTS ===
+  message_saved: (data: {
+    group_id: string;
+    message_id: string;
+    success: boolean;
+  }) => void;
+  chat_history_loaded: (data: {
+    group_id: string;
+    message_count: number;
+    messages: Array<{
+      id: string;
+      role: string;
+      content: string;
+      sender_id: string;
+      timestamp: string;
+    }>;
+  }) => void;
   // === PHASE 56.5: CHAT-AS-TREE EVENTS ===
   chat_node_created: (data: {
     chatId: string;

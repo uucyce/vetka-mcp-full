@@ -71,7 +71,8 @@ class QdrantVetkaClient:
         'tree': 'VetkaTree',
         'leaf': 'VetkaLeaf',
         'changelog': 'VetkaChangeLog',
-        'trash': 'VetkaTrash'  # MARKER-77-02: Phase 77 Memory Sync trash collection
+        'trash': 'VetkaTrash',  # MARKER-77-02: Phase 77 Memory Sync trash collection
+        'chat': 'VetkaGroupChat'  # MARKER_103.7: Phase 103 - Chat history persistence
     }
     
     VECTOR_SIZE = 768  # For embeddings (adjustable)
@@ -695,6 +696,152 @@ class QdrantVetkaClient:
                 distance = vectors_config.get('distance', 'Cosine')
                 vectors_config = VectorParams(size=size, distance=Distance[distance.upper()])
         return self.client.create_collection(collection_name=collection_name, vectors_config=vectors_config, **kwargs)
+
+
+# ===== MARKER_103.7: CHAT HISTORY PERSISTENCE =====
+
+def upsert_chat_message(
+    group_id: str,
+    message_id: str,
+    sender_id: str,
+    content: str,
+    role: str = "user",  # "user" or "assistant"
+    agent: str = None,
+    model: str = None,
+    metadata: Dict = None
+) -> bool:
+    """
+    Upsert a chat message to VetkaGroupChat collection.
+
+    This enables:
+    - Long-term chat memory for Jarvis
+    - Semantic search across conversations
+    - Context retrieval for multi-turn dialogues
+
+    Args:
+        group_id: Group chat ID
+        message_id: Unique message ID
+        sender_id: Sender (user or agent ID)
+        content: Message content
+        role: "user" or "assistant"
+        agent: Agent name (for assistant messages)
+        model: Model used (for assistant messages)
+        metadata: Additional metadata
+
+    Returns:
+        True if upserted successfully
+    """
+    client = get_qdrant_client()
+    if not client or not client.client:
+        logger.warning("[Chat] Qdrant not available for chat persistence")
+        return False
+
+    try:
+        # Get embedding for semantic search
+        from src.utils.embedding_service import get_embedding
+        embedding = get_embedding(content[:2000])  # Truncate for efficiency
+
+        if not embedding:
+            logger.warning("[Chat] Failed to generate embedding")
+            return False
+
+        # Generate deterministic point ID from message_id
+        import hashlib
+        point_id = int(hashlib.md5(message_id.encode()).hexdigest()[:16], 16)
+
+        payload = {
+            "group_id": group_id,
+            "message_id": message_id,
+            "sender_id": sender_id,
+            "content": content[:5000],  # Store more content in payload
+            "role": role,
+            "agent": agent,
+            "model": model,
+            "timestamp": datetime.now().isoformat(),
+            "metadata": metadata or {}
+        }
+
+        point = PointStruct(
+            id=point_id,
+            vector=embedding,
+            payload=payload
+        )
+
+        client.client.upsert(
+            collection_name=client.COLLECTION_NAMES['chat'],
+            points=[point]
+        )
+
+        logger.debug(f"[Chat] Upserted message {message_id[:8]} to VetkaGroupChat")
+        return True
+
+    except Exception as e:
+        logger.warning(f"[Chat] Upsert failed (graceful): {e}")
+        return False
+
+
+def search_chat_history(
+    query: str,
+    group_id: str = None,
+    role: str = None,
+    limit: int = 10
+) -> List[Dict]:
+    """
+    Search chat history using semantic similarity.
+
+    Args:
+        query: Search query
+        group_id: Optional filter by group
+        role: Optional filter by role ("user" or "assistant")
+        limit: Max results
+
+    Returns:
+        List of matching messages with scores
+    """
+    client = get_qdrant_client()
+    if not client or not client.client:
+        return []
+
+    try:
+        from src.utils.embedding_service import get_embedding
+        query_vector = get_embedding(query)
+
+        if not query_vector:
+            return []
+
+        # Build filter
+        filter_conditions = []
+        if group_id:
+            filter_conditions.append(
+                FieldCondition(key="group_id", match={"value": group_id})
+            )
+        if role:
+            filter_conditions.append(
+                FieldCondition(key="role", match={"value": role})
+            )
+
+        query_filter = None
+        if filter_conditions:
+            query_filter = Filter(must=filter_conditions)
+
+        results = client.client.search(
+            collection_name=client.COLLECTION_NAMES['chat'],
+            query_vector=query_vector,
+            query_filter=query_filter,
+            limit=limit
+        )
+
+        return [
+            {
+                "score": hit.score,
+                **hit.payload
+            }
+            for hit in results
+        ]
+
+    except Exception as e:
+        logger.warning(f"[Chat] Search failed: {e}")
+        return []
 
 
 # ===== GLOBAL INSTANCE =====

@@ -635,6 +635,22 @@ class GroupChatManager:
         # Auto-save after message sent
         await self.save_to_json()
 
+        # MARKER_103.7_START: Persist user messages to Qdrant for long-term memory
+        try:
+            from src.memory.qdrant_client import upsert_chat_message
+            upsert_chat_message(
+                group_id=message.group_id,
+                message_id=message.id,
+                sender_id=message.sender_id,
+                content=message.content,
+                role="user",  # User messages
+                metadata=message.metadata
+            )
+        except Exception as e:
+            # Graceful degradation - don't block message flow
+            logger.warning(f"[GroupChat] Qdrant upsert failed (non-blocking): {e}")
+        # MARKER_103.7_END
+
         # ✅ PHASE 56.4: Periodic cleanup task handles cleanup, not per-message
 
         return message

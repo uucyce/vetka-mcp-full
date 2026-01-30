@@ -64,7 +64,7 @@ class AgentPipeline:
     Auto-triggers Grok researcher on any "?" or needs_research=True.
     """
 
-    def __init__(self, chat_id: Optional[str] = None):
+    def __init__(self, chat_id: Optional[str] = None, auto_write: bool = True):
         self.llm_tool = None  # Lazy load
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
@@ -74,6 +74,11 @@ class AgentPipeline:
         self.chat_id = chat_id or "5e2198c2-8b1a-45df-807f-5c73c5496aa8"  # Default: Lightning chat
         self.progress_hooks: List[Any] = []  # Callback hooks for progress
         # MARKER_102.26_END
+        # MARKER_103.5_START: Auto-write vs staging mode
+        # auto_write=True: Immediately write files to disk (default)
+        # auto_write=False: Only save to JSON, use retro_apply_spawn.py later
+        self.auto_write = auto_write
+        # MARKER_103.5_END
         self._load_prompts()
 
     def _load_prompts(self):
@@ -300,6 +305,82 @@ Respond with implementation plan or code."""
         return "\n".join(summary_parts)
     # MARKER_102.25_END
     # MARKER_102.3_END
+
+    # MARKER_103.4_START: Extract code blocks and write files to disk
+    def _extract_and_write_files(self, content: str, subtask: Subtask) -> List[str]:
+        """
+        Extract code blocks from LLM response and write to disk.
+
+        Spawn agents write ISOLATED modules (src/voice/, src/new_feature/).
+        Integration with main VETKA code is done manually after review.
+
+        Args:
+            content: LLM response containing code blocks
+            subtask: Subtask with description and marker
+
+        Returns:
+            List of created file paths
+        """
+        import re
+        from pathlib import Path
+
+        files_created: List[str] = []
+
+        # Pattern to match code blocks: ```[lang]\ncode\n```
+        pattern = r'```(?:python|py|javascript|js|typescript|ts|)?\s*\n(.*?)\n```'
+        matches = re.findall(pattern, content, re.DOTALL | re.IGNORECASE)
+
+        if not matches:
+            logger.debug("[Pipeline] No code blocks found in response")
+            return files_created
+
+        for i, code_block in enumerate(matches):
+            code = code_block.strip()
+            if not code:
+                continue
+
+            # Determine filepath from subtask description
+            # e.g., "Create src/voice/config.py" → src/voice/config.py
+            filepath = None
+            if subtask.description:
+                path_match = re.search(
+                    r'(src/[^\s]+?\.(?:py|js|ts|tsx|md|json))',
+                    subtask.description,
+                    re.IGNORECASE
+                )
+                if path_match:
+                    filepath = path_match.group(1)
+
+            # Fallback: Use MARKER or generic name
+            if not filepath:
+                marker = getattr(subtask, 'marker', f'file_{i+1}')
+                # Clean marker for filename
+                safe_marker = re.sub(r'[^\w\-_.]', '_', str(marker))
+                filepath = f"src/spawn_output/{safe_marker}.py"
+
+            # Ensure directory exists and write file
+            try:
+                path_obj = Path(filepath)
+                path_obj.parent.mkdir(parents=True, exist_ok=True)
+                path_obj.write_text(code, encoding='utf-8')
+                files_created.append(filepath)
+                logger.info(f"[Pipeline] Spawn created: {filepath} ({len(code)} chars)")
+
+            except Exception as e:
+                logger.error(f"[Pipeline] Failed to write {filepath}: {e}")
+                # Fallback to staging directory
+                try:
+                    fallback_dir = Path("data/spawn_staging")
+                    fallback_dir.mkdir(parents=True, exist_ok=True)
+                    fallback_path = fallback_dir / Path(filepath).name
+                    fallback_path.write_text(code, encoding='utf-8')
+                    files_created.append(str(fallback_path))
+                    logger.warning(f"[Pipeline] Written to fallback: {fallback_path}")
+                except Exception as e2:
+                    logger.error(f"[Pipeline] Fallback also failed: {e2}")
+
+        return files_created
+    # MARKER_103.4_END
 
     # MARKER_102.4_START: Core pipeline methods
     async def execute(self, task: str, phase_type: str = "research") -> Dict[str, Any]:
@@ -611,6 +692,23 @@ Execute this subtask. Provide clear, actionable output."""}
             content = result.get("result", {}).get("content", "")
             if content:
                 logger.info(f"[Pipeline] Subtask result: {content[:100]}...")
+
+                # MARKER_103.4_START: Post-process build phase - extract and write files
+                # MARKER_103.5: Check auto_write flag
+                # auto_write=True: Write files immediately
+                # auto_write=False: Only save to JSON (use retro_apply_spawn.py later)
+                if phase_type == "build" and "```" in content:
+                    if self.auto_write:
+                        files_created = self._extract_and_write_files(content, subtask)
+                        if files_created:
+                            self._emit_progress("@coder", f"📁 Created {len(files_created)} files: {', '.join(files_created)}")
+                            content += f"\n\n[Pipeline Note: Created files - {', '.join(files_created)}]"
+                    else:
+                        # Staging mode - just log, files stay in JSON for retro_apply
+                        self._emit_progress("@coder", f"📝 Code staged in JSON (auto_write=False)")
+                        content += f"\n\n[Pipeline Note: Code staged - use retro_apply_spawn.py to create files]"
+                # MARKER_103.4_END
+
                 return content
             else:
                 logger.warning(f"[Pipeline] Subtask returned empty content")
@@ -624,7 +722,12 @@ Execute this subtask. Provide clear, actionable output."""}
 
 
 # MARKER_102.8_START: Convenience functions
-async def spawn_pipeline(task: str, phase_type: str = "research", chat_id: Optional[str] = None) -> Dict[str, Any]:
+async def spawn_pipeline(
+    task: str,
+    phase_type: str = "research",
+    chat_id: Optional[str] = None,
+    auto_write: bool = True
+) -> Dict[str, Any]:
     """
     Convenience function for MCP tool.
 
@@ -632,11 +735,18 @@ async def spawn_pipeline(task: str, phase_type: str = "research", chat_id: Optio
         task: Task description
         phase_type: "research" | "fix" | "build"
         chat_id: Optional chat ID for progress streaming
+        auto_write: If True, write files immediately. If False, only save to JSON
+                   (use retro_apply_spawn.py to create files later)
 
     Usage:
-        result = await spawn_pipeline("Implement UI artifacts for VetkaTree", "build")
+        # Auto-write mode (default) - files created immediately
+        result = await spawn_pipeline("Implement UI artifacts", "build")
+
+        # Staging mode - files saved to JSON, apply later after review
+        result = await spawn_pipeline("Implement critical feature", "build", auto_write=False)
+        # Then: python scripts/retro_apply_spawn.py --task-filter "critical"
     """
-    pipeline = AgentPipeline(chat_id=chat_id)
+    pipeline = AgentPipeline(chat_id=chat_id, auto_write=auto_write)
     return await pipeline.execute(task, phase_type)
 
 

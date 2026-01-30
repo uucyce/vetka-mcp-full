@@ -945,6 +945,74 @@ def register_group_message_handler(sio, app=None):
                         f"[GROUP_CHAT] Error saving agent response to chat_history: {chat_err}"
                     )
 
+                # MARKER_103.6_START: Auto-stage artifacts from Dev/Architect
+                # Staging pattern: Dev generates code → stage in JSON → QA review → apply to disk
+                try:
+                    # Only stage for code-generating agents
+                    if display_name in ["Dev", "Architect", "Coder"]:
+                        from src.utils.artifact_extractor import extract_artifacts, extract_qa_score
+                        from src.utils.staging_utils import stage_artifacts_batch
+
+                        artifacts = extract_artifacts(response_text, display_name)
+                        if artifacts:
+                            qa_score = extract_qa_score(response_text) or 0.5  # Default moderate
+
+                            staged_ids = stage_artifacts_batch(
+                                artifacts=artifacts,
+                                qa_score=qa_score,
+                                agent=display_name,
+                                group_id=group_id
+                            )
+
+                            if staged_ids:
+                                print(f"[STAGING] {len(staged_ids)} artifacts staged from {display_name}")
+
+                                # Emit socket event for UI notification
+                                await sio.emit(
+                                    "artifacts_staged",
+                                    {
+                                        "group_id": group_id,
+                                        "agent": display_name,
+                                        "count": len(staged_ids),
+                                        "task_ids": staged_ids,
+                                        "qa_score": qa_score,
+                                    },
+                                    room=f"group_{group_id}",
+                                )
+                except Exception as staging_err:
+                    # Graceful degradation - don't block message flow
+                    print(f"[STAGING] Error (non-blocking): {staging_err}")
+                # MARKER_103.6_END
+
+                # MARKER_103.7_START: Persist agent response to Qdrant for long-term memory
+                try:
+                    from src.memory.qdrant_client import upsert_chat_message
+                    import uuid as uuid_module
+                    msg_id = str(uuid_module.uuid4())
+                    upsert_chat_message(
+                        group_id=group_id,
+                        message_id=msg_id,
+                        sender_id=agent_id,
+                        content=response_text,
+                        role="assistant",
+                        agent=display_name,
+                        model=model_id,
+                        metadata={"in_reply_to": user_message.id if user_message else None}
+                    )
+                    # Emit socket event for UI sync
+                    await sio.emit(
+                        "message_saved",
+                        {
+                            "group_id": group_id,
+                            "message_id": msg_id,
+                            "success": True
+                        },
+                        room=f"group_{group_id}",
+                    )
+                except Exception as qdrant_err:
+                    print(f"[QDRANT] Chat upsert failed (non-blocking): {qdrant_err}")
+                # MARKER_103.7_END
+
                 print(f"[GROUP] Agent {agent_id} responded: {len(response_text)} chars")
 
                 # Phase 57.8: Check for @mentions in agent response to trigger other agents
