@@ -430,7 +430,8 @@ class Phase11Transformer:
         - With children: average of children
         - Without children: depends on branch_type
         """
-        if node["type"] == "leaf":
+        # Accept both "leaf" and "file" types
+        if node["type"] in ["leaf", "file"]:
             return 1.0
 
         if children:
@@ -549,8 +550,8 @@ class Phase11Transformer:
     def _calculate_entropy_and_visuals(self):
         """Calculate entropy and update visual hints."""
         for node in self.nodes:
-            # FIXED: Skip leaves (Haiku #9)
-            if node["type"] == "leaf":
+            # FIXED: Skip leaves (Haiku #9) - accept both "leaf" and "file"
+            if node["type"] in ["leaf", "file"]:
                 node["metadata"]["entropy"] = 0.0
                 continue
 

@@ -307,7 +307,8 @@ class ElisionCompressor:
                     "i": f.get("id", ""),
                     "p": self._shorten_path(f.get("path", "")),
                     "n": f.get("name", ""),
-                    "t": "f" if f.get("type") == "file" else "d"
+                    # Accept both "file" and "leaf" as file type
+                    "t": "f" if f.get("type") in ["file", "leaf"] else "d"
                 }
                 for f in pinned_files[:20]  # Limit to 20
             ]

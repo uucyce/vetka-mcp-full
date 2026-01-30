@@ -2193,14 +2193,14 @@ def calculate_knowledge_positions(
                 'chain_index': chain_index
             })
 
-    # Log stats
-    files_positioned = len([p for p in positions.values() if p['type'] == 'file'])
+    # Log stats (accept both "file" and "leaf" types)
+    files_positioned = len([p for p in positions.values() if p['type'] in ['file', 'leaf']])
     logger.info(f"[KnowledgeLayout] Positioned {files_positioned} files under {num_tags} tags")
     logger.info(f"[KnowledgeLayout] Created {len(chain_edges)} chain edges")
 
     # Log position ranges for debugging
     if positions:
-        file_positions = [(fid, p) for fid, p in positions.items() if p['type'] == 'file']
+        file_positions = [(fid, p) for fid, p in positions.items() if p['type'] in ['file', 'leaf']]
         tag_positions_list = [(tid, p) for tid, p in positions.items() if p['type'] == 'tag']
 
         if tag_positions_list:

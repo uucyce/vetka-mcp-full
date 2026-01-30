@@ -500,9 +500,9 @@ class SemanticDAGBuilder:
 
         logger.info(f"[SemanticDAG] DAG max depth: {max_depth}, knowledge levels calculated")
 
-        # Update file knowledge levels based on parent concept
+        # Update file knowledge levels based on parent concept (accept both "file" and "leaf")
         for node_id, node in self.semantic_nodes.items():
-            if node.type == 'file':
+            if node.type in ['file', 'leaf']:
                 for edge in self.semantic_edges:
                     if edge.target == node_id and edge.type == 'contains':
                         parent = self.semantic_nodes.get(edge.source)
@@ -514,7 +514,7 @@ class SemanticDAGBuilder:
     def get_stats(self) -> Dict[str, Any]:
         """Return statistics about the semantic DAG"""
         concept_count = sum(1 for n in self.semantic_nodes.values() if n.type == 'concept')
-        file_count = sum(1 for n in self.semantic_nodes.values() if n.type == 'file')
+        file_count = sum(1 for n in self.semantic_nodes.values() if n.type in ['file', 'leaf'])
 
         edge_types = {}
         for e in self.semantic_edges:

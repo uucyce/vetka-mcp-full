@@ -803,10 +803,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 tree_data = data.get("tree", {})
                 nodes = tree_data.get("nodes", [])
 
-                # Filter files
+                # Filter files (accept both "file" and "leaf" types)
                 files = [
                     n for n in nodes
-                    if n.get("type") == "file" and
+                    if n.get("type") in ["file", "leaf"] and
                     (not pattern or pattern in n.get("metadata", {}).get("path", ""))
                 ]
 

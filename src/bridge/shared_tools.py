@@ -329,7 +329,8 @@ class TreeStructureTool(ReadTool):
         if format_type == "summary":
             # Count by type
             # FIX_101.5: API returns type="leaf" for files, not "file"
-            file_count = sum(1 for n in nodes if n.get("type") == "leaf")
+            # FIX_101.7: Accept both "leaf" and "file" interchangeably
+            file_count = sum(1 for n in nodes if n.get("type") in ["leaf", "file"])
             folder_count = sum(1 for n in nodes if n.get("type") == "branch")
 
             return {

@@ -419,7 +419,8 @@ async def get_tree_data(
                 'metadata': {
                     'total_nodes': len(nodes),
                     'total_edges': len(edges),
-                    'total_files': len([n for n in nodes if n['type'] == 'leaf']),
+                    # Accept both "leaf" and "file" types
+                    'total_files': len([n for n in nodes if n['type'] in ['leaf', 'file']]),
                     'total_folders': len(folders)
                 }
             }

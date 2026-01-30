@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-01-30T07:34:03.657618+00:00",
+  "last_updated": "2026-01-30T07:47:30.315293+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 101,
@@ -17,8 +17,9 @@
       "FIX_101.3: Added VetkaTree write in TripleWriteManager",
       "FIX_101.4: Added parent_folder and depth to qdrant_updater",
       "FIX_101.5: Fixed TreeStructureTool type check ('leaf' not 'file')",
-      "Backfilled 1759 files to VetkaTree collection",
-      "Cleaned 633 venv garbage files from vetka_elisya"
+      "FIX_101.6: vetka_get_tree counts both 'leaf' and 'file' types",
+      "FIX_101.7: All type checks now accept both 'leaf' and 'file' interchangeably",
+      "Backfilled 1759 files to VetkaTree collection"
     ],
     "pending_items": [
       "Unit tests for tree_routes.py",
@@ -45,6 +46,27 @@
   },
   "recent_fixes": [
     {
+      "id": "FIX_101.7",
+      "files": [
+        "shared_tools.py",
+        "theory_validator.py",
+        "vetka_validator.py",
+        "knowledge_layout.py",
+        "phase11_transformer.py",
+        "semantic_dag_builder.py",
+        "tree_routes.py",
+        "vetka_mcp_bridge.py",
+        "elision.py"
+      ],
+      "description": "Accept both 'leaf' and 'file' types interchangeably in all type checks"
+    },
+    {
+      "id": "FIX_101.6",
+      "file": "src/mcp/vetka_mcp_bridge.py",
+      "line": 768,
+      "description": "vetka_get_tree counts both 'leaf' and 'file' types"
+    },
+    {
       "id": "FIX_101.5",
       "file": "src/bridge/shared_tools.py",
       "line": 331,
@@ -55,18 +77,6 @@
       "file": "src/orchestration/triple_write_manager.py",
       "line": 318,
       "description": "Added VetkaTree write for hierarchical storage"
-    },
-    {
-      "id": "FIX_101.4",
-      "file": "src/scanners/qdrant_updater.py",
-      "line": 362,
-      "description": "Added parent_folder and depth fields"
-    },
-    {
-      "id": "FIX_101.2",
-      "file": "src/mcp/vetka_mcp_bridge.py",
-      "line": 1264,
-      "description": "format_result checks 'files' then 'results'"
     }
   ],
   "architecture": {
@@ -93,7 +103,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "f1dad656",
+    "commit": "a947b09f",
     "dirty": true
   }
 }

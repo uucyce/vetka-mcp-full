@@ -383,8 +383,8 @@ class VetkaValidator:
                 parent_id = current.get("parent_id")
                 current = node_map.get(parent_id) if parent_id else None
 
-        # Validate node types
-        valid_types = ["root", "branch", "leaf"]
+        # Validate node types (accept both "leaf" and "file" for files)
+        valid_types = ["root", "branch", "leaf", "file"]
         valid_branch_types = ["memory", "task", "data", "control"]
 
         for node in nodes:

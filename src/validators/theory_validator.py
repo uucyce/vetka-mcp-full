@@ -50,8 +50,8 @@ class TheoryValidator:
             if abs(expected - actual) > 0.03:
                 errors.append(f"Node {node['id']}: opacity {actual} != expected {expected}")
 
-            # Entropy should be 0 for leaves
-            if node.get("type") == "leaf":
+            # Entropy should be 0 for leaves (accept both "leaf" and "file")
+            if node.get("type") in ["leaf", "file"]:
                 if node.get("metadata", {}).get("entropy", 0) != 0:
                     errors.append(f"Leaf {node['id']}: entropy should be 0")
 
