@@ -235,8 +235,8 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "format": {
                         "type": "string",
-                        "enum": ["tree", "summary"],
-                        "description": "Output format: 'tree' for full structure, 'summary' for stats only",
+                        "enum": ["tree", "summary", "simple"],
+                        "description": "Output format: 'tree' for full structure, 'summary'/'simple' for stats only",
                         "default": "summary"
                     }
                 }
@@ -750,6 +750,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "vetka_get_tree":
             # Get tree structure
             format_type = arguments.get("format", "summary")
+            # Normalize 'simple' to 'summary'
+            if format_type == "simple":
+                format_type = "summary"
 
             response = await http_client.get("/api/tree/data")
 
