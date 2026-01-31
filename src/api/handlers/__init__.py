@@ -70,6 +70,8 @@ def register_all_handlers(sio: AsyncServer, app=None):
     from .workflow_socket_handler import register_workflow_socket_handlers  # Phase 60.2
     from .voice_socket_handler import register_voice_socket_handlers  # Phase 60.5
     from .search_handlers import register_search_handlers  # Phase 68
+    from .jarvis_handler import register_jarvis_handlers  # Phase 104 - Jarvis Voice
+    from .approval_socket_handler import register_approval_socket_handlers  # Phase 104.4
 
     register_connection_handlers(sio, app)
     register_approval_handlers(sio, app)
@@ -83,8 +85,10 @@ def register_all_handlers(sio: AsyncServer, app=None):
     register_workflow_socket_handlers(sio, app)  # Phase 60.2
     register_voice_socket_handlers(sio, app)  # Phase 60.5
     register_search_handlers(sio, app)  # Phase 68
+    register_jarvis_handlers(sio)  # Phase 104 - Jarvis Voice
+    register_approval_socket_handlers(sio, app)  # Phase 104.4 - Approval Socket
 
-    print("  [Handlers] Socket.IO async handlers registered (Phase 68)")
+    print("  [Handlers] Socket.IO async handlers registered (Phase 104.4)")
     print("  [Handlers] ✅ group_message_handler registered (join_group, leave_group, group_message, group_typing)")
     print("  [Handlers] ✅ key_handlers registered (add_api_key, learn_key_type, get_key_status)")
     print("  [Handlers] ✅ workflow_socket_handler registered on /workflow namespace (Phase 60.2)")
@@ -92,3 +96,5 @@ def register_all_handlers(sio: AsyncServer, app=None):
     print("  [Handlers]   - Legacy: voice_start, voice_audio, voice_stop, tts_request")
     print("  [Handlers]   - Realtime: voice_stream_start, voice_pcm, voice_utterance_end, voice_interrupt")
     print("  [Handlers] ✅ search_handlers registered (search_query) - Phase 68")
+    print("  [Handlers] ✅ jarvis_handler registered (jarvis_listen_start/stop, jarvis_audio_chunk) - Phase 104")
+    print("  [Handlers] ✅ approval_socket_handler registered (approval_response, get_approval_details) - Phase 104.4")

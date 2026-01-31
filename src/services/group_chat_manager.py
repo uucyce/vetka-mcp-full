@@ -371,6 +371,50 @@ class GroupChatManager:
             logger.info(f"[GroupChat] Default: {result.get('display_name')}")
             return [result]
 
+        # MARKER_103_GC_DEFAULT: Default trigger (Hostess replacement) - Phase 103
+        # If no agent selected by any logic above, use smart fallback to prevent empty responses
+        # This ensures conversation continuity when no explicit @mention or command is used
+        def select_default_agent(message: str, participants_list: list) -> Optional[Any]:
+            """Smart default agent selection based on message content."""
+            msg_lower = message.lower()
+
+            # Priority 1: Keyword-based role detection
+            if 'architect' in msg_lower or any(kw in msg_lower for kw in ['architecture', 'design', 'system', 'pattern', 'structure']):
+                for p in participants_list:
+                    if 'architect' in p.get('display_name', '').lower():
+                        return p
+
+            if any(kw in msg_lower for kw in ['code', 'fix', 'implement', 'function', 'debug', 'api', 'build']):
+                for p in participants_list:
+                    if 'dev' in p.get('display_name', '').lower() or 'coder' in p.get('display_name', '').lower():
+                        return p
+
+            if any(kw in msg_lower for kw in ['test', 'bug', 'verify', 'quality', 'check']):
+                for p in participants_list:
+                    if 'qa' in p.get('display_name', '').lower():
+                        return p
+
+            if any(kw in msg_lower for kw in ['plan', 'task', 'scope', 'timeline', 'requirements', 'project']):
+                for p in participants_list:
+                    if 'pm' in p.get('display_name', '').lower():
+                        return p
+
+            # Priority 2: If user message (not agent), select first available
+            # Priority 3: Return first participant as ultimate fallback
+            return participants_list[0] if participants_list else None
+
+        # Get non-observer participants excluding sender
+        available_participants = [
+            p for p in participants.values()
+            if p.get('role') != 'observer' and p.get('agent_id') != sender_id
+        ]
+
+        if available_participants:
+            default_agent = select_default_agent(content, available_participants)
+            if default_agent:
+                logger.info(f"[GroupChat] MARKER_103_GC_DEFAULT: Smart fallback selected {default_agent.get('display_name')}")
+                return [default_agent]
+
         return []
 
     async def create_group(
@@ -636,19 +680,23 @@ class GroupChatManager:
         await self.save_to_json()
 
         # MARKER_103.7_START: Persist user messages to Qdrant for long-term memory
-        try:
-            from src.memory.qdrant_client import upsert_chat_message
-            upsert_chat_message(
-                group_id=message.group_id,
-                message_id=message.id,
-                sender_id=message.sender_id,
-                content=message.content,
-                role="user",  # User messages
-                metadata=message.metadata
-            )
-        except Exception as e:
-            # Graceful degradation - don't block message flow
-            logger.warning(f"[GroupChat] Qdrant upsert failed (non-blocking): {e}")
+        # MARKER_103_GC7: FIXED - wrapped in background task
+        async def _persist_user_msg_background():
+            """Background task for Qdrant persistence - non-blocking."""
+            try:
+                from src.memory.qdrant_client import upsert_chat_message
+                upsert_chat_message(
+                    group_id=message.group_id,
+                    message_id=message.id,
+                    sender_id=message.sender_id,
+                    content=message.content,
+                    role="user",
+                    metadata=message.metadata
+                )
+            except Exception as e:
+                logger.warning(f"[GroupChat] Qdrant upsert failed (non-blocking): {e}")
+
+        asyncio.create_task(_persist_user_msg_background())
         # MARKER_103.7_END
 
         # ✅ PHASE 56.4: Periodic cleanup task handles cleanup, not per-message

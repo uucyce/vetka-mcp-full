@@ -30,7 +30,7 @@ async def deep_health(request: Request) -> Dict[str, Any]:
         ('orchestrator', 'OrchestratorWithElisya'),
         ('memory_manager', 'MemoryManager'),
         ('model_router', 'ModelRouter'),
-        ('api_gateway', 'APIGateway'),
+        # ('api_gateway', 'APIGateway'),  # REMOVED: Phase 95 - replaced by direct_api_calls.py
         ('eval_agent', 'EvalAgent'),
         ('metrics_engine', 'MetricsEngine'),
         ('qdrant_manager', 'QdrantManager'),
@@ -230,7 +230,7 @@ async def health_debug(request: Request) -> Dict[str, Any]:
     components = {}
 
     # Check each critical component
-    critical = ['orchestrator', 'memory_manager', 'eval_agent', 'model_router', 'api_gateway']
+    critical = ['orchestrator', 'memory_manager', 'eval_agent', 'model_router']  # api_gateway REMOVED: Phase 95
     for name in critical:
         instance = getattr(request.app.state, name, None)
         if instance is None:

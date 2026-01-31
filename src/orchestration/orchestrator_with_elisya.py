@@ -19,6 +19,7 @@ import time
 import threading
 import os
 import logging
+import asyncio  # Phase 103: for parallel Dev/QA execution
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import uuid
@@ -1305,6 +1306,33 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
         # Phase 19: Track tool executions for response formatting
         tool_executions = []
 
+        # MARKER_104_ELISION_INTEGRATION: Compress context for LLM efficiency
+        # Apply Level 2 compression (safe default) to large contexts
+        compressed_prompt = prompt
+        compression_info = None
+
+        if len(str(prompt)) > 5000:  # Only compress large contexts
+            try:
+                from src.memory.elision import get_elision_compressor
+
+                compressor = get_elision_compressor()
+                result = compressor.compress(prompt, level=2)
+
+                # Use compressed version for LLM
+                compressed_prompt = result.compressed
+                compression_info = {
+                    "original_size": result.original_length,
+                    "compressed_size": result.compressed_length,
+                    "ratio": f"{result.compression_ratio:.2f}x",
+                    "tokens_saved": result.tokens_saved_estimate,
+                    "level": result.level
+                }
+                logger.debug(f"[ELISION] Compressed context: {result.original_length} → {result.compressed_length} bytes ({result.compression_ratio:.2f}x compression, ~{result.tokens_saved_estimate} tokens saved)")
+            except ImportError:
+                logger.debug("[ELISION] Compressor not available, using raw context")
+                compressed_prompt = prompt
+        # MARKER_104_ELISION_INTEGRATION_END
+
         # 5. Execute LLM call with tool loop
         # Phase 80.10: Convert provider string to Provider enum
         provider_str = routing.get("provider", "ollama")
@@ -1315,8 +1343,9 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
 
         try:
             # The prompt passed in kwargs is the *rich* prompt
+            # MARKER_104_ELISION_INTEGRATION: Use compressed context for LLM
             llm_response = await self._call_llm_with_tools_loop(
-                prompt=prompt,
+                prompt=compressed_prompt,
                 agent_type=agent_type,
                 model=model_name,
                 system_prompt=system_prompt,
@@ -1563,6 +1592,7 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
 
             elisya_state.speaker = "Architect"
             # ✅ PHASE 3: Use the new ASYNC method for tool support
+            # MARKER_103_CHAIN1: Architect missing from parallel chain with Dev/QA
             architect_result, elisya_state = await self._run_agent_with_elisya_async(
                 "Architect", elisya_state, architect_prompt
             )
@@ -1621,82 +1651,71 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
                 )
                 print(f"   [QA] Using rich prompt: {len(qa_prompt)} chars")
 
-            def run_dev():
+            # MARKER_103_CHAIN2: FIXED - replaced threading with asyncio.gather()
+            # Phase 103: True async parallel execution without event loop conflicts
+
+            async def run_dev_async():
+                """Async Dev agent execution."""
                 try:
-                    print("      → Dev thread started")
-                    # ⚠️ Cannot use _run_agent_with_elisya_async directly in a threading.Thread target.
-                    # We have to keep the synchronous call for now for parallel execution, which bypasses
-                    # the new async tool loop. This needs a full conversion to asyncio.
-                    # For a minimal change, we will assume a synchronous adapter call or skip parallel for now.
-                    # Since the rest of the orchestration is synchronous/threading, the simplest option is to
-                    # *temporarily* use an async wrapper to call the tool loop.
-
-                    # WORKAROUND: Use asyncio.run inside the thread
-                    import asyncio
-
-                    async def async_dev_wrapper(state, prompt):
-                        return await self._run_agent_with_elisya_async(
-                            "Dev", state, prompt
-                        )
-
-                    output, state = asyncio.run(
-                        async_dev_wrapper(elisya_state, dev_prompt)
+                    print("      → Dev async started")
+                    output, state = await self._run_agent_with_elisya_async(
+                        "Dev", elisya_state, dev_prompt
                     )
+                    print("      ✅ Dev async completed")
+                    return ("dev", output, state, None)
+                except Exception as e:
+                    print(f"      ❌ Dev async error: {e}")
+                    return ("dev", None, None, str(e))
+
+            async def run_qa_async():
+                """Async QA agent execution."""
+                try:
+                    print("      → QA async started")
+                    output, state = await self._run_agent_with_elisya_async(
+                        "QA", elisya_state, qa_prompt
+                    )
+                    print("      ✅ QA async completed")
+                    return ("qa", output, state, None)
+                except Exception as e:
+                    print(f"      ❌ QA async error: {e}")
+                    return ("qa", None, None, str(e))
+
+            # Run both in parallel with asyncio.gather (no threading!)
+            dev_qa_results = await asyncio.gather(
+                run_dev_async(),
+                run_qa_async(),
+                return_exceptions=True
+            )
+
+            # Process results
+            for res in dev_qa_results:
+                if isinstance(res, Exception):
+                    print(f"      ⚠️ Parallel task exception: {res}")
+                    continue
+                agent_type, output, state, error = res
+                if agent_type == "dev":
                     dev_result[0] = output
                     dev_state[0] = state
-                    print("      ✅ Dev thread completed")
-                except Exception as e:
-                    dev_error[0] = str(e)
-                    print(f"      ❌ Dev thread error: {e}")
-
-            def run_qa():
-                try:
-                    print("      → QA thread started")
-                    # WORKAROUND: Use asyncio.run inside the thread
-                    import asyncio
-
-                    async def async_qa_wrapper(state, prompt):
-                        return await self._run_agent_with_elisya_async(
-                            "QA", state, prompt
-                        )
-
-                    output, state = asyncio.run(
-                        async_qa_wrapper(elisya_state, qa_prompt)
-                    )
+                    dev_error[0] = error
+                elif agent_type == "qa":
                     qa_result[0] = output
                     qa_state[0] = state
-                    print("      ✅ QA thread completed")
-                except Exception as e:
-                    qa_error[0] = str(e)
-                    print(f"      ❌ QA thread error: {e}")
-
-            # Start both in parallel
-            dev_thread = threading.Thread(target=run_dev, daemon=False)
-            qa_thread = threading.Thread(target=run_qa, daemon=False)
-
-            dev_thread.start()
-            qa_thread.start()
-
-            # Wait for both
-            dev_thread.join(timeout=AGENT_TIMEOUTS["Dev"] + 10)
-            qa_thread.join(timeout=AGENT_TIMEOUTS["QA"] + 10)
-
-            # Check if threads completed
-            if dev_thread.is_alive():
-                print("      ⚠️  Dev thread still running (timeout)")
-                dev_error[0] = "Dev timeout"
-            if qa_thread.is_alive():
-                print("      ⚠️  QA thread still running (timeout)")
-                qa_error[0] = "QA timeout"
+                    qa_error[0] = error
 
             result["implementation"] = dev_result[0] or ""
             result["tests"] = qa_result[0] or ""
             result["metrics"]["phases"]["dev_qa_parallel"] = time.time() - phase_start
 
-            # Update main state with latest info from parallel threads
-            if dev_state[0]:
+            # MARKER_103_CHAIN3: FIXED - merge states instead of overwrite
+            # Combine both states: Dev artifacts + QA feedback
+            if dev_state[0] and qa_state[0]:
+                # Merge: use Dev as base, add QA feedback
                 elisya_state = dev_state[0]
-            if qa_state[0]:
+                elisya_state.qa_feedback = getattr(qa_state[0], 'qa_feedback', None)
+                elisya_state.test_results = getattr(qa_state[0], 'test_results', None)
+            elif dev_state[0]:
+                elisya_state = dev_state[0]
+            elif qa_state[0]:
                 elisya_state = qa_state[0]
 
             # Phase 55.1: MCP parallel merge hook

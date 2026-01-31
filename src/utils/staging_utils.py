@@ -60,7 +60,8 @@ def stage_artifact(
     artifact: Dict[str, Any],
     qa_score: float,
     agent: str = "Dev",
-    group_id: Optional[str] = None
+    group_id: Optional[str] = None,
+    source_message_id: Optional[str] = None
 ) -> Optional[str]:
     """
     Stage an artifact for later review/apply.
@@ -71,6 +72,7 @@ def stage_artifact(
         qa_score: QA score (0-1) for this artifact
         agent: Agent that created it (Dev, Architect, etc.)
         group_id: Optional group chat ID for context
+        source_message_id: Optional source message ID for traceability
 
     Returns:
         task_id if staged successfully, None otherwise
@@ -79,12 +81,14 @@ def stage_artifact(
         data = _load_staging()
         task_id = f"art_{int(datetime.now().timestamp())}_{str(uuid.uuid4())[:8]}"
 
+        # MARKER_103_ARTIFACT_LINK: Added source_message_id for traceability
         staged_artifact = {
             **artifact,
             "task_id": task_id,
             "qa_score": qa_score,
             "agent": agent,
             "group_id": group_id,
+            "source_message_id": source_message_id,
             "status": "staged",
             "staged_at": datetime.now().isoformat()
         }
@@ -105,12 +109,13 @@ def stage_artifacts_batch(
     artifacts: List[Dict[str, Any]],
     qa_score: float,
     agent: str = "Dev",
-    group_id: Optional[str] = None
+    group_id: Optional[str] = None,
+    source_message_id: Optional[str] = None
 ) -> List[str]:
     """Stage multiple artifacts at once."""
     task_ids = []
     for artifact in artifacts:
-        task_id = stage_artifact(artifact, qa_score, agent, group_id)
+        task_id = stage_artifact(artifact, qa_score, agent, group_id, source_message_id)
         if task_id:
             task_ids.append(task_id)
     return task_ids
@@ -364,6 +369,7 @@ def upsert_to_qdrant(
         # Generate deterministic ID from content hash
         point_id = int(hashlib.md5(content.encode()).hexdigest()[:16], 16)
 
+        # MARKER_103_ARTIFACT_LINK: Include source_message_id in Qdrant payload
         payload = {
             "type": item_type,
             "status": item.get("status", "staged"),
@@ -372,6 +378,7 @@ def upsert_to_qdrant(
             "filename": item.get("filename", ""),
             "content": content,
             "task_id": item.get("task_id", ""),
+            "source_message_id": item.get("source_message_id", ""),
             "created_at": item.get("staged_at", datetime.now().isoformat())
         }
 

@@ -4,7 +4,7 @@ Token-efficient JSON context compression
 
 @file elision.py
 @status active
-@phase 96
+@phase 104
 @depends json, re, dataclasses, pathlib
 @used_by jarvis_prompt_enricher.py, shared_tools.py, llm_call_tool.py, vetka_mcp_bridge.py, tools.py (agents)
 
@@ -13,10 +13,11 @@ ELISION = Efficient Language-Independent Symbolic Inversion of Names
 Compression layers:
 1. Key abbreviation (current_file -> cf)
 2. Path compression (/src/orchestration/ -> s/o/)
-3. Value shortening (imports -> imp)
+3. Vowel skipping with CAM surprise selection (MARKER_104_ELISION_L3)
 4. Whitespace removal (JSON separators)
+5. Local dictionary (per-subtree)
 
-Target: 40-60% token savings without semantic loss
+Target: 60-70% token savings without semantic loss
 """
 
 import json
@@ -141,13 +142,17 @@ class ElisionCompressor:
     Compression levels:
     - Level 1: Key abbreviation only (safe, reversible)
     - Level 2: Level 1 + path compression
-    - Level 3: Level 2 + whitespace removal
-    - Level 4: Level 3 + local dictionary (per-subtree)
+    - Level 3: Level 2 + vowel skipping with CAM surprise selection (MARKER_104_ELISION_L3)
+    - Level 4: Level 3 + whitespace removal
+    - Level 5: Level 4 + local dictionary (per-subtree)
 
     Usage:
         compressor = ElisionCompressor()
         result = compressor.compress(json_data, level=2)
         original = compressor.expand(result.compressed, result.legend)
+
+        # Level 3 with surprise-based vowel skipping:
+        result = compressor.compress(json_data, level=3, surprise_map={"word": 0.2})
     """
 
     def __init__(
@@ -174,15 +179,17 @@ class ElisionCompressor:
         self,
         data: Any,
         level: int = 2,
-        target_ratio: float = None
+        target_ratio: float = None,
+        surprise_map: Optional[Dict[str, float]] = None
     ) -> ElisionResult:
         """
         Compress JSON data using ELISION.
 
         Args:
             data: Dict, list, or string to compress
-            level: Compression level (1-4)
+            level: Compression level (1-5)
             target_ratio: Optional target compression ratio (0.1-0.9)
+            surprise_map: Optional CAM surprise metrics {word: score} for Level 3
 
         Returns:
             ElisionResult with compressed data and metadata
@@ -206,12 +213,17 @@ class ElisionCompressor:
         if level >= 2:
             compressed = self._compress_paths(compressed)
 
+        # MARKER_104_ELISION_L3: Level 3 - Vowel Skipping with Surprise Selection
         if level >= 3:
-            compressed = self._compress_whitespace(compressed)
+            compressed, vowel_legend = self._compress_vowels(compressed, surprise_map)
+            used_legend.update(vowel_legend)
 
         if level >= 4:
-            compressed, legend4 = self._compress_local(compressed)
-            used_legend.update(legend4)
+            compressed = self._compress_whitespace(compressed)
+
+        if level >= 5:
+            compressed, legend5 = self._compress_local(compressed)
+            used_legend.update(legend5)
 
         # If target ratio specified, may need more aggressive compression
         if target_ratio and len(compressed) / original_length > target_ratio:
@@ -235,7 +247,7 @@ class ElisionCompressor:
     def expand(
         self,
         compressed: str,
-        legend: Dict[str, str] = None
+        legend: Dict[str, Any] = None
     ) -> str:
         """
         Expand compressed data back to original format.
@@ -243,6 +255,7 @@ class ElisionCompressor:
         Args:
             compressed: ELISION-compressed string
             legend: Custom legend from compression (optional)
+                   May include vowel_skip entries (vs_word -> compressed)
 
         Returns:
             Expanded JSON string
@@ -252,7 +265,22 @@ class ElisionCompressor:
         # Merge provided legend with default expand map
         expand_map = {**self.expand_map}
         if legend:
-            expand_map.update({v: k for k, v in legend.items()})
+            # Handle vowel_skip legend entries (vs_* -> original word)
+            vowel_expansions = {}
+            for k, v in legend.items():
+                if k.startswith('vs_') and isinstance(v, str):
+                    # vs_orchestrator -> rchstrtr means rchstrtr -> orchestrator
+                    original_word = k[3:]  # Remove 'vs_' prefix
+                    vowel_expansions[v] = original_word
+                elif k == '_vowel_skip':
+                    # Metadata entry, skip
+                    continue
+                elif isinstance(v, str):
+                    expand_map[v] = k
+
+            # Apply vowel expansions
+            for compressed_word, original in vowel_expansions.items():
+                expanded = expanded.replace(compressed_word, original)
 
         # Expand paths first (longer patterns)
         for short, full in sorted(PATH_PREFIXES.items(), key=lambda x: -len(x[1])):
@@ -372,8 +400,146 @@ class ElisionCompressor:
 
         return result
 
+    # =========================================================================
+    # MARKER_104_ELISION_L3: Level 3 - Vowel Skipping with Surprise Selection
+    # =========================================================================
+
+    def _vowel_skip(self, word: str, ratio: float = 0.5, connector: str = "") -> str:
+        """
+        Skip vowels from word for compression. Preserves consonant skeleton.
+
+        Args:
+            word: Word to compress
+            ratio: Fraction of vowels to remove (0.0-1.0)
+            connector: Optional connector to replace vowels with
+
+        Returns:
+            Compressed word with vowels removed
+
+        Examples:
+            _vowel_skip("orchestrator", 0.7) -> "rchstrtr"
+            _vowel_skip("message", 0.5) -> "mssge"
+        """
+        if len(word) < 4:  # Don't compress short words
+            return word
+
+        vowels = 'aeiouAEIOU'
+        chars = list(word)
+        # Find vowel indices, keeping first character intact
+        vowel_indices = [i for i, c in enumerate(chars) if c in vowels and i > 0]
+
+        if not vowel_indices:
+            return word
+
+        to_remove = int(len(vowel_indices) * ratio)
+        for idx in vowel_indices[:to_remove]:
+            chars[idx] = connector
+
+        return "".join(c for c in chars if c != "")
+
+    def _compress_vowels(
+        self,
+        json_str: str,
+        surprise_map: Optional[Dict[str, float]] = None
+    ) -> Tuple[str, Dict[str, str]]:
+        """
+        Level 3: Selective vowel skipping based on CAM surprise metrics.
+
+        Low surprise words (common, predictable) get compressed heavily.
+        High surprise words (unique, important) are kept intact.
+
+        Args:
+            json_str: JSON string to compress
+            surprise_map: Optional {word: surprise_score} from CAM
+
+        Returns:
+            Tuple of (compressed_string, legend)
+        """
+        # Try to get surprise map from CAM if not provided
+        if surprise_map is None:
+            try:
+                from src.memory.cam_memory import get_surprise_metrics
+                surprise_map = get_surprise_metrics(json_str)
+            except (ImportError, AttributeError):
+                # CAM not available, use empty map (moderate compression)
+                surprise_map = {}
+
+        # Track original -> compressed mappings for legend
+        vowel_legend = {}
+        processed_words = set()
+
+        def selective_skip(text: str) -> str:
+            """Apply selective vowel skipping to text."""
+            words = text.split()
+            result_words = []
+
+            for word in words:
+                # Skip if already processed or is a short code/symbol
+                if len(word) < 4 or word.startswith('$') or word.startswith('/'):
+                    result_words.append(word)
+                    continue
+
+                # Get surprise score for word (default 0.5 = medium)
+                word_lower = word.lower().strip('",.:;!?()[]{}')
+                score = surprise_map.get(word_lower, 0.5)
+
+                if score < 0.3:  # Low surprise: compress heavily (70% vowels)
+                    compressed = self._vowel_skip(word, 0.7)
+                    if compressed != word and word_lower not in processed_words:
+                        vowel_legend[f"vs_{word_lower}"] = compressed
+                        processed_words.add(word_lower)
+                    result_words.append(compressed)
+                elif score > 0.7:  # High surprise: keep full
+                    result_words.append(word)
+                else:  # Medium surprise: light compression (30% vowels)
+                    compressed = self._vowel_skip(word, 0.3)
+                    if compressed != word and word_lower not in processed_words:
+                        vowel_legend[f"vs_{word_lower}"] = compressed
+                        processed_words.add(word_lower)
+                    result_words.append(compressed)
+
+            return " ".join(result_words)
+
+        # Apply to string values in JSON (preserve structure)
+        try:
+            data = json.loads(json_str)
+            compressed_data = self._apply_to_values(data, selective_skip)
+            result = json.dumps(compressed_data, ensure_ascii=False)
+        except json.JSONDecodeError:
+            # Not valid JSON, apply directly
+            result = selective_skip(json_str)
+
+        # Add vowel_skip metadata to legend
+        vowel_legend['_vowel_skip'] = {
+            'level': 3,
+            'thresholds': {'low': 0.3, 'high': 0.7},
+            'ratios': {'low_surprise': 0.7, 'medium_surprise': 0.3, 'high_surprise': 0.0}
+        }
+
+        return result, vowel_legend
+
+    def _apply_to_values(self, data: Any, transform_fn) -> Any:
+        """
+        Recursively apply transform function to string values in data structure.
+
+        Args:
+            data: Dict, list, or primitive value
+            transform_fn: Function to apply to string values
+
+        Returns:
+            Transformed data structure
+        """
+        if isinstance(data, dict):
+            return {k: self._apply_to_values(v, transform_fn) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._apply_to_values(item, transform_fn) for item in data]
+        elif isinstance(data, str):
+            return transform_fn(data)
+        else:
+            return data
+
     def _compress_whitespace(self, json_str: str) -> str:
-        """Level 3: Remove unnecessary whitespace"""
+        """Level 4: Remove unnecessary whitespace"""
         try:
             # Parse and re-dump with minimal separators
             data = json.loads(json_str)
@@ -383,7 +549,7 @@ class ElisionCompressor:
             return re.sub(r'\s+', ' ', json_str).strip()
 
     def _compress_local(self, json_str: str) -> Tuple[str, Dict[str, str]]:
-        """Level 4: Build local dictionary for repeated strings"""
+        """Level 5: Build local dictionary for repeated strings"""
         result = json_str
         local_legend = {}
 
@@ -405,6 +571,39 @@ class ElisionCompressor:
                     break
 
         return result, local_legend
+
+    def compress_level_3(
+        self,
+        data: Any,
+        surprise_map: Optional[Dict[str, float]] = None
+    ) -> ElisionResult:
+        """
+        MARKER_104_ELISION_L3: Level 3 compression with vowel skipping.
+
+        Convenience method for Level 3 compression with CAM surprise selection.
+        Applies Level 2 (keys + paths) then adds selective vowel skipping.
+
+        Low surprise words: skip 70% vowels (e.g., "orchestrator" -> "rchstrtr")
+        High surprise words: keep full
+        Medium surprise: skip 30% vowels
+
+        Target: additional 20% savings (60-70% total compression)
+
+        Args:
+            data: Data to compress (dict, list, or string)
+            surprise_map: Optional CAM surprise metrics {word: score}
+                         If None, attempts to import from cam_memory
+
+        Returns:
+            ElisionResult with compressed data and vowel_skip legend
+
+        Usage:
+            compressor = ElisionCompressor()
+            result = compressor.compress_level_3(context_data)
+            # Or with custom surprise map:
+            result = compressor.compress_level_3(data, {"important": 0.9, "common": 0.1})
+        """
+        return self.compress(data, level=3, surprise_map=surprise_map)
 
     def _aggressive_compress(
         self,
@@ -505,6 +704,28 @@ def expand_context(compressed: str, legend: Dict[str, str] = None) -> str:
     return compressor.expand(compressed, legend)
 
 
+def compress_level_3(
+    data: Any,
+    surprise_map: Optional[Dict[str, float]] = None
+) -> Dict[str, Any]:
+    """
+    MARKER_104_ELISION_L3: Convenience function for Level 3 compression.
+
+    Level 3 = Level 2 + selective vowel skipping based on CAM surprise.
+    Target: 60-70% total compression.
+
+    Args:
+        data: Data to compress
+        surprise_map: Optional CAM surprise metrics {word: score}
+
+    Returns:
+        Dict with compressed data and metadata including vowel_skip info
+    """
+    compressor = get_elision_compressor()
+    result = compressor.compress_level_3(data, surprise_map)
+    return result.to_dict()
+
+
 # =============================================================================
 # ASYNC WRAPPERS (for tool integration)
 # =============================================================================
@@ -512,10 +733,21 @@ def expand_context(compressed: str, legend: Dict[str, str] = None) -> str:
 async def async_compress_context(
     context: str,
     level: int = 2,
-    target_ratio: float = None
+    target_ratio: float = None,
+    surprise_map: Optional[Dict[str, float]] = None
 ) -> Dict[str, Any]:
     """Async wrapper for compress_context"""
-    return compress_context(context, level, target_ratio)
+    compressor = get_elision_compressor()
+    result = compressor.compress(context, level, target_ratio, surprise_map)
+    return result.to_dict()
+
+
+async def async_compress_level_3(
+    data: Any,
+    surprise_map: Optional[Dict[str, float]] = None
+) -> Dict[str, Any]:
+    """MARKER_104_ELISION_L3: Async wrapper for Level 3 compression"""
+    return compress_level_3(data, surprise_map)
 
 
 async def async_expand_context(

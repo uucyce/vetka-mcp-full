@@ -115,6 +115,11 @@ interface ServerToClientEvents {
     group_id: string;
     agent_id: string;
   }) => void;
+  group_participant_updated: (data: {
+    group_id: string;
+    agent_id: string;
+    model_id: string;
+  }) => void;
   group_message: (data: {
     id: string;
     group_id: string;
@@ -905,6 +910,16 @@ export function useSocket() {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('group-left', { detail: data })
+        );
+      }
+    });
+
+    // MARKER_103_GC4: Missing handler - Phase 103
+    socket.on('group_participant_updated', (data) => {
+      console.log('[Socket] Participant updated:', data.agent_id, data.model_id);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('group-participant-updated', { detail: data })
         );
       }
     });

@@ -11,10 +11,11 @@ Architecture:
 Old handler: 1694 lines, 10+ responsibilities
 New handler: ~200 lines, 1 responsibility (orchestration)
 
-@status: active
-@phase: 96
+@status: dead
+@phase: 103 (marked dead)
+@reason: Never registered in __init__.py - user_message_handler.py still active
 @depends: di_container, chat.chat_registry, orchestration.cam_event_handler, handler_utils, agents.hostess_agent
-@used_by: main.py (Socket.IO registration)
+@used_by: NONE - was intended for main.py but switch never happened
 """
 
 import time

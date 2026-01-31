@@ -169,15 +169,15 @@ ARTIFACT_TOOLS = [
 
 ## Dependencies (Must Fix First!)
 
-### VetkaTree Fixes (Phase 101) - BLOCKING
+### VetkaTree Fixes (Phase 101) - ✅ DONE!
 
 | Fix | File | Line | Status |
 |-----|------|------|--------|
-| `"file"` → `"leaf"` | shared_tools.py | 331 | ❌ TODO |
-| VetkaTree write | triple_write_manager.py | 318 | ❌ TODO |
-| parent_folder + depth | qdrant_updater.py | 362 | ❌ TODO |
+| `"file"` → `"leaf"` | shared_tools.py | 331 | ✅ FIXED |
+| VetkaTree write | triple_write_manager.py | 318 | ✅ FIXED |
+| parent_folder + depth | qdrant_updater.py | 362 | ✅ FIXED |
 
-**Без этих фиксов артефакты не появятся в дереве!**
+**VetkaTree: 1768 points - работает!**
 
 ---
 
@@ -210,10 +210,9 @@ ARTIFACT_TOOLS = [
 
 | Day | Task |
 |-----|------|
-| 1 | VetkaTree fixes (blocking) |
-| 2 | `create_artifact` implementation |
-| 3 | QA hooks + streaming |
-| 4 | Elisya tools + testing |
+| 1 | `create_artifact` implementation |
+| 2 | QA hooks + streaming |
+| 3 | Elisya tools + testing |
 
 ---
 

@@ -23,6 +23,8 @@ import { ChatPanel } from './components/chat';
 import { ArtifactWindow } from './components/artifact';
 import { UnifiedSearchBar } from './components/search/UnifiedSearchBar';
 import { DropZoneRouter, type DropZoneEvent } from './components/DropZoneRouter';
+import JarvisWave from './components/jarvis/JarvisWave';
+import { useJarvis } from './hooks/useJarvis';
 import { useStore } from './store/useStore';
 import { useTreeData } from './hooks/useTreeData';
 import { useSocket } from './hooks/useSocket';
@@ -31,6 +33,9 @@ import type { SearchResult } from './types/chat';
 export default function App() {
   useTreeData();  // Initialize tree data
   useSocket();    // Initialize socket connection
+
+  // Phase 104: Jarvis voice interface
+  const jarvis = useJarvis();
   const [isArtifactOpen, setIsArtifactOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [leftPanel, setLeftPanel] = useState<'none' | 'history' | 'models'>('none');
@@ -323,6 +328,29 @@ export default function App() {
         file={artifactFile}
         rawContent={artifactContent}
       />
+
+      {/* Phase 104: Jarvis Wave in center top */}
+      <div style={{
+        position: 'fixed',
+        top: 16,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 150,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}>
+        <JarvisWave
+          state={jarvis.state}
+          audioLevel={jarvis.audioLevel}
+          onClick={() => jarvis.toggle()}
+          width={200}
+          height={48}
+        />
+        {jarvis.error && (
+          <span style={{ color: '#ef4444', fontSize: 11 }}>{jarvis.error}</span>
+        )}
+      </div>
 
       {/* Phase 68.3: Search bar + icons container (top-left) */}
       {!isChatOpen && (

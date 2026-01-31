@@ -5,20 +5,50 @@ Approval workflow for agent artifacts.
 User must approve/reject before deployment. Emits Socket.IO events for UI modals.
 
 @status: active
-@phase: 96
+@phase: 104
 @depends: asyncio, dataclasses
 @used_by: approval_routes.py, orchestrator_with_elisya.py
 """
 
 import asyncio
 import logging
-from typing import Dict, Optional, Any
+import os
+from typing import Dict, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
 import uuid
 
 logger = logging.getLogger(__name__)
+
+# MARKER_104_APPROVAL_MODE
+# Approval mode configuration via environment variable
+# vetka = user must approve (modal in chat) - DEFAULT
+# mycelium = L2 Scout auto-approves based on criteria
+APPROVAL_MODE = os.environ.get("VETKA_APPROVAL_MODE", "vetka").lower()
+
+
+@dataclass
+class AuditReport:
+    """
+    Report from L2 Scout auditor for MYCELIUM mode.
+
+    MARKER_104_MYCELIUM_AUTO
+    """
+    score: float  # 0.0 - 1.0
+    auto_approved: bool
+    issues: list = field(default_factory=list)
+    recommendations: list = field(default_factory=list)
+    artifact_scores: Dict[str, float] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'score': self.score,
+            'auto_approved': self.auto_approved,
+            'issues': self.issues,
+            'recommendations': self.recommendations,
+            'artifact_scores': self.artifact_scores
+        }
 
 
 class ApprovalStatus(Enum):
@@ -59,13 +89,23 @@ class ApprovalService:
     """
     Manages approval workflow for agent artifacts.
 
-    Flow:
+    Flow (VETKA mode - default):
     1. Agent creates artifacts
     2. EvalAgent scores (>= 0.7)
     3. ApprovalService.request_approval()
     4. Socket event → UI shows modal
     5. User approves/rejects
     6. Workflow continues or stops
+
+    Flow (MYCELIUM mode):
+    1. Agent creates artifacts
+    2. EvalAgent scores (>= 0.7)
+    3. ApprovalService.request_approval()
+    4. L2 Scout auditor evaluates artifacts
+    5. If auto_approved: workflow continues immediately
+    6. If flagged: falls back to user approval (VETKA mode)
+
+    MARKER_104_MYCELIUM_AUTO
     """
 
     def __init__(self):
@@ -73,6 +113,80 @@ class ApprovalService:
         self._completed: Dict[str, ApprovalRequest] = {}  # Track completed requests
         self._decisions: Dict[str, asyncio.Event] = {}
         self._timeout_seconds = 300  # 5 minutes
+        self._approval_mode = APPROVAL_MODE
+        logger.info(f"[ApprovalService] Initialized with mode: {self._approval_mode}")
+
+    async def auto_approve_with_haiku(
+        self,
+        workflow_id: str,
+        artifacts: list,
+        eval_score: float
+    ) -> Tuple[bool, AuditReport]:
+        """
+        MYCELIUM mode: Use L2 Scout for auto-approval.
+
+        MARKER_104_MYCELIUM_AUTO
+
+        Args:
+            workflow_id: ID of the workflow
+            artifacts: List of artifact dicts to audit
+            eval_score: Score from EvalAgent (0-1)
+
+        Returns:
+            Tuple of (approved: bool, report: AuditReport)
+        """
+        try:
+            # Lazy import to avoid circular dependencies
+            from src.services.scout_auditor import get_scout_auditor
+
+            auditor = get_scout_auditor()
+            overall, individual = auditor.audit_batch(artifacts)
+
+            if overall.auto_approved:
+                logger.info(
+                    f"[MYCELIUM] Auto-approved {len(artifacts)} artifacts "
+                    f"(score={overall.score:.2f}, workflow={workflow_id})"
+                )
+                # Create auto-approved request for audit trail
+                request = ApprovalRequest(
+                    id=str(uuid.uuid4()),
+                    workflow_id=workflow_id,
+                    artifacts=artifacts,
+                    eval_score=eval_score,
+                    eval_feedback=f"Auto-approved by L2 Scout (score={overall.score:.2f})",
+                    status=ApprovalStatus.APPROVED,
+                    decided_at=datetime.now(),
+                    decision_reason="MYCELIUM auto-approval"
+                )
+                self._completed[request.id] = request
+                return True, overall
+            else:
+                logger.warning(
+                    f"[MYCELIUM] Flagged for review: {overall.issues} "
+                    f"(workflow={workflow_id})"
+                )
+                return False, overall
+
+        except ImportError as e:
+            # scout_auditor module not yet implemented
+            logger.warning(
+                f"[MYCELIUM] scout_auditor not available, falling back to VETKA mode: {e}"
+            )
+            # Return a failed audit report to trigger fallback
+            return False, AuditReport(
+                score=0.0,
+                auto_approved=False,
+                issues=["scout_auditor module not available"],
+                recommendations=["Implement src/services/scout_auditor.py"]
+            )
+        except Exception as e:
+            logger.error(f"[MYCELIUM] Audit error, falling back to VETKA mode: {e}")
+            return False, AuditReport(
+                score=0.0,
+                auto_approved=False,
+                issues=[f"Audit error: {str(e)}"],
+                recommendations=["Check scout_auditor configuration"]
+            )
 
     async def request_approval(
         self,
@@ -83,7 +197,13 @@ class ApprovalService:
         socketio=None
     ) -> ApprovalRequest:
         """
-        Request user approval for artifacts.
+        Request approval for artifacts.
+
+        In VETKA mode (default): Waits for user approval via UI modal.
+        In MYCELIUM mode: L2 Scout auto-approves if criteria met,
+                         otherwise falls back to user approval.
+
+        MARKER_104_APPROVAL_MODE_CHECK
 
         Args:
             workflow_id: ID of the workflow
@@ -95,6 +215,28 @@ class ApprovalService:
         Returns:
             ApprovalRequest object
         """
+        # MARKER_104_APPROVAL_MODE_CHECK
+        if self._approval_mode == "mycelium":
+            logger.info(f"[MYCELIUM] Attempting auto-approval for workflow {workflow_id}")
+            approved, report = await self.auto_approve_with_haiku(
+                workflow_id, artifacts, eval_score
+            )
+            if approved:
+                # Return immediately, no user wait needed
+                return ApprovalRequest(
+                    id=str(uuid.uuid4()),
+                    workflow_id=workflow_id,
+                    artifacts=artifacts,
+                    eval_score=report.score,
+                    eval_feedback="Auto-approved by L2 Scout",
+                    status=ApprovalStatus.APPROVED,
+                    decided_at=datetime.now(),
+                    decision_reason=f"MYCELIUM auto-approval (score={report.score:.2f})"
+                )
+            # Fall through to VETKA mode (user approval) if flagged
+            logger.info(f"[MYCELIUM] Falling back to user approval for workflow {workflow_id}")
+
+        # VETKA mode: User approval required
         request_id = str(uuid.uuid4())
 
         request = ApprovalRequest(
@@ -270,6 +412,27 @@ class ApprovalService:
             logger.info(f"[ApprovalService] Cleaned {removed_count} old requests. "
                        f"Remaining: {len(self._pending)} pending, {len(self._completed)} completed")
 
+    def get_mode(self) -> str:
+        """Get current approval mode (vetka or mycelium)."""
+        return self._approval_mode
+
+    def set_mode(self, mode: str) -> None:
+        """
+        Set approval mode at runtime.
+
+        MARKER_104_APPROVAL_MODE
+
+        Args:
+            mode: 'vetka' or 'mycelium'
+        """
+        mode = mode.lower()
+        if mode not in ("vetka", "mycelium"):
+            logger.warning(f"[ApprovalService] Invalid mode '{mode}', keeping '{self._approval_mode}'")
+            return
+        old_mode = self._approval_mode
+        self._approval_mode = mode
+        logger.info(f"[ApprovalService] Mode changed: {old_mode} -> {mode}")
+
 
 # Singleton instance
 _approval_service: Optional[ApprovalService] = None
@@ -281,3 +444,27 @@ def get_approval_service() -> ApprovalService:
     if _approval_service is None:
         _approval_service = ApprovalService()
     return _approval_service
+
+
+def get_approval_mode() -> str:
+    """
+    Get current approval mode.
+
+    MARKER_104_APPROVAL_MODE
+
+    Returns:
+        'vetka' (user approval) or 'mycelium' (L2 Scout auto-approval)
+    """
+    return get_approval_service().get_mode()
+
+
+def set_approval_mode(mode: str) -> None:
+    """
+    Set approval mode at runtime.
+
+    MARKER_104_APPROVAL_MODE
+
+    Args:
+        mode: 'vetka' or 'mycelium'
+    """
+    get_approval_service().set_mode(mode)

@@ -1,16 +1,28 @@
 """
-VETKA Phase 77.4 - Memory Compression
-Age-based embedding compression for memory efficiency
+VETKA Phase 77.4 - Age-Based Embedding Compression
+Age-based embedding dimensionality reduction for memory efficiency.
+
+MARKER_104_COMPRESSION_FIX: Renamed from MemoryCompression to AgeBasedEmbeddingCompression
+to clarify this is NOT the same as ELISION (token compression in elision.py).
+
+IMPORTANT DISTINCTION:
+- This module (compression.py): AGE-BASED EMBEDDING COMPRESSION
+  Reduces embedding dimensions (768D -> 384D -> 256D -> 64D) based on memory age.
+  Uses PCA for dimensionality reduction. Affects vector storage size.
+
+- elision.py: TOKEN COMPRESSION (ELISION)
+  Compresses JSON keys/paths to save API tokens (40-60% savings).
+  Does NOT affect embeddings. Purely for context window efficiency.
 
 @file compression.py
 @status active
-@phase 96
+@phase 104
 @depends logging, datetime, dataclasses, numpy, sklearn.decomposition
 @used_by vetka_mcp_bridge.py, shared_tools.py, tools.py (agents)
 
 MARKER-77-09: Add search_quality_degradation metric
 
-Compression strategy (like human memory):
+Compression strategy (like human memory decay curve):
 - Fresh (<1 day): 768D full embeddings
 - Recent (<7 days): 768D (still full)
 - Month (<30 days): 384D (PCA reduction)
@@ -74,21 +86,28 @@ class CompressedNodeState:
         }
 
 
-class MemoryCompression:
+class AgeBasedEmbeddingCompression:
     """
-    Age-based embedding compression.
+    Age-based embedding dimensionality reduction.
 
-    Compression curve (like forgetting curve):
-    - 0-6 days: 768D (100% quality)
-    - 7-29 days: 384D (~90% quality)
-    - 30-89 days: 256D (~80% quality)
-    - 90+ days: 64D (~60% quality)
+    MARKER_104_COMPRESSION_FIX: Renamed from MemoryCompression to clarify
+    this is NOT ELISION (token compression). This class reduces EMBEDDING
+    DIMENSIONS based on memory age, NOT token counts.
 
-    Uses PCA for dimensionality reduction.
+    Compression curve (like human memory forgetting curve):
+    - 0-6 days: 768D (100% quality) - Fresh memories, full fidelity
+    - 7-29 days: 384D (~90% quality) - Recent, slight reduction
+    - 30-89 days: 256D (~80% quality) - Older, more compression
+    - 90+ days: 64D (~60% quality) - Archive, summary only
+
+    Uses PCA for dimensionality reduction when sklearn is available,
+    falls back to magnitude-based truncation otherwise.
 
     Usage:
-        compressor = MemoryCompression()
+        compressor = AgeBasedEmbeddingCompression()
         compressed = await compressor.compress_by_age(node)
+
+    Note: For token/JSON compression, use ElisionCompressor from elision.py
     """
 
     # Compression thresholds (days → target dimension)
@@ -370,23 +389,23 @@ class MemoryCompression:
 
 class CompressionScheduler:
     """
-    Schedules compression for old nodes.
+    Schedules age-based embedding compression for old nodes.
 
-    Runs periodically to compress nodes that have aged
-    past their threshold.
+    Runs periodically to compress node embeddings that have aged
+    past their threshold. Uses AgeBasedEmbeddingCompression internally.
     """
 
     def __init__(
-        self, compressor: MemoryCompression = None, check_interval_hours: int = 24
+        self, compressor: AgeBasedEmbeddingCompression = None, check_interval_hours: int = 24
     ):
         """
         Initialize scheduler.
 
         Args:
-            compressor: MemoryCompression instance
+            compressor: AgeBasedEmbeddingCompression instance
             check_interval_hours: How often to check for compression candidates
         """
-        self.compressor = compressor or MemoryCompression()
+        self.compressor = compressor or AgeBasedEmbeddingCompression()
         self.check_interval = timedelta(hours=check_interval_hours)
         self.last_check: Optional[datetime] = None
 
@@ -432,17 +451,25 @@ class CompressionScheduler:
 
 # ========== FACTORY FUNCTIONS ==========
 
-_compressor_instance: Optional[MemoryCompression] = None
+_compressor_instance: Optional[AgeBasedEmbeddingCompression] = None
 
 
-def get_memory_compressor() -> MemoryCompression:
-    """Get singleton MemoryCompression instance."""
+def get_memory_compressor() -> AgeBasedEmbeddingCompression:
+    """Get singleton AgeBasedEmbeddingCompression instance.
+
+    Note: For token/JSON compression, use get_elision_compressor() from elision.py
+    """
     global _compressor_instance
 
     if _compressor_instance is None:
-        _compressor_instance = MemoryCompression()
+        _compressor_instance = AgeBasedEmbeddingCompression()
 
     return _compressor_instance
+
+
+# MARKER_104_COMPRESSION_FIX: Backward compatibility alias
+# Keep MemoryCompression as an alias for existing imports
+MemoryCompression = AgeBasedEmbeddingCompression
 
 
 def analyze_content_complexity(content: str) -> Dict[str, Any]:
@@ -497,7 +524,7 @@ def analyze_content_complexity(content: str) -> Dict[str, Any]:
 
 
 def get_compression_scheduler(check_interval_hours: int = 24) -> CompressionScheduler:
-    """Get a CompressionScheduler instance."""
+    """Get a CompressionScheduler instance for age-based embedding compression."""
     return CompressionScheduler(
         compressor=get_memory_compressor(), check_interval_hours=check_interval_hours
     )

@@ -131,7 +131,7 @@ async def lifespan(app: FastAPI):
     app.state.model_router = components.get("model_router")
     app.state.metrics_engine = components.get("metrics_engine")
     app.state.orchestrator = get_orchestrator()  # Lazy init
-    app.state.api_gateway = components.get("api_gateway")
+    # api_gateway REMOVED: Phase 103 cleanup (was deprecated Phase 95)
     app.state.qdrant_manager = components.get("qdrant_manager")
     app.state.feedback_loop = components.get("feedback_loop")
     app.state.smart_learner = components.get("smart_learner")
@@ -269,6 +269,14 @@ async def lifespan(app: FastAPI):
         logger.error(f"[Startup] File watcher init failed: {e}")
         app.state.file_watcher = None
 
+    # === PHASE 104: Start TTS server ===
+    try:
+        from src.voice.tts_server_manager import start_tts_server
+        app.state.tts_process = start_tts_server(port=5003, wait_ready=False)
+    except Exception as e:
+        logger.error(f"[Startup] TTS server start failed: {e}")
+        app.state.tts_process = None
+
     print("  VETKA FASTAPI READY")
     print("=" * 60 + "\n")
 
@@ -295,6 +303,13 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, "group_chat_manager") and app.state.group_chat_manager:
         await app.state.group_chat_manager.stop_cleanup()
         logger.info("[Shutdown] Group chat cleanup task stopped")
+
+    # === PHASE 104: Stop TTS server ===
+    try:
+        from src.voice.tts_server_manager import stop_tts_server
+        stop_tts_server()
+    except Exception as e:
+        logger.warning(f"[Shutdown] TTS server stop failed: {e}")
 
     executor = app.state.executor
     if executor:
@@ -609,7 +624,7 @@ async def health_check(request: Request):
         components_status = {
             "metrics_engine": request.app.state.METRICS_AVAILABLE,
             "model_router": request.app.state.MODEL_ROUTER_V2_AVAILABLE,
-            "api_gateway": request.app.state.API_GATEWAY_AVAILABLE,
+            # api_gateway REMOVED: Phase 103 cleanup
             "qdrant": request.app.state.QDRANT_AUTO_RETRY_AVAILABLE,
             "feedback_loop": request.app.state.FEEDBACK_LOOP_V2_AVAILABLE,
             "smart_learner": request.app.state.SMART_LEARNER_AVAILABLE,

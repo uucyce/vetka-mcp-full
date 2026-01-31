@@ -7,9 +7,10 @@ Memory subsystem including:
 - Compression (age-based, ELISION)
 - User memory (Engram)
 - Phase 99: STM Buffer, MGC Cache, MemoryProxy
+- Phase 104: CAM Memory (Context Awareness for ELISION)
 
 @status: active
-@phase: 99
+@phase: 104
 @depends: -
 @used_by: src.initialization, src.orchestration, src.agents
 """
@@ -44,6 +45,17 @@ from src.memory.memory_proxy import (
     reset_all_proxies,
 )
 
+# Phase 104: CAM Memory (Context Awareness Module for ELISION)
+from src.memory.cam_memory import (
+    CAMMemory,
+    get_cam_memory,
+    reset_cam_memory,
+    get_surprise_metrics,
+    compute_block_surprise,
+    get_compression_advice,
+    STOPWORDS,
+)
+
 __all__ = [
     # STM Buffer
     "STMBuffer",
@@ -66,4 +78,12 @@ __all__ = [
     "create_qdrant_proxy",
     "create_json_proxy",
     "reset_all_proxies",
+    # CAM Memory (Phase 104)
+    "CAMMemory",
+    "get_cam_memory",
+    "reset_cam_memory",
+    "get_surprise_metrics",
+    "compute_block_surprise",
+    "get_compression_advice",
+    "STOPWORDS",
 ]

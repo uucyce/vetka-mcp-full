@@ -947,6 +947,7 @@ def register_group_message_handler(sio, app=None):
 
                 # MARKER_103.6_START: Auto-stage artifacts from Dev/Architect
                 # Staging pattern: Dev generates code → stage in JSON → QA review → apply to disk
+                # MARKER_103_ARTIFACT_LINK: Added source_message_id for traceability
                 try:
                     # Only stage for code-generating agents
                     if display_name in ["Dev", "Architect", "Coder"]:
@@ -961,7 +962,8 @@ def register_group_message_handler(sio, app=None):
                                 artifacts=artifacts,
                                 qa_score=qa_score,
                                 agent=display_name,
-                                group_id=group_id
+                                group_id=group_id,
+                                source_message_id=user_message.id  # Link to source message
                             )
 
                             if staged_ids:
@@ -985,32 +987,35 @@ def register_group_message_handler(sio, app=None):
                 # MARKER_103.6_END
 
                 # MARKER_103.7_START: Persist agent response to Qdrant for long-term memory
-                try:
-                    from src.memory.qdrant_client import upsert_chat_message
-                    import uuid as uuid_module
-                    msg_id = str(uuid_module.uuid4())
-                    upsert_chat_message(
-                        group_id=group_id,
-                        message_id=msg_id,
-                        sender_id=agent_id,
-                        content=response_text,
-                        role="assistant",
-                        agent=display_name,
-                        model=model_id,
-                        metadata={"in_reply_to": user_message.id if user_message else None}
-                    )
-                    # Emit socket event for UI sync
-                    await sio.emit(
-                        "message_saved",
-                        {
-                            "group_id": group_id,
-                            "message_id": msg_id,
-                            "success": True
-                        },
-                        room=f"group_{group_id}",
-                    )
-                except Exception as qdrant_err:
-                    print(f"[QDRANT] Chat upsert failed (non-blocking): {qdrant_err}")
+                # MARKER_103_GC7: FIXED - wrapped in background task to avoid blocking
+                import uuid as uuid_module
+                msg_id = str(uuid_module.uuid4())
+
+                async def _persist_to_qdrant_background():
+                    """Background task for Qdrant persistence - non-blocking."""
+                    try:
+                        from src.memory.qdrant_client import upsert_chat_message
+                        upsert_chat_message(
+                            group_id=group_id,
+                            message_id=msg_id,
+                            sender_id=agent_id,
+                            content=response_text,
+                            role="assistant",
+                            agent=display_name,
+                            model=model_id,
+                            metadata={"in_reply_to": user_message.id if user_message else None}
+                        )
+                        # Emit socket event for UI sync
+                        await sio.emit(
+                            "message_saved",
+                            {"group_id": group_id, "message_id": msg_id, "success": True},
+                            room=f"group_{group_id}",
+                        )
+                    except Exception as qdrant_err:
+                        print(f"[QDRANT] Chat upsert failed (non-blocking): {qdrant_err}")
+
+                # Fire-and-forget: don't await, let it run in background
+                asyncio.create_task(_persist_to_qdrant_background())
                 # MARKER_103.7_END
 
                 print(f"[GROUP] Agent {agent_id} responded: {len(response_text)} chars")

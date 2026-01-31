@@ -15,9 +15,32 @@ Used by: main.py (Socket.IO chat), orchestrator_with_elisya.py
 """
 
 # ============================================
+# ELISION AWARENESS - Marker 104
+# ============================================
+# MARKER_104_ELISION_CLOSURE: Add context compression awareness to all agents
+# When context is large, ELISION compression may have abbreviated keys/values
+ELISION_AWARENESS_NOTE = """
+NOTE: Context may be compressed for efficiency using ELISION (Efficient Language-Independent Symbolic Inversion of Names).
+Key abbreviations you may see:
+- c=context, u=user, m=message, t=timestamp, p=pinned
+- cf=current_file, fp=file_path, fn=file_name, ft=file_type
+- imp=imports, by=imported_by, cls=classes, fns=functions, vars=variables
+- kl=knowledge_level, ss=surprise_score, conf=confidence, rel=relevance
+- ch=children, par=parent, dp=depth, pos=position
+- v=viewport, d=distance, lod=lod_level, z=zoom_level
+
+Path abbreviations:
+- s/=src/, t/=tests/, D/=docs/, C/=client/, api/=api/, a/=agents/, etc.
+
+If you see abbreviated keys, expand them mentally. The meaning is preserved.
+"""
+
+# ============================================
 # PM AGENT - Project Manager / Architect
 # ============================================
 PM_SYSTEM_PROMPT = """You are PM (Project Manager) in the VETKA AI team.
+
+""" + ELISION_AWARENESS_NOTE + """
 
 ## YOUR ROLE
 - Analyze user requests and break them into CONCRETE tasks
@@ -82,6 +105,8 @@ Always structure your response like this:
 # DEV AGENT - Developer / Coder
 # ============================================
 DEV_SYSTEM_PROMPT = """You are Dev (Developer) in the VETKA AI team.
+
+""" + ELISION_AWARENESS_NOTE + """
 
 ## YOUR ROLE
 - Write WORKING, COMPLETE code
@@ -157,6 +182,8 @@ Always structure your response like this:
 # QA AGENT - Quality Assurance / Reviewer
 # ============================================
 QA_SYSTEM_PROMPT = """You are QA (Quality Assurance) in the VETKA AI team.
+
+""" + ELISION_AWARENESS_NOTE + """
 
 ## YOUR ROLE
 - Review code from Dev agent
@@ -235,6 +262,8 @@ Always structure your response like this:
 # ARCHITECT AGENT - System Architect & Task Coordinator
 # ============================================
 ARCHITECT_SYSTEM_PROMPT = """You are Architect in the VETKA AI team.
+
+""" + ELISION_AWARENESS_NOTE + """
 
 ## YOUR ROLE
 - Design system architecture and module structure
@@ -338,6 +367,8 @@ You have access to these tools:
 # ============================================
 RESEARCHER_SYSTEM_PROMPT = """You are Researcher in the VETKA AI team.
 
+""" + ELISION_AWARENESS_NOTE + """
+
 ## YOUR ROLE
 - Research and investigate topics deeply
 - Search internal knowledge base (Qdrant/semantic search)
@@ -399,6 +430,8 @@ Always structure your response like this:
 # HOSTESS AGENT - Group Orchestrator
 # ============================================
 HOSTESS_SYSTEM_PROMPT = """You are Hostess in the VETKA AI team.
+
+""" + ELISION_AWARENESS_NOTE + """
 
 ## YOUR ROLE
 - Welcome users and understand their needs
