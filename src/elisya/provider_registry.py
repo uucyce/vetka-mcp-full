@@ -31,6 +31,29 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# MARKER_106d_1: Per-model concurrency limits (Phase 106)
+MODEL_SEMAPHORES = {
+    "grok": asyncio.Semaphore(10),
+    "haiku": asyncio.Semaphore(50),
+    "sonnet": asyncio.Semaphore(20),
+    "opus": asyncio.Semaphore(5),
+    "gpt-4": asyncio.Semaphore(10),
+    "gpt-3": asyncio.Semaphore(30),
+    "gemini": asyncio.Semaphore(20),
+    "ollama": asyncio.Semaphore(3),
+    "default": asyncio.Semaphore(20),
+}
+
+
+def get_model_semaphore(model: str) -> asyncio.Semaphore:
+    """Get semaphore for model family"""
+    model_lower = model.lower()
+    for key in MODEL_SEMAPHORES:
+        if key in model_lower:
+            return MODEL_SEMAPHORES[key]
+    return MODEL_SEMAPHORES["default"]
+
+
 # Phase 80.39: Custom exception for xai key exhaustion
 class XaiKeysExhausted(Exception):
     """Raised when all xai keys return 403 - signals to use OpenRouter fallback"""
@@ -1228,6 +1251,45 @@ async def call_model_with_provider(
     ]
 
     return await call_model_v2(messages, model_name, provider_enum, tools, **kwargs)
+
+
+# MARKER_106d_2: Semaphore-wrapped LLM caller (Phase 106)
+async def call_model_v2_with_semaphore(
+    model: str,
+    messages: list,
+    temperature: float = 0.7,
+    max_tokens: int = None,
+    tools: list = None,
+    **kwargs
+) -> dict:
+    """
+    Wrapper with per-model semaphore for concurrency control.
+
+    Limits concurrent calls per model family:
+    - Grok: 10 concurrent
+    - Haiku: 50 concurrent
+    - Sonnet: 20 concurrent
+    - Opus: 5 concurrent
+    - GPT-4: 10 concurrent
+    - Gemini: 20 concurrent
+    - Ollama: 3 concurrent
+    - Default: 20 concurrent
+    """
+    semaphore = get_model_semaphore(model)
+
+    async with semaphore:
+        return await call_model_v2(
+            messages=messages,
+            model=model,
+            tools=tools,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs
+        )
+
+
+# Export for global use
+__all__ = ['call_model_v2', 'call_model_v2_with_semaphore', 'get_model_semaphore', 'Provider', 'ProviderRegistry']
 
 
 # ============ STREAMING (Phase 93.2) ============

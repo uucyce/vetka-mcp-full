@@ -61,7 +61,7 @@ from .stream_handler import (
 )
 
 
-def register_all_handlers(sio: AsyncServer, app=None):
+async def register_all_handlers(sio: AsyncServer, app=None):
     """
     Register all Socket.IO handlers with AsyncServer.
 
@@ -83,6 +83,7 @@ def register_all_handlers(sio: AsyncServer, app=None):
     from .search_handlers import register_search_handlers  # Phase 68
     from .jarvis_handler import register_jarvis_handlers  # Phase 104 - Jarvis Voice
     from .approval_socket_handler import register_approval_socket_handlers  # Phase 104.4
+    from .mcp_socket_handler import register_mcp_socket_handlers  # MARKER_106e_2: MCP socket handlers
 
     register_connection_handlers(sio, app)
     register_approval_handlers(sio, app)
@@ -98,6 +99,7 @@ def register_all_handlers(sio: AsyncServer, app=None):
     register_search_handlers(sio, app)  # Phase 68
     register_jarvis_handlers(sio)  # Phase 104 - Jarvis Voice
     register_approval_socket_handlers(sio, app)  # Phase 104.4 - Approval Socket
+    await register_mcp_socket_handlers(sio, app)  # MARKER_106e_2: MCP socket handlers
 
     print("  [Handlers] Socket.IO async handlers registered (Phase 104.7)")
     print("  [Handlers] ✅ group_message_handler registered (join_group, leave_group, group_message, group_typing)")
@@ -109,4 +111,5 @@ def register_all_handlers(sio: AsyncServer, app=None):
     print("  [Handlers] ✅ search_handlers registered (search_query) - Phase 68")
     print("  [Handlers] ✅ jarvis_handler registered (jarvis_listen_start/stop, jarvis_audio_chunk) - Phase 104")
     print("  [Handlers] ✅ approval_socket_handler registered (approval_response, get_approval_details) - Phase 104.4")
+    print("  [Handlers] ✅ mcp_socket_handler registered on /mcp namespace - MARKER_106e_2")
     print("  [Handlers] ✅ stream_handler available (StreamManager, visibility control) - Phase 104.7")

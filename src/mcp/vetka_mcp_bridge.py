@@ -41,10 +41,35 @@ import asyncio
 import httpx
 import json
 import sys
+import os
+import signal
+import uuid
+import contextvars
+import argparse
 from typing import Any, Optional
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
+
+# MARKER_106a_1: CLI arguments with env var support
+def parse_args():
+    parser = argparse.ArgumentParser(description='VETKA MCP Bridge')
+    parser.add_argument('--http', action='store_true',
+                        default=os.getenv('MCP_HTTP_MODE', '').lower() == 'true',
+                        help='Use HTTP transport')
+    parser.add_argument('--ws', action='store_true',
+                        default=os.getenv('MCP_WS_MODE', '').lower() == 'true',
+                        help='Enable WebSocket endpoint')
+    parser.add_argument('--port', type=int,
+                        default=int(os.getenv('MCP_PORT', '5002')),
+                        help='HTTP/WS port')
+    parser.add_argument('--session-id', type=str,
+                        default=os.getenv('MCP_SESSION_ID'),
+                        help='Session ID for isolation')
+    return parser.parse_args()
+
+# Session context for async propagation
+session_context: contextvars.ContextVar[str] = contextvars.ContextVar('session_id', default='default')
 
 # Phase 55.1: MCP tools registration
 from src.mcp.tools.session_tools import register_session_tools
@@ -66,14 +91,40 @@ http_client: Optional[httpx.AsyncClient] = None
 # LIFECYCLE
 # ============================================================================
 
-async def init_client():
-    """Initialize HTTP clients"""
+async def init_client(session_id: str = None):
+    """Initialize HTTP clients with session isolation (MARKER_106a_2)"""
     global http_client
+
+    if session_id is None:
+        session_id = str(uuid.uuid4())
+
+    # Set in context for downstream use
+    session_context.set(session_id)
+
+    headers = {
+        "X-Session-ID": session_id,
+        "X-Agent-ID": f"mcp_{session_id[:8]}",
+        "X-Client-Version": "106.0"
+    }
+
     http_client = httpx.AsyncClient(
         base_url=VETKA_BASE_URL,
-        timeout=VETKA_TIMEOUT,
-        follow_redirects=True
+        timeout=httpx.Timeout(
+            connect=10.0,
+            read=90.0,
+            write=30.0,
+            pool=5.0
+        ),
+        follow_redirects=True,
+        headers=headers,
+        limits=httpx.Limits(
+            max_connections=50,
+            max_keepalive_connections=10,
+            keepalive_expiry=30.0
+        )
     )
+
+    return session_id
 
 
 async def cleanup_client():
@@ -1878,19 +1929,84 @@ def format_pipeline_result(result: dict) -> str:
 # MAIN
 # ============================================================================
 
-async def main():
-    """Run the MCP server"""
-    # Initialize HTTP client
-    await init_client()
+# MARKER_106a_3: Graceful shutdown handler
+_shutdown_event = asyncio.Event()
+
+def signal_handler(signum, frame):
+    print(f"[MCP] Received signal {signum}, initiating shutdown...", file=sys.stderr)
+    _shutdown_event.set()
+
+async def graceful_shutdown():
+    """Cleanup all resources on shutdown"""
+    print("[MCP] Shutting down...", file=sys.stderr)
 
     try:
-        # Run stdio server
-        async with stdio_server() as (read_stream, write_stream):
-            init_options = server.create_initialization_options()
-            await server.run(read_stream, write_stream, init_options)
+        # Stop all actors
+        from src.mcp.mcp_actor import get_dispatcher
+        await get_dispatcher().cleanup_all()
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"[MCP] Actor cleanup error: {e}", file=sys.stderr)
+
+    try:
+        # Close client pools
+        from src.mcp.client_pool import get_pool_manager
+        await get_pool_manager().shutdown()
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"[MCP] Pool cleanup error: {e}", file=sys.stderr)
+
+    # Close main client
+    await cleanup_client()
+
+    print("[MCP] Shutdown complete", file=sys.stderr)
+
+
+# MARKER_106a_4: Enhanced main with HTTP/WS/stdio modes
+async def main():
+    """Run the MCP server with multi-transport support"""
+    args = parse_args()
+
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    session_id = await init_client(session_id=args.session_id)
+    print(f"[MCP] Started with session_id={session_id[:8]}...", file=sys.stderr)
+
+    try:
+        if args.http or args.ws:
+            # HTTP/WS mode - use enhanced MCP server
+            from src.mcp.vetka_mcp_server import run_http
+            print(f"[MCP] Starting HTTP server on port {args.port} (WS={args.ws})", file=sys.stderr)
+            await run_http(port=args.port, enable_ws=args.ws)
+        else:
+            # stdio mode - original behavior
+            print("[MCP] Starting stdio mode", file=sys.stderr)
+            async with stdio_server() as (read_stream, write_stream):
+                init_options = server.create_initialization_options()
+
+                server_task = asyncio.create_task(
+                    server.run(read_stream, write_stream, init_options)
+                )
+                shutdown_task = asyncio.create_task(_shutdown_event.wait())
+
+                done, pending = await asyncio.wait(
+                    [server_task, shutdown_task],
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+
+                for task in pending:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+
     finally:
-        # Cleanup
-        await cleanup_client()
+        await graceful_shutdown()
 
 
 if __name__ == "__main__":

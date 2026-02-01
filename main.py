@@ -277,6 +277,14 @@ async def lifespan(app: FastAPI):
         logger.error(f"[Startup] TTS server start failed: {e}")
         app.state.tts_process = None
 
+    # === MARKER_106e_2: Register async Socket.IO handlers ===
+    try:
+        from src.api.handlers import register_all_handlers
+        await register_all_handlers(sio, app)
+        logger.info("[Startup] Socket.IO handlers registered (including MCP)")
+    except Exception as e:
+        logger.error(f"[Startup] Socket.IO handler registration failed: {e}")
+
     print("  VETKA FASTAPI READY")
     print("=" * 60 + "\n")
 
@@ -372,10 +380,8 @@ app.state.socketio = sio
 # SOCKET.IO HANDLERS (Phase 39.7)
 # ============================================================
 
-# Register all migrated Socket.IO handlers
-from src.api.handlers import register_all_handlers
-
-register_all_handlers(sio, app)
+# Note: Handler registration moved to lifespan() to support async handlers
+# Register all migrated Socket.IO handlers is now called in lifespan (MARKER_106e_2)
 
 
 # === PHASE 55: APPROVAL SOCKET HANDLERS ===
