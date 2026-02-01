@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "vetka": {
-      "command": "python3",
+      "command": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.venv/bin/python",
       "args": ["/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/mcp/vetka_mcp_bridge.py"],
       "env": {
         "VETKA_API_URL": "http://localhost:5001",

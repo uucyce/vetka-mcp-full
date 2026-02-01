@@ -1,6 +1,18 @@
 # MARKER_102.5_START
-import torch
-import numpy as np
+# HOTFIX: Conditional imports to prevent module loading failure on systems without torch
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    torch = None
+    TORCH_AVAILABLE = False
+
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    np = None
+    NUMPY_AVAILABLE = False
 from typing import Optional, Union, List
 import logging
 from pathlib import Path
@@ -19,7 +31,7 @@ class QwenTTS:
             device: Device to run the model on ('cpu', 'cuda', 'auto')
         """
         self.model_path = model_path
-        self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = device or ('cuda' if TORCH_AVAILABLE and torch.cuda.is_available() else 'cpu')
         self.model = None
         self.tokenizer = None
         self.is_loaded = False
@@ -581,3 +593,519 @@ def get_fast_tts(voice: str = "en-male") -> FastTTSClient:
     """Create FastTTSClient instance"""
     return FastTTSClient(voice=voice)
 # MARKER_104.7_END
+
+
+# MARKER_105_TTS_FALLBACK
+"""
+Phase 105: TTS Fallback Chain Implementation
+
+Provides automatic failover between TTS providers:
+- Primary: Qwen 3 TTS (~150ms latency, local or HTTP)
+- Secondary: Edge TTS (Microsoft, ~200ms, requires internet)
+- Tertiary: Piper (local/offline, ~100ms)
+"""
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Optional, Callable, Dict, Any
+import time
+import io
+
+
+class TTSProvider(Enum):
+    """Available TTS providers."""
+    QWEN3 = "qwen3"
+    EDGE = "edge"
+    PIPER = "piper"
+
+
+class TTSError(Exception):
+    """TTS synthesis error."""
+    pass
+
+
+@dataclass
+class TTSConfig:
+    """Configuration for TTS Engine."""
+    primary_provider: str = "qwen3"
+    timeout_ms: int = 500  # Fallback trigger timeout
+    speed: float = 1.0
+    pitch: int = 0
+    language: str = "ru"
+    # Provider-specific settings
+    qwen3_server_url: str = "http://127.0.0.1:5003"
+    qwen3_speaker: str = "ryan"
+    edge_voice_en: str = "en-US-GuyNeural"
+    edge_voice_ru: str = "ru-RU-DmitryNeural"
+    piper_model_path: str = ""  # Auto-detect if empty
+    piper_data_dir: str = ""  # Auto-detect if empty
+
+
+@dataclass
+class TTSResult:
+    """Result of TTS synthesis."""
+    audio: bytes
+    provider: str
+    latency_ms: float
+    sample_rate: int = 22050
+    format: str = "wav"
+
+
+class TTSEngine:
+    """
+    TTS Engine with automatic fallback chain.
+
+    Priority order:
+    1. Qwen3 TTS (local/HTTP) - ~150ms
+    2. Edge TTS (Microsoft cloud) - ~200ms
+    3. Piper (local offline) - ~100ms
+
+    Usage:
+        engine = TTSEngine(primary="qwen3")
+        audio = await engine.synthesize("Hello world!")
+    """
+
+    PROVIDERS = ["qwen3", "edge", "piper"]
+
+    def __init__(
+        self,
+        primary: str = "qwen3",
+        config: Optional[TTSConfig] = None
+    ):
+        """
+        Initialize TTS Engine with fallback chain.
+
+        Args:
+            primary: Primary provider to try first
+            config: Configuration options
+        """
+        self.config = config or TTSConfig(primary_provider=primary)
+        self.primary = primary
+        self.fallback_order = self._build_fallback_order(primary)
+
+        # Provider instances (lazy loaded)
+        self._qwen3_client: Optional[Qwen3TTSClient] = None
+        self._fast_tts_client: Optional[FastTTSClient] = None
+        self._piper_voice = None
+
+        # Stats
+        self._provider_stats: Dict[str, Dict[str, Any]] = {
+            provider: {"successes": 0, "failures": 0, "total_latency_ms": 0}
+            for provider in self.PROVIDERS
+        }
+
+        logger.info(f"[TTSEngine] Initialized with fallback order: {self.fallback_order}")
+
+    def _build_fallback_order(self, primary: str) -> List[str]:
+        """
+        Build fallback order with primary provider first.
+
+        Args:
+            primary: Primary provider name
+
+        Returns:
+            List of provider names in fallback order
+        """
+        if primary not in self.PROVIDERS:
+            logger.warning(f"Unknown provider '{primary}', defaulting to 'qwen3'")
+            primary = "qwen3"
+
+        order = [primary]
+        for provider in self.PROVIDERS:
+            if provider not in order:
+                order.append(provider)
+
+        return order
+
+    async def synthesize(
+        self,
+        text: str,
+        voice: str = "default",
+        speed: float = 1.0,
+        pitch: int = 0
+    ) -> bytes:
+        """
+        Synthesize text to speech with automatic fallback.
+
+        Args:
+            text: Text to synthesize
+            voice: Voice ID (provider-specific)
+            speed: Speech speed multiplier
+            pitch: Pitch adjustment
+
+        Returns:
+            bytes: Audio data (WAV format)
+
+        Raises:
+            TTSError: If all providers fail
+        """
+        if not text or not text.strip():
+            logger.warning("[TTSEngine] Empty text provided")
+            return b""
+
+        last_error = None
+
+        for provider in self.fallback_order:
+            start_time = time.perf_counter()
+            try:
+                audio = await self._synthesize_with(provider, text, voice, speed, pitch)
+                if audio and len(audio) > 100:  # Basic sanity check
+                    latency_ms = (time.perf_counter() - start_time) * 1000
+                    self._record_success(provider, latency_ms)
+                    logger.info(f"[TTSEngine] {provider} succeeded in {latency_ms:.1f}ms")
+                    return audio
+                else:
+                    logger.warning(f"[TTSEngine] {provider} returned empty/invalid audio")
+            except asyncio.TimeoutError:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                self._record_failure(provider)
+                logger.warning(f"[TTSEngine] {provider} timed out after {latency_ms:.1f}ms")
+                last_error = TTSError(f"{provider} timed out")
+            except Exception as e:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                self._record_failure(provider)
+                logger.warning(f"[TTSEngine] {provider} failed: {e}, trying next...")
+                last_error = TTSError(f"{provider} failed: {e}")
+
+        raise TTSError(f"All TTS providers failed. Last error: {last_error}")
+
+    async def synthesize_with_result(
+        self,
+        text: str,
+        voice: str = "default",
+        speed: float = 1.0,
+        pitch: int = 0
+    ) -> TTSResult:
+        """
+        Synthesize and return detailed result with metadata.
+
+        Args:
+            text: Text to synthesize
+            voice: Voice ID
+            speed: Speech speed
+            pitch: Pitch adjustment
+
+        Returns:
+            TTSResult with audio and metadata
+        """
+        for provider in self.fallback_order:
+            start_time = time.perf_counter()
+            try:
+                audio = await self._synthesize_with(provider, text, voice, speed, pitch)
+                if audio and len(audio) > 100:
+                    latency_ms = (time.perf_counter() - start_time) * 1000
+                    self._record_success(provider, latency_ms)
+
+                    sample_rate = 22050 if provider == "piper" else 24000
+                    audio_format = "wav"
+                    if provider == "edge":
+                        audio_format = "mp3"
+
+                    return TTSResult(
+                        audio=audio,
+                        provider=provider,
+                        latency_ms=latency_ms,
+                        sample_rate=sample_rate,
+                        format=audio_format
+                    )
+            except Exception as e:
+                self._record_failure(provider)
+                logger.warning(f"[TTSEngine] {provider} failed: {e}")
+                continue
+
+        raise TTSError("All TTS providers failed")
+
+    async def _synthesize_with(
+        self,
+        provider: str,
+        text: str,
+        voice: str,
+        speed: float,
+        pitch: int
+    ) -> bytes:
+        """
+        Synthesize using a specific provider.
+
+        Args:
+            provider: Provider name
+            text: Text to synthesize
+            voice: Voice ID
+            speed: Speed multiplier
+            pitch: Pitch adjustment
+
+        Returns:
+            Audio bytes
+        """
+        if provider == "qwen3":
+            return await self._synthesize_qwen3(text, voice, speed, pitch)
+        elif provider == "edge":
+            return await self._synthesize_edge(text, voice, speed, pitch)
+        elif provider == "piper":
+            return await self._synthesize_piper(text, voice, speed, pitch)
+        else:
+            raise ValueError(f"Unknown provider: {provider}")
+
+    async def _synthesize_qwen3(
+        self,
+        text: str,
+        voice: str,
+        speed: float,
+        pitch: int
+    ) -> bytes:
+        """
+        Synthesize using Qwen3 TTS server.
+
+        Uses the HTTP client to connect to the local Qwen3-TTS server.
+        """
+        if self._qwen3_client is None:
+            self._qwen3_client = Qwen3TTSClient(
+                server_url=self.config.qwen3_server_url
+            )
+
+        # Check availability with timeout
+        timeout_sec = self.config.timeout_ms / 1000
+        try:
+            is_available = await asyncio.wait_for(
+                self._qwen3_client.is_available(),
+                timeout=timeout_sec
+            )
+            if not is_available:
+                raise TTSError("Qwen3 TTS server not available")
+        except asyncio.TimeoutError:
+            raise TTSError("Qwen3 availability check timed out")
+
+        # Determine language and speaker
+        language = "Russian" if self.config.language == "ru" else "English"
+        speaker = voice if voice != "default" else self.config.qwen3_speaker
+
+        # Synthesize with timeout
+        audio = await asyncio.wait_for(
+            self._qwen3_client.synthesize(text, language, speaker),
+            timeout=30.0  # Allow longer for actual synthesis
+        )
+
+        return audio
+
+    async def _synthesize_edge(
+        self,
+        text: str,
+        voice: str,
+        speed: float,
+        pitch: int
+    ) -> bytes:
+        """
+        Synthesize using Edge TTS (Microsoft).
+
+        Uses the FastTTSClient which wraps edge-tts library.
+        """
+        if self._fast_tts_client is None:
+            default_voice = "ru-male" if self.config.language == "ru" else "en-male"
+            self._fast_tts_client = FastTTSClient(voice=default_voice)
+
+        # Map voice parameter
+        if voice == "default":
+            # Auto-detect language from text
+            audio = await self._fast_tts_client.synthesize_auto(text)
+        else:
+            audio = await self._fast_tts_client.synthesize(text, voice=voice)
+
+        if not audio:
+            raise TTSError("Edge TTS returned empty audio")
+
+        return audio
+
+    async def _synthesize_piper(
+        self,
+        text: str,
+        voice: str,
+        speed: float,
+        pitch: int
+    ) -> bytes:
+        """
+        Synthesize using Piper TTS (local/offline).
+
+        Fastest option (~100ms) but requires local ONNX model.
+        """
+        # Run Piper synthesis in thread pool (it's synchronous)
+        loop = asyncio.get_event_loop()
+        audio = await loop.run_in_executor(
+            None,
+            self._piper_synthesize_sync,
+            text,
+            voice,
+            speed
+        )
+        return audio
+
+    def _piper_synthesize_sync(
+        self,
+        text: str,
+        voice: str,
+        speed: float
+    ) -> bytes:
+        """
+        Synchronous Piper synthesis (runs in thread pool).
+        """
+        try:
+            from piper import PiperVoice
+            import wave
+
+            # Find model path
+            model_path = self.config.piper_model_path
+            if not model_path:
+                # Auto-detect from data/voice_models
+                project_root = Path(__file__).parent.parent.parent
+                voice_models_dir = project_root / "data" / "voice_models"
+
+                # Find first .onnx file
+                onnx_files = list(voice_models_dir.glob("*.onnx"))
+                if onnx_files:
+                    model_path = str(onnx_files[0])
+                else:
+                    raise TTSError("No Piper ONNX models found in data/voice_models/")
+
+            # Load voice if not cached
+            if self._piper_voice is None:
+                logger.info(f"[TTSEngine] Loading Piper model: {model_path}")
+                self._piper_voice = PiperVoice.load(model_path)
+
+            # Synthesize to WAV bytes
+            audio_buffer = io.BytesIO()
+
+            with wave.open(audio_buffer, 'wb') as wav_file:
+                self._piper_voice.synthesize(text, wav_file, length_scale=1.0/speed)
+
+            audio_buffer.seek(0)
+            return audio_buffer.read()
+
+        except ImportError as e:
+            raise TTSError(f"Piper not installed: {e}")
+        except Exception as e:
+            raise TTSError(f"Piper synthesis failed: {e}")
+
+    def _record_success(self, provider: str, latency_ms: float):
+        """Record successful synthesis."""
+        stats = self._provider_stats[provider]
+        stats["successes"] += 1
+        stats["total_latency_ms"] += latency_ms
+
+    def _record_failure(self, provider: str):
+        """Record failed synthesis."""
+        self._provider_stats[provider]["failures"] += 1
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get provider statistics."""
+        result = {}
+        for provider, stats in self._provider_stats.items():
+            total = stats["successes"] + stats["failures"]
+            avg_latency = (
+                stats["total_latency_ms"] / stats["successes"]
+                if stats["successes"] > 0 else 0
+            )
+            result[provider] = {
+                "successes": stats["successes"],
+                "failures": stats["failures"],
+                "success_rate": stats["successes"] / total if total > 0 else 0,
+                "avg_latency_ms": avg_latency
+            }
+        return result
+
+    async def check_providers(self) -> Dict[str, bool]:
+        """
+        Check availability of all providers.
+
+        Returns:
+            Dict mapping provider name to availability status
+        """
+        availability = {}
+
+        # Check Qwen3
+        try:
+            if self._qwen3_client is None:
+                self._qwen3_client = Qwen3TTSClient(
+                    server_url=self.config.qwen3_server_url
+                )
+            availability["qwen3"] = await self._qwen3_client.is_available()
+        except Exception:
+            availability["qwen3"] = False
+
+        # Check Edge TTS (requires internet)
+        try:
+            import edge_tts
+            availability["edge"] = True  # Assume available if module exists
+        except ImportError:
+            availability["edge"] = False
+
+        # Check Piper
+        try:
+            from piper import PiperVoice
+            project_root = Path(__file__).parent.parent.parent
+            voice_models_dir = project_root / "data" / "voice_models"
+            onnx_files = list(voice_models_dir.glob("*.onnx"))
+            availability["piper"] = len(onnx_files) > 0
+        except ImportError:
+            availability["piper"] = False
+
+        return availability
+
+    async def close(self):
+        """Cleanup resources."""
+        if self._qwen3_client:
+            await self._qwen3_client.close()
+            self._qwen3_client = None
+        self._piper_voice = None
+        logger.info("[TTSEngine] Closed and cleaned up resources")
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        await self.close()
+
+
+# Factory functions for Phase 105
+
+def get_tts_engine(
+    primary: str = "qwen3",
+    language: str = "ru"
+) -> TTSEngine:
+    """
+    Create a TTSEngine with specified configuration.
+
+    Args:
+        primary: Primary provider (qwen3, edge, piper)
+        language: Default language (ru, en)
+
+    Returns:
+        Configured TTSEngine instance
+    """
+    config = TTSConfig(
+        primary_provider=primary,
+        language=language
+    )
+    return TTSEngine(primary=primary, config=config)
+
+
+async def quick_synthesize(
+    text: str,
+    language: str = "en",
+    provider: str = "edge"
+) -> bytes:
+    """
+    Quick one-shot TTS synthesis.
+
+    Args:
+        text: Text to synthesize
+        language: Language code
+        provider: Preferred provider
+
+    Returns:
+        Audio bytes
+    """
+    async with TTSEngine(primary=provider, config=TTSConfig(language=language)) as engine:
+        return await engine.synthesize(text)
+
+
+# MARKER_105_TTS_FALLBACK_END

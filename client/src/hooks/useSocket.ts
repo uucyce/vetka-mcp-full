@@ -210,6 +210,48 @@ interface ServerToClientEvents {
       timestamp: string;
     }>;
   }) => void;
+  // === PHASE 104.8: VOICE & ROOM EVENTS ===
+  voice_transcript: (data: {
+    text: string;
+    is_final: boolean;
+    confidence?: number;
+    language?: string;
+    timestamp?: string;
+  }) => void;
+  // === PHASE 104.9: ARTIFACT APPROVAL EVENTS ===
+  // MARKER_104_VISUAL - L2 edit capability event
+  artifact_approval: (data: {
+    artifactId: string;
+    approvalLevel: 'L1' | 'L2' | 'L3';
+    action?: 'approve' | 'reject' | 'edit';
+    content?: string;
+    reason?: string;
+  }) => void;
+  jarvis_interrupt: (data: {
+    priority: number;
+    reason?: string;
+    timestamp?: string;
+  }) => void;
+  jarvis_prediction: (data: {
+    predictions: string[];
+    context?: string;
+    confidence?: number;
+  }) => void;
+  stream_error: (data: {
+    error: string;
+    stream_id?: string;
+    code?: string;
+  }) => void;
+  room_joined: (data: {
+    room_id: string;
+    user_id?: string;
+    participants?: string[];
+  }) => void;
+  room_left: (data: {
+    room_id: string;
+    user_id?: string;
+    reason?: string;
+  }) => void;
   // === PHASE 56.5: CHAT-AS-TREE EVENTS ===
   chat_node_created: (data: {
     chatId: string;
@@ -1188,6 +1230,106 @@ export function useSocket() {
       setTimeout(() => {
         clearHighlights();
       }, 5000);
+    });
+
+    // MARKER_104_FRONTEND
+    // === PHASE 104.8: VOICE & ROOM EVENT HANDLERS ===
+
+    socket.on('voice_transcript', (data: {
+      text: string;
+      is_final: boolean;
+      confidence?: number;
+      language?: string;
+      timestamp?: string;
+    }) => {
+      console.log('[Socket] voice_transcript:', data.text.slice(0, 50), data.is_final ? '(final)' : '(partial)');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('voice-transcript', { detail: data })
+        );
+      }
+    });
+
+    socket.on('jarvis_interrupt', (data: {
+      priority: number;
+      reason?: string;
+      timestamp?: string;
+    }) => {
+      console.log('[Socket] jarvis_interrupt: priority', data.priority, data.reason || '');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('jarvis-interrupt', { detail: data })
+        );
+      }
+    });
+
+    socket.on('jarvis_prediction', (data: {
+      predictions: string[];
+      context?: string;
+      confidence?: number;
+    }) => {
+      console.log('[Socket] jarvis_prediction:', data.predictions.length, 'predictions');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('jarvis-prediction', { detail: data })
+        );
+      }
+    });
+
+    socket.on('stream_error', (data: {
+      error: string;
+      stream_id?: string;
+      code?: string;
+    }) => {
+      console.error('[Socket] stream_error:', data.error, data.code || '');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('stream-error', { detail: data })
+        );
+      }
+    });
+
+    socket.on('room_joined', (data: {
+      room_id: string;
+      user_id?: string;
+      participants?: string[];
+    }) => {
+      console.log('[Socket] room_joined:', data.room_id, data.participants?.length || 0, 'participants');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('room-joined', { detail: data })
+        );
+      }
+    });
+
+    socket.on('room_left', (data: {
+      room_id: string;
+      user_id?: string;
+      reason?: string;
+    }) => {
+      console.log('[Socket] room_left:', data.room_id, data.reason || '');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('room-left', { detail: data })
+        );
+      }
+    });
+
+    // === PHASE 104.9: ARTIFACT APPROVAL EVENT HANDLER ===
+    // MARKER_104_VISUAL - Dispatches artifact-approval CustomEvent for ArtifactPanel L2 editing
+    socket.on('artifact_approval', (data: {
+      artifactId: string;
+      approvalLevel: 'L1' | 'L2' | 'L3';
+      action?: 'approve' | 'reject' | 'edit';
+      content?: string;
+      reason?: string;
+    }) => {
+      console.log('[Socket] artifact_approval:', data.artifactId, data.approvalLevel, data.action || 'view');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('artifact-approval', { detail: data })
+        );
+      }
     });
 
     return () => {

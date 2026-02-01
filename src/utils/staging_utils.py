@@ -8,9 +8,12 @@ This unifies:
 - Spawn pipeline results (code files from agents)
 - Artifacts (code blocks from Dev responses)
 
+MARKER_104_MEMORY_STAGING: Added ELISION compression for large entries
+Large task results are optionally compressed to save disk space.
+
 @status: active
-@phase: 103.6
-@depends: src/utils/artifact_extractor.py, src/memory/qdrant_client.py
+@phase: 104
+@depends: src/utils/artifact_extractor.py, src/memory/qdrant_client.py, src/memory/elision.py
 @used_by: scripts/retro_apply.py, src/api/handlers/group_message_handler.py
 """
 
@@ -29,19 +32,85 @@ STAGING_FILE = Path(__file__).parent.parent.parent / "data" / "staging.json"
 
 
 def _load_staging() -> Dict[str, Any]:
-    """Load staging data from JSON."""
+    """
+    Load staging data from JSON, auto-expanding compressed entries.
+
+    MARKER_104_MEMORY_STAGING: Handles decompression of ELISION-compressed results.
+    Checks for _compressed flag and auto-expands using stored legend.
+    """
     if STAGING_FILE.exists():
         try:
-            return json.loads(STAGING_FILE.read_text(encoding='utf-8'))
+            data = json.loads(STAGING_FILE.read_text(encoding='utf-8'))
+
+            # Auto-expand compressed entries
+            data = _expand_compressed_entries(data)
+
+            return data
         except json.JSONDecodeError:
             logger.warning("[Staging] Corrupt staging.json, starting fresh")
             return {"version": "1.0", "spawn": {}, "artifacts": {}}
     return {"version": "1.0", "spawn": {}, "artifacts": {}}
 
 
-def _save_staging(data: Dict[str, Any]) -> bool:
-    """Save staging data to JSON (atomic write)."""
+def _expand_compressed_entries(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Auto-expand ELISION-compressed entries in staging data.
+
+    MARKER_104_MEMORY_STAGING: Decompression helper.
+    Recursively traverses data structure and expands any entries with _compressed flag.
+    """
     try:
+        from src.memory.elision import get_elision_compressor
+        compressor = get_elision_compressor()
+
+        for category in ['spawn', 'artifacts']:
+            if category in data:
+                for task_id, task in data[category].items():
+                    if isinstance(task, dict) and task.get('_compressed'):
+                        if 'result' in task and isinstance(task['result'], str):
+                            # Extract legend if present
+                            legend = task.get('_legend', {})
+
+                            try:
+                                expanded = compressor.expand(task['result'], legend)
+                                task['result'] = json.loads(expanded) if expanded.startswith('{') or expanded.startswith('[') else expanded
+
+                                # Clean up compression metadata
+                                task.pop('_compressed', None)
+                                task.pop('_legend', None)
+                                task.pop('_original_size', None)
+
+                                logger.debug(f"[Staging] Expanded compressed task: {task_id}")
+                            except Exception as e:
+                                logger.warning(f"[Staging] Failed to expand {task_id}: {e}")
+                                # Keep original compressed data if expansion fails
+    except ImportError:
+        # ELISION not available, skip decompression
+        pass
+    except Exception as e:
+        logger.warning(f"[Staging] Error during decompression: {e}")
+
+    return data
+
+
+def _save_staging(data: Dict[str, Any], compress_large: bool = True) -> bool:
+    """
+    Save staging data to JSON (atomic write) with optional ELISION compression.
+
+    MARKER_104_MEMORY_STAGING: Compresses large entries to save disk space.
+
+    Args:
+        data: Staging data to save
+        compress_large: Whether to compress large entries (>2000 chars)
+
+    Returns:
+        True if save successful, False otherwise
+    """
+    try:
+        # Optional ELISION compression for large entries
+        if compress_large:
+            data = _compress_large_entries(data)
+
         STAGING_FILE.parent.mkdir(parents=True, exist_ok=True)
         temp_file = STAGING_FILE.with_suffix('.tmp')
         temp_file.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str), encoding='utf-8')
@@ -50,6 +119,73 @@ def _save_staging(data: Dict[str, Any]) -> bool:
     except Exception as e:
         logger.error(f"[Staging] Failed to save: {e}")
         return False
+
+
+def _compress_large_entries(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Compress large entries in staging data using ELISION.
+
+    MARKER_104_MEMORY_STAGING: Compression helper.
+    Only compresses 'result' fields >2000 chars in spawn and artifacts categories.
+    Stores compression metadata (_compressed, _legend, _original_size).
+    """
+    try:
+        from src.memory.elision import get_elision_compressor
+        compressor = get_elision_compressor()
+
+        compression_stats = {
+            'compressed_count': 0,
+            'total_original_size': 0,
+            'total_compressed_size': 0,
+        }
+
+        for category in ['spawn', 'artifacts']:
+            if category in data:
+                for task_id, task in data[category].items():
+                    if isinstance(task, dict) and 'result' in task:
+                        result = task['result']
+                        result_str = str(result)
+
+                        # Only compress if large enough
+                        if len(result_str) > 2000:
+                            try:
+                                # Compress using level 2 (key abbreviation + path compression)
+                                # Level 2 is safe and reversible, ~40-50% savings
+                                compressed_result = compressor.compress(result, level=2)
+
+                                # Store compressed version with metadata
+                                task['result'] = compressed_result.compressed
+                                task['_compressed'] = True
+                                task['_legend'] = compressed_result.legend
+                                task['_original_size'] = len(result_str)
+
+                                compression_stats['compressed_count'] += 1
+                                compression_stats['total_original_size'] += len(result_str)
+                                compression_stats['total_compressed_size'] += len(compressed_result.compressed)
+
+                                logger.debug(
+                                    f"[Staging] Compressed {task_id} in {category}: "
+                                    f"{len(result_str)} -> {len(compressed_result.compressed)} bytes "
+                                    f"({compressed_result.compression_ratio:.1f}x)"
+                                )
+                            except Exception as e:
+                                logger.warning(f"[Staging] Failed to compress {task_id}: {e}")
+                                # Keep original if compression fails
+
+        if compression_stats['compressed_count'] > 0:
+            total_saved = compression_stats['total_original_size'] - compression_stats['total_compressed_size']
+            logger.info(
+                f"[Staging] Compression complete: {compression_stats['compressed_count']} entries, "
+                f"saved {total_saved} bytes ({100*total_saved/compression_stats['total_original_size']:.1f}%)"
+            )
+
+    except ImportError:
+        # ELISION not available, skip compression
+        logger.debug("[Staging] ELISION not available, skipping compression")
+    except Exception as e:
+        logger.warning(f"[Staging] Error during compression: {e}")
+
+    return data
 
 
 # ============================================================
@@ -392,5 +528,32 @@ def upsert_to_qdrant(
         logger.warning(f"[Staging] Qdrant upsert failed (graceful): {e}")
         return False
 
+
+# ============================================================
+# MARKER_104_MEMORY_STAGING: ELISION Compression Integration
+# ============================================================
+#
+# ELISION compression for staging persistence:
+# - Reduces disk space for large task results
+# - Level 2 compression: Key abbreviation + path compression
+# - ~40-50% savings without breaking reversibility
+# - Auto-expansion on load via _expand_compressed_entries()
+#
+# Compression flow:
+# 1. _save_staging(data, compress_large=True)
+# 2. _compress_large_entries(data) -> Compresses result fields >2000 chars
+# 3. Stores: _compressed=true, _legend={}, _original_size=N
+#
+# Decompression flow:
+# 1. _load_staging()
+# 2. _expand_compressed_entries(data) -> Auto-expands using legend
+# 3. Cleans up compression metadata
+#
+# Features:
+# - Graceful fallback if ELISION unavailable
+# - Per-entry compression (only large results)
+# - Comprehensive logging and stats
+# - Transparent to calling code
+# ============================================================
 
 # MARKER_103.6_END

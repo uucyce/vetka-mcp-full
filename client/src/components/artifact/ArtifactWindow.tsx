@@ -3,9 +3,11 @@
  * Provides draggable/resizable container for file viewing.
  *
  * @status active
- * @phase 96
+ * @phase 104.9
  * @depends FloatingWindow, ArtifactPanel, useStore
  * @used_by ChatPanel
+ *
+ * MARKER_104_VISUAL - Added L2 approval level and content change props
  */
 
 import { FloatingWindow } from './FloatingWindow';
@@ -25,6 +27,9 @@ interface RawContent {
   type?: 'text' | 'markdown' | 'code';
 }
 
+// MARKER_104_VISUAL - Approval levels for artifact editing
+type ApprovalLevel = 'L1' | 'L2' | 'L3';
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -32,9 +37,15 @@ interface Props {
   file?: FileInfo | null;
   /** Phase 68.2: Raw content for preview */
   rawContent?: RawContent | null;
+  /** Phase 104.9: Approval level for L2 editing */
+  approvalLevel?: ApprovalLevel;
+  /** Phase 104.9: Artifact ID for approval events */
+  artifactId?: string;
+  /** Phase 104.9: Callback for L2 content changes */
+  onContentChange?: (content: string) => void;
 }
 
-export function ArtifactWindow({ isOpen, onClose, file: propFile, rawContent }: Props) {
+export function ArtifactWindow({ isOpen, onClose, file: propFile, rawContent, approvalLevel, artifactId, onContentChange }: Props) {
   const selectedId = useStore((state) => state.selectedId);
   const nodes = useStore((state) => state.nodes);
   const selectedNode = selectedId ? nodes[selectedId] : null;
@@ -59,7 +70,15 @@ export function ArtifactWindow({ isOpen, onClose, file: propFile, rawContent }: 
       defaultWidth={700}
       defaultHeight={500}
     >
-      <ArtifactPanel file={file} rawContent={rawContent} onClose={onClose} />
+      {/* MARKER_104_VISUAL - Pass L2 approval props to ArtifactPanel */}
+      <ArtifactPanel
+        file={file}
+        rawContent={rawContent}
+        onClose={onClose}
+        approvalLevel={approvalLevel}
+        artifactId={artifactId}
+        onContentChange={onContentChange}
+      />
     </FloatingWindow>
   );
 }

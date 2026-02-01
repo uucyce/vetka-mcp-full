@@ -73,6 +73,10 @@ def register_connection_handlers(sio, app=None):
         """Handle client disconnection (rate-limited logging)"""
         client_id = sid[:8]
 
+        # MARKER_104_CLEANUP: Clean up stream manager room tracking first
+        from src.api.handlers.stream_handler import get_stream_manager
+        get_stream_manager().cleanup_session(sid)
+
         # Phase 53: Clean up per-session chat manager
         ChatRegistry.remove_manager(sid)
 

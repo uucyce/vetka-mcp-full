@@ -652,10 +652,18 @@ class OllamaProvider(BaseProvider):
             params["tools"] = effective_tools
 
         # Run sync ollama.chat in thread pool
+        # MARKER_105_OLLAMA_TIMEOUT_FIX: Add timeout to prevent server hangs
         loop = asyncio.get_event_loop()
+        OLLAMA_TIMEOUT = 60.0  # 60 second timeout for model inference
 
         try:
-            response = await loop.run_in_executor(None, lambda: ollama.chat(**params))
+            response = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: ollama.chat(**params)),
+                timeout=OLLAMA_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            print(f"[OLLAMA] ⚠️ TIMEOUT after {OLLAMA_TIMEOUT}s - {clean_model} hung!")
+            raise TimeoutError(f"Ollama {clean_model} did not respond within {OLLAMA_TIMEOUT}s")
         except Exception as e:
             # Phase 80.5: If tools error, retry without tools
             if "does not support tools" in str(e) and "tools" in params:
@@ -663,9 +671,14 @@ class OllamaProvider(BaseProvider):
                     f"[OLLAMA] Tool error detected, retrying {clean_model} without tools"
                 )
                 del params["tools"]
-                response = await loop.run_in_executor(
-                    None, lambda: ollama.chat(**params)
-                )
+                try:
+                    response = await asyncio.wait_for(
+                        loop.run_in_executor(None, lambda: ollama.chat(**params)),
+                        timeout=OLLAMA_TIMEOUT
+                    )
+                except asyncio.TimeoutError:
+                    print(f"[OLLAMA] ⚠️ TIMEOUT on retry after {OLLAMA_TIMEOUT}s")
+                    raise TimeoutError(f"Ollama {clean_model} retry timeout")
             else:
                 raise
 

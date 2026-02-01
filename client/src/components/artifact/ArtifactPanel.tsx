@@ -3,9 +3,11 @@
  * Displays files, raw content, and markdown with lazy-loaded viewers.
  *
  * @status active
- * @phase 96
+ * @phase 104.9
  * @depends react, lucide-react, ./utils/fileTypes, ./viewers/*, ./Toolbar
  * @used_by ArtifactWindow, ChatPanel
+ *
+ * MARKER_104_VISUAL - L2 approval editing with subtle gray styling
  */
 
 import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
@@ -54,15 +56,22 @@ interface RawContent {
   type?: 'text' | 'markdown' | 'code';
 }
 
+// MARKER_104_VISUAL - Approval levels for artifact editing
+type ApprovalLevel = 'L1' | 'L2' | 'L3';
+
 interface Props {
   file?: FileInfo | null;
   rawContent?: RawContent | null;  // Phase 48.5.1: Direct content display
   onClose?: () => void;
   // Phase 60.4: Allow editing raw content
   onContentChange?: (content: string) => void;
+  // Phase 104.9: Approval level for staged artifacts
+  approvalLevel?: ApprovalLevel;
+  // Phase 104.9: Artifact ID for approval events
+  artifactId?: string;
 }
 
-export function ArtifactPanel({ file, rawContent, onClose, onContentChange }: Props) {
+export function ArtifactPanel({ file, rawContent, onClose, onContentChange, approvalLevel, artifactId }: Props) {
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -71,6 +80,44 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange }: Pr
   // Phase 60.4: Editable raw content state
   const [editableContent, setEditableContent] = useState<string>('');
   const [rawHasChanges, setRawHasChanges] = useState(false);
+
+  // MARKER_104_VISUAL - L2 approval state
+  const [currentApprovalLevel, setCurrentApprovalLevel] = useState<ApprovalLevel | undefined>(approvalLevel);
+
+  // MARKER_104_VISUAL - Sync approvalLevel from props
+  useEffect(() => {
+    setCurrentApprovalLevel(approvalLevel);
+  }, [approvalLevel]);
+
+  // MARKER_104_VISUAL - Listen for artifact-approval CustomEvent from useSocket.ts
+  useEffect(() => {
+    const handleApprovalEvent = (event: CustomEvent<{
+      artifactId?: string;
+      approvalLevel?: ApprovalLevel;
+      action?: 'approve' | 'reject' | 'edit';
+    }>) => {
+      const { artifactId: eventArtifactId, approvalLevel: eventLevel, action } = event.detail;
+
+      // Only respond if this event is for our artifact
+      if (artifactId && eventArtifactId && eventArtifactId !== artifactId) {
+        return;
+      }
+
+      if (eventLevel) {
+        setCurrentApprovalLevel(eventLevel);
+      }
+
+      // L2 level enables editing mode automatically
+      if (eventLevel === 'L2' || action === 'edit') {
+        setIsEditing(true);
+      }
+    };
+
+    window.addEventListener('artifact-approval', handleApprovalEvent as EventListener);
+    return () => {
+      window.removeEventListener('artifact-approval', handleApprovalEvent as EventListener);
+    };
+  }, [artifactId]);
 
   // Phase 60.4: Undo history (max 10 states)
   const MAX_UNDO_HISTORY = 10;
@@ -206,25 +253,36 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange }: Pr
 
   // Phase 48.5.1: Render raw content
   // Phase 60.4: Added editing support
+  // MARKER_104_VISUAL - L2 approval editing with subtle gray styling
   const renderRawContent = () => {
     if (!rawContent) return null;
 
     const contentToShow = isEditing ? editableContent : rawContent.content;
 
+    // MARKER_104_VISUAL - L2 subtle gray styling for approval editing
+    const isL2Editing = currentApprovalLevel === 'L2' && isEditing;
+
     // Phase 60.4: Editing mode - textarea for all types
+    // MARKER_104_VISUAL - Enhanced with L2 subtle styling
     if (isEditing) {
       return (
         <div style={{
           height: '100%',
           overflow: 'auto',
           padding: 12,
-          background: '#0a0a0a'
+          // MARKER_104_VISUAL - Subtle background for L2 editing
+          background: isL2Editing ? '#1a1a1a' : '#0a0a0a',
+          opacity: isL2Editing ? 0.9 : 1,
         }}>
           <textarea
             value={editableContent}
             onChange={(e) => {
               setEditableContent(e.target.value);
               setRawHasChanges(true);
+              // MARKER_104_VISUAL - Notify parent of L2 content change
+              if (currentApprovalLevel === 'L2' && onContentChange) {
+                onContentChange(e.target.value);
+              }
             }}
             onBlur={() => {
               // Phase 60.4: Save state to undo history on blur (not every keystroke)
@@ -242,18 +300,34 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange }: Pr
               height: '100%',
               minHeight: 300,
               padding: 16,
-              background: '#111',
+              // MARKER_104_VISUAL - L2 subtle gray styling (NO bright colors)
+              background: isL2Editing ? '#1a1a1a' : '#111',
               border: '1px solid #333',
-              borderRadius: 8,
+              borderRadius: isL2Editing ? 4 : 8,
               color: '#e0e0e0',
               fontSize: 14,
               lineHeight: 1.6,
               fontFamily: 'monospace',
               resize: 'none',
               outline: 'none',
+              // MARKER_104_VISUAL - Subtle opacity for L2
+              opacity: isL2Editing ? 0.9 : 1,
             }}
-            placeholder="Edit content here..."
+            placeholder={isL2Editing ? "L2 Edit: Modify staged artifact..." : "Edit content here..."}
           />
+          {/* MARKER_104_VISUAL - L2 approval indicator */}
+          {isL2Editing && (
+            <div style={{
+              position: 'absolute',
+              top: 4,
+              right: 8,
+              fontSize: 10,
+              color: '#666',
+              fontFamily: 'monospace',
+            }}>
+              L2 EDIT
+            </div>
+          )}
         </div>
       );
     }

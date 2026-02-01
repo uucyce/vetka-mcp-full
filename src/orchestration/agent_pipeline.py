@@ -66,8 +66,12 @@ class Subtask:
     result: Optional[str] = None
     status: str = "pending"  # pending, researching, executing, done, failed
     marker: Optional[str] = None
+    # MARKER_104_STREAM_VISIBILITY: Visibility control for subtasks
+    visible: bool = True  # Show progress in UI
+    stream_result: bool = True  # Stream completion to chat
 
 
+# MARKER_104_STREAM_VISIBILITY: PipelineTask with visibility control
 @dataclass
 class PipelineTask:
     """Main task with fractal subtasks"""
@@ -78,6 +82,10 @@ class PipelineTask:
     subtasks: List[Subtask] = None
     timestamp: float = 0
     results: Optional[Dict] = None
+    # MARKER_104_STREAM_VISIBILITY: Visibility control for pipeline tasks
+    visible_to_user: bool = True  # Show in chat UI
+    stream_level: str = "summary"  # "full" | "summary" | "silent"
+    highlight_artifacts: bool = True  # Highlight code blocks in output
 
     def __post_init__(self):
         if self.subtasks is None:
@@ -293,6 +301,103 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 logger.debug(f"[Pipeline] Hook error: {e}")
     # MARKER_102.27_END
 
+    # MARKER_104_STREAM_VISIBILITY: Stream event emission with visibility control
+    def _emit_stream_event(
+        self,
+        event_type: str,
+        data: Dict[str, Any],
+        visibility: str = "summary"
+    ):
+        """
+        Emit event with visibility control for selective streaming.
+
+        Args:
+            event_type: Type of event (e.g., "subtask_progress", "artifact_created")
+            data: Event data dictionary
+            visibility: "full" | "summary" | "silent"
+                - full: Emit complete data
+                - summary: Compress/summarize data before emit
+                - silent: Don't emit at all
+
+        Phase 104.7: Enables selective decompression for visible streams.
+        """
+        if visibility == "silent":
+            logger.debug(f"[Pipeline] Silent event suppressed: {event_type}")
+            return  # Don't emit
+
+        if visibility == "summary":
+            # Compress/summarize data before emit
+            data_str = str(data)
+            if len(data_str) > 500:
+                data = self._summarize_for_stream(data)
+
+        # Emit to Socket.IO (non-blocking)
+        asyncio.create_task(self._emit_to_chat(event_type, data))
+
+    def _summarize_for_stream(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Summarize large data payloads for streaming.
+
+        Args:
+            data: Original data dictionary
+
+        Returns:
+            Summarized version with truncated values
+        """
+        summarized = {}
+
+        for key, value in data.items():
+            if isinstance(value, str):
+                # Truncate long strings
+                if len(value) > 200:
+                    summarized[key] = value[:200] + f"... [{len(value) - 200} chars truncated]"
+                else:
+                    summarized[key] = value
+            elif isinstance(value, dict):
+                # Recursively summarize nested dicts
+                if len(str(value)) > 200:
+                    summarized[key] = {"_summary": f"Dict with {len(value)} keys", "_keys": list(value.keys())[:5]}
+                else:
+                    summarized[key] = value
+            elif isinstance(value, list):
+                # Summarize long lists
+                if len(value) > 5:
+                    summarized[key] = value[:5] + [f"... +{len(value) - 5} more items"]
+                else:
+                    summarized[key] = value
+            else:
+                summarized[key] = value
+
+        summarized["_stream_mode"] = "summary"
+        return summarized
+
+    async def _emit_to_chat(self, event_type: str, data: Dict[str, Any]):
+        """
+        Async emit event to Socket.IO chat.
+
+        Args:
+            event_type: Event type string
+            data: Event payload
+        """
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    "http://localhost:5001/api/stream/event",
+                    json={
+                        "event_type": event_type,
+                        "group_id": self.chat_id,
+                        "data": data,
+                        "timestamp": time.time()
+                    }
+                )
+            logger.debug(f"[Pipeline] Stream event emitted: {event_type}")
+        except Exception as e:
+            # Don't fail pipeline on emit errors
+            logger.debug(f"[Pipeline] Stream emit failed (non-fatal): {e}")
+    # MARKER_104_STREAM_VISIBILITY_END
+
     # MARKER_102.17_START: Robust JSON extraction from LLM responses
     def _extract_json(self, text: str) -> Dict[str, Any]:
         """
@@ -384,26 +489,170 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
     # MARKER_102.20_END
 
     # MARKER_102.25_START: STM (Short-Term Memory) helpers
+    # MARKER_104_MEMORY_STM: ELISION compression integration
     def _add_to_stm(self, marker: str, result: str):
-        """Add subtask result to short-term memory"""
-        self.stm.append({
-            "marker": marker,
-            "result": result[:500] if result else ""  # Truncate for efficiency
-        })
-        # Keep only last N
+        """
+        Add subtask result to short-term memory with ELISION compression.
+
+        Phase 104.6: Compress large results to save tokens in context passing.
+        - Results > 1000 chars: ELISION Level 2 compression (40-50% savings)
+        - Smaller results: truncate to 500 chars
+
+        Args:
+            marker: Subtask identifier
+            result: Raw subtask result string
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            from src.memory.elision import get_elision_compressor
+            compressor = get_elision_compressor()
+        except ImportError:
+            # Fallback if ELISION not available
+            logger.warning("[STM] ELISION import failed, using truncation only")
+            self.stm.append({
+                "marker": marker,
+                "result": result[:500] if result else "",
+                "compressed": False
+            })
+            if len(self.stm) > self.stm_limit:
+                self.stm.pop(0)
+            return
+
+        result_str = str(result) if result else ""
+        original_size = len(result_str)
+
+        # Only compress if result is large enough
+        if original_size > 1000:
+            try:
+                compression = compressor.compress(result_str, level=2)
+                stm_entry = {
+                    "marker": marker,
+                    "result": compression.compressed,
+                    "compressed": True,
+                    "original_size": compression.original_length,
+                    "compressed_size": compression.compressed_length,
+                    "compression_ratio": round(compression.compression_ratio, 2),
+                    "tokens_saved": compression.tokens_saved_estimate,
+                    "level": 2
+                }
+                logger.debug(
+                    f"[STM] Compressed {marker}: {compression.original_length} -> "
+                    f"{compression.compressed_length} chars "
+                    f"({compression.compression_ratio:.1f}x, "
+                    f"~{compression.tokens_saved_estimate} tokens saved)"
+                )
+            except Exception as e:
+                logger.warning(f"[STM] Compression failed for {marker}: {e}, using truncation")
+                stm_entry = {
+                    "marker": marker,
+                    "result": result_str[:500],
+                    "compressed": False
+                }
+        else:
+            # Small results: no compression needed
+            stm_entry = {
+                "marker": marker,
+                "result": result_str[:500] if result_str else "",
+                "compressed": False
+            }
+
+        self.stm.append(stm_entry)
+
+        # Keep only last N entries
         if len(self.stm) > self.stm_limit:
-            self.stm.pop(0)
+            removed = self.stm.pop(0)
+            if removed.get("compressed"):
+                logger.debug(f"[STM] Evicted compressed entry {removed['marker']}")
 
     def _get_stm_summary(self) -> str:
-        """Get summary of previous subtask results for context injection"""
+        """
+        Get summary of previous subtask results for context injection.
+
+        Phase 104.6: Handles both compressed and uncompressed entries.
+        Decompresses as needed for context passing.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
         if not self.stm:
             return ""
 
         summary_parts = ["Previous results:"]
+
+        # Try to import compressor for decompression
+        try:
+            from src.memory.elision import get_elision_compressor
+            compressor = get_elision_compressor()
+        except ImportError:
+            compressor = None
+
         for item in self.stm[-3:]:  # Last 3 for brevity
-            summary_parts.append(f"- [{item['marker']}]: {item['result'][:200]}...")
+            marker = item.get("marker", "unknown")
+            result = item.get("result", "")
+
+            # Decompress if needed
+            if item.get("compressed") and compressor:
+                try:
+                    result = compressor.expand(result, item.get("legend", {}))
+                    result = result[:200]  # Still truncate for summary
+                except Exception as e:
+                    logger.warning(f"[STM] Decompression failed for {marker}: {e}")
+                    result = result[:200]
+            else:
+                result = result[:200]
+
+            summary_parts.append(f"- [{marker}]: {result}...")
 
         return "\n".join(summary_parts)
+
+    def _get_stm_memory_stats(self) -> Dict[str, Any]:
+        """
+        Get STM memory usage statistics.
+
+        Phase 104.6: Track compression metrics for memory efficiency.
+        Returns:
+            Dict with total size, compressed size, and savings estimate
+        """
+        total_original = 0
+        total_compressed = 0
+        num_compressed = 0
+        total_tokens_saved = 0
+
+        for item in self.stm:
+            if item.get("compressed"):
+                total_original += item.get("original_size", 0)
+                total_compressed += item.get("compressed_size", 0)
+                num_compressed += 1
+                total_tokens_saved += item.get("tokens_saved", 0)
+            else:
+                # Estimate original size from truncated result
+                total_original += len(item.get("result", ""))
+
+        return {
+            "total_original_size": total_original,
+            "total_compressed_size": total_compressed,
+            "num_entries": len(self.stm),
+            "num_compressed": num_compressed,
+            "compression_ratio": (
+                round(total_original / total_compressed, 2)
+                if total_compressed > 0 else 0.0
+            ),
+            "tokens_saved_estimate": total_tokens_saved
+        }
+
+    def _log_stm_summary(self):
+        """Log STM statistics at pipeline completion."""
+        stats = self._get_stm_memory_stats()
+        if stats["num_entries"] > 0:
+            logger.info(
+                f"[STM] Pipeline STM Summary: "
+                f"{stats['num_entries']} entries, "
+                f"{stats['num_compressed']} compressed, "
+                f"~{stats['tokens_saved_estimate']} tokens saved "
+                f"({stats['compression_ratio']}x compression)"
+            )
     # MARKER_102.25_END
     # MARKER_102.3_END
 
@@ -556,6 +805,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             completed = pipeline_task.results['subtasks_completed']
             total = pipeline_task.results['subtasks_total']
             logger.info(f"[Pipeline] Completed: {completed}/{total} subtasks")
+
+            # MARKER_104_MEMORY_STM: Log memory compression statistics
+            self._log_stm_summary()
+
             self._emit_progress("@pipeline", f"🎉 Pipeline complete! {completed}/{total} subtasks done")
             # MARKER_102.28_END
 
@@ -566,20 +819,33 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             pipeline_task.status = "failed"
             pipeline_task.results = {"error": str(e)}
             self._update_task(pipeline_task)
+
+            # MARKER_104_MEMORY_STM: Log memory compression statistics even on failure
+            self._log_stm_summary()
+
             self._emit_progress("@pipeline", f"❌ Pipeline failed: {str(e)[:50]}")
             return asdict(pipeline_task)
     # MARKER_102.4_END
 
     # MARKER_104_PARALLEL_3: Sequential execution method (STM context passing)
+    # MARKER_104_STREAM_VISIBILITY: Added visibility-aware progress emission
     async def _execute_subtasks_sequential(
         self, pipeline_task: PipelineTask, phase_type: str, total_subtasks: int
     ):
         """
         Execute subtasks sequentially (default, safe mode).
         Preserves STM context passing between subtasks.
+        Uses visibility flags for selective streaming (Phase 104.7).
         """
+        # Get pipeline-level stream visibility
+        stream_level = pipeline_task.stream_level
+
         for i, subtask in enumerate(pipeline_task.subtasks):
             logger.info(f"[Pipeline] Subtask {i+1}/{total_subtasks}: {subtask.description[:40]}...")
+
+            # MARKER_104_STREAM_VISIBILITY: Check subtask visibility
+            if not subtask.visible:
+                logger.debug(f"[Pipeline] Subtask {i+1} hidden (visible=False)")
 
             # Inject STM context from previous subtasks
             if self.stm:
@@ -592,7 +858,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if subtask.needs_research:
                 subtask.status = "researching"
                 self._update_task(pipeline_task)
-                self._emit_progress("@researcher", f"🔍 Researching: {subtask.description[:40]}...", i+1, total_subtasks)
+
+                # Emit progress only if subtask is visible
+                if subtask.visible:
+                    self._emit_progress("@researcher", f"🔍 Researching: {subtask.description[:40]}...", i+1, total_subtasks)
 
                 # Use description as question if no explicit question
                 question = subtask.question or subtask.description
@@ -612,12 +881,32 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # Execute subtask
             subtask.status = "executing"
             self._update_task(pipeline_task)
-            self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks)
+
+            # Emit progress only if subtask is visible
+            if subtask.visible:
+                self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks)
 
             result = await self._execute_subtask(subtask, phase_type)
             subtask.result = result
             subtask.status = "done"
-            self._emit_progress("@coder", f"✅ Done: {subtask.marker or f'step_{i+1}'}", i+1, total_subtasks)
+
+            # Emit completion based on visibility flags
+            if subtask.visible:
+                self._emit_progress("@coder", f"✅ Done: {subtask.marker or f'step_{i+1}'}", i+1, total_subtasks)
+
+            # MARKER_104_STREAM_VISIBILITY: Emit stream event with result if stream_result=True
+            if subtask.stream_result and pipeline_task.visible_to_user:
+                self._emit_stream_event(
+                    "subtask_completed",
+                    {
+                        "subtask_idx": i + 1,
+                        "total": total_subtasks,
+                        "marker": subtask.marker or f"step_{i+1}",
+                        "result": result,
+                        "highlight_artifacts": pipeline_task.highlight_artifacts
+                    },
+                    visibility=stream_level
+                )
 
             # Add to STM for next subtask
             self._add_to_stm(subtask.marker or f"step_{i+1}", result)
@@ -626,6 +915,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
     # MARKER_104_PARALLEL_3_END
 
     # MARKER_104_PARALLEL_4: Parallel execution with asyncio.gather()
+    # MARKER_104_STREAM_VISIBILITY: Added visibility-aware progress emission
     async def _execute_subtasks_parallel(
         self, pipeline_task: PipelineTask, phase_type: str, total_subtasks: int
     ):
@@ -633,9 +923,12 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         Execute subtasks in parallel with semaphore control.
 
         Phase 104.2: Uses MAX_PARALLEL_PIPELINES to limit concurrency.
+        Phase 104.7: Uses visibility flags for selective streaming.
         Note: STM context is not passed between parallel subtasks (by design).
         """
         semaphore = _get_pipeline_semaphore()
+        stream_level = pipeline_task.stream_level
+
         self._emit_progress(
             "@pipeline",
             f"⚡ Parallel execution mode (max {MAX_PARALLEL_PIPELINES} concurrent)"
@@ -643,15 +936,19 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         logger.info(f"[Pipeline] Parallel execution with semaphore limit={MAX_PARALLEL_PIPELINES}")
 
         async def run_subtask_with_limit(idx: int, subtask: Subtask) -> tuple[int, str]:
-            """Run single subtask with semaphore limit."""
+            """Run single subtask with semaphore limit and visibility control."""
             async with semaphore:
                 logger.info(f"[Pipeline] Parallel subtask {idx+1}/{total_subtasks} acquired semaphore")
-                self._emit_progress("@coder", f"⚙️ [P] Executing: {subtask.description[:35]}...", idx+1, total_subtasks)
+
+                # MARKER_104_STREAM_VISIBILITY: Check subtask visibility before emitting
+                if subtask.visible:
+                    self._emit_progress("@coder", f"⚙️ [P] Executing: {subtask.description[:35]}...", idx+1, total_subtasks)
 
                 # Auto-trigger research if needed (inside semaphore)
                 if subtask.needs_research:
                     subtask.status = "researching"
-                    self._emit_progress("@researcher", f"🔍 [P] Researching: {subtask.description[:35]}...", idx+1, total_subtasks)
+                    if subtask.visible:
+                        self._emit_progress("@researcher", f"🔍 [P] Researching: {subtask.description[:35]}...", idx+1, total_subtasks)
 
                     question = subtask.question or subtask.description
                     research = await self._research(question)
@@ -673,7 +970,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 subtask.result = result
                 subtask.status = "done"
 
-                self._emit_progress("@coder", f"✅ [P] Done: {subtask.marker or f'step_{idx+1}'}", idx+1, total_subtasks)
+                # MARKER_104_STREAM_VISIBILITY: Emit based on visibility flags
+                if subtask.visible:
+                    self._emit_progress("@coder", f"✅ [P] Done: {subtask.marker or f'step_{idx+1}'}", idx+1, total_subtasks)
+
                 logger.info(f"[Pipeline] Parallel subtask {idx+1}/{total_subtasks} completed")
 
                 return (idx, result)
@@ -693,9 +993,25 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 # Mark as failed but don't stop other subtasks
             elif isinstance(res, tuple):
                 idx, result = res
-                # Add to STM (order may vary in parallel mode)
                 subtask = pipeline_task.subtasks[idx]
+
+                # Add to STM (order may vary in parallel mode)
                 self._add_to_stm(subtask.marker or f"step_{idx+1}", result)
+
+                # MARKER_104_STREAM_VISIBILITY: Emit stream event if stream_result=True
+                if subtask.stream_result and pipeline_task.visible_to_user:
+                    self._emit_stream_event(
+                        "subtask_completed",
+                        {
+                            "subtask_idx": idx + 1,
+                            "total": total_subtasks,
+                            "marker": subtask.marker or f"step_{idx+1}",
+                            "result": result,
+                            "highlight_artifacts": pipeline_task.highlight_artifacts,
+                            "parallel": True
+                        },
+                        visibility=stream_level
+                    )
 
         # Update pipeline task state
         self._update_task(pipeline_task)

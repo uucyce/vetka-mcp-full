@@ -1,5 +1,11 @@
 {
   "version": "1.0",
-  "spawn": {},
-  "artifacts": {}
+  "artifacts": {
+    "art_1": {
+      "id": "art_1",
+      "content": "test content",
+      "status": "staged"
+    }
+  },
+  "spawn": {}
 }

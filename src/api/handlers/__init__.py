@@ -49,6 +49,17 @@ from .workflow_handler import (
     determine_agents_to_call,
 )
 
+# Phase 104.7: Stream visibility handler
+from .stream_handler import (
+    StreamLevel,
+    StreamEventType,
+    StreamEvent,
+    StreamManager,
+    get_stream_manager,
+    create_stream_manager,
+    emit_stream_event,
+)
+
 
 def register_all_handlers(sio: AsyncServer, app=None):
     """
@@ -88,7 +99,7 @@ def register_all_handlers(sio: AsyncServer, app=None):
     register_jarvis_handlers(sio)  # Phase 104 - Jarvis Voice
     register_approval_socket_handlers(sio, app)  # Phase 104.4 - Approval Socket
 
-    print("  [Handlers] Socket.IO async handlers registered (Phase 104.4)")
+    print("  [Handlers] Socket.IO async handlers registered (Phase 104.7)")
     print("  [Handlers] ✅ group_message_handler registered (join_group, leave_group, group_message, group_typing)")
     print("  [Handlers] ✅ key_handlers registered (add_api_key, learn_key_type, get_key_status)")
     print("  [Handlers] ✅ workflow_socket_handler registered on /workflow namespace (Phase 60.2)")
@@ -98,3 +109,4 @@ def register_all_handlers(sio: AsyncServer, app=None):
     print("  [Handlers] ✅ search_handlers registered (search_query) - Phase 68")
     print("  [Handlers] ✅ jarvis_handler registered (jarvis_listen_start/stop, jarvis_audio_chunk) - Phase 104")
     print("  [Handlers] ✅ approval_socket_handler registered (approval_response, get_approval_details) - Phase 104.4")
+    print("  [Handlers] ✅ stream_handler available (StreamManager, visibility control) - Phase 104.7")

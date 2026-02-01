@@ -18,19 +18,17 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.tools import registry, SafeToolExecutor, ToolCall, PermissionLevel
 
-# Phase 17-L imports
+# Phase 17-L imports (updated for Phase 104+)
 from src.agents.tools import (
     SearchCodebaseTool,
     ExecuteCodeTool,
-    ValidateSyntaxTool,
-    RunTestsTool,
-    GetFileInfoTool,
-    CreateArtifactTool,
     get_tools_for_agent,
     get_tool_names_for_agent,
     AGENT_TOOL_PERMISSIONS,
-    AgentToolExecutor
+    AgentToolExecutor,
 )
+# Note: ValidateSyntaxTool, RunTestsTool, GetFileInfoTool, CreateArtifactTool
+# were removed during Phase 92 Big Pickle cleanup
 
 # Check if asyncio is properly marked for pytest, as the execute methods are async.
 # pytest-asyncio fixture handles this.
@@ -200,16 +198,14 @@ class TestAgentPermissions:
         assert "read_code_file" in dev_tools
         assert "write_code_file" in dev_tools
         assert "execute_code" in dev_tools
-        assert "create_artifact" in dev_tools
-        assert "validate_syntax" in dev_tools
+        # create_artifact and validate_syntax removed in Phase 92
 
-    def test_qa_tools_include_tests(self):
-        """QA should have run_tests and validate_syntax"""
+    def test_qa_tools_include_execute(self):
+        """QA should have execute_code for testing"""
         qa_tools = get_tool_names_for_agent("QA")
 
-        assert "run_tests" in qa_tools
-        assert "validate_syntax" in qa_tools
         assert "execute_code" in qa_tools
+        # run_tests and validate_syntax removed in Phase 92
         # QA should NOT be able to write files
         assert "write_code_file" not in qa_tools
 
@@ -227,6 +223,7 @@ class TestAgentPermissions:
 # PHASE 17-L: NEW TOOLS TESTS
 # ============================================
 
+@pytest.mark.skip(reason="ValidateSyntaxTool removed in Phase 92 Big Pickle cleanup")
 class TestValidateSyntaxTool:
     """Test syntax validation tool"""
 
@@ -358,6 +355,7 @@ class TestExecuteCodeTool:
         assert "4" in result.result
 
 
+@pytest.mark.skip(reason="GetFileInfoTool removed in Phase 92 Big Pickle cleanup")
 class TestGetFileInfoTool:
     """Test file info tool"""
 
@@ -383,15 +381,15 @@ class TestGetFileInfoTool:
         assert "not found" in result.error.lower()
 
 
+@pytest.mark.skip(reason="CreateArtifactTool removed in Phase 92 Big Pickle cleanup")
 class TestCreateArtifactTool:
     """Test artifact creation"""
 
     @pytest.fixture(autouse=True)
     def clear_artifacts(self):
         """Clear artifacts before each test"""
-        CreateArtifactTool.clear_artifacts()
+        pass  # CreateArtifactTool.clear_artifacts() - tool removed
         yield
-        CreateArtifactTool.clear_artifacts()
 
     @pytest.mark.asyncio
     async def test_create_code_artifact(self):
@@ -431,13 +429,14 @@ class TestAgentToolExecutor:
     def test_sync_execute(self):
         """Synchronous execution should work"""
         executor = AgentToolExecutor()
-        result = executor.execute("validate_syntax", {
-            "code": "x = 1",
-            "language": "python"
+        # Use search_codebase since validate_syntax was removed
+        result = executor.execute("search_codebase", {
+            "pattern": "def ",
+            "file_type": "py",
+            "path": "src"
         })
 
         assert result["success"]
-        assert result["result"]["valid"] is True
 
     def test_unknown_tool(self):
         """Unknown tool should return error"""
@@ -449,18 +448,18 @@ class TestAgentToolExecutor:
 
 
 class TestAllToolsRegistered:
-    """Test that all Phase 17-L tools are registered"""
+    """Test that core tools are registered"""
 
-    def test_new_tools_in_registry(self):
-        """Verify all Phase 17-L tools are in registry"""
+    def test_core_tools_in_registry(self):
+        """Verify core tools are in registry (updated for Phase 104+)"""
+        # Note: validate_syntax, run_tests, get_file_info, create_artifact
+        # were removed in Phase 92 Big Pickle cleanup
         expected_tools = [
             "search_codebase",
             "execute_code",
-            "validate_syntax",
-            "run_tests",
-            "get_file_info",
-            "search_weaviate",
-            "create_artifact"
+            "read_code_file",
+            "write_code_file",
+            "list_files",
         ]
 
         for tool_name in expected_tools:

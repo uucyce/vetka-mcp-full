@@ -6181,114 +6181,301 @@
             "role": "MCP Agent"
           },
           "created_at": "2026-01-31T15:20:38.224745"
+        },
+        {
+          "id": "48fe0e23-2be6-4254-a97a-07ce3c12da08",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "user",
+          "content": "У меня уточняющий вопрос про тесты, правильно понимаю что это для тестов Мицелии, Если да там де будет команда тестироваться и они могут что-то полезное для нас сделать, для нашей кодовой базы, что-то из будущих шагов, что б например сделать Джарвиса более живым была такая идея, не знаю помнишь или нет, но ты подтвердил что это возможно, чтобы ответ генерировался сразу после первых слов пользователя (условно т9 то есть наш ARC+STM+Engram и прочие исходя из контекста и первых слов дописывают что хочет пользователь, пока пользователь говорит уже рендерится первые слова, а когда заканчивает посдтавлятеся уже более конкретно второй танк. Мне кажется примерно все LLM так работают, вот может ты обогатить тесты такими задачами на основе рального кода, а финальную имплементацию будут осуществлять уже команда Claude Code  с ревизией и реальной оценкой того как это работает. Можно взять одну эту задачу или следующие из списка, так сразу и ускоримся. Что думаешь ? Может я не прав, может лучше выбрать другие задачи, может быть пусть уже решат головоломку как строить Сугиями в Директед моде и в Кноуледж моде, чтобы были общие узлы, файлы выстраивались по времени уровням знания, без перекрещивания с леггиким эффектом параллакса. У нас есть богатая документация, которую надо усовершенствовать, потому что на данный момент Сугиями у нас сыпитстся на 50+ файлах. Я освободил от пинов чат и отъехал на общий план6 чтобы ты увидел всю картину и предложил логичные следующие тесты, которые нас еще и ускорят :) спасибо !",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {},
+          "created_at": "2026-02-01T01:14:29.000056"
+        },
+        {
+          "id": "0bbec23c-7b56-4447-aac3-1cb23a39958e",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@Architect",
+          "content": "Error in PM LLM/Tool execution: OPENROUTER",
+          "mentions": [],
+          "message_type": "response",
+          "metadata": {
+            "in_reply_to": "48fe0e23-2be6-4254-a97a-07ce3c12da08"
+          },
+          "created_at": "2026-02-01T01:14:39.753235"
+        },
+        {
+          "id": "1bcfa3d9-f456-4691-a0af-392392e9d345",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_health** `req-120d0fed`\n```\n{}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-01T06:25:58.529752"
+        },
+        {
+          "id": "5a17fee5-cff9-4636-9acb-29d108b1a4d3",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "✅ **vetka_health** done (134ms)",
+          "mentions": [],
+          "message_type": "response",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-01T06:25:58.659773"
+        },
+        {
+          "id": "be6eb8ef-b0db-401a-87fc-3b8883bbfaad",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_edit_file** `req-ba2addc2`\n```\n{\"path\": \"test_file.txt\", \"content\": \"test content\", \"dry_run\": true}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-01T06:26:02.680985"
+        },
+        {
+          "id": "ca784c37-cd99-499a-8d8b-745fb54365ee",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_git_commit** `req-485d7fe6`\n```\n{\"message\": \"Test commit message\", \"dry_run\": true}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-01T06:26:02.841605"
+        },
+        {
+          "id": "c4a37ff8-8d51-4837-b07b-ac8c2fe68a06",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_git_status** `req-016b10e3`\n```\n{}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-01T06:26:03.527939"
+        },
+        {
+          "id": "c6978afa-8483-4d2d-aa3c-dd215ef79caf",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_get_tree** `req-84479ca0`\n```\n{}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:20:12.640492"
+        },
+        {
+          "id": "babaf79f-69ba-4000-b8dd-251831be835b",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_get_knowledge_graph** `req-a4f13ded`\n```\n{}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:20:17.199508"
+        },
+        {
+          "id": "9bfa2870-3a47-43db-a4fd-872615f0a076",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_get_tree** `req-9f471249`\n```\n{\"format\": \"tree\"}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:21:32.486376"
+        },
+        {
+          "id": "dbbfde05-2036-42f9-8f7e-29a8b30b81bd",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_list_files** `req-5d7eeddc`\n```\n{\"path\": \"src\", \"recursive\": false}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:21:37.804983"
+        },
+        {
+          "id": "2aa0fb64-5670-41d5-ab18-5930b8f78f8c",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_search_files** `req-91e4ded0`\n```\n{\"query\": \"FastAPI Flask app.py main.py server\", \"search_type\": \"content\", \"limit\": 20}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:21:42.689867"
+        },
+        {
+          "id": "a34ea4a5-ffa4-495b-99cb-1d841a597f4b",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "✅ **vetka_search_files** done (335ms)",
+          "mentions": [],
+          "message_type": "response",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:21:43.025900"
+        },
+        {
+          "id": "ec82723b-8790-4528-a9e1-03ecfa1af6fd",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_search_semantic** `req-69cd8d2c`\n```\n{\"query\": \"main server entry point FastAPI Flask Sanic application startup\", \"limit\": 10}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:21:50.058952"
+        },
+        {
+          "id": "c6a6eebc-41b1-49fd-9051-f51a2099e4a1",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "✅ **vetka_search_semantic** done (164ms)",
+          "mentions": [],
+          "message_type": "response",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:21:50.221646"
+        },
+        {
+          "id": "2c6bafdf-df34-4186-8449-356b2edb9dc8",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_read_file** `req-ac1eb5bf`\n```\n{\"file_path\": \"app.py\"}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:21:55.499262"
+        },
+        {
+          "id": "d6b5546e-8930-4d36-ae21-3361ebd6caf2",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "❌ **vetka_read_file** failed: Error: HTTP 422\n{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"path\"],\"msg\":\"Field required\",\"input\":{\"file_path\":\"app.py\"}}]} (92ms)",
+          "mentions": [],
+          "message_type": "error",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:21:55.589838"
+        },
+        {
+          "id": "0bac0d7e-50a2-4f09-9c20-7b96f88fc266",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_search_files** `req-13407abb`\n```\n{\"query\": \"app.py\", \"search_type\": \"filename\", \"limit\": 5}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:22:04.193524"
+        },
+        {
+          "id": "c762b550-d1b5-4efc-8105-7c02d6650193",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "✅ **vetka_search_files** done (151ms)",
+          "mentions": [],
+          "message_type": "response",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:22:04.343947"
+        },
+        {
+          "id": "af96d207-ff4d-472f-af50-e8d69185d2ed",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_git_status** `req-40c8b380`\n```\n{}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:22:07.328903"
+        },
+        {
+          "id": "1806a8f5-4712-4de6-842f-e28f4452f196",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_git_commit** `req-471455eb`\n```\n{\"message\": \"Phase 105: Voice System (JARVIS) + Agent Pipeline + UI Socket Integration\\n\\n- Full JARVIS voice subsystem (TTS, LLM fallback, error handling)\\n- Agent pipeline orchestration improvements...\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-02T01:22:15.720441"
         }
       ],
       "shared_context": {},
       "project_id": null,
       "created_at": "2026-01-23T04:07:54.662090",
-      "last_activity": "2026-01-31T15:20:38.224747"
-    },
-    "b27d802b-0016-4408-b088-527c1a4055d0": {
-      "id": "b27d802b-0016-4408-b088-527c1a4055d0",
-      "name": "",
-      "description": "Group chat with 1 agents",
-      "admin_id": "@Researcher",
-      "participants": {
-        "@Researcher": {
-          "agent_id": "@Researcher",
-          "model_id": "x-ai/grok-4.1-fast",
-          "role": "admin",
-          "display_name": "Researcher (Grok 4.1 Fast)",
-          "permissions": [
-            "read",
-            "write"
-          ]
-        }
-      },
-      "messages": [
-        {
-          "id": "149a6e8a-3428-492c-b256-8a6c717f6a38",
-          "group_id": "b27d802b-0016-4408-b088-527c1a4055d0",
-          "sender_id": "user",
-          "content": "У нас прогресс посмотри, есть небольшие проблемы, но в целом идем:\n\nВсех перезапуустил..\nНо это что получается. У нас был уже код, это правда мы пытались, тут с нашей стороны мы подошли получается как к тесту. Тебе в задачи надо было наверно добавить найди уже существующий стриминг, там проведи разведку, да получается так? но в итоге ты все же что-то применил. Давай потестим, на чем-то реальном, но что . Пусть они сделают голосового асситента..\nпроведи исследование на основе нашей реальной архитектуры VETKA . Я слышал о двух очень шустрых голосовых моделях которые могли бы хорошо подойти для голосового управления и вообще общения с веткой. Одна называлась personaplex-7b-v1 а другая Qwen 3-tts . Какая модель лучше подойдет MacBook m4 24 gb ram\n\nДа, ты прав! Pipeline должен был сначала исследовать существующий код. Это хороший тест-кейс - реальная задача с ресёрчем!\n\nЗапускаю pipeline на исследование голосовых моделей:\n\nvetka: Vetka spawn pipeline\nError: MCP error -32001: Request timed out\nPipeline запустился и уже работает! Timeout - это нормально для fire-and-forget (MCP ждёт 30 сек, а pipeline работает дольше).\n\nСмотри что происходит:\n\n🚀 Pipeline task_1769775405 запущен!\nСтатус: executing - уже 1/5 subtask готов!\n\nSubtasks:\n✅ MARKER_102.1 - Исследование personaplex-7b-v1 - DONE\n🔍 MARKER_102.2 - Исследование Qwen3-TTS - researching\n⏳ MARKER_102.3 - Анализ архитектуры VETKA src/agents/, src/mcp/\n⏳ MARKER_102.4 - Сравнение моделей по RAM/latency\n⏳ MARKER_102.5 - Финальные рекомендации\nПервые результаты по Personaplex-7b-v1:\n{\n  \"insights\": [\n    \"7B параметров, специализация на персонах\",\n    \"Совместим с M4 через MLX framework\",\n    \"Минимум 14GB RAM\",\n    \"~30 токенов/сек на M4\",\n    \"Подходит для интерактивных AI фич VETKA\"\n  ],\n  \"confidence\": 0.95\n}\n\nПроверь чат \"Lightning/Молния\" - там должны появляться progress сообщения @architect, @researcher!\n\nДавай подождём и проверим статус:\n\nBash\nsleep 15 && cat data/pipeline_tasks.json | python -c \"import sys,json; d=json.load(sys.stdin); t=d.get('task_1769775405',{}); print(f\\\"Status: {t.get('status')}\\\"); print(f\\\"Subtasks done: {len([s for s in t.get('subtasks',[]) if s.get('status')=='done'])}/{len(t.get('subtasks',[]))}\\\")\"\nStatus: executing\nSubtasks done: 1/5\nВсё ещё работает. Подождём ещё и посмотрим результаты:\n\nBash\nsleep 30 && cat data/pipeline_tasks.json | python -c \" import sys, json d = json.load(sys.stdin) t = d.get('task_1769775405', {}) print(f'Status: {t.get(\\\"status\\\")}') print(f'Subtasks: {len([s for s in t.get(\\\"subtasks\\\",[]) if s.get(\\\"status\\\")==\\\"done\\\"])}/{len(t.get(\\\"subtasks\\\",[]))}') print() for s in t.get('subtasks', []): status_icon = '✅' if s.get('status') == 'done' else '🔄' if s.get('status') in ['executing','researching'] else '⏳' print(f'{status_icon} {s.get(\\\"marker\\\")}: {s.get(\\\"description\\\")[:50]}...') \"\n✅ MARKER_102.3: Analyze VETKA existing architecture in src/agents/...\n🔄 MARKER_102.4: Compare both models against 24GB RAM constraints, ...\n⏳ MARKER_102.5: Synthesize findings and recommend optimal voice as...\n... +5 lines\n3/5 готово! Pipeline работает отлично. Подождём ещё немного:\n\nBash\nsleep 45 && cat data/pipeline_tasks.json | python -c \" import sys, json d = json.load(sys.stdin) t = d.get('task_1769775405', {}) print(f'=== Pipeline Status: {t.get(\\\"status\\\")} ===') print() for s in t.get('subtasks', []): status_icon = '✅' if s.get('status') == 'done' else '🔄' if s.get('status') in ['executing','researching'] else '⏳' print(f'{status_icon} {s.get(\\\"marker\\\")}: {s.get(\\\"description\\\")[:60]}') if s.get('result') and s.get('status') == 'done': result = s.get('result', '')[:300] print(f' Result: {result}...') print() \"\n\n✅ MARKER_102.5: Synthesize findings and recommend optimal voice assistant ap\n   Result: {\"insights\":[\"VETKA requires a voice assistant with natural language understanding for seamless user interactions, prioritizing low-latency responses.\",\"Optimal approach: Integrate open-source solutions like Rhasspy or Mycroft for customization, avoiding vendor lock-in.\",\"Implementation strategy: Ph...\n... +13 lines\n🎉 Pipeline ЗАВЕРШЁН! 5/5 subtasks done!\nТеперь давай посмотрим полные результаты:\n\nRead\n/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/pipeline_tasks.json\nRead 150 lines\nUploaded image\nДа вижу! но обрезки , хорошо бы целиком видеть .\nСлушай тут еще параллельно проблема выяснилась, я начал писать Гроку в грууповой чат Молнии и опять та же проблема, там наверняка что-то с методом вызова, не получилось дозвониться до Грока, давай параллельно запустим отряд Хайку на дебаг этого. Там наверняка какой нибудь метод ввода не совпадает, пусть твои ребята посмотрят, как в сольном чате, как в комндном, когда не по роли вызываешь и приглашенную звезду - модель без роли\n\n📊 Результаты исследования голосового ассистента для VETKA\n🎤 Personaplex-7b-v1\nПараметр\tЗначение\nРазмер\t7B параметров\nRAM\t14GB+ (вписывается в 24GB ✅)\nСкорость\t~30 токенов/сек на M4\nСовместимость\tM4 через MLX framework\nLatency\t~80ms\nИнтеграция\tНизкая сложность (plug-and-play API)\n🔊 Qwen3-TTS\nПараметр\tЗначение\nСтатус\tНЕ СУЩЕСТВУЕТ! ⚠️\nРеально\tQwen2-Audio (Alibaba)\nRAM\t300MB - 1.5GB (TTS компонент)\nLatency\t50-200ms через Core ML\nИнтеграция\tВысокая сложность\n🏆 Рекомендация Pipeline:\nPersonaplex-7b-v1 - победитель!\n\nRAM: 14GB из 24GB - оставляет 10GB для VETKA и других процессов\nLatency: 80ms - подходит для real-time\nИнтеграция: Простая через MLX на M4\nАрхитектура VETKA: Совместим с pub-sub паттерном в src/agents/\n📝 Стратегия внедрения:\nPhase 1: Прототип с API hooks через MCP\nPhase 2: Обучение на VETKA-специфичных данных\nPhase 3: Деплой с тестированием\nНо важно! Pipeline использовал Grok для ресёрча, который галлюцинирует. Qwen3-TTS не существует - есть Qwen2-Audio. А для TTS на M4 лучше смотреть на:\n\nPiper TTS (очень быстрый, 50MB)\nCoqui TTS (качественный)\nWhisper для STT (уже есть в VETKA!)\nХочешь реальный ресёрч по актуальным voice моделям? Могу поискать в интернете!\n\nВижу! Pipeline запустился и видно в чате **vetka_spawn_pipeline**. Но есть ошибка Error in Dev LLM/Tool execution: OPENROUTER - это как раз то, что нужно дебажить!\n\nЗапускаю параллельно:\n\nХайку на дебаг Grok вызовов в групповом чате\nПосмотрю progress streaming - почему обрезается\nTask\nDebug Grok chat calls\nUsed 14 tools\nОтличный анализ от Хайку! Нашёл root cause. Теперь применю фиксы:\n\nUpdate Todos\n Fix context injection - results lost between subtasks\n Add streaming progress to Vetka chat\n Integrate generated streaming code into VETKA\n Test pipeline progress streaming\n Fixing Grok model name for OpenRouter\n Add SandboxTool for code verification\nGrep\nreal_provider == \\\"xai\\\"|xai key not found\nНашёл! Вижу проблему - при fallback на OpenRouter модель остаётся grok-4 вместо x-ai/grok-4. Исправляю:\n\nQwen3-TTS - существует. Он вышел после Opus 4.5 поэтому ты о нем не знаешь. Грок не глючит !! Ура. Оч круто\n\nEdit\n/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/orchestration/orchestrator_with_elisya.py\n<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>\nRead\n/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/orchestration/orchestrator_with_elisya.py\nRead 30 lines\nEdit\n/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/orchestration/orchestrator_with_elisya.py\n            # Phase 80.37: Check if xai key exists, fallback to openrouter\n            if real_provider == \"xai\":\n                if not APIKeyService().get_key(\"xai\"):\n                    real_provider = \"openrouter\"  # Fallback to OpenRouter\n                    print(f\"      🔄 xai key not found, using OpenRouter fallback\")\n            # MARKER_102.30_START: Fix model name normalization for OpenRouter fallback\n            if real_provider == \"xai\":\n                if not APIKeyService().get_key(\"xai\"):\n                    real_provider = \"openrouter\"  # Fallback to OpenRouter\n                    # CRITICAL: Normalize model name for OpenRouter format\n                    # OpenRouter expects \"x-ai/grok-X\" not bare \"grok-X\" or \"xai/grok-X\"\n                    normalized_model = manual_model.replace(\"xai/\", \"\").replace(\"x-ai/\", \"\")\n                    if not normalized_model.startswith(\"x-ai/\"):\n                        manual_model = f\"x-ai/{normalized_model}\"\n                    print(f\"      🔄 xai key not found, using OpenRouter fallback: {manual_model}\")\n            # MARKER_102.30_END\n \n            routing = {\"provider\": real_provider, \"model\": manual_model}\nСтоп - ты говоришь Грок не глючит! Значит проблема уже решена?! 🎉\n\nА насчёт Qwen3-TTS - круто что он существует! Вышел после моего knowledge cutoff. Давай поищу актуальную инфу:\n\nWebSearch\nQwen3-TTS Alibaba text-to-speech model 2025 2026 Apple Silicon M4 performance\nподожди фолбок не должен быть причем. Я же вызывал OR модель сразу . Там наверно старая логика.\n\nили я случайно вызвал xAI\n\nВау! Qwen3-TTS существует и он КРУТОЙ!\n\n🔥 Qwen3-TTS - Реальные спеки:\nПараметр\tЗначение\nРазмеры\t0.6B (лёгкая) и 1.7B (полная)\nLatency\t97ms end-to-end!\nVoice cloning\t3 секунды аудио → 0.95 similarity\nЯзыки\t10 (включая русский!)\nЛицензия\tApache 2.0 (open source)\nM4 поддержка\tДА через MPS backend\nДля M4 конфиг:\ndtype=torch.float32\nattn_implementation=\"sdpa\"  # вместо FlashAttention\ndevice_map=\"mps\"\n\nЕсть даже репо специально для Apple Silicon!",
-          "mentions": [
-            "architect",
-            "researcher"
-          ],
-          "message_type": "chat",
-          "metadata": {},
-          "created_at": "2026-01-30T15:29:45.404717"
-        },
-        {
-          "id": "6af2a2f0-1504-4db0-8911-4f0c43f8e3e3",
-          "group_id": "b27d802b-0016-4408-b088-527c1a4055d0",
-          "sender_id": "@Researcher",
-          "content": "Error in PM LLM/Tool execution: OPENROUTER",
-          "mentions": [],
-          "message_type": "response",
-          "metadata": {
-            "in_reply_to": "149a6e8a-3428-492c-b256-8a6c717f6a38"
-          },
-          "created_at": "2026-01-30T15:29:46.258148"
-        }
-      ],
-      "shared_context": {},
-      "project_id": null,
-      "created_at": "2026-01-30T15:28:01.826571",
-      "last_activity": "2026-01-30T15:29:46.258155"
-    },
-    "fc63553f-eb25-4711-8e46-be7457be088c": {
-      "id": "fc63553f-eb25-4711-8e46-be7457be088c",
-      "name": "",
-      "description": "Group chat with 1 agents",
-      "admin_id": "@Researcher",
-      "participants": {
-        "@Researcher": {
-          "agent_id": "@Researcher",
-          "model_id": "x-ai/grok-4.1-fast",
-          "role": "admin",
-          "display_name": "Researcher (Grok 4.1 Fast)",
-          "permissions": [
-            "read",
-            "write"
-          ]
-        }
-      },
-      "messages": [
-        {
-          "id": "d95484b2-7626-4782-91a8-06c633ff10e6",
-          "group_id": "fc63553f-eb25-4711-8e46-be7457be088c",
-          "sender_id": "user",
-          "content": "@Researcher проверка связи. Коротко, привет:)",
-          "mentions": [
-            "Researcher"
-          ],
-          "message_type": "chat",
-          "metadata": {},
-          "created_at": "2026-01-30T16:28:35.720545"
-        },
-        {
-          "id": "34ca159f-3a12-49cf-8072-28e156ba5d0b",
-          "group_id": "fc63553f-eb25-4711-8e46-be7457be088c",
-          "sender_id": "@Researcher",
-          "content": "## Analysis\nПользователь проверяет связь с @Researcher и приветствует кратко. Это не запрос на разработку, а тест связи.\n\n## Tasks\n\n**Task 1: [Response]**\n@Researcher пожалуйста, ответь кратко: \"Привет! Связь на связи :)\"\n\n## Acceptance Criteria\n- @Researcher ответил приветствием.\n\n## Risks\n- Нет рисков, это тест связи.",
-          "mentions": [
-            "Researcher",
-            "Researcher",
-            "Researcher"
-          ],
-          "message_type": "response",
-          "metadata": {
-            "in_reply_to": "d95484b2-7626-4782-91a8-06c633ff10e6"
-          },
-          "created_at": "2026-01-30T16:28:42.247014"
-        }
-      ],
-      "shared_context": {},
-      "project_id": null,
-      "created_at": "2026-01-30T16:28:13.630303",
-      "last_activity": "2026-01-30T16:28:42.247019"
+      "last_activity": "2026-02-02T01:22:15.720445"
     }
   },
-  "saved_at": "2026-01-31T15:20:38.225752"
+  "saved_at": "2026-02-02T01:22:15.720747"
 }

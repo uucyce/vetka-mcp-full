@@ -5,8 +5,8 @@ Service layer for VETKA - business logic services.
 MARKER_104_SERVICES_INIT
 
 @status: active
-@phase: 104.4
-@depends: approval_service, file_lock_manager, scout_auditor
+@phase: 105
+@depends: approval_service, file_lock_manager, scout_auditor, persistence_service, mycelium_auditor
 @used_by: src.api.handlers, src.orchestration
 """
 
@@ -28,6 +28,38 @@ from src.services.scout_auditor import (
     AuditIssue,
     AuditSeverity,
 )
+# MARKER_104_CHAT_SAVE: Persistence service for chat event storage
+from src.services.persistence_service import (
+    save_chat_history,
+    load_chat_history,
+    delete_chat_history,
+    REDIS_AVAILABLE,
+)
+# MARKER_104_ARTIFACT_DISK: Disk artifact persistence service
+from src.services.disk_artifact_service import (
+    create_disk_artifact,
+    sanitize_artifact_name,
+    get_artifact_path,
+    list_artifacts,
+    read_artifact,
+    delete_artifact,
+    ARTIFACTS_DIR,
+    EXT_MAP,
+    MIN_CONTENT_LENGTH,
+)
+# MARKER_MYCELIUM_V2_ENFORCEMENT: MYCELIUM v2.0 enforcement service
+# MARKER_MYCELIUM_MCP_INTEGRATION: VETKA Tools client for MCP-style calls
+from src.services.mycelium_auditor import (
+    get_mycelium_auditor,
+    MyceliumAuditor,
+    MyceliumTaskType,
+    mycelium_research,
+    MyceliumOutput,
+    TokenBudget,
+    # MCP Integration
+    VETKAToolsClient,
+    get_vetka_tools_client,
+)
 
 __all__ = [
     # Approval service (VETKA + MYCELIUM modes)
@@ -48,4 +80,29 @@ __all__ = [
     'AuditResult',
     'AuditIssue',
     'AuditSeverity',
+    # Persistence service (MARKER_104_CHAT_SAVE)
+    'save_chat_history',
+    'load_chat_history',
+    'delete_chat_history',
+    'REDIS_AVAILABLE',
+    # MARKER_104_ARTIFACT_DISK: Disk artifact service
+    'create_disk_artifact',
+    'sanitize_artifact_name',
+    'get_artifact_path',
+    'list_artifacts',
+    'read_artifact',
+    'delete_artifact',
+    'ARTIFACTS_DIR',
+    'EXT_MAP',
+    'MIN_CONTENT_LENGTH',
+    # MARKER_MYCELIUM_V2_ENFORCEMENT: MYCELIUM v2.0 enforcement service
+    'get_mycelium_auditor',
+    'MyceliumAuditor',
+    'MyceliumTaskType',
+    'mycelium_research',
+    'MyceliumOutput',
+    'TokenBudget',
+    # MARKER_MYCELIUM_MCP_INTEGRATION: VETKA Tools client
+    'VETKAToolsClient',
+    'get_vetka_tools_client',
 ]

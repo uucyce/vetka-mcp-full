@@ -6,19 +6,23 @@ Supports Ollama (qwen2.5:3b, phi3:mini, mistral) for low-latency responses.
 
 @file jarvis_llm.py
 @status active
-@phase 104.6
-@depends aiohttp, logging
+@phase 105
+@depends aiohttp, logging, asyncio
 @used_by jarvis_handler.py
+
+MARKER_105_OLLAMA_TIMEOUT_FIX
 
 Grok Recommendations Applied:
 - Use quantized models (qwen2.5:3b-q4_0) for speed
 - Limit tokens (num_predict: 100) for voice responses
 - Lower context window (num_ctx: 2048) for faster processing
 - Streaming for perceived latency reduction
+- CRITICAL: asyncio.wait_for() timeout to prevent server hangs
 """
 
 import logging
 import aiohttp
+import asyncio
 import json
 from typing import Optional, Dict, Any, AsyncGenerator
 from dataclasses import dataclass
@@ -207,23 +211,37 @@ Avoid bullet points, code blocks, or long explanations unless explicitly asked."
             session = await self._get_session()
             logger.info(f"[JarvisLLM] Generating response for: {transcript[:50]}...")
 
-            async with session.post(
-                f"{self.config.base_url}/api/generate",
-                json=payload
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    response = data.get("response", "").strip()
+            # MARKER_105_OLLAMA_TIMEOUT_FIX: Wrap in asyncio.wait_for to prevent hangs
+            async def _do_request():
+                async with session.post(
+                    f"{self.config.base_url}/api/generate",
+                    json=payload
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        return data
+                    else:
+                        error = await resp.text()
+                        logger.error(f"[JarvisLLM] Ollama error {resp.status}: {error}")
+                        return None
 
-                    # Log stats
-                    eval_duration = data.get("eval_duration", 0) / 1e9  # ns to s
-                    logger.info(f"[JarvisLLM] Response generated in {eval_duration:.2f}s: {response[:50]}...")
+            try:
+                data = await asyncio.wait_for(
+                    _do_request(),
+                    timeout=self.config.timeout  # Use config timeout (default 30s)
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"[JarvisLLM] Ollama timeout after {self.config.timeout}s - preventing hang!")
+                return "I'm taking too long to respond. Let me try a simpler answer."
 
-                    return response
-                else:
-                    error = await resp.text()
-                    logger.error(f"[JarvisLLM] Ollama error {resp.status}: {error}")
-                    return "I'm having trouble processing that. Could you try again?"
+            if data:
+                response = data.get("response", "").strip()
+                # Log stats
+                eval_duration = data.get("eval_duration", 0) / 1e9  # ns to s
+                logger.info(f"[JarvisLLM] Response generated in {eval_duration:.2f}s: {response[:50]}...")
+                return response
+            else:
+                return "I'm having trouble processing that. Could you try again?"
 
         except aiohttp.ClientError as e:
             logger.error(f"[JarvisLLM] Connection error: {e}")
