@@ -53,20 +53,32 @@ from mcp.types import Tool, TextContent
 
 # MARKER_106a_1: CLI arguments with env var support
 def parse_args():
-    parser = argparse.ArgumentParser(description='VETKA MCP Bridge')
-    parser.add_argument('--http', action='store_true',
-                        default=os.getenv('MCP_HTTP_MODE', '').lower() == 'true',
-                        help='Use HTTP transport')
-    parser.add_argument('--ws', action='store_true',
-                        default=os.getenv('MCP_WS_MODE', '').lower() == 'true',
-                        help='Enable WebSocket endpoint')
-    parser.add_argument('--port', type=int,
-                        default=int(os.getenv('MCP_PORT', '5002')),
-                        help='HTTP/WS port')
-    parser.add_argument('--session-id', type=str,
-                        default=os.getenv('MCP_SESSION_ID'),
-                        help='Session ID for isolation')
-    return parser.parse_args()
+    """Parse CLI args safely - returns defaults if called via MCP stdio"""
+    try:
+        parser = argparse.ArgumentParser(description='VETKA MCP Bridge')
+        parser.add_argument('--http', action='store_true',
+                            default=os.getenv('MCP_HTTP_MODE', '').lower() == 'true',
+                            help='Use HTTP transport')
+        parser.add_argument('--ws', action='store_true',
+                            default=os.getenv('MCP_WS_MODE', '').lower() == 'true',
+                            help='Enable WebSocket endpoint')
+        parser.add_argument('--port', type=int,
+                            default=int(os.getenv('MCP_PORT', '5002')),
+                            help='HTTP/WS port')
+        parser.add_argument('--session-id', type=str,
+                            default=os.getenv('MCP_SESSION_ID'),
+                            help='Session ID for isolation')
+        # parse_known_args ignores unknown args (safe for MCP stdio)
+        args, _ = parser.parse_known_args()
+        return args
+    except Exception:
+        # Fallback to defaults if parsing fails
+        class DefaultArgs:
+            http = os.getenv('MCP_HTTP_MODE', '').lower() == 'true'
+            ws = os.getenv('MCP_WS_MODE', '').lower() == 'true'
+            port = int(os.getenv('MCP_PORT', '5002'))
+            session_id = os.getenv('MCP_SESSION_ID')
+        return DefaultArgs()
 
 # Session context for async propagation
 session_context: contextvars.ContextVar[str] = contextvars.ContextVar('session_id', default='default')
