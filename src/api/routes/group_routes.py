@@ -101,6 +101,40 @@ async def get_group(group_id: str):
     return {'group': group}
 
 
+# MARKER_GROUP_RENAME_API: Phase 108.5 - Rename group endpoint
+class UpdateGroupRequest(BaseModel):
+    name: str
+
+
+@router.patch("/{group_id}")
+async def update_group(group_id: str, body: UpdateGroupRequest):
+    """
+    Update group name.
+    Phase 108.5: Enable group chat renaming.
+
+    Args:
+        group_id: Group UUID
+        body: Request body with new name
+
+    Returns:
+        Success status with new name
+    """
+    if not body.name or not body.name.strip():
+        raise HTTPException(status_code=400, detail="name is required and cannot be empty")
+
+    manager = get_group_chat_manager()
+    success = await manager.update_group_name(group_id, body.name.strip())
+
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Group {group_id} not found")
+
+    return {
+        "success": True,
+        "group_id": group_id,
+        "name": body.name.strip()
+    }
+
+
 @router.post("/{group_id}/participants")
 async def add_participant(group_id: str, body: AddParticipantRequest):
     """Add participant to group."""

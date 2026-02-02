@@ -36,6 +36,25 @@ import uuid
 from src.utils.chat_utils import detect_response_type, get_agent_model_name
 
 
+def extract_semantic_key(message_text: str, fallback: str = "chat") -> str:
+    """
+    Extract semantic key from message for chat naming.
+
+    Args:
+        message_text: User message text
+        fallback: Fallback key if extraction fails
+
+    Returns:
+        Semantic key like 'fix_bug_report' (max 30 chars)
+    """
+    words = message_text.strip().split()[:5]
+    noise_words = {'the', 'a', 'an', 'is', 'are', 'what', 'how', 'can', 'do',
+                   'does', 'in', 'on', 'at', 'как', 'что', 'в'}
+    key_words = [w.lower() for w in words if w.lower() not in noise_words]
+    semantic_key = '_'.join(key_words[:3])[:30] or fallback
+    return semantic_key if semantic_key else fallback
+
+
 def register_user_message_handler(sio, app=None):
     """Register the user_message Socket.IO handler."""
 
@@ -294,8 +313,10 @@ def register_user_message_handler(sio, app=None):
 
                     # Phase 51.1: Load chat history
                     chat_history = get_chat_history_manager()
-                    # MARKER_CHAT_SEMANTIC_NAMING: Auto-generate semantic key for solo chat name - IMPLEMENTED
-                    # Generate semantic key from first user message content
+                    # MARKER_CHAT_NAMING: Solo chat uses semantic key instead of structured display_name
+                    # Current: generate_semantic_key() creates chat identifier like 'fix_bug_report', stored as file_path
+                    # Expected: Pass message text as display_name and set context_type='topic' for semantic chats
+                    # Fix: Pass display_name parameter to get_or_create_chat() with semantic_key, keep file_path as 'unknown'
                     def generate_semantic_key(message_text: str, node_path: str) -> str:
                         """Extract semantic key from message content (topic/intent)"""
                         # Get first 3-5 words, remove noise words, limit to 30 chars
@@ -307,7 +328,7 @@ def register_user_message_handler(sio, app=None):
                         return semantic_key if semantic_key else node_path
 
                     semantic_chat_key = generate_semantic_key(text, node_path)
-                    chat_id = chat_history.get_or_create_chat(semantic_chat_key)
+                    chat_id = chat_history.get_or_create_chat('unknown', context_type='topic', display_name=semantic_chat_key)
                     history_messages = chat_history.get_chat_messages(chat_id)
                     history_context = format_history_for_prompt(
                         history_messages, max_messages=10
@@ -479,8 +500,14 @@ def register_user_message_handler(sio, app=None):
                 print(f"[MODEL_DIRECTORY] Using provider_registry for {requested_model}")
 
                 # Phase 51.1: Load chat history
+                # MARKER_CHAT_NAMING: Fix 1/6 - Use semantic key for chat naming
                 chat_history = get_chat_history_manager()
-                chat_id = chat_history.get_or_create_chat(node_path)
+                semantic_key = extract_semantic_key(text)
+                chat_id = chat_history.get_or_create_chat(
+                    'unknown',
+                    context_type='topic',
+                    display_name=semantic_key
+                )
                 history_messages = chat_history.get_chat_messages(chat_id)
                 history_context = format_history_for_prompt(
                     history_messages, max_messages=10
@@ -653,9 +680,15 @@ def register_user_message_handler(sio, app=None):
                 )
 
                 # Phase 51.4: Emit message_sent event for surprise calculation
+                # MARKER_CHAT_NAMING: Fix 2/6 - Use semantic key for chat naming
                 try:
                     chat_history = get_chat_history_manager()
-                    chat_id = chat_history.get_or_create_chat(node_path)
+                    semantic_key = extract_semantic_key(text)
+                    chat_id = chat_history.get_or_create_chat(
+                        'unknown',
+                        context_type='topic',
+                        display_name=semantic_key
+                    )
                     await emit_cam_event(
                         "message_sent",
                         {
@@ -731,8 +764,14 @@ def register_user_message_handler(sio, app=None):
                 # ========================================
                 try:
                     # Phase 51.1: Load chat history
+                    # MARKER_CHAT_NAMING: Fix 3/6 - Use semantic key for chat naming
                     chat_history = get_chat_history_manager()
-                    chat_id = chat_history.get_or_create_chat(node_path)
+                    semantic_key = extract_semantic_key(text)
+                    chat_id = chat_history.get_or_create_chat(
+                        'unknown',
+                        context_type='topic',
+                        display_name=semantic_key
+                    )
                     history_messages = chat_history.get_chat_messages(chat_id)
                     history_context = format_history_for_prompt(
                         history_messages, max_messages=10
@@ -990,9 +1029,15 @@ When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!
                     )
 
                     # Phase 51.4: Emit message_sent event for surprise calculation
+                    # MARKER_CHAT_NAMING: Fix 4/6 - Use semantic key for chat naming
                     try:
                         chat_history = get_chat_history_manager()
-                        chat_id = chat_history.get_or_create_chat(node_path)
+                        semantic_key = extract_semantic_key(text)
+                        chat_id = chat_history.get_or_create_chat(
+                            'unknown',
+                            context_type='topic',
+                            display_name=semantic_key
+                        )
                         await emit_cam_event(
                             "message_sent",
                             {
@@ -1043,9 +1088,15 @@ When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!
         )
 
         # Phase 51.4: Emit message_sent event for surprise calculation
+        # MARKER_CHAT_NAMING: Fix 5/6 - Use semantic key for chat naming
         try:
             chat_history = get_chat_history_manager()
-            chat_id = chat_history.get_or_create_chat(node_path)
+            semantic_key = extract_semantic_key(text)
+            chat_id = chat_history.get_or_create_chat(
+                'unknown',
+                context_type='topic',
+                display_name=semantic_key
+            )
             await emit_cam_event(
                 "message_sent",
                 {"chat_id": chat_id, "content": text, "role": "user"},
@@ -1825,9 +1876,15 @@ Provide your {agent_name} analysis:
             )
 
             # Phase 51.4: Emit message_sent event for surprise calculation
+            # MARKER_CHAT_NAMING: Fix 6/6 - Use semantic key for chat naming
             try:
                 chat_history = get_chat_history_manager()
-                chat_id = chat_history.get_or_create_chat(node_path)
+                semantic_key = extract_semantic_key(text)
+                chat_id = chat_history.get_or_create_chat(
+                    'unknown',
+                    context_type='topic',
+                    display_name=semantic_key
+                )
                 await emit_cam_event(
                     "message_sent",
                     {"chat_id": chat_id, "content": resp["text"], "role": "assistant"},

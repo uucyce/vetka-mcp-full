@@ -179,6 +179,9 @@
   padding: 8px;
   border-top: 1px solid #222;
   background: #0f0f0f;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .chat-sidebar-refresh {
@@ -191,6 +194,9 @@
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .chat-sidebar-refresh:hover:not(:disabled) {
@@ -202,6 +208,39 @@
 .chat-sidebar-refresh:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Phase 107.3: Load More button - VETKA gray style */
+.chat-sidebar-load-more {
+  width: 100%;
+  padding: 8px;
+  background: #333;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #ccc;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chat-sidebar-load-more:hover:not(:disabled) {
+  background: #444;
+  border-color: #555;
+  color: #fff;
+}
+
+.chat-sidebar-load-more:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Phase 107.3: Footer info text */
+.chat-sidebar-footer-info {
+  text-align: center;
+  font-size: 11px;
+  color: #666;
+  padding: 4px;
 }
 
 /* Scrollbar styling */

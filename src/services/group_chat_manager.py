@@ -868,6 +868,35 @@ class GroupChatManager:
         """Get all groups."""
         return [g.to_dict() for g in self._groups.values()]
 
+    # MARKER_GROUP_RENAME_HANDLER: Phase 108.5 - Update group name
+    async def update_group_name(self, group_id: str, new_name: str) -> bool:
+        """
+        Update group name.
+        Phase 108.5: Enable group chat renaming.
+
+        Args:
+            group_id: Group UUID
+            new_name: New name for the group
+
+        Returns:
+            True if updated successfully, False if group not found
+        """
+        async with self._lock:
+            group = self._groups.get(group_id)
+            if not group:
+                logger.warning(f"[GroupChat] Cannot rename - group {group_id} not found")
+                return False
+
+            old_name = group.name
+            group.name = new_name.strip()
+            group.last_activity = datetime.now()
+
+            # Save changes to disk
+            await self.save_to_json()
+
+            logger.info(f"[GroupChat] Renamed group {group_id}: '{old_name}' -> '{new_name}'")
+            return True
+
     def get_agent_groups(self, agent_id: str) -> List[dict]:
         """Get groups for specific agent."""
         group_ids = self._agent_groups.get(agent_id, [])

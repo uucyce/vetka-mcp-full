@@ -29,6 +29,11 @@ from typing import Dict, Any, Optional, List
 from .user_memory import UserPreferences, create_user_preferences
 
 
+# MARKER_ENGRAM_QDRANT_FIX: Core integer ID conversion function
+# Problem: 400 Bad Request errors when sending vectors to Qdrant REST API
+# Fix needed: Verify this conversion handles all edge cases and audit GET request formation
+# Test case: Ensure UUID5 conversion is deterministic and values fit Qdrant constraints
+
 def _user_id_to_point_id(user_id: str) -> int:
     """
     Convert string user_id to integer point ID for Qdrant REST API.
@@ -56,6 +61,7 @@ try:
         Filter,
         FieldCondition,
         Range,
+        PointIdsList,
     )
 
     QDRANT_AVAILABLE = True
@@ -446,9 +452,11 @@ class EngramUserMemory:
         # Remove from Qdrant
         if self.qdrant and QDRANT_AVAILABLE:
             try:
+                # FIX_104.7: Convert string user_id to integer point ID and use PointIdsList
+                point_id = _user_id_to_point_id(user_id)
                 self.qdrant.delete(
                     collection_name=self.COLLECTION_NAME,
-                    points_selector={"points": [user_id]},
+                    points_selector=PointIdsList(points=[point_id]),
                 )
             except Exception as e:
                 logger.warning(f"[EngramUserMemory] Qdrant delete failed: {e}")

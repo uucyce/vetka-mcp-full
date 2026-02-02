@@ -348,9 +348,19 @@ async def get_jarvis_context(user_id: str, transcript: str) -> Dict[str, Any]:
     except Exception as e:
         logger.warning(f"[JarvisContext] STM unavailable: {e}")
 
-    # NOTE: Engram/Qdrant disabled for now - causes 400 Bad Request spam
-    # TODO: Fix Engram vector format issue, then re-enable
-    # User preferences can be added back once Qdrant issue is resolved
+    # FIX_104.7: Engram now uses integer IDs for Qdrant REST API (re-enabled)
+    # User preferences from Engram memory (for personalized responses)
+    try:
+        from src.memory.engram_user_memory import get_engram_user_memory
+        engram = get_engram_user_memory()
+
+        # Get communication style preferences (affects response tone)
+        formality = engram.get_preference(user_id, "communication_style", "formality")
+        if formality is not None:
+            context["formality"] = formality
+            logger.debug(f"[JarvisContext] Engram formality: {formality}")
+    except Exception as e:
+        logger.warning(f"[JarvisContext] Engram unavailable: {e}")
 
     return context
 

@@ -16,9 +16,12 @@ Features:
 
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ChatHistoryManager:
@@ -56,8 +59,58 @@ class ChatHistoryManager:
             }
         }
 
+    def _enforce_retention_policy(self) -> None:
+        """
+        Trim old chats if limits exceeded. Call before save.
+
+        Phase 107.3: Retention policy to prevent unbounded growth.
+        - MAX_CHATS: Keep newest 1000 chats by updated_at
+        - MAX_AGE_DAYS: Remove chats older than 90 days
+        - MAX_FILE_SIZE_MB: Target file size (10MB) enforced via count/age limits
+        """
+        MAX_CHATS = 1000
+        MAX_AGE_DAYS = 90
+
+        chats = self.history.get("chats", {})
+        original_count = len(chats)
+
+        # 1. Check total count - keep newest MAX_CHATS by updated_at
+        if len(chats) > MAX_CHATS:
+            sorted_ids = sorted(
+                chats.keys(),
+                key=lambda x: chats[x].get("updated_at", ""),
+                reverse=True
+            )
+            for old_id in sorted_ids[MAX_CHATS:]:
+                del chats[old_id]
+            logger.info(f"[Retention] Trimmed by count: {original_count} -> {len(chats)} chats")
+
+        # 2. Check age - remove chats older than MAX_AGE_DAYS
+        cutoff = datetime.now() - timedelta(days=MAX_AGE_DAYS)
+        removed_by_age = 0
+        for chat_id, chat in list(chats.items()):
+            updated = chat.get("updated_at", "")
+            if updated:
+                try:
+                    updated_dt = datetime.fromisoformat(updated.replace("Z", ""))
+                    if updated_dt < cutoff:
+                        del chats[chat_id]
+                        removed_by_age += 1
+                except Exception as e:
+                    logger.warning(f"[Retention] Invalid timestamp for chat {chat_id}: {e}")
+
+        if removed_by_age > 0:
+            logger.info(f"[Retention] Removed {removed_by_age} chats older than {MAX_AGE_DAYS} days")
+
+        # Log final stats
+        if len(chats) < original_count:
+            logger.info(f"[Retention] Total cleanup: {original_count} -> {len(chats)} chats")
+
     def _save(self) -> None:
         """Save history to JSON file."""
+        # Phase 107.3: Enforce retention policy before save
+        self._enforce_retention_policy()
+
         try:
             self.history_file.write_text(
                 json.dumps(self.history, indent=2, ensure_ascii=False),
@@ -259,15 +312,49 @@ class ChatHistoryManager:
         """
         return self.history["chats"].get(chat_id)
 
-    def get_all_chats(self) -> List[Dict[str, Any]]:
+    def get_all_chats(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        load_from_end: bool = True
+    ) -> List[Dict[str, Any]]:
         """
-        Get all chats sorted by updated_at (newest first).
+        Get chats with pagination.
+
+        Phase 107.3: Pagination support to prevent loading 4MB+ chat files.
+
+        Args:
+            limit: Max chats to return (default 50)
+            offset: Skip first N chats (default 0)
+            load_from_end: If True, return newest chats first (default True)
 
         Returns:
-            List of chat objects
+            List of chat dicts, sorted by updated_at desc
         """
         chats = list(self.history["chats"].values())
-        return sorted(chats, key=lambda x: x.get("updated_at", ""), reverse=True)
+        sorted_chats = sorted(
+            chats,
+            key=lambda x: x.get("updated_at", ""),
+            reverse=True  # Newest first
+        )
+
+        if load_from_end:
+            # Return from end (newest)
+            return sorted_chats[offset:offset + limit]
+        else:
+            # Return from beginning (oldest)
+            return sorted_chats[-(offset + limit):-offset or None]
+
+    def get_total_chats_count(self) -> int:
+        """
+        Return total number of chats.
+
+        Phase 107.3: Needed for pagination metadata.
+
+        Returns:
+            Total count of chats
+        """
+        return len(self.history.get("chats", {}))
 
     def get_chats_for_file(self, file_path: str) -> List[Dict[str, Any]]:
         """
@@ -306,6 +393,10 @@ class ChatHistoryManager:
         Rename a chat (set display_name).
 
         Phase 74: Allow custom chat names independent of file_name.
+
+        MARKER_EDIT_NAME_HANDLER: Backend handler in ChatHistoryManager.rename_chat()
+        Status: WORKING - Updates display_name field and saves to JSON
+        Issue: NONE - Handler is fully functional
 
         Args:
             chat_id: Chat UUID
@@ -433,6 +524,85 @@ class ChatHistoryManager:
         if not chat:
             return None
         return json.dumps(chat, indent=2, ensure_ascii=False)
+
+    # MARKER_108_3: Chat digest for MCP context
+    def get_chat_digest(self, chat_id: str, max_messages: int = 10) -> dict:
+        """
+        Get compressed chat context for MCP agents.
+
+        Phase 108.3: Provides lightweight chat summary for MCP context injection.
+        Returns recent messages, agent logs, and optional ELISION summary.
+
+        Args:
+            chat_id: Chat UUID
+            max_messages: Max recent messages to include (default 10)
+
+        Returns:
+            Dict with chat_id, recent_messages, agent_logs, summary
+        """
+        chat = self.get_chat(chat_id)
+        if not chat:
+            return {
+                "chat_id": chat_id,
+                "error": "Chat not found",
+                "recent_messages": [],
+                "agent_logs": [],
+                "summary": ""
+            }
+
+        # Get recent messages (last N)
+        all_messages = chat.get("messages", [])
+        recent_messages = all_messages[-max_messages:] if len(all_messages) > max_messages else all_messages
+
+        # Extract agent logs (messages with role="agent" or role="system")
+        agent_logs = [
+            {
+                "sender": msg.get("sender_id", msg.get("role", "unknown")),
+                "content": msg.get("content", "")[:200],  # Truncate to 200 chars
+                "timestamp": msg.get("timestamp", ""),
+                "type": msg.get("message_type", "chat")
+            }
+            for msg in recent_messages
+            if msg.get("role") in ["agent", "system"] or msg.get("sender_id", "").startswith("agent_")
+        ]
+
+        # Create basic summary
+        total_messages = len(all_messages)
+        user_messages = sum(1 for m in all_messages if m.get("role") == "user")
+        assistant_messages = sum(1 for m in all_messages if m.get("role") == "assistant")
+
+        summary = (
+            f"Chat {chat.get('display_name', chat.get('file_name', 'Unknown'))} "
+            f"({total_messages} messages: {user_messages} user, {assistant_messages} assistant)"
+        )
+
+        # Optional: Try to use ELISION compression for summary if available
+        try:
+            from src.memory.elision import compress_context
+            compressed = compress_context({"messages": recent_messages})
+            if compressed and isinstance(compressed, str):
+                summary += f" | Compressed: {compressed[:150]}..."
+        except Exception:
+            # If ELISION unavailable, skip compression
+            pass
+
+        return {
+            "chat_id": chat_id,
+            "recent_messages": [
+                {
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", "")[:500],  # Truncate for digest
+                    "timestamp": msg.get("timestamp", ""),
+                    "sender": msg.get("sender_id", msg.get("role", "unknown"))
+                }
+                for msg in recent_messages
+            ],
+            "agent_logs": agent_logs,
+            "summary": summary,
+            "context_type": chat.get("context_type", "file"),
+            "file_path": chat.get("file_path", "unknown"),
+            "total_messages": total_messages
+        }
 
 
 # Singleton instance

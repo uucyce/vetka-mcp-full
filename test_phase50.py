@@ -55,9 +55,9 @@ def test_chat_history_manager():
     for i, msg in enumerate(messages, 1):
         print(f"  Message {i}: {msg['role']} - {msg['content'][:50]}...")
 
-    # Test 5: Get all chats
+    # Test 5: Get all chats (Phase 107.3: now supports pagination)
     print("\n[TEST 5] Getting all chats...")
-    all_chats = manager.get_all_chats()
+    all_chats = manager.get_all_chats()  # Uses default limit=50, offset=0
     print(f"✓ Total chats: {len(all_chats)}")
 
     # Test 6: Get chat for specific file

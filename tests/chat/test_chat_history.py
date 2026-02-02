@@ -421,6 +421,7 @@ class TestBackwardCompatibility:
             json.dump(mixed_chats, f)
 
         manager = ChatHistoryManager(history_file=temp_history_file)
+        # Phase 107.3: get_all_chats now supports pagination, but defaults load all (limit=50, offset=0)
         all_chats = manager.get_all_chats()
 
         assert len(all_chats) == 2

@@ -49,22 +49,49 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [chats, setChats] = useState<Chat[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const LIMIT = 50;
 
-  // Load chats when sidebar opens
+  // Load chats on component mount (auto-load on app startup)
+  useEffect(() => {
+    loadChats(true);
+  }, []);
+
+  // Reload chats when sidebar opens (refresh on visibility)
   useEffect(() => {
     if (isOpen) {
-      loadChats();
+      loadChats(true);
     }
   }, [isOpen]);
 
-  const loadChats = async () => {
-    setLoading(true);
+  const loadChats = async (reset: boolean = false) => {
+    if (reset) {
+      setLoading(true);
+      setOffset(0);
+    } else {
+      setLoadingMore(true);
+    }
+
     try {
-      const response = await fetch('/api/chats');
+      const currentOffset = reset ? 0 : offset;
+      const response = await fetch(`/api/chats?limit=${LIMIT}&offset=${currentOffset}`);
       if (response.ok) {
         const data = await response.json();
-        setChats(data.chats || []);
-        // console.log(`[ChatSidebar] Loaded ${data.chats?.length || 0} chats`);
+
+        if (reset) {
+          setChats(data.chats || []);
+        } else {
+          setChats(prev => [...prev, ...(data.chats || [])]);
+        }
+
+        setTotal(data.total || 0);
+        setHasMore(data.has_more || false);
+        setOffset(currentOffset + (data.chats?.length || 0));
+
+        // console.log(`[ChatSidebar] Loaded ${data.chats?.length || 0} chats (total: ${data.total})`);
       } else {
         console.error(`[ChatSidebar] Error loading chats: ${response.status}`);
       }
@@ -72,6 +99,13 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       console.error('[ChatSidebar] Error fetching chats:', error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  const loadMoreChats = () => {
+    if (!loadingMore && hasMore) {
+      loadChats(false);
     }
   };
 
@@ -246,6 +280,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             </div>
 
             {/* Phase 74.3: Actions with SVG icons */}
+            {/* MARKER_EDIT_NAME_SIDEBAR: Edit Name button in sidebar history */}
+            {/* Status: WORKING - handleRenameChat() -> PATCH /api/chats/{id} */}
+            {/* Issue: NONE - This button is fully functional */}
             <div className="chat-sidebar-item-actions">
               <button
                 className="chat-sidebar-item-edit"
@@ -272,11 +309,11 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         ))}
       </div>
 
-      {/* Refresh Button */}
+      {/* Footer with Refresh and Load More */}
       <div className="chat-sidebar-footer">
         <button
           className="chat-sidebar-refresh"
-          onClick={loadChats}
+          onClick={() => loadChats(true)}
           disabled={loading}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 6 }}>
@@ -285,6 +322,22 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           </svg>
           {loading ? 'Loading...' : 'Refresh'}
         </button>
+
+        {hasMore && !loading && (
+          <button
+            className="chat-sidebar-load-more"
+            onClick={loadMoreChats}
+            disabled={loadingMore}
+          >
+            {loadingMore ? 'Loading...' : `Load More (${chats.length}/${total})`}
+          </button>
+        )}
+
+        {!hasMore && chats.length > 0 && (
+          <div className="chat-sidebar-footer-info">
+            All {total} chats loaded
+          </div>
+        )}
       </div>
     </div>
   );

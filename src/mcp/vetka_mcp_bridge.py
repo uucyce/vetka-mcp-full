@@ -37,6 +37,13 @@ Usage:
 @used_by: Claude Code, Claude Desktop (via MCP stdio protocol)
 """
 
+# Phase 107: Fix imports for OpenCode MCP - ensure project root is in path
+import sys
+import os
+_project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 import asyncio
 import httpx
 import json
@@ -50,6 +57,11 @@ from typing import Any, Optional
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
+import logging
+
+# Phase 107.3: Logger for MCP bridge (required for pipeline tools)
+logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
+logger = logging.getLogger(__name__)
 
 # MARKER_106a_1: CLI arguments with env var support
 def parse_args():
@@ -619,6 +631,63 @@ async def list_tools() -> list[Tool]:
                 }
             }
         ),
+        # MARKER_108_3: Chat digest for MCP context
+        Tool(
+            name="vetka_get_chat_digest",
+            description="Get chat digest for MCP context injection. Returns recent messages, agent logs, "
+                       "and summary for a specific chat. Use this to understand chat context efficiently.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "chat_id": {
+                        "type": "string",
+                        "description": "Chat UUID to get digest for"
+                    },
+                    "max_messages": {
+                        "type": "integer",
+                        "description": "Max recent messages to include (default: 10)",
+                        "default": 10
+                    }
+                },
+                "required": ["chat_id"]
+            }
+        ),
+        # MARKER_108_2: MCP → VETKA message bridge
+        Tool(
+            name="vetka_send_message",
+            description="Send message from MCP to VETKA chat. Works with both regular chats and group chats. "
+                       "Use this to post updates, results, or notifications to VETKA UI.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "Message content to send"
+                    },
+                    "chat_id": {
+                        "type": "string",
+                        "description": "Chat ID (for regular chats) or Group ID (for group chats)"
+                    },
+                    "sender": {
+                        "type": "string",
+                        "description": "Sender ID (default: mcp_agent)",
+                        "default": "mcp_agent"
+                    },
+                    "message_type": {
+                        "type": "string",
+                        "description": "Message type: assistant, user, system, error, chat",
+                        "enum": ["assistant", "user", "system", "error", "chat"],
+                        "default": "assistant"
+                    },
+                    "is_group": {
+                        "type": "boolean",
+                        "description": "True for group chats, False for regular chats (default: False)",
+                        "default": False
+                    }
+                },
+                "required": ["message", "chat_id"]
+            }
+        ),
         # ═══════════════════════════════════════════════════════════════════════
         # MEMORY TOOLS (Phase 93.6) - Context and preferences access
         # ═══════════════════════════════════════════════════════════════════════
@@ -1068,6 +1137,120 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 f"/api/groups/{group_id}/messages",
                 params={"limit": limit}
             )
+
+        # MARKER_108_3: Chat digest for MCP context
+        elif name == "vetka_get_chat_digest":
+            # Get chat digest for MCP agents
+            chat_id = arguments.get("chat_id", "")
+            max_messages = arguments.get("max_messages", 10)
+
+            try:
+                from src.chat.chat_history_manager import get_chat_history_manager
+
+                manager = get_chat_history_manager()
+                digest = manager.get_chat_digest(chat_id, max_messages)
+
+                duration_ms = (time.time() - start_time) * 1000
+                await log_mcp_response(name, digest, request_id, duration_ms)
+                return [TextContent(type="text", text=format_chat_digest(digest))]
+
+            except Exception as e:
+                return [TextContent(type="text", text=f"❌ Error getting chat digest: {e}")]
+
+        # MARKER_108_2: MCP → VETKA message bridge
+        elif name == "vetka_send_message":
+            # Send message to VETKA chat (group or regular)
+            message = arguments.get("message", "")
+            chat_id = arguments.get("chat_id", "")
+            sender = arguments.get("sender", "mcp_agent")
+            message_type = arguments.get("message_type", "assistant")
+            is_group = arguments.get("is_group", False)
+
+            if not message or not chat_id:
+                return [TextContent(type="text", text="❌ Error: message and chat_id are required")]
+
+            try:
+                # Choose endpoint based on chat type
+                if is_group:
+                    # Group chat endpoint
+                    endpoint = f"/api/groups/{chat_id}/messages"
+                    payload = {
+                        "sender_id": sender,
+                        "content": message,
+                        "message_type": message_type
+                    }
+                else:
+                    # Regular chat endpoint
+                    endpoint = f"/api/chats/{chat_id}/messages"
+                    payload = {
+                        "role": message_type if message_type in ["user", "assistant", "system"] else "assistant",
+                        "content": message,
+                        "agent": sender,
+                        "metadata": {"source": "mcp_bridge"}
+                    }
+
+                # Send message via REST API
+                response = await http_client.post(endpoint, json=payload)
+
+                if response.status_code == 200:
+                    result = response.json()
+                    duration_ms = (time.time() - start_time) * 1000
+                    await log_mcp_response(name, result, request_id, duration_ms)
+
+                    return [TextContent(type="text", text=(
+                        f"✅ Message Sent\n"
+                        f"━{'━' * 39}\n"
+                        f"Chat: {chat_id[:8]}...\n"
+                        f"Type: {'Group' if is_group else 'Regular'}\n"
+                        f"Sender: {sender}\n"
+                        f"Length: {len(message)} chars"
+                    ))]
+                else:
+                    # API returned error
+                    error_msg = f"API error {response.status_code}: {response.text}"
+                    duration_ms = (time.time() - start_time) * 1000
+                    await log_mcp_response(name, None, request_id, duration_ms, error=error_msg)
+                    return [TextContent(type="text", text=f"❌ {error_msg}")]
+
+            except httpx.ConnectError:
+                # Server not available - save to local buffer
+                error_msg = "VETKA server unavailable, message buffered locally"
+                try:
+                    # Save to local buffer for retry
+                    from pathlib import Path
+                    buffer_path = Path("data/mcp_message_buffer.json")
+                    buffer_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    buffer_data = []
+                    if buffer_path.exists():
+                        buffer_data = json.loads(buffer_path.read_text())
+
+                    buffer_data.append({
+                        "chat_id": chat_id,
+                        "message": message,
+                        "sender": sender,
+                        "message_type": message_type,
+                        "is_group": is_group,
+                        "timestamp": time.time()
+                    })
+
+                    buffer_path.write_text(json.dumps(buffer_data, indent=2, ensure_ascii=False))
+
+                    return [TextContent(type="text", text=(
+                        f"⚠️  Message Buffered (Server Offline)\n"
+                        f"━{'━' * 39}\n"
+                        f"Chat: {chat_id[:8]}...\n"
+                        f"Saved to: {buffer_path}\n"
+                        f"Will retry when server is available"
+                    ))]
+                except Exception as buffer_error:
+                    return [TextContent(type="text", text=f"❌ Server offline and buffer failed: {buffer_error}")]
+
+            except Exception as e:
+                duration_ms = (time.time() - start_time) * 1000
+                error_msg = f"Error sending message: {e}"
+                await log_mcp_response(name, None, request_id, duration_ms, error=error_msg)
+                return [TextContent(type="text", text=f"❌ {error_msg}")]
 
         # ═══════════════════════════════════════════════════════════════════════
         # MEMORY TOOLS (Phase 93.6) - Direct implementation
@@ -1875,6 +2058,61 @@ def format_arc_suggestions(result: dict) -> str:
         lines.append(f"  Tested: {stats.get('total_tested', 0)}")
         lines.append(f"  Successful: {stats.get('total_successful', 0)}")
         lines.append(f"  Avg Score: {stats.get('avg_score', 0.0):.2f}")
+
+    return "\n".join(lines)
+
+
+# MARKER_108_3: Chat digest formatter
+def format_chat_digest(result: dict) -> str:
+    """Format chat digest result (Phase 108.3)"""
+    if result.get("error"):
+        return f"❌ Error: {result['error']}"
+
+    lines = [
+        "💬 Chat Digest",
+        "━" * 40,
+        f"Chat ID: {result.get('chat_id', '?')[:16]}...",
+        f"Context: {result.get('context_type', 'file')}",
+        f"File: {result.get('file_path', 'unknown')}",
+        f"Total Messages: {result.get('total_messages', 0)}",
+        ""
+    ]
+
+    # Summary
+    summary = result.get("summary", "")
+    if summary:
+        lines.append("Summary:")
+        lines.append(f"  {summary}")
+        lines.append("")
+
+    # Recent messages
+    recent_messages = result.get("recent_messages", [])
+    if recent_messages:
+        lines.append(f"Recent Messages ({len(recent_messages)}):")
+        for i, msg in enumerate(recent_messages[-5:], 1):  # Show last 5
+            role = msg.get("role", "?")
+            sender = msg.get("sender", role)
+            content = msg.get("content", "")[:100]
+            timestamp = msg.get("timestamp", "")[:19] if msg.get("timestamp") else ""
+
+            role_icon = "👤" if role == "user" else "🤖" if role == "assistant" else "⚙️"
+            lines.append(f"  {i}. {role_icon} [{sender}] {timestamp}")
+            lines.append(f"     {content}...")
+        lines.append("")
+
+    # Agent logs
+    agent_logs = result.get("agent_logs", [])
+    if agent_logs:
+        lines.append(f"Agent Logs ({len(agent_logs)}):")
+        for i, log in enumerate(agent_logs[:3], 1):  # Show first 3
+            sender = log.get("sender", "unknown")
+            content = log.get("content", "")
+            log_type = log.get("type", "chat")
+
+            lines.append(f"  {i}. [{sender}] ({log_type})")
+            lines.append(f"     {content}...")
+        if len(agent_logs) > 3:
+            lines.append(f"  ... and {len(agent_logs) - 3} more")
 
     return "\n".join(lines)
 

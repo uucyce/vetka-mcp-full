@@ -177,6 +177,13 @@ class QdrantVetkaClient:
                     )
                     results['qdrant'] = qdrant_success
                 except Exception as e:
+                    # MARKER_ENGRAM_QDRANT_FIX: Catch and log 400 Bad Request errors specifically
+                    # Problem: Vector format mismatches causing silent failures
+                    # Improvement needed: Add specific handling for 400 errors with diagnostics
+                    if "400" in str(e):
+                        logger.error(f"[QDRANT_400] Vector format error: {e}")
+                    else:
+                        logger.error(f"[Qdrant] Write error: {e}")
                     print(f"   ❌ Qdrant error: {e}")
             
             # 3. Write to ChangeLog
@@ -234,9 +241,12 @@ class QdrantVetkaClient:
         vector: List[float]
     ) -> bool:
         """Write node to Qdrant"""
+        # MARKER_ENGRAM_QDRANT_FIX: Monitor vector format in upsert operations
+        # Problem: 400 Bad Request when vector format is invalid or ID conversion fails
+        # Audit needed: Verify vector dtype, shape, and ID range before upsert
         if not self.client:
             return False
-        
+
         try:
             # Use UUID5 for collision-free point IDs (Phase 19 fix)
             point_id = uuid.uuid5(uuid.NAMESPACE_DNS, node_id).int & 0x7FFFFFFFFFFFFFFF
@@ -251,14 +261,18 @@ class QdrantVetkaClient:
                     'timestamp': time.time()
                 }
             )
-            
+
             self.client.upsert(
                 collection_name=self.COLLECTION_NAMES['tree'],
                 points=[point]
             )
             return True
-            
+
         except Exception as e:
+            # MARKER_ENGRAM_QDRANT_FIX: Log detailed error info for vector validation
+            if "400" in str(e) or "bad request" in str(e).lower():
+                logger.error(f"[QDRANT_400_VECTOR] Vector validation failed: {e}")
+                logger.debug(f"  Point ID: {point_id}, Vector length: {len(vector) if vector else 'None'}")
             print(f"      Qdrant write error: {e}")
             return False
     

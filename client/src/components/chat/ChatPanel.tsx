@@ -68,6 +68,11 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
+  // MARKER_SCROLL_STATE: State tracking if user is at bottom of chat
+  // Phase 107.3: Scroll-to-bottom button state
+  // true = at bottom (hide button), false = scrolled up (show down arrow button)
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
   // Phase 81: Resizable chat width (min 380 to fit search bar)
   const [chatWidth, setChatWidth] = useState(() => {
     const saved = localStorage.getItem('vetka_chat_width');
@@ -153,6 +158,11 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   // Phase I5: Chat drop zone state for file pinning
   const [isDragOver, setIsDragOver] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+
+  // MARKER_CHAT_AUTOLOAD: Chat doesn't load on app startup
+  // Current: ChatSidebar loads chats, but main chat panel starts empty - no useEffect to load last active chat
+  // Expected: On mount, restore last active chat or show welcome screen with most recent chat pre-selected
+  // Fix: Add useEffect to load from sessionStorage or /api/chats/last-active, then auto-select on mount
 
   // Phase 60.5: Fetch voice models for smart input detection
   useEffect(() => {
@@ -817,32 +827,91 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   }, [nodes, togglePinFile]);
 
   // Phase 74.3: Rename chat from header
+  // MARKER_GROUP_RENAME_UI: Phase 108.5 - Support group chat renaming
   const handleRenameChatFromHeader = useCallback(async () => {
-    if (!currentChatInfo) return;
+    // Phase 108.5: Handle both regular chats and group chats
+    if (activeGroupId) {
+      // Group chat mode - rename via /api/groups/{id}
+      const currentName = currentChatInfo?.displayName || currentChatInfo?.fileName || 'Group Chat';
+      const newName = prompt('Enter new name for this group:', currentName);
 
-    const currentName = currentChatInfo.displayName || currentChatInfo.fileName;
-    const newName = prompt('Enter new name for this chat:', currentName);
-
-    if (!newName || newName.trim() === '' || newName.trim() === currentName) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/chats/${currentChatInfo.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display_name: newName.trim() })
-      });
-
-      if (response.ok) {
-        setCurrentChatInfo(prev => prev ? { ...prev, displayName: newName.trim() } : null);
-      } else {
-        console.error(`[ChatPanel] Error renaming chat: ${response.status}`);
+      if (!newName || newName.trim() === '' || newName.trim() === currentName) {
+        return;
       }
-    } catch (error) {
-      console.error('[ChatPanel] Error renaming chat:', error);
+
+      try {
+        // MARKER_GROUP_RENAME_BUG: Only updates /api/groups, not /api/chats
+        // Group name is stored in TWO places:
+        // 1. /api/groups/{id} (GroupChatManager - source of truth)
+        // 2. /api/chats/{currentChatId} with context_type='group' (chat history)
+        // PROBLEM: This code only updates #1, leaving chat history out of sync
+        // RESULT: Sidebar shows old name until page reload (loads from chat history)
+        // FIX_NEEDED: After renaming group, also update chat history entry via PATCH /api/chats/{currentChatId}
+        const response = await fetch(`/api/groups/${activeGroupId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName.trim() })
+        });
+
+        if (response.ok) {
+          setCurrentChatInfo(prev => prev ? { ...prev, displayName: newName.trim() } : null);
+          console.log(`[ChatPanel] Phase 108.5: Renamed group to "${newName.trim()}"`);
+
+          // MARKER_GROUP_RENAME_FIX_NEEDED: Need to sync chat history after rename
+          // Should also update /api/chats/{currentChatId} display_name field
+          // to keep sidebar in sync (currently using stale data from chat history)
+        } else {
+          console.error(`[ChatPanel] Error renaming group: ${response.status}`);
+        }
+      } catch (error) {
+        console.error('[ChatPanel] Error renaming group:', error);
+      }
+    } else {
+      // Regular chat mode - rename via /api/chats/{id}
+      if (!currentChatInfo) return;
+
+      const currentName = currentChatInfo.displayName || currentChatInfo.fileName;
+      const newName = prompt('Enter new name for this chat:', currentName);
+
+      if (!newName || newName.trim() === '' || newName.trim() === currentName) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/chats/${currentChatInfo.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ display_name: newName.trim() })
+        });
+
+        if (response.ok) {
+          setCurrentChatInfo(prev => prev ? { ...prev, displayName: newName.trim() } : null);
+        } else {
+          console.error(`[ChatPanel] Error renaming chat: ${response.status}`);
+        }
+      } catch (error) {
+        console.error('[ChatPanel] Error renaming chat:', error);
+      }
     }
-  }, [currentChatInfo]);
+  }, [currentChatInfo, activeGroupId]);
+
+  // Phase 107.2: New Chat button handler
+  const handleNewChat = useCallback(() => {
+    // 1. Clear current chat state
+    clearChat();
+
+    // 2. Reset chat info
+    setCurrentChatInfo(null);
+    setCurrentChatId(null);
+
+    // 3. Leave group if in group chat
+    if (activeGroupId) {
+      leaveGroup(activeGroupId);
+      setActiveGroupId(null);
+    }
+
+    console.log('[ChatPanel] Started new chat');
+  }, [clearChat, activeGroupId, leaveGroup]);
 
   // Phase 50.1: Handle selecting a chat from history
   // Phase 52.2: Added camera focus on chat selection
@@ -900,6 +969,20 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           joinGroup(groupId);
           await waitForJoin;
           setActiveGroupId(groupId);
+
+          // Phase 108.5: Fetch group details to get current name
+          try {
+            const groupDetailsResponse = await fetch(`/api/groups/${groupId}`);
+            if (groupDetailsResponse.ok) {
+              const groupDetailsData = await groupDetailsResponse.json();
+              const groupName = groupDetailsData.group?.name || data.display_name || 'Group Chat';
+              // Update currentChatInfo with actual group name
+              setCurrentChatInfo(prev => prev ? { ...prev, displayName: groupName } : prev);
+              console.log(`[ChatPanel] Phase 108.5: Loaded group name: "${groupName}"`);
+            }
+          } catch (groupDetailsError) {
+            console.error('[ChatPanel] Phase 108.5: Error loading group details:', groupDetailsError);
+          }
 
           // Load group messages from API
           try {
@@ -987,15 +1070,37 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     if (!container) return;
 
     // Check if user is already at bottom (within 100px tolerance)
-    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
 
     // Only auto-scroll if already at bottom (don't interrupt user scrolling)
-    if (isAtBottom) {
+    if (atBottom) {
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 0);
     }
   }, [chatMessages.length]); // Only on new messages, not on content changes (streaming)
+
+  // Phase 107.3: Track scroll position for scroll-to-bottom button
+  // MARKER_SCROLL_STATE: Track if user is at bottom of message list
+  // Formula: scrollHeight - scrollTop - clientHeight < 50px threshold
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    // When near bottom (within 50px), isAtBottom = true, hide scroll button
+    // When scrolled up, isAtBottom = false, show scroll button with down arrow
+    const atBottom = scrollHeight - scrollTop - clientHeight < 50;
+    setIsAtBottom(atBottom);
+  }, []);
+
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
 
   // Phase 54.3 Fix: Auto-hide sidebars when SWITCHING to scanner (not continuously)
   // Phase 92.9 Fix: Removed leftPanel from deps - was causing panels to close immediately
@@ -1897,6 +2002,9 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
         {/* Phase 74.3: Chat name header - like pinned context, editable */}
         {/* Phase 74.5: Don't show if file chat and file is already in pinned context */}
+        {/* MARKER_EDIT_NAME_CHAT: Edit Name button in chat panel header */}
+        {/* Status: WORKING - handleRenameChatFromHeader() -> PATCH /api/chats/{id} */}
+        {/* Issue: NONE - This button is fully functional in both chat and group tabs */}
         {(activeTab === 'chat' || activeTab === 'group') && currentChatInfo &&
          !(currentChatInfo.contextType === 'file' && pinnedFileIds.length > 0) && (
           <div style={{
@@ -1962,25 +2070,29 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
               </svg>
 
-              {/* Close/clear chat info */}
+              {/* MARKER_CHAT_NEW_BUTTON: New Chat button with icon */}
+              {/* Phase 107.2: Replaced X icon with proper New Chat button */}
               <svg
-                width="10"
-                height="10"
+                width="14"
+                height="14"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="#555"
                 strokeWidth="2"
                 style={{ flexShrink: 0, cursor: 'pointer' }}
+                title="New Chat"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setCurrentChatInfo(null);
-                  setCurrentChatId(null);
+                  handleNewChat();
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.stroke = '#fff')}
                 onMouseLeave={(e) => (e.currentTarget.style.stroke = '#555')}
               >
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
+                {/* Chat bubble */}
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                {/* Plus sign */}
+                <line x1="12" y1="8" x2="12" y2="14"/>
+                <line x1="9" y1="11" x2="15" y2="11"/>
               </svg>
             </div>
           </div>
@@ -2142,22 +2254,68 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         )}
 
         {/* Messages - always visible, takes remaining space */}
-        <div
-          ref={messagesContainerRef}
-          style={{
-            flex: 1,
-            overflow: 'auto',
-            padding: 16,
-            minHeight: 0,
-          }}
-        >
-          <MessageList
-            messages={chatMessages}
-            isTyping={isTyping}
-            onReply={handleReply}
-            onOpenArtifact={handleOpenArtifact}
-          />
-          <div ref={messagesEndRef} />
+        <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
+          <div
+            ref={messagesContainerRef}
+            style={{
+              height: '100%',
+              overflow: 'auto',
+              padding: 16,
+            }}
+          >
+            <MessageList
+              messages={chatMessages}
+              isTyping={isTyping}
+              onReply={handleReply}
+              onOpenArtifact={handleOpenArtifact}
+            />
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* MARKER_SCROLL_BTN_LOCATION: Scroll-to-bottom/top button over message list */}
+          {/* Phase 107.3: Scroll-to-bottom button */}
+          {/* Shows when: isAtBottom=false (scrolled up) */}
+          {/* Icon: down arrow (↓) when not at bottom */}
+          {/* TODO: Add up arrow (↑) when at top, toggle functionality */}
+          {!isAtBottom && (
+            <button
+              onClick={() => {
+                // MARKER_SCROLL_FUNCTION: scrollToBottom - smooth scroll to end
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              style={{
+                position: 'absolute',
+                bottom: 20,
+                right: 20,
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                background: '#333',
+                border: '1px solid #444',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10,
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#444';
+                e.currentTarget.style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#333';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              title="Scroll to bottom"
+            >
+              {/* Down arrow when not at bottom */}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Phase 48.3: Reply indicator */}

@@ -66,17 +66,31 @@ class MessageResponse(BaseModel):
 # API ENDPOINTS
 # ============================================================
 
-@router.get("/chats", response_model=Dict[str, List[ChatResponse]])
-async def list_chats(request: Request):
+@router.get("/chats", response_model=Dict[str, Any])
+async def list_chats(
+    request: Request,
+    limit: int = 50,
+    offset: int = 0
+):
     """
-    Get all chats for sidebar.
+    Get chats for sidebar with pagination.
+
+    Phase 107.3: Pagination support to prevent loading 4MB+ chat files.
+
+    Args:
+        limit: Max chats to return (default 50, max 200)
+        offset: Skip first N chats (default 0)
 
     Returns:
-        Dict with 'chats' list sorted by updated_at (newest first)
+        Dict with 'chats' list, 'total' count, and pagination metadata
     """
     try:
+        # Limit max value to prevent abuse
+        limit = min(limit, 200)
+
         manager = get_chat_history_manager()
-        all_chats = manager.get_all_chats()
+        all_chats = manager.get_all_chats(limit=limit, offset=offset)
+        total_count = manager.get_total_chats_count()
 
         chat_responses = []
         for chat in all_chats:
@@ -93,7 +107,13 @@ async def list_chats(request: Request):
                 message_count=len(chat.get("messages", []))
             ))
 
-        return {"chats": chat_responses}
+        return {
+            "chats": chat_responses,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + limit) < total_count
+        }
 
     except Exception as e:
         print(f"[ChatHistory] Error listing chats: {e}")
@@ -228,6 +248,10 @@ async def rename_chat(chat_id: str, data: RenameRequest, request: Request):
     Rename a chat (set display_name).
 
     Phase 74: Allow custom chat names independent of file_name.
+
+    MARKER_EDIT_NAME_API: PATCH /api/chats/{chat_id} endpoint
+    Status: WORKING - Accepts display_name in JSON body, updates ChatHistoryManager
+    Issue: NONE - Backend endpoint is fully functional
 
     Args:
         chat_id: Chat UUID

@@ -97,6 +97,10 @@ class SessionInitTool(BaseMCPTool):
                     "type": "string",
                     "description": "Group chat ID if in group context (optional)"
                 },
+                "chat_id": {
+                    "type": "string",
+                    "description": "Chat ID to link session with existing chat (optional, Phase 108.1)"
+                },
                 "include_viewport": {
                     "type": "boolean",
                     "description": "Include 3D viewport context if available",
@@ -146,15 +150,45 @@ class SessionInitTool(BaseMCPTool):
         """Async implementation of session initialization."""
         user_id = arguments.get("user_id", "default")
         group_id = arguments.get("group_id")
+        chat_id = arguments.get("chat_id")  # MARKER_108_1: Unified MCP-Chat ID
         include_viewport = arguments.get("include_viewport", True)
         include_pinned = arguments.get("include_pinned", True)
         compress = arguments.get("compress", True)
         max_context_tokens = arguments.get("max_context_tokens", 4000)
 
-        session_id = f"session_{user_id}_{group_id or 'solo'}_{int(time.time())}"
+        # MARKER_108_1: Unified MCP-Chat ID
+        # If chat_id provided, use it as session_id
+        # If not, create new chat and use its ID
+        if chat_id:
+            session_id = chat_id
+            linked_to_existing = True
+        else:
+            # Create new VETKA chat and use its ID as session_id
+            try:
+                from src.chat.chat_history_manager import get_chat_history_manager
+                chat_mgr = get_chat_history_manager()
+                # Create chat with MCP context
+                new_chat_id = chat_mgr.get_or_create_chat(
+                    file_path="unknown",
+                    context_type="topic",
+                    topic="MCP Session",
+                    display_name=f"MCP {user_id[:8]}"
+                )
+                session_id = new_chat_id
+                chat_id = new_chat_id
+                linked_to_existing = False
+            except Exception as e:
+                # Fallback to old session_id format if chat creation fails
+                session_id = f"session_{user_id}_{group_id or 'solo'}_{int(time.time())}"
+                chat_id = None
+                linked_to_existing = False
+                print(f"[SessionInit] Failed to create chat, using session_id: {e}")
 
         context = {
             "session_id": session_id,
+            "chat_id": chat_id,  # MARKER_108_1: Unified ID
+            "linked": chat_id is not None,  # MARKER_108_1: Link status
+            "linked_to_existing": linked_to_existing,
             "user_id": user_id,
             "group_id": group_id,
             "initialized": True,
@@ -326,6 +360,7 @@ class SessionStatusTool(BaseMCPTool):
 async def vetka_session_init(
     user_id: str = "default",
     group_id: Optional[str] = None,
+    chat_id: Optional[str] = None,  # MARKER_108_1: Chat ID parameter
     include_viewport: bool = True,
     include_pinned: bool = True,
     compress: bool = True,
@@ -335,11 +370,16 @@ async def vetka_session_init(
     Initialize MCP session with fat context.
 
     Convenience wrapper for SessionInitTool.
+
+    MARKER_108_1: Phase 108.1 - Unified MCP-Chat ID
+    If chat_id provided, links session to existing VETKA chat.
+    If not, creates new chat and returns its ID as session_id.
     """
     tool = SessionInitTool()
     return await tool._execute_async({
         "user_id": user_id,
         "group_id": group_id,
+        "chat_id": chat_id,  # MARKER_108_1: Pass chat_id
         "include_viewport": include_viewport,
         "include_pinned": include_pinned,
         "compress": compress,

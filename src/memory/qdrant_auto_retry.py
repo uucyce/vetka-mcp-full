@@ -34,6 +34,11 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# MARKER_ENGRAM_QDRANT_FIX: Error handling for Qdrant 400 Bad Request
+# Problem: Some 400 errors from vector format issues are not being caught/logged
+# Audit needed: Check if UnexpectedResponse exceptions include 400 errors
+# TODO: Add specific 400 Bad Request handler for vector validation
+
 
 class QdrantAutoRetry:
     """

@@ -407,6 +407,10 @@ export const GroupCreatorPanel: React.FC<GroupCreatorPanelProps> = ({
         padding: 16
       }}>
         {/* Group Name */}
+        {/* MARKER_EDIT_NAME_GROUP: Group name editing field */}
+        {/* Status: EDITABLE ONLY ON CREATE - Input field allows editing groupName state during creation */}
+        {/* Issue: NO RENAME ENDPOINT - Once group is created, cannot rename it via API */}
+        {/* Current: Only updateable during group creation, no update endpoint exists */}
         <div style={{ marginBottom: 16 }}>
           <div style={{
             fontSize: 10,

@@ -1208,7 +1208,10 @@ async def send_group_message_from_mcp(
         group.last_responder_decay += 1
         print(f"[MCP] Phase 80.28: MCP message, decay now {group.last_responder_decay}")
 
+        # MARKER_108_4: Real-time MCP ↔ VETKA bridge via Socket.IO
         # Phase 80.14: Improved MCP message emit with detailed logging
+        # MCP agents (Claude Code, Browser Haiku) send messages via REST API
+        # This endpoint broadcasts them to all clients in real-time via Socket.IO
         socketio = getattr(request.app.state, 'socketio', None)
         room = f'group_{group_id}'
         print(f"[MCP] Phase 80.14: Sending message to group {group_id}, socketio={'present' if socketio else 'None'}")
