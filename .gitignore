@@ -102,3 +102,5 @@ _trash/
 
 # Tauri build artifacts
 client/src-tauri/target/
+venv_voice/
+data/voice_models/*.onnx

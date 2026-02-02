@@ -124,6 +124,11 @@ class GitCommitTool(BaseMCPTool):
                     "type": "boolean",
                     "default": True,
                     "description": "Preview only. Set to false to commit."
+                },
+                "auto_push": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Auto-push to remote after successful commit (MARKER_GIT_AUTO_PUSH)"
                 }
             },
             "required": ["message"]
@@ -148,6 +153,7 @@ class GitCommitTool(BaseMCPTool):
         message = arguments["message"]
         files = arguments.get("files", [])
         dry_run = arguments.get("dry_run", True)
+        auto_push = arguments.get("auto_push", False)  # MARKER_GIT_AUTO_PUSH: Auto-push after commit
 
         if dry_run:
             return {
@@ -208,16 +214,79 @@ class GitCommitTool(BaseMCPTool):
                 timeout=5
             ).stdout.strip()[:8]
 
+            result_data = {
+                "status": "committed",
+                "hash": commit_hash,
+                "message": message
+            }
+
+            # MARKER_GIT_AUTO_PUSH: Auto-push to remote if requested
+            if auto_push:
+                push_result = self._git_push()
+                if push_result["success"]:
+                    result_data["status"] = "committed_and_pushed"
+                    result_data["push"] = push_result["result"]
+                else:
+                    # Commit succeeded but push failed
+                    result_data["push_error"] = push_result["error"]
+                    result_data["status"] = "committed_push_failed"
+
             return {
                 "success": True,
-                "result": {
-                    "status": "committed",
-                    "hash": commit_hash,
-                    "message": message
-                },
+                "result": result_data,
                 "error": None
             }
         except subprocess.TimeoutExpired:
             return {"success": False, "error": "Git command timed out", "result": None}
+        except Exception as e:
+            return {"success": False, "error": str(e), "result": None}
+
+    def _git_push(self, remote: str = "origin", branch: str = None) -> Dict[str, Any]:
+        """
+        MARKER_GIT_AUTO_PUSH: Push commits to remote repository.
+
+        Helper method for auto-push after commit.
+        Returns dict with success, result, and error.
+        """
+        try:
+            # Get current branch if not specified
+            if not branch:
+                result = subprocess.run(
+                    ["git", "branch", "--show-current"],
+                    cwd=str(PROJECT_ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                branch = result.stdout.strip() if result.returncode == 0 else "main"
+
+            # Push to remote
+            result = subprocess.run(
+                ["git", "push", remote, branch],
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+
+            if result.returncode == 0:
+                return {
+                    "success": True,
+                    "result": {
+                        "status": "pushed",
+                        "remote": remote,
+                        "branch": branch
+                    },
+                    "error": None
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": result.stderr or result.stdout or "Push failed with unknown error",
+                    "result": None
+                }
+
+        except subprocess.TimeoutExpired:
+            return {"success": False, "error": "Git push command timed out", "result": None}
         except Exception as e:
             return {"success": False, "error": str(e), "result": None}
