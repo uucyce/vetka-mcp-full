@@ -110,6 +110,10 @@ interface TreeState {
   // Phase 61: Pinned files for multi-file context
   pinnedFileIds: string[];
 
+  // FIX_109.4: Current chat ID for unified ID system (solo chats like groups)
+  currentChatId: string | null;
+  setCurrentChatId: (id: string | null) => void;
+
   setNodes: (nodes: TreeNode[]) => void;
   setNodesFromRecord: (nodes: Record<string, TreeNode>) => void;
   setEdges: (edges: TreeEdge[]) => void;
@@ -186,6 +190,10 @@ export const useStore = create<TreeState>((set) => ({
 
   // Phase 61: Pinned files
   pinnedFileIds: [],
+
+  // FIX_109.4: Current chat ID for unified ID system
+  currentChatId: null,
+  setCurrentChatId: (id) => set({ currentChatId: id }),
 
   // Phase 65: Grab mode
   grabMode: false,

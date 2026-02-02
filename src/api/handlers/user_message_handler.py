@@ -224,6 +224,12 @@ def register_user_message_handler(sio, app=None):
         # [PHASE71-M1] Phase 71: Viewport context for spatial awareness
         viewport_context = data.get("viewport_context", None)
 
+        # FIX_109.4: Accept chat_id from frontend for unified ID system (like groups)
+        # This allows MCP to interact with solo chats using the same ID
+        client_chat_id = data.get("chat_id", None)
+        if client_chat_id:
+            print(f"[FIX_109.4] Using client-provided chat_id: {client_chat_id}")
+
         # Save request timestamp (all responses use same timestamp)
         request_node_id = node_id
         request_timestamp = time.time()
@@ -501,12 +507,14 @@ def register_user_message_handler(sio, app=None):
 
                 # Phase 51.1: Load chat history
                 # MARKER_CHAT_NAMING: Fix 1/6 - Use semantic key for chat naming
+                # FIX_109.4: Pass client_chat_id for unified ID system
                 chat_history = get_chat_history_manager()
                 semantic_key = extract_semantic_key(text)
                 chat_id = chat_history.get_or_create_chat(
                     'unknown',
                     context_type='topic',
-                    display_name=semantic_key
+                    display_name=semantic_key,
+                    chat_id=client_chat_id  # FIX_109.4: Use client-provided ID if available
                 )
                 history_messages = chat_history.get_chat_messages(chat_id)
                 history_context = format_history_for_prompt(
@@ -681,13 +689,15 @@ def register_user_message_handler(sio, app=None):
 
                 # Phase 51.4: Emit message_sent event for surprise calculation
                 # MARKER_CHAT_NAMING: Fix 2/6 - Use semantic key for chat naming
+                # FIX_109.4: Pass client_chat_id for unified ID system
                 try:
                     chat_history = get_chat_history_manager()
                     semantic_key = extract_semantic_key(text)
                     chat_id = chat_history.get_or_create_chat(
                         'unknown',
                         context_type='topic',
-                        display_name=semantic_key
+                        display_name=semantic_key,
+                        chat_id=client_chat_id  # FIX_109.4
                     )
                     await emit_cam_event(
                         "message_sent",
@@ -765,12 +775,14 @@ def register_user_message_handler(sio, app=None):
                 try:
                     # Phase 51.1: Load chat history
                     # MARKER_CHAT_NAMING: Fix 3/6 - Use semantic key for chat naming
+                    # FIX_109.4: Pass client_chat_id for unified ID system
                     chat_history = get_chat_history_manager()
                     semantic_key = extract_semantic_key(text)
                     chat_id = chat_history.get_or_create_chat(
                         'unknown',
                         context_type='topic',
-                        display_name=semantic_key
+                        display_name=semantic_key,
+                        chat_id=client_chat_id  # FIX_109.4
                     )
                     history_messages = chat_history.get_chat_messages(chat_id)
                     history_context = format_history_for_prompt(
@@ -1030,13 +1042,15 @@ When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!
 
                     # Phase 51.4: Emit message_sent event for surprise calculation
                     # MARKER_CHAT_NAMING: Fix 4/6 - Use semantic key for chat naming
+                    # FIX_109.4: Pass client_chat_id for unified ID system
                     try:
                         chat_history = get_chat_history_manager()
                         semantic_key = extract_semantic_key(text)
                         chat_id = chat_history.get_or_create_chat(
                             'unknown',
                             context_type='topic',
-                            display_name=semantic_key
+                            display_name=semantic_key,
+                            chat_id=client_chat_id  # FIX_109.4
                         )
                         await emit_cam_event(
                             "message_sent",
