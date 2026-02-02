@@ -148,7 +148,8 @@ class ChatHistoryManager:
         context_type: str = "file",
         items: Optional[List[str]] = None,
         topic: Optional[str] = None,
-        display_name: Optional[str] = None
+        display_name: Optional[str] = None,
+        chat_id: Optional[str] = None  # FIX_109.4: Accept client-provided chat_id
     ) -> str:
         """
         Get existing chat for file or create new one.
@@ -250,7 +251,13 @@ class ChatHistoryManager:
                     return chat_id
 
         # Create new chat with normalized path
-        chat_id = str(uuid.uuid4())
+        # FIX_109.4: Use client-provided chat_id if available (unified ID system like groups)
+        if chat_id and chat_id not in self.history["chats"]:
+            # Use provided ID
+            print(f"[ChatHistory] Using client-provided chat_id: {chat_id}")
+        else:
+            # Generate new ID
+            chat_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
 
         # Phase 74: Determine file_name based on context_type

@@ -131,9 +131,8 @@ class WeaviateHelper:
                 score
               }}
               content
-              path
-              creator
-              node_type
+              file_path
+              file_name
             }}
           }}
         }}
@@ -176,8 +175,8 @@ class WeaviateHelper:
                 distance
               }}
               content
-              path
-              creator
+              file_path
+              file_name
             }}
           }}
         }}

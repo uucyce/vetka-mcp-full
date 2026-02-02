@@ -59,6 +59,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   const clearPinnedFiles = useStore((s) => s.clearPinnedFiles);
   // Phase 100.2: Set pinned files from backend persistence
   const setPinnedFiles = useStore((s) => s.setPinnedFiles);
+  // FIX_109.4: Store current chat ID for unified ID system
+  const setStoreChatId = useStore((s) => s.setCurrentChatId);
 
   // Phase 45: Use Socket.IO instead of HTTP
   // Phase 57.3: Added joinGroup, leaveGroup for group creation
@@ -72,6 +74,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   // Phase 107.3: Scroll-to-bottom button state
   // true = at bottom (hide button), false = scrolled up (show down arrow button)
   const [isAtBottom, setIsAtBottom] = useState(true);
+  // FIX_109.1b: Track if content is scrollable (hide button if not)
+  const [canScroll, setCanScroll] = useState(false);
 
   // Phase 81: Resizable chat width (min 380 to fit search bar)
   const [chatWidth, setChatWidth] = useState(() => {
@@ -92,11 +96,13 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
   // Phase 74.3: Current chat info for header display
+  // FIX_109.3b: Added isSaved to track if chat exists in backend
   const [currentChatInfo, setCurrentChatInfo] = useState<{
     id: string;
     displayName: string | null;
     fileName: string;
     contextType: string;
+    isSaved?: boolean;  // FIX_109.3b: true if chat exists in backend (has messages)
   } | null>(null);
 
   // Phase 54.3: Scanner/Chat tab state
@@ -495,6 +501,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
   // Phase 80.9: Group ID copy state
   const [groupIdCopied, setGroupIdCopied] = useState(false);
+  // FIX_109.5: Solo chat ID copy state (unified with groups)
+  const [chatIdCopied, setChatIdCopied] = useState(false);
 
   // Phase 48.5.1 + 68.2: Artifact panel with raw content or file support
   const [artifactData, setArtifactData] = useState<{
@@ -761,12 +769,19 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         fileName = words.length > 0 ? words.join(' ') : 'New Chat';
       }
 
+      const newChatId = crypto.randomUUID();
       setCurrentChatInfo({
-        id: crypto.randomUUID(),
+        id: newChatId,
         displayName: null,
         fileName,
         contextType,
+        isSaved: true,  // FIX_109.3b: Mark as saved - sendMessage will create in backend
       });
+      // FIX_109.4: Update store for useSocket access
+      setStoreChatId(newChatId);
+      setCurrentChatId(newChatId);  // Also update local state
+      // FIX_109.3b: Log for debugging
+      console.log('[ChatPanel] Created new chat:', { id: newChatId, fileName, contextType });
     }
 
     setInput('');
@@ -840,9 +855,17 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   }, [currentChatInfo]);
 
   // Phase 108: Submit inline rename
+  // FIX_109.3b: Check if chat is saved before renaming
   const submitRename = useCallback(async () => {
     const newName = renameValue.trim();
     if (!newName || newName === (currentChatInfo?.displayName || currentChatInfo?.fileName)) {
+      setIsRenaming(false);
+      return;
+    }
+
+    // FIX_109.3b: Prevent rename of unsaved chats (no messages yet)
+    if (!activeGroupId && currentChatInfo && !currentChatInfo.isSaved) {
+      alert('Cannot rename chat before sending first message. Send a message first, then rename.');
       setIsRenaming(false);
       return;
     }
@@ -879,18 +902,29 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           body: JSON.stringify({ display_name: newName })
         });
 
+        // FIX_109.3: Proper error handling for rename - don't close input on failure
         if (response.ok) {
           setCurrentChatInfo(prev => prev ? { ...prev, displayName: newName } : null);
           window.dispatchEvent(new CustomEvent('chat-renamed', {
             detail: { chatId: currentChatInfo.id, newName }
           }));
+          setIsRenaming(false); // Only close on success
+        } else {
+          // FIX_109.3: Show error and keep input open for retry
+          const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+          console.error('[Rename] Server error:', errorData);
+          alert(`Failed to rename chat: ${errorData.detail || 'Please try again'}`);
+          // Don't close input - let user retry
+          return;
         }
       }
     } catch (error) {
       console.error('[Rename] Error:', error);
+      alert('Failed to rename chat. Please try again.');
+      return; // Don't close input on error
     }
 
-    setIsRenaming(false);
+    setIsRenaming(false); // Close for group chat success path
   }, [renameValue, currentChatInfo, activeGroupId, currentChatId]);
 
   // Phase 107.2: New Chat button handler
@@ -901,6 +935,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     // 2. Reset chat info
     setCurrentChatInfo(null);
     setCurrentChatId(null);
+    // FIX_109.4: Clear store
+    setStoreChatId(null);
 
     // 3. Leave group if in group chat
     if (activeGroupId) {
@@ -909,7 +945,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     }
 
     console.log('[ChatPanel] Started new chat');
-  }, [clearChat, activeGroupId, leaveGroup]);
+  }, [clearChat, activeGroupId, leaveGroup, setStoreChatId]);
 
   // Phase 50.1: Handle selecting a chat from history
   // Phase 52.2: Added camera focus on chat selection
@@ -917,6 +953,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   // Phase 100.2: Load pinned files from backend instead of clearing
   const handleSelectChat = useCallback(async (chatId: string, filePath: string, fileName: string) => {
     setCurrentChatId(chatId);
+    // FIX_109.4: Update store for useSocket access
+    setStoreChatId(chatId);
     setLeftPanel('none');
 
     try {
@@ -931,11 +969,13 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         // console.log(`[ChatPanel] Loaded ${savedPins.length} pinned files for chat ${chatId}`);
 
         // Phase 74.3: Store chat info for header
+        // FIX_109.3b: Mark as saved since loaded from backend
         setCurrentChatInfo({
           id: chatId,
           displayName: data.display_name || null,
           fileName: data.file_name || fileName,
-          contextType: data.context_type || 'file'
+          contextType: data.context_type || 'file',
+          isSaved: true,  // FIX_109.3b: Chat exists in backend
         });
 
         // Clear current chat and load history messages
@@ -1109,20 +1149,35 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   // Phase 107.3: Track scroll position for scroll-to-bottom button
   // MARKER_SCROLL_STATE: Track if user is at bottom of message list
   // Formula: scrollHeight - scrollTop - clientHeight < 50px threshold
+  // FIX_109.1: Removed isAtBottom from deps to prevent cyclic re-renders
+  // FIX_109.1b: Added check for non-scrollable content
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
     const { scrollTop, scrollHeight, clientHeight } = container;
-    // When near bottom (within 50px), isAtBottom = true, hide scroll button
-    // When scrolled up, isAtBottom = false, show scroll button with down arrow
-    const atBottom = scrollHeight - scrollTop - clientHeight < 50;
-    // DEBUG: Log scroll state changes
-    if (atBottom !== isAtBottom) {
-      console.log('[ChatPanel] Scroll state changed:', { atBottom, scrollTop, scrollHeight, clientHeight, diff: scrollHeight - scrollTop - clientHeight });
+
+    // FIX_109.1b: If content doesn't overflow (no scrolling needed), hide button
+    const scrollable = scrollHeight > clientHeight + 10; // 10px buffer
+    setCanScroll(scrollable);
+
+    if (!scrollable) {
+      // No scrolling needed - button will be hidden
+      setIsAtBottom(true); // Doesn't matter, button hidden
+      return;
     }
-    setIsAtBottom(atBottom);
-  }, [isAtBottom]);
+
+    // Normal case: check if near bottom
+    const atBottom = scrollHeight - scrollTop - clientHeight < 50;
+
+    // Use functional setState to compare with previous value without dependency
+    setIsAtBottom(prev => {
+      if (atBottom !== prev) {
+        console.log('[ChatPanel] Scroll state changed:', { atBottom, scrollTop, scrollHeight, clientHeight, scrollable, diff: scrollHeight - scrollTop - clientHeight });
+      }
+      return atBottom;
+    });
+  }, []); // FIX_109.1: Empty deps - stable callback, no cyclic updates
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -1221,6 +1276,14 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     setGroupIdCopied(true);
     setTimeout(() => setGroupIdCopied(false), 2000);
   }, [activeGroupId]);
+
+  // FIX_109.5: Copy solo chat ID to clipboard (unified with groups for MCP)
+  const copyChatId = useCallback(() => {
+    if (!currentChatId) return;
+    navigator.clipboard.writeText(currentChatId);
+    setChatIdCopied(true);
+    setTimeout(() => setChatIdCopied(false), 2000);
+  }, [currentChatId]);
 
   // Phase 54.4: Handle scanner events for Hostess with file type summary
   const handleScannerEvent = useCallback((event: ScannerEvent) => {
@@ -2142,6 +2205,48 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                   </svg>
                 )}
+
+                {/* FIX_109.5: Chat ID badge with copy (like group ID) */}
+                {currentChatId && !isRenaming && (
+                  <button
+                    onClick={copyChatId}
+                    title={chatIdCopied ? 'Copied!' : 'Copy Chat ID (for MCP)'}
+                    style={{
+                      background: chatIdCopied ? '#1a3a1a' : '#1a1a1a',
+                      border: '1px solid #333',
+                      borderRadius: 3,
+                      padding: '2px 6px',
+                      fontSize: 10,
+                      color: chatIdCopied ? '#6a8' : '#666',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      transition: 'all 0.2s',
+                      fontFamily: 'monospace',
+                      marginLeft: 8
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!chatIdCopied) {
+                        e.currentTarget.style.borderColor = '#555';
+                        e.currentTarget.style.color = '#aaa';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!chatIdCopied) {
+                        e.currentTarget.style.borderColor = '#333';
+                        e.currentTarget.style.color = '#666';
+                      }
+                    }}
+                  >
+                    {chatIdCopied ? '✓' : (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                    )} {currentChatId.slice(0, 8)}...
+                  </button>
+                )}
               </div>
             )}
 
@@ -2363,11 +2468,10 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
           {/* MARKER_SCROLL_BTN_LOCATION: Scroll-to-bottom/top button over message list */}
           {/* Phase 107.3: Scroll-to-bottom button */}
-          {/* Shows when: isAtBottom=false (scrolled up) */}
-          {/* Icon: down arrow (↓) when not at bottom */}
-          {/* TODO: Add up arrow (↑) when at top, toggle functionality */}
-          {/* MARKER_SCROLL_BTN_FIXED: Phase 107.3 - Always visible, toggles direction */}
-          <button
+          {/* FIX_109.1b: Hide when content doesn't overflow (canScroll=false) */}
+          {/* Shows when: canScroll=true AND (isAtBottom toggles direction) */}
+          {/* MARKER_SCROLL_BTN_FIXED: Phase 107.3 - Toggles direction, hidden when no scroll */}
+          {canScroll && <button
             onClick={() => {
               // MARKER_SCROLL_FUNCTION: Toggle scroll direction based on position
               if (isAtBottom) {
@@ -2413,7 +2517,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
                 <polyline points="6 9 12 15 18 9"/>
               )}
             </svg>
-          </button>
+          </button>}
         </div>
 
         {/* Phase 48.3: Reply indicator */}

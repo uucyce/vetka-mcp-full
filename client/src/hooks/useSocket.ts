@@ -1472,6 +1472,9 @@ export function useSocket() {
       console.log('[VIEWPORT] Camera not available, skipping viewport context');
     }
 
+    // FIX_109.4: Get chat_id from store for unified MCP compatibility
+    const currentChatId = useStore.getState().currentChatId;
+
     socketRef.current.emit('user_message', {
       text: message,                    // Backend expects 'text'
       node_path: nodePath || 'unknown', // Backend expects 'node_path'
@@ -1480,6 +1483,8 @@ export function useSocket() {
       pinned_files: pinnedFiles.length > 0 ? pinnedFiles : undefined,  // Phase 61
       // Phase 70: Full viewport context for AI spatial awareness
       viewport_context: viewportContext || undefined,
+      // FIX_109.4: Pass chat_id for unified ID system (solo chats like groups)
+      chat_id: currentChatId || undefined,
     });
   }, []);
 
