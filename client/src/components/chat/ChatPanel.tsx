@@ -857,9 +857,20 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           setCurrentChatInfo(prev => prev ? { ...prev, displayName: newName.trim() } : null);
           console.log(`[ChatPanel] Phase 108.5: Renamed group to "${newName.trim()}"`);
 
-          // MARKER_GROUP_RENAME_FIX_NEEDED: Need to sync chat history after rename
-          // Should also update /api/chats/{currentChatId} display_name field
-          // to keep sidebar in sync (currently using stale data from chat history)
+          // MARKER_GROUP_RENAME_SYNC: Sync with chat history for sidebar
+          // This ensures sidebar shows updated name immediately without page reload
+          if (currentChatId) {
+            try {
+              await fetch(`/api/chats/${currentChatId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ display_name: newName.trim() })
+              });
+              console.log('[ChatPanel] Synced group rename to chat history');
+            } catch (e) {
+              console.warn('[ChatPanel] Failed to sync chat history:', e);
+            }
+          }
         } else {
           console.error(`[ChatPanel] Error renaming group: ${response.status}`);
         }
@@ -1091,16 +1102,27 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     // When near bottom (within 50px), isAtBottom = true, hide scroll button
     // When scrolled up, isAtBottom = false, show scroll button with down arrow
     const atBottom = scrollHeight - scrollTop - clientHeight < 50;
+    // DEBUG: Log scroll state changes
+    if (atBottom !== isAtBottom) {
+      console.log('[ChatPanel] Scroll state changed:', { atBottom, scrollTop, scrollHeight, clientHeight, diff: scrollHeight - scrollTop - clientHeight });
+    }
     setIsAtBottom(atBottom);
-  }, []);
+  }, [isAtBottom]);
 
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (container) {
       container.addEventListener('scroll', handleScroll);
+      // MARKER_SCROLL_BTN_TOGGLE_FIX: Initialize scroll state on mount
+      handleScroll(); // Detect initial scroll position
       return () => container.removeEventListener('scroll', handleScroll);
     }
   }, [handleScroll]);
+
+  // DEBUG: Log button visibility state
+  useEffect(() => {
+    console.log('[ChatPanel] Scroll button visibility:', !isAtBottom ? 'VISIBLE' : 'HIDDEN', { isAtBottom });
+  }, [isAtBottom]);
 
   // Phase 54.3 Fix: Auto-hide sidebars when SWITCHING to scanner (not continuously)
   // Phase 92.9 Fix: Removed leftPanel from deps - was causing panels to close immediately
@@ -2277,45 +2299,54 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           {/* Shows when: isAtBottom=false (scrolled up) */}
           {/* Icon: down arrow (↓) when not at bottom */}
           {/* TODO: Add up arrow (↑) when at top, toggle functionality */}
-          {!isAtBottom && (
-            <button
-              onClick={() => {
-                // MARKER_SCROLL_FUNCTION: scrollToBottom - smooth scroll to end
+          {/* MARKER_SCROLL_BTN_FIXED: Phase 107.3 - Always visible, toggles direction */}
+          <button
+            onClick={() => {
+              // MARKER_SCROLL_FUNCTION: Toggle scroll direction based on position
+              if (isAtBottom) {
+                // Scroll to top
+                messagesContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+              } else {
+                // Scroll to bottom
                 messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              style={{
-                position: 'absolute',
-                bottom: 20,
-                right: 20,
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                background: '#333',
-                border: '1px solid #444',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 10,
-                transition: 'all 0.2s ease',
-                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#444';
-                e.currentTarget.style.transform = 'scale(1.05)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#333';
-                e.currentTarget.style.transform = 'scale(1)';
-              }}
-              title="Scroll to bottom"
-            >
-              {/* Down arrow when not at bottom */}
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              }
+            }}
+            style={{
+              position: 'absolute',
+              bottom: 20,
+              right: 20,
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              background: '#333',
+              border: '1px solid #444',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000,
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#444';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#333';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            title={isAtBottom ? "Scroll to top" : "Scroll to bottom"}
+          >
+            {/* Arrow toggles: DOWN when not at bottom, UP when at bottom */}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {isAtBottom ? (
+                <polyline points="18 15 12 9 6 15"/>
+              ) : (
                 <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </button>
-          )}
+              )}
+            </svg>
+          </button>
         </div>
 
         {/* Phase 48.3: Reply indicator */}
