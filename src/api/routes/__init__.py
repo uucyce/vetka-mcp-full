@@ -3,13 +3,13 @@ VETKA API Routes - FastAPI Router Aggregator
 
 @file routes/__init__.py
 @status ACTIVE
-@phase Phase 80
-@lastAudit 2026-01-21
+@phase Phase 108.4
+@lastAudit 2026-02-02
 
 Aggregates all FastAPI routers for registration with the main app.
 ALL REST ROUTES MIGRATED!
 
-Total: 14 routers, 66 endpoints (Phase 80: +1 debug router for browser agents)
+Total: 21 routers, 70+ endpoints (Phase 108.4: +1 activity feed router)
 """
 
 from fastapi import APIRouter, FastAPI
@@ -47,6 +47,9 @@ from .debug_routes import router as debug_router
 # MARKER: PHASE98_CAM_ROUTES - CAM-Emoji Link (user reactions -> model weights)
 from .cam_routes import router as cam_router
 
+# MARKER_108_5_ACTIVITY_FEED - Phase 108.4 Step 5: Unified Activity Feed
+from .activity_routes import router as activity_router
+
 
 def get_all_routers() -> List[APIRouter]:
     """
@@ -76,6 +79,7 @@ def get_all_routers() -> List[APIRouter]:
         group_router,  # /api/groups/* (Phase 56 - Group chats)
         debug_router,  # /api/debug/* (Phase 80 - Browser Agent Bridge)
         cam_router,  # /api/cam/* (Phase 98 - CAM-Emoji Link)
+        activity_router,  # /api/activity/* (Phase 108.4 Step 5 - Activity Feed)
     ]
 
 
@@ -115,7 +119,7 @@ def register_all_routers(app: FastAPI) -> None:
         )
 
     print(
-        f"  [API] Registered {len(routers)} FastAPI routers (Phase 80: +1 debug for browser agents)"
+        f"  [API] Registered {len(routers)} FastAPI routers (Phase 108.4: +1 activity feed)"
     )
 
 
@@ -143,4 +147,5 @@ __all__ = [
     "group_router",
     "debug_router",
     "cam_router",
+    "activity_router",
 ]
