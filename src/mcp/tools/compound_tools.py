@@ -93,7 +93,12 @@ async def vetka_review(file_path: str) -> Dict[str, Any]:
 
 
 def register_compound_tools(tool_list: List[Dict[str, Any]]):
-    """Register compound tools with MCP bridge."""
+    """Register compound tools with MCP bridge.
+
+    FIX_107.1: Fixed JSON Schema - 'required' must be a top-level array,
+    not a property inside each field. This was causing API Error 400:
+    "JSON schema is invalid. It must match JSON Schema draft 2020-12"
+    """
     tool_list.extend([
         {
             "name": "vetka_research",
@@ -101,9 +106,18 @@ def register_compound_tools(tool_list: List[Dict[str, Any]]):
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "topic": {"type": "string", "required": True},
-                    "depth": {"type": "string", "enum": ["quick", "medium", "deep"], "default": "medium"}
-                }
+                    "topic": {
+                        "type": "string",
+                        "description": "Research topic to search for"
+                    },
+                    "depth": {
+                        "type": "string",
+                        "enum": ["quick", "medium", "deep"],
+                        "description": "Search depth: quick (3 files), medium (7), deep (15)",
+                        "default": "medium"
+                    }
+                },
+                "required": ["topic"]
             },
             "handler": vetka_research
         },
@@ -113,9 +127,17 @@ def register_compound_tools(tool_list: List[Dict[str, Any]]):
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "task": {"type": "string", "required": True},
-                    "dry_run": {"type": "boolean", "default": True}
-                }
+                    "task": {
+                        "type": "string",
+                        "description": "Implementation task description"
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "Preview only, no changes",
+                        "default": True
+                    }
+                },
+                "required": ["task"]
             },
             "handler": vetka_implement
         },
@@ -125,8 +147,12 @@ def register_compound_tools(tool_list: List[Dict[str, Any]]):
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "file_path": {"type": "string", "required": True}
-                }
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path to file to review"
+                    }
+                },
+                "required": ["file_path"]
             },
             "handler": vetka_review
         }

@@ -294,7 +294,20 @@ def register_user_message_handler(sio, app=None):
 
                     # Phase 51.1: Load chat history
                     chat_history = get_chat_history_manager()
-                    chat_id = chat_history.get_or_create_chat(node_path)
+                    # MARKER_CHAT_SEMANTIC_NAMING: Auto-generate semantic key for solo chat name - IMPLEMENTED
+                    # Generate semantic key from first user message content
+                    def generate_semantic_key(message_text: str, node_path: str) -> str:
+                        """Extract semantic key from message content (topic/intent)"""
+                        # Get first 3-5 words, remove noise words, limit to 30 chars
+                        words = message_text.strip().split()[:5]
+                        noise_words = {'the', 'a', 'an', 'is', 'are', 'what', 'how', 'can', 'do', 'does', 'in', 'on', 'at'}
+                        key_words = [w.lower() for w in words if w.lower() not in noise_words]
+                        semantic_key = '_'.join(key_words[:3])[:30] or "chat"
+                        # Fallback to node_path if semantic key is empty
+                        return semantic_key if semantic_key else node_path
+
+                    semantic_chat_key = generate_semantic_key(text, node_path)
+                    chat_id = chat_history.get_or_create_chat(semantic_chat_key)
                     history_messages = chat_history.get_chat_messages(chat_id)
                     history_context = format_history_for_prompt(
                         history_messages, max_messages=10
@@ -412,11 +425,14 @@ def register_user_message_handler(sio, app=None):
 
                     # Save to chat history
                     # Phase 74: Pass pinned_files for group chat context
+                    # MARKER_CHAT_HISTORY_ATTRIBUTION: Model attribution fix - IMPLEMENTED
                     save_chat_message(
                         node_path,
                         {
                             "role": "assistant",
                             "agent": requested_model,
+                            "model": requested_model,
+                            "model_provider": "ollama",  # Provider for Ollama local models
                             "text": full_response,
                             "node_id": node_id,
                         },
@@ -573,12 +589,17 @@ def register_user_message_handler(sio, app=None):
                     print(f"[MODEL_DIRECTORY] XAI keys exhausted, falling back to OpenRouter")
                     full_response = "⚠️ XAI API keys exhausted. Trying OpenRouter fallback..."
                     try:
+                        # MARKER_FALLBACK_TOOLS: Get tools for OpenRouter fallback - IMPLEMENTED
+                        from src.agents.tools import get_tools_for_agent
+                        fallback_tools = get_tools_for_agent("Dev")  # Dev has most tools
+
                         # Retry with OpenRouter
                         async for token in call_model_v2_stream(
                             messages=[{"role": "user", "content": model_prompt}],
                             model=requested_model,
                             provider=Provider.OPENROUTER,
                             temperature=0.7,
+                            tools=fallback_tools,
                         ):
                             if token:
                                 full_response += token
@@ -617,11 +638,14 @@ def register_user_message_handler(sio, app=None):
 
                 # Save to chat history
                 # Phase 74: Pass pinned_files for group chat context
+                # MARKER_CHAT_HISTORY_ATTRIBUTION: Model attribution fix
                 save_chat_message(
                     node_path,
                     {
                         "role": "assistant",
                         "agent": requested_model,
+                        "model": requested_model,
+                        "model_provider": detected_provider.value if detected_provider else "unknown",  # Provider from detection
                         "text": full_response,
                         "node_id": node_id,
                     },
@@ -881,6 +905,10 @@ When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!
                         # Phase 93.3: Use call_model_v2 for OpenRouter/XAI models
                         print(f"[DIRECT] Calling via provider_registry: {model_to_use}")
 
+                        # MARKER_FALLBACK_TOOLS: Get tools for non-Ollama models - IMPLEMENTED
+                        from src.agents.tools import get_tools_for_agent
+                        model_tools = get_tools_for_agent("Dev")  # Dev has most tools
+
                         try:
                             # Auto-detect provider (OpenRouter, XAI, etc.)
                             from src.elisya.provider_registry import ProviderRegistry
@@ -891,6 +919,7 @@ When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!
                                 model=model_to_use,
                                 provider=detected_provider,
                                 temperature=0.7,
+                                tools=model_tools,
                             )
                             response_text = result.get("message", {}).get("content", "No response")
 
@@ -902,6 +931,7 @@ When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!
                                     model=model_to_use,
                                     provider=Provider.OPENROUTER,
                                     temperature=0.7,
+                                    tools=model_tools,
                                 )
                                 response_text = result.get("message", {}).get("content", "No response")
                             except Exception as fallback_err:
@@ -945,11 +975,14 @@ When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!
 
                     # Save to chat history
                     # Phase 74: Pass pinned_files for group chat context
+                    # MARKER_CHAT_HISTORY_ATTRIBUTION: Model attribution fix - IMPLEMENTED
                     save_chat_message(
                         node_path,
                         {
                             "role": "assistant",
                             "agent": model_to_use,
+                            "model": model_to_use,
+                            "model_provider": detected_provider.value if 'detected_provider' in locals() and detected_provider else "ollama",  # Provider from detection or default to ollama
                             "text": response_text,
                             "node_id": node_id,
                         },
@@ -1627,14 +1660,41 @@ Provide your {agent_name} analysis:
                     )
                     print(f"[Agent] {agent_name}: Streamed {token_count} tokens")
                 else:
+                    # MARKER_SOLO_ORCHESTRATOR FIX: Route through orchestrator for CAM/metrics/tools - IMPLEMENTED
                     # Run sync LLM call in executor (non-streaming)
-                    loop = asyncio.get_event_loop()
-                    response_text = await loop.run_in_executor(
-                        None,
-                        lambda: agent_instance.call_llm(
-                            prompt=full_prompt, max_tokens=max_tokens
-                        ),
-                    )
+                    from src.orchestration.orchestrator_with_elisya import OrchestratorWithElisya
+
+                    try:
+                        # Get or create orchestrator instance
+                        orchestrator = OrchestratorWithElisya()
+
+                        # Extract model name from agent instance
+                        model_name = get_agent_model_name(agent_instance) if agent_instance else "auto"
+
+                        # Call through orchestrator for full CAM/semantic integration
+                        result = await orchestrator.call_agent(
+                            agent_type=agent_name,
+                            model_id=model_name,
+                            prompt=full_prompt,
+                            context={"file_path": node_path} if node_path and node_path not in ("unknown", "root") else {}
+                        )
+
+                        response_text = result.get("output", "")
+                        if result.get("status") == "error":
+                            error_msg = result.get("error", "Unknown error")
+                            print(f"[Agent] {agent_name}: Orchestrator error - {error_msg}")
+                            response_text = f"[{agent_name}] Error: {error_msg}"
+
+                    except Exception as orch_err:
+                        # Fallback to direct call if orchestrator fails
+                        print(f"[Agent] {agent_name}: Orchestrator failed, using direct call - {orch_err}")
+                        loop = asyncio.get_event_loop()
+                        response_text = await loop.run_in_executor(
+                            None,
+                            lambda: agent_instance.call_llm(
+                                prompt=full_prompt, max_tokens=max_tokens
+                            ),
+                        )
 
                     # Handle if response is dict
                     if isinstance(response_text, dict):

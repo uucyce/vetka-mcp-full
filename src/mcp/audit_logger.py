@@ -66,8 +66,9 @@ class MCPAuditLogger:
         for k, v in args.items():
             if k in ("content", "password", "token", "api_key", "secret"):
                 sanitized[k] = "[REDACTED]"
-            elif isinstance(v, str) and len(v) > 500:
-                sanitized[k] = v[:500] + "...[truncated]"
+            # FIX_107.2: Increased truncation limit for better debugging
+            elif isinstance(v, str) and len(v) > 2000:
+                sanitized[k] = v[:2000] + "...[truncated]"
             else:
                 sanitized[k] = v
         return sanitized

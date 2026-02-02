@@ -240,11 +240,13 @@ def save_chat_message(
             manager.update_chat_items(chat_id, items)
 
         # Normalize message format (text -> content)
+        # MARKER_CHAT_HISTORY_ATTRIBUTION: Save model and provider attribution - IMPLEMENTED
         msg_to_save = {
             "role": message.get("role", "user"),
             "content": message.get("content") or message.get("text"),
             "agent": message.get("agent"),
             "model": message.get("model"),
+            "model_provider": message.get("model_provider"),  # Provider attribution for model disambiguation
             "node_id": message.get("node_id"),
             "metadata": message.get("metadata", {}),
         }

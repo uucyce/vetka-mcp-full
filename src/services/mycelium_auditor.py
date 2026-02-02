@@ -630,14 +630,40 @@ class MyceliumAuditor:
             self._stats['budget_exceeded'] += 1
             return self._create_partial_output(phase, task, task_type.value, search_method)
 
-        # Step 2: Generate findings (mock or real LLM)
+        # MARKER_MYCELIUM_LLM_INTEGRATION: research() must call llm_callback - IMPLEMENTED
+        # Step 2: Generate findings with LLM analysis
         findings = []
-        for result in search_results[:5]:
-            findings.append(Finding(
-                file=result['file'],
-                insight=f"Found relevant code: {result['content'][:50]}...",
-                confidence=result['score']
-            ))
+
+        # If llm_callback provided, use it to analyze search results
+        if llm_callback and search_results:
+            try:
+                llm_analysis = await llm_callback(search_results)
+                # Parse LLM response into findings (expects list of dicts with file, insight, confidence)
+                if isinstance(llm_analysis, list):
+                    for item in llm_analysis:
+                        findings.append(Finding(
+                            file=item.get('file', ''),
+                            insight=item.get('insight', ''),
+                            confidence=item.get('confidence', 0.5)
+                        ))
+                logger.info(f"[MYCELIUM] LLM callback generated {len(findings)} findings")
+            except Exception as e:
+                logger.warning(f"[MYCELIUM] LLM callback failed: {e}, falling back to mock findings")
+                # Fallback to mock findings on error
+                for result in search_results[:5]:
+                    findings.append(Finding(
+                        file=result['file'],
+                        insight=f"Found relevant code: {result['content'][:50]}...",
+                        confidence=result['score']
+                    ))
+        else:
+            # No callback provided, use mock findings
+            for result in search_results[:5]:
+                findings.append(Finding(
+                    file=result['file'],
+                    insight=f"Found relevant code: {result['content'][:50]}...",
+                    confidence=result['score']
+                ))
 
         # Step 3: Create output
         elapsed_ms = (time.time() - start_time) * 1000

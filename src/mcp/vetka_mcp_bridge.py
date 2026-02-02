@@ -175,8 +175,9 @@ async def log_to_group_chat(message: str, msg_type: str = "system"):
 async def log_mcp_request(tool_name: str, arguments: dict, request_id: str):
     """Log MCP request to VETKA group chat"""
     args_short = json.dumps(arguments, ensure_ascii=False)
-    if len(args_short) > 200:
-        args_short = args_short[:200] + "..."
+    # FIX_107.2: Increased truncation limit for better debugging
+    if len(args_short) > 2000:
+        args_short = args_short[:2000] + "..."
     await log_to_group_chat(f"🔧 **{tool_name}** `{request_id}`\n```\n{args_short}\n```", "chat")
 
 

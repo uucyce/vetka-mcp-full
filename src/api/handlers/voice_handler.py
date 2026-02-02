@@ -376,6 +376,86 @@ class VoiceService:
         else:  # whisper local (default)
             return await stt_whisper_local(audio_bytes, self.config.whisper_model)
 
+    # MARKER_STT_PREDICT_DRAFT: Wire _predict_draft to STT pipeline - IMPLEMENTED
+    async def predict_draft_from_audio(
+        self,
+        audio_base64: str,
+        provider: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Complete STT + prediction pipeline
+
+        (1) Transcribe audio via speech_to_text()
+        (2) Extract intent from transcript
+        (3) Generate draft response/action
+
+        Returns:
+            {
+                "transcript": str,
+                "intent": str,
+                "draft": str,
+                "confidence": float
+            }
+        """
+        # Step 1: STT transcription
+        transcript = await self.speech_to_text(audio_base64, provider)
+
+        if not transcript:
+            return {
+                "transcript": "",
+                "intent": "unknown",
+                "draft": "",
+                "confidence": 0.0
+            }
+
+        # Step 2: Extract intent (simple keyword matching)
+        intent = self._extract_intent(transcript)
+
+        # Step 3: Generate draft response based on intent
+        draft = self._generate_draft(transcript, intent)
+
+        logger.info(f"[STT_PREDICT] transcript: '{transcript[:50]}...' -> intent: {intent}")
+
+        return {
+            "transcript": transcript,
+            "intent": intent,
+            "draft": draft,
+            "confidence": 0.8 if intent != "unknown" else 0.3
+        }
+
+    def _extract_intent(self, transcript: str) -> str:
+        """Extract intent from transcript using keyword matching"""
+        text_lower = transcript.lower()
+
+        # Simple intent patterns
+        if any(word in text_lower for word in ['search', 'find', 'look for']):
+            return "search"
+        elif any(word in text_lower for word in ['create', 'make', 'build', 'generate']):
+            return "create"
+        elif any(word in text_lower for word in ['delete', 'remove', 'erase']):
+            return "delete"
+        elif any(word in text_lower for word in ['help', 'explain', 'how to', 'what is']):
+            return "help"
+        elif any(word in text_lower for word in ['open', 'show', 'navigate']):
+            return "navigate"
+        else:
+            return "unknown"
+
+    def _generate_draft(self, transcript: str, intent: str) -> str:
+        """Generate draft response based on intent"""
+        if intent == "search":
+            return f"Searching for: {transcript}"
+        elif intent == "create":
+            return f"Creating: {transcript}"
+        elif intent == "delete":
+            return f"Are you sure you want to delete: {transcript}?"
+        elif intent == "help":
+            return f"Let me help you with: {transcript}"
+        elif intent == "navigate":
+            return f"Navigating to: {transcript}"
+        else:
+            return transcript  # Echo back for unknown intent
+
     def get_available_providers(self) -> Dict[str, Dict[str, bool]]:
         """Get available TTS/STT providers based on API keys"""
         return {

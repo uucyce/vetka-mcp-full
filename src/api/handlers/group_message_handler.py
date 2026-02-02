@@ -723,6 +723,11 @@ def register_group_message_handler(sio, app=None):
             agent_id = participant["agent_id"]
             model_id = participant["model_id"]
 
+            # Detect provider for model attribution
+            from src.elisya.provider_registry import ProviderRegistry
+            detected_provider = ProviderRegistry.detect_provider(model_id)
+            provider_name = detected_provider.value if detected_provider else "unknown"
+
             # MARKER_93.7_REMOVED_OPENROUTER_PREFIX: Phase 93.7 Fix
             # Previously this code added "openrouter/" prefix which broke routing:
             # - "openai/gpt-5.2" -> "openrouter/openai/gpt-5.2" -> Provider.OPENROUTER -> 402
@@ -922,6 +927,7 @@ def register_group_message_handler(sio, app=None):
                     )
 
                 # Phase 74.8: Save agent response to chat_history
+                # MARKER_CHAT_HISTORY_ATTRIBUTION: Model attribution fix - IMPLEMENTED
                 try:
                     chat_history = get_chat_history_manager()
                     group_name = group.get("name", f"Group {group_id[:8]}")
@@ -937,6 +943,7 @@ def register_group_message_handler(sio, app=None):
                             "content": response_text,
                             "agent": display_name,
                             "model": model_id,
+                            "model_provider": provider_name,  # Provider attribution for model disambiguation
                             "metadata": {"group_id": group_id},
                         },
                     )
