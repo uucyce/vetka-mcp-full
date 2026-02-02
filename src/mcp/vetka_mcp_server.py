@@ -246,18 +246,21 @@ async def run_http(port: int = 5002, enable_ws: bool = False):
                         wait=True
                     )
 
-                    # Format result for MCP protocol
+                    # Format result for MCP protocol - convert TextContent to dict
+                    def to_dict(item):
+                        if hasattr(item, 'type') and hasattr(item, 'text'):
+                            return {"type": item.type, "text": item.text}
+                        elif isinstance(item, dict):
+                            return item
+                        else:
+                            return {"type": "text", "text": str(item)}
+
                     if isinstance(result, list):
-                        # Already in MCP format
-                        result = {"content": result}
+                        # Convert list of TextContent to dicts
+                        result = {"content": [to_dict(c) for c in result]}
                     elif hasattr(result, '__iter__') and not isinstance(result, (str, dict)):
                         # Convert iterable to MCP format
-                        result = {
-                            "content": [
-                                {"type": c.type, "text": c.text} if hasattr(c, 'type') else {"type": "text", "text": str(c)}
-                                for c in result
-                            ]
-                        }
+                        result = {"content": [to_dict(c) for c in result]}
                     elif not isinstance(result, dict) or "content" not in result:
                         # Wrap raw result
                         result = {"content": [{"type": "text", "text": str(result)}]}
