@@ -604,6 +604,20 @@ def register_group_message_handler(sio, app=None):
             "group_message", user_message.to_dict(), room=f"group_{group_id}"
         )
 
+        # MARKER_108_3_SOCKETIO_UPDATE: Phase 108.3 - Real-time chat node updates
+        # Emit chat_node_update for opacity animation when user sends message
+        from datetime import datetime
+        await sio.emit(
+            "chat_node_update",
+            {
+                "chat_id": group_id,
+                "decay_factor": 1.0,  # Just updated = fully opaque
+                "last_activity": datetime.now().isoformat(),
+                "message_count": len(manager.get_messages(group_id, limit=1000)),
+            },
+            room=f"group_{group_id}",
+        )
+
         # Phase 80.28: Increment decay counter on user messages (for smart reply)
         if sender_id == "user" and group_object:
             group_object.last_responder_decay += 1
@@ -931,6 +945,20 @@ def register_group_message_handler(sio, app=None):
                     await sio.emit(
                         "group_message",
                         agent_message.to_dict(),
+                        room=f"group_{group_id}",
+                    )
+
+                    # MARKER_108_3_SOCKETIO_UPDATE: Phase 108.3 - Real-time chat node updates
+                    # Emit chat_node_update when agent responds (activity update)
+                    from datetime import datetime
+                    await sio.emit(
+                        "chat_node_update",
+                        {
+                            "chat_id": group_id,
+                            "decay_factor": 1.0,  # Agent response = activity
+                            "last_activity": datetime.now().isoformat(),
+                            "message_count": len(manager.get_messages(group_id, limit=1000)),
+                        },
                         room=f"group_{group_id}",
                     )
 

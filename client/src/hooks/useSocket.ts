@@ -264,6 +264,13 @@ interface ServerToClientEvents {
     messageCount: number;
     preview?: string;
   }) => void;
+  // MARKER_108_3_SOCKETIO_UPDATE: Phase 108.3 - Real-time chat node opacity updates
+  chat_node_update: (data: {
+    chat_id: string;
+    decay_factor: number;
+    last_activity: string;
+    message_count?: number;
+  }) => void;
   artifact_placeholder: (data: {
     artifactId: string;
     chatId: string;
@@ -1082,6 +1089,55 @@ export function useSocket() {
         messageCount: data.messageCount,
         preview: data.preview,
       });
+    });
+
+    // MARKER_108_3_SOCKETIO_UPDATE: Phase 108.3 - Real-time chat node opacity updates
+    socket.on('chat_node_update', (data: {
+      chat_id: string;
+      decay_factor: number;
+      last_activity: string;
+      message_count?: number;
+    }) => {
+      console.log('[Socket] Chat node update (opacity):', data.chat_id, 'decay:', data.decay_factor);
+
+      // Update chatTreeStore with new decay_factor and activity
+      const { updateChatNode } = useChatTreeStore.getState();
+      updateChatNode(data.chat_id, {
+        decay_factor: data.decay_factor,
+        lastActivity: new Date(data.last_activity),
+        messageCount: data.message_count,
+      });
+
+      // Update main store for 3D rendering
+      // Chat nodes can be identified by chat_id or by group_id
+      // Try both formats: direct chat_id and `chat_${chat_id}`
+      const { nodes } = useStore.getState();
+      const possibleIds = [data.chat_id, `chat_${data.chat_id}`];
+
+      for (const nodeId of possibleIds) {
+        if (nodes[nodeId]) {
+          console.log('[Socket] Updating opacity for node:', nodeId, 'to', data.decay_factor);
+
+          // Update opacity in main store for FileCard rendering with smooth transition
+          useStore.setState((state) => ({
+            nodes: {
+              ...state.nodes,
+              [nodeId]: {
+                ...state.nodes[nodeId],
+                opacity: data.decay_factor,
+                // Also update metadata for consistency
+                metadata: {
+                  ...state.nodes[nodeId].metadata,
+                  decay_factor: data.decay_factor,
+                  message_count: data.message_count ?? state.nodes[nodeId].metadata?.message_count,
+                  last_activity: data.last_activity,
+                },
+              },
+            },
+          }));
+          break; // Found and updated, exit loop
+        }
+      }
     });
 
     socket.on('artifact_placeholder', (data) => {

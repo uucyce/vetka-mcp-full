@@ -156,8 +156,9 @@ interface FileCardProps {
   children?: string[];
   // Phase 62.2: Depth for LOD importance scoring (Grok research)
   depth?: number;
-  // Phase 108.2: Chat node metadata
+  // MARKER_108_3_CHAT_METADATA: Phase 108.3 - Chat node metadata
   metadata?: {
+    chat_id?: string; // Added for Phase 108.3
     message_count?: number;
     participants?: string[];
     decay_factor?: number;
@@ -172,6 +173,8 @@ interface FileCardProps {
   artifactType?: 'code' | 'document' | 'image' | 'data';
   artifactStatus?: 'streaming' | 'done' | 'error';
   artifactProgress?: number; // 0-100
+  // Phase 90.11 + Phase 108.3: Node opacity
+  opacity?: number;
 }
 
 export function FileCard({
@@ -190,6 +193,7 @@ export function FileCard({
   artifactType = 'code',
   artifactStatus = 'done',
   artifactProgress = 0,
+  opacity = 1.0,
 }: FileCardProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -219,10 +223,28 @@ export function FileCard({
   const dragOffset = useRef(new THREE.Vector3());
   const intersection = useRef(new THREE.Vector3());
 
+  // MARKER_108_3_SOCKETIO_UPDATE: Phase 108.3 - Smooth opacity animation
+  const targetOpacity = useRef(opacity ?? 1.0);
+  const currentOpacity = useRef(opacity ?? 1.0);
+
   useFrame((state) => {
     // Billboard effect - face camera
     if (meshRef.current) {
       meshRef.current.quaternion.copy(state.camera.quaternion);
+
+      // MARKER_108_3_SOCKETIO_UPDATE: Phase 108.3 - Animate opacity changes smoothly
+      // Lerp towards target opacity for smooth transition (0.1 = 10% per frame)
+      targetOpacity.current = opacity ?? 1.0;
+      const opacityDelta = targetOpacity.current - currentOpacity.current;
+
+      if (Math.abs(opacityDelta) > 0.001) {
+        currentOpacity.current += opacityDelta * 0.1; // Smooth lerp
+        const material = meshRef.current.material as THREE.MeshBasicMaterial;
+        if (material) {
+          material.opacity = currentOpacity.current;
+          material.needsUpdate = true;
+        }
+      }
     }
 
     // Phase 62: Calculate LOD based on distance (throttled to 100ms)
@@ -720,10 +742,27 @@ export function FileCard({
         return;
       }
 
+      // MARKER_108_3_CLICK_HANDLER: Phase 108.3 - Chat node click opens ChatPanel
+      if (type === 'chat') {
+        const chatId = metadata?.chat_id;
+        if (chatId) {
+          // Dispatch custom event to open ChatPanel with this chat
+          window.dispatchEvent(new CustomEvent('vetka-open-chat', {
+            detail: {
+              chatId,
+              fileName: name,
+              filePath: path,
+            },
+          }));
+          console.log('[FileCard] Phase 108.3: Opening chat', chatId, 'via event');
+        }
+        return;
+      }
+
       // Normal click = Select
       onClick?.();
     },
-    [onClick, id, pinNodeSmart]
+    [onClick, id, pinNodeSmart, type, metadata, name, path]
   );
 
   // Phase 61.1 + 62: File category for preview styling
@@ -749,7 +788,12 @@ export function FileCard({
         }}
       >
         <planeGeometry args={cardSize} />
-        <meshBasicMaterial map={texture} transparent side={THREE.DoubleSide} />
+        <meshBasicMaterial
+          map={texture}
+          transparent
+          side={THREE.DoubleSide}
+          opacity={opacity ?? 1.0}
+        />
       </mesh>
 
       {/* MARKER_3D_NODE_RENDER: FileCard component - core 3D node visualization

@@ -213,12 +213,21 @@ export function chatNodeToTreeNode(chatNode: ChatNode, position: { x: number; y:
     id: chatNode.id,
     path: chatNode.id, // Chat nodes don't have file paths
     name: chatNode.name,
-    type: 'file', // Render as "file" type in 3D (can be styled differently via CSS)
+    type: 'chat', // MARKER_108_3_CHAT_TYPE: Phase 108.3 - Render as 'chat' type for FileCard
     backendType: 'leaf',
     depth: 0, // Will be calculated from parent
     parentId: chatNode.parentId,
     position,
     color: '#4a9eff', // Blue for chat nodes
     opacity: chatNode.decay_factor,
+    // MARKER_108_3_CHAT_METADATA: Phase 108.3 - Include chat metadata for click handling
+    metadata: {
+      chat_id: chatNode.userId, // userId stores the backend chat_id
+      message_count: chatNode.messageCount,
+      participants: chatNode.participants,
+      decay_factor: chatNode.decay_factor,
+      last_activity: chatNode.lastActivity.toISOString(),
+      context_type: 'chat',
+    },
   };
 }

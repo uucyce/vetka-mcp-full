@@ -1062,6 +1062,34 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   // The selectedNode is still used for context when sending messages,
   // but it no longer triggers chat switching.
 
+  // MARKER_108_3_CLICK_HANDLER: Phase 108.3 - Listen for chat node clicks from 3D view
+  useEffect(() => {
+    const handleOpenChat = async (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { chatId, fileName, filePath } = customEvent.detail;
+      if (!chatId) return;
+
+      console.log('[ChatPanel] Phase 108.3: Opening chat from 3D node click:', chatId);
+
+      // Dispatch event to open ChatPanel if not already open
+      // App.tsx will handle the state change
+      if (!isOpen) {
+        window.dispatchEvent(new CustomEvent('vetka-toggle-chat-panel'));
+      }
+
+      // Switch to chat tab
+      setActiveTab('chat');
+
+      // Load the chat using handleSelectChat
+      await handleSelectChat(chatId, filePath, fileName);
+    };
+
+    window.addEventListener('vetka-open-chat', handleOpenChat);
+    return () => {
+      window.removeEventListener('vetka-open-chat', handleOpenChat);
+    };
+  }, [isOpen, handleSelectChat]);
+
   // Phase 50.4: Smart auto-scroll - only if already at bottom
   useEffect(() => {
     const container = messagesContainerRef.current;

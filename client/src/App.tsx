@@ -197,6 +197,18 @@ export default function App() {
     }));
   }, [isChatOpen]);
 
+  // MARKER_108_3_CLICK_HANDLER: Phase 108.3 - Listen for chat panel open requests
+  useEffect(() => {
+    const handleToggleChatPanel = () => {
+      if (!isChatOpen) {
+        setIsChatOpen(true);
+      }
+    };
+
+    window.addEventListener('vetka-toggle-chat-panel', handleToggleChatPanel);
+    return () => window.removeEventListener('vetka-toggle-chat-panel', handleToggleChatPanel);
+  }, [isChatOpen]);
+
   // Phase 65: G key for grab mode (Blender-style node movement)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -308,6 +320,8 @@ export default function App() {
             onClick={() => selectNode(node.id)}
             children={node.children}
             depth={node.depth}
+            metadata={node.metadata}
+            opacity={node.opacity}
           />
         ))}
       </Canvas>

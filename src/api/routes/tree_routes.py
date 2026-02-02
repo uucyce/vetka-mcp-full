@@ -3,18 +3,23 @@ VETKA Tree Routes - FastAPI Version
 
 @file tree_routes.py
 @status ACTIVE
-@phase Phase 39.3
-@lastAudit 2026-01-05
+@phase Phase 108.3
+@lastAudit 2026-02-02
 
 Tree/Knowledge Graph API routes.
 Migrated from src/server/routes/tree_routes.py (Flask Blueprint)
 
 Endpoints:
-- GET /api/tree/data - Main tree data API with FAN layout
+- GET /api/tree/data - Main tree data API with FAN layout + chat nodes + artifact nodes
 - POST /api/tree/clear-semantic-cache - Clear semantic DAG cache
 - GET /api/tree/export/blender - Export to Blender format
 - GET,POST /api/tree/knowledge-graph - Get Knowledge Graph structure
 - POST /api/tree/clear-knowledge-cache - Clear Knowledge Graph cache
+
+Phase History:
+- Phase 108.3: Added artifact scanning from data/artifacts/
+- Phase 108.2: Added chat node visualization
+- Phase 39.3: FastAPI migration
 """
 
 import os
@@ -517,12 +522,14 @@ async def get_tree_data(
         # ═══════════════════════════════════════════════════════════════════
         # STEP 4.5: Build chat nodes and edges
         # MARKER_108_CHAT_VIZ_API: Phase 108.2 - Chat nodes in tree API
+        # MARKER_108_3_TIMELINE_Y: Phase 108.3 - Temporal Y-axis ordering
         # ═══════════════════════════════════════════════════════════════════
         chat_nodes = []
         chat_edges = []
 
         try:
             from src.chat.chat_history_manager import get_chat_history_manager
+            from src.layout.knowledge_layout import calculate_chat_positions
 
             chat_manager = get_chat_history_manager()
             all_chats = chat_manager.get_all_chats(limit=100, load_from_end=True)
@@ -535,6 +542,19 @@ async def get_tree_data(
                     if node_path:
                         file_path_to_node_id[node_path] = node['id']
 
+            # MARKER_108_3_TIMELINE_Y: Build file_positions dict from existing tree nodes
+            file_positions = {}
+            for node in nodes:
+                if node.get('visual_hints', {}).get('layout_hint'):
+                    pos = node['visual_hints']['layout_hint']
+                    file_positions[node['id']] = {
+                        'x': pos.get('expected_x', 0),
+                        'y': pos.get('expected_y', 0),
+                        'z': pos.get('expected_z', 0)
+                    }
+
+            # MARKER_108_3_TIMELINE_Y: Prepare chats for temporal positioning
+            chats_to_position = []
             for chat in all_chats:
                 # Skip chats with no messages
                 message_count = len(chat.get("messages", []))
@@ -550,35 +570,56 @@ async def get_tree_data(
                 if file_path and file_path not in ('unknown', 'root', ''):
                     associated_file_id = file_path_to_node_id.get(file_path)
 
-                # Calculate decay factor based on last activity
-                decay_factor = calculate_decay(updated_at)
+                # Parse timestamp for temporal ordering
+                last_activity = updated_at
+                if isinstance(last_activity, str):
+                    last_activity = datetime.fromisoformat(last_activity.replace('Z', '+00:00'))
+
+                chats_to_position.append({
+                    'id': f"chat_{chat_id}",
+                    'parentId': associated_file_id,
+                    'lastActivity': last_activity,
+                    'chat_data': chat  # Store original chat data
+                })
+
+            # MARKER_108_3_TIMELINE_Y: Calculate positions with temporal ordering
+            # Y-axis range based on existing tree layout
+            y_positions = [pos['y'] for pos in file_positions.values() if 'y' in pos]
+            y_min = min(y_positions) if y_positions else 0
+            y_max = max(y_positions) if y_positions else 500
+
+            positioned_chats = calculate_chat_positions(
+                chats=chats_to_position,
+                file_positions=file_positions,
+                y_min=y_min,
+                y_max=y_max
+            )
+
+            # MARKER_108_3_TIMELINE_Y: Build chat nodes using calculated positions
+            for positioned_chat in positioned_chats:
+                chat = positioned_chat.get('chat_data', {})
+                chat_id = chat.get("id")
+                file_path = chat.get("file_path", "")
+                updated_at = chat.get("updated_at")
+                message_count = len(chat.get("messages", []))
+
+                # Get calculated position
+                pos = positioned_chat.get('position', {})
+                chat_x = pos.get('x', 0)
+                chat_y = pos.get('y', 0)
+                chat_z = pos.get('z', 0)
+                decay_factor = pos.get('decay_factor', 0.5)
+
+                # Find associated file node id (if exists)
+                associated_file_id = None
+                if file_path and file_path not in ('unknown', 'root', ''):
+                    associated_file_id = file_path_to_node_id.get(file_path)
 
                 # Extract participants from messages
                 participants = extract_participants(chat)
 
                 # Determine chat name
                 chat_name = chat.get("display_name") or chat.get("file_name") or f"Chat #{chat_id[:8]}"
-
-                # Position: offset from parent file if exists, otherwise random position
-                if associated_file_id:
-                    # Find parent file position
-                    parent_pos = None
-                    for node in nodes:
-                        if node['id'] == associated_file_id:
-                            parent_pos = node.get('visual_hints', {}).get('layout_hint', {})
-                            break
-
-                    if parent_pos:
-                        # Offset chat node from file: +8 in x, -5 in y
-                        chat_x = parent_pos.get('expected_x', 0) + 8
-                        chat_y = parent_pos.get('expected_y', 0) - 5
-                        chat_z = parent_pos.get('expected_z', 0)
-                    else:
-                        # Fallback position
-                        chat_x, chat_y, chat_z = 0, 0, 0
-                else:
-                    # No associated file - place at origin area
-                    chat_x, chat_y, chat_z = 0, -10, 0
 
                 # Create chat node
                 chat_node = {
@@ -624,9 +665,40 @@ async def get_tree_data(
                     chat_edges.append(chat_edge)
 
             print(f"[CHAT_VIZ] Built {len(chat_nodes)} chat nodes, {len(chat_edges)} chat edges")
+            print(f"[CHAT_VIZ] Temporal Y-axis ordering applied (y_min={y_min:.1f}, y_max={y_max:.1f})")
 
         except Exception as chat_err:
             print(f"[CHAT_VIZ] Warning: Could not build chat nodes: {chat_err}")
+            import traceback
+            traceback.print_exc()
+
+        # ═══════════════════════════════════════════════════════════════════
+        # STEP 4.7: Build artifact nodes and edges
+        # MARKER_108_3_ARTIFACT_SCAN: Phase 108.3 - Artifact nodes in tree API
+        # ═══════════════════════════════════════════════════════════════════
+        artifact_nodes = []
+        artifact_edges = []
+
+        try:
+            from src.services.artifact_scanner import (
+                scan_artifacts,
+                build_artifact_edges,
+                update_artifact_positions
+            )
+
+            # Scan artifacts directory
+            artifact_nodes = scan_artifacts()
+
+            # Update artifact positions based on parent chat positions
+            update_artifact_positions(artifact_nodes, chat_nodes)
+
+            # Build edges from chats to artifacts
+            artifact_edges = build_artifact_edges(artifact_nodes, chat_nodes)
+
+            print(f"[ARTIFACT_SCAN] Built {len(artifact_nodes)} artifact nodes, {len(artifact_edges)} artifact edges")
+
+        except Exception as artifact_err:
+            print(f"[ARTIFACT_SCAN] Warning: Could not build artifact nodes: {artifact_err}")
             import traceback
             traceback.print_exc()
 
@@ -652,7 +724,10 @@ async def get_tree_data(
             },
             # MARKER_108_CHAT_VIZ_API: Add chat nodes and edges to response
             'chat_nodes': chat_nodes,
-            'chat_edges': chat_edges
+            'chat_edges': chat_edges,
+            # MARKER_108_3_ARTIFACT_SCAN: Add artifact nodes and edges to response
+            'artifact_nodes': artifact_nodes,
+            'artifact_edges': artifact_edges
         }
 
         return response

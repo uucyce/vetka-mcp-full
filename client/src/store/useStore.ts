@@ -18,7 +18,7 @@ export interface TreeNode {
   id: string;
   path: string;
   name: string;
-  type: 'file' | 'folder';
+  type: 'file' | 'folder' | 'chat' | 'artifact';
   backendType: VetkaNodeType;
   depth: number;
   parentId: string | null;
@@ -34,6 +34,15 @@ export interface TreeNode {
   children?: string[];
   isGhost?: boolean;  // Phase 90.11: Deleted from disk but kept in memory
   opacity?: number;   // Phase 90.11: Transparency for ghost files (0.3 for ghosts)
+  // MARKER_108_3_CHAT_METADATA: Phase 108.3 - Chat node metadata
+  metadata?: {
+    chat_id?: string;
+    message_count?: number;
+    participants?: string[];
+    decay_factor?: number;
+    last_activity?: string;
+    context_type?: string;
+  };
 }
 
 export interface TreeEdge {

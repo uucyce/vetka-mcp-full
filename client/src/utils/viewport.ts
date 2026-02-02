@@ -25,7 +25,7 @@ export interface ViewportNode {
   id: string;
   path: string;
   name: string;
-  type: 'file' | 'folder';
+  type: 'file' | 'folder' | 'chat' | 'artifact'; // MARKER_108_3_VIEWPORT: Phase 108.3 - Support chat/artifact nodes
   position: { x: number; y: number; z: number };
 
   // Spatial metrics
