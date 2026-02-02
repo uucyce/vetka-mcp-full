@@ -171,10 +171,12 @@ interface FileCardProps {
   };
   // MARKER_108_ARTIFACT_VIZ: Phase 108.2 - Artifact metadata
   artifactType?: 'code' | 'document' | 'image' | 'data';
-  artifactStatus?: 'streaming' | 'done' | 'error';
+  artifactStatus?: 'streaming' | 'done' | 'error' | 'pending' | 'approved' | 'rejected';
   artifactProgress?: number; // 0-100
   // Phase 90.11 + Phase 108.3: Node opacity
   opacity?: number;
+  // MARKER_108_4_APPROVE_UI: Phase 108.4 - Artifact approval metadata
+  artifactId?: string;
 }
 
 export function FileCard({
@@ -194,6 +196,7 @@ export function FileCard({
   artifactStatus = 'done',
   artifactProgress = 0,
   opacity = 1.0,
+  artifactId,
 }: FileCardProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -371,10 +374,12 @@ export function FileCard({
     ctx.clearRect(0, 0, w, h);
 
     // MARKER_108_ARTIFACT_VIZ: Phase 108.2 - Artifact node rendering
+    // MARKER_108_4_APPROVE_UI: Phase 108.4 - Status-based visual feedback
     if (type === 'artifact') {
       // Get artifact-specific colors based on status
       let bgColor: string;
       let statusColor: string;
+      let borderColorOverride: string | null = null;
 
       if (artifactStatus === 'error') {
         bgColor = '#ef4444'; // Red for error
@@ -382,6 +387,21 @@ export function FileCard({
       } else if (artifactStatus === 'streaming') {
         bgColor = '#4a9eff'; // Blue with animation
         statusColor = '#3b82f6';
+      } else if (artifactStatus === 'pending') {
+        // MARKER_108_4_APPROVE_UI: Pending = yellow
+        bgColor = '#f59e0b'; // Yellow/amber for pending
+        statusColor = '#d97706';
+        borderColorOverride = '#fbbf24'; // Brighter yellow border
+      } else if (artifactStatus === 'approved') {
+        // MARKER_108_4_APPROVE_UI: Approved = green
+        bgColor = '#10b981'; // Green for approved
+        statusColor = '#059669';
+        borderColorOverride = '#34d399'; // Brighter green border
+      } else if (artifactStatus === 'rejected') {
+        // MARKER_108_4_APPROVE_UI: Rejected = red
+        bgColor = '#ef4444'; // Red for rejected
+        statusColor = '#dc2626';
+        borderColorOverride = '#f87171'; // Brighter red border
       } else {
         bgColor = '#4a9eff'; // Solid blue for done
         statusColor = '#2563eb';
@@ -400,10 +420,10 @@ export function FileCard({
       ctx.fill();
       ctx.globalAlpha = 1.0;
 
-      // Border
-      const borderColor = getBorderColor(isSelected, isDragging, isHighlighted, isPinned);
+      // Border (use status-specific color if available)
+      const borderColor = borderColorOverride ?? getBorderColor(isSelected, isDragging, isHighlighted, isPinned);
       ctx.strokeStyle = borderColor;
-      ctx.lineWidth = isPinned ? 3 : (isDragging ? 2 : 2);
+      ctx.lineWidth = isPinned ? 3 : (isDragging ? 2 : (artifactStatus === 'pending' ? 3 : 2));
       ctx.beginPath();
       ctx.roundRect(0, 0, w, h, 6);
       ctx.stroke();
@@ -426,12 +446,16 @@ export function FileCard({
       const displayName = name.length > maxNameLen ? name.slice(0, maxNameLen - 3) + '...' : name;
       ctx.fillText(displayName, 30, 18);
 
-      // Status indicator at LOD 5+
+      // MARKER_108_4_APPROVE_UI: Status indicator at LOD 5+ with approval states
       if (lodLevel >= 5) {
         ctx.font = '10px Arial';
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
-        const statusText = artifactStatus === 'streaming' ? 'Streaming...' :
-                          artifactStatus === 'error' ? 'Error' : 'Done';
+        const statusText =
+          artifactStatus === 'streaming' ? 'Streaming...' :
+          artifactStatus === 'error' ? 'Error' :
+          artifactStatus === 'pending' ? 'Pending Review' :
+          artifactStatus === 'approved' ? '✓ Approved' :
+          artifactStatus === 'rejected' ? '✗ Rejected' : 'Done';
         ctx.fillText(statusText, 6, 38);
       }
 
@@ -759,10 +783,26 @@ export function FileCard({
         return;
       }
 
+      // MARKER_108_4_APPROVE_UI: Phase 108.4 - Artifact node click opens ArtifactPanel
+      if (type === 'artifact' && artifactId) {
+        // Dispatch custom event to open ArtifactPanel with this artifact
+        window.dispatchEvent(new CustomEvent('vetka-open-artifact', {
+          detail: {
+            artifactId,
+            fileName: name,
+            filePath: path,
+            status: artifactStatus,
+            artifactType,
+          },
+        }));
+        console.log('[FileCard] Phase 108.4: Opening artifact', artifactId, 'via event');
+        return;
+      }
+
       // Normal click = Select
       onClick?.();
     },
-    [onClick, id, pinNodeSmart, type, metadata, name, path]
+    [onClick, id, pinNodeSmart, type, metadata, name, path, artifactId, artifactStatus, artifactType]
   );
 
   // Phase 61.1 + 62: File category for preview styling
@@ -856,6 +896,135 @@ export function FileCard({
                 </div>
               </div>
             )}
+          </div>
+        </Html>
+      )}
+
+      {/* MARKER_108_4_APPROVE_UI: Phase 108.4 - Status badge for approved/rejected artifacts (always visible) */}
+      {type === 'artifact' && (artifactStatus === 'approved' || artifactStatus === 'rejected') && (
+        <Html
+          position={[position[0] + cardSize[0] / 2 + 1, position[1] + cardSize[1] / 2 - 1, position[2]]}
+          style={{
+            pointerEvents: 'none',
+          }}
+          zIndexRange={[100, 0]}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '24px',
+              height: '24px',
+              borderRadius: '50%',
+              background: artifactStatus === 'approved' ? '#10b981' : '#ef4444',
+              color: '#ffffff',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              border: '2px solid rgba(255,255,255,0.9)',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+            }}
+            title={artifactStatus === 'approved' ? 'Approved' : 'Rejected'}
+          >
+            {artifactStatus === 'approved' ? '✓' : '✗'}
+          </div>
+        </Html>
+      )}
+
+      {/* MARKER_108_4_APPROVE_UI: Phase 108.4 - Approve/Reject buttons for artifact nodes at LOD 5+ */}
+      {type === 'artifact' && lodLevel >= 5 && artifactStatus === 'pending' && artifactId && (
+        <Html
+          position={[position[0], position[1] - cardSize[1] / 2 - 2, position[2]]}
+          center
+          style={{
+            pointerEvents: 'auto',
+          }}
+          zIndexRange={[100, 0]}
+        >
+          <div
+            style={{
+              display: 'flex',
+              gap: '6px',
+              padding: '4px',
+              background: 'rgba(0, 0, 0, 0.85)',
+              borderRadius: '6px',
+              border: '1px solid rgba(251, 191, 36, 0.5)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+            }}
+          >
+            {/* Approve button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // Dispatch approve event
+                window.dispatchEvent(new CustomEvent('vetka-approve-artifact', {
+                  detail: { artifactId, nodeId: id, name, path },
+                }));
+                console.log('[FileCard] Phase 108.4: Approve artifact', artifactId);
+              }}
+              style={{
+                padding: '6px 12px',
+                background: '#10b981',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '12px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#059669';
+                e.currentTarget.style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#10b981';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              title="Approve artifact"
+            >
+              ✓ Approve
+            </button>
+
+            {/* Reject button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // Dispatch reject event
+                window.dispatchEvent(new CustomEvent('vetka-reject-artifact', {
+                  detail: { artifactId, nodeId: id, name, path },
+                }));
+                console.log('[FileCard] Phase 108.4: Reject artifact', artifactId);
+              }}
+              style={{
+                padding: '6px 12px',
+                background: '#ef4444',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '4px',
+                fontSize: '12px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#dc2626';
+                e.currentTarget.style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#ef4444';
+                e.currentTarget.style.transform = 'scale(1)';
+              }}
+              title="Reject artifact"
+            >
+              ✗ Reject
+            </button>
           </div>
         </Html>
       )}

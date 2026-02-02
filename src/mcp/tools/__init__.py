@@ -34,18 +34,25 @@ ARC Tools (Phase 99.3):
 - vetka_arc_gap: Analyze prompt for conceptual gaps using ARC methodology
 - vetka_arc_concepts: Extract key concepts from text (fast, no LLM)
 
+Artifact Tools (Phase 108.4):
+- vetka_edit_artifact: Edit artifact content and submit for approval
+- vetka_approve_artifact: Approve pending artifact
+- vetka_reject_artifact: Reject artifact with feedback
+- vetka_list_artifacts: List artifacts by status
+
 Intake Tools:
 - vetka_intake_url: Process URL content (YouTube, web)
 - vetka_list_intakes: List processed content
 - vetka_get_intake: Get intake content
 
 @status: active
-@phase: 99.3
-@depends: base_tool, search_tool, tree_tool, branch_tool, list_files_tool, read_file_tool, edit_file_tool, run_tests_tool, git_tool, search_knowledge_tool, camera_tool, workflow_tools, session_tools, marker_tool, arc_gap_tool
+@phase: 108.4
+@depends: base_tool, search_tool, tree_tool, branch_tool, list_files_tool, read_file_tool, edit_file_tool, run_tests_tool, git_tool, search_knowledge_tool, camera_tool, workflow_tools, session_tools, marker_tool, arc_gap_tool, artifact_tools
 @used_by: src/mcp/vetka_mcp_bridge.py, src/mcp/mcp_server.py
 
 FIX_98.5: Added marker_tool for @status/@phase marker management.
 FIX_99.3: Added arc_gap_tool for ARC-based conceptual gap detection.
+MARKER_108_4_ARTIFACT_TOOLS: Added artifact_tools for Dev/QA approval workflow.
 """
 
 from .base_tool import BaseMCPTool
@@ -91,6 +98,13 @@ from .arc_gap_tool import (
     vetka_arc_concepts,
     register_arc_tools,
 )
+# MARKER_108_4_ARTIFACT_TOOLS: Artifact management tools
+from .artifact_tools import (
+    EditArtifactTool,
+    ApproveArtifactTool,
+    RejectArtifactTool,
+    ListArtifactsTool,
+)
 
 __all__ = [
     'BaseMCPTool',
@@ -131,4 +145,9 @@ __all__ = [
     'vetka_arc_gap',
     'vetka_arc_concepts',
     'register_arc_tools',
+    # Artifact Tools (MARKER_108_4_ARTIFACT_TOOLS)
+    'EditArtifactTool',
+    'ApproveArtifactTool',
+    'RejectArtifactTool',
+    'ListArtifactsTool',
 ]
