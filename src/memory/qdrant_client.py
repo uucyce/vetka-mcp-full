@@ -4,9 +4,24 @@ Hierarchical vector storage for VetkaTree with Triple Write atomicity
 
 @file qdrant_client.py
 @status active
-@phase 96
+@phase 108
 @depends time, json, uuid, logging, dataclasses, datetime, qdrant_client
-@used_by engram_user_memory.py, hybrid_search.py, file_watcher.py, orchestrator_with_elisya.py, vetka_mcp_bridge.py, shared_tools.py, llm_call_tool.py, message_utils.py, semantic_routes.py, watcher_routes.py, mcp_state_manager.py, trash.py, replay_buffer.py
+@used_by engram_user_memory.py, hybrid_search.py, file_watcher.py, orchestrator_with_elisya.py, vetka_mcp_bridge.py, shared_tools.py, llm_call_tool.py, message_utils.py, semantic_routes.py, watcher_routes.py, mcp_state_manager.py, trash.py, replay_buffer.py, session_tools.py
+
+MARKER_QDRANT_CHAT_INDEX: Phase 103.7 - VetkaGroupChat collection
+- Collection name: 'VetkaGroupChat' (COLLECTION_NAMES['chat'])
+- Functions: upsert_chat_message() + search_chat_history()
+- Message structure: group_id, message_id, sender_id, content, role, agent, model, timestamp
+- Embeddings: Generated via get_embedding() for semantic search
+- Filters: Can filter by group_id and role
+- Status: ✅ READY - messages auto-persisted from group_chat_manager and group_message_handler
+
+MARKER_TODO_QDRANT_CHAT: Items for Phase 108.2-108.4
+1. Add pagination to search_chat_history() (offset + limit)
+2. Add retry wrapper for upsert failures
+3. Verify embedding service availability
+4. Make max_messages configurable in chat digest API
+5. Add rate limiting for large semantic queries
 """
 
 import time

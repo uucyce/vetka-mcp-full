@@ -19,9 +19,19 @@ Security:
 
 @file disk_artifact_service.py
 @status ACTIVE
-@phase 104.9
+@phase 108
 @depends pathlib, re, logging
-@used_by src.orchestration, src.api.handlers
+@used_by src.orchestration, src.api.handlers, src.chat.chat_history_manager
+
+MARKER_ARTIFACTS_STORAGE: Phase 104.9 - Disk artifact persistence
+- Directory: artifacts/ (project root)
+- Security: Sanitized filenames, prevents path traversal
+- Linking: Artifacts stored with source_message_id in Qdrant payload
+- Event: Emits artifact_approval event for Socket.IO client approval workflow
+- Extension mapping: py, ts, js, rs, go, java, cpp, sql, yaml, json, html, css
+- Min content: 500 chars for disk persistence
+
+Status: ✅ READY - integrated with group_chat_manager for auto-staging
 """
 
 import asyncio

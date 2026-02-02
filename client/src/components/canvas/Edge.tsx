@@ -27,6 +27,15 @@ export function Edge({
   lineWidth = 1.5,
   opacity = 0.6
 }: EdgeProps) {
+  // MARKER_3D_EDGE_RENDER: Edge component - 3D curved line rendering
+  // - Curve: CatmullRomCurve3 with 3 control points (startVec, midPoint, endVec)
+  // - Samples: 20 points along curve for smooth rendering
+  // - Props: start, end (3D coordinates), color, lineWidth, opacity
+  // - Rendering: @react-three/drei Line with depthTest=true, depthWrite=false
+  // - Default color: '#4b5563' (dark gray/blue)
+  // - For chat edges: Pass color='#4a9eff' (blue) from parent component
+  // - Opacity behavior: transparent prop automatically set if opacity < 1
+
   const points = useMemo(() => {
     const startVec = new THREE.Vector3(...start);
     const endVec = new THREE.Vector3(...end);

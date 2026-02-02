@@ -15,9 +15,15 @@ Features:
 - Async/sync execution support
 
 @status: active
-@phase: 96
+@phase: 108
 @depends: src/mcp/tools/base_tool.py, src/memory/engram_user_memory.py, src/mcp/state/mcp_state_manager.py, src/memory/jarvis_prompt_enricher.py
 @used_by: src/mcp/vetka_mcp_bridge.py, src/mcp/tools/__init__.py
+
+MARKER_MCP_CHAT_READY: Phase 108.1 - Unified MCP-Chat ID linking
+- session_init accepts chat_id parameter (optional)
+- If provided: session_id = chat_id (link to existing chat)
+- If not provided: creates new chat, uses its ID as session_id
+- Result: Every MCP session linked to VETKA chat for persistent context
 """
 
 from typing import Dict, Any, Optional

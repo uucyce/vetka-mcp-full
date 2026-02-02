@@ -9,9 +9,32 @@ Features:
 - Search messages by content
 
 @status: active
-@phase: 96
+@phase: 108
 @depends: json, pathlib, datetime, typing, uuid
-@used_by: api.handlers.chat_handler, services.group_chat_manager
+@used_by: api.handlers.chat_handler, services.group_chat_manager, mcp.tools.session_tools
+
+MARKER_QDRANT_CHAT_INDEX: Phase 103.7 + Phase 108.2 - Chat message indexing
+- Chat messages auto-persisted to Qdrant VetkaGroupChat collection
+- Embeddings generated for semantic search via get_embedding()
+- Both user and agent messages indexed with group_id, role, sender_id
+- Chat digest API (get_chat_digest) provides lightweight context for MCP
+
+MARKER_ARTIFACTS_STORAGE: Phase 104.9 - Artifact linking to chats
+- Artifacts saved to artifacts/ directory (disk_artifact_service.py)
+- Each artifact linked to source_message_id in Qdrant payload
+- Chat history manager tracks artifact IDs in message metadata
+- Enables trace back from artifact to generating conversation
+
+MARKER_CHAT_STRUCTURE: Chat history data model
+- Chat format: { id, file_path, file_name, created_at, updated_at, messages[] }
+- Message format: { role, content, agent, model, node_id, metadata, id, timestamp }
+- Groups format: { default: { name, roles: {PM, Dev, QA} } }
+- Storage: data/chat_history.json with retention policy (90 days, max 1000 chats)
+- Indexing: Chat messages auto-indexed to Qdrant VetkaGroupChat collection
+- For 3D visualization: Each chat can be a node with messages as subnodes
+  - Chat node type: 'chat' or 'group' (from treeNodes.ts)
+  - Parent: file_path → links to file node
+  - Children: message IDs or artifact node IDs
 """
 
 import json

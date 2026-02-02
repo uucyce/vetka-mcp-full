@@ -110,6 +110,10 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   // Phase 57.3: Active group ID for group chat mode
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
 
+  // Phase 108: Inline rename mode (Tauri doesn't support prompt())
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+
   // Phase 80.30: Extract unique models from solo chat messages for @mention
   // MARKER_94.7_SOLO_MODELS: Extract models from chat history for mention popup
   const soloModels = useMemo(() => {
@@ -828,83 +832,66 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
   // Phase 74.3: Rename chat from header
   // MARKER_GROUP_RENAME_UI: Phase 108.5 - Support group chat renaming
-  const handleRenameChatFromHeader = useCallback(async () => {
-    // Phase 108.5: Handle both regular chats and group chats
-    if (activeGroupId) {
-      // Group chat mode - rename via /api/groups/{id}
-      const currentName = currentChatInfo?.displayName || currentChatInfo?.fileName || 'Group Chat';
-      const newName = prompt('Enter new name for this group:', currentName);
+  // Phase 108: Changed from prompt() to inline edit (Tauri compatibility)
+  const startRename = useCallback(() => {
+    const currentName = currentChatInfo?.displayName || currentChatInfo?.fileName || 'Chat';
+    setRenameValue(currentName);
+    setIsRenaming(true);
+  }, [currentChatInfo]);
 
-      if (!newName || newName.trim() === '' || newName.trim() === currentName) {
-        return;
-      }
+  // Phase 108: Submit inline rename
+  const submitRename = useCallback(async () => {
+    const newName = renameValue.trim();
+    if (!newName || newName === (currentChatInfo?.displayName || currentChatInfo?.fileName)) {
+      setIsRenaming(false);
+      return;
+    }
 
-      try {
-        // MARKER_GROUP_RENAME_BUG: Only updates /api/groups, not /api/chats
-        // Group name is stored in TWO places:
-        // 1. /api/groups/{id} (GroupChatManager - source of truth)
-        // 2. /api/chats/{currentChatId} with context_type='group' (chat history)
-        // PROBLEM: This code only updates #1, leaving chat history out of sync
-        // RESULT: Sidebar shows old name until page reload (loads from chat history)
-        // FIX_NEEDED: After renaming group, also update chat history entry via PATCH /api/chats/{currentChatId}
+    try {
+      if (activeGroupId) {
+        // Group chat - update via /api/groups/{id}
         const response = await fetch(`/api/groups/${activeGroupId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: newName.trim() })
+          body: JSON.stringify({ name: newName })
         });
 
         if (response.ok) {
-          setCurrentChatInfo(prev => prev ? { ...prev, displayName: newName.trim() } : null);
-          console.log(`[ChatPanel] Phase 108.5: Renamed group to "${newName.trim()}"`);
+          setCurrentChatInfo(prev => prev ? { ...prev, displayName: newName } : null);
+          window.dispatchEvent(new CustomEvent('chat-renamed', {
+            detail: { chatId: activeGroupId, newName }
+          }));
 
-          // MARKER_GROUP_RENAME_SYNC: Sync with chat history for sidebar
-          // This ensures sidebar shows updated name immediately without page reload
+          // Sync with chat history
           if (currentChatId) {
-            try {
-              await fetch(`/api/chats/${currentChatId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ display_name: newName.trim() })
-              });
-              console.log('[ChatPanel] Synced group rename to chat history');
-            } catch (e) {
-              console.warn('[ChatPanel] Failed to sync chat history:', e);
-            }
+            await fetch(`/api/chats/${currentChatId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ display_name: newName })
+            });
           }
-        } else {
-          console.error(`[ChatPanel] Error renaming group: ${response.status}`);
         }
-      } catch (error) {
-        console.error('[ChatPanel] Error renaming group:', error);
-      }
-    } else {
-      // Regular chat mode - rename via /api/chats/{id}
-      if (!currentChatInfo) return;
-
-      const currentName = currentChatInfo.displayName || currentChatInfo.fileName;
-      const newName = prompt('Enter new name for this chat:', currentName);
-
-      if (!newName || newName.trim() === '' || newName.trim() === currentName) {
-        return;
-      }
-
-      try {
+      } else if (currentChatInfo) {
+        // Regular chat - update via /api/chats/{id}
         const response = await fetch(`/api/chats/${currentChatInfo.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ display_name: newName.trim() })
+          body: JSON.stringify({ display_name: newName })
         });
 
         if (response.ok) {
-          setCurrentChatInfo(prev => prev ? { ...prev, displayName: newName.trim() } : null);
-        } else {
-          console.error(`[ChatPanel] Error renaming chat: ${response.status}`);
+          setCurrentChatInfo(prev => prev ? { ...prev, displayName: newName } : null);
+          window.dispatchEvent(new CustomEvent('chat-renamed', {
+            detail: { chatId: currentChatInfo.id, newName }
+          }));
         }
-      } catch (error) {
-        console.error('[ChatPanel] Error renaming chat:', error);
       }
+    } catch (error) {
+      console.error('[Rename] Error:', error);
     }
-  }, [currentChatInfo, activeGroupId]);
+
+    setIsRenaming(false);
+  }, [renameValue, currentChatInfo, activeGroupId, currentChatId]);
 
   // Phase 107.2: New Chat button handler
   const handleNewChat = useCallback(() => {
@@ -2025,98 +2012,150 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         {/* Phase 74.3: Chat name header - like pinned context, editable */}
         {/* Phase 74.5: Don't show if file chat and file is already in pinned context */}
         {/* MARKER_EDIT_NAME_CHAT: Edit Name button in chat panel header */}
-        {/* Status: WORKING - handleRenameChatFromHeader() -> PATCH /api/chats/{id} */}
+        {/* Phase 108: Inline rename (Tauri compatible) - startRename() -> submitRename() -> PATCH API */}
         {/* Issue: NONE - This button is fully functional in both chat and group tabs */}
-        {(activeTab === 'chat' || activeTab === 'group') && currentChatInfo &&
-         !(currentChatInfo.contextType === 'file' && pinnedFileIds.length > 0) && (
+        {/* Phase 108: Chat header - separate Edit Name and New Chat buttons */}
+        {(activeTab === 'chat' || activeTab === 'group') && (
           <div style={{
             padding: '6px 12px',
             background: '#0f0f0f',
             borderBottom: '1px solid #222',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
           }}>
-            <div
-              onClick={handleRenameChatFromHeader}
+            {/* Chat name area - only show if currentChatInfo exists */}
+            {currentChatInfo && !(currentChatInfo.contextType === 'file' && pinnedFileIds.length > 0) && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 10px',
+                  background: '#1a1a1a',
+                  border: '1px solid #333',
+                  borderLeft: isRenaming ? '3px solid #fff' : '3px solid #444',
+                  borderRadius: 4,
+                  fontSize: 12,
+                  color: '#bbb',
+                  flex: 1,
+                }}
+              >
+                {/* Context-type icon */}
+                {currentChatInfo.contextType === 'folder' ? (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                ) : currentChatInfo.contextType === 'group' ? (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                ) : currentChatInfo.contextType === 'topic' ? (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                )}
+
+                {/* Chat name - inline edit mode */}
+                {isRenaming ? (
+                  <input
+                    type="text"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') submitRename();
+                      if (e.key === 'Escape') setIsRenaming(false);
+                    }}
+                    onBlur={submitRename}
+                    autoFocus
+                    style={{
+                      flex: 1,
+                      background: '#222',
+                      border: '1px solid #888',
+                      borderRadius: 3,
+                      padding: '2px 6px',
+                      fontSize: 12,
+                      color: '#fff',
+                      outline: 'none',
+                    }}
+                  />
+                ) : (
+                  <span
+                    onClick={startRename}
+                    style={{ fontWeight: 500, cursor: 'pointer', flex: 1 }}
+                    title="Click to rename"
+                  >
+                    {currentChatInfo.displayName || currentChatInfo.fileName}
+                  </span>
+                )}
+
+                {/* Edit icon - click to start rename */}
+                {!isRenaming && (
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#555"
+                    strokeWidth="2"
+                    style={{ flexShrink: 0, cursor: 'pointer' }}
+                    onClick={startRename}
+                    onMouseEnter={(e) => (e.currentTarget.style.stroke = '#fff')}
+                    onMouseLeave={(e) => (e.currentTarget.style.stroke = '#555')}
+                    title="Rename chat"
+                  >
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                )}
+              </div>
+            )}
+
+            {/* New Chat placeholder when no chat selected */}
+            {!currentChatInfo && (
+              <span style={{ color: '#555', fontSize: 12, flex: 1 }}>New Chat</span>
+            )}
+
+            {/* MARKER_CHAT_NEW_BUTTON: New Chat button - SEPARATE from rename area */}
+            <button
+              onClick={handleNewChat}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '4px 10px',
                 background: '#1a1a1a',
                 border: '1px solid #333',
-                borderLeft: '3px solid #4a9eff',  // Phase 100.6.2: Accent to distinguish from pinned files
                 borderRadius: 4,
-                fontSize: 12,
-                color: '#bbb',  // Phase 100.6.2: Slightly brighter than pinned files
+                padding: '4px 8px',
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                color: '#888',
+                fontSize: 11,
                 transition: 'all 0.15s',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = '#555';
                 e.currentTarget.style.background = '#222';
+                e.currentTarget.style.color = '#fff';
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.borderColor = '#333';
                 e.currentTarget.style.background = '#1a1a1a';
+                e.currentTarget.style.color = '#888';
               }}
-              title="Click to rename chat"
+              title="New Chat"
             >
-              {/* Context-type icon */}
-              {currentChatInfo.contextType === 'folder' ? (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                </svg>
-              ) : currentChatInfo.contextType === 'group' ? (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-              ) : currentChatInfo.contextType === 'topic' ? (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-              ) : (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                </svg>
-              )}
-
-              {/* Chat name */}
-              <span style={{ fontWeight: 500 }}>
-                {currentChatInfo.displayName || currentChatInfo.fileName}
-              </span>
-
-              {/* Edit icon */}
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" style={{ marginLeft: 'auto', flexShrink: 0 }}>
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
-
-              {/* MARKER_CHAT_NEW_BUTTON: New Chat button with icon */}
-              {/* Phase 107.2: Replaced X icon with proper New Chat button */}
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#555"
-                strokeWidth="2"
-                style={{ flexShrink: 0, cursor: 'pointer' }}
-                title="New Chat"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleNewChat();
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.stroke = '#fff')}
-                onMouseLeave={(e) => (e.currentTarget.style.stroke = '#555')}
-              >
-                {/* Chat bubble */}
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                {/* Plus sign */}
-                <line x1="12" y1="8" x2="12" y2="14"/>
-                <line x1="9" y1="11" x2="15" y2="11"/>
-              </svg>
-            </div>
+              New
+            </button>
           </div>
         )}
 

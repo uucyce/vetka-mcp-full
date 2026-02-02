@@ -67,6 +67,31 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
   }, [isOpen]);
 
+  // MARKER_RENAME_FIX: Listen for external rename events
+  // MARKER_RENAME_DEBUG_FIX: Added debugging for sidebar event listener
+  useEffect(() => {
+    const handleChatRenamed = (e: Event) => {
+      const { chatId, newName } = (e as CustomEvent).detail;
+      console.log('[SIDEBAR DEBUG 1] Received chat-renamed event:', { chatId, newName });
+      console.log('[SIDEBAR DEBUG 2] Current chats before update:', chats.map(c => ({ id: c.id, name: c.display_name })));
+
+      setChats(prevChats => {
+        const updated = prevChats.map(c =>
+          c.id === chatId ? { ...c, display_name: newName } : c
+        );
+        console.log('[SIDEBAR DEBUG 3] Updated chats:', updated.map(c => ({ id: c.id, name: c.display_name })));
+        return updated;
+      });
+    };
+
+    console.log('[SIDEBAR DEBUG 0] Setting up chat-renamed event listener');
+    window.addEventListener('chat-renamed', handleChatRenamed);
+    return () => {
+      console.log('[SIDEBAR DEBUG 0] Cleaning up chat-renamed event listener');
+      window.removeEventListener('chat-renamed', handleChatRenamed);
+    };
+  }, [chats]);
+
   const loadChats = async (reset: boolean = false) => {
     if (reset) {
       setLoading(true);
