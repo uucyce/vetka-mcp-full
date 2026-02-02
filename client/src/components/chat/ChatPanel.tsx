@@ -746,11 +746,9 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
     // Phase 54.3 Fix: Use lastScannedFolder as context when in scanner tab
     const contextPath = selectedNode?.path || (activeTab === 'scanner' && lastScannedFolder ? lastScannedFolder : undefined);
-    sendMessage(input.trim(), contextPath, modelToUse);
 
+    // FIX_109.4b: Create chat ID BEFORE sendMessage so backend receives it
     // Phase 100.6: Initialize chat header for new solo chat
-    // This ensures the header appears immediately when user sends first message
-    // Phase 100.6.1: Auto-naming from pinned file, selected node, or message keywords
     if (!currentChatInfo && !activeGroupId) {
       const firstPinnedNode = pinnedFileIds.length > 0 ? nodes[pinnedFileIds[0]] : null;
       const contextType = selectedNode?.type === 'folder' ? 'folder' : 'file';
@@ -770,18 +768,23 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       }
 
       const newChatId = crypto.randomUUID();
+      // FIX_109.4b: Update store and local state
+      setStoreChatId(newChatId);
+      setCurrentChatId(newChatId);
       setCurrentChatInfo({
         id: newChatId,
         displayName: null,
         fileName,
         contextType,
-        isSaved: true,  // FIX_109.3b: Mark as saved - sendMessage will create in backend
+        isSaved: true,
       });
-      // FIX_109.4: Update store for useSocket access
-      setStoreChatId(newChatId);
-      setCurrentChatId(newChatId);  // Also update local state
-      // FIX_109.3b: Log for debugging
       console.log('[ChatPanel] Created new chat:', { id: newChatId, fileName, contextType });
+
+      // FIX_109.4b: Pass chatId directly to avoid React async setState issue
+      sendMessage(input.trim(), contextPath, modelToUse, newChatId);
+    } else {
+      // Existing chat - use currentChatId from state
+      sendMessage(input.trim(), contextPath, modelToUse, currentChatId || undefined);
     }
 
     setInput('');

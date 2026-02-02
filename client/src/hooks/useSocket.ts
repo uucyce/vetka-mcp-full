@@ -1434,7 +1434,8 @@ export function useSocket() {
   // Phase 48.1: Added modelId parameter for model routing
   // Phase 61: Added pinned files for multi-file context
   // [PHASE70-M3] useSocket.ts: Viewport in sendMessage — IMPLEMENTED
-  const sendMessage = useCallback((message: string, nodePath?: string, modelId?: string) => {
+  // FIX_109.4b: Added chatId parameter for immediate passing (React setState is async)
+  const sendMessage = useCallback((message: string, nodePath?: string, modelId?: string, chatId?: string) => {
     if (!socketRef.current?.connected) {
       // console.warn('[Socket] Not connected, cannot send message');
       return;
@@ -1472,8 +1473,8 @@ export function useSocket() {
       console.log('[VIEWPORT] Camera not available, skipping viewport context');
     }
 
-    // FIX_109.4: Get chat_id from store for unified MCP compatibility
-    const currentChatId = useStore.getState().currentChatId;
+    // FIX_109.4b: Use passed chatId first, fallback to store
+    const effectiveChatId = chatId || useStore.getState().currentChatId;
 
     socketRef.current.emit('user_message', {
       text: message,                    // Backend expects 'text'
@@ -1483,9 +1484,13 @@ export function useSocket() {
       pinned_files: pinnedFiles.length > 0 ? pinnedFiles : undefined,  // Phase 61
       // Phase 70: Full viewport context for AI spatial awareness
       viewport_context: viewportContext || undefined,
-      // FIX_109.4: Pass chat_id for unified ID system (solo chats like groups)
-      chat_id: currentChatId || undefined,
+      // FIX_109.4b: Pass chat_id for unified ID system
+      chat_id: effectiveChatId || undefined,
     });
+
+    if (effectiveChatId) {
+      console.log('[Socket] Sending message with chat_id:', effectiveChatId);
+    }
   }, []);
 
   // === PHASE 55: APPROVAL ACTIONS ===
