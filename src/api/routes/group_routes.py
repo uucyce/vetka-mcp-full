@@ -118,6 +118,16 @@ async def update_group(group_id: str, body: UpdateGroupRequest):
 
     Returns:
         Success status with new name
+
+    MARKER_GROUP_RENAME_BUG: Endpoint exists and works correctly
+    Status: API endpoint is FUNCTIONAL
+    Issue: Frontend does NOT sync chat history after rename
+    Context: Group name is stored in TWO places:
+    - /api/groups/{id} (this endpoint updates it) ✓
+    - /api/chats/{id} with context_type='group' (NOT updated by frontend) ✗
+    Result: ChatSidebar shows stale name until page reload
+    Fix Location: client/src/components/chat/ChatPanel.tsx:handleRenameChatFromHeader
+    Required Action: After PATCH /api/groups/{id}, also call PATCH /api/chats/{currentChatId}
     """
     if not body.name or not body.name.strip():
         raise HTTPException(status_code=400, detail="name is required and cannot be empty")
