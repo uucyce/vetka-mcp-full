@@ -25,6 +25,7 @@ export function TreeEdges() {
       end: [number, number, number];
       isHighlighted: boolean;
       isAgentHighlighted: boolean;
+      isChatEdge: boolean;  // Phase 108.2: Track chat edges for blue coloring
     }> = [];
 
     // If we have edges from store, use them
@@ -36,6 +37,8 @@ export function TreeEdges() {
         if (sourceNode && targetNode) {
           const isHighlighted = selectedId === edge.source || selectedId === edge.target;
           const isAgentHighlighted = highlightedId === edge.source || highlightedId === edge.target;
+          // Phase 108.2: Edge is chat-related if either node is a chat type
+          const isChatEdge = (sourceNode as any).type === 'chat' || (targetNode as any).type === 'chat';
 
           result.push({
             id: edge.id,
@@ -43,6 +46,7 @@ export function TreeEdges() {
             end: [targetNode.position.x, targetNode.position.y, targetNode.position.z],
             isHighlighted,
             isAgentHighlighted,
+            isChatEdge,
           });
         }
       });
@@ -54,6 +58,8 @@ export function TreeEdges() {
 
           const isHighlighted = selectedId === node.id || selectedId === parent.id;
           const isAgentHighlighted = highlightedId === node.id || highlightedId === parent.id;
+          // Phase 108.2: Edge is chat-related if either node is a chat type
+          const isChatEdge = (node as any).type === 'chat' || (parent as any).type === 'chat';
 
           result.push({
             id: `edge-${parent.id}-${node.id}`,
@@ -61,6 +67,7 @@ export function TreeEdges() {
             end: [node.position.x, node.position.y, node.position.z],
             isHighlighted,
             isAgentHighlighted,
+            isChatEdge,
           });
         }
       });
@@ -72,12 +79,24 @@ export function TreeEdges() {
   return (
     <group name="edges">
       {edges.map((edge) => {
+        // MARKER_3D_EDGE_STYLE: Edge rendering with monochrome color scheme
+        // - Default color: '#6b7280' (gray, opacity 0.6, lineWidth 1.5)
+        // - Agent highlight: '#9ca3af' (lighter gray, opacity 0.8, lineWidth 2.5)
+        // - Selection highlight: '#d1d5db' (even lighter, opacity 0.75, lineWidth 2)
+        // - Curve: CatmullRomCurve3 with midpoint (Edge.tsx line 41)
+        // - Implementation: @react-three/drei Line component with depthTest=true, depthWrite=false
+        // - Phase 108.2: Chat edges use '#4a9eff' (blue) with higher opacity to distinguish from file tree
         // Phase 54.5: Monochrome colors (Batman Nolan style)
         let color = '#6b7280';  // Gray
         let lineWidth = 1.5;
         let opacity = 0.6;
 
-        if (edge.isAgentHighlighted) {
+        // MARKER_108_CHAT_EDGE: Phase 108.2 - Chat edge coloring
+        if (edge.isChatEdge) {
+          color = '#4a9eff';  // Blue for chat edges
+          opacity = 0.75;
+          lineWidth = 2;
+        } else if (edge.isAgentHighlighted) {
           color = '#9ca3af';  // Lighter gray for agent highlight
           lineWidth = 2.5;
           opacity = 0.8;

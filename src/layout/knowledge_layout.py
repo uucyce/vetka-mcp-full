@@ -14,10 +14,19 @@ PHASE 17.15 REFACTORING:
 
 The result is used by the frontend to blend between Directory and Knowledge modes.
 
+MARKER_3D_LAYOUT: Knowledge graph layout system (Sugiyama DAG)
+- Engine: Sugiyama algorithm for hierarchical layout (calculate_semantic_sugiyama_layout)
+- Coordinates: X (left-right), Y (time/hierarchy), Z (semantic depth)
+- Y-axis: Represents depth in tree hierarchy (roots at top, leaves at bottom)
+- Edge construction: build_prerequisite_edges() creates directed edges with weights
+- Tag colors: generate_cluster_color() provides distinct colors per semantic cluster
+- For chats: Can use same layout engine with chat_node.parent_id as hierarchy root
+- Integration: Positions from this module feed directly into TreeNode.position
+
 @status: active
 @phase: 96
 @depends: math, logging, numpy, typing, dataclasses, collections, src.layout.semantic_sugiyama
-@used_by: src.visualizer.tree_renderer, knowledge mode frontend
+@used_by: src.visualizer.tree_renderer, knowledge mode frontend, (future: chat_layout)
 """
 
 import math
@@ -27,6 +36,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Any, Optional
 from dataclasses import dataclass, field
 from collections import defaultdict
+from datetime import datetime, timezone
 
 # Phase 17.15: Import Sugiyama engine functions
 # Phase 17.16: Added minimize_crossings and apply_soft_repulsion_semantic
@@ -2220,6 +2230,191 @@ def calculate_knowledge_positions(
                 logger.info(f"[KnowledgeLayout] FILE[{i}] id={fid} x={p['x']:.1f} y={p['y']:.1f} z={p['z']:.1f} tag={p.get('parent_tag', '?')}")
 
     return positions, chain_edges
+
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE 108.2: CHAT NODE POSITIONING
+# ═══════════════════════════════════════════════════════════════════
+
+def calculate_decay_factor(last_activity: datetime) -> float:
+    """
+    Calculate decay factor for chat node opacity based on recency.
+
+    MARKER_108_CHAT_DECAY: Phase 108.2 - Chat node temporal decay
+
+    Args:
+        last_activity: Timestamp of last chat activity
+
+    Returns:
+        float: Decay factor in range [0, 1] where 1 = most recent, 0 = oldest
+               Formula: max(0, 1 - hours_since_activity / 168)
+               168 hours = 1 week, so chats older than 1 week have 0 decay
+    """
+    now = datetime.now(timezone.utc)
+
+    # Ensure last_activity is timezone-aware
+    if last_activity.tzinfo is None:
+        last_activity = last_activity.replace(tzinfo=timezone.utc)
+
+    delta = now - last_activity
+    hours_since = delta.total_seconds() / 3600
+
+    # Decay over 1 week (168 hours)
+    decay = max(0.0, 1.0 - (hours_since / 168.0))
+
+    return decay
+
+
+def calculate_chat_positions(
+    chats: List[Dict],
+    file_positions: Dict[str, Dict],
+    time_range: Optional[Tuple[datetime, datetime]] = None,
+    y_min: float = 0,
+    y_max: float = 500
+) -> List[Dict]:
+    """
+    Calculate 3D positions for chat nodes relative to their parent files.
+
+    MARKER_108_CHAT_POSITION: Phase 108.2 - Chat node positioning
+
+    Positioning rules:
+    - X: offset from parent file (+8-12 units to the right, staggered if multiple chats)
+    - Y: temporal axis (older chats at bottom, newer at top)
+      Formula: base_y + (normalized_time * height_range)
+      normalized_time = (chat_timestamp - min_timestamp) / (max_timestamp - min_timestamp)
+    - Z: same as parent file (keep in same "depth plane")
+    - decay_factor: affects opacity (recent chats = brighter)
+
+    Args:
+        chats: List of chat dicts with keys:
+               - id (str): chat UUID
+               - parentId (str): file_id this chat is associated with
+               - lastActivity (datetime): timestamp of last activity
+               - name (str, optional): chat title
+        file_positions: Dict mapping file_id to position dict with keys {x, y, z}
+        time_range: Optional (min_time, max_time) for Y normalization
+                    If None, will be computed from chat timestamps
+        y_min: Minimum Y coordinate for timeline (default: 0)
+        y_max: Maximum Y coordinate for timeline (default: 500)
+
+    Returns:
+        List of chat dicts with added 'position' key containing:
+        {
+            'x': float,
+            'y': float,
+            'z': float,
+            'decay_factor': float  # 0-1, for opacity
+        }
+    """
+    if not chats:
+        logger.info("[ChatLayout] No chats to position")
+        return []
+
+    # Group chats by parent file
+    chats_by_parent: Dict[str, List[Dict]] = defaultdict(list)
+    for chat in chats:
+        parent_id = chat.get('parentId')
+        if parent_id:
+            chats_by_parent[parent_id].append(chat)
+
+    # Determine time range for Y-axis normalization
+    if time_range is None:
+        all_timestamps = [
+            chat['lastActivity']
+            for chat in chats
+            if 'lastActivity' in chat and chat['lastActivity'] is not None
+        ]
+
+        if not all_timestamps:
+            logger.warning("[ChatLayout] No valid timestamps found in chats")
+            min_time = datetime.now(timezone.utc)
+            max_time = min_time
+        else:
+            min_time = min(all_timestamps)
+            max_time = max(all_timestamps)
+    else:
+        min_time, max_time = time_range
+
+    # Ensure timezone-aware
+    if min_time.tzinfo is None:
+        min_time = min_time.replace(tzinfo=timezone.utc)
+    if max_time.tzinfo is None:
+        max_time = max_time.replace(tzinfo=timezone.utc)
+
+    time_span = (max_time - min_time).total_seconds()
+    if time_span == 0:
+        time_span = 1  # Avoid division by zero
+
+    height_range = y_max - y_min
+
+    logger.info(f"[ChatLayout] Processing {len(chats)} chats across {len(chats_by_parent)} parent files")
+    logger.info(f"[ChatLayout] Time range: {min_time} to {max_time} (span: {time_span/3600:.1f} hours)")
+
+    # Position each chat
+    positioned_chats = []
+
+    for parent_id, parent_chats in chats_by_parent.items():
+        # Get parent file position
+        parent_pos = file_positions.get(parent_id)
+
+        if parent_pos is None:
+            logger.warning(f"[ChatLayout] Parent file {parent_id} not found in positions, skipping {len(parent_chats)} chats")
+            continue
+
+        # Sort chats by timestamp (oldest first)
+        sorted_chats = sorted(
+            parent_chats,
+            key=lambda c: c.get('lastActivity', datetime.min.replace(tzinfo=timezone.utc))
+        )
+
+        # Calculate positions for each chat under this parent
+        for idx, chat in enumerate(sorted_chats):
+            last_activity = chat.get('lastActivity')
+
+            if last_activity is None:
+                logger.warning(f"[ChatLayout] Chat {chat.get('id', '?')} has no lastActivity, using current time")
+                last_activity = datetime.now(timezone.utc)
+
+            # Ensure timezone-aware
+            if last_activity.tzinfo is None:
+                last_activity = last_activity.replace(tzinfo=timezone.utc)
+
+            # Calculate Y based on time (normalized to [y_min, y_max])
+            time_delta = (last_activity - min_time).total_seconds()
+            normalized_time = time_delta / time_span if time_span > 0 else 0
+            y_pos = y_min + (normalized_time * height_range)
+
+            # Calculate X with staggered offset (8-12 units to the right)
+            # Stagger multiple chats from same parent
+            base_x_offset = 10  # Base offset from parent
+            stagger_offset = (idx % 3) * 2  # Stagger up to 3 chats: 0, 2, 4
+            x_pos = parent_pos['x'] + base_x_offset + stagger_offset
+
+            # Z stays same as parent (same depth plane)
+            z_pos = parent_pos.get('z', 0.0)
+
+            # Calculate decay factor for opacity
+            decay = calculate_decay_factor(last_activity)
+
+            # Add position to chat dict
+            chat['position'] = {
+                'x': float(x_pos),
+                'y': float(y_pos),
+                'z': float(z_pos),
+                'decay_factor': float(decay)
+            }
+
+            positioned_chats.append(chat)
+
+            logger.debug(
+                f"[ChatLayout] Chat {chat.get('id', '?')[:8]} "
+                f"pos=({x_pos:.1f}, {y_pos:.1f}, {z_pos:.1f}) "
+                f"decay={decay:.2f} parent={parent_id[:8]}"
+            )
+
+    logger.info(f"[ChatLayout] Successfully positioned {len(positioned_chats)}/{len(chats)} chats")
+
+    return positioned_chats
 
 
 # ═══════════════════════════════════════════════════════════════════

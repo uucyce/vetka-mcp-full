@@ -16,8 +16,12 @@ import {
   convertApiResponse,
   convertLegacyNode,
   convertLegacyEdge,
+  convertChatNode,
+  convertChatEdge,
+  chatNodeToTreeNode,
   VetkaApiResponse,
 } from '../utils/apiConverter';
+import { useChatTreeStore } from '../store/chatTreeStore';
 
 export function useTreeData() {
   const {
@@ -30,6 +34,9 @@ export function useTreeData() {
     isLoading,
     error,
   } = useStore();
+
+  // MARKER_108_CHAT_FRONTEND: Phase 108.2 - Chat tree store for chat nodes
+  const { addChatNode } = useChatTreeStore();
 
   useEffect(() => {
     async function loadData() {
@@ -61,19 +68,61 @@ export function useTreeData() {
 
         const { nodes: convertedNodes, edges } = convertApiResponse(vetkaResponse);
 
+        // MARKER_108_CHAT_FRONTEND: Phase 108.2 - Process chat nodes
+        let chatTreeNodes: TreeNode[] = [];
+        const chatEdges: typeof edges = [];
+
+        if (response.chat_nodes && response.chat_nodes.length > 0) {
+          console.log('[useTreeData] Processing chat nodes:', response.chat_nodes.length);
+
+          // Convert chat nodes to ChatNode type and add to chatTreeStore
+          response.chat_nodes.forEach((apiChatNode) => {
+            const chatNode = convertChatNode(apiChatNode);
+            addChatNode(chatNode.parentId, chatNode);
+
+            // Convert ChatNode to TreeNode for 3D rendering
+            const position = {
+              x: apiChatNode.visual_hints.layout_hint.expected_x,
+              y: apiChatNode.visual_hints.layout_hint.expected_y,
+              z: apiChatNode.visual_hints.layout_hint.expected_z,
+            };
+            const treeNode = chatNodeToTreeNode(chatNode, position);
+            chatTreeNodes.push(treeNode);
+          });
+
+          // Convert chat edges
+          if (response.chat_edges) {
+            response.chat_edges.forEach((apiChatEdge, idx) => {
+              chatEdges.push(convertChatEdge(apiChatEdge, idx));
+            });
+          }
+
+          console.log('[useTreeData] Converted chat nodes:', chatTreeNodes.length);
+          console.log('[useTreeData] Chat edges:', chatEdges.length);
+        }
+
+        // Merge file tree nodes and chat nodes
+        const allNodes = { ...convertedNodes };
+        chatTreeNodes.forEach((chatNode) => {
+          allNodes[chatNode.id] = chatNode;
+        });
+
+        // Merge edges
+        const allEdges = [...edges, ...chatEdges];
+
         // Apply layout if positions are all zeros
-        const needsLayout = Object.values(convertedNodes).every(
+        const needsLayout = Object.values(allNodes).every(
           (n) => n.position.x === 0 && n.position.y === 0 && n.position.z === 0
         );
 
         if (needsLayout) {
-          const positioned = calculateSimpleLayout(Object.values(convertedNodes));
+          const positioned = calculateSimpleLayout(Object.values(allNodes));
           setNodes(positioned);
         } else {
-          setNodesFromRecord(convertedNodes);
+          setNodesFromRecord(allNodes);
         }
 
-        setEdges(edges);
+        setEdges(allEdges);
       } else if (response.nodes) {
         // Legacy API format
         const treeNodes: TreeNode[] = response.nodes.map((n: ApiTreeNode) =>
@@ -104,7 +153,7 @@ export function useTreeData() {
     }
 
     loadData();
-  }, [setNodes, setNodesFromRecord, setEdges, setLoading, setError]);
+  }, [setNodes, setNodesFromRecord, setEdges, setLoading, setError, addChatNode]);
 
   return { nodes, isLoading, error };
 }

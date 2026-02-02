@@ -260,7 +260,8 @@ class VETKANodes:
 
     def _parse_mentions(self, message: str) -> list:
         """Parse @mentions from message."""
-        mentions = re.findall(r'@(\w+)', message)
+        # MARKER_108_ROUTING_FIX_4: Support hyphenated model names (@gpt-5.2, @grok-4)
+        mentions = re.findall(r'@([\w\-\.]+(?:/[\w\-\.]+)?(?::[\w\-\.]+)?)', message)
         valid_agents = ['pm', 'dev', 'qa', 'architect', 'researcher', 'hostess']
         return [m for m in mentions if m.lower() in valid_agents]
 

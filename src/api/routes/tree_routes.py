@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
+from datetime import datetime
 
 
 router = APIRouter(prefix="/api/tree", tags=["tree"])
@@ -71,6 +72,66 @@ def _get_memory_manager(request: Request):
     return memory
 
 
+# MARKER_108_CHAT_VIZ_API: Phase 108.2 - Chat nodes in tree API - Helper functions
+def extract_participants(chat: Dict[str, Any]) -> List[str]:
+    """
+    Extract participant list from chat messages (@mentions).
+
+    Args:
+        chat: Chat object with messages
+
+    Returns:
+        List of unique participant identifiers
+    """
+    participants = set()
+    messages = chat.get("messages", [])
+
+    for msg in messages:
+        # Extract from sender_id field
+        sender = msg.get("sender_id")
+        if sender:
+            participants.add(sender)
+
+        # Extract from role field as fallback
+        role = msg.get("role")
+        if role and role not in ["user", "assistant", "system"]:
+            participants.add(role)
+
+        # Extract @mentions from content
+        content = msg.get("content", "")
+        import re
+        mentions = re.findall(r'@(\w+)', content)
+        participants.update(mentions)
+
+    return list(participants)
+
+
+def calculate_decay(updated_at_str: Optional[str]) -> float:
+    """
+    Calculate decay factor based on time since last activity.
+
+    Args:
+        updated_at_str: ISO format timestamp string
+
+    Returns:
+        Float 0.0-1.0, where 1.0 = recent, 0.0 = old (1 week+)
+    """
+    if not updated_at_str:
+        return 0.0
+
+    try:
+        updated_at = datetime.fromisoformat(updated_at_str.replace("Z", ""))
+        now = datetime.now()
+        hours_since = (now - updated_at).total_seconds() / 3600
+
+        # Decay over 168 hours (1 week)
+        decay = max(0.0, 1.0 - (hours_since / 168.0))
+        return decay
+    except Exception as e:
+        print(f"[CHAT_VIZ] Error calculating decay: {e}")
+        return 0.5  # Default to middle value
+
+
 # ============================================================
 # ROUTES
 # ============================================================
@@ -92,6 +153,49 @@ async def get_tree_data(
     - tree: {nodes, edges}
     - layouts: {directory: {...}, semantic: {...}} (when mode='both')
     - semantic_data: {nodes, edges, stats} (when mode='semantic' or 'both')
+
+    MARKER_CHAT_3D_INTEGRATION: Adding chat nodes to tree visualization
+
+    FUTURE IMPLEMENTATION PLAN:
+    1. Extend return format:
+       {
+         "tree": { "nodes": [...file nodes...], "edges": [...] },
+         "chat_nodes": { "id": ChatNode, ... },  ← ADD THIS
+         "chat_edges": [ { "source": "file_id", "target": "chat_id" }, ... ]  ← ADD THIS
+       }
+
+    2. Data sources for chat nodes:
+       - Query ChatHistoryManager for recent chats by file_path
+       - OR query Qdrant VetkaGroupChat collection filtered by file_path
+       - Include: id, name, participants, lastActivity, messageCount, artifacts[]
+
+    3. Position strategy:
+       - File position: from existing layout calculation
+       - Chat position: offset from file (e.g., position.x + 8, position.y - 5)
+       - Use chat's lastActivity for temporal sorting
+
+    4. Edge creation:
+       - Type: 'chat' edge (distinct from 'contains' edges)
+       - Color (frontend): '#4a9eff' (blue) instead of gray
+       - Source: file node id
+       - Target: chat node id
+
+    5. Frontend integration (useTreeData.ts):
+       - Convert chat_nodes to TreeNode[] with type='chat'
+       - Convert chat_edges to TreeEdge[] with type='chat'
+       - Merge into existing nodes/edges
+       - FileCard already supports type='chat' (from treeNodes.ts)
+       - TreeEdges already supports edge coloring for chat edges
+
+    6. Node rendering (FileCard.tsx):
+       - For type='chat': show participants list instead of file content
+       - For type='artifact': show artifact type badge and status
+       - Both use same LOD system as files
+
+    7. Interaction:
+       - Click chat node → opens ChatPanel with that chat
+       - Shift+click → pins chat node (shows in context)
+       - Can drag chat nodes to reorganize conversations
     """
     from qdrant_client.models import Filter, FieldCondition, MatchValue
     from datetime import datetime
@@ -411,6 +515,122 @@ async def get_tree_data(
         print(f"[API] Tree built: {len(nodes)} nodes, {len(edges)} edges")
 
         # ═══════════════════════════════════════════════════════════════════
+        # STEP 4.5: Build chat nodes and edges
+        # MARKER_108_CHAT_VIZ_API: Phase 108.2 - Chat nodes in tree API
+        # ═══════════════════════════════════════════════════════════════════
+        chat_nodes = []
+        chat_edges = []
+
+        try:
+            from src.chat.chat_history_manager import get_chat_history_manager
+
+            chat_manager = get_chat_history_manager()
+            all_chats = chat_manager.get_all_chats(limit=100, load_from_end=True)
+
+            # Create a mapping from file_path to file node id
+            file_path_to_node_id = {}
+            for node in nodes:
+                if node.get('type') in ['leaf', 'file']:
+                    node_path = node.get('metadata', {}).get('path')
+                    if node_path:
+                        file_path_to_node_id[node_path] = node['id']
+
+            for chat in all_chats:
+                # Skip chats with no messages
+                message_count = len(chat.get("messages", []))
+                if message_count == 0:
+                    continue
+
+                chat_id = chat.get("id")
+                file_path = chat.get("file_path", "")
+                updated_at = chat.get("updated_at")
+
+                # Find associated file node id (if exists)
+                associated_file_id = None
+                if file_path and file_path not in ('unknown', 'root', ''):
+                    associated_file_id = file_path_to_node_id.get(file_path)
+
+                # Calculate decay factor based on last activity
+                decay_factor = calculate_decay(updated_at)
+
+                # Extract participants from messages
+                participants = extract_participants(chat)
+
+                # Determine chat name
+                chat_name = chat.get("display_name") or chat.get("file_name") or f"Chat #{chat_id[:8]}"
+
+                # Position: offset from parent file if exists, otherwise random position
+                if associated_file_id:
+                    # Find parent file position
+                    parent_pos = None
+                    for node in nodes:
+                        if node['id'] == associated_file_id:
+                            parent_pos = node.get('visual_hints', {}).get('layout_hint', {})
+                            break
+
+                    if parent_pos:
+                        # Offset chat node from file: +8 in x, -5 in y
+                        chat_x = parent_pos.get('expected_x', 0) + 8
+                        chat_y = parent_pos.get('expected_y', 0) - 5
+                        chat_z = parent_pos.get('expected_z', 0)
+                    else:
+                        # Fallback position
+                        chat_x, chat_y, chat_z = 0, 0, 0
+                else:
+                    # No associated file - place at origin area
+                    chat_x, chat_y, chat_z = 0, -10, 0
+
+                # Create chat node
+                chat_node = {
+                    "id": f"chat_{chat_id}",
+                    "type": "chat",
+                    "name": chat_name,
+                    "parent_id": associated_file_id if associated_file_id else None,
+                    "metadata": {
+                        "chat_id": chat_id,
+                        "file_path": file_path,
+                        "last_activity": updated_at,
+                        "message_count": message_count,
+                        "participants": participants,
+                        "decay_factor": decay_factor,
+                        "context_type": chat.get("context_type", "file"),
+                        "display_name": chat.get("display_name")
+                    },
+                    "visual_hints": {
+                        "layout_hint": {
+                            "expected_x": chat_x,
+                            "expected_y": chat_y,
+                            "expected_z": chat_z
+                        },
+                        "color": "#4a9eff",  # Blue for chat nodes
+                        "opacity": 0.7 + (decay_factor * 0.3)  # More opaque for recent chats
+                    }
+                }
+
+                chat_nodes.append(chat_node)
+
+                # Create edge from file to chat (if file exists)
+                if associated_file_id:
+                    chat_edge = {
+                        "from": associated_file_id,
+                        "to": f"chat_{chat_id}",
+                        "semantics": "chat",
+                        "metadata": {
+                            "type": "chat",
+                            "color": "#4a9eff",
+                            "opacity": 0.3
+                        }
+                    }
+                    chat_edges.append(chat_edge)
+
+            print(f"[CHAT_VIZ] Built {len(chat_nodes)} chat nodes, {len(chat_edges)} chat edges")
+
+        except Exception as chat_err:
+            print(f"[CHAT_VIZ] Warning: Could not build chat nodes: {chat_err}")
+            import traceback
+            traceback.print_exc()
+
+        # ═══════════════════════════════════════════════════════════════════
         # STEP 5: Build response
         # ═══════════════════════════════════════════════════════════════════
         response = {
@@ -429,7 +649,10 @@ async def get_tree_data(
                     'total_files': len([n for n in nodes if n['type'] in ['leaf', 'file']]),
                     'total_folders': len(folders)
                 }
-            }
+            },
+            # MARKER_108_CHAT_VIZ_API: Add chat nodes and edges to response
+            'chat_nodes': chat_nodes,
+            'chat_edges': chat_edges
         }
 
         return response

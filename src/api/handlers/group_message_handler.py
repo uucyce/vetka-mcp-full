@@ -617,7 +617,8 @@ def register_group_message_handler(sio, app=None):
         mentions = (
             user_message.mentions
             if hasattr(user_message, "mentions")
-            else re.findall(r"@(\w+)", content)
+            # MARKER_108_ROUTING_FIX_4: Support hyphenated model names
+            else re.findall(r"@([\w\-\.]+(?:/[\w\-\.]+)?(?::[\w\-\.]+)?)", content)
         )
         if mentions:
             await notify_mcp_agents(
@@ -661,7 +662,9 @@ def register_group_message_handler(sio, app=None):
         print(f"[GROUP_DEBUG] Orchestrator loaded: {type(orchestrator).__name__}")
 
         # Phase 80.7: Find original agent if this is a reply
+        # MARKER_108_ROUTING_FIX_2: Handle MCP agent replies
         reply_to_agent = None
+        reply_to_mcp_agent = False
         if reply_to_id:
             # Look up the original message to find its sender
             messages = manager.get_messages(group_id, limit=100)
@@ -671,10 +674,25 @@ def register_group_message_handler(sio, app=None):
                     # Only route to agent replies (not user replies)
                     if original_sender.startswith("@"):
                         reply_to_agent = original_sender
-                        print(
-                            f"[GROUP_DEBUG] Phase 80.7: Reply to message {reply_to_id[:8]}... from {reply_to_agent}"
-                        )
+                        # Phase 108: Check if this is MCP agent (claude_code, browser_haiku, etc.)
+                        # MCP agents are NOT in participants list
+                        mcp_agent_names = ["claude_code", "browser_haiku", "lmstudio", "cursor", "opencode"]
+                        agent_name_lower = original_sender.lower().lstrip("@")
+                        if any(mcp_name in agent_name_lower for mcp_name in mcp_agent_names):
+                            reply_to_mcp_agent = True
+                            print(
+                                f"[GROUP_DEBUG] Phase 108: Reply to MCP agent {reply_to_agent} - skipping group routing"
+                            )
+                        else:
+                            print(
+                                f"[GROUP_DEBUG] Phase 80.7: Reply to message {reply_to_id[:8]}... from {reply_to_agent}"
+                            )
                     break
+
+        # MARKER_108_ROUTING_FIX_2: If replying to MCP agent, don't route to group agents
+        if reply_to_mcp_agent:
+            print(f"[GROUP_DEBUG] Phase 108: Reply to MCP agent - no group agents invoked")
+            return
 
         # Phase 57.7: Use smart agent selection
         # Phase 80.7: Pass reply_to_agent for proper routing
@@ -1028,7 +1046,8 @@ def register_group_message_handler(sio, app=None):
                 print(f"[GROUP] Agent {agent_id} responded: {len(response_text)} chars")
 
                 # Phase 57.8: Check for @mentions in agent response to trigger other agents
-                agent_mentions = re.findall(r"@(\w+)", response_text)
+                # MARKER_108_ROUTING_FIX_4: Support hyphenated model names
+                agent_mentions = re.findall(r"@([\w\-\.]+(?:/[\w\-\.]+)?(?::[\w\-\.]+)?)", response_text)
                 if agent_mentions:
                     print(
                         f"[GROUP_DEBUG] Agent {display_name} mentioned: {agent_mentions}"

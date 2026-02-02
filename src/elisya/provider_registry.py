@@ -1129,7 +1129,9 @@ async def call_model_v2(
         print(f"[REGISTRY] Warning: {provider.value} doesn't support tools, ignoring")
         tools = None
 
-    # Call provider with fallback to OpenRouter if direct API fails
+    # MARKER_108_ROUTING_FIX_1: NO automatic fallback to OpenRouter
+    # Phase 108: If user requested @grok-4 and xAI fails → return error to user
+    # DO NOT silently switch to Claude/GPT via OpenRouter
     try:
         result = await provider_instance.call(messages, model, tools, **kwargs)
         # MARKER_93.11_SUCCESS: Update model status on success
@@ -1137,86 +1139,24 @@ async def call_model_v2(
         update_model_status(model, success=True)
         return result
     except XaiKeysExhausted as e:
-        # Phase 80.39: All xai keys got 403, fallback to OpenRouter
-        print(
-            f"[REGISTRY] XAI keys exhausted (403), using OpenRouter fallback for {model}..."
-        )
-        openrouter_provider = registry.get(Provider.OPENROUTER)
-        if openrouter_provider:
-            # Convert model to OpenRouter format: grok-4 -> x-ai/grok-4
-            # MARKER-PROVIDER-004-FIX: Remove double x-ai/xai/ prefix
-            clean_model = model.replace("xai/", "").replace("x-ai/", "")
-            openrouter_model = f"x-ai/{clean_model}"
-            result = await openrouter_provider.call(
-                messages, openrouter_model, tools, **kwargs
-            )
-            return result
-        raise
+        # Phase 108: All xai keys exhausted (403) → fail explicitly
+        from src.elisya.model_router_v2 import update_model_status
+        update_model_status(model, success=False, error_code=403)
+        print(f"[REGISTRY] XAI keys exhausted for {model}: {e}")
+        raise ValueError(f"All xAI API keys exhausted (403). Please check your API keys.") from e
     except ValueError as e:
-        # API key not found - try OpenRouter as fallback for remote models
-        if provider in (
-            Provider.OPENAI,
-            Provider.ANTHROPIC,
-            Provider.GOOGLE,
-            Provider.XAI,
-        ):
-            print(
-                f"[REGISTRY] {provider.value} API key not found, trying OpenRouter fallback..."
-            )
-            openrouter_provider = registry.get(Provider.OPENROUTER)
-            if openrouter_provider:
-                try:
-                    # MARKER-PROVIDER-006-FIX: Convert model for XAI fallback consistency
-                    # Convert xai/grok-beta -> x-ai/grok-beta for OpenRouter
-                    clean_model = model.replace("xai/", "").replace("x-ai/", "")
-                    openrouter_model = (
-                        f"x-ai/{clean_model}" if provider == Provider.XAI else model
-                    )
-                    result = await openrouter_provider.call(
-                        messages, openrouter_model, None, **kwargs
-                    )
-                    return result
-                except Exception as fallback_err:
-                    print(f"[REGISTRY] OpenRouter fallback also failed: {fallback_err}")
-        print(f"[REGISTRY] {provider.value} failed: {e}")
-        raise
+        # Phase 108: API key not found → fail explicitly
+        from src.elisya.model_router_v2 import update_model_status
+        update_model_status(model, success=False, error_code=401)
+        print(f"[REGISTRY] {provider.value} API key not found: {e}")
+        raise ValueError(f"{provider.value} API key not configured. Please add it to your environment.") from e
     except httpx.HTTPStatusError as e:
         # MARKER_93.11_ERROR: Update model status on HTTP error
         from src.elisya.model_router_v2 import update_model_status
         update_model_status(model, success=False, error_code=e.response.status_code)
-
-        # MARKER_93.10_FALLBACK: HTTP errors (401/402/403/404/429) - fallback to OpenRouter
-        # Phase 93.10: Added 404 - if direct API doesn't have model, try OpenRouter
-        if provider in (
-            Provider.OPENAI,
-            Provider.ANTHROPIC,
-            Provider.GOOGLE,
-            Provider.XAI,
-        ):
-            print(
-                f"[REGISTRY] {provider.value} HTTP error ({e.response.status_code}), trying OpenRouter fallback..."
-            )
-            openrouter_provider = registry.get(Provider.OPENROUTER)
-            if openrouter_provider:
-                try:
-                    # MARKER_93.10: Convert model for OpenRouter - preserve provider prefix
-                    # openai/gpt-5.2 -> openai/gpt-5.2 (OpenRouter understands this format)
-                    # xai/grok-4 -> x-ai/grok-4 (OpenRouter uses x-ai/ not xai/)
-                    if provider == Provider.XAI:
-                        clean_model = model.replace("xai/", "").replace("x-ai/", "")
-                        openrouter_model = f"x-ai/{clean_model}"
-                    else:
-                        openrouter_model = model  # Keep as-is for openai/, anthropic/, etc.
-
-                    print(f"[REGISTRY] OpenRouter fallback: {model} -> {openrouter_model}")
-                    result = await openrouter_provider.call(
-                        messages, openrouter_model, None, **kwargs
-                    )
-                    return result
-                except Exception as fallback_err:
-                    print(f"[REGISTRY] OpenRouter fallback also failed: {fallback_err}")
-        print(f"[REGISTRY] {provider.value} HTTP error: {e}")
-        raise
+        # Phase 108: HTTP errors → fail explicitly with status code
+        print(f"[REGISTRY] {provider.value} HTTP error ({e.response.status_code}): {e}")
+        raise ValueError(f"{provider.value} API error ({e.response.status_code}): {e}") from e
     except Exception as e:
         # MARKER_93.11_ERROR: Update model status on general error
         from src.elisya.model_router_v2 import update_model_status

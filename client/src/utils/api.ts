@@ -20,6 +20,35 @@ export interface ApiTreeNode {
   children?: string[];
 }
 
+// MARKER_108_CHAT_FRONTEND: Phase 108.2 - Chat nodes API types
+export interface ChatNodeAPI {
+  id: string;  // "chat_{uuid}"
+  type: "chat";
+  name: string;
+  parent_id: string | null;
+  metadata: {
+    chat_id: string;
+    file_path: string;
+    last_activity: string;
+    message_count: number;
+    participants: string[];
+    decay_factor: number;
+    context_type: string;
+  };
+  visual_hints: {
+    layout_hint: { expected_x: number; expected_y: number; expected_z: number };
+    color: string;
+    opacity: number;
+  };
+}
+
+export interface ChatEdgeAPI {
+  from: string;
+  to: string;
+  semantics: "chat";
+  metadata: { type: "chat"; color: string; opacity: number };
+}
+
 // API response can be either legacy or new VETKA format
 export interface ApiTreeResponse {
   success: boolean;
@@ -31,6 +60,9 @@ export interface ApiTreeResponse {
     nodes: VetkaApiNode[];
     edges: VetkaApiEdge[];
   };
+  // Phase 108.2: Chat nodes
+  chat_nodes?: ChatNodeAPI[];
+  chat_edges?: ChatEdgeAPI[];
   error?: string;
 }
 
@@ -41,10 +73,13 @@ export async function fetchTreeData(): Promise<ApiTreeResponse> {
       throw new Error(`HTTP ${response.status}`);
     }
     const data = await response.json();
-    // Backend returns {format, mode, source, tree} - add success flag
+    // MARKER_108_CHAT_FRONTEND: Phase 108.2 - Extract chat nodes from response
+    // Backend returns {format, mode, source, tree, chat_nodes?, chat_edges?}
     return {
       success: true,
       tree: data.tree,
+      chat_nodes: data.chat_nodes,
+      chat_edges: data.chat_edges,
     };
   } catch (error) {
     console.error('[API] fetchTreeData error:', error);

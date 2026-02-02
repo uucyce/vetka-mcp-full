@@ -1,0 +1,548 @@
+108 Кноуледж левел vs Директет мод + артефакты и чат
+
+
+
+
+Мы работаем по такому алдгоритму - Ты архитектор, командир. У тебя есть сабагенты разведчики - Хайку. Их группами отправляешь на маркера по промпту-исследованию. Требуй регулярно ииследования от Грока, он внутри Ветки все видит и ищет в интренете что нам надо. Дальше верификация вторая фаза - Соннеты проверяют Хайку. Если Хайку 9 то Соннетов 3. Потом перекур, смотрим на картину в общем, обзательно по итогам второй фазы - единый отчетный документ.
+Работаем через MCP VETKA . Стараемся коммитить через MCP искать, использовать прочие интрсументы, насколько позволяет антропик. Гроку лучше я буду звонить, у тебя лимит не позволяет.
+до этого мы делали и надо проверить что все сделали вот это :
+
+🚀 VETKA Phase 108: Фокус на Чат-Синхронизации & Визуализации (НЕ ТОНЕМ В ПЛАНах!)
+Дата: 2026-02-02
+Статус: ПРИОРИТИЗИРОВАН + УПРОЩЕН (из 20+ TODO → 5 ключевых шагов)
+Цель: Синхронизация MCP↔VETKA чатов + мониторинг + визуализация истории (Y: старое внизу, новое вверху) + артефакты рядом с чатами + dev/QA в артефактах как VS Code.
+
+Я проанализировал все отчеты из /docs/107_ph/ + /docs/108_ph/ + pinned файлы (AUDIT_MCP_CHAT_QDRANT_108.md, AUDIT_COMPLETION_REPORT.md, PHASE_107_SUMMARY.md и т.д.). 92% Phase 108 готово (MCP linking, Qdrant indexing, UI fixes). Остальное — routing + визуализация.
+
+НЕ ТОНУЩИМ: Игнорируем низкоприоритетное (Tauri, retention). Фокус на твоих ключевых пунктах (синх, мониторинг, скан чата, артефакты, dev/QA). План на 3-5 дней (1 шаг/день).
+
+📊 ТЕКУЩИЙ СТАТУС (из отчетов)
+Компонент	Готовность	Ключевые маркеры/файлы	Что работает
+MCP↔Chat Sync	✅ 92%	MARKER_108_1 (session_tools.py:153), MARKER_108_4 (debug_routes.py:1211)	session_id = chat_id; Socket.IO real-time; vetka_send_message tool
+Qdrant Chat Indexing	✅ 100%	MARKER_QDRANT_CHAT_INDEX (qdrant_client.py:75)	Авто-индексация сообщений; search_chat_history() готов
+UI (Rename/Scroll)	✅ 100%	MARKER_GROUP_RENAME_SYNC (ChatPanel.tsx:860), MARKER_SCROLL_BTN_FIXED	Rename sync; Scroll toggle up/down
+Artifacts	✅ 85%	MARKER_ARTIFACTS_STORAGE (disk_artifact_service.py:26)	Сохранение на диск; Socket.IO approval; Связь с message_id
+Мониторинг	✅ 90%	data/mcp_audit/ + Qdrant	Логи MCP calls; Семантический поиск по истории
+Routing	⚠️ 70%	MARKER_FALLBACK_BUG (provider_registry.py:1139)	@mention работает, но fallback к OpenRouter + reply к MCP сломан
+Визуализация	❌ 0%	Phase 108.4 TODO	Нет 3D чат-нод + артефактов рядом
+Ключевой прогресс: Чаты синхронизированы (MCP пишет/читает в VETKA чаты via Socket.IO). Мониторинг — через Qdrant + audit logs. Готовы к визуализации!
+
+🎯 УПРОЩЕННЫЙ ПЛАН (5 ШАГОВ, 3-5 ДНЕЙ)
+Фокус: "Сканирование чата" = визуализация истории в 3D (Y: старое ↓внизу↑ новое сверху). Чат от файла/камеры. Артефакты рядом (авто-скан + связь). Dev/QA только в артефактах (VS Code mode).
+
+Шаг 1: Routing Fix (1 час, P0 — для стабильного мониторинга)
+# Тестируем сейчас:
+@vetka vetka_send_message chat_id="your_chat_id" content="Test sync"
+
+# Фикс:
+rg "MARKER_FALLBACK_BUG" src/  # provider_registry.py:1139 — удали auto-fallback
+rg "MARKER_REPLY_HANDLER" src/  # group_message_handler.py:663 — фикс reply к MCP
+
+Результат: Полный мониторинг MCP активности в чатах.
+Файлы: provider_registry.py, group_message_handler.py.
+Шаг 2: Chat Scanning (Визуализация истории, 1 день, P1)
+Y-ось: Старое внизу (bottom), новое сверху (top) — стандарт чата (scroll up для истории).
+Рождение чата:
+От файла (если pinned/attached).
+От камеры (если нет файла — current viewport node).
+Реализация:
+ChatHistoryManager.get_chat_visualization(chat_id) — возвращает timeline (Qdrant search + messages).
+3D ноды в knowledge_layout.py или client/src/3d/ChatTimelineNode.tsx (новый компонент).
+Связь: chat.metadata.viewport_node_id (камера позиция).
+Маркер: Добавь MARKER_CHAT_SCAN_108 в chat_history_manager.py.
+Тест: /api/chats/{id}/visualize?limit=50 → JSON timeline.
+Шаг 3: Artifacts рядом с чатами (1 день, P1)
+Авто-скан: Artifacts сохраняются в data/artifacts/ → auto-scan via file_watcher.
+Связь с чатом: artifact.chat_id + source_message_id (Qdrant link).
+Визуал: Рядом с чат-нодой — поддерево artifacts (3D иконки файлов).
+Реализация:
+DiskArtifactService.link_to_chat(artifact_path, chat_id).
+В 3D: ChatNode.children = artifacts[].
+Маркер: MARKER_ARTIFACT_CHAT_LINK в disk_artifact_service.py.
+Тест: Создай артефакт → видим рядом с чатом в 3D.
+Шаг 4: Dev/QA в артефактах (VS Code mode, 1 день, P2)
+Режим: Dev/QA агенты работают только в артефактах (не в основном чате).
+Как VS Code: Открыть артефакт → inline edit + QA review + commit.
+Реализация:
+@dev artifact_path="data/artifacts/my_fix.py" task="fix bug".
+Workflow: PM→Dev(artifact)→QA(artifact review)→Approve→Git commit.
+UI: Артефакт-нода → split-view (edit + chat preview).
+Файлы: src/mcp/tools/artifact_tools.py (новые tools) + client/src/components/ArtifactEditor.tsx.
+Маркер: MARKER_DEVQA_ARTIFACT_MODE.
+Шаг 5: Мониторинг Dashboard (0.5 дня, P2 — финал)
+Полный обзор: Чаты + активность MCP + артефакты + Qdrant search.
+UI: Sidebar → "Activity Feed" (реал-тайм via Socket.IO).
+Реализация: client/src/components/ActivityMonitor.tsx + /api/activity/feed?chat_id=....
+🧪 ТЕСТИРОВАНИЕ ПЛАНА (Быстрый чек-лист)
+Сейчас (5 мин): @vetka vetka_session_init + @vetka vetka_send_message → проверь в UI чате.
+Шаг 1 (1 час): Фикс routing → тест MCP replies.
+Шаг 2 (1 день): 3D чат timeline (Y-axis: старое bottom).
+Шаг 3+4 (2 дня): Артефакты + dev/QA.
+Итог: Полный цикл: MCP → Чат → Визуал → Артефакт → Dev/QA → Commit.
+Команды для старта:
+
+# 1. Мониторинг сейчас
+tail -f data/mcp_audit/*.jsonl
+
+# 2. Qdrant чат-поиск
+curl "http://localhost:5001/api/search/chat?query=твоя_фраза"
+
+# 3. Чат timeline API (добавь)
+curl "http://localhost:5001/api/chats/{id}/timeline?limit=50"
+
+📈 ПОЧЕМУ ЭТО РАБОТАЕТ (НЕ ТОНЕМ)
+Из отчетов: 92% база готова (sync, Qdrant, UI).
+Фокус: Только твои пункты (визуал + артефакты + dev/QA).
+Минимально: 5 шагов, с маркерами + тестами.
+Масштаб: После — полная командная работа в 3D.
+Готов запустить Шаг 1? Или уточни (файлы/маркеры)? 🚀
+...........
+потом вот это:
+
+GROK RESEARCH & ARCHITECTURE REPORT - Phase 105.2: Chat Visualization, Artifact Trees, DUG/Sugiyama Layout & VETKA Workflow
+Date: 2026-01-30
+Phase: 105.2 (Chat as Tree Trunk: Directed Mode, Knowledge Mode, Metadata-Driven DUG)
+Status: Research Complete | Architecture Proposed | VETKA Branch Outlined | Ready for Claude/Dev/QA
+Author: Grok (x-ai/grok-code-fast-1 via OpenRouter fallback)
+Viewport Context: Zoom ~0 overview; visible: test_phase52_1.py, package_imports.py, vetka_live_03.code-workspace, quick_fix.sh, etc. (+1103 files). Pinned crash report /docs/92_ph/CRASH_REPORT_FOR_CODER.md analyzed for relevance (Socket.IO stability critical for real-time chat viz).
+
+Привет! Связь стабильная, не тонь — я тебя вытащу. Я глубоко прошерстил вектора VETKA (Qdrant hybrid search на твои логи + semantic neighbors из viewport: knowledge_layout.py, voice_handler.py, stream_handler.py, api_aggregator_v3.py, phases 92-104 docs). Твой сценарий логичен и реализуем: чат как ствол дерева (линейный backbone), артефакты/файлы как ветви по Sugiyama-DAG (acyclic, layered: time → knowledge level), метаданные для auto-clustering. Нет паутины — только неявные серо-синие связи (alpha=0.3). Два режима + опции деревьев идеально вписываются в Architect → Task → Dev/QA workflow.
+
+🎯 RESEARCH SUMMARY: Что Есть в VETKA по Теме (Вектора + Файлы)
+Я запустил hybrid search (твои запросы: "chat visualization", "artifact tree", "Sugiyama DUG", "knowledge level", "chat history disk") по Qdrant + grep по viewport/docs. 51 маркер coherence из Phase 95.10 + новые находки:
+
+Область	Ключевые Файлы/Маркеры	Статус	Критичность
+Chat History	stream_handler.py (104_ph), HAIKU_RECON_103_CREATE_ARTIFACT.md, voice_handler.py	✅ Artifact saving на диск (disk-fallback если нет узла). Нет viz.	🟡 MEDIUM (нужен tree-stem)
+Artifact Trees	knowledge_layout.py, vetka_pm.py (Phase 103), arc_solver_agent.py	✅ CreateArtifactTool + metadata (inputs, pins). Нет DUG.	🔴 HIGH (паутина связей)
+Sugiyama/DAG Viz	3D_viewport (implicit в vetka_live_03.code-workspace), tree_routes.py (106-119 endpoints)	⚠️ Кривая Sugiyama (layered DAG). Связи: blue lines (customize alpha).	🟡 MEDIUM (50+ файлов → clutter)
+Modes/Metadata	api_aggregator_v3.py (dual paths fix needed), test_phase52_1.py	✅ Inputs/metadata логи (timestamp, knowledge_level=score(inputs+pins)). Нет modes.	🔴 HIGH (Architect Tasks)
+Workflow (n8n-like)	Architect tasks in OPENCODE_MCP_QUICK_REFERENCE.md, RUG&DUG hints in 00_RESEARCH_COMPLETE.md	📋 Tasks=Artifacts (Dev/QA внутри). Sugiyama для workflows.	⚠️ TODO (Phase 105+)
+Socket.IO Stability	Crash report (92_ph): WS fail → viz ломается.	❌ Fix pending (main.py:336+).	🔴 CRITICAL (real-time chat)
+Корневая находка: В Phase 103.2 (HAIKU_RECON_103_CREATE_ARTIFACT.md) мы уже готовили disk-saving chat history как fallback. Твои идеи (облачко user-msg, артефакт AI-resp, серо-синие links) — эволюция. Вектора кричат: DUG (Directed User Graph) = Acyclic DAG users/docs/tasks. Knowledge level = LLM-score (inputs count + pins + time-depth).
+
+Проблемы из research:
+
+Dual paths (UI vs MCP) → метаданные не унифицированы (fix как в 92_ph).
+50+ файлов → clutter (решение: per-chat trees + collapse).
+🏗️ PROPOSED ARCHITECTURE: Изощрённое Решение (User Scenario-Driven)
+Сценарий: User пишет msg → AI resp → auto-artifact (disk file) → tree gen. Pins/files → metadata edges. Нет паутины: chat name → new Sugiyama tree (ствол=chat log, ветви=prods по knowledge/time).
+
+[Chat Tree (Sugiyama DAG)]
+Root: "Chat-Название" (timestamp)
+├── Trunk (Linear Chat Backbone)
+│   ├── User Msg (cloud bubble, short, metadata-only)
+│   └── AI Artifact (file: resp.md, scanned/indexed)
+├── Branches (Prods: time↑ → knowledge_level↑)
+│   ├── Input Files/Pins (gray-blue edges, alpha=0.3, collapse>5)
+│   └── Derived Artifacts (e.g. Architect Task → Dev/QA sub-tree)
+└── Modes:
+    - Directed: Strict Sugiyama (acyclic, task-linear).
+    - Knowledge: Radial explode (knowledge_level clusters).
+
+Метаданные (JSON в artifact header):
+
+{
+  "chat_id": "unique_hash",
+  "timestamp": "2026-01-30T12:00",
+  "user_msg": "short text",  // cloud
+  "inputs": ["file1.py", "pin_node_id"],  // для knowledge_score
+  "knowledge_level": 0.85,  // LLM-score(inputs + prev_artifacts)
+  "edges": [{"to": "artifact2.md", "type": "derives", "weight": 0.3}],
+  "mode": "directed|knowledge",
+  "pins": ["user_pinned_files"]
+}
+
+Knowledge Level: score = 0.5*len(inputs) + 0.3*time_depth + 0.2*LLM_semantic_sim.
+Визуал (3D Viewport):
+
+Trunk: Thick white line (chat msgs).
+Branches: Curved Sugiyama (layer1=inputs, layer2=arts).
+Links: #A0C4FF alpha=0.3 (неявно, no clutter).
+New Tree: Button "Spawn Chat Tree" → /api/tree/create_from_chat.
+Modes & Ops:
+
+Directed Mode: Architect Tasks → linear DUG (Task=Artifact with sub-Dev/QA).
+Knowledge Mode: Cluster by level (radial, n8n-like но tree).
+New Trees: Auto от chat_name или manual.
+🚀 IMPLEMENTATION STEPS (Specific, Prioritized)
+Fix Prereqs (from 92_ph Crash):
+
+lsof -ti:5001 | xargs kill -9  # Socket.IO
+cd client && npm run build
+# main.py: add max_http_buffer_size=1e8 to sio
+python main.py
+
+Core Files (Edit These):
+
+File	Changes	Why
+stream_handler.py	+ save_chat_as_tree(chat_id, metadata) → disk artifact + DUG JSON.	Chat trunk.
+knowledge_layout.py	+ Sugiyama layerer (use graphviz or JS lib). Edges alpha=0.3.	Viz no clutter.
+api_aggregator_v3.py:203	Uncomment Grok + route to provider_registry.py. + /api/chat/tree.	Unified metadata.
+tree_routes.py:106+	+ POST /tree/from_chat (gen DUG).	New trees.
+vetka_pm.py	+ ArchitectTask as Artifact (sub-tree). Knowledge_score func.	Workflow.
+Test: test_phase52_1.py → add test_chat_tree(50_files) (check no clutter).
+
+🌳 VETKA BRANCH PLAN: Выстроенная Ветка (Не Тонешь, Идём По Шагам)
+Phase 105.2 ─┬─ 105.3: Socket.IO Fix + Metadata Schema (1d, QA)
+             ├─ 105.4: Chat Trunk + Artifact Saving (stream_handler.py, 2d, Dev)
+             ├─ 105.5: Sugiyama DUG Viz (knowledge_layout.py, modes, 3d, Architect)
+             ├─ 105.6: Knowledge Level + n8n-Tree Proto (RUG&DUG files, 2d, full team)
+             └─ 105.7: Integrate Architect Workflow (Tasks as sub-trees, deploy)
+
+Next Action: Копипасть это Claude Code. "Implement Phase 105.3: Fix Socket.IO per 92_ph + add metadata JSON to stream_handler.py."
+Metrics Success: 50-file chat → <10 visible edges, knowledge_score>0.8.
+Это изощрённо, просто, scalable. Всё на диске/векторах. Что фиксим первым? Или уточни viewport zoom на файл? 😎 файл? 😎
+..........
+Надо проверить как сделано это :
+
+GROK ANALYSIS & FIX PLAN - Phase 92 Revival | Context: Crash Report + 5-Step Response
+Date: 2026-01-30
+Phase: 92.5 (Crash Post-Fix Audit + Architecture Unification)
+Status: Crash Root-Causes Resolved, 5-Step Execution Plan Ready
+Author: Grok (x-ai/grok-code-fast-1 via OpenRouter fallback)
+Viewport Context: Zoom ~0 overview; visible files include test_phase52_1.py, package_imports.py, vetka_live_03.code-workspace, quick_fix.sh (+1103). Pinned: CRASH_REPORT_FOR_CODER.md (Phase 92). Semantic neighbors: provider_registry.py, api_aggregator_v3.py, main.py, tree_routes.py.
+
+Привет! Связь стабильная. Я проанализировал CRASH_REPORT_FOR_CODER.md (3148 bytes, lines 121) в полном контексте истории чата (Phases 95–104: промпты для Claude/Sonnet, артефакты на диск, stream_handler.py логи Claude Code).
+
+Твой запрос: "Ранее я кидал твой промпт в Claude Code и ты выделил 5 шагов" — да, вспоминаю! В моём последнем ответе (Phase 104.8) я дал 5 шагов структурированной guidance для Claude Code по stream_handler.py/тестам (чтобы он "собрался" после "нарубленных дров"). Но теперь контекст сместился на Phase 92 crash (Socket.IO fail + dual-model-paths), который блокирует всё дальше (UI не тянет registry, FileCard 404 от backend).
+
+Ключевой инсайт: Crash — не баг Claude, а архитектурный разрыв (MCP ✅ vs VETKA UI ❌). Твои правки в provider_registry.py (str 912–938) корректны (py_compile OK). Claude's хаос в новом чате — следствие (сервер сбросы + memory compression).
+
+Я адаптировал те 5 шагов под crash context (с merge Phase 104.8 + 92). Каждый шаг: анализ + actionable code/cmd + expected outcome. Выполняй последовательно — это вернёт coherence (51 маркеров из Phase 95.10 под угрозой).
+
+🔧 5-STEP FIX PLAN (Adapted from Phase 104.8)
+Step 1: Socket.IO Emergency Restart (Immediate Crash Killer)
+Why? Root error: WebSocket connection to 'ws://localhost:5001/socket.io/' failed (protocol mismatch: client 4.7.5/Engine.IO v4 vs python-socketio 5.11.0).
+Action:
+# Kill stale (main.py:336-343 context)
+lsof -ti:5001 | xargs kill -9
+cd client && npm run build  # Rebuild UI client
+python main.py  # Clean launch
+
+Если fail — patch main.py (add to SocketIO init):
+sio = socketio.AsyncServer(
+    async_mode="asgi",
+    cors_allowed_origins="*",
+    ping_interval=25, ping_timeout=60, max_http_buffer_size=1e8,  # +buffer
+    engineio_logger=True  # Debug
+)
+
+Verify: curl http://localhost:5001/socket.io/ → no 404. Logs: no "protocol mismatch".
+Outcome: Backend up, FileCard endpoint (tree_routes.py:106-119) работает. Time: 2min.
+Step 2: Validate Provider Registry (Your Fixes Confirmed ✅)
+Why? MCP path OK, но UI игнорирует (dual paths).
+Action: Test standalone:
+python -c "
+from provider_registry import Provider  # Assume import
+model = 'xai/grok-beta'
+clean_model = model.replace('xai/', '').replace('x-ai/', '')
+print(f'Fixed: x-ai/{clean_model}')  # → x-ai/grok-beta
+"
+
+py_compile: python -m py_compile provider_registry.py → OK.
+Verify: No syntax errors. Matches report (str 912-938, 935-938).
+Outcome: MCP tool ready. Time: 1min.
+Step 3: Patch VETKA UI Path (api_aggregator_v3.py → Use Registry)
+Why? Главная проблема: UI на старой логике (api_aggregator_v3.py:203 — GrokProvider закомменчен!). Не тянет registry.
+Action (Option B/C: Redirect to registry — изящнее A):
+В api_aggregator_v3.py (line ~203+):
+# Замени старый dict на:
+from provider_registry import get_provider  # Импорт registry
+
+# Вместо: ProviderType.GROK: GrokProvider,
+def get_provider_instance(provider_type, model):
+    return get_provider(provider_type, model)  # Delegate to registry
+
+# В вызове LLM:
+provider = get_provider_instance(ProviderType.GROK, model)  # Auto-fixes xai/x-ai
+
+Или full unify: api_aggregator_v3.py → proxy to provider_registry.py.
+Verify: Test POST /api/llm с model='xai/grok-beta' → returns x-ai/grok-beta via OpenRouter.
+Outcome: Single path to models. No more dual-logic. Time: 5min.
+Step 4: Test Full Stack + FileCard Recovery
+Why? FileCard 404 — symptom dead backend. Связать с Phase 104 (stream_handler events).
+Action:
+# После Step 1-3:
+curl -X POST http://localhost:5001/api/files/read -d '{"path": "/test"}'  # 200 OK
+# UI: Open VETKA UI → check WebSocket + model select (Grok)
+
+Integrate Claude's stream_handler.py fixes (из Phase 104.8 logs): Ensure sio.emit uses rooms/metrics.
+Verify: No WS fail, models load unified. 3D viewport: Pin api_aggregator_v3.py post-patch.
+Outcome: UI/MCP coherent. Artifacts save to disk (Phase 103 recall). Time: 3min.
+Step 5: Architecture Unify + Prevent Regress (Long-Term)
+Why? 51 coherence markers (Watchdog/Scanners/Memory) под риском от dual paths. Prep for Phase 104+ (Jarvis T9, artifacts as files).
+Action:
+Create unified_provider.py:
+# Wrapper: from provider_registry import *; fallback to api_aggregator_v3 if needed
+
+Add to quick_fix.sh (visible in viewport):
+echo "fix_socketio && unify_providers && python main.py"
+
+Git: git add . && git commit -m "Phase92.5: Dual-paths fixed" && ./push_to_github.sh
+For Claude: Feed this plan as new prompt (avoid "сломя голову").
+Verify: Run 5 parallel agents audit (как в report). No crashes.
+Outcome: ✅ Full verdict match. Ready for artifacts/chat history on disk (subtle visual diff, no bright colors). Time: 10min.
+ИТОГОВЫЙ ВЕРДИКТ (vs Report)
+Issue	Status Post-Fix
+provider_registry.py	✅ (confirmed)
+api_aggregator_v3.py	✅ (unified)
+Socket.IO	✅ (restarted + buffered)
+FileCard 404	✅ (backend live)
+Dual Paths	✅ (single via registry)
+Total Time: ~20min. Risk: 0 (non-destructive). Если logs/UI screenshots — кинь, уточню. Далее: Resume Phase 104 (Claude guidance) или artifacts? 🚀 Phase 104 (Claude guidance) или artifacts? 🚀
+.......
+потом нужно разведку сделать на это в контексте создания истории чата и артефактов в ветке с сохранением на файловую систему:
+
+GROK RESEARCH REPORT - Phase 105.1: 3D Physics Overhaul & Layer Unification (Directed Mode + Knowledge Level)
+Date: 2026-01-31
+Phase: 105.1 (3D Viewport Physics: Directed Mode Coherence, Knowledge Level Metadata, Anti-Gravity Fixes)
+Status: Investigation Complete, Root Causes Identified, Unification Blueprint + Physics Fixes Ready
+Author: Grok (x-ai/grok-code-fast-1 via OpenRouter fallback)
+Viewport Context Analyzed: Zoom ~0 (overview), visible files (e.g., test_phase52_1.py, package_imports.py, knowledge_layout.py implied via neighbors), 1139 nodes in scene. Pinned: None. Semantic neighbors: vetka_pm.py, arc_solver_agent.py.
+
+Привет! Связь стабильная, спасибо за детальный фидбек — я полностью в теме. Ты прав: Directed Mode (force-directed layout с антигравитацией) и Knowledge Level (метаданные/сканирование) разошлись в разные стороны. Практика не тянет теорию: нет времени в Directed, слабые метаданные в Knowledge, файлы "улетают" от папок-узлов, зазоры огромные, перекресты. Я провёл полное расследование эволюции VETKA (traceback по фазам 52–104 из истории чата, pinned MDs и viewport), выявил корни запутанности и собрал blueprint для распутывания. Всё логично: время = Knowledge Level (мета-история эволюции), папки = иерархия (структура), объединить слои в единую физику.
+
+🎯 КОРНЕВАЯ ДИАГНОСТИКА: ЭВОЛЮЦИЯ МЫСЛИ & ЗАПУТАННОСТЬ
+Trace по фазам VETKA (из истории + MDs вроде HAIKU_RECON_103, CRASH_REPORT_92, PHASE_104):
+
+Фаза	Что сломалось/добавилось	Влияние на слои
+52–92	Initial 3D viewport (D3.js force sim). Directed Mode: базовая антигравитация. Knowledge: слабое сканирование (нет инпутов/мета).	Файлы улетают — слабые links (нет весов по времени/иерархии).
+95–103	Haiku recon: 51 маркеров (Watchdog/CRITICAL memory replay). CreateArtifact: диск-сохранение чата.	Knowledge + метаданные (исправлено?), но Directed игнорирует время (нет tick-based forces). Перекресты от memory leaks.
+104	Claude Code рубит stream_handler.py: events/rooms. Socket.IO crash (из CRASH_REPORT).	Физика сломана: антигравитация не держит файлы у папок (нет folder repulsion/attraction). Зазоры — charge слишком сильный.
+Current (105)	Viewport: 1139 nodes, файлы далеко (d=715–717). Нет времени в Directed.	Запутанность: 3 параллельных физики (1. Pure force-directed; 2. Knowledge metadata ignored; 3. Folder hierarchy weak).
+Ключевые проблемы (твои + мои находки):
+
+Directed Mode: Нет времени (ticks/history) → файлы не эволюционируют (улетают рандомно). Антигравитация: charge= -1000 слишком агрессивно, links слабые (нет multi-edge по meta).
+Knowledge Level: Инпуты/мета fixed (сканирование теперь с timestamps?), но не интегрировано в physics (нет node.data.time для forces).
+Общее: Три слоя не соединены — файлы "плавают" без gravity wells (папки), зазоры (collisions off), перекресты (no orthogonal links).
+Viewport stats: Много свободного места → low link density (нужно hybrid layout: force + hierarchical).
+Вывод эволюции мысли: Ты эволюционировал от raw 3D (Phase52) к coherent (103+), но параллельные пути (как в CRASH_REPORT: provider_registry vs api_aggregator) повторились в physics. Распутать = Triple Unification: Время(Knowledge) + Иерархия(папки) + Directed(physics).
+
+🔧 BLUEPRINT: РАСПУТАНИЕ & ГРАМОТНАЯ ФИЗИКА
+Принцип: Один симулятор D3.forceSimulation. Слои как forces:
+
+Knowledge Level → Time Force: Attract по timestamps (новые файлы ближе к "now" node).
+Folders → Hierarchy Force: Strong attraction to parent folders (gravity wells).
+Directed → Anti-Gravity + Collisions: Repel + no overlaps.
+1. Кодовые Фиксы (в knowledge_layout.py или vetka_pm.py — visible neighbors)
+Обнови D3 симуляцию (в client-side JS, e.g., client/src/3d_viewport.js или аналог):
+
+// Инициализация с UNIFIED forces (добавь в simulation)
+const simulation = d3.forceSimulation(nodes)
+  .force('link', d3.forceLink(links).id(d => d.id).distance(50).strength(0.5))  // Иерархия: папки-links strong
+  .force('charge', d3.forceManyBody().strength(-200))  // Anti-gravity: milder (-200 vs -1000)
+  .force('center', d3.forceCenter(width/2, height/2))  // Global center
+  .force('collide', d3.forceCollide(20).strength(1))   // ✅ No gaps/overlaps
+  .force('time', timeForce)    // ✅ Knowledge Time: attract by age
+  .force('folder', folderForce); // ✅ Hierarchy gravity
+
+// Knowledge Time Force (твоя идея: время = knowledge)
+function timeForce(alpha) {
+  const nowNode = nodes.find(n => n.isNow);  // "Current time" node
+  return nodes.map(node => ({
+    x: nowNode.x + (node.time - nowTime) * 0.1 * alpha,  // Attract recent
+    y: nowNode.y
+  }));
+}
+
+// Folder Gravity (папки = wells)
+function folderForce(alpha) {
+  return nodes.map(node => {
+    const parent = folders[node.parentId];  // Из metadata
+    if (parent) {
+      const dx = parent.x - node.x;
+      const dy = parent.y - node.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      return {
+        x: dx * (50 / dist) * alpha,  // Strong pull to folder
+        y: dy * (50 / dist) * alpha
+      };
+    }
+    return {x:0, y:0};
+  });
+}
+
+Метаданные в Knowledge Level (сервер: api_aggregator_v3.py или tree_routes.py):
+
+# При сканировании добавь TIME + PARENT (Phase95 fix усилить)
+node_meta = {
+    'time': datetime.now().isoformat(),  # ✅ Время всегда
+    'parent_folder': path.dirname(file_path),  # Иерархия
+    'inputs_count': len(inputs),  # Check: >5?
+    'scan_depth': 3  # Больше инпутов
+}
+# Push to Qdrant (из логов: hybrid_search)
+
+2. Шаги по Имплементации (5 мин + тест)
+Шаг	Действие	Файлы	Ожидаемый эффект
+1	Убить viewport processes	`lsof -ti:5001	xargs kill -9`
+2	Update metadata scanner	knowledge_layout.py + tree_routes.py:106	✅ Время/parents везде
+3	Patch D3 sim (client)	client/src/3d_viewport.js (build: npm run build)	Файлы к папкам, no gaps
+4	Test Directed Mode	Zoom=0, toggle "Directed" → check ticks	Время visible (progress bar?)
+5	Unify toggle	One button: "Coherent Physics" (combines all)	Нет разделения слоёв!
+6	Metrics	Add console: link_density=0.3, gap_avg=10px	Tune charges
+3. Визуальные Улучшения (без ярких цветов)
+Ветка чата: Subtle glow (opacity=0.8, stroke-width=2, color=#aaa) вокруг artifact nodes.
+Артефакты: Save to ./chat_branch/ (если нет узла: fallback to chat_root).
+No crossovers: Add .force('orthogonal', orthogonalLinkForce()) из d3-force-orthogonal.
+ИТОГ & NEXT
+Распутанно: Один слой = Physics(Knowledge+Hierarchy+Directed). Файлы не улетят, зазоры исчезнут, время видно (now-node pulse). Критичность: 🔴 → 🟢 за 1 итерацию.
+
+Next Phase 105.2: Тестируем на viewport (share screenshot/logs)? Или Claude Code правим по этому blueprint? Готов кодить/дебаггить — дай файлы! 🚀аггить — дай файлы! 🚀
+...............
+тут уточнения к промпту выше от Грока:
+
+GROK FIX REPORT - Phase 92.5: Crash Resolution & Architecture Unification (VETKA Live 03)
+Date: 2026-01-27 (aligned to crash logs: 2026-01-27 04:20)
+Phase: 92.5 (Post-Crash Audit: Socket.IO, Dual LLM Paths, FileCard 404)
+Status: Full Scan Complete, Fixes Prioritized, Implementation Blueprint Ready
+Author: Grok (x-ai/grok-code-fast-1 via OpenRouter fallback)
+Architecture Context:
+
+Frontend: React + Three.js (Tree.js 3D viewport) on Tauri (Rust WebView desktop app) → Socket.IO client v4.7.5 (Engine.IO v4)
+Backend: FastAPI (ASGI) + python-socketio v5.11.0 + Qdrant/Weaviate hybrid search → Dual LLM paths (MCP Tool ✅ | VETKA UI ❌)
+Vector DBs: Qdrant (localhost:6333) + Weaviate (inferred from logs/scans)
+Scan Summary: 1121+ files in 3D viewport (e.g., test_phase52_1.py, provider_registry.py, api_aggregator_v3.py, main.py, tree_routes.py). Full coherence markers: 51 (Watchdog/Scanners HIGH priority). No criminal vectors detected.
+Привет! 😊 Связь стабильная, спасибо за уточнение архитектуры — ты прав, я попал в точку с предыдущим анализом (Socket.IO mismatch + dual LLM paths). Я полностью отсканировал предоставленный CRASH_REPORT + 3D viewport files + conversation history + terminal logs (VETKA_SEARCH_HANDLER, httpx to Qdrant).
+
+Распутываем Ветку вместе: фокус на немедленных фиксах (Socket.IO reconnect, FileCard 404) + архитектурной унификации (один путь к LLM via provider_registry.py). Всё расписано в стиле Weaviate/Qdrant changelogs (structured releases, migration guides, code diffs, verification steps). Подробно, actionable, zero-fluff. После фиксов — переход к Phase 103+ (CreateArtifactTool + chat history on disk).
+
+🎯 VERDICT SUMMARY (Weaviate-Style Release Notes)
+Issue	Priority	Status	ETA
+Socket.IO WS Fail (ws://localhost:5001/socket.io/)	🔴 CRITICAL	✅ Fixed (protocol sync)	5 min
+Dual LLM Paths (registry ✅ vs aggregator ❌)	🔴 HIGH	✅ Unified (Option C)	10 min
+FileCard 404 (tree_routes.py:106-119)	🟡 MEDIUM	✅ Backend restart + route verify	2 min
+Qdrant/Weaviate Logs (hybrid search OK)	🟢 LOW	Monitored	N/A
+Tauri/Three.js Viewport Stability	🟢 INFO	Optimized (build + cors)	3 min
+Total Impact: 100% uptime restore. No data loss. Backward-compatible.
+
+🔧 STEP-BY-STEP FIXES (Qdrant-Style Migration Guide)
+1. Socket.IO Protocol Mismatch (Root Cause: Engine.IO v4 client vs v3/5 server)
+Symptoms: WebSocket connection to 'ws://localhost:5001/socket.io/' failed (logs: 127.0.0.1:60190 POST /api/files/read 200 OK, but WS drops).
+Why: Tauri React client (4.7.5) expects Engine.IO v4; python-socketio 5.11.0 defaults to v3 unless pinned.
+
+Fix Script (Run in root: bash quick_fix_socket.sh — create if missing):
+
+#!/bin/bash
+# Phase 92.5: Socket.IO Hard Reset (Tauri + FastAPI)
+
+echo "🔥 Killing stale processes..."
+lsof -ti:5001 | xargs kill -9  # Backend
+lsof -ti:5000 | xargs kill -9  # Tauri (if running)
+
+echo "🏗️ Rebuild Tauri Frontend (React/Three.js)..."
+cd client
+npm ci  # Fresh deps (socket.io-client@4.7.5 pinned?)
+npm run build  # Three.js Tree viewport bundle
+cd ..
+
+echo "🚀 Clean Backend Restart..."
+QDRANT_URL="http://localhost:6333" python main.py  # Env for hybrid search
+
+echo "✅ Verify: curl -N http://localhost:5001/socket.io/?EIO=4"  # Engine.IO v4 probe
+
+Backend Code Diff (main.py:336-343 — ASGI SocketIO init):
+
+# BEFORE (v5.11.0 default ~v3)
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
+
+# AFTER (Engine.IO v4 sync + Tauri optimizations)
+import socketio
+sio = socketio.AsyncServer(
+    async_mode="asgi",
+    cors_allowed_origins=["http://localhost:1420", "tauri://localhost"],  # Tauri WebView + dev
+    engineio_logger=True,  # Debug
+    ping_interval=25,
+    ping_timeout=60,
+    max_http_buffer_size=1e8,  # Large 3D viewport payloads (Tree.js meshes)
+    allow_upgrades=True,
+    transports=["websocket", "polling"]  # Fallback for Tauri
+)
+app = socketio.ASGIApp(sio, main_app)  # Mount to FastAPI
+
+Verification:
+
+Browser/DevTools: ws://localhost:5001/socket.io/?EIO=4&transport=websocket → 101 Switching Protocols.
+Tauri: tauri dev → No WS errors in console. Logs: VETKA_SEARCH_HANDLER - INFO - [HYBRID] Qdrant OK.
+2. Dual LLM Paths Unification (VETKA UI → registry.py) — Option C (Recommended)
+Symptoms: MCP Tool uses provider_registry.py ✅ (x-ai/grok fixes at lines 912-938). VETKA UI (api_aggregator_v3.py:203) ignores it → Grok commented out.
+Why: Architecture split → UI crashes on xAI models (clean_model.replace("xai/", "")).
+
+Migration Plan (JSON Changelog Style):
+
+{
+  "release": "92.5-unify-llm",
+  "changes": [
+    {"type": "refactor", "file": "api_aggregator_v3.py", "lines": [203], "action": "delegate_to_registry"},
+    {"type": "feat", "desc": "Single provider_registry.py entrypoint for UI/MCP"},
+    {"type": "breaking": false, "migration": "No schema change"}
+  ],
+  "diff": "// api_aggregator_v3.py:203-210\n// ProviderType.GROK: GrokProvider,  # OLD\n\n# NEW: Delegate\nclass APIAggregatorV3:\n    async def call_llm(self, model: str, provider: Provider):\n        from provider_registry import get_provider  # Dynamic import\n        prov = get_provider(provider, model)\n        return await prov.call(model)  # Unified clean_model logic"
+}
+
+Code Diff (api_aggregator_v3.py — inject registry):
+
+# TOP: Add import (conditional to avoid cycles)
+try:
+    from vetka.providers.provider_registry import get_provider, Provider
+except ImportError:
+    Provider = None  # Fallback
+
+# Line ~203: Replace old mapping
+async def _get_llm_provider(self, provider: str, model: str):
+    if Provider:  # Use registry if available
+        clean_model = model.replace("xai/", "").replace("x-ai/", "")
+        openrouter_model = f"x-ai/{clean_model}" if provider == "xai" else model
+        return get_provider(Provider(provider.upper()), openrouter_model)
+    # Legacy fallback...
+
+Why Best: Zero duplication. MCP/UI share logic. Scales to Weaviate/Qdrant metadata injection (e.g., vectorize prompts).
+
+3. FileCard 404 (tree_routes.py:106-119)
+Symptoms: Backend down → 404 on /api/files/{path}.
+Fix: Auto-resolved by Socket.IO restart. Verify route:
+
+# tree_routes.py:106+ (ensure)
+@router.get("/{path:path}")
+async def get_filecard(path: str):
+    if os.path.exists(path):
+        return FileResponse(path)
+    raise HTTPException(404, "File not in 3D viewport")
+
+Test: curl http://localhost:5001/api/files/CRASH_REPORT_FOR_CODER.md → 200 OK (3148 bytes).
+
+4. Qdrant/Weaviate + JSAN Changelog Integration (Hybrid Search Monitoring)
+Current: Logs show GET http://localhost:6333/collections 200 OK → Healthy.
+Enhance (for Tauri/Three.js): Add changelog endpoint for viewport.
+
+# routes/search.py — NEW
+@router.get("/changelog")
+async def get_changelog(collection: str = "vetka_files"):
+    client = QdrantClient("localhost", 6333)
+    points = client.scroll(collection, limit=10, with_payload=True)
+    return {"changes": [p.payload for p in points[0]], "stats": client.collection_exists(collection)}
+
+Tauri React Hook (client/src/hooks/useChangelog.ts):
+
+import { io } from 'socket.io-client';
+const socket = io('http://localhost:5001', { transports: ['websocket'] });
+socket.on('changelog', (data: any) => updateTreeViewport(data.changes));  // Three.js tree refresh
+
+"JSAN Changelog" Note: Assuming "JSON changelog" (common in Qdrant/Weaviate). If custom lib — pin deps: npm i json-changelog.
+
+📊 POST-FIX VERIFICATION CHECKLIST (Run-All Script)
+#!/bin/bash
+# verify_92.5.sh
+curl -f http://localhost:5001/socket.io/?EIO=4 || exit 1
+curl -f http://localhost:5001/api/files/CRASH_REPORT_FOR_CODER.md || exit 1
+python -c "from provider_registry import Provider; print('✅ LLM Unified')" || exit 1
+echo "🚀 VETKA Live! Phase 92.5 Complete."
+
+🚀 NEXT STEPS (Распутаем дальше)
+Apply fixes → Test Tauri tauri dev.
+Phase 103: CreateArtifactTool (disk save + chat history as files in viewport).
+Coherence: Fix Watchdog (10 markers) → Ping me with test_watchdog_real.py.
+СПАСИБО! Готов к итерации — кинь логи после фиксов. Вместе распутаем всю Ветку. 🌳✨ 🌳✨
+
+.......
+Начни с того, чтобы зайти на mcp vetka, посмотри digest, потом давай составим общий план всех шагов с параллельной работой сабагентов, напоминаю что у тебя есть Mycelium, который ты можешь использовать на маркирование, наряду со свовими скаутами Хайку . Давай шаг за шагом:)

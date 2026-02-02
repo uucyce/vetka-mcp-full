@@ -1,0 +1,278 @@
+# Timeline Decay Visualization - Data Flow Diagram
+
+## CURRENT IMPLEMENTATION (PARTIAL)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         BACKEND: knowledge_layout.py                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────┐           │
+│  │ calculate_decay_factor(last_activity: datetime) -> float     │           │
+│  │ MARKER_108_CHAT_DECAY (Line 2243)                            │           │
+│  │                                                               │           │
+│  │ Formula: max(0, 1 - hours_since_activity / 168)              │           │
+│  │                                                               │           │
+│  │ Input:  last_activity (datetime)                             │           │
+│  │ Output: decay ∈ [0, 1]                                       │           │
+│  │         1.0 = recent (< 1 day)                               │           │
+│  │         0.5 = mid-age (3.5 days)                             │           │
+│  │         0.0 = old (7+ days)                                  │           │
+│  └──────────────────────────────────────────────────────────────┘           │
+│                              │                                               │
+│                              │ ✅ WORKS                                      │
+│                              ▼                                               │
+│  ┌──────────────────────────────────────────────────────────────┐           │
+│  │ calculate_chat_positions(chats, file_positions, ...)         │           │
+│  │ MARKER_108_CHAT_POSITION (Line 2278)                         │           │
+│  │                                                               │           │
+│  │ Temporal Y-axis: y = y_min + (normalized_time * height)      │           │
+│  │ X-axis stagger:  x = parent.x + 10 + (idx % 3) * 2           │           │
+│  │ Z-axis:          z = parent.z                                │           │
+│  │                                                               │           │
+│  │ Input:  chats with {id, parentId, lastActivity}              │           │
+│  │         file_positions {file_id: {x, y, z}}                  │           │
+│  │ Output: chats with position {x, y, z, decay_factor}          │           │
+│  └──────────────────────────────────────────────────────────────┘           │
+│                              │                                               │
+│                              │ ❌ NOT CALLED BY API                          │
+│                              ▼                                               │
+│                         (SHOULD BE USED)                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                                   ╳ ╳ ╳
+                          MISSING INTEGRATION
+                                   ╳ ╳ ╳
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         API: tree_routes.py                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────┐           │
+│  │ calculate_decay(updated_at_str: str) -> float                │           │
+│  │ (Line 109)                                                    │           │
+│  │                                                               │           │
+│  │ Formula: max(0, 1 - hours_since / 168)                       │           │
+│  │ Same as calculate_decay_factor but takes string input        │           │
+│  └──────────────────────────────────────────────────────────────┘           │
+│                              │                                               │
+│                              │ ✅ WORKS                                      │
+│                              ▼                                               │
+│  ┌──────────────────────────────────────────────────────────────┐           │
+│  │ /api/tree/data endpoint (Lines 520-627)                      │           │
+│  │                                                               │           │
+│  │ Current Flow:                                                 │           │
+│  │   1. Get all chats from chat_manager                         │           │
+│  │   2. For each chat:                                          │           │
+│  │      - decay_factor = calculate_decay(updated_at)  ✅        │           │
+│  │      - Find parent file position                             │           │
+│  │      - chat_x = parent.x + 8                       ✅        │           │
+│  │      - chat_y = parent.y - 5                       ❌ STATIC │           │
+│  │      - chat_z = parent.z                           ✅        │           │
+│  │   3. Create chat_node with visual_hints                      │           │
+│  │                                                               │           │
+│  │ ISSUE: Y position is STATIC (-5 offset)                      │           │
+│  │        NO temporal ordering by timestamp                     │           │
+│  └──────────────────────────────────────────────────────────────┘           │
+│                              │                                               │
+│                              │ ✅ Opacity mapping works                      │
+│                              ▼                                               │
+│  ┌──────────────────────────────────────────────────────────────┐           │
+│  │ visual_hints: {                                              │           │
+│  │   layout_hint: { expected_x, expected_y, expected_z },       │           │
+│  │   color: "#4a9eff",                                          │           │
+│  │   opacity: 0.7 + (decay_factor * 0.3)  ← ✅ WORKS           │           │
+│  │ }                                                             │           │
+│  │                                                               │           │
+│  │ Opacity Mapping:                                             │           │
+│  │   decay=1.0 → opacity=1.0  (recent, fully opaque)           │           │
+│  │   decay=0.5 → opacity=0.85 (mid-age, semi-transparent)      │           │
+│  │   decay=0.0 → opacity=0.7  (old, dim but still visible)     │           │
+│  └──────────────────────────────────────────────────────────────┘           │
+│                              │                                               │
+│                              │ JSON Response                                │
+│                              ▼                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+                                   │
+                           HTTP Response
+                                   │
+                                   ▼
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      FRONTEND: FileCard.tsx                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────┐           │
+│  │ Chat Rendering (Lines 345-410)                               │           │
+│  │ MARKER_108_CHAT_CARD                                         │           │
+│  │                                                               │           │
+│  │ if (type === 'chat') {                                       │           │
+│  │   const chatOpacity = visual_hints?.opacity ?? 1.0;  ✅      │           │
+│  │                                                               │           │
+│  │   ctx.fillStyle = bgColor;                                   │           │
+│  │   ctx.globalAlpha = chatOpacity;  ← ✅ APPLIES OPACITY       │           │
+│  │   ctx.roundRect(0, 0, w, h, 8);                              │           │
+│  │   ctx.fill();                                                │           │
+│  │   ctx.globalAlpha = 1.0;  // Reset                           │           │
+│  │ }                                                             │           │
+│  │                                                               │           │
+│  │ Visual Result:                                               │           │
+│  │   Recent chats: Bright blue, fully opaque                    │           │
+│  │   Old chats:    Dimmed blue, 70% opacity                     │           │
+│  └──────────────────────────────────────────────────────────────┘           │
+│                                                                              │
+│                         ✅ OPACITY WORKS                                     │
+│                         ❌ Y-POSITION STATIC                                 │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                              REQUIRED FIX
+═══════════════════════════════════════════════════════════════════════════════
+
+GOAL: Integrate calculate_chat_positions into tree_routes.py
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    UPDATED FLOW (After Fix)                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  tree_routes.py /api/tree/data:                                             │
+│                                                                              │
+│  1. Get all chats from chat_manager                                         │
+│                                                                              │
+│  2. Prepare chats list:                                                     │
+│     chats_to_position = [                                                   │
+│       {                                                                     │
+│         'id': chat_id,                                                      │
+│         'parentId': associated_file_id,                                     │
+│         'lastActivity': datetime(updated_at),  # Parse timestamp            │
+│         'name': chat_name,                                                  │
+│         ...                                                                 │
+│       }                                                                     │
+│     ]                                                                       │
+│                                                                              │
+│  3. Extract file_positions from existing nodes:                             │
+│     file_positions = {                                                      │
+│       node_id: {x: ..., y: ..., z: ...}                                     │
+│       for node in nodes if node.type in ['leaf', 'file']                    │
+│     }                                                                       │
+│                                                                              │
+│  4. 🔧 Call calculate_chat_positions:                                       │
+│     from src.layout.knowledge_layout import calculate_chat_positions        │
+│                                                                              │
+│     # MARKER_108_TIMELINE_DECAY                                             │
+│     positioned_chats = calculate_chat_positions(                            │
+│         chats=chats_to_position,                                            │
+│         file_positions=file_positions,                                      │
+│         time_range=None,      # Auto-compute                                │
+│         y_min=0,                                                            │
+│         y_max=500                                                           │
+│     )                                                                       │
+│                                                                              │
+│  5. Create chat nodes from positioned_chats:                                │
+│     for chat in positioned_chats:                                           │
+│       position = chat['position']                                           │
+│       chat_x = position['x']                                                │
+│       chat_y = position['y']  ← ✅ NOW TEMPORALLY ORDERED!                  │
+│       chat_z = position['z']                                                │
+│       decay_factor = position['decay_factor']                               │
+│                                                                              │
+│       chat_node = {                                                         │
+│         "visual_hints": {                                                   │
+│           "layout_hint": {                                                  │
+│             "expected_x": chat_x,                                           │
+│             "expected_y": chat_y,  # Temporal Y-axis                        │
+│             "expected_z": chat_z                                            │
+│           },                                                                │
+│           "opacity": 0.7 + (decay_factor * 0.3)                             │
+│         }                                                                   │
+│       }                                                                     │
+│                                                                              │
+│  Result:                                                                    │
+│    ✅ Older chats appear at LOWER Y coordinates                             │
+│    ✅ Newer chats appear at HIGHER Y coordinates                            │
+│    ✅ Opacity still works (0.7 - 1.0 based on decay)                        │
+│    ✅ Multiple chats from same file are staggered in X                      │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                         VISUAL REPRESENTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+BEFORE FIX (Current):
+
+    File Node                  All chats at same Y level
+    ┌───────┐                 (static -5 offset)
+    │ main  │
+    │  .py  │─────────┬───────┐
+    └───────┘         │       │
+                      │       │
+                   Chat 1  Chat 2  Chat 3
+                   (new)   (mid)   (old)
+                   ━━━     ━━━     ──
+                  Same Y!  Same Y! Same Y!
+
+
+AFTER FIX (Desired):
+
+    File Node                  Chats on temporal Y-axis
+    ┌───────┐
+    │ main  │                    Chat 3 (newest, y=450)
+    │  .py  │───────────────────────┐ ━━━ (bright, opacity 1.0)
+    └───────┘                       │
+                                    │
+                                 Chat 2 (mid, y=300)
+                                    │ ━━ (medium, opacity 0.85)
+                                    │
+                                    │
+                                 Chat 1 (oldest, y=150)
+                                    │ ── (dim, opacity 0.7)
+
+    Y-axis = Timeline:
+    ↑ Higher Y = Newer chats (brighter)
+    ↓ Lower Y  = Older chats (dimmer)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                            VERIFICATION
+═══════════════════════════════════════════════════════════════════════════════
+
+Test Scenario:
+--------------
+Given 3 chats associated with same file:
+  - Chat A: updated 7 days ago  → decay=0.0, opacity=0.7, Y=low
+  - Chat B: updated 3 days ago  → decay=0.64, opacity=0.89, Y=mid
+  - Chat C: updated 1 hour ago  → decay=0.99, opacity=1.0, Y=high
+
+Expected Result:
+----------------
+  Visual order (bottom to top):
+    Chat A (dim, low)    ──
+    Chat B (medium, mid) ━━
+    Chat C (bright, top) ━━━
+
+  X-axis stagger:
+    Chat A: parent.x + 10 + 0 = 110
+    Chat B: parent.x + 10 + 2 = 112
+    Chat C: parent.x + 10 + 4 = 114
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                         MARKERS REFERENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+Existing:
+  ✅ MARKER_108_CHAT_DECAY     - knowledge_layout.py:2243
+  ✅ MARKER_108_CHAT_POSITION  - knowledge_layout.py:2278
+  ✅ MARKER_108_CHAT_CARD      - FileCard.tsx:345
+
+Missing:
+  ❌ MARKER_108_TIMELINE_DECAY - tree_routes.py (should be added)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                              END
+═══════════════════════════════════════════════════════════════════════════════

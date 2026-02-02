@@ -1,0 +1,315 @@
+╔════════════════════════════════════════════════════════════════════════╗
+║          PHASE 108.2 - CHAT NODES FRONTEND INTEGRATION                 ║
+║                    Architecture Diagram                                ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+┌───────────────────────────────────────────────────────────────────────┐
+│                         BACKEND API                                   │
+│                    /api/tree/data                                     │
+│                                                                       │
+│  Returns:                                                             │
+│  {                                                                    │
+│    tree: {                                                            │
+│      nodes: [VetkaApiNode],  ← File/folder tree                     │
+│      edges: [VetkaApiEdge]                                            │
+│    },                                                                 │
+│    chat_nodes: [ChatNodeAPI],  ← NEW (Phase 108.2)                   │
+│    chat_edges: [ChatEdgeAPI]   ← NEW (Phase 108.2)                   │
+│  }                                                                    │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │
+                                │ HTTP GET
+                                ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                     client/src/utils/api.ts                           │
+│                                                                       │
+│  fetchTreeData(): Promise<ApiTreeResponse>                           │
+│                                                                       │
+│  ✓ Fetches API response                                              │
+│  ✓ Extracts tree, chat_nodes, chat_edges                             │
+│  ✓ Returns unified ApiTreeResponse                                   │
+│                                                                       │
+│  Types:                                                               │
+│  - ChatNodeAPI (lines 24-43)                                         │
+│  - ChatEdgeAPI (lines 45-50)                                         │
+│  - ApiTreeResponse (lines 53-67)                                     │
+└───────────────────────────────┬───────────────────────────────────────┘
+                                │
+                                │ Promise<ApiTreeResponse>
+                                ▼
+┌───────────────────────────────────────────────────────────────────────┐
+│                   client/src/hooks/useTreeData.ts                     │
+│                                                                       │
+│  useTreeData() hook                                                   │
+│                                                                       │
+│  1. Calls fetchTreeData()                                            │
+│  2. Processes response:                                               │
+│     ├─ File tree nodes → convertApiResponse()                        │
+│     └─ Chat nodes → processChatNodes()                              │
+│                                                                       │
+│  3. Merges nodes + edges                                             │
+│  4. Updates stores                                                    │
+└─────────┬──────────────────────────────────┬──────────────────────────┘
+          │                                  │
+          │ File Tree                        │ Chat Nodes
+          ▼                                  ▼
+┌─────────────────────┐          ┌──────────────────────────────────┐
+│ convertApiResponse()│          │ Process chat_nodes               │
+│ (apiConverter.ts)   │          │                                  │
+│                     │          │ For each ChatNodeAPI:            │
+│ VetkaApiNode →      │          │ 1. convertChatNode()             │
+│   TreeNode          │          │    → ChatNode                    │
+│                     │          │    → chatTreeStore.addChatNode() │
+│ VetkaApiEdge →      │          │                                  │
+│   TreeEdge          │          │ 2. chatNodeToTreeNode()          │
+│                     │          │    → TreeNode (for 3D)           │
+└──────────┬──────────┘          │                                  │
+           │                     │ 3. convertChatEdge()             │
+           │                     │    → TreeEdge                    │
+           │                     └──────────┬───────────────────────┘
+           │                                │
+           │                                │
+           └────────────┬───────────────────┘
+                        │
+                        │ Merge
+                        ▼
+            ┌───────────────────────┐
+            │ allNodes = {          │
+            │   ...fileTreeNodes,   │
+            │   ...chatTreeNodes    │
+            │ }                     │
+            │                       │
+            │ allEdges = [          │
+            │   ...fileTreeEdges,   │
+            │   ...chatEdges        │
+            │ ]                     │
+            └───────────┬───────────┘
+                        │
+                        │ setNodes() + setEdges()
+                        ▼
+        ┌───────────────────────────────────┐
+        │         DUAL STORAGE              │
+        └───────────────────────────────────┘
+                        │
+         ┌──────────────┴──────────────┐
+         │                             │
+         ▼                             ▼
+┌─────────────────────┐    ┌──────────────────────────┐
+│  chatTreeStore      │    │  useStore                │
+│  (chatTreeStore.ts) │    │  (useStore.ts)           │
+│                     │    │                          │
+│  Stores:            │    │  Stores:                 │
+│  - ChatNode objects │    │  - TreeNode objects      │
+│                     │    │    (files + folders +    │
+│  Used by:           │    │     chats unified)       │
+│  - ChatPanel        │    │                          │
+│  - Message views    │    │  Used by:                │
+│                     │    │  - FileCard              │
+│  Data:              │    │  - TreeEdges             │
+│  {                  │    │  - 3D Canvas             │
+│    id: "chat_123",  │    │                          │
+│    participants,    │    │  Data:                   │
+│    messageCount,    │    │  {                       │
+│    lastActivity     │    │    id: "chat_123",       │
+│  }                  │    │    position: {x,y,z},    │
+└─────────────────────┘    │    color: "#4a9eff",     │
+                           │    type: "file"          │
+                           │  }                       │
+                           └──────────┬───────────────┘
+                                      │
+                                      │ nodes + edges
+                                      ▼
+                    ┌─────────────────────────────────┐
+                    │     3D CANVAS RENDERING         │
+                    │                                 │
+                    │  FileCard.tsx                   │
+                    │  - Renders all nodes            │
+                    │  - Files (gray)                 │
+                    │  - Folders (gray)               │
+                    │  - Chats (blue #4a9eff)         │
+                    │                                 │
+                    │  TreeEdges.tsx                  │
+                    │  - Renders all edges            │
+                    │  - parent-child (gray)          │
+                    │  - chat (blue #4a9eff)          │
+                    └─────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════
+                        TYPE CONVERSION FLOW
+═══════════════════════════════════════════════════════════════════════
+
+ChatNodeAPI (from API)
+    │
+    │ Backend format:
+    │ { id, type:"chat", name, parent_id,
+    │   metadata: { chat_id, participants, message_count, ... },
+    │   visual_hints: { layout_hint, color, opacity } }
+    │
+    ▼
+convertChatNode(apiChatNode)
+    │
+    │ Frontend chat format:
+    │ { id, type:"chat", parentId, name,
+    │   participants, messageCount, lastActivity,
+    │   status, decay_factor }
+    │
+    ▼
+ChatNode (stored in chatTreeStore)
+    │
+    │ ├─> Used by ChatPanel for message rendering
+    │ └─> Contains chat-specific metadata
+    │
+    ▼
+chatNodeToTreeNode(chatNode, position)
+    │
+    │ 3D rendering format:
+    │ { id, path, name, type:"file",
+    │   backendType:"leaf", position,
+    │   color:"#4a9eff", opacity }
+    │
+    ▼
+TreeNode (stored in useStore)
+    │
+    └─> Rendered by FileCard in 3D Canvas
+
+
+═══════════════════════════════════════════════════════════════════════
+                        DATA FLOW SUMMARY
+═══════════════════════════════════════════════════════════════════════
+
+1. API Request
+   └─> fetchTreeData() → GET /api/tree/data
+
+2. API Response
+   └─> { tree, chat_nodes, chat_edges }
+
+3. Processing (useTreeData hook)
+   ├─> File tree: convertApiResponse() → TreeNode[]
+   └─> Chat nodes:
+       ├─> convertChatNode() → ChatNode → chatTreeStore
+       └─> chatNodeToTreeNode() → TreeNode → useStore
+
+4. Storage
+   ├─> chatTreeStore: { chatNodes: Record<id, ChatNode> }
+   └─> useStore: { nodes: Record<id, TreeNode> }
+
+5. Rendering
+   ├─> FileCard renders all TreeNode (files + folders + chats)
+   └─> TreeEdges connects nodes with edges
+
+
+═══════════════════════════════════════════════════════════════════════
+                        BACKWARDS COMPATIBILITY
+═══════════════════════════════════════════════════════════════════════
+
+API Response WITHOUT chat_nodes:
+┌─────────────────────┐
+│ {                   │
+│   success: true,    │
+│   tree: {           │
+│     nodes: [...],   │
+│     edges: [...]    │
+│   }                 │
+│   // No chat_nodes  │
+│ }                   │
+└──────────┬──────────┘
+           │
+           │ response.chat_nodes === undefined
+           ▼
+    ┌────────────────────────────────────┐
+    │ if (response.chat_nodes &&         │
+    │     response.chat_nodes.length > 0)│
+    │                                    │
+    │ ❌ Evaluates to FALSE              │
+    └────────────────────────────────────┘
+           │
+           │ Chat processing skipped
+           ▼
+    ┌────────────────────────────────────┐
+    │ Only file tree nodes processed     │
+    │ ✅ No errors                        │
+    │ ✅ Existing functionality preserved │
+    └────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════
+                        CONSOLE OUTPUT EXAMPLE
+═══════════════════════════════════════════════════════════════════════
+
+[useTreeData] Processing chat nodes: 3
+[useTreeData] Converted chat nodes: 3
+[useTreeData] Chat edges: 3
+
+Browser Console:
+> window.store = useStore.getState()
+> Object.keys(store.nodes).filter(k => k.startsWith('chat_'))
+["chat_abc123", "chat_def456", "chat_ghi789"]
+
+> window.chatStore = useChatTreeStore.getState()
+> chatStore.chatNodes
+{
+  "chat_abc123": {
+    id: "chat_abc123",
+    type: "chat",
+    name: "Chat: main.py discussion",
+    participants: ["@architect", "@qa"],
+    messageCount: 15,
+    ...
+  }
+}
+
+
+═══════════════════════════════════════════════════════════════════════
+                        FILES MODIFIED
+═══════════════════════════════════════════════════════════════════════
+
+1. client/src/utils/api.ts
+   ✓ Added ChatNodeAPI interface
+   ✓ Added ChatEdgeAPI interface
+   ✓ Updated ApiTreeResponse
+   ✓ Modified fetchTreeData()
+
+2. client/src/utils/apiConverter.ts
+   ✓ Added convertChatNode()
+   ✓ Added convertChatEdge()
+   ✓ Added chatNodeToTreeNode()
+
+3. client/src/hooks/useTreeData.ts
+   ✓ Added chat processing logic
+   ✓ Integrated chatTreeStore
+   ✓ Merged chat nodes with file tree
+
+Marker: MARKER_108_CHAT_FRONTEND
+
+
+═══════════════════════════════════════════════════════════════════════
+                        NEXT STEPS (Phase 108.3)
+═══════════════════════════════════════════════════════════════════════
+
+1. FileCard.tsx
+   - Detect chat nodes (node.id.startsWith('chat_'))
+   - Add chat icon
+   - Style differently (blue border, background)
+   - Add click handler → open ChatPanel
+
+2. TreeEdges.tsx
+   - Style chat edges differently
+   - Color: #4a9eff
+   - Width: 2px
+   - Opacity: 0.8
+
+3. Socket.IO
+   - Listen for chat_node_update events
+   - Update decay_factor in real-time
+   - Animate opacity changes
+
+4. Artifact Nodes
+   - Extend to support artifact_nodes
+   - Render as children of chat nodes
+   - Different icons for code/document/image/data
+
+
+═══════════════════════════════════════════════════════════════════════
+                        END OF DIAGRAM
+═══════════════════════════════════════════════════════════════════════

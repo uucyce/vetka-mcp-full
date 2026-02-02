@@ -1412,7 +1412,8 @@ async def send_group_message_from_mcp(
                         print(f"[MCP_AGENT_TRIGGER] Agent {agent_id} responded: {len(response_text)} chars")
 
                         # Check for @mentions in agent response to trigger other agents
-                        agent_mentions = re.findall(r'@(\w+)', response_text)
+                        # MARKER_108_ROUTING_FIX_4: Support hyphenated model names
+                        agent_mentions = re.findall(r'@([\w\-\.]+(?:/[\w\-\.]+)?(?::[\w\-\.]+)?)', response_text)
                         if agent_mentions:
                             print(f"[MCP_AGENT_TRIGGER] Agent {display_name} mentioned: {agent_mentions}")
 

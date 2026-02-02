@@ -9,6 +9,8 @@
  * @used_by useTreeData.ts, socket handlers, API fetch functions
  */
 import { TreeNode, TreeEdge, VetkaNodeType } from '../store/useStore';
+import { ChatNode } from '../types/treeNodes';
+import type { ChatNodeAPI, ChatEdgeAPI } from './api';
 
 // Backend API types
 export interface VetkaApiNode {
@@ -164,5 +166,59 @@ export function convertLegacyEdge(legacyEdge: LegacyApiEdge, index: number): Tre
     source: legacyEdge.source,
     target: legacyEdge.target,
     type: 'parent-child',
+  };
+}
+
+// MARKER_108_CHAT_FRONTEND: Phase 108.2 - Chat node converters
+
+/**
+ * Convert ChatNodeAPI from backend to frontend ChatNode type
+ * Integrates chat nodes into the tree visualization
+ */
+export function convertChatNode(apiChatNode: ChatNodeAPI): ChatNode {
+  return {
+    id: apiChatNode.id,
+    type: 'chat',
+    parentId: apiChatNode.parent_id || '',
+    name: apiChatNode.name,
+    participants: apiChatNode.metadata.participants,
+    messageCount: apiChatNode.metadata.message_count,
+    lastActivity: new Date(apiChatNode.metadata.last_activity),
+    artifacts: [],
+    status: 'active',
+    decay_factor: apiChatNode.metadata.decay_factor,
+    // Store chat_id for backend correlation
+    userId: apiChatNode.metadata.chat_id,
+  };
+}
+
+/**
+ * Convert ChatEdgeAPI from backend to TreeEdge format
+ */
+export function convertChatEdge(apiChatEdge: ChatEdgeAPI, index: number): TreeEdge {
+  return {
+    id: `chat_edge_${index}`,
+    source: apiChatEdge.from,
+    target: apiChatEdge.to,
+    type: 'chat',
+  };
+}
+
+/**
+ * Convert ChatNode to TreeNode for unified 3D rendering
+ * This allows chat nodes to render alongside file/folder nodes
+ */
+export function chatNodeToTreeNode(chatNode: ChatNode, position: { x: number; y: number; z: number }): TreeNode {
+  return {
+    id: chatNode.id,
+    path: chatNode.id, // Chat nodes don't have file paths
+    name: chatNode.name,
+    type: 'file', // Render as "file" type in 3D (can be styled differently via CSS)
+    backendType: 'leaf',
+    depth: 0, // Will be calculated from parent
+    parentId: chatNode.parentId,
+    position,
+    color: '#4a9eff', // Blue for chat nodes
+    opacity: chatNode.decay_factor,
   };
 }

@@ -147,7 +147,7 @@ interface FileCardProps {
   id: string;
   name: string;
   path: string;
-  type: 'file' | 'folder';
+  type: 'file' | 'folder' | 'chat' | 'artifact';
   position: [number, number, number];
   isSelected?: boolean;
   isHighlighted?: boolean;
@@ -156,6 +156,22 @@ interface FileCardProps {
   children?: string[];
   // Phase 62.2: Depth for LOD importance scoring (Grok research)
   depth?: number;
+  // Phase 108.2: Chat node metadata
+  metadata?: {
+    message_count?: number;
+    participants?: string[];
+    decay_factor?: number;
+    last_activity?: string;
+    context_type?: string;
+  };
+  visual_hints?: {
+    color?: string;
+    opacity?: number;
+  };
+  // MARKER_108_ARTIFACT_VIZ: Phase 108.2 - Artifact metadata
+  artifactType?: 'code' | 'document' | 'image' | 'data';
+  artifactStatus?: 'streaming' | 'done' | 'error';
+  artifactProgress?: number; // 0-100
 }
 
 export function FileCard({
@@ -169,6 +185,11 @@ export function FileCard({
   onClick,
   children = [],
   depth = 0,
+  metadata = {},
+  visual_hints = {},
+  artifactType = 'code',
+  artifactStatus = 'done',
+  artifactProgress = 0,
 }: FileCardProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -299,12 +320,16 @@ export function FileCard({
   }, [shouldLoadContent, path, id, name, type, loadingPreview, previewContent]);
 
   // Phase 62: Determine file category for card styling
-  const cardCategory = type === 'file' ? getFileCategory(name) : 'folder';
+  // Phase 108.2: Chat nodes get 'chat' category, Artifact nodes get 'artifact' category
+  const cardCategory = type === 'chat' ? 'chat' : type === 'artifact' ? 'artifact' : (type === 'file' ? getFileCategory(name) : 'folder');
 
   // Phase 62: Card dimensions based on type
-  // Code: horizontal (16:9), Doc: vertical (3:4), Folder: square-ish
+  // Code: horizontal (16:9), Doc: vertical (3:4), Folder: square-ish, Chat: horizontal like code
+  // MARKER_108_ARTIFACT_VIZ: Artifact cards are smaller than chat cards
   const getCardSize = (): [number, number] => {
     if (type === 'folder') return [10, 8];
+    if (type === 'chat') return [14, 8];  // Phase 108.2: Chat cards horizontal like code
+    if (type === 'artifact') return [10, 6];  // Phase 108.2: Artifact cards smaller
     return cardCategory === 'code' ? [14, 8] : [8, 12];  // horizontal vs vertical
   };
   const cardSize = getCardSize();
@@ -313,8 +338,9 @@ export function FileCard({
     const canvas = document.createElement('canvas');
     // Adjust canvas aspect ratio based on card type
     const isVertical = type === 'file' && cardCategory === 'doc';
-    canvas.width = isVertical ? 128 : 256;
-    canvas.height = isVertical ? 192 : 128;
+    const isArtifact = type === 'artifact';
+    canvas.width = isVertical ? 128 : isArtifact ? 200 : 256;
+    canvas.height = isVertical ? 192 : isArtifact ? 96 : 128;
     const ctx = canvas.getContext('2d')!;
     const w = canvas.width;
     const h = canvas.height;
@@ -322,7 +348,188 @@ export function FileCard({
     // Clear canvas with transparency for folders
     ctx.clearRect(0, 0, w, h);
 
-    if (type === 'folder') {
+    // MARKER_108_ARTIFACT_VIZ: Phase 108.2 - Artifact node rendering
+    if (type === 'artifact') {
+      // Get artifact-specific colors based on status
+      let bgColor: string;
+      let statusColor: string;
+
+      if (artifactStatus === 'error') {
+        bgColor = '#ef4444'; // Red for error
+        statusColor = '#dc2626';
+      } else if (artifactStatus === 'streaming') {
+        bgColor = '#4a9eff'; // Blue with animation
+        statusColor = '#3b82f6';
+      } else {
+        bgColor = '#4a9eff'; // Solid blue for done
+        statusColor = '#2563eb';
+      }
+
+      // Apply opacity and selection state
+      const artifactOpacity = visual_hints?.opacity ?? 1.0;
+      if (isSelected) bgColor = statusColor;
+      if (isHovered && artifactStatus !== 'error') bgColor = '#3b82f6';
+
+      // Background with rounded corners
+      ctx.fillStyle = bgColor;
+      ctx.globalAlpha = artifactOpacity;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 6);
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+
+      // Border
+      const borderColor = getBorderColor(isSelected, isDragging, isHighlighted, isPinned);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = isPinned ? 3 : (isDragging ? 2 : 2);
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 6);
+      ctx.stroke();
+
+      // Artifact type icon at top-left
+      ctx.font = '18px Arial';
+      ctx.fillStyle = '#ffffff';
+      const iconMap = {
+        code: '📄',
+        document: '📝',
+        image: '🖼️',
+        data: '📊',
+      };
+      ctx.fillText(iconMap[artifactType] || '📄', 6, 22);
+
+      // Artifact name at top (next to icon)
+      ctx.font = 'bold 12px Arial';
+      ctx.fillStyle = '#ffffff';
+      const maxNameLen = 14;
+      const displayName = name.length > maxNameLen ? name.slice(0, maxNameLen - 3) + '...' : name;
+      ctx.fillText(displayName, 30, 18);
+
+      // Status indicator at LOD 5+
+      if (lodLevel >= 5) {
+        ctx.font = '10px Arial';
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        const statusText = artifactStatus === 'streaming' ? 'Streaming...' :
+                          artifactStatus === 'error' ? 'Error' : 'Done';
+        ctx.fillText(statusText, 6, 38);
+      }
+
+      // Progress bar for streaming status at LOD 5+
+      if (lodLevel >= 5 && artifactStatus === 'streaming' && artifactProgress !== undefined) {
+        const barX = 6;
+        const barY = h - 16;
+        const barW = w - 12;
+        const barH = 8;
+
+        // Background bar
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.beginPath();
+        ctx.roundRect(barX, barY, barW, barH, 4);
+        ctx.fill();
+
+        // Progress fill
+        const fillW = (barW * artifactProgress) / 100;
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.beginPath();
+        ctx.roundRect(barX, barY, fillW, barH, 4);
+        ctx.fill();
+
+        // Percentage text
+        ctx.font = '9px Arial';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(`${Math.round(artifactProgress)}%`, barX + barW + 4, barY + 7);
+      }
+
+      // Pin indicator
+      if (isPinned) {
+        ctx.font = '12px Arial';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('📌', w - 22, 20);
+      }
+
+      // Drag indicator
+      if (isDragging) {
+        ctx.font = '14px Arial';
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillText('✋', w - 22, 40);
+      }
+
+      // Pulsing animation for streaming status (visual indicator)
+      if (artifactStatus === 'streaming') {
+        // Draw pulsing ring effect
+        const pulseOpacity = 0.3 + 0.2 * Math.sin(Date.now() / 400);
+        ctx.strokeStyle = `rgba(255,255,255,${pulseOpacity})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(2, 2, w - 4, h - 4, 6);
+        ctx.stroke();
+      }
+    } else if (type === 'chat') {
+      // MARKER_108_CHAT_CARD: Phase 108.2 - Chat node rendering
+      // Chat node rendering with blue theme
+      const chatOpacity = visual_hints?.opacity ?? 1.0;
+      const bgColor = isSelected ? '#3a7acc' : isHovered ? '#4a88dd' : '#4a9eff';
+
+      // Background with rounded corners
+      ctx.fillStyle = bgColor;
+      ctx.globalAlpha = chatOpacity;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 8);
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+
+      // Border
+      const borderColor = getBorderColor(isSelected, isDragging, isHighlighted, isPinned);
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = isPinned ? 3 : (isDragging ? 3 : 2);
+      ctx.beginPath();
+      ctx.roundRect(0, 0, w, h, 8);
+      ctx.stroke();
+
+      // Chat icon (speech bubble) at top-left
+      ctx.font = '20px Arial';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('\uD83D\uDCAC', 8, 26);  // 💬 emoji
+
+      // Chat name at top (next to icon)
+      ctx.font = 'bold 14px Arial';
+      ctx.fillStyle = '#ffffff';
+      const maxNameLen = 16;
+      const displayName = name.length > maxNameLen ? name.slice(0, maxNameLen - 3) + '...' : name;
+      ctx.fillText(displayName, 36, 20);
+
+      // Message count badge at LOD 5+
+      if (lodLevel >= 5 && metadata?.message_count !== undefined) {
+        ctx.font = '12px Arial';
+        ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        ctx.fillText(`${metadata.message_count} msgs`, 8, 46);
+      }
+
+      // Participants at LOD 7+
+      if (lodLevel >= 7 && metadata?.participants && metadata.participants.length > 0) {
+        ctx.font = '10px Arial';
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        const participantText = metadata.participants.slice(0, 3).join(', ');
+        const maxParticipantLen = 28;
+        const displayParticipants = participantText.length > maxParticipantLen
+          ? participantText.slice(0, maxParticipantLen - 3) + '...'
+          : participantText;
+        ctx.fillText(displayParticipants, 8, 64);
+      }
+
+      // Pin indicator
+      if (isPinned) {
+        ctx.font = '14px Arial';
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('\uD83D\uDCCC', w - 28, 26);
+      }
+
+      // Drag indicator
+      if (isDragging) {
+        ctx.font = '16px Arial';
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.fillText('\u270B', w - 28, 50);
+      }
+    } else if (type === 'folder') {
       // Phase 62: Draw stylized FOLDER ICON with alpha channel (no square background)
       const folderColor = isSelected ? '#606060' : isHovered ? '#505050' : '#404040';
       const folderHighlight = isSelected ? '#707070' : isHovered ? '#606060' : '#505050';
@@ -436,7 +643,7 @@ export function FileCard({
     const tex = new THREE.CanvasTexture(canvas);
     tex.needsUpdate = true;
     return tex;
-  }, [name, path, type, isSelected, isHighlighted, isDragging, isHovered, isPinned, lodLevel, cardCategory, previewContent]);
+  }, [name, path, type, isSelected, isHighlighted, isDragging, isHovered, isPinned, lodLevel, cardCategory, previewContent, metadata, visual_hints, artifactType, artifactStatus, artifactProgress]);
 
   const handlePointerDown = useCallback(
     (e: any) => {
@@ -544,6 +751,16 @@ export function FileCard({
         <planeGeometry args={cardSize} />
         <meshBasicMaterial map={texture} transparent side={THREE.DoubleSide} />
       </mesh>
+
+      {/* MARKER_3D_NODE_RENDER: FileCard component - core 3D node visualization
+          - Billboard effect: faces camera via quaternion copy (line 204)
+          - LOD system: 10 levels based on camera distance (lines 217-227)
+          - Texture: Canvas texture with dynamic rendering (lines 312-439)
+          - Drag: Ctrl+drag or grabMode active (lines 443-467)
+          - Pin: Shift+click toggles pin state via pinNodeSmart (lines 510-514)
+          - Position: x,y,z coordinates updated on drag (line 485)
+          - Integration: TreeNode type with position, isPinned state
+      */}
 
       {/* TODO_CAM_PIN: Add pin-to-CAM button on file card hover (like favorites/bookmarks)
           When clicked: POST /api/cam/pin with { file_path, metadata }

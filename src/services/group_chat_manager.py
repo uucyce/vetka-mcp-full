@@ -45,10 +45,11 @@ class GroupRole(Enum):
 @dataclass
 class GroupParticipant:
     """Agent in a group."""
-    agent_id: str              # "@architect", "@rust_dev"
-    model_id: str              # "llama-405b", "deepseek-r1"
+    # MARKER_108_ROUTING_FIX_3: Unified format for agent identification
+    agent_id: str              # "@architect", "@rust_dev", "@grok-4" - ALWAYS starts with @
+    model_id: str              # "llama-405b", "deepseek-r1", "xai/grok-4" - provider/model format
     role: GroupRole
-    display_name: str
+    display_name: str          # "Architect", "Rust Dev", "Grok 4" - human-readable name
     permissions: List[str] = field(default_factory=lambda: ["read", "write"])
 
     def to_dict(self) -> dict:
@@ -64,11 +65,12 @@ class GroupParticipant:
 @dataclass
 class GroupMessage:
     """Message in group chat."""
+    # MARKER_108_ROUTING_FIX_3: Unified sender_id format
     id: str
     group_id: str
-    sender_id: str             # "@architect" or "user"
+    sender_id: str             # "@architect", "@grok-4", "@claude_code" or "user" - ALWAYS @ for agents
     content: str
-    mentions: List[str]        # ["@rust_dev", "@qa"]
+    mentions: List[str]        # ["@rust_dev", "@qa", "@gpt-5.2"] - ALWAYS @ prefix
     message_type: str          # "chat", "task", "artifact", "system"
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.now)
