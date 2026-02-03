@@ -691,6 +691,7 @@ RESPOND WITH ONLY JSON, NO OTHER TEXT:"""
             # Execute the SaveAPIKeyTool
             key = params.get("key", "")
             provider = params.get("provider", "auto")
+            print(f"[HOSTESS] save_api_key called: key={key[:15]}...{key[-4:] if len(key) > 19 else ''}, provider={provider}")
 
             if not key:
                 return {
@@ -701,20 +702,32 @@ RESPOND WITH ONLY JSON, NO OTHER TEXT:"""
                 }
 
             # Import and execute the tool
+            # FIX_110.3: Fixed import and async handling
             try:
                 from src.agents.tools import SaveAPIKeyTool
                 import asyncio
 
                 tool = SaveAPIKeyTool()
 
-                # Run async tool without blocking
+                # Run async tool - handle existing event loop
                 try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Already in async context - create task
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(asyncio.run, tool.execute(key=key, provider=provider))
+                            result = future.result(timeout=10)
+                    else:
+                        result = asyncio.run(tool.execute(key=key, provider=provider))
+                except RuntimeError:
+                    # No event loop - safe to use asyncio.run
                     result = asyncio.run(tool.execute(key=key, provider=provider))
                 except Exception as e:
                     print(f"[HOSTESS] Error saving API key: {e}")
                     result = None
 
-                if result.success:
+                if result and result.success:
                     return {
                         "action": "save_api_key",
                         "result": result.result,
@@ -741,6 +754,7 @@ RESPOND WITH ONLY JSON, NO OTHER TEXT:"""
         elif tool_name == "learn_api_key":
             key = params.get("key", "")
             provider = params.get("provider", "")
+            print(f"[HOSTESS] learn_api_key called: key={key[:15] if key else 'EMPTY'}..., provider='{provider}'")
 
             if not key or not provider:
                 return {
@@ -882,6 +896,7 @@ RESPOND WITH ONLY JSON, NO OTHER TEXT:"""
 
         elif tool_name == "analyze_unknown_key":
             key = params.get("key", "")
+            print(f"[HOSTESS] analyze_unknown_key called: key={key[:15]}...{key[-4:] if len(key) > 19 else ''}")
 
             if not key:
                 return {

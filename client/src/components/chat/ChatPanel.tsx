@@ -1047,6 +1047,9 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
             console.error('[ChatPanel] Error loading group messages:', groupError);
           }
         } else {
+          // FIX_109.8: Regular chat - reset activeGroupId to clear group state
+          setActiveGroupId(null);
+
           // Regular chat - load from chat history
           for (const msg of data.messages || []) {
             addChatMessage({
@@ -1188,9 +1191,28 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       container.addEventListener('scroll', handleScroll);
       // MARKER_SCROLL_BTN_TOGGLE_FIX: Initialize scroll state on mount
       handleScroll(); // Detect initial scroll position
-      return () => container.removeEventListener('scroll', handleScroll);
+
+      // FIX_109.6: Add ResizeObserver to detect content size changes
+      const resizeObserver = new ResizeObserver(() => {
+        handleScroll(); // Re-check canScroll when container/content size changes
+      });
+      resizeObserver.observe(container);
+
+      return () => {
+        container.removeEventListener('scroll', handleScroll);
+        resizeObserver.disconnect();
+      };
     }
   }, [handleScroll]);
+
+  // FIX_109.6: Re-check scroll state when messages change
+  useEffect(() => {
+    // Small delay to ensure DOM has updated
+    const timer = setTimeout(() => {
+      handleScroll();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [chatMessages.length, handleScroll]);
 
   // DEBUG: Log button visibility state
   useEffect(() => {

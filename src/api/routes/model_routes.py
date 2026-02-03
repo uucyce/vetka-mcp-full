@@ -192,6 +192,50 @@ async def get_model_status():
     return {"models": result}
 
 
+# === PHASE 111: MODEL CACHE REFRESH ===
+
+@router.post("/refresh")
+async def refresh_model_cache(provider: Optional[str] = None):
+    """
+    Force refresh model cache.
+
+    Phase 111: Manual cache invalidation for model discovery.
+    Bypasses 24-hour cache to fetch latest models from providers.
+
+    Args:
+        provider: Optional provider to refresh (openrouter, gemini, polza)
+                  If None, refreshes all providers.
+
+    Returns:
+        success: bool
+        count: number of models after refresh
+        new_count: number of newly discovered models
+    """
+    from src.elisya.model_fetcher import get_all_models, load_cache
+
+    # Get old count for comparison
+    old_cache = load_cache()
+    old_count = len(old_cache.get('models', [])) if old_cache else 0
+    old_ids = {m['id'] for m in old_cache.get('models', [])} if old_cache else set()
+
+    # Force refresh from all providers
+    models = await get_all_models(force_refresh=True)
+
+    # Calculate new models
+    new_ids = {m['id'] for m in models}
+    new_model_ids = new_ids - old_ids
+    new_count = len(new_model_ids)
+
+    return {
+        "success": True,
+        "count": len(models),
+        "previous_count": old_count,
+        "new_count": new_count,
+        "new_models": list(new_model_ids)[:10] if new_count > 0 else [],  # First 10 new model IDs
+        "message": f"Refreshed: {len(models)} models ({'+' if new_count > 0 else ''}{new_count} new)"
+    }
+
+
 # === PHASE 80.3: MCP AGENTS ===
 
 @router.get("/mcp-agents")

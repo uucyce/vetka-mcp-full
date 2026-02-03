@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-01-29T12:25:16.836179",
+  "updated_at": "2026-02-03T17:26:27.027398",
   "api_keys": {
     "openrouter": {
       "paid": "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",
@@ -32,7 +32,10 @@
     "xai": [
       "xai-OezIwuB4NFLVVZcLQuNMJ70zoQ5258ebGBgDLEyhgdxErkZdAuJ31Oajs2JEoUOX4RQYw116DIdjty5o",
       "xai-e71Hj3CU92EX4HPTsbM2uJelcquCs4WLk7r8jjIsNcyLekIEhKylwtAEIcZV06uo5pBmDHzly84PP1cE",
-      "xai-aYQBY8zhSca6CZ48Jf4Kov9dVcgz2bDbFH2WA9P719j94kW7nOBSr3J9paqt2R5C0SR6uzYGzPl0R1Dd"
+      "xai-aYQBY8zhSca6CZ48Jf4Kov9dVcgz2bDbFH2WA9P719j94kW7nOBSr3J9paqt2R5C0SR6uzYGzPl0R1Dd",
+      "xai-hwNqAdG3t9YoK8cNmVXDsaJTte6M575kyhOdWnresCd1x6lfHDh1bp2PiZRAa1jjKszsBCYOrO8pPYQn",
+      "xai-kUNBFLSmf1HLRCJ8ugHmcxn9s0X7LJiuTnC7IegyMh7WIbFnmdEC8l2gwyC1oR3cgYvs8GihHmUG1Vy1",
+      "xai-FJQ0p6WQZJUxTqdtRcgfBLR2wsbdMxBNYEyz2PhLwgMCPman8TmmXKDaV57TA1OubSKFKBiUvts7O1xF"
     ],
     "openai": [
       "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",
@@ -42,7 +45,8 @@
       "kwodYaOPh6Oix7rI-XJMVDigFvkFdrDv420N5TauLqo",
       "pa-eT5WNsImTVf3IGeDvyO-tLx2GgTn8Tb2dhu1wiKJZIQ"
     ],
-    "mistral": "pB64qojpnzkInkvv3I371T8FCoMVIMGB"
+    "mistral": "pB64qojpnzkInkvv3I371T8FCoMVIMGB",
+    "polza": "pza_hU0ySdRapRzLsNhyGFQTCTatPyLb9PUM"
   },
   "models": {
     "available": {

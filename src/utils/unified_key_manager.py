@@ -18,6 +18,7 @@ from pathlib import Path
 import json
 import re
 import logging
+import threading  # FIX_110.2: Added for thread-safe singleton
 
 logger = logging.getLogger(__name__)
 
@@ -331,10 +332,11 @@ class UnifiedKeyManager:
                         record.failure_count += 1
 
                     # Phase 100.1: Auto-rotate on failure
-                    if auto_rotate and provider == ProviderKey.OPENROUTER:
-                        old_idx = self.current_key_index.get(provider, 0)
-                        self.rotate_to_next(provider)
-                        new_idx = self.current_key_index.get(provider, 0)
+                    # FIX_110.1: Fixed AttributeError - use _current_openrouter_index instead of current_key_index
+                    if auto_rotate and provider == ProviderType.OPENROUTER:
+                        old_idx = self._current_openrouter_index
+                        self.rotate_to_next()  # No argument - method signature is rotate_to_next(self)
+                        new_idx = self._current_openrouter_index
                         logger.info(f"[UnifiedKeyManager] Auto-rotated OR key: {old_idx} -> {new_idx}")
                     return
 
@@ -740,6 +742,7 @@ class UnifiedKeyManager:
 # ============================================================
 
 _unified_manager: Optional[UnifiedKeyManager] = None
+_singleton_lock = threading.Lock()  # FIX_110.2: Thread-safe singleton
 
 
 def get_key_manager() -> UnifiedKeyManager:
@@ -747,17 +750,22 @@ def get_key_manager() -> UnifiedKeyManager:
     Get global UnifiedKeyManager instance (singleton).
 
     This is the ONLY key manager you need!
+    Thread-safe via Lock (FIX_110.2).
     """
     global _unified_manager
+    # Double-checked locking pattern for performance
     if _unified_manager is None:
-        _unified_manager = UnifiedKeyManager()
+        with _singleton_lock:
+            if _unified_manager is None:
+                _unified_manager = UnifiedKeyManager()
     return _unified_manager
 
 
 def reset_key_manager() -> None:
     """Reset singleton (for testing)."""
     global _unified_manager
-    _unified_manager = None
+    with _singleton_lock:
+        _unified_manager = None
 
 
 # ============================================================

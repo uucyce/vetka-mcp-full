@@ -237,6 +237,80 @@ class DoctorTool:
                 ]
             )
 
+    # MARKER_111_1: API Keys health check - Phase 111
+    async def check_api_keys_health(self) -> HealthCheckResult:
+        """
+        Check API keys status and availability.
+
+        Phase 111: Validates configured API keys for all providers.
+        Returns DEGRADED if any provider has no available keys.
+        """
+        start = time.time()
+
+        try:
+            from src.utils.unified_key_manager import get_key_manager
+
+            km = get_key_manager()
+            stats = km.get_stats()
+
+            issues = []
+            total_keys = stats.get('total_keys', 0)
+            available_keys = stats.get('available_keys', 0)
+            rate_limited = total_keys - available_keys
+
+            # Check provider availability from validate_keys()
+            providers_available = stats.get('providers_available', {})
+            providers_checked = len(providers_available)
+            providers_healthy = sum(1 for v in providers_available.values() if v)
+
+            # Build issues list
+            for provider_name, is_available in providers_available.items():
+                if not is_available:
+                    issues.append(f"{provider_name}: no available keys")
+
+            # Determine overall status
+            if total_keys == 0:
+                status = HealthStatus.UNHEALTHY
+                message = "No API keys configured"
+            elif available_keys == 0:
+                status = HealthStatus.UNHEALTHY
+                message = f"All {total_keys} keys rate-limited"
+            elif issues:
+                status = HealthStatus.DEGRADED
+                message = f"{providers_healthy}/{providers_checked} providers healthy, {available_keys}/{total_keys} keys available"
+            else:
+                status = HealthStatus.HEALTHY
+                message = f"All {providers_checked} providers healthy with {total_keys} keys"
+
+            duration = (time.time() - start) * 1000
+
+            return HealthCheckResult(
+                component="api_keys",
+                status=status,
+                message=message,
+                duration_ms=duration,
+                details={
+                    'total_keys': total_keys,
+                    'available_keys': available_keys,
+                    'rate_limited_keys': rate_limited,
+                    'providers_checked': providers_checked,
+                    'providers_healthy': providers_healthy,
+                    'openrouter_keys': stats.get('openrouter_keys', 0)
+                },
+                remediation=issues if issues else None
+            )
+
+        except Exception as e:
+            duration = (time.time() - start) * 1000
+            logger.error(f"API keys health check failed: {e}")
+            return HealthCheckResult(
+                component="api_keys",
+                status=HealthStatus.UNKNOWN,
+                message=f"Failed to check keys: {str(e)}",
+                duration_ms=duration,
+                remediation=["Check unified_key_manager configuration"]
+            )
+
     async def run_diagnostic(self, level: DiagnosticLevel = DiagnosticLevel.STANDARD) -> Dict[str, Any]:
         """
         Run full diagnostic suite
@@ -257,6 +331,7 @@ class DoctorTool:
         # Add optional checks based on level
         if level in [DiagnosticLevel.STANDARD, DiagnosticLevel.DEEP]:
             results.append(await self.check_deepseek_health())
+            results.append(await self.check_api_keys_health())  # Phase 111
 
         total_duration = (time.time() - start_time) * 1000
 

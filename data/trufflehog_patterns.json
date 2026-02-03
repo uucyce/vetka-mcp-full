@@ -1,0 +1,271 @@
+{
+  "_meta": {
+    "source": "TruffleHog + VETKA custom patterns",
+    "version": "1.0.0",
+    "phase": 110,
+    "updated_at": "2026-02-03",
+    "description": "Global API key patterns for detection. Based on TruffleHog regexes + AI/LLM providers."
+  },
+  "patterns": {
+    "aws_api_key": {
+      "regex": "AKIA[0-9A-Z]{16}",
+      "display_name": "AWS API Key",
+      "category": "cloud",
+      "confidence": 0.95,
+      "prefix": "AKIA"
+    },
+    "aws_secret_key": {
+      "regex": "[0-9a-zA-Z/+]{40}",
+      "display_name": "AWS Secret Key",
+      "category": "cloud",
+      "confidence": 0.50,
+      "note": "Generic 40-char base64, requires context"
+    },
+    "google_api_key": {
+      "regex": "AIza[0-9A-Za-z\\-_]{35}",
+      "display_name": "Google API Key",
+      "category": "cloud",
+      "confidence": 0.95,
+      "prefix": "AIza"
+    },
+    "google_oauth": {
+      "regex": "[0-9]+-[0-9A-Za-z_]{32}\\.apps\\.googleusercontent\\.com",
+      "display_name": "Google OAuth",
+      "category": "cloud",
+      "confidence": 0.90
+    },
+    "github_token": {
+      "regex": "gh[ps]_[0-9A-Za-z]{36}",
+      "display_name": "GitHub Token",
+      "category": "dev_tools",
+      "confidence": 0.95,
+      "prefix": "ghp_"
+    },
+    "github_oauth": {
+      "regex": "gho_[0-9A-Za-z]{36}",
+      "display_name": "GitHub OAuth",
+      "category": "dev_tools",
+      "confidence": 0.95,
+      "prefix": "gho_"
+    },
+    "slack_token": {
+      "regex": "xox[baprs]-[0-9]{12}-[0-9]{12,13}-[a-zA-Z0-9]{24}",
+      "display_name": "Slack Token",
+      "category": "communication",
+      "confidence": 0.95,
+      "prefix": "xox"
+    },
+    "slack_webhook": {
+      "regex": "https://hooks\\.slack\\.com/services/T[a-zA-Z0-9_]{8,}/B[a-zA-Z0-9_]{8,}/[a-zA-Z0-9_]{24}",
+      "display_name": "Slack Webhook",
+      "category": "communication",
+      "confidence": 0.95
+    },
+    "stripe_api_key": {
+      "regex": "sk_live_[0-9a-zA-Z]{24,}",
+      "display_name": "Stripe API Key",
+      "category": "payment",
+      "confidence": 0.95,
+      "prefix": "sk_live_"
+    },
+    "stripe_restricted": {
+      "regex": "rk_live_[0-9a-zA-Z]{24,}",
+      "display_name": "Stripe Restricted Key",
+      "category": "payment",
+      "confidence": 0.95,
+      "prefix": "rk_live_"
+    },
+    "twilio_api_key": {
+      "regex": "SK[0-9a-fA-F]{32}",
+      "display_name": "Twilio API Key",
+      "category": "communication",
+      "confidence": 0.95,
+      "prefix": "SK"
+    },
+    "mailchimp_api_key": {
+      "regex": "[0-9a-f]{32}-us[0-9]{1,2}",
+      "display_name": "MailChimp API Key",
+      "category": "email",
+      "confidence": 0.90
+    },
+    "mailgun_api_key": {
+      "regex": "key-[0-9a-zA-Z]{32}",
+      "display_name": "Mailgun API Key",
+      "category": "email",
+      "confidence": 0.95,
+      "prefix": "key-"
+    },
+    "heroku_api_key": {
+      "regex": "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+      "display_name": "Heroku API Key (UUID)",
+      "category": "cloud",
+      "confidence": 0.60,
+      "note": "Standard UUID format, common false positives"
+    },
+    "telegram_bot": {
+      "regex": "[0-9]{8,10}:[a-zA-Z0-9_-]{35}",
+      "display_name": "Telegram Bot Token",
+      "category": "communication",
+      "confidence": 0.90
+    },
+    "discord_token": {
+      "regex": "[MN][A-Za-z\\d]{23,}\\.[\\w-]{6}\\.[\\w-]{27}",
+      "display_name": "Discord Token",
+      "category": "communication",
+      "confidence": 0.90
+    },
+    "openai_key": {
+      "regex": "sk-[a-zA-Z0-9]{48}",
+      "display_name": "OpenAI API Key (Legacy)",
+      "category": "llm",
+      "confidence": 0.60,
+      "prefix": "sk-",
+      "note": "Legacy format, conflicts with other sk- keys"
+    },
+    "openai_proj": {
+      "regex": "sk-proj-[a-zA-Z0-9_-]{80,200}",
+      "display_name": "OpenAI API Key (Project)",
+      "category": "llm",
+      "confidence": 0.95,
+      "prefix": "sk-proj-"
+    },
+    "anthropic_key": {
+      "regex": "sk-ant-[a-zA-Z0-9-_]{90,110}",
+      "display_name": "Anthropic API Key",
+      "category": "llm",
+      "confidence": 0.95,
+      "prefix": "sk-ant-"
+    },
+    "openrouter_key": {
+      "regex": "sk-or-v1-[a-zA-Z0-9]{32,64}",
+      "display_name": "OpenRouter API Key",
+      "category": "llm",
+      "confidence": 0.95,
+      "prefix": "sk-or-v1-"
+    },
+    "groq_key": {
+      "regex": "gsk_[a-zA-Z0-9]{40,60}",
+      "display_name": "Groq API Key",
+      "category": "llm",
+      "confidence": 0.95,
+      "prefix": "gsk_"
+    },
+    "xai_grok_key": {
+      "regex": "xai-[a-zA-Z0-9]{60,90}",
+      "display_name": "xAI (Grok) API Key",
+      "category": "llm",
+      "confidence": 0.95,
+      "prefix": "xai-"
+    },
+    "huggingface_key": {
+      "regex": "hf_[a-zA-Z0-9]{30,50}",
+      "display_name": "HuggingFace API Key",
+      "category": "llm",
+      "confidence": 0.95,
+      "prefix": "hf_"
+    },
+    "replicate_key": {
+      "regex": "r8_[a-zA-Z0-9]{35,50}",
+      "display_name": "Replicate API Key",
+      "category": "llm",
+      "confidence": 0.95,
+      "prefix": "r8_"
+    },
+    "cohere_key": {
+      "regex": "[a-zA-Z0-9]{40}",
+      "display_name": "Cohere API Key",
+      "category": "llm",
+      "confidence": 0.50,
+      "note": "Generic 40-char alphanumeric"
+    },
+    "fireworks_key": {
+      "regex": "fw_[a-zA-Z0-9]{35,50}",
+      "display_name": "Fireworks AI API Key",
+      "category": "llm",
+      "confidence": 0.95,
+      "prefix": "fw_"
+    },
+    "perplexity_key": {
+      "regex": "pplx-[a-zA-Z0-9]{35,60}",
+      "display_name": "Perplexity API Key",
+      "category": "llm",
+      "confidence": 0.90,
+      "prefix": "pplx-"
+    },
+    "mistral_key": {
+      "regex": "[a-zA-Z0-9]{32}",
+      "display_name": "Mistral API Key",
+      "category": "llm",
+      "confidence": 0.50,
+      "note": "Generic 32-char alphanumeric"
+    },
+    "deepseek_key": {
+      "regex": "sk-[a-f0-9]{32}",
+      "display_name": "DeepSeek API Key",
+      "category": "llm",
+      "confidence": 0.60,
+      "prefix": "sk-",
+      "note": "Conflicts with OpenAI legacy sk-"
+    },
+    "nvidia_nim_key": {
+      "regex": "nvapi-[a-zA-Z0-9-]{35,60}",
+      "display_name": "NVIDIA NIM API Key",
+      "category": "llm",
+      "confidence": 0.95,
+      "prefix": "nvapi-"
+    },
+    "elevenlabs_key": {
+      "regex": "[a-f0-9]{32}",
+      "display_name": "ElevenLabs API Key",
+      "category": "audio",
+      "confidence": 0.50,
+      "note": "Generic 32-hex, common format"
+    },
+    "stability_key": {
+      "regex": "sk-[a-zA-Z0-9]{48,52}",
+      "display_name": "Stability AI API Key",
+      "category": "image",
+      "confidence": 0.60,
+      "prefix": "sk-"
+    },
+    "runpod_key": {
+      "regex": "rp_[a-zA-Z0-9]{20,40}",
+      "display_name": "RunPod API Key",
+      "category": "cloud",
+      "confidence": 0.95,
+      "prefix": "rp_"
+    },
+    "polza_key": {
+      "regex": "pza_[a-zA-Z0-9]{26,46}",
+      "display_name": "Polza AI API Key",
+      "category": "llm",
+      "confidence": 0.95,
+      "prefix": "pza_"
+    },
+    "nanogpt_key": {
+      "regex": "sk-nano-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}",
+      "display_name": "NanoGPT API Key",
+      "category": "llm",
+      "confidence": 0.95,
+      "prefix": "sk-nano-"
+    },
+    "tavily_key": {
+      "regex": "tvly-[a-zA-Z0-9_-]{20,50}",
+      "display_name": "Tavily API Key",
+      "category": "search",
+      "confidence": 0.90,
+      "prefix": "tvly-"
+    }
+  },
+  "categories": {
+    "llm": "Large Language Model APIs",
+    "cloud": "Cloud Infrastructure",
+    "payment": "Payment Processing",
+    "communication": "Communication & Messaging",
+    "email": "Email Services",
+    "dev_tools": "Developer Tools",
+    "audio": "Audio Generation",
+    "image": "Image Generation",
+    "search": "Search APIs"
+  }
+}

@@ -48,9 +48,18 @@ async def fetch_openrouter_models(api_key: str) -> List[Dict[str, Any]]:
                 models = data.get('data', [])
 
                 # Phase 60.5: Classify each model
+                # Phase 111.1: Add source and provider fields
                 voice_count = 0
                 for model in models:
                     classify_model_type(model)
+                    # Add OpenRouter as source
+                    model['source'] = 'openrouter'
+                    # Extract provider from model id (e.g., "anthropic/claude-3" -> "anthropic")
+                    model_id = model.get('id', '')
+                    if '/' in model_id:
+                        model['provider'] = model_id.split('/')[0]
+                    else:
+                        model['provider'] = 'openrouter'
                     if model.get('type') == 'voice':
                         voice_count += 1
 
@@ -62,6 +71,138 @@ async def fetch_openrouter_models(api_key: str) -> List[Dict[str, Any]]:
         except Exception as e:
             logger.error(f"Failed to fetch OpenRouter models: {e}")
             return []
+
+
+async def fetch_polza_models(api_key: str) -> List[Dict[str, Any]]:
+    """
+    Fetch available models from Polza AI API.
+    Phase 110: P1 - Polza AI integration.
+
+    Polza AI is OpenAI-compatible aggregator (similar to OpenRouter).
+    Base URL: https://api.polza.ai/api/v1
+    Docs: https://docs.polza.ai/docs/glavnoe/bystryy-start
+
+    Args:
+        api_key: Polza AI API key (prefix: pza_)
+
+    Returns:
+        List of model dictionaries normalized to OpenRouter format
+    """
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            # Try OpenAI-compatible /v1/models endpoint first
+            resp = await client.get(
+                'https://api.polza.ai/api/v1/models',
+                headers={
+                    'Authorization': f'Bearer {api_key}',
+                    'Content-Type': 'application/json'
+                }
+            )
+
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_models = data.get('data', [])
+
+                # Normalize to OpenRouter-like format
+                models = []
+                for m in raw_models:
+                    model_id = m.get('id', '')
+                    # Polza uses format like "openai/gpt-4o", "anthropic/claude-3.5-sonnet"
+                    models.append({
+                        'id': f'polza/{model_id}' if '/' not in model_id else model_id,
+                        'name': m.get('name', model_id),
+                        'description': m.get('description', ''),
+                        'context_length': m.get('context_length', m.get('context_window', 128000)),
+                        'pricing': m.get('pricing', {
+                            'prompt': '0.0001',  # Default estimate
+                            'completion': '0.0003'
+                        }),
+                        'provider': 'Polza',  # Phase 111: Capitalized for UI consistency
+                        'source': 'polza_direct',
+                        'owned_by': m.get('owned_by', 'polza'),
+                    })
+
+                logger.info(f"Fetched {len(models)} models from Polza AI")
+                return models
+
+            elif resp.status_code == 404:
+                # /v1/models not available - try web scraping fallback
+                logger.warning("Polza /v1/models returned 404, trying web scrape fallback")
+                return await _scrape_polza_models()
+
+            else:
+                logger.error(f"Polza API error: {resp.status_code} - {resp.text[:200]}")
+                return []
+
+        except Exception as e:
+            logger.error(f"Failed to fetch Polza models: {e}")
+            return []
+
+
+async def _scrape_polza_models() -> List[Dict[str, Any]]:
+    """
+    Fallback: Scrape models from https://polza.ai/models page.
+    Used when /v1/models endpoint is not available.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get('https://polza.ai/models')
+
+            if resp.status_code != 200:
+                logger.error(f"Polza models page error: {resp.status_code}")
+                return []
+
+            # Try to parse HTML (basic extraction)
+            html = resp.text
+            models = []
+
+            # Look for model IDs in common patterns
+            # Pattern: "openai/gpt-4o", "anthropic/claude-3.5-sonnet", etc.
+            import re
+            model_patterns = [
+                r'"model":\s*"([a-zA-Z0-9\-_]+/[a-zA-Z0-9\-_.]+)"',
+                r'model-id["\']?\s*[:=]\s*["\']([a-zA-Z0-9\-_]+/[a-zA-Z0-9\-_.]+)["\']',
+                r'data-model["\']?\s*=\s*["\']([a-zA-Z0-9\-_]+/[a-zA-Z0-9\-_.]+)["\']',
+            ]
+
+            found_ids = set()
+            for pattern in model_patterns:
+                matches = re.findall(pattern, html)
+                found_ids.update(matches)
+
+            # If no patterns found, try known Polza models (hardcoded fallback)
+            if not found_ids:
+                logger.warning("Could not parse Polza models page, using known models")
+                found_ids = {
+                    'openai/gpt-4o',
+                    'openai/gpt-4o-mini',
+                    'openai/gpt-4-turbo',
+                    'anthropic/claude-3.5-sonnet',
+                    'anthropic/claude-3-opus',
+                    'anthropic/claude-3-haiku',
+                    'google/gemini-1.5-pro',
+                    'google/gemini-1.5-flash',
+                    'meta-llama/llama-3.1-70b',
+                    'mistral/mistral-large',
+                }
+
+            for model_id in found_ids:
+                provider = model_id.split('/')[0] if '/' in model_id else 'unknown'
+                models.append({
+                    'id': model_id,
+                    'name': model_id.split('/')[-1] if '/' in model_id else model_id,
+                    'provider': provider,
+                    'source': 'polza_scraped',
+                    'context_length': 128000,
+                    'pricing': {'prompt': '0.0001', 'completion': '0.0003'},
+                })
+
+            logger.info(f"Scraped {len(models)} models from Polza website")
+            return models
+
+    except Exception as e:
+        logger.error(f"Failed to scrape Polza models: {e}")
+        return []
 
 
 async def fetch_gemini_models(api_key: str) -> List[Dict[str, Any]]:
@@ -180,10 +321,24 @@ async def get_all_models(force_refresh: bool = False) -> List[Dict[str, Any]]:
     if gemini_key:
         gemini_models = await fetch_gemini_models(gemini_key)
         # Add only models not already in OpenRouter list
-        openrouter_ids = {m['id'] for m in all_models}
+        existing_ids = {m['id'] for m in all_models}
         for gm in gemini_models:
-            if gm['id'] not in openrouter_ids:
+            if gm['id'] not in existing_ids:
                 all_models.append(gm)
+
+    # Phase 110: Fetch Polza AI models
+    polza_key = km.get_key('polza')
+    if polza_key:
+        polza_models = await fetch_polza_models(polza_key)
+        # Add only models not already in list (avoid duplicates with OpenRouter)
+        existing_ids = {m['id'] for m in all_models}
+        new_polza_count = 0
+        for pm in polza_models:
+            if pm['id'] not in existing_ids:
+                all_models.append(pm)
+                new_polza_count += 1
+        if new_polza_count > 0:
+            logger.info(f"Added {new_polza_count} unique models from Polza AI")
 
     # Save to cache
     if all_models:

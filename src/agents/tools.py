@@ -859,6 +859,315 @@ class ARCSuggestTool(BaseTool):
 # Register ARC tool
 registry.register(ARCSuggestTool())
 
+
+# ============================================================================
+# API KEY MANAGEMENT TOOLS - Phase 110 (FIX_110.3)
+# ============================================================================
+
+class SaveAPIKeyTool(BaseTool):
+    """
+    Save API key with auto-detection of provider.
+    Phase 57.1: Accept API keys via chat.
+    FIX_110.3: Implemented missing tool class.
+    """
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="save_api_key",
+            description="Save an API key with automatic provider detection (OpenAI, Anthropic, Groq, etc.)",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "The API key to save",
+                    },
+                    "provider": {
+                        "type": "string",
+                        "description": "Force specific provider (optional, auto-detected if not provided)",
+                    },
+                },
+                "required": ["key"],
+            },
+            permission_level=PermissionLevel.WRITE,
+            needs_user_approval=False,
+        )
+
+    async def execute(self, key: str, provider: str = None) -> ToolResult:
+        try:
+            from src.elisya.api_key_detector import detect_api_key
+            from src.elisya.key_learner import get_key_learner
+
+            # Mask key for logging
+            key_preview = f"{key[:8]}****" if len(key) > 12 else "****"
+
+            # Detect provider if not specified
+            if provider:
+                detected = {"provider": provider, "display_name": provider.title(), "confidence": 1.0}
+            else:
+                detected = detect_api_key(key)
+
+                # Fallback to learned patterns
+                if not detected or not detected.get("provider"):
+                    learner = get_key_learner()
+                    learned = learner.check_learned_pattern(key)
+                    if learned:
+                        detected = learned
+                        detected["source"] = "learned"
+
+            if not detected or not detected.get("provider"):
+                # Unknown key - analyze and return info
+                learner = get_key_learner()
+                analysis = learner.analyze_key(key)
+                return ToolResult(
+                    success=True,
+                    result={
+                        "saved": False,
+                        "detected": False,
+                        "analysis": analysis,
+                        "message": "Unknown key type. Please specify provider or use learn_api_key tool.",
+                        "pending_key": key_preview,
+                    },
+                )
+
+            # Save the key
+            provider_name = detected["provider"]
+            # Normalize openai variants
+            if provider_name.startswith("openai"):
+                provider_name = "openai"
+
+            learner = get_key_learner()
+            learner._save_key_to_config(provider_name, key)
+
+            return ToolResult(
+                success=True,
+                result={
+                    "saved": True,
+                    "provider": provider_name,
+                    "display_name": detected.get("display_name", provider_name.title()),
+                    "confidence": detected.get("confidence", 0.9),
+                    "category": detected.get("category", "llm"),
+                    "message": f"Saved {detected.get('display_name', provider_name)} key successfully",
+                },
+            )
+
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+
+
+class LearnAPIKeyTool(BaseTool):
+    """
+    Learn new API key type after user confirms provider.
+    Phase 57.9: Learn new key types dynamically.
+    FIX_110.3: Implemented missing tool class.
+    """
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="learn_api_key",
+            description="Learn a new API key pattern and save the key. Use after user identifies an unknown key's provider.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "The API key to learn and save",
+                    },
+                    "provider": {
+                        "type": "string",
+                        "description": "Name of the provider (e.g., 'tavily', 'polza')",
+                    },
+                },
+                "required": ["key", "provider"],
+            },
+            permission_level=PermissionLevel.WRITE,
+            needs_user_approval=False,
+        )
+
+    async def execute(self, key: str, provider: str) -> ToolResult:
+        try:
+            from src.elisya.key_learner import get_key_learner
+
+            learner = get_key_learner()
+            success, message = learner.learn_key_type(key, provider, save_key=True)
+
+            if success:
+                return ToolResult(
+                    success=True,
+                    result={
+                        "learned": True,
+                        "provider": provider,
+                        "message": message,
+                    },
+                )
+            else:
+                return ToolResult(
+                    success=False,
+                    result={"learned": False, "provider": provider},
+                    error=message,
+                )
+
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+
+
+class GetAPIKeyStatusTool(BaseTool):
+    """
+    Get status of configured API keys.
+    Phase 57.9: Check key status.
+    FIX_110.3: Implemented missing tool class.
+    """
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="get_api_key_status",
+            description="Get status of API keys and configured providers",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "provider": {
+                        "type": "string",
+                        "description": "Specific provider to check (optional, returns all if not specified)",
+                    },
+                },
+                "required": [],
+            },
+            permission_level=PermissionLevel.READ,
+            needs_user_approval=False,
+        )
+
+    async def execute(self, provider: str = None) -> ToolResult:
+        try:
+            from src.elisya.key_learner import get_key_learner
+            import json
+
+            config_path = PROJECT_ROOT / "data" / "config.json"
+            with open(config_path, "r") as f:
+                config = json.load(f)
+
+            api_keys = config.get("api_keys", {})
+            learner = get_key_learner()
+            learned_providers = learner.get_learned_providers()
+
+            if provider:
+                # Single provider status
+                keys = api_keys.get(provider)
+                if keys is None:
+                    return ToolResult(
+                        success=True,
+                        result={"provider": provider, "configured": False, "count": 0},
+                    )
+
+                if isinstance(keys, str):
+                    count = 1
+                elif isinstance(keys, list):
+                    count = len(keys)
+                elif isinstance(keys, dict):
+                    count = sum(1 if isinstance(v, str) else len(v) for v in keys.values() if v)
+                else:
+                    count = 0
+
+                return ToolResult(
+                    success=True,
+                    result={
+                        "provider": provider,
+                        "configured": True,
+                        "count": count,
+                        "learned": provider in learned_providers,
+                    },
+                )
+            else:
+                # All providers status
+                providers_status = []
+                for prov, keys in api_keys.items():
+                    if keys is None:
+                        continue
+                    if isinstance(keys, str):
+                        count = 1
+                    elif isinstance(keys, list):
+                        count = len(keys)
+                    elif isinstance(keys, dict):
+                        count = sum(1 if isinstance(v, str) else len(v) for v in keys.values() if v)
+                    else:
+                        count = 0
+
+                    if count > 0:
+                        providers_status.append({
+                            "provider": prov,
+                            "count": count,
+                            "learned": prov in learned_providers,
+                        })
+
+                return ToolResult(
+                    success=True,
+                    result={
+                        "providers": providers_status,
+                        "total_providers": len(providers_status),
+                        "learned_providers": learned_providers,
+                    },
+                )
+
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+
+
+class AnalyzeUnknownKeyTool(BaseTool):
+    """
+    Analyze an unknown API key to identify its pattern.
+    Phase 57.9: Analyze unknown keys.
+    FIX_110.3: Implemented missing tool class.
+    """
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="analyze_unknown_key",
+            description="Analyze an unknown API key to identify its pattern (prefix, length, charset)",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "The API key to analyze",
+                    },
+                },
+                "required": ["key"],
+            },
+            permission_level=PermissionLevel.READ,
+            needs_user_approval=False,
+        )
+
+    async def execute(self, key: str) -> ToolResult:
+        try:
+            from src.elisya.key_learner import get_key_learner
+
+            learner = get_key_learner()
+            analysis = learner.analyze_key(key)
+
+            return ToolResult(
+                success=True,
+                result={
+                    "analysis": analysis,
+                    "message": f"Key pattern: prefix='{analysis.get('prefix', 'none')}', "
+                               f"length={analysis.get('length')}, charset={analysis.get('charset')}",
+                    "suggestion": "Use learn_api_key tool to save this key after identifying the provider.",
+                },
+            )
+
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+
+
+# Register API Key tools
+registry.register(SaveAPIKeyTool())
+registry.register(LearnAPIKeyTool())
+registry.register(GetAPIKeyStatusTool())
+registry.register(AnalyzeUnknownKeyTool())
+
+
 # ============================================================================
 # AGENT TOOL PERMISSIONS
 # ============================================================================

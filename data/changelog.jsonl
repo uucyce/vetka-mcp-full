@@ -19,3 +19,25 @@
 {"id": "e7c066ff-f060-49af-bf30-9b646285f96b", "workflow_id": "unknown", "speaker": "user", "content": "", "branch_path": "unknown", "score": 0.92, "entry_type": "user_feedback", "timestamp": "2026-02-01T22:38:12.100913+00:00", "raw": {"type": "user_feedback", "evaluation_id": "eval_high_2", "task": "Test task", "output": "Output 2", "rating": "👍", "correction": "", "score": 0.92, "speaker": "user"}}
 {"id": "48f109e8-fce6-416c-a1ff-67269b37a845", "workflow_id": "unknown", "speaker": "eval_agent", "content": "", "branch_path": "unknown", "score": 0.92, "entry_type": "evaluation", "timestamp": "2026-02-01T22:38:12.175837+00:00", "raw": {"type": "evaluation", "evaluation_id": "eval_test_003", "task": "Create dashboard", "output": "Dashboard code here", "complexity": "MEDIUM", "score": 0.92, "scores_breakdown": {"correctness": 0.95, "completeness": 0.9}, "speaker": "eval_agent"}}
 {"id": "37b5fc95-065a-4c64-9fc6-09ea3681f808", "workflow_id": "unknown", "speaker": "user", "content": "", "branch_path": "unknown", "score": 0.9, "entry_type": "user_feedback", "timestamp": "2026-02-01T22:38:12.485997+00:00", "raw": {"type": "user_feedback", "evaluation_id": "e2e_test_001", "task": "E2E test task", "output": "Output 1", "rating": "👍", "correction": "", "score": 0.9, "speaker": "user"}}
+{
+  "timestamp": "2026-02-02T09:53:41.258265",
+  "phase": "108.1",
+  "type": "fix",
+  "category": "routing",
+  "description": "Phase 108 Step 1: Critical routing fixes (fallback bug, MCP replies, hyphenated names, sender_id format)",
+  "files_changed": [
+    "src/elisya/provider_registry.py",
+    "src/api/handlers/group_message_handler.py",
+    "src/services/group_chat_manager.py",
+    "src/orchestration/langgraph_nodes.py",
+    "src/api/routes/debug_routes.py"
+  ],
+  "markers": [
+    "MARKER_108_ROUTING_FIX_1",
+    "MARKER_108_ROUTING_FIX_2",
+    "MARKER_108_ROUTING_FIX_3",
+    "MARKER_108_ROUTING_FIX_4"
+  ],
+  "impact": "critical",
+  "author": "claude-sonnet-4.5"
+}

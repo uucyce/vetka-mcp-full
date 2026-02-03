@@ -1,13 +1,13 @@
 {
-  "cached_at": "2026-02-02T01:17:25.716400",
+  "cached_at": "2026-02-03T19:38:27.988882",
   "source": "mixed",
-  "count": 347,
+  "count": 398,
   "models": [
     {
       "id": "openrouter/free",
       "canonical_slug": "openrouter/free",
       "hugging_face_id": "",
-      "name": "Free Router",
+      "name": "Free Models Router",
       "created": 1769917427,
       "description": "The simplest way to get free inference. openrouter/free is a router that selects free models at random from the models available on OpenRouter. The router smartly filters for models that support features needed for your request such as image understanding, tool calling, structured outputs and more. ",
       "context_length": 200000,
@@ -24,8 +24,8 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "-1",
-        "completion": "-1"
+        "prompt": "0",
+        "completion": "0"
       },
       "top_provider": {
         "context_length": null,
@@ -33,7 +33,25 @@
         "is_moderated": false
       },
       "per_request_limits": null,
-      "supported_parameters": [],
+      "supported_parameters": [
+        "frequency_penalty",
+        "include_reasoning",
+        "logit_bias",
+        "max_tokens",
+        "min_p",
+        "presence_penalty",
+        "reasoning",
+        "repetition_penalty",
+        "response_format",
+        "seed",
+        "stop",
+        "structured_outputs",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_k",
+        "top_p"
+      ],
       "default_parameters": {
         "temperature": null,
         "top_p": null,
@@ -42,7 +60,57 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openrouter"
+    },
+    {
+      "id": "stepfun/step-3.5-flash:free",
+      "canonical_slug": "stepfun/step-3.5-flash",
+      "hugging_face_id": "stepfun-ai/Step-3.5-Flash",
+      "name": "StepFun: Step 3.5 Flash (free)",
+      "created": 1769728337,
+      "description": "Step 3.5 Flash is StepFun's most capable open-source foundation model. Built on a sparse Mixture of Experts (MoE) architecture, it selectively activates only 11B of its 196B parameters per token. It is a reasoning model that is incredibly speed efficient even at long contexts.",
+      "context_length": 256000,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0"
+      },
+      "top_provider": {
+        "context_length": 256000,
+        "max_completion_tokens": 256000,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "frequency_penalty",
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "stop",
+        "temperature",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": null,
+        "top_p": null,
+        "frequency_penalty": null
+      },
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "stepfun"
     },
     {
       "id": "arcee-ai/trinity-large-preview:free",
@@ -87,7 +155,9 @@
         "top_p": 0.8,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "arcee-ai"
     },
     {
       "id": "moonshotai/kimi-k2.5",
@@ -148,7 +218,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "moonshotai"
     },
     {
       "id": "upstage/solar-pro-3:free",
@@ -194,7 +266,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": "2026-03-02"
+      "expiration_date": "2026-03-02",
+      "source": "openrouter",
+      "provider": "upstage"
     },
     {
       "id": "minimax/minimax-m2-her",
@@ -236,7 +310,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "minimax"
     },
     {
       "id": "writer/palmyra-x5",
@@ -279,7 +355,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "writer"
     },
     {
       "id": "liquid/lfm-2.5-1.2b-thinking:free",
@@ -329,7 +407,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "liquid"
     },
     {
       "id": "liquid/lfm-2.5-1.2b-instruct:free",
@@ -377,7 +457,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "liquid"
     },
     {
       "id": "openai/gpt-audio",
@@ -435,7 +517,9 @@
         "stt",
         "tts"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-audio-mini",
@@ -493,7 +577,9 @@
         "stt",
         "tts"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "z-ai/glm-4.7-flash",
@@ -548,7 +634,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "z-ai"
     },
     {
       "id": "openai/gpt-5.2-codex",
@@ -606,7 +694,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "allenai/molmo-2-8b:free",
@@ -660,7 +750,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "allenai"
     },
     {
       "id": "allenai/olmo-3.1-32b-instruct",
@@ -712,7 +804,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "allenai"
     },
     {
       "id": "bytedance-seed/seed-1.6-flash",
@@ -766,7 +860,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "bytedance-seed"
     },
     {
       "id": "bytedance-seed/seed-1.6",
@@ -820,7 +916,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "bytedance-seed"
     },
     {
       "id": "minimax/minimax-m2.1",
@@ -877,7 +975,9 @@
         "top_p": 0.9,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "minimax"
     },
     {
       "id": "z-ai/glm-4.7",
@@ -915,8 +1015,10 @@
         "logprobs",
         "max_tokens",
         "min_p",
+        "parallel_tool_calls",
         "presence_penalty",
         "reasoning",
+        "reasoning_effort",
         "repetition_penalty",
         "response_format",
         "seed",
@@ -935,7 +1037,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "z-ai"
     },
     {
       "id": "google/gemini-3-flash-preview",
@@ -998,7 +1102,9 @@
         "stt",
         "vision"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "mistralai/mistral-small-creative",
@@ -1038,7 +1144,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "allenai/olmo-3.1-32b-think",
@@ -1090,7 +1198,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "allenai"
     },
     {
       "id": "xiaomi/mimo-v2-flash",
@@ -1143,7 +1253,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "xiaomi"
     },
     {
       "id": "nvidia/nemotron-3-nano-30b-a3b:free",
@@ -1189,7 +1301,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nvidia"
     },
     {
       "id": "nvidia/nemotron-3-nano-30b-a3b",
@@ -1243,7 +1357,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nvidia"
     },
     {
       "id": "openai/gpt-5.2-chat",
@@ -1294,7 +1410,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-5.2-pro",
@@ -1346,7 +1464,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-5.2",
@@ -1399,7 +1519,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "mistralai/devstral-2512",
@@ -1450,7 +1572,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "relace/relace-search",
@@ -1495,7 +1619,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "relace"
     },
     {
       "id": "z-ai/glm-4.6v",
@@ -1555,7 +1681,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "z-ai"
     },
     {
       "id": "nex-agi/deepseek-v3.1-nex-n1",
@@ -1601,7 +1729,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nex-agi"
     },
     {
       "id": "essentialai/rnj-1-instruct",
@@ -1651,7 +1781,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "essentialai"
     },
     {
       "id": "openrouter/bodybuilder",
@@ -1688,7 +1820,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openrouter"
     },
     {
       "id": "openai/gpt-5.1-codex-max",
@@ -1740,7 +1874,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "amazon/nova-2-lite-v1",
@@ -1793,7 +1929,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "amazon"
     },
     {
       "id": "mistralai/ministral-14b-2512",
@@ -1850,7 +1988,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "mistralai/ministral-8b-2512",
@@ -1903,7 +2043,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "mistralai/ministral-3b-2512",
@@ -1956,7 +2098,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "mistralai/mistral-large-2512",
@@ -2009,7 +2153,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "arcee-ai/trinity-mini:free",
@@ -2057,7 +2203,9 @@
         "top_p": 0.75,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "arcee-ai"
     },
     {
       "id": "arcee-ai/trinity-mini",
@@ -2111,7 +2259,9 @@
         "top_p": 0.75,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "arcee-ai"
     },
     {
       "id": "deepseek/deepseek-v3.2-speciale",
@@ -2163,7 +2313,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "deepseek/deepseek-v3.2",
@@ -2220,7 +2372,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "prime-intellect/intellect-3",
@@ -2274,7 +2428,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "prime-intellect"
     },
     {
       "id": "tngtech/tng-r1t-chimera:free",
@@ -2327,7 +2483,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "tngtech"
     },
     {
       "id": "tngtech/tng-r1t-chimera",
@@ -2380,7 +2538,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "tngtech"
     },
     {
       "id": "anthropic/claude-opus-4.5",
@@ -2437,7 +2597,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "anthropic"
     },
     {
       "id": "allenai/olmo-3-32b-think",
@@ -2489,7 +2651,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "allenai"
     },
     {
       "id": "allenai/olmo-3-7b-instruct",
@@ -2539,7 +2703,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "allenai"
     },
     {
       "id": "allenai/olmo-3-7b-think",
@@ -2591,7 +2757,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "allenai"
     },
     {
       "id": "google/gemini-3-pro-image-preview",
@@ -2649,7 +2817,9 @@
       "capabilities": [
         "vision",
         "image_gen"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "x-ai/grok-4.1-fast",
@@ -2705,7 +2875,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "x-ai"
     },
     {
       "id": "google/gemini-3-pro-preview",
@@ -2768,7 +2940,9 @@
         "stt",
         "vision"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "deepcogito/cogito-v2.1-671b",
@@ -2820,7 +2994,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepcogito"
     },
     {
       "id": "openai/gpt-5.1",
@@ -2873,7 +3049,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-5.1-chat",
@@ -2924,7 +3102,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-5.1-codex",
@@ -2975,7 +3155,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-5.1-codex-mini",
@@ -3026,7 +3208,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "kwaipilot/kat-coder-pro",
@@ -3078,7 +3262,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "kwaipilot"
     },
     {
       "id": "moonshotai/kimi-k2-thinking",
@@ -3135,7 +3321,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "moonshotai"
     },
     {
       "id": "amazon/nova-premier-v1",
@@ -3184,7 +3372,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "amazon"
     },
     {
       "id": "perplexity/sonar-pro-search",
@@ -3240,7 +3430,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "perplexity"
     },
     {
       "id": "mistralai/voxtral-small-24b-2507",
@@ -3295,7 +3487,9 @@
       "capabilities": [
         "stt"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "openai/gpt-oss-safeguard-20b",
@@ -3344,7 +3538,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "nvidia/nemotron-nano-12b-v2-vl:free",
@@ -3395,7 +3591,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "nvidia"
     },
     {
       "id": "nvidia/nemotron-nano-12b-v2-vl",
@@ -3451,7 +3649,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "nvidia"
     },
     {
       "id": "minimax/minimax-m2",
@@ -3473,7 +3673,7 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0.0000002",
+        "prompt": "0.000000255",
         "completion": "0.000001",
         "input_cache_read": "0.00000003"
       },
@@ -3505,7 +3705,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "minimax"
     },
     {
       "id": "qwen/qwen3-vl-32b-instruct",
@@ -3559,7 +3761,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "liquid/lfm2-8b-a1b",
@@ -3607,7 +3811,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "liquid"
     },
     {
       "id": "liquid/lfm-2.2-6b",
@@ -3655,7 +3861,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "liquid"
     },
     {
       "id": "ibm-granite/granite-4.0-h-micro",
@@ -3701,7 +3909,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "ibm-granite"
     },
     {
       "id": "deepcogito/cogito-v2-preview-llama-405b",
@@ -3755,7 +3965,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": "2026-02-04"
+      "expiration_date": "2026-02-04",
+      "source": "openrouter",
+      "provider": "deepcogito"
     },
     {
       "id": "openai/gpt-5-image-mini",
@@ -3818,7 +4030,9 @@
       "capabilities": [
         "vision",
         "image_gen"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "anthropic/claude-haiku-4.5",
@@ -3872,7 +4086,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "anthropic"
     },
     {
       "id": "qwen/qwen3-vl-8b-thinking",
@@ -3928,7 +4144,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-vl-8b-instruct",
@@ -3985,7 +4203,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "openai/gpt-5-image",
@@ -4048,7 +4268,9 @@
       "capabilities": [
         "vision",
         "image_gen"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/o3-deep-research",
@@ -4109,7 +4331,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/o4-mini-deep-research",
@@ -4170,7 +4394,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
@@ -4219,7 +4445,9 @@
         "top_p"
       ],
       "default_parameters": null,
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nvidia"
     },
     {
       "id": "baidu/ernie-4.5-21b-a3b-thinking",
@@ -4268,7 +4496,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "baidu"
     },
     {
       "id": "google/gemini-2.5-flash-image",
@@ -4323,7 +4553,9 @@
       "capabilities": [
         "vision",
         "image_gen"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "qwen/qwen3-vl-30b-a3b-thinking",
@@ -4379,7 +4611,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-vl-30b-a3b-instruct",
@@ -4439,7 +4673,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "openai/gpt-5-pro",
@@ -4491,7 +4727,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "z-ai/glm-4.6",
@@ -4549,7 +4787,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "z-ai"
     },
     {
       "id": "z-ai/glm-4.6:exacto",
@@ -4603,7 +4843,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "z-ai"
     },
     {
       "id": "anthropic/claude-sonnet-4.5",
@@ -4660,7 +4902,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "anthropic"
     },
     {
       "id": "deepseek/deepseek-v3.2-exp",
@@ -4682,9 +4926,8 @@
         "instruct_type": "deepseek-v3.1"
       },
       "pricing": {
-        "prompt": "0.00000021",
-        "completion": "0.00000032",
-        "input_cache_read": "0.00000021"
+        "prompt": "0.00000027",
+        "completion": "0.00000041"
       },
       "top_provider": {
         "context_length": 163840,
@@ -4714,7 +4957,9 @@
         "top_p": 0.95,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "thedrummer/cydonia-24b-v4.1",
@@ -4764,7 +5009,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "thedrummer"
     },
     {
       "id": "relace/relace-apply-3",
@@ -4805,7 +5052,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "relace"
     },
     {
       "id": "google/gemini-2.5-flash-preview-09-2025",
@@ -4868,7 +5117,9 @@
         "stt",
         "vision"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "google/gemini-2.5-flash-lite-preview-09-2025",
@@ -4931,7 +5182,9 @@
         "stt",
         "vision"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "qwen/qwen3-vl-235b-a22b-thinking",
@@ -4988,7 +5241,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-vl-235b-a22b-instruct",
@@ -5047,7 +5302,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-max",
@@ -5098,7 +5355,9 @@
         "top_p": 1,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-coder-plus",
@@ -5150,7 +5409,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "openai/gpt-5-codex",
@@ -5201,7 +5462,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "deepseek/deepseek-v3.1-terminus:exacto",
@@ -5256,7 +5519,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "deepseek/deepseek-v3.1-terminus",
@@ -5311,7 +5576,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "x-ai/grok-4-fast",
@@ -5367,7 +5634,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "x-ai"
     },
     {
       "id": "alibaba/tongyi-deepresearch-30b-a3b",
@@ -5421,7 +5690,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "alibaba"
     },
     {
       "id": "qwen/qwen3-coder-flash",
@@ -5472,7 +5743,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "opengvlab/internvl3-78b",
@@ -5521,7 +5794,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "opengvlab"
     },
     {
       "id": "qwen/qwen3-next-80b-a3b-thinking",
@@ -5576,7 +5851,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-next-80b-a3b-instruct:free",
@@ -5621,7 +5898,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-next-80b-a3b-instruct",
@@ -5670,7 +5949,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "meituan/longcat-flash-chat",
@@ -5708,7 +5989,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meituan"
     },
     {
       "id": "qwen/qwen-plus-2025-07-28",
@@ -5759,7 +6042,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen-plus-2025-07-28:thinking",
@@ -5812,7 +6097,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "nvidia/nemotron-nano-9b-v2:free",
@@ -5856,7 +6143,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nvidia"
     },
     {
       "id": "nvidia/nemotron-nano-9b-v2",
@@ -5906,7 +6195,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nvidia"
     },
     {
       "id": "moonshotai/kimi-k2-0905",
@@ -5957,7 +6248,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "moonshotai"
     },
     {
       "id": "moonshotai/kimi-k2-0905:exacto",
@@ -6002,7 +6295,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "moonshotai"
     },
     {
       "id": "deepcogito/cogito-v2-preview-llama-70b",
@@ -6056,7 +6351,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": "2026-02-04"
+      "expiration_date": "2026-02-04",
+      "source": "openrouter",
+      "provider": "deepcogito"
     },
     {
       "id": "deepcogito/cogito-v2-preview-llama-109b-moe",
@@ -6108,7 +6405,9 @@
       "expiration_date": "2026-02-04",
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "deepcogito"
     },
     {
       "id": "stepfun-ai/step3",
@@ -6156,7 +6455,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "stepfun-ai"
     },
     {
       "id": "qwen/qwen3-30b-a3b-thinking-2507",
@@ -6204,7 +6505,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "x-ai/grok-code-fast-1",
@@ -6253,7 +6556,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "x-ai"
     },
     {
       "id": "nousresearch/hermes-4-70b",
@@ -6302,7 +6607,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nousresearch"
     },
     {
       "id": "nousresearch/hermes-4-405b",
@@ -6346,7 +6653,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nousresearch"
     },
     {
       "id": "deepseek/deepseek-chat-v3.1",
@@ -6399,7 +6708,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "openai/gpt-4o-audio-preview",
@@ -6459,7 +6770,9 @@
         "stt",
         "tts"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "mistralai/mistral-medium-3.1",
@@ -6510,7 +6823,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "baidu/ernie-4.5-21b-a3b",
@@ -6559,7 +6874,9 @@
         "top_p": 0.8,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "baidu"
     },
     {
       "id": "baidu/ernie-4.5-vl-28b-a3b",
@@ -6610,7 +6927,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "baidu"
     },
     {
       "id": "z-ai/glm-4.5v",
@@ -6668,7 +6987,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "z-ai"
     },
     {
       "id": "ai21/jamba-mini-1.7",
@@ -6709,7 +7030,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "ai21"
     },
     {
       "id": "ai21/jamba-large-1.7",
@@ -6750,7 +7073,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "ai21"
     },
     {
       "id": "openai/gpt-5-chat",
@@ -6795,7 +7120,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-5",
@@ -6848,7 +7175,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-5-mini",
@@ -6897,7 +7226,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-5-nano",
@@ -6946,7 +7277,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-oss-120b:free",
@@ -6992,7 +7325,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-oss-120b",
@@ -7050,7 +7385,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-oss-120b:exacto",
@@ -7104,7 +7441,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-oss-20b:free",
@@ -7150,7 +7489,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-oss-20b",
@@ -7206,7 +7547,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "anthropic/claude-opus-4.1",
@@ -7263,7 +7606,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "anthropic"
     },
     {
       "id": "mistralai/codestral-2508",
@@ -7310,7 +7655,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "qwen/qwen3-coder-30b-a3b-instruct",
@@ -7357,7 +7704,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-30b-a3b-instruct-2507",
@@ -7404,7 +7753,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "z-ai/glm-4.5",
@@ -7457,7 +7808,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "z-ai"
     },
     {
       "id": "z-ai/glm-4.5-air:free",
@@ -7502,7 +7855,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "z-ai"
     },
     {
       "id": "z-ai/glm-4.5-air",
@@ -7555,7 +7910,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "z-ai"
     },
     {
       "id": "qwen/qwen3-235b-a22b-thinking-2507",
@@ -7610,7 +7967,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "z-ai/glm-4-32b",
@@ -7653,7 +8012,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "z-ai"
     },
     {
       "id": "qwen/qwen3-coder:free",
@@ -7688,7 +8049,6 @@
         "frequency_penalty",
         "max_tokens",
         "presence_penalty",
-        "seed",
         "stop",
         "temperature",
         "tool_choice",
@@ -7697,7 +8057,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-coder",
@@ -7749,7 +8111,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-coder:exacto",
@@ -7798,7 +8162,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "bytedance/ui-tars-1.5-7b",
@@ -7846,7 +8212,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "bytedance"
     },
     {
       "id": "google/gemini-2.5-flash-lite",
@@ -7909,7 +8277,9 @@
         "stt",
         "vision"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "qwen/qwen3-235b-a22b-2507",
@@ -7963,7 +8333,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "switchpoint/router",
@@ -8005,45 +8377,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
-    },
-    {
-      "id": "moonshotai/kimi-k2:free",
-      "canonical_slug": "moonshotai/kimi-k2",
-      "hugging_face_id": "moonshotai/Kimi-K2-Instruct",
-      "name": "MoonshotAI: Kimi K2 0711 (free)",
-      "created": 1752263252,
-      "description": "Kimi K2 Instruct is a large-scale Mixture-of-Experts (MoE) language model developed by Moonshot AI, featuring 1 trillion total parameters with 32 billion active per forward pass. It is optimized for agentic capabilities, including advanced tool use, reasoning, and code synthesis. Kimi K2 excels across a broad range of benchmarks, particularly in coding (LiveCodeBench, SWE-bench), reasoning (ZebraLogic, GPQA), and tool-use (Tau2, AceBench) tasks. It supports long-context inference up to 128K tokens and is designed with a novel training stack that includes the MuonClip optimizer for stable large-scale MoE training.",
-      "context_length": 32768,
-      "architecture": {
-        "modality": "text->text",
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ],
-        "tokenizer": "Other",
-        "instruct_type": null
-      },
-      "pricing": {
-        "prompt": "0",
-        "completion": "0"
-      },
-      "top_provider": {
-        "context_length": 32768,
-        "max_completion_tokens": 4096,
-        "is_moderated": true
-      },
-      "per_request_limits": null,
-      "supported_parameters": [
-        "max_tokens",
-        "seed",
-        "stop",
-        "temperature"
-      ],
-      "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "switchpoint"
     },
     {
       "id": "moonshotai/kimi-k2",
@@ -8093,7 +8429,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "moonshotai"
     },
     {
       "id": "mistralai/devstral-medium",
@@ -8140,7 +8478,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "mistralai/devstral-small",
@@ -8187,7 +8527,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
@@ -8230,7 +8572,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "cognitivecomputations"
     },
     {
       "id": "x-ai/grok-4",
@@ -8282,7 +8626,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "x-ai"
     },
     {
       "id": "google/gemma-3n-e2b-it:free",
@@ -8324,7 +8670,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "tencent/hunyuan-a13b-instruct",
@@ -8366,7 +8714,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "tencent"
     },
     {
       "id": "tngtech/deepseek-r1t2-chimera:free",
@@ -8411,7 +8761,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "tngtech"
     },
     {
       "id": "tngtech/deepseek-r1t2-chimera",
@@ -8460,7 +8812,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "tngtech"
     },
     {
       "id": "morph/morph-v3-large",
@@ -8501,7 +8855,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "morph"
     },
     {
       "id": "morph/morph-v3-fast",
@@ -8542,7 +8898,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "morph"
     },
     {
       "id": "baidu/ernie-4.5-vl-424b-a47b",
@@ -8591,7 +8949,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "baidu"
     },
     {
       "id": "baidu/ernie-4.5-300b-a47b",
@@ -8636,7 +8996,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "baidu"
     },
     {
       "id": "inception/mercury",
@@ -8685,7 +9047,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "inception"
     },
     {
       "id": "mistralai/mistral-small-3.2-24b-instruct",
@@ -8740,7 +9104,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "minimax/minimax-m1",
@@ -8787,7 +9153,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "minimax"
     },
     {
       "id": "google/gemini-2.5-flash",
@@ -8850,7 +9218,9 @@
         "stt",
         "vision"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "google/gemini-2.5-pro",
@@ -8913,7 +9283,9 @@
         "stt",
         "vision"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "moonshotai/kimi-dev-72b",
@@ -8955,7 +9327,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "moonshotai"
     },
     {
       "id": "openai/o3-pro",
@@ -9007,7 +9381,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "x-ai/grok-3-mini",
@@ -9060,7 +9436,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "x-ai"
     },
     {
       "id": "x-ai/grok-3",
@@ -9109,7 +9487,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "x-ai"
     },
     {
       "id": "google/gemini-2.5-pro-preview",
@@ -9167,7 +9547,9 @@
         "stt",
         "vision"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "deepseek/deepseek-r1-0528:free",
@@ -9212,7 +9594,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "deepseek/deepseek-r1-0528",
@@ -9269,7 +9653,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "anthropic/claude-opus-4",
@@ -9324,7 +9710,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "anthropic"
     },
     {
       "id": "anthropic/claude-sonnet-4",
@@ -9379,7 +9767,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "anthropic"
     },
     {
       "id": "google/gemma-3n-e4b-it:free",
@@ -9421,7 +9811,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "google/gemma-3n-e4b-it",
@@ -9465,7 +9857,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "nousresearch/deephermes-3-mistral-24b-preview",
@@ -9514,7 +9908,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nousresearch"
     },
     {
       "id": "mistralai/mistral-medium-3",
@@ -9565,7 +9961,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "google/gemini-2.5-pro-preview-05-06",
@@ -9628,7 +10026,9 @@
         "stt",
         "vision"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "arcee-ai/spotlight",
@@ -9676,7 +10076,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "arcee-ai"
     },
     {
       "id": "arcee-ai/maestro-reasoning",
@@ -9720,7 +10122,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "arcee-ai"
     },
     {
       "id": "arcee-ai/virtuoso-large",
@@ -9766,7 +10170,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "arcee-ai"
     },
     {
       "id": "arcee-ai/coder-large",
@@ -9810,7 +10216,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "arcee-ai"
     },
     {
       "id": "inception/mercury-coder",
@@ -9859,7 +10267,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "inception"
     },
     {
       "id": "qwen/qwen3-4b:free",
@@ -9906,7 +10316,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "meta-llama/llama-guard-4-12b",
@@ -9956,7 +10368,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "qwen/qwen3-30b-a3b",
@@ -10010,7 +10424,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-8b",
@@ -10033,7 +10449,7 @@
       },
       "pricing": {
         "prompt": "0.00000005",
-        "completion": "0.00000025",
+        "completion": "0.0000004",
         "input_cache_read": "0.00000005"
       },
       "top_provider": {
@@ -10066,7 +10482,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-14b",
@@ -10116,7 +10534,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-32b",
@@ -10168,7 +10588,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen3-235b-a22b",
@@ -10221,7 +10643,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "tngtech/deepseek-r1t-chimera:free",
@@ -10266,7 +10690,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "tngtech"
     },
     {
       "id": "tngtech/deepseek-r1t-chimera",
@@ -10313,7 +10739,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "tngtech"
     },
     {
       "id": "openai/o4-mini-high",
@@ -10366,7 +10794,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/o3",
@@ -10415,7 +10845,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/o4-mini",
@@ -10464,7 +10896,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "qwen/qwen2.5-coder-7b-instruct",
@@ -10507,7 +10941,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "openai/gpt-4.1",
@@ -10556,7 +10992,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-4.1-mini",
@@ -10605,7 +11043,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-4.1-nano",
@@ -10654,7 +11094,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "eleutherai/llemma_7b",
@@ -10698,7 +11140,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "eleutherai"
     },
     {
       "id": "alfredpros/codellama-7b-instruct-solidity",
@@ -10742,7 +11186,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "alfredpros"
     },
     {
       "id": "x-ai/grok-3-mini-beta",
@@ -10794,7 +11240,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "x-ai"
     },
     {
       "id": "x-ai/grok-3-beta",
@@ -10842,7 +11290,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "x-ai"
     },
     {
       "id": "nvidia/llama-3.1-nemotron-ultra-253b-v1",
@@ -10887,7 +11337,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nvidia"
     },
     {
       "id": "meta-llama/llama-4-maverick",
@@ -10940,7 +11392,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "meta-llama/llama-4-scout",
@@ -10993,7 +11447,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "qwen/qwen2.5-vl-32b-instruct",
@@ -11046,7 +11502,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "deepseek/deepseek-chat-v3-0324",
@@ -11098,7 +11556,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "openai/o1-pro",
@@ -11143,7 +11603,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "mistralai/mistral-small-3.1-24b-instruct:free",
@@ -11194,7 +11656,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "mistralai/mistral-small-3.1-24b-instruct",
@@ -11247,7 +11711,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "allenai/olmo-2-0325-32b-instruct",
@@ -11280,7 +11746,9 @@
       "per_request_limits": null,
       "supported_parameters": [],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "allenai"
     },
     {
       "id": "google/gemma-3-4b-it:free",
@@ -11324,7 +11792,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "google/gemma-3-4b-it",
@@ -11373,7 +11843,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "google/gemma-3-12b-it:free",
@@ -11416,7 +11888,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "google/gemma-3-12b-it",
@@ -11467,7 +11941,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "cohere/command-a",
@@ -11511,7 +11987,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "cohere"
     },
     {
       "id": "openai/gpt-4o-mini-search-preview",
@@ -11550,7 +12028,9 @@
         "web_search_options"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-4o-search-preview",
@@ -11589,7 +12069,9 @@
         "web_search_options"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "google/gemma-3-27b-it:free",
@@ -11642,7 +12124,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "google/gemma-3-27b-it",
@@ -11699,7 +12183,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "thedrummer/skyfall-36b-v2",
@@ -11743,7 +12229,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "thedrummer"
     },
     {
       "id": "perplexity/sonar-reasoning-pro",
@@ -11794,7 +12282,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "perplexity"
     },
     {
       "id": "perplexity/sonar-pro",
@@ -11843,7 +12333,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "perplexity"
     },
     {
       "id": "perplexity/sonar-deep-research",
@@ -11890,7 +12382,9 @@
         "web_search_options"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "perplexity"
     },
     {
       "id": "qwen/qwq-32b",
@@ -11941,7 +12435,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "google/gemini-2.0-flash-lite-001",
@@ -12000,7 +12496,9 @@
         "stt",
         "vision"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "anthropic/claude-3.7-sonnet:thinking",
@@ -12054,7 +12552,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "anthropic"
     },
     {
       "id": "anthropic/claude-3.7-sonnet",
@@ -12109,7 +12609,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "anthropic"
     },
     {
       "id": "mistralai/mistral-saba",
@@ -12156,7 +12658,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "meta-llama/llama-guard-3-8b",
@@ -12198,7 +12702,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "openai/o3-mini-high",
@@ -12244,7 +12750,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "google/gemini-2.0-flash-001",
@@ -12305,7 +12813,9 @@
         "stt",
         "vision"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "qwen/qwen-vl-plus",
@@ -12353,7 +12863,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "aion-labs/aion-1.0",
@@ -12392,7 +12904,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "aion-labs"
     },
     {
       "id": "aion-labs/aion-1.0-mini",
@@ -12431,7 +12945,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "aion-labs"
     },
     {
       "id": "aion-labs/aion-rp-llama-3.1-8b",
@@ -12468,7 +12984,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "aion-labs"
     },
     {
       "id": "qwen/qwen-vl-max",
@@ -12522,7 +13040,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen-turbo",
@@ -12569,7 +13089,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen2.5-vl-72b-instruct",
@@ -12620,7 +13142,9 @@
       "expiration_date": "2026-02-16",
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen-plus",
@@ -12667,7 +13191,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen-max",
@@ -12714,7 +13240,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "openai/o3-mini",
@@ -12756,7 +13284,9 @@
         "tools"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "mistralai/mistral-small-24b-instruct-2501",
@@ -12809,7 +13339,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "deepseek/deepseek-r1-distill-qwen-32b",
@@ -12856,7 +13388,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "perplexity/sonar",
@@ -12905,7 +13439,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "perplexity"
     },
     {
       "id": "deepseek/deepseek-r1-distill-llama-70b",
@@ -12950,13 +13486,13 @@
         "stop",
         "structured_outputs",
         "temperature",
-        "tool_choice",
-        "tools",
         "top_k",
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "deepseek/deepseek-r1",
@@ -13003,7 +13539,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "minimax/minimax-01",
@@ -13044,7 +13582,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "minimax"
     },
     {
       "id": "microsoft/phi-4",
@@ -13090,7 +13630,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "microsoft"
     },
     {
       "id": "sao10k/l3.1-70b-hanami-x1",
@@ -13135,7 +13677,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "sao10k"
     },
     {
       "id": "deepseek/deepseek-chat",
@@ -13183,7 +13727,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "deepseek"
     },
     {
       "id": "sao10k/l3.3-euryale-70b",
@@ -13229,7 +13775,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "sao10k"
     },
     {
       "id": "openai/o1",
@@ -13275,7 +13823,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "cohere/command-r7b-12-2024",
@@ -13319,7 +13869,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "cohere"
     },
     {
       "id": "meta-llama/llama-3.3-70b-instruct:free",
@@ -13364,7 +13916,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "meta-llama/llama-3.3-70b-instruct",
@@ -13415,7 +13969,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "amazon/nova-lite-v1",
@@ -13459,7 +14015,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "amazon"
     },
     {
       "id": "amazon/nova-micro-v1",
@@ -13499,7 +14057,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "amazon"
     },
     {
       "id": "amazon/nova-pro-v1",
@@ -13543,7 +14103,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "amazon"
     },
     {
       "id": "openai/gpt-4o-2024-11-20",
@@ -13598,7 +14160,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "mistralai/mistral-large-2411",
@@ -13645,7 +14209,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "mistralai/mistral-large-2407",
@@ -13692,7 +14258,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "mistralai/pixtral-large-2411",
@@ -13743,7 +14311,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "qwen/qwen-2.5-coder-32b-instruct",
@@ -13790,7 +14360,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "raifle/sorcererlm-8x22b",
@@ -13835,7 +14407,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "raifle"
     },
     {
       "id": "thedrummer/unslopnemo-12b",
@@ -13879,7 +14453,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "thedrummer"
     },
     {
       "id": "anthropic/claude-3.5-haiku",
@@ -13931,7 +14507,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "anthropic"
     },
     {
       "id": "anthracite-org/magnum-v4-72b",
@@ -13980,7 +14558,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "anthracite-org"
     },
     {
       "id": "anthropic/claude-3.5-sonnet",
@@ -14026,7 +14606,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "anthropic"
     },
     {
       "id": "mistralai/ministral-8b",
@@ -14073,7 +14655,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "mistralai/ministral-3b",
@@ -14120,7 +14704,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "qwen/qwen-2.5-7b-instruct",
@@ -14171,7 +14757,9 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "nvidia/llama-3.1-nemotron-70b-instruct",
@@ -14218,7 +14806,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nvidia"
     },
     {
       "id": "inflection/inflection-3-pi",
@@ -14256,7 +14846,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "inflection"
     },
     {
       "id": "inflection/inflection-3-productivity",
@@ -14294,7 +14886,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "inflection"
     },
     {
       "id": "thedrummer/rocinante-12b",
@@ -14343,7 +14937,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "thedrummer"
     },
     {
       "id": "meta-llama/llama-3.2-3b-instruct:free",
@@ -14384,7 +14980,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "meta-llama/llama-3.2-3b-instruct",
@@ -14430,7 +15028,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "meta-llama/llama-3.2-1b-instruct",
@@ -14472,7 +15072,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "meta-llama/llama-3.2-11b-vision-instruct",
@@ -14522,7 +15124,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "qwen/qwen-2.5-72b-instruct",
@@ -14571,7 +15175,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "neversleep/llama-3.1-lumimaid-8b",
@@ -14613,7 +15219,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "neversleep"
     },
     {
       "id": "mistralai/pixtral-12b",
@@ -14668,7 +15276,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "cohere/command-r-08-2024",
@@ -14714,7 +15324,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "cohere"
     },
     {
       "id": "cohere/command-r-plus-08-2024",
@@ -14760,7 +15372,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "cohere"
     },
     {
       "id": "sao10k/l3.1-euryale-70b",
@@ -14808,7 +15422,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "sao10k"
     },
     {
       "id": "qwen/qwen-2.5-vl-7b-instruct:free",
@@ -14851,7 +15467,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "qwen/qwen-2.5-vl-7b-instruct",
@@ -14900,7 +15518,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "qwen"
     },
     {
       "id": "nousresearch/hermes-3-llama-3.1-70b",
@@ -14946,7 +15566,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nousresearch"
     },
     {
       "id": "nousresearch/hermes-3-llama-3.1-405b:free",
@@ -14987,7 +15609,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nousresearch"
     },
     {
       "id": "nousresearch/hermes-3-llama-3.1-405b",
@@ -15032,7 +15656,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nousresearch"
     },
     {
       "id": "openai/chatgpt-4o-latest",
@@ -15082,7 +15708,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "sao10k/l3-lunaris-8b",
@@ -15128,7 +15756,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "sao10k"
     },
     {
       "id": "openai/gpt-4o-2024-08-06",
@@ -15183,7 +15813,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "meta-llama/llama-3.1-405b",
@@ -15228,7 +15860,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "meta-llama/llama-3.1-8b-instruct",
@@ -15279,7 +15913,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "meta-llama/llama-3.1-405b-instruct:free",
@@ -15318,7 +15954,9 @@
         "temperature"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "meta-llama/llama-3.1-405b-instruct",
@@ -15367,7 +16005,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": "2026-02-06"
+      "expiration_date": "2026-02-06",
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "meta-llama/llama-3.1-70b-instruct",
@@ -15415,7 +16055,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "mistralai/mistral-nemo",
@@ -15465,7 +16107,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "openai/gpt-4o-mini-2024-07-18",
@@ -15520,7 +16164,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-4o-mini",
@@ -15575,7 +16221,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "google/gemma-2-27b-it",
@@ -15617,7 +16265,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "google/gemma-2-9b-it",
@@ -15658,7 +16308,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "google"
     },
     {
       "id": "sao10k/l3-euryale-70b",
@@ -15703,7 +16355,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "sao10k"
     },
     {
       "id": "nousresearch/hermes-2-pro-llama-3-8b",
@@ -15748,7 +16402,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "nousresearch"
     },
     {
       "id": "mistralai/mistral-7b-instruct",
@@ -15794,7 +16450,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "mistralai/mistral-7b-instruct-v0.3",
@@ -15840,7 +16498,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "meta-llama/llama-guard-2-8b",
@@ -15884,7 +16544,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "openai/gpt-4o-2024-05-13",
@@ -15938,7 +16600,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-4o",
@@ -15993,7 +16657,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-4o:extended",
@@ -16047,7 +16713,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "meta-llama/llama-3-70b-instruct",
@@ -16092,7 +16760,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "meta-llama/llama-3-8b-instruct",
@@ -16140,7 +16810,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "meta-llama"
     },
     {
       "id": "mistralai/mixtral-8x22b-instruct",
@@ -16187,7 +16859,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "microsoft/wizardlm-2-8x22b",
@@ -16232,7 +16906,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "microsoft"
     },
     {
       "id": "openai/gpt-4-turbo",
@@ -16284,7 +16960,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "anthropic/claude-3-haiku",
@@ -16331,7 +17009,9 @@
       "expiration_date": null,
       "capabilities": [
         "vision"
-      ]
+      ],
+      "source": "openrouter",
+      "provider": "anthropic"
     },
     {
       "id": "mistralai/mistral-large",
@@ -16378,7 +17058,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "openai/gpt-3.5-turbo-0613",
@@ -16426,7 +17108,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-4-turbo-preview",
@@ -16474,7 +17158,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "mistralai/mistral-tiny",
@@ -16521,7 +17207,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "mistralai/mistral-7b-instruct-v0.2",
@@ -16567,7 +17255,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "mistralai/mixtral-8x7b-instruct",
@@ -16617,7 +17307,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "neversleep/noromaid-20b",
@@ -16659,7 +17351,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "neversleep"
     },
     {
       "id": "alpindale/goliath-120b",
@@ -16708,7 +17402,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "alpindale"
     },
     {
       "id": "openrouter/auto",
@@ -16744,7 +17440,29 @@
         "is_moderated": false
       },
       "per_request_limits": null,
-      "supported_parameters": [],
+      "supported_parameters": [
+        "frequency_penalty",
+        "include_reasoning",
+        "logit_bias",
+        "logprobs",
+        "max_tokens",
+        "min_p",
+        "presence_penalty",
+        "reasoning",
+        "reasoning_effort",
+        "repetition_penalty",
+        "response_format",
+        "seed",
+        "stop",
+        "structured_outputs",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_k",
+        "top_logprobs",
+        "top_p",
+        "web_search_options"
+      ],
       "default_parameters": {
         "temperature": null,
         "top_p": null,
@@ -16756,7 +17474,9 @@
         "vision",
         "image_gen"
       ],
-      "type": "voice"
+      "type": "voice",
+      "source": "openrouter",
+      "provider": "openrouter"
     },
     {
       "id": "openai/gpt-4-1106-preview",
@@ -16804,7 +17524,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-3.5-turbo-instruct",
@@ -16850,7 +17572,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "mistralai/mistral-7b-instruct-v0.1",
@@ -16894,7 +17618,9 @@
       "default_parameters": {
         "temperature": 0.3
       },
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mistralai"
     },
     {
       "id": "openai/gpt-3.5-turbo-16k",
@@ -16942,7 +17668,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "mancer/weaver",
@@ -16991,7 +17719,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "mancer"
     },
     {
       "id": "undi95/remm-slerp-l2-13b",
@@ -17041,7 +17771,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "undi95"
     },
     {
       "id": "gryphe/mythomax-l2-13b",
@@ -17091,7 +17823,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "gryphe"
     },
     {
       "id": "openai/gpt-4-0314",
@@ -17139,7 +17873,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-4",
@@ -17187,7 +17923,9 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
     },
     {
       "id": "openai/gpt-3.5-turbo",
@@ -17235,7 +17973,641 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openai"
+    },
+    {
+      "id": "google/gemini-2.0-flash",
+      "name": "Gemini 2.0 Flash",
+      "description": "Gemini 2.0 Flash",
+      "context_length": 1048576,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-2.0-flash-lite",
+      "name": "Gemini 2.0 Flash-Lite",
+      "description": "Gemini 2.0 Flash-Lite",
+      "context_length": 1048576,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-exp-1206",
+      "name": "Gemini Experimental 1206",
+      "description": "Experimental release (March 25th, 2025) of Gemini 2.5 Pro",
+      "context_length": 1048576,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-2.5-flash-preview-tts",
+      "name": "Gemini 2.5 Flash Preview TTS",
+      "description": "Gemini 2.5 Flash Preview TTS",
+      "context_length": 8192,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-2.5-pro-preview-tts",
+      "name": "Gemini 2.5 Pro Preview TTS",
+      "description": "Gemini 2.5 Pro Preview TTS",
+      "context_length": 8192,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemma-3-1b-it",
+      "name": "Gemma 3 1B",
+      "description": "",
+      "context_length": 32768,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemma-3n-e2b-it",
+      "name": "Gemma 3n E2B",
+      "description": "",
+      "context_length": 8192,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-flash-latest",
+      "name": "Gemini Flash Latest",
+      "description": "Latest release of Gemini Flash",
+      "context_length": 1048576,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-flash-lite-latest",
+      "name": "Gemini Flash-Lite Latest",
+      "description": "Latest release of Gemini Flash-Lite",
+      "context_length": 1048576,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-pro-latest",
+      "name": "Gemini Pro Latest",
+      "description": "Latest release of Gemini Pro",
+      "context_length": 1048576,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/nano-banana-pro-preview",
+      "name": "Nano Banana Pro",
+      "description": "Gemini 3 Pro Image Preview",
+      "context_length": 131072,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-robotics-er-1.5-preview",
+      "name": "Gemini Robotics-ER 1.5 Preview",
+      "description": "Gemini Robotics-ER 1.5 Preview",
+      "context_length": 1048576,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-2.5-computer-use-preview-10-2025",
+      "name": "Gemini 2.5 Computer Use Preview 10-2025",
+      "description": "Gemini 2.5 Computer Use Preview 10-2025",
+      "context_length": 131072,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/deep-research-pro-preview-12-2025",
+      "name": "Deep Research Pro Preview (Dec-12-2025)",
+      "description": "Preview release (December 12th, 2025) of Deep Research Pro",
+      "context_length": 131072,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/embedding-001",
+      "name": "Embedding 001",
+      "description": "Obtain a distributed representation of a text.",
+      "context_length": 2048,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/text-embedding-004",
+      "name": "Text Embedding 004",
+      "description": "Obtain a distributed representation of a text.",
+      "context_length": 2048,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-embedding-001",
+      "name": "Gemini Embedding 001",
+      "description": "Obtain a distributed representation of a text.",
+      "context_length": 2048,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/aqa",
+      "name": "Model that performs Attributed Question Answering.",
+      "description": "Model trained to return answers to questions that are grounded in provided sources, along with estimating answerable probability.",
+      "context_length": 7168,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/imagen-4.0-generate-preview-06-06",
+      "name": "Imagen 4 (Preview)",
+      "description": "Vertex served Imagen 4.0 model",
+      "context_length": 480,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/imagen-4.0-ultra-generate-preview-06-06",
+      "name": "Imagen 4 Ultra (Preview)",
+      "description": "Vertex served Imagen 4.0 ultra model",
+      "context_length": 480,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/imagen-4.0-generate-001",
+      "name": "Imagen 4",
+      "description": "Vertex served Imagen 4.0 model",
+      "context_length": 480,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/imagen-4.0-ultra-generate-001",
+      "name": "Imagen 4 Ultra",
+      "description": "Vertex served Imagen 4.0 ultra model",
+      "context_length": 480,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/imagen-4.0-fast-generate-001",
+      "name": "Imagen 4 Fast",
+      "description": "Vertex served Imagen 4.0 Fast model",
+      "context_length": 480,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/veo-2.0-generate-001",
+      "name": "Veo 2",
+      "description": "Vertex served Veo 2 model. Access to this model requires billing to be enabled on the associated Google Cloud Platform account. Please visit https://console.cloud.google.com/billing to enable it.",
+      "context_length": 480,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/veo-3.0-generate-001",
+      "name": "Veo 3",
+      "description": "Veo 3",
+      "context_length": 480,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/veo-3.0-fast-generate-001",
+      "name": "Veo 3 fast",
+      "description": "Veo 3 fast",
+      "context_length": 480,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/veo-3.1-generate-preview",
+      "name": "Veo 3.1",
+      "description": "Veo 3.1",
+      "context_length": 480,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/veo-3.1-fast-generate-preview",
+      "name": "Veo 3.1 fast",
+      "description": "Veo 3.1 fast",
+      "context_length": 480,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-2.5-flash-native-audio-latest",
+      "name": "Gemini 2.5 Flash Native Audio Latest",
+      "description": "Latest release of Gemini 2.5 Flash Native Audio",
+      "context_length": 131072,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-2.5-flash-native-audio-preview-09-2025",
+      "name": "Gemini 2.5 Flash Native Audio Preview 09-2025",
+      "description": "Gemini 2.5 Flash Native Audio Preview 09-2025",
+      "context_length": 131072,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "google/gemini-2.5-flash-native-audio-preview-12-2025",
+      "name": "Gemini 2.5 Flash Native Audio Preview 12-2025",
+      "description": "Gemini 2.5 Flash Native Audio Preview 12-2025",
+      "context_length": 131072,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct"
+    },
+    {
+      "id": "thenlper/gte-large",
+      "name": "Thenlper: GTE-Large",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "thenlper/gte-base",
+      "name": "Thenlper: GTE-Base",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "sentence-transformers/paraphrase-minilm-l6-v2",
+      "name": "Sentence Transformers: paraphrase-MiniLM-L6-v2",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "sentence-transformers/multi-qa-mpnet-base-dot-v1",
+      "name": "Sentence Transformers: multi-qa-mpnet-base-dot-v1",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "sentence-transformers/all-mpnet-base-v2",
+      "name": "Sentence Transformers: all-mpnet-base-v2",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "sentence-transformers/all-minilm-l6-v2",
+      "name": "Sentence Transformers: all-MiniLM-L6-v2",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "sentence-transformers/all-minilm-l12-v2",
+      "name": "Sentence Transformers: all-MiniLM-L12-v2",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "qwen/qwen3-embedding-8b",
+      "name": "Qwen: Qwen3 Embedding 8B",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "qwen/qwen3-embedding-4b",
+      "name": "Qwen: Qwen3 Embedding 4B",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "openai/text-embedding-ada-002",
+      "name": "OpenAI: Text Embedding Ada 002",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "openai/text-embedding-3-small",
+      "name": "OpenAI: Text Embedding 3 Small",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "openai/text-embedding-3-large",
+      "name": "OpenAI: Text Embedding 3 Large",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "mistralai/mistral-embed-2312",
+      "name": "Mistral: Mistral Embed 2312",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "mistralai/codestral-embed-2505",
+      "name": "Mistral: Codestral Embed 2505",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "intfloat/multilingual-e5-large",
+      "name": "Intfloat: Multilingual-E5-Large",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "intfloat/e5-large-v2",
+      "name": "Intfloat: E5-Large-v2",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "intfloat/e5-base-v2",
+      "name": "Intfloat: E5-Base-v2",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "baai/bge-m3",
+      "name": "BAAI: bge-m3",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "baai/bge-large-en-v1.5",
+      "name": "BAAI: bge-large-en-v1.5",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
+    },
+    {
+      "id": "baai/bge-base-en-v1.5",
+      "name": "BAAI: bge-base-en-v1.5",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "Polza",
+      "source": "polza_direct",
+      "owned_by": "polza"
     }
   ]
 }

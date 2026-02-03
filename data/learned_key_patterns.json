@@ -1,4 +1,16 @@
 {
+  "polza": {
+    "provider": "polza",
+    "prefix": "pza_",
+    "suffix": null,
+    "length_min": 26,
+    "length_max": 46,
+    "charset": "base64",
+    "separator": "_",
+    "confidence": 0.95,
+    "learned_at": "2026-02-03T17:25:00.000000",
+    "example_masked": "pza_hU0y...9PUM"
+  },
   "tavily": {
     "provider": "tavily",
     "prefix": "tvly-dev-",
@@ -43,7 +55,7 @@
     "length_max": 53,
     "charset": "base64",
     "separator": "-",
-    "confidence": 0.85,
+    "confidence": 0.50,
     "learned_at": "2026-01-19T19:34:49.872297",
     "example_masked": "kwodYaOP...uLqo"
   }

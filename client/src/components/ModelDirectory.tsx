@@ -10,7 +10,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { X, Search, Phone, Zap, DollarSign, Crown, Cpu, Bot, Home, Key, ChevronDown, ChevronUp, ChevronRight, Mic, Volume2, Terminal, Eye, Layers } from 'lucide-react';
+import { X, Search, Phone, Zap, DollarSign, Crown, Cpu, Bot, Home, Key, ChevronDown, ChevronUp, ChevronRight, Mic, Volume2, Terminal, Eye, Layers, RefreshCw } from 'lucide-react';
 
 interface Model {
   id: string;
@@ -30,6 +30,8 @@ interface Model {
   source_display?: string;  // Phase 94.4: Display label (xAI, OR, Direct, etc.)
   // TODO_CAM_INDICATOR: Add CAM relevance ranking from backend
   cam_score?: number;  // 0.0-1.0 from GET /api/cam/model-rank?model_id=... (used for sorting/highlighting)
+  // Phase 111: Timestamp for NEW marker
+  created?: number;  // Unix timestamp when model was added
 }
 
 // Phase 57: API Keys types
@@ -148,6 +150,9 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
   // Phase 93.11: Model status for online/offline indicators
   const [modelStatus, setModelStatus] = useState<Record<string, ModelStatus>>({});
 
+  // Phase 111: Refresh state
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   // Fetch models when opened (cloud, local, and MCP agents)
   useEffect(() => {
     if (isOpen && models.length === 0) {
@@ -220,6 +225,43 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
 
     return () => clearInterval(interval);
   }, [isOpen]);
+
+  // Phase 111: Refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const res = await fetch('/api/models/refresh', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        // Reload models list
+        const cloudRes = await fetch('/api/models');
+        const cloudData = await cloudRes.json();
+        const cloudModels = (cloudData.models || []).map((m: Model) => ({
+          ...m,
+          isLocal: false
+        }));
+        setModels(cloudModels);
+
+        // Show toast with new count
+        setToastMessage(data.message || `Refreshed: ${data.count} models`);
+        setTimeout(() => setToastMessage(null), 3000);
+      }
+    } catch (err) {
+      console.error('[ModelDirectory] Refresh failed:', err);
+      setToastMessage('Refresh failed');
+      setTimeout(() => setToastMessage(null), 3000);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  // Phase 111: NEW marker helper - models created within 7 days
+  const isNewModel = useCallback((model: Model): boolean => {
+    if (!model.created) return false;
+    const SEVEN_DAYS_SECONDS = 7 * 24 * 60 * 60;
+    const now = Date.now() / 1000; // Unix timestamp
+    return (now - model.created) < SEVEN_DAYS_SECONDS;
+  }, []);
 
   // Phase 80.3: Combined models (local first, then MCP, then cloud)
   const allModels = useMemo(() => {
@@ -431,24 +473,32 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        left: 0,
-        top: 0,
-        width: '380px',
-        height: '100vh',
-        background: 'rgba(10, 10, 10, 0.88)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        borderRight: '1px solid rgba(34, 34, 34, 0.8)',
-        zIndex: 1000,
-        display: 'flex',
-        flexDirection: 'column',
-        boxShadow: '4px 0 20px rgba(0,0,0,0.5)'
-      }}
-    >
-      {/* Header - Phase 62.1: Semi-transparent */}
+    <>
+      {/* Phase 111: Spin animation for refresh button */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+      <div
+        style={{
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          width: '380px',
+          height: '100vh',
+          background: 'rgba(10, 10, 10, 0.88)',
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          borderRight: '1px solid rgba(34, 34, 34, 0.8)',
+          zIndex: 1000,
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '4px 0 20px rgba(0,0,0,0.5)'
+        }}
+      >
+        {/* Header - Phase 62.1: Semi-transparent */}
       <div style={{
         padding: '16px',
         borderBottom: '1px solid rgba(34, 34, 34, 0.8)',
@@ -475,17 +525,42 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
               {filteredModels.length}
             </span>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 4
-            }}
-          >
-            <X size={20} color="#666" />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {/* Phase 111: Refresh button */}
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              title="Refresh model list"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: isRefreshing ? 'wait' : 'pointer',
+                padding: 4,
+                opacity: isRefreshing ? 0.5 : 1,
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              <RefreshCw
+                size={16}
+                color="#666"
+                style={{
+                  animation: isRefreshing ? 'spin 1s linear infinite' : 'none'
+                }}
+              />
+            </button>
+            <button
+              onClick={onClose}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 4
+              }}
+            >
+              <X size={20} color="#666" />
+            </button>
+          </div>
         </div>
 
         {/* Search */}
@@ -726,6 +801,22 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
               }}>
                 {model.name}
               </span>
+              {/* Phase 111: NEW marker for recently added models */}
+              {isNewModel(model) && (
+                <span style={{
+                  fontSize: 9,
+                  padding: '1px 5px',
+                  background: '#333',
+                  color: '#fff',
+                  borderRadius: 3,
+                  marginLeft: 6,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px',
+                  fontWeight: 600
+                }}>
+                  NEW
+                </span>
+              )}
               {/* Phase 80.3: Monochrome badges */}
               {model.isLocal && model.type !== 'voice' && model.type !== 'mcp_agent' && (
                 <span style={{
@@ -1259,9 +1350,9 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
           bottom: 80,
           left: '50%',
           transform: 'translateX(-50%)',
-          background: toastMessage.includes('error') || toastMessage.includes('Invalid') ? '#2a1a1a' : '#1a2a1a',
-          border: `1px solid ${toastMessage.includes('error') || toastMessage.includes('Invalid') ? '#442' : '#243'}`,
-          color: toastMessage.includes('error') || toastMessage.includes('Invalid') ? '#a86' : '#6a8',
+          background: toastMessage.includes('error') || toastMessage.includes('Invalid') || toastMessage.includes('failed') ? '#2a1a1a' : '#1a1a2a',
+          border: `1px solid ${toastMessage.includes('error') || toastMessage.includes('Invalid') || toastMessage.includes('failed') ? '#442' : '#234'}`,
+          color: toastMessage.includes('error') || toastMessage.includes('Invalid') || toastMessage.includes('failed') ? '#a86' : '#68a',
           padding: '8px 16px',
           borderRadius: 6,
           fontSize: 11,
@@ -1272,7 +1363,8 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
           {toastMessage}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 

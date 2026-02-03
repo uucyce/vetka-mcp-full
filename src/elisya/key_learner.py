@@ -73,11 +73,20 @@ class KeyLearner:
             try:
                 with open(LEARNED_PATTERNS_FILE, 'r', encoding='utf-8') as f:
                     data = json.load(f)
+                    self.learned_patterns = {}  # Clear before reload
                     for provider, pattern_dict in data.items():
                         self.learned_patterns[provider] = KeyPattern(**pattern_dict)
                 print(f"[KeyLearner] Loaded {len(self.learned_patterns)} learned patterns")
+                # Log which patterns have prefixes
+                for p, pat in self.learned_patterns.items():
+                    print(f"  - {p}: prefix='{pat.prefix or 'NONE'}', confidence={pat.confidence}")
             except Exception as e:
                 print(f"[KeyLearner] Failed to load patterns: {e}")
+
+    def reload_patterns(self):
+        """Force reload patterns from disk (useful after manual edits)"""
+        print(f"[KeyLearner] Reloading patterns from disk...")
+        self._load_patterns()
 
     def _save_patterns(self):
         """Save learned patterns to disk"""
@@ -196,12 +205,15 @@ class KeyLearner:
         Returns:
             (success, message)
         """
+        print(f"[KeyLearner.learn_key_type] Called with provider='{provider_name}', key={key[:15]}...{key[-4:] if len(key) > 19 else ''}")
         key = key.strip()
 
         if not key or len(key) < 10:
+            print(f"[KeyLearner.learn_key_type] REJECTED: key too short")
             return False, "Key is too short (minimum 10 characters)"
 
         if not provider_name:
+            print(f"[KeyLearner.learn_key_type] REJECTED: no provider name")
             return False, "Provider name is required"
 
         # Normalize provider name
@@ -326,11 +338,25 @@ class KeyLearner:
             APIKeyDetector.PATTERNS[provider] = config
 
             # Add to detection order (high priority for prefix, low for generic)
-            if pattern.prefix and provider not in APIKeyDetector.DETECTION_ORDER:
-                # Insert after unique prefixes (around position 20)
-                APIKeyDetector.DETECTION_ORDER.insert(20, provider)
-            elif provider not in APIKeyDetector.DETECTION_ORDER:
-                APIKeyDetector.DETECTION_ORDER.append(provider)
+            # FIX_110.4: Fixed insert(20) bug - now calculates proper position
+            if provider not in APIKeyDetector.DETECTION_ORDER:
+                if pattern.prefix:
+                    # Insert based on confidence: high confidence prefixes go earlier
+                    # Find position after built-in high-confidence patterns (usually ~20-30 items)
+                    # but before generic low-confidence patterns
+                    insert_pos = min(len(APIKeyDetector.DETECTION_ORDER), 30)
+                    # Find first generic pattern position to insert before it
+                    for i, existing in enumerate(APIKeyDetector.DETECTION_ORDER):
+                        existing_config = APIKeyDetector.PATTERNS.get(existing)
+                        if existing_config and not existing_config.prefix:
+                            insert_pos = i
+                            break
+                    APIKeyDetector.DETECTION_ORDER.insert(insert_pos, provider)
+                    print(f"[KeyLearner] Inserted {provider} at position {insert_pos} (has prefix)")
+                else:
+                    # Generic patterns go at the end
+                    APIKeyDetector.DETECTION_ORDER.append(provider)
+                    print(f"[KeyLearner] Appended {provider} at end (no prefix)")
 
             print(f"[KeyLearner] Registered {provider} pattern with detector")
 
@@ -339,6 +365,7 @@ class KeyLearner:
 
     def _save_key_to_config(self, provider: str, key: str) -> bool:
         """Save the key to data/config.json"""
+        print(f"[KeyLearner._save_key_to_config] Saving key for '{provider}' to {CONFIG_FILE}")
         try:
             config = {}
             if CONFIG_FILE.exists():
@@ -403,16 +430,31 @@ class KeyLearner:
         """
         Check if key matches any learned pattern.
 
+        Priority: Patterns with prefix are checked FIRST (higher confidence).
+        Generic patterns (no prefix) are checked last.
+
         Returns:
             dict with provider info if matched, None otherwise
         """
         key = key.strip()
+        print(f"[KeyLearner.check_learned_pattern] Checking key: {key[:15]}... against {len(self.learned_patterns)} patterns")
 
-        for provider, pattern in self.learned_patterns.items():
-            # Check prefix first
+        # Sort patterns: those with prefix first, then by confidence
+        sorted_patterns = sorted(
+            self.learned_patterns.items(),
+            key=lambda x: (0 if x[1].prefix else 1, -x[1].confidence)
+        )
+
+        for provider, pattern in sorted_patterns:
+            # Check prefix first (if pattern has one)
             if pattern.prefix:
                 if not key.startswith(pattern.prefix):
                     continue
+                print(f"[KeyLearner] Prefix '{pattern.prefix}' matched for {provider}")
+            else:
+                # Generic pattern (no prefix) - skip if another pattern already matched by prefix
+                # Only match if length and charset match exactly
+                print(f"[KeyLearner] Trying generic pattern for {provider} (no prefix)")
 
             # Check length
             if not (pattern.length_min <= len(key) <= pattern.length_max):
@@ -427,6 +469,7 @@ class KeyLearner:
                 continue
 
             # Match found
+            print(f"[KeyLearner.check_learned_pattern] MATCHED: {provider} (confidence={pattern.confidence})")
             return {
                 'provider': provider,
                 'display_name': provider.replace('_', ' ').title(),
@@ -435,6 +478,7 @@ class KeyLearner:
                 'learned_at': pattern.learned_at
             }
 
+        print(f"[KeyLearner.check_learned_pattern] NO MATCH found")
         return None
 
 

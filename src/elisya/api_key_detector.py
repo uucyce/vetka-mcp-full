@@ -603,7 +603,11 @@ class APIKeyDetector:
         """
         key = key.strip()
 
+        # DEBUG: Log detection attempt
+        print(f"[APIKeyDetector.detect] Input key: {key[:20]}...{key[-4:] if len(key) > 24 else ''} (len={len(key)})")
+
         if not key or len(key) < 10:
+            print(f"[APIKeyDetector.detect] REJECTED: key too short ({len(key)} chars)")
             return None
 
         # Try each provider in order
@@ -622,6 +626,7 @@ class APIKeyDetector:
                 # Calculate confidence based on prefix uniqueness
                 confidence = cls._calculate_confidence(provider_id, key)
 
+                print(f"[APIKeyDetector.detect] MATCHED: {provider_id} (confidence={confidence})")
                 return {
                     "provider": provider_id,
                     "display_name": config.display_name,
@@ -631,6 +636,7 @@ class APIKeyDetector:
                     "note": cls._get_note(provider_id, confidence)
                 }
 
+        print(f"[APIKeyDetector.detect] NO MATCH found for key pattern")
         return None
 
     @classmethod
@@ -710,14 +716,107 @@ class APIKeyDetector:
         return [c.value for c in ProviderCategory]
 
 
+# ============================================================
+# TRUFFLEHOG PATTERNS INTEGRATION - Phase 110
+# ============================================================
+
+_trufflehog_patterns: Optional[Dict[str, Any]] = None
+
+def _load_trufflehog_patterns() -> Dict[str, Any]:
+    """Load TruffleHog-based patterns from JSON file."""
+    global _trufflehog_patterns
+    if _trufflehog_patterns is not None:
+        return _trufflehog_patterns
+
+    import json
+    from pathlib import Path
+
+    patterns_file = Path(__file__).parent.parent.parent / "data" / "trufflehog_patterns.json"
+    try:
+        if patterns_file.exists():
+            with open(patterns_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                _trufflehog_patterns = data.get('patterns', {})
+                print(f"[TruffleHog] Loaded {len(_trufflehog_patterns)} patterns")
+        else:
+            _trufflehog_patterns = {}
+            print("[TruffleHog] Patterns file not found")
+    except Exception as e:
+        print(f"[TruffleHog] Error loading patterns: {e}")
+        _trufflehog_patterns = {}
+
+    return _trufflehog_patterns
+
+
+def detect_with_trufflehog(key: str) -> Optional[Dict[str, Any]]:
+    """
+    Detect API key using TruffleHog patterns.
+    Phase 110: Extended detection with 800+ community patterns.
+
+    This is used as a fallback when built-in detector doesn't match.
+
+    Args:
+        key: The API key to detect
+
+    Returns:
+        Dict with detection info or None
+    """
+    patterns = _load_trufflehog_patterns()
+    if not patterns:
+        return None
+
+    key = key.strip()
+    if len(key) < 10:
+        return None
+
+    for pattern_id, pattern_config in patterns.items():
+        regex = pattern_config.get('regex', '')
+        if not regex:
+            continue
+
+        try:
+            if re.match(regex, key):
+                # Check prefix if specified
+                prefix = pattern_config.get('prefix')
+                if prefix and not key.startswith(prefix):
+                    continue
+
+                confidence = pattern_config.get('confidence', 0.70)
+                return {
+                    "provider": pattern_id,
+                    "display_name": pattern_config.get('display_name', pattern_id),
+                    "category": pattern_config.get('category', 'unknown'),
+                    "confidence": confidence,
+                    "source": "trufflehog",
+                    "note": pattern_config.get('note')
+                }
+        except re.error:
+            continue
+
+    return None
+
+
 # Convenience function
 def detect_api_key(key: str) -> Optional[Dict[str, Any]]:
     """
     Convenience function for auto-detection.
+    Phase 110: Now uses TruffleHog patterns as fallback.
 
     Usage:
         from src.elisya.api_key_detector import detect_api_key
         result = detect_api_key("sk-or-v1-abc123...")
         print(result["display_name"])  # "OpenRouter"
     """
-    return APIKeyDetector.detect(key)
+    # Try built-in detector first
+    result = APIKeyDetector.detect(key)
+    if result:
+        result["source"] = "builtin"
+        return result
+
+    # Fallback to TruffleHog patterns
+    result = detect_with_trufflehog(key)
+    if result:
+        print(f"[detect_api_key] TruffleHog fallback matched: {result.get('provider')}")
+        return result
+
+    return None
