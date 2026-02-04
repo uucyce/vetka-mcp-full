@@ -679,12 +679,14 @@ def register_group_message_handler(sio, app=None):
             )
 
         # Phase 74.8: Save user message to chat_history
+        # MARKER_109_13: Use group_id as stable key to prevent duplicate chats
         try:
             chat_history = get_chat_history_manager()
             group_name = group.get("name", f"Group {group_id[:8]}")
-            # Find or create chat by group name (Phase 74.10: strip handles trailing spaces)
+            # Find or create chat by group_id (stable key) instead of display_name
             chat_id = chat_history.get_or_create_chat(
-                file_path="unknown", context_type="group", display_name=group_name
+                file_path="unknown", context_type="group", display_name=group_name,
+                group_id=group_id  # MARKER_109_13: Stable key for deduplication!
             )
             chat_history.add_message(
                 chat_id,
@@ -1062,6 +1064,7 @@ Do NOT confuse yourself with other models.
 
                 # Phase 74.8: Save agent response to chat_history
                 # MARKER_CHAT_HISTORY_ATTRIBUTION: Model attribution fix - IMPLEMENTED
+                # MARKER_109_13: Use group_id for stable lookup
                 try:
                     chat_history = get_chat_history_manager()
                     group_name = group.get("name", f"Group {group_id[:8]}")
@@ -1069,6 +1072,7 @@ Do NOT confuse yourself with other models.
                         file_path="unknown",
                         context_type="group",
                         display_name=group_name,
+                        group_id=group_id,  # MARKER_109_13: Stable key!
                     )
                     chat_history.add_message(
                         chat_id,

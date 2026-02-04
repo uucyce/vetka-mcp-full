@@ -43,6 +43,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 import uuid
 import logging
+import threading  # MARKER_109_13: Lock for race condition prevention
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,8 @@ class ChatHistoryManager:
         self.history_file = Path(history_file)
         self.history_file.parent.mkdir(parents=True, exist_ok=True)
         self.history = self._load()
+        # MARKER_109_13: Thread lock for race condition prevention in get_or_create_chat
+        self._lock = threading.Lock()
 
     def _load(self) -> Dict[str, Any]:
         """Load history from JSON file or create new structure."""
@@ -149,13 +152,15 @@ class ChatHistoryManager:
         items: Optional[List[str]] = None,
         topic: Optional[str] = None,
         display_name: Optional[str] = None,
-        chat_id: Optional[str] = None  # FIX_109.4: Accept client-provided chat_id
+        chat_id: Optional[str] = None,  # FIX_109.4: Accept client-provided chat_id
+        group_id: Optional[str] = None  # MARKER_109_13: Stable key for group chats
     ) -> str:
         """
         Get existing chat for file or create new one.
 
         Phase 51.1 Fix: Normalize paths to prevent duplicate chats for same file.
         Phase 74: Extended schema with context_type, items, topic, display_name.
+        MARKER_109_13: Use group_id as stable key for group chats (prevents duplicates).
 
         Args:
             file_path: File path to associate with chat
@@ -167,6 +172,32 @@ class ChatHistoryManager:
         Returns:
             Chat UUID
         """
+        # MARKER_109_13: Use lock to prevent race condition (parallel requests creating duplicates)
+        with self._lock:
+            return self._get_or_create_chat_impl(
+                file_path, context_type, items, topic, display_name, chat_id, group_id
+            )
+
+    def _get_or_create_chat_impl(
+        self,
+        file_path: str,
+        context_type: str,
+        items: Optional[List[str]],
+        topic: Optional[str],
+        display_name: Optional[str],
+        chat_id: Optional[str],
+        group_id: Optional[str]
+    ) -> str:
+        """Internal implementation (called with lock held)."""
+        # MARKER_109_13: Priority 1 - Search by group_id for group chats (stable key!)
+        if group_id and context_type == "group":
+            for existing_id, chat in self.history["chats"].items():
+                chat_metadata = chat.get("metadata", {})
+                if chat_metadata.get("group_id") == group_id:
+                    # Found existing chat for this group - reuse it!
+                    print(f"[ChatHistory] MARKER_109_13: Reusing chat {existing_id[:8]} for group {group_id[:8]}")
+                    return existing_id
+
         # Phase 51.1 Fix: Normalize incoming path
         if file_path and file_path not in ('unknown', 'root', ''):
             try:
@@ -269,6 +300,11 @@ class ChatHistoryManager:
         # Phase 74.10: Strip display_name to prevent trailing space issues
         clean_display_name = display_name.strip() if display_name else None
 
+        # MARKER_109_13: Build metadata with group_id for stable lookup
+        chat_metadata = {}
+        if group_id:
+            chat_metadata["group_id"] = group_id
+
         self.history["chats"][chat_id] = {
             "id": chat_id,
             "file_path": normalized_path,
@@ -278,6 +314,7 @@ class ChatHistoryManager:
             "items": items or [],          # Phase 74: File paths for groups
             "topic": topic,                # Phase 74: Topic for file-less chats
             "pinned_file_ids": [],         # Phase 100.2: Persistent pinned files
+            "metadata": chat_metadata,     # MARKER_109_13: Stable keys (group_id, etc.)
             "created_at": now,
             "updated_at": now,
             "messages": []
