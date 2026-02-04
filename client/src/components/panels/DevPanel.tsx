@@ -67,8 +67,8 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
   }, []);
 
   // Apply configuration
-  // MARKER_110_BACKEND_CONFIG: Emit to backend via socket
-  const handleApply = useCallback(() => {
+  // MARKER_110_BACKEND_CONFIG: Save config and trigger tree refresh
+  const handleApply = useCallback(async () => {
     saveDevPanelConfig(config);
     setIsDirty(false);
 
@@ -81,13 +81,15 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
         apply_immediately: true
       });
       console.log('[DevPanel] Config emitted to backend via socket');
-    } else {
-      console.warn('[DevPanel] Socket not connected, config saved locally only');
     }
 
     // Local event for other components to react to config changes
     window.dispatchEvent(new CustomEvent('vetka-dev-config-changed', { detail: config }));
-    console.log('[DevPanel] Config applied:', config);
+
+    // MARKER_110_FIX: Force tree reload to apply new layout config
+    // Dispatch custom event that useTreeData can listen to
+    window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
+    console.log('[DevPanel] Config applied, tree refresh triggered');
   }, [config]);
 
   // Reset to defaults

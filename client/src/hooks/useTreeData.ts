@@ -8,7 +8,7 @@
  * @used_by App, TreeViewer
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore, TreeNode, VetkaNodeType } from '../store/useStore';
 import { fetchTreeData, ApiTreeNode } from '../utils/api';
 import { calculateSimpleLayout } from '../utils/layout';
@@ -38,6 +38,9 @@ export function useTreeData() {
 
   // MARKER_108_CHAT_FRONTEND: Phase 108.2 - Chat tree store for chat nodes
   const { addChatNode } = useChatTreeStore();
+
+  // MARKER_110_FIX: Trigger for manual tree refresh (from DevPanel)
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     async function loadData() {
@@ -180,7 +183,21 @@ export function useTreeData() {
     }
 
     loadData();
-  }, [setNodes, setNodesFromRecord, setEdges, setLoading, setError, addChatNode]);
+  }, [setNodes, setNodesFromRecord, setEdges, setLoading, setError, addChatNode, refreshTrigger]);
+
+  // MARKER_110_FIX: Listen for tree refresh events from DevPanel
+  useEffect(() => {
+    const handleTreeRefresh = () => {
+      console.log('[useTreeData] Received vetka-tree-refresh-needed event, triggering refetch...');
+      // Increment trigger to cause useEffect re-run
+      setRefreshTrigger(prev => prev + 1);
+    };
+
+    window.addEventListener('vetka-tree-refresh-needed', handleTreeRefresh);
+    return () => {
+      window.removeEventListener('vetka-tree-refresh-needed', handleTreeRefresh);
+    };
+  }, []);
 
   return { nodes, isLoading, error };
 }
