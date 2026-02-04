@@ -21,6 +21,7 @@ import {
   chatNodeToTreeNode,
   VetkaApiResponse,
 } from '../utils/apiConverter';
+import { getDevPanelConfig } from '../utils/devConfig';
 import { useChatTreeStore } from '../store/chatTreeStore';
 
 export function useTreeData() {
@@ -110,12 +111,38 @@ export function useTreeData() {
         // Merge edges
         const allEdges = [...edges, ...chatEdges];
 
-        // Apply layout if positions are all zeros
-        const needsLayout = Object.values(allNodes).every(
+        // MARKER_109_DEVPANEL: Threshold-based fallback for layout
+        const config = getDevPanelConfig();
+        const nodeArray = Object.values(allNodes);
+        const totalNodes = nodeArray.length;
+
+        // Count nodes with invalid (zero) positions
+        const invalidCount = nodeArray.filter(
           (n) => n.position.x === 0 && n.position.y === 0 && n.position.z === 0
-        );
+        ).length;
+
+        const invalidRatio = totalNodes > 0 ? invalidCount / totalNodes : 0;
+        const needsLayout = invalidRatio > (config.FALLBACK_THRESHOLD ?? 0.5);
+
+        // MARKER_109_DEVPANEL: If semantic fallback enabled, try semantic_position first
+        if (config.USE_SEMANTIC_FALLBACK && !needsLayout) {
+          nodeArray.forEach((node) => {
+            if (node.position.x === 0 && node.position.y === 0 && node.position.z === 0) {
+              // Check for semanticPosition on the node
+              const semanticPos = (node as any).semanticPosition;
+              if (semanticPos) {
+                node.position = {
+                  x: semanticPos.x,
+                  y: semanticPos.y,
+                  z: semanticPos.z,
+                };
+              }
+            }
+          });
+        }
 
         if (needsLayout) {
+          console.log(`[useTreeData] Layout fallback triggered: ${invalidCount}/${totalNodes} nodes invalid (${(invalidRatio * 100).toFixed(1)}% > ${(config.FALLBACK_THRESHOLD * 100).toFixed(0)}% threshold)`);
           const positioned = calculateSimpleLayout(Object.values(allNodes));
           setNodes(positioned);
         } else {

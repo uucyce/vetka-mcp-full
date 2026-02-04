@@ -27,6 +27,11 @@ MAX_SPREAD = 180  # degrees - maximum spread at root level
 BASE_RADIUS = 150  # base branch length in pixels
 DEPTH_DECAY_FLOOR = 0.4  # minimum decay factor (40%) for deep branches
 
+# MARKER_109_Y_FLOOR: Position protection constants
+# Phase 109: Hard floor/ceiling to prevent nodes going "underground" or too high
+MIN_Y_FLOOR = 20      # minimum Y position - nothing below this
+MAX_Y_CEILING = 5000  # maximum Y position - reasonable upper bound
+
 
 def calculate_adaptive_branch_params(
     folder_path: str,
@@ -644,5 +649,31 @@ def calculate_directory_fan_layout(
 
     print(f"[ANTI-GRAVITY] Applied repulsion to {repulsion_applied} depth levels")
     print(f"[ANTI-GRAVITY] Repositioned {files_repositioned} files to follow their parent branches")
+
+    # ========================================================================
+    # MARKER_109_Y_FLOOR: ENFORCE HARD FLOOR/CEILING
+    # Phase 109: Prevent nodes from going "underground" or too high
+    # ========================================================================
+    floor_violations = 0
+    ceiling_violations = 0
+
+    for node_id, pos in positions.items():
+        original_y = pos.get('y', 0)
+
+        # Enforce floor
+        if original_y < MIN_Y_FLOOR:
+            positions[node_id]['y'] = MIN_Y_FLOOR
+            positions[node_id]['y_time'] = max(pos.get('y_time', MIN_Y_FLOOR), MIN_Y_FLOOR)
+            floor_violations += 1
+
+        # Enforce ceiling
+        elif original_y > MAX_Y_CEILING:
+            positions[node_id]['y'] = MAX_Y_CEILING
+            positions[node_id]['y_time'] = min(pos.get('y_time', MAX_Y_CEILING), MAX_Y_CEILING)
+            ceiling_violations += 1
+
+    if floor_violations > 0 or ceiling_violations > 0:
+        print(f"[Y-FLOOR] Enforced position limits: {floor_violations} floor violations, {ceiling_violations} ceiling violations")
+        print(f"[Y-FLOOR] MIN_Y={MIN_Y_FLOOR}, MAX_Y={MAX_Y_CEILING}")
 
     return positions, root_folders, BRANCH_LENGTH, FAN_ANGLE, Y_PER_DEPTH
