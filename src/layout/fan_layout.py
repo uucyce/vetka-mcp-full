@@ -47,9 +47,12 @@ def _get_layout_config():
     """
     try:
         from src.api.handlers.layout_socket_handler import get_layout_config
-        return get_layout_config()
-    except ImportError:
+        config = get_layout_config()
+        print(f"[LAYOUT_CONFIG] Using dynamic config: Y_WEIGHT_TIME={config.get('Y_WEIGHT_TIME')}, MIN_Y={config.get('MIN_Y_FLOOR')}")
+        return config
+    except ImportError as e:
         # Fallback for standalone usage (tests, CLI, etc.)
+        print(f"[LAYOUT_CONFIG] ImportError, using defaults: {e}")
         return {
             'Y_WEIGHT_TIME': 0.5,
             'Y_WEIGHT_KNOWLEDGE': 0.5,
@@ -491,10 +494,11 @@ def calculate_directory_fan_layout(
                 # Single root: keep at center
                 folder_x, folder_y = 0, 0
         else:
-            # Phase 27.9: Use adaptive branch length per folder
-            # sin for X spread (horizontal fan), depth for Y (grows upward)
+            # MARKER_111_FIX: Simple tree layout
+            # X = parent_x + horizontal offset from angle
+            # Y = parent_y + fixed step upward (children ABOVE parents)
             folder_x = parent_x + math.sin(angle_rad) * adaptive_length
-            folder_y = depth * Y_PER_DEPTH  # Y strictly by depth (root=0, leaves=max)
+            folder_y = parent_y + Y_PER_DEPTH  # Children are ABOVE parent (Y grows up)
 
         # Use folder_path as key (consistent across the same request)
         positions[folder_path] = {
@@ -522,8 +526,10 @@ def calculate_directory_fan_layout(
 
                 # Step 3: Spread children in fan with dynamic angle
                 start_angle = parent_angle - dynamic_fan_angle / 2
-                angle_step = dynamic_fan_angle / (n_children - 1)
+                angle_step = dynamic_fan_angle / max(n_children - 1, 1)
 
+                # MARKER_111_SPREAD: Spread siblings by angle only (no extra offsets)
+                # The angle spread + branch length naturally separates them
                 for i, child_path in enumerate(ordered_children):
                     child_angle = start_angle + i * angle_step
                     layout_subtree(child_path, folder_x, folder_y, child_angle, depth + 1)
@@ -724,3 +730,215 @@ def calculate_directory_fan_layout(
         print(f"[Y-FLOOR] MIN_Y={min_y}, MAX_Y={max_y} (from dynamic config)")
 
     return positions, root_folders, BRANCH_LENGTH, FAN_ANGLE, Y_PER_DEPTH
+
+
+# ============================================================================
+# PHASE 111: CLASSIC TREE LAYOUT (Inverted DAG - "Шашлык на шампуре")
+# ============================================================================
+
+def calculate_tree_layout(
+    folders: Dict[str, dict],
+    files_by_folder: Dict[str, List[dict]],
+    all_files: List[dict] = None,
+    socketio_instance=None
+) -> Tuple[Dict[str, dict], List[str], float, float, float]:
+    """
+    Classic tree layout (перевёрнутый DAG):
+    - Корень Y=0 (внизу), ветки растут ВВЕРХ
+    - Дети СТРОГО над родителем, центрированы
+    - Siblings распределены горизонтально
+    - Файлы в цепочке над папкой ("шашлык")
+
+    Based on Reingold-Tilford algorithm adapted for inverted trees.
+
+    Args:
+        folders: Dict of folder_path -> folder_info
+        files_by_folder: Dict of folder_path -> list of file dicts
+        all_files: Unused (for API compatibility)
+        socketio_instance: Unused (for API compatibility)
+
+    Returns:
+        Tuple of (positions, root_folders, 0, 0, Y_PER_DEPTH)
+        - positions: Dict[node_id, {x, y, z}]
+        - root_folders: List of root folder paths
+    """
+
+    Y_PER_DEPTH = 200      # Вертикальный шаг между уровнями папок
+    X_SPACING = 120        # Базовый горизонтальный шаг между siblings
+    FILE_Y_STEP = 35       # Шаг между файлами в цепочке
+
+    positions = {}
+    subtree_widths = {}
+
+    print(f"[TREE_LAYOUT] Starting classic tree layout for {len(folders)} folders")
+
+    # === ШАГ 1: Подсчитать ширину каждого поддерева ===
+    def count_width(folder_path: str) -> int:
+        """
+        Рекурсивно подсчитывает "ширину" поддерева.
+        Ширина = количество листовых папок в поддереве.
+        """
+        folder = folders.get(folder_path)
+        if not folder:
+            return 1
+
+        children = folder.get('children', [])
+        if not children:
+            # Листовая папка - ширина 1
+            subtree_widths[folder_path] = 1
+            return 1
+
+        # Сумма ширин детей
+        width = sum(count_width(c) for c in children)
+        subtree_widths[folder_path] = max(1, width)
+        return max(1, width)
+
+    # === ШАГ 2: Рекурсивный layout ===
+    def layout_subtree(folder_path: str, center_x: float, parent_y: float) -> None:
+        """
+        Рекурсивно размещает папку и её детей.
+        Папка размещается строго над родителем.
+        Дети центрируются под папкой.
+        """
+        folder = folders.get(folder_path)
+        if not folder:
+            return
+
+        # Позиция этой папки: строго над родителем
+        folder_y = parent_y + Y_PER_DEPTH
+        positions[folder_path] = {
+            'x': center_x,
+            'y': folder_y,
+            'z': 0,
+            'angle': 0  # Не используется в tree layout
+        }
+
+        # === Дочерние папки ===
+        children = folder.get('children', [])
+        if children:
+            # Вычислить ширину каждого ребёнка
+            child_widths = [subtree_widths.get(c, 1) for c in children]
+            total_width = sum(child_widths) * X_SPACING
+
+            # Начать слева от центра родителя
+            current_x = center_x - total_width / 2
+
+            for i, child_path in enumerate(children):
+                child_width = child_widths[i] * X_SPACING
+                child_center = current_x + child_width / 2
+
+                # Рекурсивно разместить ребёнка
+                layout_subtree(child_path, child_center, folder_y)
+
+                current_x += child_width
+
+        # === Файлы в этой папке: ЦЕПОЧКА ("шашлык") ===
+        folder_files = files_by_folder.get(folder_path, [])
+        if folder_files:
+            # Сортировать по времени создания (старые внизу, новые вверху)
+            folder_files_sorted = sorted(
+                folder_files,
+                key=lambda f: f.get('created_time', 0)
+            )
+
+            for i, file_data in enumerate(folder_files_sorted):
+                file_id = file_data.get('id')
+                if file_id:
+                    # Файлы в вертикальной цепочке над папкой
+                    positions[file_id] = {
+                        'x': center_x,
+                        'y': folder_y + FILE_Y_STEP * (i + 1),
+                        'z': 0
+                    }
+
+    # === ШАГ 3: Найти root папки ===
+    root_folders = [p for p, f in folders.items() if not f.get('parent_path')]
+    print(f"[TREE_LAYOUT] Found {len(root_folders)} root folders")
+
+    if not root_folders:
+        print("[TREE_LAYOUT] WARNING: No root folders found!")
+        return positions, [], 0, 0, Y_PER_DEPTH
+
+    # === ШАГ 4: Посчитать ширины для всех деревьев ===
+    for root_path in root_folders:
+        count_width(root_path)
+
+    # === ШАГ 5: Разместить root папки ===
+    if len(root_folders) == 1:
+        # Единственный root - в центре
+        root_path = root_folders[0]
+        positions[root_path] = {'x': 0, 'y': 0, 'z': 0, 'angle': 0}
+
+        # Разместить детей root'а
+        folder = folders.get(root_path)
+        children = folder.get('children', []) if folder else []
+
+        if children:
+            child_widths = [subtree_widths.get(c, 1) for c in children]
+            total_width = sum(child_widths) * X_SPACING
+            current_x = -total_width / 2
+
+            for i, child_path in enumerate(children):
+                child_width = child_widths[i] * X_SPACING
+                child_center = current_x + child_width / 2
+                layout_subtree(child_path, child_center, 0)
+                current_x += child_width
+
+        # Файлы в root папке
+        root_files = files_by_folder.get(root_path, [])
+        if root_files:
+            root_files_sorted = sorted(root_files, key=lambda f: f.get('created_time', 0))
+            for i, file_data in enumerate(root_files_sorted):
+                file_id = file_data.get('id')
+                if file_id:
+                    positions[file_id] = {
+                        'x': 0,
+                        'y': FILE_Y_STEP * (i + 1),
+                        'z': 0
+                    }
+    else:
+        # Несколько root деревьев - распределить горизонтально
+        total_width = sum(subtree_widths.get(r, 1) for r in root_folders) * X_SPACING * 1.5
+        current_x = -total_width / 2
+
+        for root_path in root_folders:
+            width = subtree_widths.get(root_path, 1) * X_SPACING * 1.5
+            center = current_x + width / 2
+
+            # Позиция root
+            positions[root_path] = {'x': center, 'y': 0, 'z': 0, 'angle': 0}
+
+            # Разместить детей
+            folder = folders.get(root_path)
+            children = folder.get('children', []) if folder else []
+
+            if children:
+                child_widths = [subtree_widths.get(c, 1) for c in children]
+                children_total = sum(child_widths) * X_SPACING
+                child_x = center - children_total / 2
+
+                for i, child_path in enumerate(children):
+                    child_width = child_widths[i] * X_SPACING
+                    child_center = child_x + child_width / 2
+                    layout_subtree(child_path, child_center, 0)
+                    child_x += child_width
+
+            # Файлы в root папке
+            root_files = files_by_folder.get(root_path, [])
+            if root_files:
+                root_files_sorted = sorted(root_files, key=lambda f: f.get('created_time', 0))
+                for i, file_data in enumerate(root_files_sorted):
+                    file_id = file_data.get('id')
+                    if file_id:
+                        positions[file_id] = {
+                            'x': center,
+                            'y': FILE_Y_STEP * (i + 1),
+                            'z': 0
+                        }
+
+            current_x += width
+
+    print(f"[TREE_LAYOUT] Positioned {len(positions)} nodes")
+    print(f"[TREE_LAYOUT] Y_PER_DEPTH={Y_PER_DEPTH}, X_SPACING={X_SPACING}")
+
+    return positions, root_folders, 0, 0, Y_PER_DEPTH

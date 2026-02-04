@@ -221,7 +221,8 @@ async def get_tree_data(
             }
 
         # Import layout functions
-        from src.layout.fan_layout import calculate_directory_fan_layout
+        # MARKER_111_TREE_LAYOUT: Use classic tree layout instead of fan layout
+        from src.layout.fan_layout import calculate_tree_layout, calculate_directory_fan_layout
         from src.layout.incremental import (
             detect_new_branches,
             incremental_layout_update,
@@ -369,6 +370,52 @@ async def get_tree_data(
         print(f"[API] Built {len(folders)} folders")
 
         # ═══════════════════════════════════════════════════════════════════
+        # STEP 2.6: CALCULATE FOLDER CREATED_TIME (Phase 111)
+        # Folder time = minimum created_time of all files inside
+        # ═══════════════════════════════════════════════════════════════════
+        for folder_path, folder_files in files_by_folder.items():
+            if folder_path in folders and folder_files:
+                min_time = min(f.get('created_time', 0) for f in folder_files)
+                folders[folder_path]['created_time'] = min_time
+
+        # Propagate created_time up the tree (parent = min of children times)
+        def propagate_folder_times(folder_path):
+            folder = folders.get(folder_path)
+            if not folder:
+                return float('inf')
+            # Get min time from direct files
+            min_time = folder.get('created_time', float('inf'))
+            # Get min time from children
+            for child_path in folder.get('children', []):
+                child_time = propagate_folder_times(child_path)
+                min_time = min(min_time, child_time)
+            folder['created_time'] = min_time if min_time != float('inf') else 0
+            return min_time
+
+        # Find root folders and propagate
+        root_folder_paths = [p for p, f in folders.items() if not f.get('parent_path')]
+        for root_path in root_folder_paths:
+            propagate_folder_times(root_path)
+
+        print(f"[API] Calculated created_time for {len(folders)} folders")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # STEP 2.7: RECALCULATE DEPTH RELATIVE TO ROOT (Phase 111 FIX)
+        # The original depth was based on absolute path position, not tree depth
+        # ═══════════════════════════════════════════════════════════════════
+        def recalculate_depth(folder_path, current_depth):
+            """Recursively set correct depth from root (root=0, children=1, etc.)"""
+            if folder_path in folders:
+                folders[folder_path]['depth'] = current_depth
+                for child_path in folders[folder_path].get('children', []):
+                    recalculate_depth(child_path, current_depth + 1)
+
+        for root_path in root_folder_paths:
+            recalculate_depth(root_path, 0)  # Root folders are depth 0
+
+        print(f"[API] Recalculated depth for {len(folders)} folders (root=0)")
+
+        # ═══════════════════════════════════════════════════════════════════
         # STEP 2.5: CAM SURPRISE METRICS
         # ═══════════════════════════════════════════════════════════════════
         cam_metrics = {}
@@ -383,9 +430,11 @@ async def get_tree_data(
             print(f"[CAM] Warning: Could not calculate surprise metrics: {cam_err}")
 
         # ═══════════════════════════════════════════════════════════════════
-        # STEP 3: FAN LAYOUT
+        # STEP 3: TREE LAYOUT (Phase 111 - Classic inverted DAG)
         # ═══════════════════════════════════════════════════════════════════
-        positions, root_folders, BRANCH_LENGTH, FAN_ANGLE, Y_PER_DEPTH = calculate_directory_fan_layout(
+        # MARKER_111_TREE_LAYOUT: Use classic tree layout for proper hierarchy
+        # Children are positioned ABOVE parents, centered horizontally
+        positions, root_folders, BRANCH_LENGTH, FAN_ANGLE, Y_PER_DEPTH = calculate_tree_layout(
             folders=folders,
             files_by_folder=files_by_folder,
             all_files=[],
