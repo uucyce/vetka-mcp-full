@@ -22,6 +22,7 @@ import { CameraController } from './components/canvas/CameraController';
 import { ChatPanel } from './components/chat';
 import { ArtifactWindow } from './components/artifact';
 import { UnifiedSearchBar } from './components/search/UnifiedSearchBar';
+import { DevPanel } from './components/panels/DevPanel';
 import { DropZoneRouter, type DropZoneEvent } from './components/DropZoneRouter';
 import JarvisWave from './components/jarvis/JarvisWave';
 import { useJarvis } from './hooks/useJarvis';
@@ -39,6 +40,9 @@ export default function App() {
   const [isArtifactOpen, setIsArtifactOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [leftPanel, setLeftPanel] = useState<'none' | 'history' | 'models'>('none');
+
+  // MARKER_109_DEVPANEL: Dev panel state
+  const [isDevPanelOpen, setIsDevPanelOpen] = useState(false);
 
   // Phase 68.2: Artifact content for search preview
   const [artifactFile, setArtifactFile] = useState<{ path: string; name: string; extension?: string } | null>(null);
@@ -210,10 +214,18 @@ export default function App() {
   }, [isChatOpen]);
 
   // Phase 65: G key for grab mode (Blender-style node movement)
+  // MARKER_109_DEVPANEL: Cmd+Shift+D for dev panel
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore if typing in input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // MARKER_109_DEVPANEL: Cmd+Shift+D = Toggle Dev Panel
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'd' || e.key === 'D')) {
+        e.preventDefault();
+        setIsDevPanelOpen(prev => !prev);
         return;
       }
 
@@ -345,6 +357,12 @@ export default function App() {
         }}
         file={artifactFile}
         rawContent={artifactContent}
+      />
+
+      {/* MARKER_109_DEVPANEL: Dev Panel */}
+      <DevPanel
+        isOpen={isDevPanelOpen}
+        onClose={() => setIsDevPanelOpen(false)}
       />
 
       {/* Phase 104: Jarvis Wave in center top */}
