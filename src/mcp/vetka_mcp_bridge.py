@@ -7,7 +7,7 @@ Claude Desktop and Claude Code can use VETKA tools via this bridge.
 Architecture:
 - MCP stdio protocol (JSON-RPC over stdin/stdout)
 - REST API client -> VETKA FastAPI server (localhost:5001)
-- 29+ tools mapped to VETKA endpoints including:
+- 30+ tools mapped to VETKA endpoints including:
   - Search (semantic, file)
   - File operations (read, edit, list)
   - Git operations (status, commit)
@@ -15,6 +15,7 @@ Architecture:
   - Session management (init, status)
   - Workflow execution (PM -> Architect -> Dev -> QA)
   - Memory tools (context, preferences, CAM)
+  - Context injection (DAG assembly with ELISION) - Phase 109.1
   - ARC suggestions for workflow optimization
   - Artifact management (edit, approve, reject, list) - Phase 108.4
 
@@ -33,8 +34,8 @@ Usage:
   }
 
 @status: active
-@phase: 108.4
-@depends: mcp.server, mcp.types, httpx, src.mcp.tools (session, compound, workflow), src.elisya.provider_registry, src.memory (elision, engram, compression), src.agents.arc_solver_agent, src.services.artifact_scanner
+@phase: 109.1
+@depends: mcp.server, mcp.types, httpx, src.mcp.tools (session, compound, workflow, context_dag), src.elisya.provider_registry, src.memory (elision, engram, compression), src.agents.arc_solver_agent, src.services.artifact_scanner
 @used_by: Claude Code, Claude Desktop (via MCP stdio protocol)
 """
 
@@ -100,6 +101,10 @@ session_context: contextvars.ContextVar[str] = contextvars.ContextVar('session_i
 from src.mcp.tools.session_tools import register_session_tools
 from src.mcp.tools.compound_tools import register_compound_tools
 from src.mcp.tools.workflow_tools import register_workflow_tools
+# MARKER_109_2_PINNED_TOOL: Pinned files context tool
+from src.mcp.tools.pinned_files_tool import register_pinned_files_tool
+# MARKER_109_3_CONTEXT_DAG: Context DAG tool for dynamic context injection
+from src.mcp.tools.context_dag_tool import register_context_dag_tool
 
 # VETKA server configuration
 VETKA_BASE_URL = "http://localhost:5001"
@@ -812,10 +817,48 @@ async def list_tools() -> list[Tool]:
         ),
         # MARKER_102.9_START: Agent Pipeline tool
         # MARKER_103.5: Added auto_write parameter
+        # Phase 111.13: Renamed vetka_spawn_pipeline → vetka_mycelium_pipeline
+        Tool(
+            name="vetka_mycelium_pipeline",
+            description=(
+                "Spawn Mycelium agent pipeline for fractal task execution. "
+                "Auto-triggers Grok researcher on unclear parts (?). "
+                "Phases: research (explore), fix (debug), build (implement). "
+                "Progress streams to chat in real-time! "
+                "Use auto_write=false for staging mode (safe review before file creation)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task": {
+                        "type": "string",
+                        "description": "Task description to execute through pipeline"
+                    },
+                    "phase_type": {
+                        "type": "string",
+                        "enum": ["research", "fix", "build"],
+                        "description": "Pipeline type: research (explore), fix (debug), build (implement)",
+                        "default": "research"
+                    },
+                    "chat_id": {
+                        "type": "string",
+                        "description": "Optional chat ID for progress streaming (default: Lightning chat)"
+                    },
+                    "auto_write": {
+                        "type": "boolean",
+                        "description": "If true (default), write files immediately. If false, save to JSON for later review with retro_apply_spawn.py",
+                        "default": True
+                    }
+                },
+                "required": ["task"]
+            }
+        ),
+        # Phase 111.13: Backward compatibility alias for vetka_spawn_pipeline
         Tool(
             name="vetka_spawn_pipeline",
             description=(
-                "Spawn fractal agent pipeline for task execution. "
+                "[DEPRECATED: Use vetka_mycelium_pipeline instead] "
+                "Spawn Mycelium agent pipeline for fractal task execution. "
                 "Auto-triggers Grok researcher on unclear parts (?). "
                 "Phases: research (explore), fix (debug), build (implement). "
                 "Progress streams to chat in real-time! "
@@ -942,6 +985,8 @@ async def list_tools() -> list[Tool]:
     register_session_tools(mcp_tools)
     register_compound_tools(mcp_tools)
     register_workflow_tools(mcp_tools)
+    register_pinned_files_tool(mcp_tools)  # MARKER_109_2_PINNED_TOOL
+    register_context_dag_tool(mcp_tools)  # MARKER_109_3_CONTEXT_DAG
 
     # Convert to MCP format (handle both dict and BaseMCPTool objects)
     for tool in mcp_tools:
@@ -1632,7 +1677,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             # MARKER_102.21_END
 
         # MARKER_102.10_START: Agent Pipeline handler (fire-and-forget)
-        elif name == "vetka_spawn_pipeline":
+        # Phase 111.13: Handle both vetka_mycelium_pipeline and vetka_spawn_pipeline (backward compatibility)
+        elif name in ("vetka_mycelium_pipeline", "vetka_spawn_pipeline"):
             # MARKER_102.19_START: Async fire-and-forget pipeline
             # Phase 102.2: Don't wait for completion - return task_id immediately
             # Pipeline runs in background, results saved to pipeline_tasks.json
@@ -1682,7 +1728,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
                 return [TextContent(type="text", text=response_text)]
             except Exception as e:
-                logger.error(f"[MCP] vetka_spawn_pipeline error: {e}")
+                logger.error(f"[MCP] {name} error: {e}")
                 return [TextContent(type="text", text=f"❌ Pipeline error: {e}")]
             # MARKER_102.19_END
         # MARKER_102.10_END

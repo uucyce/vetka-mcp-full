@@ -24,6 +24,12 @@ MARKER_MCP_CHAT_READY: Phase 108.1 - Unified MCP-Chat ID linking
 - If provided: session_id = chat_id (link to existing chat)
 - If not provided: creates new chat, uses its ID as session_id
 - Result: Every MCP session linked to VETKA chat for persistent context
+
+MARKER_109_1_VIEWPORT_INJECT: Phase 109.1 - Dynamic Context Injection
+- include_viewport now ACTUALLY builds viewport summary (was dead code)
+- include_pinned now ACTUALLY builds pinned files context (was dead code)
+- Added context_dag support for Jarvis super-agent integration
+- Hyperlinks format: [→ label] for lazy loading via MCP tools
 """
 
 from typing import Dict, Any, Optional
@@ -241,6 +247,42 @@ class SessionInitTool(BaseMCPTool):
         except Exception as e:
             context["recent_states_error"] = str(e)
 
+        # MARKER_109_1_VIEWPORT_INJECT: Build viewport context if requested
+        if include_viewport:
+            try:
+                # Try to get viewport data from CAM engine or state
+                viewport_context = await self._get_viewport_context(session_id)
+                if viewport_context:
+                    from src.api.handlers.message_utils import build_viewport_summary
+                    viewport_summary = build_viewport_summary(viewport_context)
+                    if viewport_summary:
+                        context["viewport_summary"] = viewport_summary
+                        context["viewport"] = {
+                            "zoom": viewport_context.get("zoom_level", 1),
+                            "visible_count": len(viewport_context.get("viewport_nodes", [])),
+                            "pinned_count": len(viewport_context.get("pinned_nodes", [])),
+                            "hyperlink": "[→ viewport] vetka_get_viewport_detail"
+                        }
+            except Exception as e:
+                context["viewport_error"] = str(e)
+
+        # MARKER_109_1_VIEWPORT_INJECT: Build pinned files context if requested
+        if include_pinned:
+            try:
+                pinned_files = await self._get_pinned_files(session_id, chat_id)
+                if pinned_files:
+                    from src.api.handlers.message_utils import build_pinned_context
+                    pinned_context = build_pinned_context(pinned_files, max_files=5)
+                    if pinned_context:
+                        context["pinned_context"] = pinned_context
+                        context["pinned"] = {
+                            "count": len(pinned_files),
+                            "files": [pf.get("name", pf.get("path", "")) for pf in pinned_files[:5]],
+                            "hyperlink": "[→ pins] vetka_get_pinned_files"
+                        }
+            except Exception as e:
+                context["pinned_error"] = str(e)
+
         # Apply ELISION compression if requested
         if compress:
             try:
@@ -272,6 +314,91 @@ class SessionInitTool(BaseMCPTool):
             "success": True,
             "result": context
         }
+
+    async def _get_viewport_context(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """
+        MARKER_109_1_VIEWPORT_INJECT: Get viewport context from various sources.
+
+        Tries in order:
+        1. MCP state manager (if client synced viewport)
+        2. CAM engine viewport patterns
+        3. Default empty context
+        """
+        try:
+            # Try MCP state first (client may have synced viewport)
+            from src.mcp.state import get_mcp_state_manager
+            mcp = get_mcp_state_manager()
+            state = await mcp.get_state(session_id)
+            if state and "viewport" in state:
+                return state["viewport"]
+
+            # Try CAM engine viewport patterns
+            try:
+                from src.orchestration.cam_engine import get_cam_engine
+                cam = get_cam_engine()
+                if hasattr(cam, 'get_viewport_state'):
+                    return cam.get_viewport_state()
+            except Exception:
+                pass
+
+            # Return minimal context if nothing available
+            return {
+                "zoom_level": 1,
+                "viewport_nodes": [],
+                "pinned_nodes": [],
+                "camera_position": {"x": 0, "y": 0, "z": 100}
+            }
+        except Exception as e:
+            print(f"[SessionInit] Viewport context error: {e}")
+            return None
+
+    async def _get_pinned_files(self, session_id: str, chat_id: Optional[str]) -> list:
+        """
+        MARKER_109_1_VIEWPORT_INJECT: Get pinned files from chat history or CAM.
+
+        Sources:
+        1. Chat history manager (if chat_id provided)
+        2. CAM pinned nodes
+        3. MCP state (if client synced pins)
+        """
+        pinned = []
+
+        try:
+            # Try chat history manager first
+            if chat_id:
+                from src.chat.chat_history_manager import get_chat_history_manager
+                chat_mgr = get_chat_history_manager()
+                if hasattr(chat_mgr, 'get_pinned_files'):
+                    chat_pinned = chat_mgr.get_pinned_files(chat_id)
+                    if chat_pinned:
+                        pinned.extend(chat_pinned)
+
+            # Try CAM pinned nodes
+            try:
+                from src.orchestration.cam_engine import get_cam_engine
+                cam = get_cam_engine()
+                if hasattr(cam, 'get_pinned_nodes'):
+                    cam_pinned = cam.get_pinned_nodes()
+                    for node in cam_pinned:
+                        if isinstance(node, dict):
+                            pinned.append(node)
+                        else:
+                            pinned.append({"path": str(node), "name": str(node).split("/")[-1]})
+            except Exception:
+                pass
+
+            # Try MCP state
+            if not pinned:
+                from src.mcp.state import get_mcp_state_manager
+                mcp = get_mcp_state_manager()
+                state = await mcp.get_state(session_id)
+                if state and "pinned_files" in state:
+                    pinned.extend(state["pinned_files"])
+
+        except Exception as e:
+            print(f"[SessionInit] Pinned files error: {e}")
+
+        return pinned
 
 
 class SessionStatusTool(BaseMCPTool):

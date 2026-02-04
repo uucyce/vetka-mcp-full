@@ -1,109 +1,171 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-03T17:01:16.495995+00:00",
+  "last_updated": "2026-02-04T02:50:39.252529+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 101,
-    "subphase": "2",
-    "name": "VetkaTree Indexing & Artifact Rendering",
-    "status": "COMPLETED",
-    "started": "2025-01-29",
-    "completed": "2025-01-30"
+    "number": 112,
+    "subphase": "4b",
+    "name": "Multi-Source Model Aggregator + Key Filter",
+    "status": "IN_PROGRESS",
+    "started": "2026-02-03",
+    "completed": null
   },
   "summary": {
-    "headline": "Fixed VetkaTree indexing gap - dual Qdrant clients now synchronized",
+    "headline": "Phase 112.4b - React key collision FIXED, Polza models should now appear",
     "key_achievements": [
-      "FIX_101.2: MCP format_result now checks 'files' key (was 'results')",
-      "FIX_101.3: Added VetkaTree write in TripleWriteManager",
-      "FIX_101.4: Added parent_folder and depth to qdrant_updater",
-      "FIX_101.5: Fixed TreeStructureTool type check ('leaf' not 'file')",
-      "FIX_101.6: vetka_get_tree counts both 'leaf' and 'file' types",
-      "FIX_101.7: All type checks now accept both 'leaf' and 'file' interchangeably",
-      "Backfilled 1759 files to VetkaTree collection"
+      "Phase 112.1: POLZA, POE, MISTRAL added to ProviderType enum",
+      "Phase 112.2: MULTI_SOURCE_MODELS config replaces DUAL_SOURCE_MODELS",
+      "Phase 112.3: Deduplication fixed - all sources kept with compound keys",
+      "Phase 112.4: sourceFilter state + key click handler in ModelDirectory",
+      "Phase 112.4b: React key collision FIXED (compound key pattern)",
+      "Phase 112.4b: Dead code removed (polza_direct check)",
+      "Phase 112.4b: Recovery logic enhanced (name + source_display)",
+      "6x Haiku analysis complete - HAIKU_ANALYSIS_REPORT.md saved"
     ],
     "pending_items": [
-      "Unit tests for tree_routes.py",
-      "Unify metadata creation to shared function",
-      "Add ?source=vetka_tree param to /api/tree/data"
+      "Phase 112.5: Create quota_fetcher.py for OpenRouter /auth/key",
+      "TEST: Verify Polza models appear separately in UI",
+      "TEST: Click Polza key \u2192 filter to Polza models only"
     ]
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 1968,
+      "points": 1970,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 1965,
+      "points": 1967,
       "vectors": "none",
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "error: HTTPConnectionPool(host='127.0.0.1', port=5001): R",
+      "status": "running",
       "port": 5001,
-      "tools_count": 0
+      "tools_count": 15
+    },
+    "api_keys": {
+      "total": 30,
+      "providers": [
+        "openrouter",
+        "gemini",
+        "xai",
+        "openai",
+        "polza",
+        "nanogpt",
+        "poe",
+        "mistral",
+        "anthropic",
+        "tavily"
+      ],
+      "health": "9 providers in ProviderType enum (Phase 112)"
     }
   },
   "recent_fixes": [
     {
-      "id": "FIX_101.7",
+      "id": "Phase_112",
       "files": [
-        "shared_tools.py",
-        "theory_validator.py",
-        "vetka_validator.py",
-        "knowledge_layout.py",
-        "phase11_transformer.py",
-        "semantic_dag_builder.py",
-        "tree_routes.py",
-        "vetka_mcp_bridge.py",
-        "elision.py"
+        "unified_key_manager.py",
+        "model_duplicator.py",
+        "model_fetcher.py",
+        "ModelDirectory.tsx"
       ],
-      "description": "Accept both 'leaf' and 'file' types interchangeably in all type checks"
+      "description": "Multi-source models: POLZA/POE/MISTRAL providers, MULTI_SOURCE_MODELS config, sourceFilter UI"
     },
     {
-      "id": "FIX_101.6",
-      "file": "src/mcp/vetka_mcp_bridge.py",
-      "line": 768,
-      "description": "vetka_get_tree counts both 'leaf' and 'file' types"
+      "id": "Phase_111",
+      "files": [
+        "doctor_tool.py",
+        "model_routes.py",
+        "model_fetcher.py",
+        "ModelDirectory.tsx"
+      ],
+      "description": "Doctor Tool health check + Refresh UI + NEW markers + provider extraction"
     },
     {
-      "id": "FIX_101.5",
-      "file": "src/bridge/shared_tools.py",
-      "line": 331,
-      "description": "TreeStructureTool type mismatch - 'file' to 'leaf'"
-    },
-    {
-      "id": "FIX_101.3",
-      "file": "src/orchestration/triple_write_manager.py",
-      "line": 318,
-      "description": "Added VetkaTree write for hierarchical storage"
+      "id": "Phase_110",
+      "files": [
+        "model_fetcher.py",
+        "api_key_detector.py",
+        "tools.py"
+      ],
+      "description": "Polza Fetcher 333 models, TruffleHog 36 patterns, SaveAPIKeyTool"
     }
   ],
-  "architecture": {
-    "data_flow": "FileWatcher -> QdrantUpdater -> vetka_elisya + VetkaTree",
-    "search_pipeline": "MCP -> REST API -> HybridSearch -> Qdrant/Weaviate",
-    "triple_write": "Weaviate VetkaLeaf + Qdrant vetka_elisya + Qdrant VetkaTree"
+  "phase_112_plan": {
+    "goal": "Multi-source model display with key-based filtering",
+    "tasks": [
+      {
+        "id": "112.1",
+        "task": "Add POLZA, POE, MISTRAL to ProviderType enum",
+        "files": [
+          "src/utils/unified_key_manager.py"
+        ],
+        "status": "DONE"
+      },
+      {
+        "id": "112.2",
+        "task": "Extend model_duplicator.py to MULTI_SOURCE_MODELS",
+        "files": [
+          "src/services/model_duplicator.py"
+        ],
+        "status": "DONE"
+      },
+      {
+        "id": "112.3",
+        "task": "Remove deduplication, add compound keys to models",
+        "files": [
+          "src/elisya/model_fetcher.py"
+        ],
+        "status": "DONE"
+      },
+      {
+        "id": "112.4",
+        "task": "Add sourceFilter state + click handler in ModelDirectory",
+        "files": [
+          "client/src/components/ModelDirectory.tsx"
+        ],
+        "status": "DONE"
+      },
+      {
+        "id": "112.5",
+        "task": "Create quota_fetcher.py for OpenRouter /auth/key",
+        "files": [
+          "src/elisya/quota_fetcher.py"
+        ],
+        "status": "pending"
+      }
+    ],
+    "grok_research": "docs/111_ph/GROK_RESEARCH_REQUEST.md",
+    "haiku_markers": "docs/111_ph/HAIKU_MARKERS_REPORT.md"
   },
   "documentation": {
-    "phase_report": "docs/101_ph/PHASE_101_UNIFIED_REPORT.md",
-    "haiku_findings": "docs/101_ph/PHASE_101_HAIKU_FINDINGS.md",
-    "backfill_script": "scripts/backfill_vetka_tree.py"
+    "phase_111_report": "docs/111_ph/PHASE_111_STATUS_REPORT.md",
+    "phase_111_plan": "docs/111_ph/PHASE_111_FINAL_PLAN.md",
+    "haiku_markers": "docs/111_ph/HAIKU_MARKERS_REPORT.md",
+    "haiku_analysis": "docs/111_ph/HAIKU_ANALYSIS_REPORT.md",
+    "grok_request": "docs/111_ph/GROK_RESEARCH_REQUEST.md"
   },
   "agent_instructions": {
-    "on_connect": "Read this digest for current project state before starting work",
-    "on_search_issues": "Check if VetkaTree has points, verify HNSW index active",
-    "on_file_indexing": "Ensure both vetka_elisya AND VetkaTree receive writes",
-    "methodology": "Use Haiku scouts for investigation, Sonnets for verification"
+    "on_connect": "Read this digest. Phase 112.1-112.4 DONE. Remaining: quota_fetcher.py",
+    "methodology": "Use Haiku scouts for recon, Sonnet for verify, Opus for synthesis",
+    "key_constraint": "NO NEW PANELS OR BUTTONS - use existing UI, add functions only",
+    "files_modified": [
+      "unified_key_manager.py",
+      "model_duplicator.py",
+      "model_fetcher.py",
+      "ModelDirectory.tsx"
+    ]
   },
   "quick_commands": {
-    "check_vetka_elisya": "curl localhost:6333/collections/vetka_elisya",
-    "check_vetka_tree": "curl localhost:6333/collections/VetkaTree",
-    "check_tree_api": "curl localhost:5001/api/tree/data",
-    "semantic_search": "curl -X POST localhost:5001/api/search/semantic -H 'Content-Type: application/json' -d '{\"query\": \"test\", \"limit\": 5}'"
+    "refresh_models": "curl -X POST localhost:5001/api/models/refresh",
+    "check_health": "curl localhost:5001/health/deep",
+    "check_polza": "curl -s https://api.polza.ai/api/v1/models -H 'Authorization: Bearer $POLZA_KEY'",
+    "check_or_quota": "curl https://openrouter.ai/api/v1/auth/key -H 'Authorization: Bearer $OR_KEY'"
   },
   "git": {
     "branch": "main",
-    "commit": "f4000695",
+    "commit": "0eea7325",
     "dirty": true
   }
 }

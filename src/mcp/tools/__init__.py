@@ -20,6 +20,11 @@ Session Tools (Phase 55.1):
 - vetka_session_init: Initialize session with fat context and ELISION compression
 - vetka_session_status: Get current session status
 
+Context Tools (Phase 109.1):
+- vetka_get_pinned_files: Get pinned files with metadata for dynamic context
+- vetka_get_viewport_detail: Get current viewport state (camera, focus, visible nodes)
+- vetka_get_context_dag: Assemble ~500 token context digest from ALL sources with ELISION compression
+
 Write Operations (require approval, dry_run default):
 - vetka_create_branch: Create a new folder
 - vetka_edit_file: Edit or create file
@@ -80,6 +85,12 @@ from .session_tools import (
     vetka_session_status,
     register_session_tools,
 )
+# MARKER_109_2_PINNED_TOOL: Pinned files context tool
+from .pinned_files_tool import (
+    PinnedFilesTool,
+    vetka_get_pinned_files,
+    register_pinned_files_tool,
+)
 # FIX_98.5: Marker tools for @status/@phase management
 from .marker_tool import (
     MarkerTool,
@@ -104,6 +115,17 @@ from .artifact_tools import (
     ApproveArtifactTool,
     RejectArtifactTool,
     ListArtifactsTool,
+)
+# MARKER_109_2_VIEWPORT_TOOL: Viewport detail tool for Phase 109.1
+from .viewport_tool import (
+    ViewportDetailTool,
+    vetka_get_viewport_detail,
+    register_viewport_tool,
+)
+# MARKER_109_3_CONTEXT_DAG: Context DAG tool for dynamic context injection
+from .context_dag_tool import (
+    ContextDAGTool,
+    register_context_dag_tool,
 )
 
 __all__ = [
@@ -131,6 +153,10 @@ __all__ = [
     'vetka_session_init',
     'vetka_session_status',
     'register_session_tools',
+    # Context Tools (Phase 109.1)
+    'PinnedFilesTool',
+    'vetka_get_pinned_files',
+    'register_pinned_files_tool',
     # Marker Tools (FIX_98.5)
     'MarkerTool',
     'MarkerVerifyTool',
@@ -150,4 +176,11 @@ __all__ = [
     'ApproveArtifactTool',
     'RejectArtifactTool',
     'ListArtifactsTool',
+    # Viewport Tool (MARKER_109_2_VIEWPORT_TOOL)
+    'ViewportDetailTool',
+    'vetka_get_viewport_detail',
+    'register_viewport_tool',
+    # Context DAG Tool (MARKER_109_3_CONTEXT_DAG)
+    'ContextDAGTool',
+    'register_context_dag_tool',
 ]
