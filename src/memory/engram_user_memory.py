@@ -490,8 +490,8 @@ class EngramUserMemory:
 
         # Apply ELISION compression
         try:
-            from src.memory.elision import elision_compress
-            compressed = elision_compress(context)
+            from src.memory.elision import compress_context
+            compressed = compress_context(context)
             if isinstance(compressed, str):
                 import json
                 context = json.loads(compressed)

@@ -32,13 +32,18 @@ class ProviderCategory(Enum):
 
 @dataclass
 class ProviderConfig:
-    """Configuration for a provider's key format."""
+    """
+    Configuration for a provider's key format.
+
+    Phase 111.9: Added openai_compatible flag for dynamic routing.
+    """
     prefix: str
     regex: str
     base_url: str
     category: ProviderCategory
     display_name: str
     validation_endpoint: str = "/models"
+    openai_compatible: bool = True  # Phase 111.9: Most APIs are OpenAI-compatible
 
 
 class APIKeyDetector:
@@ -64,7 +69,8 @@ class APIKeyDetector:
             regex=r"^sk-ant-[a-zA-Z0-9\-_]{90,110}$",
             base_url="https://api.anthropic.com/v1",
             category=ProviderCategory.LLM,
-            display_name="Anthropic (Claude)"
+            display_name="Anthropic (Claude)",
+            openai_compatible=False  # Phase 111.9: Uses different format
         ),
 
         # OpenRouter - sk-or-v1-
@@ -91,7 +97,8 @@ class APIKeyDetector:
             regex=r"^AIza[0-9A-Za-z\-_]{35,45}$",
             base_url="https://generativelanguage.googleapis.com/v1beta",
             category=ProviderCategory.LLM,
-            display_name="Google Gemini"
+            display_name="Google Gemini",
+            openai_compatible=False  # Phase 111.9: Uses Google AI format
         ),
 
         # Groq - gsk_
@@ -130,13 +137,31 @@ class APIKeyDetector:
             display_name="Fireworks AI"
         ),
 
-        # Perplexity - pplx-
+        # Perplexity - pa- (new format) or pplx- (legacy)
         "perplexity": ProviderConfig(
-            prefix="pplx-",
-            regex=r"^pplx-[a-zA-Z0-9]{35,60}$",
+            prefix="pa-",
+            regex=r"^pa-[a-zA-Z0-9\-_]{35,60}$",
             base_url="https://api.perplexity.ai/v1",
             category=ProviderCategory.LLM,
             display_name="Perplexity"
+        ),
+
+        # Poe - no unique prefix, generic alphanumeric
+        "poe": ProviderConfig(
+            prefix="",  # No standard prefix
+            regex=r"^[a-zA-Z][a-zA-Z0-9\-_]{35,50}$",  # Starts with letter, 36-51 chars total
+            base_url="https://api.poe.com/v1",  # Phase 111.9: Fixed to v1
+            category=ProviderCategory.AGGREGATOR,
+            display_name="Poe"
+        ),
+
+        # Phase 111.9: Polza AI - pza_ prefix
+        "polza": ProviderConfig(
+            prefix="pza_",
+            regex=r"^pza_[a-zA-Z0-9]{20,50}$",
+            base_url="https://api.polza.ai/api/v1",
+            category=ProviderCategory.AGGREGATOR,
+            display_name="Polza AI"
         ),
 
         # Phase 60.5: xAI (Grok) - xai-
@@ -545,8 +570,9 @@ class APIKeyDetector:
         "huggingface",    # hf_
         "replicate",      # r8_
         "fireworks",      # fw_
-        "perplexity",     # pplx-
+        "perplexity",     # pa- (new format)
         "xai",            # xai- (Grok) - Phase 60.5
+        "poe",            # Generic alphanumeric (lower priority)
         "nvidia",         # nvapi-
         "aws_bedrock",    # AKIA
         "google_vertex",  # ya29.
@@ -717,43 +743,98 @@ class APIKeyDetector:
 
 
 # ============================================================
-# TRUFFLEHOG PATTERNS INTEGRATION - Phase 110
+# PROVIDER CONFIG HELPERS - Phase 111.9
 # ============================================================
 
+def get_provider_config(provider_name: str) -> Optional[ProviderConfig]:
+    """
+    Get provider configuration by name.
+
+    Phase 111.9: Used by provider_registry for dynamic routing.
+
+    Args:
+        provider_name: Provider identifier (e.g., "poe", "polza", "openrouter")
+
+    Returns:
+        ProviderConfig if found, None otherwise
+    """
+    return APIKeyDetector.PATTERNS.get(provider_name)
+
+
+def get_provider_base_url(provider_name: str) -> Optional[str]:
+    """Get base URL for a provider."""
+    config = get_provider_config(provider_name)
+    return config.base_url if config else None
+
+
+def is_openai_compatible(provider_name: str) -> bool:
+    """Check if provider uses OpenAI-compatible API format."""
+    config = get_provider_config(provider_name)
+    return config.openai_compatible if config else True  # Default to True
+
+
+def get_all_provider_names() -> List[str]:
+    """Get list of all known provider names."""
+    return list(APIKeyDetector.PATTERNS.keys())
+
+
+# ============================================================
+# TRUFFLEHOG PATTERNS INTEGRATION - Phase 110 / Phase 113
+# ============================================================
+
+import threading
+
 _trufflehog_patterns: Optional[Dict[str, Any]] = None
+_trufflehog_lock = threading.Lock()  # Phase 113: Thread safety
+
 
 def _load_trufflehog_patterns() -> Dict[str, Any]:
-    """Load TruffleHog-based patterns from JSON file."""
+    """
+    Load TruffleHog-based patterns from JSON file.
+    Phase 113: Added thread safety with lock.
+    """
     global _trufflehog_patterns
+
+    # Fast path: already loaded
     if _trufflehog_patterns is not None:
         return _trufflehog_patterns
 
-    import json
-    from pathlib import Path
+    # Thread-safe loading
+    with _trufflehog_lock:
+        # Double-check after acquiring lock
+        if _trufflehog_patterns is not None:
+            return _trufflehog_patterns
 
-    patterns_file = Path(__file__).parent.parent.parent / "data" / "trufflehog_patterns.json"
-    try:
-        if patterns_file.exists():
-            with open(patterns_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                _trufflehog_patterns = data.get('patterns', {})
-                print(f"[TruffleHog] Loaded {len(_trufflehog_patterns)} patterns")
-        else:
+        import json
+        from pathlib import Path
+
+        patterns_file = Path(__file__).parent.parent.parent / "data" / "trufflehog_patterns.json"
+        try:
+            if patterns_file.exists():
+                with open(patterns_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    _trufflehog_patterns = data.get('patterns', {})
+                    print(f"[TruffleHog] Loaded {len(_trufflehog_patterns)} patterns")
+            else:
+                _trufflehog_patterns = {}
+                print("[TruffleHog] Patterns file not found")
+        except json.JSONDecodeError as e:
+            print(f"[TruffleHog] Invalid JSON in patterns file: {e}")
             _trufflehog_patterns = {}
-            print("[TruffleHog] Patterns file not found")
-    except Exception as e:
-        print(f"[TruffleHog] Error loading patterns: {e}")
-        _trufflehog_patterns = {}
+        except Exception as e:
+            print(f"[TruffleHog] Error loading patterns: {e}")
+            _trufflehog_patterns = {}
 
     return _trufflehog_patterns
 
 
 def detect_with_trufflehog(key: str) -> Optional[Dict[str, Any]]:
     """
-    Detect API key using TruffleHog patterns.
-    Phase 110: Extended detection with 800+ community patterns.
+    Detect API key using TruffleHog-style patterns from JSON file.
+    Phase 113: Fixed detection order (prefix before regex for performance).
 
     This is used as a fallback when built-in detector doesn't match.
+    Currently supports ~36 patterns from data/trufflehog_patterns.json.
 
     Args:
         key: The API key to detect
@@ -770,17 +851,18 @@ def detect_with_trufflehog(key: str) -> Optional[Dict[str, Any]]:
         return None
 
     for pattern_id, pattern_config in patterns.items():
+        # Phase 113: Check prefix FIRST (fast string operation)
+        prefix = pattern_config.get('prefix')
+        if prefix and not key.startswith(prefix):
+            continue  # Skip early if prefix doesn't match
+
         regex = pattern_config.get('regex', '')
         if not regex:
             continue
 
         try:
+            # Phase 113: Regex check SECOND (expensive operation)
             if re.match(regex, key):
-                # Check prefix if specified
-                prefix = pattern_config.get('prefix')
-                if prefix and not key.startswith(prefix):
-                    continue
-
                 confidence = pattern_config.get('confidence', 0.70)
                 return {
                     "provider": pattern_id,

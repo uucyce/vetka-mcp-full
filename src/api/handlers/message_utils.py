@@ -61,8 +61,37 @@ logger = logging.getLogger("VETKA_CONTEXT")
 # Phase 67.2: Configurable weights via environment variables
 # ═══════════════════════════════════════════════════════════════════
 
-QDRANT_WEIGHT = float(os.getenv("VETKA_QDRANT_WEIGHT", "0.7"))
-CAM_WEIGHT = float(os.getenv("VETKA_CAM_WEIGHT", "0.3"))
+# MARKER_109_7_UNIFIED_WEIGHTING: Extended weights for multi-source scoring
+# Phase 67 original: qdrant=0.7, cam=0.3
+# Phase 109.7: Add engram, viewport, hope, mgc (Grok research)
+QDRANT_WEIGHT = float(os.getenv("VETKA_QDRANT_WEIGHT", "0.40"))
+CAM_WEIGHT = float(os.getenv("VETKA_CAM_WEIGHT", "0.20"))
+ENGRAM_WEIGHT = float(os.getenv("VETKA_ENGRAM_WEIGHT", "0.15"))
+VIEWPORT_WEIGHT = float(os.getenv("VETKA_VIEWPORT_WEIGHT", "0.15"))
+HOPE_WEIGHT = float(os.getenv("VETKA_HOPE_WEIGHT", "0.05"))
+MGC_WEIGHT = float(os.getenv("VETKA_MGC_WEIGHT", "0.05"))
+
+# Dynamic context budget per model family
+MODEL_CONTEXT_BUDGETS = {
+    'gpt-4': 8000, 'gpt-4o': 8000,
+    'claude': 8000, 'sonnet': 8000, 'opus': 8000,
+    'grok': 4000,
+    'glm': 4000,
+    'qwen': 2000,
+    'llama': 2000,
+    'haiku': 4000,
+    'gemini': 8000,
+    'default': 4000
+}
+
+def get_context_budget_for_model(model_name: str) -> int:
+    """Get token budget based on model family."""
+    model_lower = model_name.lower() if model_name else ""
+    for key, budget in MODEL_CONTEXT_BUDGETS.items():
+        if key in model_lower:
+            return budget
+    return MODEL_CONTEXT_BUDGETS['default']
+
 MAX_CONTEXT_TOKENS = int(os.getenv("VETKA_MAX_CONTEXT_TOKENS", "4000"))
 MAX_TOKENS_PER_FILE = int(os.getenv("VETKA_MAX_TOKENS_PER_FILE", "1000"))
 VETKA_DEBUG_CONTEXT = os.getenv("VETKA_DEBUG_CONTEXT", "false").lower() == "true"
@@ -77,7 +106,7 @@ ARTIFACT_MAX_TOKENS_PER_FILE = int(
 # [PHASE73-1] Phase 73: JSON Context Builder Configuration
 # ═══════════════════════════════════════════════════════════════════
 VETKA_JSON_CONTEXT_MAX_TOKENS = int(
-    os.getenv("VETKA_JSON_CONTEXT_MAX_TOKENS", "999999")
+    os.getenv("VETKA_JSON_CONTEXT_MAX_TOKENS", "2000")
 )
 VETKA_JSON_CONTEXT_INCLUDE_DEPS = (
     os.getenv("VETKA_JSON_CONTEXT_INCLUDE_DEPS", "true").lower() == "true"
@@ -381,25 +410,182 @@ def _make_cache_key(user_query: str, file_paths: List[str]) -> str:
     return hashlib.md5(content.encode()).hexdigest()
 
 
+# =============================================================================
+# MARKER_109_7_UNIFIED_WEIGHTING: Additional scoring functions
+# =============================================================================
+
+def _batch_get_engram_scores(file_paths: List[str], user_id: str = "default") -> Dict[str, float]:
+    """
+    Phase 109.7: Get Engram preference affinity scores for files.
+
+    Uses user's historical preferences to boost relevant files.
+    """
+    scores = {}
+    try:
+        from src.memory.engram_user_memory import get_engram_user_memory
+
+        engram = get_engram_user_memory()
+        if not engram:
+            return {path: 0.5 for path in file_paths}
+
+        prefs = engram.get_user_preferences(user_id)
+        if not prefs:
+            return {path: 0.5 for path in file_paths}
+
+        # Score files based on user's code preferences
+        code_prefs = getattr(prefs, 'code_preferences', {}) or {}
+        preferred_patterns = code_prefs.get('preferred_patterns', [])
+
+        for path in file_paths:
+            score = 0.5  # Default
+            # Boost if matches user's preferred file types
+            if any(pattern in path for pattern in preferred_patterns):
+                score = 0.8
+            # Boost if recently viewed (viewport_patterns)
+            viewport_prefs = getattr(prefs, 'viewport_patterns', {}) or {}
+            if path in viewport_prefs.get('recent_files', []):
+                score = min(1.0, score + 0.2)
+            scores[path] = score
+
+        return scores
+    except Exception as e:
+        logger.debug(f"[UNIFIED] Engram scoring failed: {e}")
+        return {path: 0.5 for path in file_paths}
+
+
+def _batch_get_viewport_scores(file_paths: List[str], viewport_context: Optional[Dict] = None) -> Dict[str, float]:
+    """
+    Phase 109.7: Get viewport proximity scores for files.
+
+    Files closer to camera get higher scores.
+    Formula: score = 1 / (1 + distance/100)
+    """
+    scores = {}
+
+    if not viewport_context:
+        return {path: 0.5 for path in file_paths}
+
+    try:
+        # Extract visible nodes with distances
+        viewport_nodes = viewport_context.get('viewport_nodes', [])
+        pinned_nodes = viewport_context.get('pinned_nodes', [])
+
+        # Build distance map
+        distance_map = {}
+        for node in viewport_nodes + pinned_nodes:
+            node_path = node.get('path', node.get('name', ''))
+            dist = node.get('distance_to_camera', node.get('d', 500))
+            if node_path:
+                distance_map[node_path] = dist
+
+        # Score each file
+        for path in file_paths:
+            if path in distance_map:
+                dist = distance_map[path]
+                # Inverse distance: closer = higher score
+                scores[path] = 1.0 / (1.0 + dist / 100.0)
+            else:
+                # Not visible - check if pinned (higher priority)
+                is_pinned = any(n.get('is_pinned', False) for n in pinned_nodes
+                               if path in n.get('path', ''))
+                scores[path] = 0.7 if is_pinned else 0.3
+
+        return scores
+    except Exception as e:
+        logger.debug(f"[UNIFIED] Viewport scoring failed: {e}")
+        return {path: 0.5 for path in file_paths}
+
+
+def _batch_get_hope_scores(file_paths: List[str], zoom_level: float = 1.0) -> Dict[str, float]:
+    """
+    Phase 109.7: Get HOPE frequency layer scores.
+
+    Adapts scoring based on zoom level (LOD):
+    - LOW (zoom < 0.5): Boost overview/summary files
+    - MID (0.5 <= zoom < 2): Balanced
+    - HIGH (zoom >= 2): Boost implementation details
+    """
+    scores = {}
+
+    try:
+        # Determine current layer based on zoom
+        if zoom_level < 0.5:
+            layer = "LOW"
+            # Boost: README, docs, __init__.py, index files
+            boost_patterns = ['readme', '__init__', 'index', 'main', 'summary']
+        elif zoom_level < 2.0:
+            layer = "MID"
+            boost_patterns = ['handler', 'service', 'route', 'api', 'controller']
+        else:
+            layer = "HIGH"
+            # Boost: specific implementations, utils, helpers
+            boost_patterns = ['util', 'helper', 'tool', 'impl', '_test', 'spec']
+
+        for path in file_paths:
+            path_lower = path.lower()
+            if any(pattern in path_lower for pattern in boost_patterns):
+                scores[path] = 0.9
+            else:
+                scores[path] = 0.5
+
+        logger.debug(f"[UNIFIED] HOPE layer={layer}, zoom={zoom_level}")
+        return scores
+    except Exception as e:
+        logger.debug(f"[UNIFIED] HOPE scoring failed: {e}")
+        return {path: 0.5 for path in file_paths}
+
+
+def _batch_get_mgc_scores(file_paths: List[str]) -> Dict[str, float]:
+    """
+    Phase 109.7: Get MGC (Multi-Generational Cache) hit scores.
+
+    Files in hot cache (Gen0) get boost.
+    """
+    scores = {}
+
+    try:
+        from src.memory.spiral_context_generator import SpiralContextGenerator
+
+        generator = SpiralContextGenerator()
+        cache = generator.mgc_cache
+
+        for path in file_paths:
+            # Check if in any cache generation
+            cached = cache.get(path)
+            if cached:
+                gen = cached.get('generation', 2)
+                # Gen0 = 1.0, Gen1 = 0.7, Gen2 = 0.4
+                scores[path] = 1.0 - (gen * 0.3)
+            else:
+                scores[path] = 0.3  # Not cached
+
+        return scores
+    except Exception as e:
+        logger.debug(f"[UNIFIED] MGC scoring failed: {e}")
+        return {path: 0.5 for path in file_paths}
+
+
 def _rank_pinned_files(
     pinned_files: list,
     user_query: str,
-    qdrant_weight: float = QDRANT_WEIGHT,
-    cam_weight: float = CAM_WEIGHT,
+    viewport_context: Optional[Dict] = None,
+    user_id: str = "default",
+    zoom_level: float = 1.0,
 ) -> List[Tuple[Dict, float]]:
     """
-    Rank pinned files by relevance to user query.
+    MARKER_109_7_UNIFIED_WEIGHTING: Rank pinned files using multi-source scoring.
 
-    Phase 67.2: Optimized with batch queries and caching.
+    Phase 67.2 → Phase 109.7: Extended from 2 sources to 6 sources.
 
-    Uses weighted combination:
-    relevance_score = qdrant_weight * qdrant_similarity + cam_weight * cam_activation
+    Unified formula:
+    relevance = qdrant*0.40 + cam*0.20 + engram*0.15 + viewport*0.15 + hope*0.05 + mgc*0.05
 
     Args:
         pinned_files: List of {id, path, name, type} dicts
         user_query: User's question/message
-        qdrant_weight: Weight for Qdrant semantic similarity (default from env)
-        cam_weight: Weight for CAM activation score (default from env)
+        viewport_context: Optional viewport data with distances
+        user_id: User ID for Engram preferences
+        zoom_level: Current zoom for HOPE layer selection
 
     Returns:
         List of (file_dict, relevance_score) tuples, sorted by score descending
@@ -423,7 +609,7 @@ def _rank_pinned_files(
     if cache_key in _relevance_cache:
         _cache_hits += 1
         logger.debug(
-            f"[CONTEXT] Cache hit (hits={_cache_hits}, misses={_cache_misses})"
+            f"[UNIFIED] Cache hit (hits={_cache_hits}, misses={_cache_misses})"
         )
         return _relevance_cache[cache_key]
 
@@ -436,26 +622,53 @@ def _rank_pinned_files(
 
         query_embedding = get_embedding(user_query)
     except Exception as e:
-        logger.debug(f"[CONTEXT] Embedding failed: {e}")
+        logger.debug(f"[UNIFIED] Embedding failed: {e}")
 
-    # Phase 67.2: Batch queries instead of N individual queries
+    # MARKER_109_7: Batch queries for ALL 6 sources
     qdrant_scores = _batch_get_qdrant_relevance(file_paths, query_embedding)
     cam_scores = _batch_get_cam_activations(file_paths)
+    engram_scores = _batch_get_engram_scores(file_paths, user_id)
+    viewport_scores = _batch_get_viewport_scores(file_paths, viewport_context)
+    hope_scores = _batch_get_hope_scores(file_paths, zoom_level)
+    mgc_scores = _batch_get_mgc_scores(file_paths)
 
-    # Calculate combined relevance
+    # Calculate unified relevance
     ranked = []
     for pf in file_candidates:
         file_path = pf.get("path", pf.get("name", "unknown"))
 
-        qdrant_score = qdrant_scores.get(file_path, 0.5)
-        cam_score = cam_scores.get(file_path, 0.5)
+        # Get all scores with defaults
+        scores = {
+            'qdrant': qdrant_scores.get(file_path, 0.5),
+            'cam': cam_scores.get(file_path, 0.5),
+            'engram': engram_scores.get(file_path, 0.5),
+            'viewport': viewport_scores.get(file_path, 0.5),
+            'hope': hope_scores.get(file_path, 0.5),
+            'mgc': mgc_scores.get(file_path, 0.5),
+        }
 
-        # Combined relevance
-        relevance = qdrant_weight * qdrant_score + cam_weight * cam_score
+        # MARKER_109_7_UNIFIED_FORMULA: Weighted sum
+        relevance = (
+            scores['qdrant'] * QDRANT_WEIGHT +
+            scores['cam'] * CAM_WEIGHT +
+            scores['engram'] * ENGRAM_WEIGHT +
+            scores['viewport'] * VIEWPORT_WEIGHT +
+            scores['hope'] * HOPE_WEIGHT +
+            scores['mgc'] * MGC_WEIGHT
+        )
+
+        # Clamp to [0, 1]
+        relevance = min(1.0, max(0.0, relevance))
+
         ranked.append((pf, relevance))
 
     # Sort by relevance descending
     ranked.sort(key=lambda x: x[1], reverse=True)
+
+    # Log top-5 for debugging
+    if VETKA_DEBUG_CONTEXT and ranked:
+        top5_info = ", ".join(f"{pf.get('name', '?')}={score:.2f}" for pf, score in ranked[:5])
+        logger.info(f"[UNIFIED] Top-5: {top5_info}")
 
     # Phase 67.2: Store in cache (with size limit)
     if len(_relevance_cache) >= _cache_max_size:
@@ -497,19 +710,23 @@ def build_pinned_context(
     max_tokens_per_file: int = MAX_TOKENS_PER_FILE,
     max_total_tokens: int = MAX_CONTEXT_TOKENS,
     is_artifact_panel: bool = False,  # NEW: Flag for artifact panel unlimited tokens
+    viewport_context: Optional[Dict] = None,  # MARKER_109_7: For unified weighting
+    user_id: str = "default",  # MARKER_109_7: For Engram preferences
+    zoom_level: float = 1.0,  # MARKER_109_7: For HOPE layer selection
+    model_name: str = "",  # MARKER_109_7: For dynamic token budget
 ) -> str:
     """
-    Phase 67: Build smart context string from pinned files.
+    Phase 67 → Phase 109.7: Build smart context with unified weighting.
 
-    Phase 67.2: Uses configurable weights and optional debug mode.
+    MARKER_109_7_UNIFIED_WEIGHTING: Extended scoring from 2 to 6 sources.
 
-    Uses Qdrant semantic search + CAM activation scores to:
-    1. Rank files by relevance to user query
-    2. Select top N most relevant files
-    3. Smart-truncate content (preserve beginning + end)
-    4. Token-based limits instead of char-based
-
-    Falls back to legacy logic if Qdrant/CAM unavailable.
+    Uses multi-source scoring:
+    1. Qdrant semantic similarity (40%)
+    2. CAM activation/surprise (20%)
+    3. Engram user preferences (15%)
+    4. Viewport proximity (15%)
+    5. HOPE frequency layer (5%)
+    6. MGC cache hits (5%)
 
     Args:
         pinned_files: List of {id, path, name, type} dicts
@@ -518,6 +735,10 @@ def build_pinned_context(
         max_tokens_per_file: Token limit per file (default from env)
         max_total_tokens: Total token budget for context (default from env)
         is_artifact_panel: If True, use unlimited tokens for full file display
+        viewport_context: Viewport data with file distances (Phase 109.7)
+        user_id: User ID for Engram preferences (Phase 109.7)
+        zoom_level: Current zoom for HOPE layer (Phase 109.7)
+        model_name: Model name for dynamic token budget (Phase 109.7)
 
     Returns:
         XML-formatted context string
@@ -531,11 +752,25 @@ def build_pinned_context(
     if not file_candidates:
         return ""
 
+    # MARKER_109_7: Dynamic token budget based on model
+    if model_name:
+        effective_max_tokens = get_context_budget_for_model(model_name)
+        if effective_max_tokens != max_total_tokens:
+            logger.debug(f"[UNIFIED] Token budget adjusted: {max_total_tokens} → {effective_max_tokens} for {model_name}")
+            max_total_tokens = effective_max_tokens
+
     # Try smart ranking, fall back to original order
     use_smart_selection = False
     try:
         if user_query:
-            ranked_files = _rank_pinned_files(file_candidates, user_query)
+            # MARKER_109_7: Pass all context for unified weighting
+            ranked_files = _rank_pinned_files(
+                file_candidates,
+                user_query,
+                viewport_context=viewport_context,
+                user_id=user_id,
+                zoom_level=zoom_level
+            )
             use_smart_selection = True
             avg_relevance = (
                 sum(r[1] for r in ranked_files) / len(ranked_files)
@@ -616,8 +851,19 @@ Cache: {cache_stats["hit_rate"]} hit rate ({cache_stats["hits"]} hits, {cache_st
 </context_debug>
 """
 
+    # MARKER_109_5_CONTEXT_META: Add meta-info so agents understand HOW context was built
+    context_meta = f"""<context_meta>
+  selection: {"qdrant_semantic + cam_activation" if use_smart_selection else "original_order"}
+  total_pinned: {len(file_candidates)}
+  included: {files_included}
+  tokens: ~{total_tokens}
+  compression: elision
+  weights: qdrant={QDRANT_WEIGHT}, cam={CAM_WEIGHT}
+</context_meta>
+"""
+
     return f"""
-<pinned_context>
+{context_meta}<pinned_context>
 User has pinned {len(file_candidates)} file(s). Included {files_included} most relevant file(s) for context (~{total_tokens} tokens).{selection_note}
 
 {chr(10).join(context_parts)}
@@ -1670,7 +1916,17 @@ def build_viewport_summary(
         f"[VIEWPORT] Summary built: {total_pinned} pinned, {total_visible} visible, zoom ~{zoom}"
     )
 
-    return "\n".join(parts) + "\n\n"
+    # MARKER_109_5_VIEWPORT_META: Add meta-info about viewport context assembly
+    viewport_meta = f"""<viewport_meta>
+  zoom: {zoom} ({zoom_description})
+  lod_model: google_maps_foveated
+  pinned_shown: {min(len(pinned), max_pinned_files) if pinned else 0}/{len(pinned) if pinned else 0}
+  visible_shown: {min(len(visible), max_visible_files) if visible else 0}/{len(visible) if visible else 0}
+  priority: center_first + distance_sorted
+</viewport_meta>
+"""
+
+    return viewport_meta + "\n".join(parts) + "\n\n"
 
 
 # Export all utilities

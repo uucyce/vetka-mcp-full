@@ -32,8 +32,7 @@ router = APIRouter(prefix="/api", tags=["config"])
 class ConfigUpdate(BaseModel):
     """Configuration update request - any JSON object."""
     # Accept any fields for flexible config updates
-    class Config:
-        extra = "allow"
+    model_config = {"extra": "allow"}
 
 
 class ToolExecuteRequest(BaseModel):
@@ -614,9 +613,13 @@ async def get_agents_status():
 # PHASE 48: MODEL DIRECTORY API
 # ============================================================
 
-@router.get("/models")
-async def list_models(refresh: bool = False):
+@router.get("/models-legacy")
+async def list_models_legacy(refresh: bool = False):
     """
+    DEPRECATED: Use /api/models from model_routes.py instead.
+    This endpoint is kept for backward compatibility only.
+    Phase 112.5: Renamed to avoid conflict with model_routes.py
+
     Get all available models with pricing information.
 
     Args:

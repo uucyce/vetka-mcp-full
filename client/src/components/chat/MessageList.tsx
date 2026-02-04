@@ -28,6 +28,11 @@ interface Props {
 }
 
 export function MessageList({ messages, isTyping, onReply, onOpenArtifact, onReaction }: Props) {
+  // Phase 111.17: Helper to look up message by ID for reply quotes
+  const getMessageById = (id: string): ChatMessage | undefined => {
+    return messages.find(m => m.id === id);
+  };
+
   if (messages.length === 0 && !isTyping) {
     return (
       <div style={{
@@ -58,6 +63,7 @@ export function MessageList({ messages, isTyping, onReply, onOpenArtifact, onRea
           onReply={onReply}
           onOpenArtifact={onOpenArtifact}
           onReaction={onReaction}
+          getMessageById={getMessageById}  // Phase 111.17: Pass lookup helper for replies
         />
       ))}
 

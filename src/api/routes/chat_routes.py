@@ -49,6 +49,7 @@ class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
     model_override: Optional[str] = None
+    model_source: Optional[str] = None  # Phase 111.9: Source for multi-provider routing (poe, polza, etc.)
     system_prompt: Optional[str] = None
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 999999
@@ -275,6 +276,7 @@ async def api_chat(req: ChatRequest, request: Request):
         user_message = req.message.strip()
         conversation_id = req.conversation_id or str(uuid.uuid4())
         model_override = req.model_override
+        model_source = req.model_source  # Phase 111.10: Multi-provider routing
         system_prompt = req.system_prompt
         temperature = req.temperature
         max_tokens = req.max_tokens
@@ -284,11 +286,12 @@ async def api_chat(req: ChatRequest, request: Request):
 
         # Build user_data for orchestrator
         user_data = None
-        if node_id or node_path or file_path:
+        if node_id or node_path or file_path or model_source:
             user_data = {
                 "node_id": node_id,
                 "node_path": node_path or file_path,
                 "file_path": file_path or node_path,
+                "model_source": model_source,  # Phase 111.10
             }
 
         # Validate

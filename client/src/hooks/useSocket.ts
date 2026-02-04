@@ -412,6 +412,8 @@ export function useSocket() {
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const tokenBufferRef = useRef<Map<string, string>>(new Map());
   const rafIdRef = useRef<number | null>(null);
+  // Phase 111.21: Typing throttle ref
+  const lastTypingEmitRef = useRef<number>(0);
 
   const setNodes = useStore((state) => state.setNodes);
   const setNodesFromRecord = useStore((state) => state.setNodesFromRecord);
@@ -844,6 +846,7 @@ export function useSocket() {
       setIsTyping(true);
 
       // Create placeholder message for streaming
+      // Phase 111.10.2: Include model_source for Reply routing
       const streamingMessage: ChatMessage = {
         id: data.id,
         role: 'assistant',
@@ -851,7 +854,7 @@ export function useSocket() {
         content: '',
         type: 'text',
         timestamp: new Date().toISOString(),
-        metadata: { model: data.model, isStreaming: true },
+        metadata: { model: data.model, model_source: data.model_source, isStreaming: true },
       };
       addChatMessage(streamingMessage);
     });
@@ -1435,7 +1438,8 @@ export function useSocket() {
   // Phase 61: Added pinned files for multi-file context
   // [PHASE70-M3] useSocket.ts: Viewport in sendMessage — IMPLEMENTED
   // FIX_109.4b: Added chatId parameter for immediate passing (React setState is async)
-  const sendMessage = useCallback((message: string, nodePath?: string, modelId?: string, chatId?: string) => {
+  // Phase 111.9: Added modelSource for multi-provider routing
+  const sendMessage = useCallback((message: string, nodePath?: string, modelId?: string, chatId?: string, modelSource?: string) => {
     if (!socketRef.current?.connected) {
       // console.warn('[Socket] Not connected, cannot send message');
       return;
@@ -1476,11 +1480,15 @@ export function useSocket() {
     // FIX_109.4b: Use passed chatId first, fallback to store
     const effectiveChatId = chatId || useStore.getState().currentChatId;
 
+    // Phase 111.10.2: DEBUG - trace model_source
+    console.log('[DEBUG_SOURCE] sendMessage:', { modelId, modelSource });
+
     socketRef.current.emit('user_message', {
       text: message,                    // Backend expects 'text'
       node_path: nodePath || 'unknown', // Backend expects 'node_path'
       node_id: 'root',                  // Backend expects 'node_id'
       model: modelId,                   // Phase 48.1: Optional model override
+      model_source: modelSource,        // Phase 111.9: Source for multi-provider routing
       pinned_files: pinnedFiles.length > 0 ? pinnedFiles : undefined,  // Phase 61
       // Phase 70: Full viewport context for AI spatial awareness
       viewport_context: viewportContext || undefined,
@@ -1544,7 +1552,14 @@ export function useSocket() {
     // console.log('[Socket] Emitted group_message:', { groupId, senderId, replyToId });
   }, []);
 
+  // Phase 111.21: Typing indicator with 500ms throttle
+  // Reduces socket events ~10x during fast typing
+  const TYPING_THROTTLE_MS = 500;
   const sendTypingIndicator = useCallback((groupId: string, agentId: string) => {
+    const now = Date.now();
+    if (now - lastTypingEmitRef.current < TYPING_THROTTLE_MS) return;
+
+    lastTypingEmitRef.current = now;
     socketRef.current?.emit('group_typing', {
       group_id: groupId,
       agent_id: agentId,

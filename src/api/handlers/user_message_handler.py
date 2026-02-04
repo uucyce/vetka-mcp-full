@@ -217,6 +217,10 @@ def register_user_message_handler(sio, app=None):
 
         # Phase 48.1: Model routing from client
         requested_model = data.get("model")
+        # Phase 111.9: Source for multi-provider routing (poe, polza, openrouter, etc.)
+        model_source = data.get("model_source")
+        # Phase 111.10.2: DEBUG - trace model_source
+        print(f"[DEBUG_SOURCE] model={requested_model}, model_source={model_source}")
 
         # Phase 61: Pinned files for multi-file context
         pinned_files = data.get("pinned_files", [])
@@ -587,26 +591,30 @@ def register_user_message_handler(sio, app=None):
 
                 # Phase 93.3: Use call_model_v2_stream from provider_registry
                 # Emit stream start
+                # Phase 111.10.2: Include model_source for Reply routing
                 await sio.emit(
                     "stream_start",
                     {
                         "id": msg_id,
                         "agent": agent_short_name,
                         "model": requested_model,
+                        "model_source": model_source,  # Phase 111.10.2
                     },
                     to=sid,
                 )
 
                 try:
                     # Phase 93.3: Detect provider from model name (XAI/Grok support)
+                    # Phase 111.9: Use model_source for multi-provider routing
                     from src.elisya.provider_registry import ProviderRegistry
-                    detected_provider = ProviderRegistry.detect_provider(requested_model)
+                    detected_provider = ProviderRegistry.detect_provider(requested_model, source=model_source)
 
                     # Use unified streaming
                     async for token in call_model_v2_stream(
                         messages=[{"role": "user", "content": model_prompt}],
                         model=requested_model,
                         provider=detected_provider,
+                        source=model_source,  # Phase 111.9
                         temperature=0.7,
                     ):
                         if token:
@@ -620,32 +628,9 @@ def register_user_message_handler(sio, app=None):
                             )
 
                 except XaiKeysExhausted:
-                    # Phase 93.3: Handle XAI key exhaustion gracefully
-                    print(f"[MODEL_DIRECTORY] XAI keys exhausted, falling back to OpenRouter")
-                    full_response = "⚠️ XAI API keys exhausted. Trying OpenRouter fallback..."
-                    try:
-                        # MARKER_FALLBACK_TOOLS: Get tools for OpenRouter fallback - IMPLEMENTED
-                        from src.agents.tools import get_tools_for_agent
-                        fallback_tools = get_tools_for_agent("Dev")  # Dev has most tools
-
-                        # Retry with OpenRouter
-                        async for token in call_model_v2_stream(
-                            messages=[{"role": "user", "content": model_prompt}],
-                            model=requested_model,
-                            provider=Provider.OPENROUTER,
-                            temperature=0.7,
-                            tools=fallback_tools,
-                        ):
-                            if token:
-                                full_response += token
-                                tokens_output += 1
-                                await sio.emit(
-                                    "stream_token",
-                                    {"id": msg_id, "token": token},
-                                    to=sid,
-                                )
-                    except Exception as fallback_err:
-                        full_response = f"Error: All providers failed - {str(fallback_err)[:100]}"
+                    # Phase 111.9: NO FALLBACK - user should change provider manually
+                    print(f"[MODEL_DIRECTORY] XAI keys exhausted - NO FALLBACK")
+                    full_response = "❌ XAI API keys exhausted. Please select a different provider or model."
 
                 except Exception as stream_err:
                     print(f"[MODEL_DIRECTORY] Streaming error: {stream_err}")
@@ -953,40 +938,91 @@ When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!
                             # Phase 93.3: call_model_v2 returns dict format
                             response_text = message_data.get("content", "No response")
                     else:
-                        # Phase 93.3: Use call_model_v2 for OpenRouter/XAI models
+                        # Phase 93.3: Use call_model_v2 for OpenRouter/XAI/POLZA models
                         print(f"[DIRECT] Calling via provider_registry: {model_to_use}")
 
                         # MARKER_FALLBACK_TOOLS: Get tools for non-Ollama models - IMPLEMENTED
                         from src.agents.tools import get_tools_for_agent
                         model_tools = get_tools_for_agent("Dev")  # Dev has most tools
+                        print(f"[DIRECT] Tools available: {len(model_tools)}")
+
+                        # MARKER_109_6_TOOL_GUIDANCE: Add tool guidance system message for ALL models
+                        tool_system = """You have access to tools. Use them when appropriate:
+- camera_focus: Move 3D camera to show user specific files/folders. USE THIS when asked to show/navigate/focus on something.
+- search_semantic: Search codebase by meaning/concept
+- search_codebase: Search by text/regex pattern
+- get_tree_context: Get file structure and dependencies
+- read_code_file: Read file contents
+- arc_suggest: Get creative suggestions for workflow improvements
+
+When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!
+When user asks about code - USE search_semantic or read_code_file!"""
 
                         try:
-                            # Auto-detect provider (OpenRouter, XAI, etc.)
+                            # Auto-detect provider (OpenRouter, XAI, POLZA, etc.)
                             from src.elisya.provider_registry import ProviderRegistry
                             detected_provider = ProviderRegistry.detect_provider(model_to_use)
 
+                            # Build messages with tool guidance (like Ollama path)
+                            messages_with_tools = [
+                                {"role": "system", "content": tool_system},
+                                {"role": "user", "content": model_prompt},
+                            ]
+
                             result = await call_model_v2(
-                                messages=[{"role": "user", "content": model_prompt}],
+                                messages=messages_with_tools,
                                 model=model_to_use,
                                 provider=detected_provider,
                                 temperature=0.7,
                                 tools=model_tools,
                             )
-                            response_text = result.get("message", {}).get("content", "No response")
+
+                            # Handle tool calls for non-Ollama models
+                            message_data = result.get("message", {})
+                            tool_calls = message_data.get("tool_calls", [])
+
+                            if tool_calls:
+                                print(f"[DIRECT] Tool calls received: {len(tool_calls)}")
+                                from src.tools import SafeToolExecutor, ToolCall
+                                executor = SafeToolExecutor()
+                                tool_results = []
+
+                                for tc in tool_calls:
+                                    # Handle both dict and object formats
+                                    if isinstance(tc, dict):
+                                        func = tc.get("function", {})
+                                        tool_name = func.get("name", "unknown")
+                                        try:
+                                            tool_args = json.loads(func.get("arguments", "{}"))
+                                        except:
+                                            tool_args = {}
+                                    else:
+                                        tool_name = tc.function.name
+                                        try:
+                                            tool_args = json.loads(tc.function.arguments)
+                                        except:
+                                            tool_args = {}
+
+                                    print(f"[DIRECT] Executing tool: {tool_name}({tool_args})")
+                                    tool_call = ToolCall(name=tool_name, arguments=tool_args)
+                                    result_obj = await executor.execute(tool_call)
+                                    tool_results.append({
+                                        "tool": tool_name,
+                                        "result": result_obj.result if result_obj.success else result_obj.error
+                                    })
+
+                                # Format tool results for response
+                                response_text = "Tool results:\n" + "\n".join(
+                                    f"- {r['tool']}: {str(r['result'])[:500]}" for r in tool_results
+                                )
+                            else:
+                                response_text = message_data.get("content", "No response")
 
                         except XaiKeysExhausted:
-                            print(f"[DIRECT] XAI keys exhausted, trying OpenRouter fallback")
-                            try:
-                                result = await call_model_v2(
-                                    messages=[{"role": "user", "content": model_prompt}],
-                                    model=model_to_use,
-                                    provider=Provider.OPENROUTER,
-                                    temperature=0.7,
-                                    tools=model_tools,
-                                )
-                                response_text = result.get("message", {}).get("content", "No response")
-                            except Exception as fallback_err:
-                                response_text = f"All providers failed: {str(fallback_err)[:100]}"
+                            # Phase 111.10: NO FALLBACK between providers
+                            # User should change provider manually
+                            print(f"[DIRECT] XAI keys exhausted - NO FALLBACK")
+                            response_text = "❌ XAI API keys exhausted. Please select a different provider or model."
 
                         except Exception as model_err:
                             print(f"[DIRECT] Model call error: {model_err}")

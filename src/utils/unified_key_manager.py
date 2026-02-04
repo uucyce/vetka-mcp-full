@@ -1,13 +1,19 @@
 """
-VETKA UnifiedKeyManager - Phase 57.12.
+VETKA UnifiedKeyManager - Phase 111.9.
 
 Single source of truth for all API key management.
 Combines features from SecureKeyManager and KeyManager.
 
+Phase 111.9 (2025-02-04): Universal key rotation for ALL providers
+- Added get_key_with_rotation() for any provider
+- Added rotate_provider_key() universal rotation
+- report_failure() now auto-rotates for any provider
+- Backwards compatible with OpenRouter-specific methods
+
 @status: active
-@phase: 96
+@phase: 111.9
 @depends: dataclasses, pathlib, json
-@used_by: model_router_v2.py, api_key_service.py, voice providers
+@used_by: model_router_v2.py, api_key_service.py, voice providers, provider_registry.py
 """
 
 from dataclasses import dataclass, field
@@ -34,15 +40,27 @@ class ProviderType(Enum):
     """
     Core API key providers (statically defined).
     Dynamic providers use string keys directly.
+
+    Phase 112: Added POLZA, POE, MISTRAL for multi-source model support.
+    Phase 111.9: Synced with provider_registry.Provider - keep in sync!
+
+    NOTE: This enum must match provider_registry.Provider values.
     """
+    # === Core providers ===
     OPENROUTER = "openrouter"
     GEMINI = "gemini"
+    GOOGLE = "google"  # Phase 111.9: Sync with provider_registry
     OLLAMA = "ollama"
-    NANOGPT = "nanogpt"
-    TAVILY = "tavily"
     XAI = "xai"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    # === Multi-source aggregators ===
+    POLZA = "polza"
+    POE = "poe"
+    MISTRAL = "mistral"
+    PERPLEXITY = "perplexity"
+    NANOGPT = "nanogpt"
+    TAVILY = "tavily"
 
 
 # Type alias for provider (can be enum OR string for dynamic providers)
@@ -153,9 +171,18 @@ class UnifiedKeyManager:
             ProviderType.XAI: [],
             ProviderType.OPENAI: [],
             ProviderType.ANTHROPIC: [],
+            # Phase 112: New aggregator providers
+            ProviderType.POLZA: [],
+            ProviderType.POE: [],
+            ProviderType.MISTRAL: [],
+            ProviderType.PERPLEXITY: [],  # Phase 113
         }
 
-        # OpenRouter rotation state (from SecureKeyManager)
+        # Phase 111.9: Universal rotation state for ALL providers
+        # Dict[ProviderKey, int] - current index for each provider
+        self._current_indices: Dict[ProviderKey, int] = {}
+
+        # Backwards compatibility alias
         self._current_openrouter_index = 0
 
         # Command history
@@ -171,6 +198,11 @@ class UnifiedKeyManager:
             ProviderType.XAI: self._validate_xai_key,
             ProviderType.OPENAI: self._validate_openai_key,
             ProviderType.ANTHROPIC: self._validate_anthropic_key,
+            # Phase 112: New aggregator providers
+            ProviderType.POLZA: self._validate_polza_key,
+            ProviderType.POE: self._validate_poe_key,
+            ProviderType.MISTRAL: self._validate_mistral_key,
+            ProviderType.PERPLEXITY: self._validate_perplexity_key,  # Phase 113
         }
 
         # Learned patterns for dynamic providers
@@ -181,70 +213,123 @@ class UnifiedKeyManager:
         self._load_from_config()
 
     # ============================================================
-    # OPENROUTER ROTATION (from SecureKeyManager)
+    # UNIVERSAL KEY ROTATION (Phase 111.9)
+    # ============================================================
+
+    def get_key_with_rotation(self, provider: ProviderKey, rotate: bool = False) -> Optional[str]:
+        """
+        Phase 111.9: Universal key rotation for ANY provider.
+
+        Works with: OpenRouter, Poe, Polza, Mistral, XAI, etc.
+        If provider has multiple keys, rotates between them on failure.
+
+        Args:
+            provider: Provider enum or string
+            rotate: If True, rotate to next key BEFORE returning
+
+        Returns:
+            API key string or None if no keys available
+        """
+        self._ensure_provider_initialized(provider)
+        provider_keys = self.keys.get(provider, [])
+
+        if not provider_keys:
+            return None
+
+        # Get available keys (skip rate-limited)
+        available_keys = [r for r in provider_keys if r.is_available()]
+        if not available_keys:
+            provider_name = self._get_provider_name(provider)
+            logger.warning(f"[UnifiedKeyManager] All {provider_name} keys in cooldown!")
+            return None
+
+        # Get current index for this provider (default 0)
+        current_idx = self._current_indices.get(provider, 0)
+
+        # Rotate first if requested
+        if rotate:
+            current_idx = (current_idx + 1) % len(available_keys)
+            self._current_indices[provider] = current_idx
+            provider_name = self._get_provider_name(provider)
+            logger.info(f"[UnifiedKeyManager] Rotated {provider_name} to key index {current_idx}")
+
+        # Ensure index is within bounds
+        idx = current_idx % len(available_keys)
+        return available_keys[idx].key
+
+    def rotate_provider_key(self, provider: ProviderKey) -> None:
+        """
+        Phase 111.9: Explicitly rotate to next key for ANY provider.
+        Call this when current key fails (402, 401, timeout).
+        """
+        self._ensure_provider_initialized(provider)
+        provider_keys = self.keys.get(provider, [])
+        available_keys = [r for r in provider_keys if r.is_available()]
+
+        if available_keys:
+            old_index = self._current_indices.get(provider, 0)
+            new_index = (old_index + 1) % len(available_keys)
+            self._current_indices[provider] = new_index
+            provider_name = self._get_provider_name(provider)
+            logger.info(f"[UnifiedKeyManager] Rotated {provider_name} key: {old_index} -> {new_index}")
+
+    def reset_provider_index(self, provider: ProviderKey) -> None:
+        """
+        Phase 111.9: Reset provider to first key (index 0).
+        Call at start of new conversation to use preferred keys first.
+        """
+        current = self._current_indices.get(provider, 0)
+        if current != 0:
+            provider_name = self._get_provider_name(provider)
+            logger.info(f"[UnifiedKeyManager] Reset {provider_name} to index 0 (was {current})")
+            self._current_indices[provider] = 0
+
+    def get_provider_keys_count(self, provider: ProviderKey) -> int:
+        """Get total number of available keys for any provider."""
+        self._ensure_provider_initialized(provider)
+        provider_keys = self.keys.get(provider, [])
+        return len([r for r in provider_keys if r.is_available()])
+
+    # ============================================================
+    # OPENROUTER ROTATION (backwards compatibility)
     # ============================================================
 
     def get_openrouter_key(self, index: Optional[int] = None, rotate: bool = False) -> Optional[str]:
         """
         Get OpenRouter key with rotation control.
-
-        Phase 93.1: Returns FREE key (index 0) by default.
-        Priority order: FREE keys first, PAID key last (save money).
-        Use rotate=True or rotate_to_next() when key fails.
-
-        Args:
-            index: Specific index (0-based) or None for current key
-            rotate: If True, rotate to next key BEFORE returning
-
-        Returns:
-            API key string or None
+        Phase 111.9: Now delegates to universal get_key_with_rotation().
         """
-        openrouter_keys = self.keys.get(ProviderType.OPENROUTER, [])
-        if not openrouter_keys:
-            return None
-
-        # Get available keys (skip rate-limited)
-        available_keys = [r for r in openrouter_keys if r.is_available()]
-        if not available_keys:
-            # All keys in cooldown
-            logger.warning("[UnifiedKeyManager] All OpenRouter keys in cooldown!")
-            return None
-
         if index is not None:
+            # Specific index requested
+            available_keys = [r for r in self.keys.get(ProviderType.OPENROUTER, []) if r.is_available()]
             if 0 <= index < len(available_keys):
                 return available_keys[index].key
             return None
 
-        # Rotate first if requested
-        if rotate:
-            self._current_openrouter_index = (self._current_openrouter_index + 1) % len(available_keys)
-            logger.info(f"[UnifiedKeyManager] Rotated to key index {self._current_openrouter_index}")
+        # Delegate to universal rotation
+        key = self.get_key_with_rotation(ProviderType.OPENROUTER, rotate=rotate)
 
-        # Return current key (defaults to index 0 = free key)
-        idx = self._current_openrouter_index % len(available_keys)
-        return available_keys[idx].key
+        # Keep backwards compat index in sync
+        self._current_openrouter_index = self._current_indices.get(ProviderType.OPENROUTER, 0)
+
+        return key
 
     def rotate_to_next(self) -> None:
         """
         Explicitly rotate to next OpenRouter key.
-        Call this when current key fails (402, 401, timeout).
+        Phase 111.9: Now delegates to universal rotate_provider_key().
         """
-        openrouter_keys = self.keys.get(ProviderType.OPENROUTER, [])
-        available_keys = [r for r in openrouter_keys if r.is_available()]
-
-        if available_keys:
-            old_index = self._current_openrouter_index
-            self._current_openrouter_index = (self._current_openrouter_index + 1) % len(available_keys)
-            logger.info(f"[UnifiedKeyManager] Rotated key: {old_index} -> {self._current_openrouter_index}")
+        self.rotate_provider_key(ProviderType.OPENROUTER)
+        # Keep backwards compat index in sync
+        self._current_openrouter_index = self._current_indices.get(ProviderType.OPENROUTER, 0)
 
     def reset_to_free(self) -> None:
         """
         Phase 93.1: Reset to free key (index 0).
-        Call at start of new conversation to use free keys first.
+        Phase 111.9: Now delegates to universal reset_provider_index().
         """
-        if self._current_openrouter_index != 0:
-            logger.info(f"[UnifiedKeyManager] Reset to free key (was index {self._current_openrouter_index})")
-            self._current_openrouter_index = 0
+        self.reset_provider_index(ProviderType.OPENROUTER)
+        self._current_openrouter_index = 0
 
     # Alias for backwards compatibility
     def reset_to_paid(self) -> None:
@@ -253,8 +338,7 @@ class UnifiedKeyManager:
 
     def get_openrouter_keys_count(self) -> int:
         """Get total number of available OpenRouter keys."""
-        openrouter_keys = self.keys.get(ProviderType.OPENROUTER, [])
-        return len([r for r in openrouter_keys if r.is_available()])
+        return self.get_provider_keys_count(ProviderType.OPENROUTER)
 
     # ============================================================
     # KEY ACCESS (combined)
@@ -262,28 +346,20 @@ class UnifiedKeyManager:
 
     def get_key(self, provider: str) -> Optional[str]:
         """
-        Get active key for any provider.
+        Get active key for any provider with rotation support.
+
+        Phase 111.9: Now uses universal rotation for ALL providers.
+        If provider has multiple keys, returns current key in rotation.
 
         Args:
-            provider: Provider name (e.g., 'anthropic', 'gemini', 'openrouter')
+            provider: Provider name (e.g., 'anthropic', 'gemini', 'openrouter', 'poe', 'polza')
 
         Returns:
             API key or None
         """
         provider_key = self._get_provider_key(provider)
-        self._ensure_provider_initialized(provider_key)
-
-        # For OpenRouter, use rotation logic
-        if provider_key == ProviderType.OPENROUTER:
-            return self.get_openrouter_key()
-
-        # For other providers, get first available
-        for record in self.keys.get(provider_key, []):
-            if record.is_available():
-                return record.key
-
-        logger.debug(f"[UnifiedKeyManager] No key found for provider: {provider}")
-        return None
+        # Phase 111.9: Use universal rotation for ALL providers
+        return self.get_key_with_rotation(provider_key, rotate=False)
 
     def get_key_with_record(self, provider: ProviderKey) -> Optional[APIKeyRecord]:
         """Get first available key record for provider."""
@@ -318,10 +394,12 @@ class UnifiedKeyManager:
         """
         Report key failure and optionally rotate to next key.
 
+        Phase 111.9: Auto-rotation now works for ALL providers, not just OpenRouter.
+
         Args:
             key: The failed API key
             mark_cooldown: If True, start 24h cooldown
-            auto_rotate: If True, automatically rotate to next key (Phase 100.1 fix)
+            auto_rotate: If True, automatically rotate to next key
         """
         for provider, provider_keys in self.keys.items():
             for record in provider_keys:
@@ -331,13 +409,19 @@ class UnifiedKeyManager:
                     else:
                         record.failure_count += 1
 
-                    # Phase 100.1: Auto-rotate on failure
-                    # FIX_110.1: Fixed AttributeError - use _current_openrouter_index instead of current_key_index
-                    if auto_rotate and provider == ProviderType.OPENROUTER:
-                        old_idx = self._current_openrouter_index
-                        self.rotate_to_next()  # No argument - method signature is rotate_to_next(self)
-                        new_idx = self._current_openrouter_index
-                        logger.info(f"[UnifiedKeyManager] Auto-rotated OR key: {old_idx} -> {new_idx}")
+                    # Phase 111.9: Auto-rotate on failure for ANY provider with multiple keys
+                    if auto_rotate:
+                        available_count = len([r for r in provider_keys if r.is_available()])
+                        if available_count > 1:  # Only rotate if there are other keys
+                            old_idx = self._current_indices.get(provider, 0)
+                            self.rotate_provider_key(provider)
+                            new_idx = self._current_indices.get(provider, 0)
+                            provider_name = self._get_provider_name(provider)
+                            logger.info(f"[UnifiedKeyManager] Auto-rotated {provider_name} key: {old_idx} -> {new_idx}")
+
+                            # Keep backwards compat for OpenRouter
+                            if provider == ProviderType.OPENROUTER:
+                                self._current_openrouter_index = new_idx
                     return
 
     def report_success(self, key: str):
@@ -384,6 +468,45 @@ class UnifiedKeyManager:
 
     def _validate_anthropic_key(self, key: str) -> bool:
         return key.startswith("sk-ant-") and len(key) > 40
+
+    # Phase 112: New aggregator validators
+    def _validate_polza_key(self, key: str) -> bool:
+        """Polza AI keys start with 'pza_' prefix."""
+        return key.startswith("pza_") and len(key) > 20
+
+    def _validate_poe_key(self, key: str) -> bool:
+        """
+        Poe API keys validation.
+
+        Phase 113: Stricter validation based on observed patterns.
+        Poe keys are alphanumeric with hyphens, typically 35-50 chars.
+        Example: kwodYaOPh6Oix7rI-XJMVDigFvkFdrDv420N5TauLqo
+        """
+        if len(key) < 35 or len(key) > 50:
+            return False
+        # Must start with letter
+        if not key[0].isalpha():
+            return False
+        # Allow alphanumeric, hyphens, underscores
+        allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+        return all(c in allowed for c in key)
+
+    def _validate_mistral_key(self, key: str) -> bool:
+        """Mistral AI keys - alphanumeric, 32+ chars."""
+        return len(key) >= 32 and key.replace("-", "").replace("_", "").isalnum()
+
+    def _validate_perplexity_key(self, key: str) -> bool:
+        """
+        Perplexity AI keys validation.
+
+        Phase 113: Perplexity keys have 'pa-' prefix (NOT 'pplx-').
+        Example: pa-eT5WN...JZIQ (44-54 chars total)
+        """
+        if not key.startswith("pa-"):
+            return False
+        if len(key) < 44 or len(key) > 54:
+            return False
+        return True
 
     def _validate_dynamic_key(self, key: str, provider: str) -> bool:
         """Validate key using learned pattern or basic check."""
@@ -650,12 +773,19 @@ class UnifiedKeyManager:
         return f"{key[:10]}***{key[-4:]}"
 
     def validate_keys(self) -> Dict[str, bool]:
-        """Check if keys exist for all providers."""
+        """Check if keys exist for all providers. Phase 112: Extended with new providers."""
         return {
             'openrouter': len([r for r in self.keys.get(ProviderType.OPENROUTER, []) if r.is_available()]) > 0,
             'gemini': len([r for r in self.keys.get(ProviderType.GEMINI, []) if r.is_available()]) > 0,
             'anthropic': len([r for r in self.keys.get(ProviderType.ANTHROPIC, []) if r.is_available()]) > 0,
             'openai': len([r for r in self.keys.get(ProviderType.OPENAI, []) if r.is_available()]) > 0,
+            # Phase 112: New aggregator providers
+            'xai': len([r for r in self.keys.get(ProviderType.XAI, []) if r.is_available()]) > 0,
+            'polza': len([r for r in self.keys.get(ProviderType.POLZA, []) if r.is_available()]) > 0,
+            'poe': len([r for r in self.keys.get(ProviderType.POE, []) if r.is_available()]) > 0,
+            'mistral': len([r for r in self.keys.get(ProviderType.MISTRAL, []) if r.is_available()]) > 0,
+            'nanogpt': len([r for r in self.keys.get(ProviderType.NANOGPT, []) if r.is_available()]) > 0,
+            'perplexity': len([r for r in self.keys.get(ProviderType.PERPLEXITY, []) if r.is_available()]) > 0,  # Phase 113
         }
 
     def get_stats(self) -> Dict:

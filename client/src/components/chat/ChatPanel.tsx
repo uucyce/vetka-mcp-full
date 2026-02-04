@@ -27,10 +27,12 @@ import { savePinnedFiles } from '../../utils/chatApi';
 import { API_BASE } from '../../config/api.config';
 
 // Phase 48.3: Reply target type
+// Phase 111.10.2: Added source for multi-provider routing
 interface ReplyTarget {
   id: string;
   model: string;
   text: string;
+  source?: string;  // Phase 111.10.2: Provider source (poe, polza, etc.)
 }
 
 interface Props {
@@ -92,6 +94,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
   // Phase 50.3: Left panel state now comes from App.tsx as props
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  // Phase 111.9: Source for multi-provider routing (poe, polza, openrouter, etc.)
+  const [selectedModelSource, setSelectedModelSource] = useState<string | null>(null);
 
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
@@ -234,6 +238,10 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     };
   }, []);
 
+  // Phase 111.21: RAF batching refs for group streaming
+  const groupTokenBufferRef = useRef<Map<string, string>>(new Map());
+  const groupRafIdRef = useRef<number | null>(null);
+
   // Phase 57.3: Listen for group chat events
   useEffect(() => {
     // Only listen when we have an active group
@@ -287,28 +295,53 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       });
     };
 
+    // Phase 111.21: RAF batching for group streaming (matches solo pattern)
+    // Reduces re-renders from ~500/response to ~30/response at 60fps
+    const flushGroupTokenBuffer = () => {
+      groupRafIdRef.current = null;
+      if (groupTokenBufferRef.current.size === 0) return;
+
+      useStore.setState((state) => ({
+        chatMessages: state.chatMessages.map((msg) => {
+          const buffered = groupTokenBufferRef.current.get(msg.id);
+          if (buffered) {
+            return { ...msg, content: msg.content + buffered };
+          }
+          return msg;
+        }),
+      }));
+      groupTokenBufferRef.current.clear();
+    };
+
     const handleGroupStreamToken = (e: CustomEvent) => {
       const data = e.detail;
       if (data.group_id !== activeGroupId) return;
 
-      // Append token to streaming message
-      useStore.setState((state) => ({
-        chatMessages: state.chatMessages.map((msg) =>
-          msg.id === data.id
-            ? { ...msg, content: msg.content + data.token }
-            : msg
-        ),
-      }));
+      // Accumulate tokens in buffer
+      const current = groupTokenBufferRef.current.get(data.id) || '';
+      groupTokenBufferRef.current.set(data.id, current + data.token);
+
+      // Schedule flush at next animation frame
+      if (!groupRafIdRef.current) {
+        groupRafIdRef.current = requestAnimationFrame(flushGroupTokenBuffer);
+      }
     };
 
     const handleGroupStreamEnd = (e: CustomEvent) => {
       const data = e.detail;
       if (data.group_id !== activeGroupId) return;
 
+      // Phase 111.21: Cancel pending RAF and clear buffer on stream end
+      if (groupRafIdRef.current) {
+        cancelAnimationFrame(groupRafIdRef.current);
+        groupRafIdRef.current = null;
+      }
+      groupTokenBufferRef.current.clear();
+
       // console.log('[ChatPanel] Group stream end:', data.agent_id);
       setIsTyping(false);
 
-      // Finalize streaming message
+      // Finalize streaming message with full content from server
       useStore.setState((state) => ({
         chatMessages: state.chatMessages.map((msg) =>
           msg.id === data.id
@@ -346,6 +379,10 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       window.removeEventListener('group-stream-token', handleGroupStreamToken as EventListener);
       window.removeEventListener('group-stream-end', handleGroupStreamEnd as EventListener);
       window.removeEventListener('group-error', handleGroupError as EventListener);
+      // Phase 111.21: Cleanup RAF on unmount
+      if (groupRafIdRef.current) {
+        cancelAnimationFrame(groupRafIdRef.current);
+      }
     };
   }, [activeGroupId, addChatMessage, setIsTyping, chatMessages]);
 
@@ -515,8 +552,10 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
   // Handle model selection from directory (solo chat mode)
   // Phase 60.4: This is only called when NOT in group mode
-  const handleModelSelect = useCallback((modelId: string, _modelName: string) => {
+  // Phase 111.9: Added modelSource for multi-provider routing
+  const handleModelSelect = useCallback((modelId: string, _modelName: string, modelSource?: string) => {
     setSelectedModel(modelId);
+    setSelectedModelSource(modelSource || null);  // Phase 111.9
     // Phase 57.2: Insert full model ID as @mention (not shortName)
     // This ensures backend can identify the model even if selectedModel is cleared
     setInput(prev => `@${modelId} ${prev}`);
@@ -781,14 +820,21 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       console.log('[ChatPanel] Created new chat:', { id: newChatId, fileName, contextType });
 
       // FIX_109.4b: Pass chatId directly to avoid React async setState issue
-      sendMessage(input.trim(), contextPath, modelToUse, newChatId);
+      // Phase 111.9: Pass modelSource for multi-provider routing
+      // Phase 111.10.2: Use replyTo.source if replying, otherwise selectedModelSource
+      const sourceToUse = replyTo?.source || selectedModelSource || undefined;
+      sendMessage(input.trim(), contextPath, modelToUse, newChatId, sourceToUse);
     } else {
       // Existing chat - use currentChatId from state
-      sendMessage(input.trim(), contextPath, modelToUse, currentChatId || undefined);
+      // Phase 111.9: Pass modelSource for multi-provider routing
+      // Phase 111.10.2: Use replyTo.source if replying, otherwise selectedModelSource
+      const sourceToUse = replyTo?.source || selectedModelSource || undefined;
+      sendMessage(input.trim(), contextPath, modelToUse, currentChatId || undefined, sourceToUse);
     }
 
     setInput('');
     setSelectedModel(null);
+    setSelectedModelSource(null);  // Phase 111.9: Clear source too
     setReplyTo(null);  // Clear reply after sending
     setIsTyping(true);
   }, [input, isConnected, selectedNode, selectedModel, replyTo, addChatMessage, sendMessage, setIsTyping, activeTab, lastScannedFolder, activeGroupId, sendGroupMessage, currentChatInfo, pinnedFileIds, nodes]);
@@ -809,8 +855,17 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   }, [input, handleSend]);
 
   // Phase 48.3: Handle reply callback
+  // Phase 111.10.2: Extract source from model name if present
   const handleReply = useCallback((msg: ReplyTarget) => {
-    setReplyTo(msg);
+    // Try to extract source from model name like "claude-sonnet-4.5 (Poe)" or "gpt-4o (Polza)"
+    let source = msg.source;
+    if (!source && msg.model) {
+      const sourceMatch = msg.model.match(/\((\w+)\)$/);
+      if (sourceMatch) {
+        source = sourceMatch[1].toLowerCase();  // "Poe" -> "poe"
+      }
+    }
+    setReplyTo({ ...msg, source });
     setSelectedModel(null);  // Clear model selection when replying
   }, []);
 

@@ -49,6 +49,7 @@ async def fetch_openrouter_models(api_key: str) -> List[Dict[str, Any]]:
 
                 # Phase 60.5: Classify each model
                 # Phase 111.1: Add source and provider fields
+                # Phase 112: Add compound key for multi-source tracking
                 voice_count = 0
                 for model in models:
                     classify_model_type(model)
@@ -60,6 +61,8 @@ async def fetch_openrouter_models(api_key: str) -> List[Dict[str, Any]]:
                         model['provider'] = model_id.split('/')[0]
                     else:
                         model['provider'] = 'openrouter'
+                    # Phase 112: Compound key for multi-source dedup
+                    model['_compound_key'] = f"{model_id}@openrouter"
                     if model.get('type') == 'voice':
                         voice_count += 1
 
@@ -104,21 +107,23 @@ async def fetch_polza_models(api_key: str) -> List[Dict[str, Any]]:
                 raw_models = data.get('data', [])
 
                 # Normalize to OpenRouter-like format
+                # Phase 112: Keep original ID, use source field for routing
                 models = []
                 for m in raw_models:
                     model_id = m.get('id', '')
-                    # Polza uses format like "openai/gpt-4o", "anthropic/claude-3.5-sonnet"
+                    base_name = model_id.split('/')[-1] if '/' in model_id else model_id
                     models.append({
-                        'id': f'polza/{model_id}' if '/' not in model_id else model_id,
-                        'name': m.get('name', model_id),
+                        'id': model_id,  # Keep original ID for API calls
+                        'name': f"{m.get('name', base_name)} (Polza)",
                         'description': m.get('description', ''),
                         'context_length': m.get('context_length', m.get('context_window', 128000)),
                         'pricing': m.get('pricing', {
                             'prompt': '0.0001',  # Default estimate
                             'completion': '0.0003'
                         }),
-                        'provider': 'Polza',  # Phase 111: Capitalized for UI consistency
-                        'source': 'polza_direct',
+                        'provider': 'polza',  # Phase 112: For filtering
+                        'source': 'polza',  # Phase 112: Key field for routing
+                        'source_display': 'Polza',
                         'owned_by': m.get('owned_by', 'polza'),
                     })
 
@@ -205,6 +210,142 @@ async def _scrape_polza_models() -> List[Dict[str, Any]]:
         return []
 
 
+async def fetch_poe_models(api_key: str) -> List[Dict[str, Any]]:
+    """
+    Fetch available models from Poe API.
+    Phase 113: Test case for entire API key system validation.
+
+    Poe API is OpenAI-compatible.
+    Base URL: https://api.poe.com/v1
+    Docs: https://creator.poe.com/docs
+
+    Args:
+        api_key: Poe API key (alphanumeric, 35-50 chars)
+
+    Returns:
+        List of model dictionaries normalized to OpenRouter format
+    """
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            resp = await client.get(
+                'https://api.poe.com/v1/models',
+                headers={
+                    'Authorization': f'Bearer {api_key}',
+                    'Content-Type': 'application/json'
+                }
+            )
+
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_models = data.get('data', [])
+
+                # Normalize to OpenRouter-like format
+                models = []
+                for m in raw_models:
+                    model_id = m.get('id', '')
+                    base_name = model_id.split('/')[-1] if '/' in model_id else model_id
+
+                    models.append({
+                        'id': model_id,
+                        'name': f"{m.get('name', base_name)} (Poe)",
+                        'description': m.get('description', ''),
+                        'context_length': m.get('context_length', m.get('context_window', 128000)),
+                        'pricing': m.get('pricing', {
+                            'prompt': '0.00050',  # Poe pricing estimate
+                            'completion': '0.00150'
+                        }),
+                        'provider': 'poe',
+                        'source': 'poe',
+                        'source_display': 'Poe',
+                        'owned_by': m.get('owned_by', 'poe'),
+                        '_compound_key': f"{model_id}@poe",  # Phase 113: Multi-source key
+                    })
+
+                logger.info(f"Fetched {len(models)} models from Poe")
+                return models
+
+            elif resp.status_code == 401:
+                logger.error(f"Poe API: Invalid API key (401)")
+                return []
+
+            else:
+                logger.error(f"Poe API error: {resp.status_code} - {resp.text[:200]}")
+                return []
+
+        except Exception as e:
+            logger.error(f"Failed to fetch Poe models: {e}")
+            return []
+
+
+async def fetch_nanogpt_models(api_key: str) -> List[Dict[str, Any]]:
+    """
+    Fetch available models from NanoGPT API.
+    Phase 111.12: NanoGPT model fetcher.
+
+    NanoGPT API is OpenAI-compatible.
+    Base URL: https://nano-gpt.com/api/v1
+    API Docs: OpenAI-compatible format
+
+    Args:
+        api_key: NanoGPT API key (sk-nano-...)
+
+    Returns:
+        List of model dictionaries normalized to OpenRouter format
+    """
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            resp = await client.get(
+                'https://nano-gpt.com/api/v1/models',
+                headers={
+                    'Authorization': f'Bearer {api_key}',
+                    'Content-Type': 'application/json'
+                }
+            )
+
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_models = data.get('data', [])
+
+                # Normalize to OpenRouter-like format
+                models = []
+                for m in raw_models:
+                    model_id = m.get('id', '')
+                    base_name = model_id.split('/')[-1] if '/' in model_id else model_id
+
+                    models.append({
+                        'id': model_id,
+                        'name': f"{m.get('name', base_name)} (NanoGPT)",
+                        'description': m.get('description', ''),
+                        'context_length': m.get('context_length', m.get('context_window', 128000)),
+                        'pricing': m.get('pricing', {
+                            'prompt': '0.0001',  # NanoGPT pricing estimate
+                            'completion': '0.0003'
+                        }),
+                        'provider': 'nanogpt',
+                        'source': 'nanogpt',
+                        'source_display': 'NanoGPT',
+                        'owned_by': m.get('owned_by', 'nanogpt'),
+                        'object': m.get('object', 'model'),
+                        'created': m.get('created'),
+                        '_compound_key': f"{model_id}@nanogpt",  # Phase 111.12: Multi-source key
+                    })
+
+                logger.info(f"Fetched {len(models)} models from NanoGPT")
+                return models
+
+            elif resp.status_code == 401:
+                logger.error(f"NanoGPT API: Invalid API key (401)")
+                return []
+
+            else:
+                logger.error(f"NanoGPT API error: {resp.status_code} - {resp.text[:200]}")
+                return []
+
+        except Exception as e:
+            logger.error(f"Failed to fetch NanoGPT models: {e}")
+            return []
+
+
 async def fetch_gemini_models(api_key: str) -> List[Dict[str, Any]]:
     """
     Fetch available models from Gemini API.
@@ -225,11 +366,13 @@ async def fetch_gemini_models(api_key: str) -> List[Dict[str, Any]]:
                 raw_models = data.get('models', [])
 
                 # Normalize to OpenRouter-like format
+                # Phase 112: Add compound key for multi-source tracking
                 models = []
                 for m in raw_models:
                     model_id = m.get('name', '').replace('models/', '')
+                    full_id = f'google/{model_id}'
                     models.append({
-                        'id': f'google/{model_id}',
+                        'id': full_id,
                         'name': m.get('displayName', model_id),
                         'description': m.get('description', ''),
                         'context_length': m.get('inputTokenLimit', 32000),
@@ -238,7 +381,8 @@ async def fetch_gemini_models(api_key: str) -> List[Dict[str, Any]]:
                             'completion': '0.0006'
                         },
                         'provider': 'google',
-                        'source': 'gemini_direct'  # Mark as direct API
+                        'source': 'gemini_direct',  # Mark as direct API
+                        '_compound_key': f'{full_id}@gemini_direct'  # Phase 112
                     })
 
                 logger.info(f"Fetched {len(models)} models from Gemini")
@@ -326,19 +470,31 @@ async def get_all_models(force_refresh: bool = False) -> List[Dict[str, Any]]:
             if gm['id'] not in existing_ids:
                 all_models.append(gm)
 
-    # Phase 110: Fetch Polza AI models
+    # Phase 112: Fetch Polza AI models (NO deduplication - keep all sources)
+    # Multi-source models should appear multiple times with different sources
     polza_key = km.get_key('polza')
     if polza_key:
         polza_models = await fetch_polza_models(polza_key)
-        # Add only models not already in list (avoid duplicates with OpenRouter)
-        existing_ids = {m['id'] for m in all_models}
-        new_polza_count = 0
+        # Phase 112: Add ALL Polza models - deduplication handled by model_duplicator
+        # Each model gets unique compound key: {id}@{source}
         for pm in polza_models:
-            if pm['id'] not in existing_ids:
-                all_models.append(pm)
-                new_polza_count += 1
-        if new_polza_count > 0:
-            logger.info(f"Added {new_polza_count} unique models from Polza AI")
+            pm['_compound_key'] = f"{pm['id']}@{pm.get('source', 'polza')}"
+        all_models.extend(polza_models)
+        logger.info(f"Added {len(polza_models)} models from Polza AI (with source tracking)")
+
+    # Phase 113: Fetch Poe models (test case for API key system)
+    poe_key = km.get_key('poe')
+    if poe_key:
+        poe_models = await fetch_poe_models(poe_key)
+        all_models.extend(poe_models)
+        logger.info(f"Added {len(poe_models)} models from Poe (Phase 113 test case)")
+
+    # Phase 111.12: Fetch NanoGPT models
+    nanogpt_key = km.get_key('nanogpt')
+    if nanogpt_key:
+        nanogpt_models = await fetch_nanogpt_models(nanogpt_key)
+        all_models.extend(nanogpt_models)
+        logger.info(f"Added {len(nanogpt_models)} models from NanoGPT (Phase 111.12)")
 
     # Save to cache
     if all_models:

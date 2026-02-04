@@ -321,7 +321,9 @@ class TestExecuteCodeTool:
         result = await tool.execute(command="echo 'hello'")
 
         assert result.success
-        assert "hello" in result.result
+        # result.result is dict with 'output' key
+        output = result.result.get('output', '') if isinstance(result.result, dict) else result.result
+        assert "hello" in output
 
     @pytest.mark.asyncio
     async def test_blocked_command(self):

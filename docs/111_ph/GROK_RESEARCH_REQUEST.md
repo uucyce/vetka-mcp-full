@@ -1,4 +1,24 @@
 # Research Request: Multi-Source Model Aggregator System for VETKA
+**Updated:** 2026-02-03 (Post-Haiku Analysis)
+
+## CRITICAL BUG FOUND
+
+**React Key Collision in ModelDirectory.tsx Line 756:**
+```jsx
+key={model.id}  // BUG: Causes dedup of same model from different sources
+```
+
+**Root Cause:** When `gpt-4o` exists from both OpenRouter AND Polza:
+- Both have `id: "openai/gpt-4o"`
+- React sees duplicate keys → renders only OpenRouter version
+- Polza version silently dropped
+
+**Proposed Fix:**
+```jsx
+key={model._compound_key || `${model.id}@${model.source || 'unknown'}`}
+```
+
+---
 
 ## Context
 
@@ -152,3 +172,50 @@ class ProviderType(Enum):
 ## Attached Documents
 - PHASE_111_STATUS_REPORT.md
 - PHASE_111_FINAL_PLAN.md
+- HAIKU_ANALYSIS_REPORT.md (NEW - detailed 6-agent analysis)
+
+---
+
+## HAIKU ANALYSIS SUMMARY (6 Parallel Agents)
+
+### Agent 1: model_fetcher.py ✅
+- Source fields assigned correctly
+- NO deduplication bug in fetcher
+- Compound keys generated properly
+
+### Agent 2: model_duplicator.py ⚠️
+- Dead code at lines 285-287 (checks 'polza_direct' which doesn't exist)
+- Recovery logic (307-322) doesn't set name/source_display consistently
+
+### Agent 3: ModelDirectory.tsx 🔴
+- **P0 BUG:** Line 756 `key={model.id}` causes React dedup
+- No client-side compound key dedup
+
+### Agent 4: Solo Chat Flow ✅
+- Source field NOT used in routing
+- Routing based on model ID prefix only
+
+### Agent 5: Group Chat Flow ✅
+- Each participant has explicit model_id
+- Source field NOT used in backend
+
+### Agent 6: MCP Model Calls ✅
+- vetka_call_model has no `source` parameter
+- Routing via model name pattern matching
+
+---
+
+## QUESTIONS FOR GROK
+
+### Primary Question
+Is React key collision the root cause of "Polza models showing via OR"?
+
+### Architecture Validation
+1. Should `source` field be used in backend routing, or keep model-ID-based routing?
+2. Is compound key pattern `{id}@{source}` the right solution?
+3. Should we unify MULTI_SOURCE_MODELS with recovery logic, or remove recovery?
+
+### Code Review Requests
+1. Validate proposed fix for ModelDirectory.tsx line 756
+2. Confirm dead code removal safe (lines 285-287)
+3. Review recovery logic necessity (lines 307-322)

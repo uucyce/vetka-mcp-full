@@ -30,6 +30,7 @@ class CreateGroupRequest(BaseModel):
     admin_model_id: str
     admin_display_name: str
     project_id: Optional[str] = None
+    admin_model_source: Optional[str] = None  # Phase 111.14
 
 
 class AddParticipantRequest(BaseModel):
@@ -37,6 +38,7 @@ class AddParticipantRequest(BaseModel):
     model_id: str
     display_name: str
     role: str = "worker"
+    model_source: Optional[str] = None  # Phase 111.14
 
 
 class SendMessageRequest(BaseModel):
@@ -56,6 +58,7 @@ class AssignTaskRequest(BaseModel):
 class AddModelDirectRequest(BaseModel):
     model_id: str  # e.g., "deepseek/deepseek-r1:free"
     role: str = "worker"  # Default role
+    model_source: Optional[str] = None  # Phase 111.14: Provider source for routing
 
 
 @router.get("")
@@ -76,7 +79,8 @@ async def create_group(body: CreateGroupRequest):
         agent_id=body.admin_agent_id,
         model_id=body.admin_model_id,
         role=GroupRole.ADMIN,
-        display_name=body.admin_display_name
+        display_name=body.admin_display_name,
+        model_source=body.admin_model_source,  # Phase 111.14
     )
 
     group = await manager.create_group(
@@ -154,7 +158,8 @@ async def add_participant(group_id: str, body: AddParticipantRequest):
         agent_id=body.agent_id,
         model_id=body.model_id,
         role=GroupRole(body.role),
-        display_name=body.display_name
+        display_name=body.display_name,
+        model_source=body.model_source,  # Phase 111.14
     )
 
     if await manager.add_participant(group_id, participant):
@@ -309,7 +314,8 @@ async def add_model_direct(group_id: str, body: AddModelDirectRequest):
         model_id=body.model_id,
         role=GroupRole(body.role),
         display_name=display_name,
-        permissions=["read", "write"]
+        permissions=["read", "write"],
+        model_source=body.model_source,  # Phase 111.14
     )
 
     # Add to group

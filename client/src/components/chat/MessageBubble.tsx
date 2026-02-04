@@ -8,7 +8,7 @@
  * @used_by MessageList
  */
 
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { User, Bot, ClipboardList, Code, TestTube, Building, Sparkles, Reply, FileText, SmilePlus, Volume2, VolumeX } from 'lucide-react';
 import type { ChatMessage } from '../../types/chat';
 import { CompoundMessage } from './CompoundMessage';
@@ -32,9 +32,12 @@ const EMOJI_TO_REACTION: Record<string, string> = {
 
 interface Props {
   message: ChatMessage;
-  onReply?: (msg: { id: string; model: string; text: string }) => void;
+  // Phase 111.10.2: Added source for Reply routing
+  onReply?: (msg: { id: string; model: string; text: string; source?: string }) => void;
   onOpenArtifact?: (id: string, content: string, agent?: string) => void;  // Phase 48.5.1: Added agent
   onReaction?: (messageId: string, reaction: string) => void;
+  // Phase 111.17: For looking up replied-to message content
+  getMessageById?: (id: string) => ChatMessage | undefined;
 }
 
 const AGENT_ICONS: Record<string, React.ReactNode> = {
@@ -45,7 +48,9 @@ const AGENT_ICONS: Record<string, React.ReactNode> = {
   Hostess: <Sparkles size={14} />,
 };
 
-export function MessageBubble({ message, onReply, onOpenArtifact, onReaction }: Props) {
+// Phase 111.21: React.memo to prevent unnecessary re-renders
+// Only re-renders when message.id or message.content changes
+function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, getMessageById }: Props) {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const isCompound = message.type === 'compound';
@@ -106,6 +111,88 @@ export function MessageBubble({ message, onReply, onOpenArtifact, onReaction }: 
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   };
 
+  // Phase 111.17: Get reply preview data
+  const getReplyPreview = () => {
+    const replyToId = message.metadata?.in_reply_to;
+    if (!replyToId) return null;
+    
+    // First try to get from metadata (if backend provides it)
+    if (message.metadata?.reply_to_preview) {
+      return message.metadata.reply_to_preview;
+    }
+    
+    // Fallback: look up via getMessageById if provided
+    if (getMessageById) {
+      const repliedMessage = getMessageById(replyToId);
+      if (repliedMessage) {
+        return {
+          id: repliedMessage.id,
+          role: repliedMessage.role,
+          agent: repliedMessage.agent,
+          model: repliedMessage.metadata?.model,
+          text_preview: (repliedMessage.content || '').slice(0, 100),
+          timestamp: repliedMessage.timestamp,
+        };
+      }
+    }
+    
+    return null;
+  };
+
+  // Phase 111.17: Reply Quote Block Component
+  const ReplyQuote = () => {
+    const preview = getReplyPreview();
+    if (!preview) return null;
+    
+    const isRepliedUser = preview.role === 'user';
+    const authorName = preview.agent || preview.model || (isRepliedUser ? 'You' : 'Assistant');
+    const authorColor = isRepliedUser ? '#4a9eff' : '#4aff9e';
+    
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 8,
+          marginBottom: 8,
+          padding: '6px 10px',
+          background: 'rgba(255,255,255,0.03)',
+          borderRadius: 6,
+          borderLeft: `3px solid ${authorColor}`,
+          fontSize: 12,
+          opacity: 0.8,
+          cursor: 'pointer',
+        }}
+        onClick={() => {
+          // TODO: Scroll to the replied message
+          console.log('[Reply] Clicked quote for message:', preview.id);
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 4, 
+            marginBottom: 2,
+            color: authorColor,
+            fontWeight: 500,
+          }}>
+            {isRepliedUser ? <User size={10} /> : <Bot size={10} />}
+            <span>{authorName}</span>
+          </div>
+          <div style={{ 
+            color: '#888', 
+            whiteSpace: 'nowrap', 
+            overflow: 'hidden', 
+            textOverflow: 'ellipsis',
+          }}>
+            {preview.text_preview}...
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // System message - Phase 57: Grayscale style
   if (isSystem) {
     return (
@@ -158,6 +245,8 @@ export function MessageBubble({ message, onReply, onOpenArtifact, onReaction }: 
           fontSize: 14,
           lineHeight: 1.5,
         }}>
+          {/* Phase 111.17: Reply quote for user messages */}
+          <ReplyQuote />
           {message.content}
         </div>
       </div>
@@ -264,6 +353,9 @@ export function MessageBubble({ message, onReply, onOpenArtifact, onReaction }: 
         lineHeight: 1.5,
         border: '1px solid #222',
       }}>
+        {/* Phase 111.17: Reply quote for assistant messages */}
+        <ReplyQuote />
+        
         {/* Phase 48.3: Show preview for long messages */}
         {/* Phase 74 fix: Guard against null/undefined content */}
         {isLong && !isStreaming ? (
@@ -403,12 +495,14 @@ export function MessageBubble({ message, onReply, onOpenArtifact, onReaction }: 
             </button>
 
             {/* Reply button - Phase 48.5: moved here */}
+            {/* Phase 111.10.2: Pass model_source for Reply routing */}
             {onReply && (
               <button
                 onClick={() => onReply({
                   id: message.id,
                   model: modelName,
-                  text: message.content
+                  text: message.content,
+                  source: message.metadata?.model_source,  // Phase 111.10.2
                 })}
                 style={{
                   background: 'transparent',
@@ -474,3 +568,14 @@ export function MessageBubble({ message, onReply, onOpenArtifact, onReaction }: 
     </div>
   );
 }
+
+// Phase 111.21: Export memoized component
+// Only re-render if message content/streaming state changes
+export const MessageBubble = memo(MessageBubbleComponent, (prev, next) => {
+  // Re-render if message changed
+  if (prev.message.id !== next.message.id) return false;
+  if (prev.message.content !== next.message.content) return false;
+  if (prev.message.metadata?.isStreaming !== next.message.metadata?.isStreaming) return false;
+  // Callbacks are stable (useCallback), so skip comparison
+  return true;
+});

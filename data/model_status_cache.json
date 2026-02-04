@@ -26,10 +26,10 @@
   "allenai/molmo-2-8b:free": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770028304.4054039,
+    "last_success": 1770163396.389025,
     "last_error": null,
     "error_code": null,
-    "call_count": 5
+    "call_count": 7
   },
   "cognitivecomputations/dolphin-mistral-24b-venice-edition:free": {
     "healthy": true,
@@ -114,10 +114,10 @@
   "upstage/solar-pro-3:free": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770051104.623658,
+    "last_success": 1770163386.2355032,
     "last_error": null,
     "error_code": null,
-    "call_count": 1
+    "call_count": 2
   },
   "nvidia/nemotron-3-nano-30b-a3b:free": {
     "healthy": true,
@@ -142,5 +142,77 @@
     "last_error": null,
     "error_code": null,
     "call_count": 2
+  },
+  "z-ai/glm-4.7-flash": {
+    "healthy": true,
+    "error_count": 1,
+    "last_success": 1770169226.061965,
+    "last_error": 1770169286.125025,
+    "error_code": 401,
+    "call_count": 23
+  },
+  "stepfun/step-3.5-flash:free": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770157748.036511,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
+  },
+  "openai/o1-pro": {
+    "healthy": true,
+    "error_count": 1,
+    "last_success": null,
+    "last_error": 1770163809.742053,
+    "error_code": 404,
+    "call_count": 1
+  },
+  "nex-agi/deepseek-v3.1-nex-n1": {
+    "healthy": true,
+    "error_count": 2,
+    "last_success": null,
+    "last_error": 1770163915.5224,
+    "error_code": 401,
+    "call_count": 2
+  },
+  "allenai/olmo-3-7b-instruct": {
+    "healthy": false,
+    "error_count": 4,
+    "last_success": null,
+    "last_error": 1770164307.6357892,
+    "error_code": 401,
+    "call_count": 4
+  },
+  "z-ai/glm-4.7": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770166447.0081,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 4
+  },
+  "openai/gpt-5-nano": {
+    "healthy": true,
+    "error_count": 2,
+    "last_success": null,
+    "last_error": 1770168495.411486,
+    "error_code": 400,
+    "call_count": 2
+  },
+  "z-ai/glm-4.5v": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770168254.694488,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 3
+  },
+  "claude-sonnet-4.5": {
+    "healthy": true,
+    "error_count": 1,
+    "last_success": null,
+    "last_error": 1770168423.190787,
+    "error_code": 401,
+    "call_count": 1
   }
 }

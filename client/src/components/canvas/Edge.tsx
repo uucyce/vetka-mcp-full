@@ -8,7 +8,7 @@
  * @used_by TreeEdges
  */
 
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import * as THREE from 'three';
 import { Line } from '@react-three/drei';
 
@@ -20,7 +20,9 @@ interface EdgeProps {
   opacity?: number;
 }
 
-export function Edge({
+// Phase 111.21: React.memo to prevent unnecessary re-renders
+// Only re-renders when start/end/color/lineWidth/opacity actually change
+function EdgeComponent({
   start,
   end,
   color = '#4b5563',
@@ -64,3 +66,19 @@ export function Edge({
     />
   );
 }
+
+// Phase 111.21: Export memoized component
+// Comparison: shallow equality on all props (start/end arrays, primitives)
+export const Edge = memo(EdgeComponent, (prev, next) => {
+  return (
+    prev.start[0] === next.start[0] &&
+    prev.start[1] === next.start[1] &&
+    prev.start[2] === next.start[2] &&
+    prev.end[0] === next.end[0] &&
+    prev.end[1] === next.end[1] &&
+    prev.end[2] === next.end[2] &&
+    prev.color === next.color &&
+    prev.lineWidth === next.lineWidth &&
+    prev.opacity === next.opacity
+  );
+});

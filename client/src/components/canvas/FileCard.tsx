@@ -250,6 +250,11 @@ export function FileCard({
       }
     }
 
+    // MARKER_111.21_USEFRAME: Batch LOD updates
+    // Current: runs every frame for ALL 2000+ nodes (expensive distance calculations)
+    // Problem: 60fps * 2000 nodes * distance calc = performance bottleneck
+    // Fix: Spatial partitioning or throttle to every N frames (e.g., 6 frames = 10fps LOD updates)
+    // Status: PENDING - needs quadtree/octree or frame batching
     // Phase 62: Calculate LOD based on distance (throttled to 100ms)
     const now = state.clock.elapsedTime;
     if (now - lastLodUpdate.current < 0.1) return;
@@ -359,6 +364,11 @@ export function FileCard({
   };
   const cardSize = getCardSize();
 
+  // MARKER_111.21_TEXTURE: Split texture useMemo into layers
+  // Current: 14+ dependencies cause frequent recalculation
+  // Problem: Every prop change (isSelected, isHovered, isDragging, etc.) triggers full canvas redraw
+  // Fix: baseTexture + overlayTexture separate useMemos to reduce re-renders
+  // Status: PENDING - needs refactor to split base (static) vs overlays (dynamic)
   const texture = useMemo(() => {
     const canvas = document.createElement('canvas');
     // Adjust canvas aspect ratio based on card type
@@ -1129,3 +1139,10 @@ export function FileCard({
     </group>
   );
 }
+
+// MARKER_111.21_MEMO: Add React.memo with custom comparator
+// Current: No memoization, re-renders on every parent update
+// Problem: Scene re-renders 2000 FileCard components even when only 1-2 change
+// Fix: export const FileCard = React.memo(FileCardComponent, arePropsEqual)
+// Custom comparator: Compare only props that affect visual output (ignore internal state)
+// Status: PENDING - implement React.memo + custom comparator to prevent unnecessary re-renders

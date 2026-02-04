@@ -16,6 +16,7 @@ export interface ChatMessage {
   timestamp: string;
   metadata?: {
     model?: string;
+    model_source?: string;  // Phase 111.10.2: Provider source for Reply routing
     duration?: number;
     tokens?: number;
     score?: number;
@@ -23,6 +24,16 @@ export interface ChatMessage {
     isStreaming?: boolean;
     tokens_output?: number;
     tokens_input?: number;
+    // Phase 111.17: Reply metadata for group chat
+    in_reply_to?: string;           // ID of the message being replied to
+    reply_to_preview?: {            // Preview of the replied-to message
+      id: string;
+      role: 'user' | 'assistant' | 'system';
+      agent?: string;
+      model?: string;
+      text_preview: string;         // First ~100 chars of the message
+      timestamp: string;
+    };
   };
   sections?: {
     pm_plan?: string;

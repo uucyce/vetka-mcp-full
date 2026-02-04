@@ -149,16 +149,21 @@ class LLMCallTool(BaseMCPTool):
                             "default": True
                         }
                     }
+                },
+                "model_source": {
+                    "type": "string",
+                    "description": "Source provider for routing (poe, polza, openrouter, etc.)",
                 }
             },
             "required": ["model", "messages"]
         }
 
-    def _detect_provider(self, model: str) -> str:
+    def _detect_provider(self, model: str, source: Optional[str] = None) -> str:
         """
-        Detect provider from model name.
+        Detect provider from model name or explicit source.
 
         Phase 90.1.4.1: NOW USES CANONICAL detect_provider from provider_registry.
+        Phase 111.11: Added source parameter for multi-source routing.
 
         # MARKER_90.1.4.1_START: Use canonical detect_provider
         Returns:
@@ -166,8 +171,9 @@ class LLMCallTool(BaseMCPTool):
         """
         from src.elisya.provider_registry import ProviderRegistry
 
-        # Use canonical implementation
-        canonical_provider = ProviderRegistry.detect_provider(model)
+        # Use canonical implementation with source
+        # Phase 111.11: Pass source for proper routing
+        canonical_provider = ProviderRegistry.detect_provider(model, source=source)
 
         # Return the enum value (string)
         return canonical_provider.value
@@ -386,7 +392,8 @@ class LLMCallTool(BaseMCPTool):
         messages: List[Dict],
         model: str,
         temperature: float = 0.7,
-        max_tokens: int = 4096
+        max_tokens: int = 4096,
+        source: Optional[str] = None  # Phase 111.11
     ) -> Dict[str, Any]:
         """
         Phase 102: Synchronous OpenRouter call with proper key rotation.
@@ -411,7 +418,9 @@ class LLMCallTool(BaseMCPTool):
             if not api_key:
                 raise ValueError("OpenRouter API key not found")
 
-            logger.info(f"[MCP_OPENROUTER] Calling {model} (key: ****{api_key[-4:]}, attempt {attempt + 1}/{max_retries})")
+            # Phase 111.11: Log source if provided
+            source_info = f", source: {source}" if source else ""
+            logger.info(f"[MCP_OPENROUTER] Calling {model} (key: ****{api_key[-4:]}, attempt {attempt + 1}/{max_retries}{source_info})")
 
             headers = {
                 "Authorization": f"Bearer {api_key}",
@@ -419,6 +428,10 @@ class LLMCallTool(BaseMCPTool):
                 "HTTP-Referer": "https://vetka.ai",
                 "X-Title": "VETKA MCP",
             }
+
+            # Phase 111.11: Add source to headers for tracking
+            if source:
+                headers["X-VETKA-Source"] = source
 
             # Clean model name (remove openrouter/ prefix if present)
             clean_model = model.replace("openrouter/", "")
@@ -429,6 +442,10 @@ class LLMCallTool(BaseMCPTool):
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             }
+
+            # Phase 111.11: Add source to metadata for OpenRouter
+            if source:
+                payload["metadata"] = {"vetka_source": source}
 
             try:
                 with httpx.Client(timeout=120.0) as client:
@@ -498,6 +515,7 @@ class LLMCallTool(BaseMCPTool):
         max_tokens = arguments.get('max_tokens', 4096)
         tools = arguments.get('tools')
         inject_context = arguments.get('inject_context')
+        model_source = arguments.get('model_source')  # Phase 111.11
 
         # MARKER_55.2_START: Process context injection
         if inject_context:
@@ -594,7 +612,8 @@ class LLMCallTool(BaseMCPTool):
             import asyncio
 
             # Detect provider
-            provider_name = self._detect_provider(model)
+            # Phase 111.11: Pass model_source for routing
+            provider_name = self._detect_provider(model, source=model_source)
 
             # Convert provider string to enum
             try:
@@ -603,7 +622,9 @@ class LLMCallTool(BaseMCPTool):
                 logger.warning(f"Unknown provider '{provider_name}', using auto-detect")
                 provider_enum = None  # Let call_model_v2 auto-detect
 
-            logger.info(f"[LLM_CALL_TOOL] Calling {model} via {provider_name}")
+            # Phase 111.11: Log source if provided
+            source_info = f" (source: {model_source})" if model_source else ""
+            logger.info(f"[LLM_CALL_TOOL] Calling {model} via {provider_name}{source_info}")
 
             # MARKER_93.5_MCP_DIAGNOSTIC: Log key availability before call
             # Phase 93.5: Debug MCP 429 errors by tracking which keys are used
@@ -627,7 +648,8 @@ class LLMCallTool(BaseMCPTool):
                 messages=messages,
                 model=model,
                 temperature=temperature,
-                max_tokens=max_tokens
+                max_tokens=max_tokens,
+                source=model_source  # Phase 111.11
             )
             # MARKER_102.14_END
 

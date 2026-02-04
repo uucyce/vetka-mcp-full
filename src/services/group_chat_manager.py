@@ -51,6 +51,7 @@ class GroupParticipant:
     role: GroupRole
     display_name: str          # "Architect", "Rust Dev", "Grok 4" - human-readable name
     permissions: List[str] = field(default_factory=lambda: ["read", "write"])
+    model_source: Optional[str] = None  # Phase 111.14: Provider source for routing
 
     def to_dict(self) -> dict:
         return {
@@ -58,7 +59,8 @@ class GroupParticipant:
             'model_id': self.model_id,
             'role': self.role.value,
             'display_name': self.display_name,
-            'permissions': self.permissions
+            'permissions': self.permissions,
+            'model_source': self.model_source,  # Phase 111.14
         }
 
 
@@ -681,25 +683,21 @@ class GroupChatManager:
         # Auto-save after message sent
         await self.save_to_json()
 
-        # MARKER_103.7_START: Persist user messages to Qdrant for long-term memory
-        # MARKER_103_GC7: FIXED - wrapped in background task
-        async def _persist_user_msg_background():
-            """Background task for Qdrant persistence - non-blocking."""
-            try:
-                from src.memory.qdrant_client import upsert_chat_message
-                upsert_chat_message(
-                    group_id=message.group_id,
-                    message_id=message.id,
-                    sender_id=message.sender_id,
-                    content=message.content,
-                    role="user",
-                    metadata=message.metadata
-                )
-            except Exception as e:
-                logger.warning(f"[GroupChat] Qdrant upsert failed (non-blocking): {e}")
-
-        asyncio.create_task(_persist_user_msg_background())
-        # MARKER_103.7_END
+        # Phase 111.18: Use batch queue instead of per-message upsert
+        # Non-blocking queue - messages flushed every 30 seconds
+        try:
+            from src.memory.qdrant_batch_manager import get_batch_manager
+            batch_mgr = get_batch_manager()
+            await batch_mgr.queue_message(
+                group_id=message.group_id,
+                message_id=message.id,
+                sender_id=message.sender_id,
+                content=message.content,
+                role="user",
+                metadata=message.metadata
+            )
+        except Exception as e:
+            logger.warning(f"[GroupChat] Qdrant queue failed (non-blocking): {e}")
 
         # ✅ PHASE 56.4: Periodic cleanup task handles cleanup, not per-message
 
@@ -993,7 +991,8 @@ class GroupChatManager:
                             model_id=p_dict['model_id'],
                             role=GroupRole(p_dict['role']),
                             display_name=p_dict['display_name'],
-                            permissions=p_dict.get('permissions', ['read', 'write'])
+                            permissions=p_dict.get('permissions', ['read', 'write']),
+                            model_source=p_dict.get('model_source'),  # Phase 111.14
                         )
 
                     # Reconstruct messages

@@ -58,5 +58,17 @@
     "confidence": 0.50,
     "learned_at": "2026-01-19T19:34:49.872297",
     "example_masked": "kwodYaOP...uLqo"
+  },
+  "perplexity": {
+    "provider": "perplexity",
+    "prefix": "pa-",
+    "suffix": null,
+    "length_min": 44,
+    "length_max": 54,
+    "charset": "base64",
+    "separator": "-",
+    "confidence": 0.90,
+    "learned_at": "2026-02-03T22:30:00.000000",
+    "example_masked": "pa-eT5WN...JZIQ"
   }
 }

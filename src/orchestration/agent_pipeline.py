@@ -1239,14 +1239,15 @@ Execute this subtask. Provide clear, actionable output."""}
 
 
 # MARKER_102.8_START: Convenience functions
-async def spawn_pipeline(
+# Phase 111.13: Renamed spawn_pipeline → mycelium_pipeline
+async def mycelium_pipeline(
     task: str,
     phase_type: str = "research",
     chat_id: Optional[str] = None,
     auto_write: bool = True
 ) -> Dict[str, Any]:
     """
-    Convenience function for MCP tool.
+    Mycelium Pipeline for fractal agent execution.
 
     Args:
         task: Task description
@@ -1257,14 +1258,18 @@ async def spawn_pipeline(
 
     Usage:
         # Auto-write mode (default) - files created immediately
-        result = await spawn_pipeline("Implement UI artifacts", "build")
+        result = await mycelium_pipeline("Implement UI artifacts", "build")
 
         # Staging mode - files saved to JSON, apply later after review
-        result = await spawn_pipeline("Implement critical feature", "build", auto_write=False)
+        result = await mycelium_pipeline("Implement critical feature", "build", auto_write=False)
         # Then: python scripts/retro_apply_spawn.py --task-filter "critical"
     """
     pipeline = AgentPipeline(chat_id=chat_id, auto_write=auto_write)
     return await pipeline.execute(task, phase_type)
+
+
+# Phase 111.13: Alias for backward compatibility
+spawn_pipeline = mycelium_pipeline
 
 
 def get_pipeline_status(task_id: str) -> Optional[Dict[str, Any]]:

@@ -554,19 +554,25 @@ def register_group_message_handler(sio, app=None):
         pinned_files = data.get(
             "pinned_files", []
         )  # Phase 80.11: Pinned files for context
+        model_source = data.get("model_source")  # Phase 111.11
 
         # Phase 55.1: MCP group session init (fire-and-forget, non-blocking)
         async def _bg_session_init():
             try:
                 session = await asyncio.wait_for(
-                    vetka_session_init(user_id=sender_id, group_id=group_id, compress=False),
-                    timeout=1.0
+                    vetka_session_init(
+                        user_id=sender_id, group_id=group_id, compress=False
+                    ),
+                    timeout=1.0,
                 )
-                print(f"   [MCP] Group session initialized: {session.get('session_id')}")
+                print(
+                    f"   [MCP] Group session initialized: {session.get('session_id')}"
+                )
             except asyncio.TimeoutError:
                 print(f"   ⚠️ MCP session init timeout (1s)")
             except Exception as e:
                 print(f"   ⚠️ MCP group session init failed: {e}")
+
         asyncio.create_task(_bg_session_init())
 
         if not group_id or not content:
@@ -587,12 +593,38 @@ def register_group_message_handler(sio, app=None):
             return
 
         # Store user message in group (Phase 80.11: Include pinned_files in metadata)
+        # Phase 111.17: Include reply metadata for group chat reply UI
+        message_metadata = {}
+        if pinned_files:
+            message_metadata["pinned_files"] = pinned_files
+        if reply_to_id:
+            message_metadata["in_reply_to"] = reply_to_id
+            # Get preview of replied-to message for UI display
+            replied_msg = None
+            for msg in manager.get_messages(group_id, limit=100):
+                if msg.get("id") == reply_to_id:
+                    replied_msg = msg
+                    break
+            if replied_msg:
+                message_metadata["reply_to_preview"] = {
+                    "id": reply_to_id,
+                    "role": replied_msg.get("sender_id") == "user"
+                    and "user"
+                    or "assistant",
+                    "agent": replied_msg.get("sender_id")
+                    if replied_msg.get("sender_id") != "user"
+                    else None,
+                    "model": replied_msg.get("metadata", {}).get("model"),
+                    "text_preview": replied_msg.get("content", "")[:100],
+                    "timestamp": replied_msg.get("created_at", ""),
+                }
+
         user_message = await manager.send_message(
             group_id=group_id,
             sender_id=sender_id,
             content=content,
             message_type="chat",
-            metadata={"pinned_files": pinned_files} if pinned_files else {},
+            metadata=message_metadata if message_metadata else None,
         )
 
         if not user_message:
@@ -607,6 +639,7 @@ def register_group_message_handler(sio, app=None):
         # MARKER_108_3_SOCKETIO_UPDATE: Phase 108.3 - Real-time chat node updates
         # Emit chat_node_update for opacity animation when user sends message
         from datetime import datetime
+
         await sio.emit(
             "chat_node_update",
             {
@@ -690,9 +723,17 @@ def register_group_message_handler(sio, app=None):
                         reply_to_agent = original_sender
                         # Phase 108: Check if this is MCP agent (claude_code, browser_haiku, etc.)
                         # MCP agents are NOT in participants list
-                        mcp_agent_names = ["claude_code", "browser_haiku", "lmstudio", "cursor", "opencode"]
+                        mcp_agent_names = [
+                            "claude_code",
+                            "browser_haiku",
+                            "lmstudio",
+                            "cursor",
+                            "opencode",
+                        ]
                         agent_name_lower = original_sender.lower().lstrip("@")
-                        if any(mcp_name in agent_name_lower for mcp_name in mcp_agent_names):
+                        if any(
+                            mcp_name in agent_name_lower for mcp_name in mcp_agent_names
+                        ):
                             reply_to_mcp_agent = True
                             print(
                                 f"[GROUP_DEBUG] Phase 108: Reply to MCP agent {reply_to_agent} - skipping group routing"
@@ -705,7 +746,9 @@ def register_group_message_handler(sio, app=None):
 
         # MARKER_108_ROUTING_FIX_2: If replying to MCP agent, don't route to group agents
         if reply_to_mcp_agent:
-            print(f"[GROUP_DEBUG] Phase 108: Reply to MCP agent - no group agents invoked")
+            print(
+                f"[GROUP_DEBUG] Phase 108: Reply to MCP agent - no group agents invoked"
+            )
             return
 
         # Phase 57.7: Use smart agent selection
@@ -754,10 +797,14 @@ def register_group_message_handler(sio, app=None):
 
             agent_id = participant["agent_id"]
             model_id = participant["model_id"]
+            model_source = participant.get("model_source")  # Phase 111.11
 
             # Detect provider for model attribution
             from src.elisya.provider_registry import ProviderRegistry
-            detected_provider = ProviderRegistry.detect_provider(model_id)
+
+            detected_provider = ProviderRegistry.detect_provider(
+                model_id, source=model_source
+            )  # Phase 111.11
             provider_name = detected_provider.value if detected_provider else "unknown"
 
             # MARKER_93.7_REMOVED_OPENROUTER_PREFIX: Phase 93.7 Fix
@@ -810,6 +857,7 @@ def register_group_message_handler(sio, app=None):
                     "group_id": group_id,
                     "agent_id": agent_id,
                     "model": model_id,
+                    "model_source": model_source,  # Phase 111.11
                 },
                 room=f"group_{group_id}",
             )
@@ -850,8 +898,11 @@ def register_group_message_handler(sio, app=None):
 
                     # Build minimal graph data from group context
                     graph_data = {
-                        "nodes": [{"id": agent_id, "type": "agent"} for agent_id in group.get("participants", {}).keys()],
-                        "edges": []
+                        "nodes": [
+                            {"id": agent_id, "type": "agent"}
+                            for agent_id in group.get("participants", {}).keys()
+                        ],
+                        "edges": [],
                     }
 
                     # Get ARC suggestions
@@ -860,7 +911,7 @@ def register_group_message_handler(sio, app=None):
                         graph_data=graph_data,
                         task_context=content,
                         num_candidates=5,
-                        min_score=0.5
+                        min_score=0.5,
                     )
 
                     # Add top suggestions to context
@@ -869,9 +920,15 @@ def register_group_message_handler(sio, app=None):
                         context_parts.append("\n## ARC SUGGESTED IMPROVEMENTS")
                         for idx, suggestion in enumerate(top_suggestions[:3], 1):
                             score = suggestion.get("score", 0.0)
-                            explanation = suggestion.get("explanation", "No explanation")
-                            context_parts.append(f"{idx}. {explanation} (confidence: {score:.2f})")
-                        print(f"[ARC_GROUP] Added {len(top_suggestions[:3])} suggestions to group context")
+                            explanation = suggestion.get(
+                                "explanation", "No explanation"
+                            )
+                            context_parts.append(
+                                f"{idx}. {explanation} (confidence: {score:.2f})"
+                            )
+                        print(
+                            f"[ARC_GROUP] Added {len(top_suggestions[:3])} suggestions to group context"
+                        )
                 except Exception as arc_err:
                     # Non-critical: continue even if ARC fails
                     print(f"[ARC_GROUP] ARC integration failed: {arc_err}")
@@ -895,6 +952,7 @@ def register_group_message_handler(sio, app=None):
                                 "group_name": group["name"],
                                 "agent_id": agent_id,
                                 "display_name": display_name,
+                                "model_source": model_source,  # Phase 111.11
                             },
                         ),
                         timeout=120.0,  # 2 minute timeout
@@ -935,29 +993,33 @@ def register_group_message_handler(sio, app=None):
                         "group_id": group_id,
                         "agent_id": agent_id,
                         "full_message": response_text,
-                        "metadata": {"model": model_id, "agent_type": agent_type},
+                        "metadata": {
+                            "model": model_id,
+                            "agent_type": agent_type,
+                            "model_source": model_source,  # Phase 111.11
+                        },
                     },
                     room=f"group_{group_id}",
                 )
 
-                # Broadcast agent response
-                if agent_message:
-                    await sio.emit(
-                        "group_message",
-                        agent_message.to_dict(),
-                        room=f"group_{group_id}",
-                    )
+                # Phase 111.18: Removed redundant group_message emit
+                # Agent response is already sent via group_stream_end above
+                # Frontend filters out agent messages anyway (sender_id check)
 
+                if agent_message:
                     # MARKER_108_3_SOCKETIO_UPDATE: Phase 108.3 - Real-time chat node updates
                     # Emit chat_node_update when agent responds (activity update)
                     from datetime import datetime
+
                     await sio.emit(
                         "chat_node_update",
                         {
                             "chat_id": group_id,
                             "decay_factor": 1.0,  # Agent response = activity
                             "last_activity": datetime.now().isoformat(),
-                            "message_count": len(manager.get_messages(group_id, limit=1000)),
+                            "message_count": len(
+                                manager.get_messages(group_id, limit=1000)
+                            ),
                         },
                         room=f"group_{group_id}",
                     )
@@ -990,7 +1052,10 @@ def register_group_message_handler(sio, app=None):
                             "agent": display_name,
                             "model": model_id,
                             "model_provider": provider_name,  # Provider attribution for model disambiguation
-                            "metadata": {"group_id": group_id},
+                            "metadata": {
+                                "group_id": group_id,
+                                "model_source": model_source,  # Phase 111.11
+                            },
                         },
                     )
                 except Exception as chat_err:
@@ -1004,23 +1069,30 @@ def register_group_message_handler(sio, app=None):
                 try:
                     # Only stage for code-generating agents
                     if display_name in ["Dev", "Architect", "Coder"]:
-                        from src.utils.artifact_extractor import extract_artifacts, extract_qa_score
+                        from src.utils.artifact_extractor import (
+                            extract_artifacts,
+                            extract_qa_score,
+                        )
                         from src.utils.staging_utils import stage_artifacts_batch
 
                         artifacts = extract_artifacts(response_text, display_name)
                         if artifacts:
-                            qa_score = extract_qa_score(response_text) or 0.5  # Default moderate
+                            qa_score = (
+                                extract_qa_score(response_text) or 0.5
+                            )  # Default moderate
 
                             staged_ids = stage_artifacts_batch(
                                 artifacts=artifacts,
                                 qa_score=qa_score,
                                 agent=display_name,
                                 group_id=group_id,
-                                source_message_id=user_message.id  # Link to source message
+                                source_message_id=user_message.id,  # Link to source message
                             )
 
                             if staged_ids:
-                                print(f"[STAGING] {len(staged_ids)} artifacts staged from {display_name}")
+                                print(
+                                    f"[STAGING] {len(staged_ids)} artifacts staged from {display_name}"
+                                )
 
                                 # Emit socket event for UI notification
                                 await sio.emit(
@@ -1039,43 +1111,39 @@ def register_group_message_handler(sio, app=None):
                     print(f"[STAGING] Error (non-blocking): {staging_err}")
                 # MARKER_103.6_END
 
-                # MARKER_103.7_START: Persist agent response to Qdrant for long-term memory
-                # MARKER_103_GC7: FIXED - wrapped in background task to avoid blocking
+                # Phase 111.18: Use batch queue instead of per-message upsert
+                # Non-blocking queue - messages flushed every 30 seconds
                 import uuid as uuid_module
+
                 msg_id = str(uuid_module.uuid4())
 
-                async def _persist_to_qdrant_background():
-                    """Background task for Qdrant persistence - non-blocking."""
-                    try:
-                        from src.memory.qdrant_client import upsert_chat_message
-                        upsert_chat_message(
-                            group_id=group_id,
-                            message_id=msg_id,
-                            sender_id=agent_id,
-                            content=response_text,
-                            role="assistant",
-                            agent=display_name,
-                            model=model_id,
-                            metadata={"in_reply_to": user_message.id if user_message else None}
-                        )
-                        # Emit socket event for UI sync
-                        await sio.emit(
-                            "message_saved",
-                            {"group_id": group_id, "message_id": msg_id, "success": True},
-                            room=f"group_{group_id}",
-                        )
-                    except Exception as qdrant_err:
-                        print(f"[QDRANT] Chat upsert failed (non-blocking): {qdrant_err}")
+                try:
+                    from src.memory.qdrant_batch_manager import get_batch_manager
 
-                # Fire-and-forget: don't await, let it run in background
-                asyncio.create_task(_persist_to_qdrant_background())
-                # MARKER_103.7_END
+                    batch_mgr = get_batch_manager()
+                    await batch_mgr.queue_message(
+                        group_id=group_id,
+                        message_id=msg_id,
+                        sender_id=agent_id,
+                        content=response_text,
+                        role="assistant",
+                        agent=display_name,
+                        model=model_id,
+                        metadata={
+                            "in_reply_to": user_message.id if user_message else None,
+                            "model_source": model_source,  # Phase 111.11
+                        },
+                    )
+                except Exception as qdrant_err:
+                    print(f"[QDRANT] Queue failed (non-blocking): {qdrant_err}")
 
                 print(f"[GROUP] Agent {agent_id} responded: {len(response_text)} chars")
 
                 # Phase 57.8: Check for @mentions in agent response to trigger other agents
                 # MARKER_108_ROUTING_FIX_4: Support hyphenated model names
-                agent_mentions = re.findall(r"@([\w\-\.]+(?:/[\w\-\.]+)?(?::[\w\-\.]+)?)", response_text)
+                agent_mentions = re.findall(
+                    r"@([\w\-\.]+(?:/[\w\-\.]+)?(?::[\w\-\.]+)?)", response_text
+                )
                 if agent_mentions:
                     print(
                         f"[GROUP_DEBUG] Agent {display_name} mentioned: {agent_mentions}"

@@ -736,6 +736,9 @@ class OrchestratorWithElisya:
                 rich_context["is_fallback"] = False
                 rich_context["node_path"] = node_path
                 rich_context["actual_path"] = actual_path
+                rich_context["model_source"] = user_data.get(
+                    "model_source"
+                )  # Phase 111.10
                 return rich_context
             except Exception as e:
                 print(f"[ORCHESTRATOR] ⚠️ Rich context build failed: {e}")
@@ -756,6 +759,7 @@ class OrchestratorWithElisya:
                     "total_context_chars": len(content[:999999]),
                     "is_fallback": True,
                     "node_path": node_path,
+                    "model_source": user_data.get("model_source"),  # Phase 111.10
                 }
                 print(
                     f"[ORCHESTRATOR] ✅ Fallback context ready: {rich_context['total_context_chars']} chars"
@@ -773,6 +777,7 @@ class OrchestratorWithElisya:
             "total_context_chars": min(len(feature_str), 500),
             "is_fallback": True,
             "node_path": node_path,
+            "model_source": user_data.get("model_source"),  # Phase 111.10
         }
 
     def _format_history_for_prompt(self, messages: list, max_messages: int = 10) -> str:
@@ -996,12 +1001,14 @@ Please provide a helpful response based on the file content shown above.""",
         system_prompt: str,
         max_tool_turns: int = 5,
         provider: Provider = None,  # Phase 80.10: Explicit provider
+        source: str = None,  # Phase 111.9: Source for multi-provider routing
     ) -> Dict[str, Any]:
         """
         Main tool-enabled chat loop using the updated call_model.
         Phase 17-L: Uses agent-specific tool permissions.
         Phase 19: Collects tool results for response formatting.
         Phase 80.10: Uses ProviderRegistry for clean provider routing.
+        Phase 111.9: Added source parameter for multi-provider routing.
         """
 
         # 1. Get agent-specific tool schemas with CAM integration (Phase 76.4)
@@ -1019,46 +1026,23 @@ Please provide a helpful response based on the file content shown above.""",
         all_tool_executions = []
 
         # Phase 80.10: Detect provider if not explicitly passed
+        # Phase 111.9: Use source for multi-provider routing
         if provider is None:
-            provider = ProviderRegistry.detect_provider(model)
-        print(f"      🌐 Using provider: {provider.value} for model: {model}")
+            provider = ProviderRegistry.detect_provider(model, source=source)
+        print(
+            f"      🌐 Using provider: {provider.value} for model: {model} (source={source})"
+        )
 
-        # MARKER_90.1.4.2_START: Handle XaiKeysExhausted
-        # Phase 80.10: Use new call_model_v2 with explicit provider
-        try:
-            response = await call_model_v2(
-                messages=messages, model=model, provider=provider, tools=tool_schemas
-            )
-        except XaiKeysExhausted:
-            print(f"[Orchestrator] XAI keys exhausted, falling back to OpenRouter")
-            # Retry with OpenRouter - convert model to x-ai/model format
-            openrouter_model = (
-                f"x-ai/{model}" if not model.startswith("x-ai/") else model
-            )
-            response = await call_model_v2(
-                messages=messages,
-                model=openrouter_model,
-                provider=Provider.OPENROUTER,
-                tools=None,  # OpenRouter doesn't support tools well
-            )
-        except Exception as e:
-            # MARKER_90.1.4.3_START: Enhanced exception handling for all providers
-            error_msg = str(e).lower()
-            if any(err in error_msg for err in ["404", "429", "rate limit", "quota"]):
-                print(
-                    f"[Orchestrator] Rate limit/404 detected, falling back to OpenRouter"
-                )
-                # Force fallback to OpenRouter for any rate limit issues
-                openrouter_model = f"x-ai/{model}" if "grok" in model.lower() else model
-                response = await call_model_v2(
-                    messages=messages,
-                    model=openrouter_model,
-                    provider=Provider.OPENROUTER,
-                    tools=None,
-                )
-            else:
-                raise
-        # MARKER_90.1.4.3_END
+        # MARKER_111.9_NO_FALLBACK: No automatic fallback between providers
+        # Phase 111.9: If provider fails, return error - user changes provider manually
+        response = await call_model_v2(
+            messages=messages,
+            model=model,
+            provider=provider,
+            source=source,  # Phase 111.9
+            tools=tool_schemas,
+        )
+        # MARKER_111.9_END
 
         for turn in range(max_tool_turns):
             # Phase 22: Handle both dict and Pydantic object responses from Ollama
@@ -1186,29 +1170,14 @@ Please provide a helpful response based on the file content shown above.""",
 
                 # Call LLM again with tool results
                 # Phase 80.10: Use call_model_v2 with explicit provider
-                # MARKER_90.1.4.2_START: Handle XaiKeysExhausted in tool loop
-                try:
-                    response = await call_model_v2(
-                        messages=messages,  # Full history with tool results
-                        model=model,
-                        provider=provider,
-                        tools=tool_schemas,
-                    )
-                except XaiKeysExhausted:
-                    print(
-                        f"[Orchestrator] XAI keys exhausted in tool loop, falling back to OpenRouter"
-                    )
-                    # Retry with OpenRouter - convert model to x-ai/model format
-                    openrouter_model = (
-                        f"x-ai/{model}" if not model.startswith("x-ai/") else model
-                    )
-                    response = await call_model_v2(
-                        messages=messages,
-                        model=openrouter_model,
-                        provider=Provider.OPENROUTER,
-                        tools=None,  # OpenRouter doesn't support tools well
-                    )
-                # MARKER_90.1.4.2_END
+                # Phase 111.10: NO FALLBACK between providers - let error propagate
+                response = await call_model_v2(
+                    messages=messages,  # Full history with tool results
+                    model=model,
+                    provider=provider,
+                    source=source,  # Phase 111.11.2 - preserve source after tool call
+                    tools=tool_schemas,
+                )
             else:
                 # LLM responded with a final message
                 break
@@ -1232,6 +1201,9 @@ Please provide a helpful response based on the file content shown above.""",
         """
         print(f"\n   → {agent_type} (Async LLM) with Elisya...")
 
+        # Phase 111.10: Extract rich_context from kwargs for model_source
+        rich_context = kwargs.get("rich_context")
+
         # 1. Reframe context (Phase 54.1: Using ElisyaStateService)
         state = self.elisya_service.reframe_context(state, agent_type)
 
@@ -1250,18 +1222,11 @@ Please provide a helpful response based on the file content shown above.""",
             detected_provider = ProviderRegistry.detect_provider(manual_model)
             real_provider = detected_provider.value
 
-            # Phase 80.37: Check if xai key exists, fallback to openrouter
-            # MARKER_102.30_START: Fix model name normalization for OpenRouter fallback
+            # Phase 111.10.1: NO FALLBACK - error if no XAI key
             if real_provider == "xai":
                 if not APIKeyService().get_key("xai"):
-                    real_provider = "openrouter"  # Fallback to OpenRouter
-                    # CRITICAL: Normalize model name for OpenRouter format
-                    # OpenRouter expects "x-ai/grok-X" not bare "grok-X" or "xai/grok-X"
-                    normalized_model = manual_model.replace("xai/", "").replace("x-ai/", "")
-                    if not normalized_model.startswith("x-ai/"):
-                        manual_model = f"x-ai/{normalized_model}"
-                    print(f"      🔄 xai key not found, using OpenRouter fallback: {manual_model}")
-            # MARKER_102.30_END
+                    print(f"      ❌ xai key not found - NO FALLBACK")
+                    raise ValueError("XAI API key not configured. Please add XAI key or select a different provider.")
 
             routing = {"provider": real_provider, "model": manual_model}
             print(
@@ -1325,9 +1290,11 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
                     "compressed_size": result.compressed_length,
                     "ratio": f"{result.compression_ratio:.2f}x",
                     "tokens_saved": result.tokens_saved_estimate,
-                    "level": result.level
+                    "level": result.level,
                 }
-                logger.debug(f"[ELISION] Compressed context: {result.original_length} → {result.compressed_length} bytes ({result.compression_ratio:.2f}x compression, ~{result.tokens_saved_estimate} tokens saved)")
+                logger.debug(
+                    f"[ELISION] Compressed context: {result.original_length} → {result.compressed_length} bytes ({result.compression_ratio:.2f}x compression, ~{result.tokens_saved_estimate} tokens saved)"
+                )
             except ImportError:
                 logger.debug("[ELISION] Compressor not available, using raw context")
                 compressed_prompt = prompt
@@ -1350,6 +1317,9 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
                 model=model_name,
                 system_prompt=system_prompt,
                 provider=provider_enum,  # Phase 80.10: Pass explicit provider
+                source=rich_context.get("model_source")
+                if rich_context
+                else None,  # Phase 111.10
             )
 
             # Extract final content from the full response structure
@@ -1383,8 +1353,12 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
             # Phase 100.1: Auto-rotate key on auth/rate-limit errors
             # MARKER_102.33_FIX: Extended error detection + fixed ProviderKey -> ProviderType
             error_str = str(e).upper()
-            if any(code in error_str for code in ("401", "402", "403", "429", "OPENROUTER", "EXHAUSTED")):
+            if any(
+                code in error_str
+                for code in ("401", "402", "403", "429", "OPENROUTER", "EXHAUSTED")
+            ):
                 from src.utils.unified_key_manager import get_key_manager, ProviderType
+
                 km = get_key_manager()
                 km.rotate_to_next()  # No argument needed - rotates OpenRouter by default
                 print(f"      🔄 Key rotated due to error, retrying...")
@@ -1395,8 +1369,13 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
                         model=model_name,
                         system_prompt=system_prompt,
                         provider=provider_enum,
+                        source=rich_context.get("model_source")
+                        if rich_context
+                        else None,  # Phase 111.10
                     )
-                    output = llm_response.get("message", {}).get("content", "No response content.")
+                    output = llm_response.get("message", {}).get(
+                        "content", "No response content."
+                    )
                 except Exception as retry_e:
                     print(f"      ❌ Retry also failed: {str(retry_e)}")
                     output = f"Error in {agent_type} LLM/Tool execution: {str(e)}"
@@ -1543,8 +1522,9 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
 
             elisya_state.speaker = "PM"
             # ✅ PHASE 3: Use the new ASYNC method for tool support
+            # Phase 111.10: Pass rich_context for model_source
             pm_result, elisya_state = await self._run_agent_with_elisya_async(
-                "PM", elisya_state, pm_prompt
+                "PM", elisya_state, pm_prompt, rich_context=rich_context
             )
 
             # ✅ Phase 17-K: Add PM step to chain context
@@ -1566,7 +1546,9 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
             # Phase 55.1: MCP state hook
             try:
                 mcp_bridge = get_mcp_state_bridge()
-                await mcp_bridge.save_agent_state(workflow_id, "PM", pm_result, elisya_state)
+                await mcp_bridge.save_agent_state(
+                    workflow_id, "PM", pm_result, elisya_state
+                )
             except Exception as e:
                 print(f"   ⚠️ MCP PM state save failed: {e}")
 
@@ -1610,7 +1592,9 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
             # Phase 55.1: MCP state hook
             try:
                 mcp_bridge = get_mcp_state_bridge()
-                await mcp_bridge.save_agent_state(workflow_id, "Architect", architect_result, elisya_state)
+                await mcp_bridge.save_agent_state(
+                    workflow_id, "Architect", architect_result, elisya_state
+                )
             except Exception as e:
                 print(f"   ⚠️ MCP Architect state save failed: {e}")
 
@@ -1682,9 +1666,7 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
 
             # Run both in parallel with asyncio.gather (no threading!)
             dev_qa_results = await asyncio.gather(
-                run_dev_async(),
-                run_qa_async(),
-                return_exceptions=True
+                run_dev_async(), run_qa_async(), return_exceptions=True
             )
 
             # Process results
@@ -1711,8 +1693,8 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
             if dev_state[0] and qa_state[0]:
                 # Merge: use Dev as base, add QA feedback
                 elisya_state = dev_state[0]
-                elisya_state.qa_feedback = getattr(qa_state[0], 'qa_feedback', None)
-                elisya_state.test_results = getattr(qa_state[0], 'test_results', None)
+                elisya_state.qa_feedback = getattr(qa_state[0], "qa_feedback", None)
+                elisya_state.test_results = getattr(qa_state[0], "test_results", None)
             elif dev_state[0]:
                 elisya_state = dev_state[0]
             elif qa_state[0]:
@@ -1721,7 +1703,9 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
             # Phase 55.1: MCP parallel merge hook
             try:
                 mcp_bridge = get_mcp_state_bridge()
-                await mcp_bridge.merge_parallel_states(workflow_id, dev_state[0], qa_state[0])
+                await mcp_bridge.merge_parallel_states(
+                    workflow_id, dev_state[0], qa_state[0]
+                )
             except Exception as e:
                 print(f"   ⚠️ MCP parallel merge failed: {e}")
 
@@ -2047,7 +2031,9 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
             # Phase 55.1: MCP workflow complete hook
             try:
                 mcp_bridge = get_mcp_state_bridge()
-                await mcp_bridge.publish_workflow_complete(workflow_id, result, elisya_state)
+                await mcp_bridge.publish_workflow_complete(
+                    workflow_id, result, elisya_state
+                )
             except Exception as e:
                 print(f"   ⚠️ MCP workflow complete failed: {e}")
 
@@ -2365,6 +2351,9 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
             workflow_id = str(uuid.uuid4())
             state = self._get_or_create_state(workflow_id, prompt)
 
+            # Phase 111.15: Preserve original context dict for rich_context
+            rich_context = context if isinstance(context, dict) else None
+
             if context:
                 # Phase 57.6: Ensure raw_context is always a string (fixes slice error)
                 if isinstance(context, dict):
@@ -2383,14 +2372,16 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
                         prompt=prompt,
                         context=state.raw_context,
                         memory_manager=self.memory,
-                        arc_solver=getattr(self, '_arc_solver', None)
+                        arc_solver=getattr(self, "_arc_solver", None),
                     )
                     if gap_suggestions:
                         # Inject suggestions into prompt for agent awareness
                         prompt = f"{prompt}\n{gap_suggestions}"
                         logger.debug(f"[ARC_GAP] Injected gap suggestions into prompt")
                 except Exception as gap_err:
-                    logger.warning(f"[ARC_GAP] Gap detection failed (non-blocking): {gap_err}")
+                    logger.warning(
+                        f"[ARC_GAP] Gap detection failed (non-blocking): {gap_err}"
+                    )
 
             # Inject model override if specified
             old_routing = None
@@ -2408,7 +2399,7 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
                 # Run single agent with Elisya integration
                 if hasattr(self, "_run_agent_with_elisya_async"):
                     output, updated_state = await self._run_agent_with_elisya_async(
-                        agent_type, state, prompt
+                        agent_type, state, prompt, rich_context=rich_context  # Phase 111.15
                     )
                 else:
                     # Fallback to direct agent call

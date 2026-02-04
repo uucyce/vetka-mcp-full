@@ -29,15 +29,16 @@ async def list_models():
     """
     Get all models in phonebook.
 
-    MARKER_94.4_LIST_MODELS: Returns duplicates for multi-source models.
-    Models available from both direct API and OpenRouter appear twice.
+    MARKER_112_LIST_MODELS: Returns models from fetcher with multi-source support.
+    Phase 112: Uses model_fetcher directly for proper source tracking.
     """
     from src.services.model_duplicator import create_duplicates, get_duplication_stats
+    from src.elisya.model_fetcher import get_all_models
 
-    registry = get_model_registry()
-    base_models = registry.get_all()
+    # Phase 112: Use model_fetcher for proper source tracking
+    base_models = await get_all_models()
 
-    # Phase 94.4: Generate duplicates for models with multiple sources
+    # Phase 112: Generate duplicates for models with multiple sources
     expanded_models = create_duplicates(base_models)
 
     stats = get_duplication_stats()

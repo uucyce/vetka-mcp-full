@@ -758,10 +758,3 @@ async def async_expand_context(
     return expand_context(compressed, legend)
 
 
-# =============================================================================
-# MARKER_108_7_ELISION_ALIAS: Convenient aliases (Phase 108.7)
-# =============================================================================
-
-# Alias for cleaner imports: from src.memory.elision import elision_compress
-elision_compress = compress_context
-elision_expand = expand_context

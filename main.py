@@ -228,6 +228,16 @@ async def lifespan(app: FastAPI):
         logger.error(f"[Startup] Group chat manager init failed: {e}")
         app.state.group_chat_manager = None
 
+    # === Phase 111.18: Initialize Qdrant batch manager ===
+    try:
+        from src.memory.qdrant_batch_manager import init_batch_manager
+        batch_manager = await init_batch_manager()
+        app.state.qdrant_batch_manager = batch_manager
+        logger.info("[Startup] Qdrant batch manager initialized (30s flush interval)")
+    except Exception as e:
+        logger.error(f"[Startup] Qdrant batch manager init failed: {e}")
+        app.state.qdrant_batch_manager = None
+
     # === PHASE 87: Initialize file watcher with qdrant_client ===
     try:
         from src.scanners.file_watcher import get_watcher
@@ -311,6 +321,11 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, "group_chat_manager") and app.state.group_chat_manager:
         await app.state.group_chat_manager.stop_cleanup()
         logger.info("[Shutdown] Group chat cleanup task stopped")
+
+    # Phase 111.18: Stop Qdrant batch manager (flush remaining)
+    if hasattr(app.state, "qdrant_batch_manager") and app.state.qdrant_batch_manager:
+        await app.state.qdrant_batch_manager.stop()
+        logger.info("[Shutdown] Qdrant batch manager stopped (flushed remaining)")
 
     # === PHASE 104: Stop TTS server ===
     try:

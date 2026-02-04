@@ -307,6 +307,10 @@ export default function App() {
 
         <TreeEdges />
 
+        {/* MARKER_111.21_FRUSTUM: Add frustum culling */}
+        {/* Current: All 2000+ nodes rendered regardless of visibility */}
+        {/* Fix: Filter nodes by camera frustum before mapping */}
+        {/* Expected improvement: 50-80% reduction in rendered components */}
         {nodes.map((node) => (
           <FileCard
             key={node.id}

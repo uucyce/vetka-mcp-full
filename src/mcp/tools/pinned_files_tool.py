@@ -68,7 +68,11 @@ class PinnedFilesTool(BaseMCPTool):
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute synchronously by running async in event loop."""
         try:
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
             if loop.is_running():
                 # Return sync-compatible result
                 future = asyncio.ensure_future(self._execute_async(arguments))

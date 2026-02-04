@@ -25,9 +25,11 @@ interface Model {
   isLocal?: boolean;
   type?: string;  // Phase 60.5: local | cloud_free | cloud_paid | voice
   capabilities?: string[];  // Phase 60.5: tts | stt | code | chat | etc.
-  // MARKER_94.4_MODEL_SOURCE: Source tracking for multi-provider models
-  source?: 'direct' | 'openrouter' | 'local';  // Phase 94.4: API source
-  source_display?: string;  // Phase 94.4: Display label (xAI, OR, Direct, etc.)
+  // MARKER_112_MODEL_SOURCE: Source tracking for multi-provider models
+  source?: 'direct' | 'openrouter' | 'polza' | 'poe' | 'nanogpt' | 'local';  // Phase 112: Extended sources
+  source_display?: string;  // Phase 112: Display label (xAI, OR, Direct, Polza, etc.)
+  // Phase 112: All available routes for this model
+  routes?: Array<{ type: string; display: string; id: string }>;
   // TODO_CAM_INDICATOR: Add CAM relevance ranking from backend
   cam_score?: number;  // 0.0-1.0 from GET /api/cam/model-rank?model_id=... (used for sorting/highlighting)
   // Phase 111: Timestamp for NEW marker
@@ -62,10 +64,12 @@ interface ModelStatus {
 interface ModelDirectoryProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (modelId: string, modelName: string) => void;
+  // Phase 111.9: Added modelSource for multi-provider routing
+  onSelect: (modelId: string, modelName: string, modelSource?: string) => void;
   // Phase 56.6: Group creation mode support
   isGroupMode?: boolean;
-  onSelectForGroup?: (modelId: string, modelName: string) => void;
+  // Phase 111.9: Added modelSource for multi-provider routing
+  onSelectForGroup?: (modelId: string, modelName: string, modelSource?: string) => void;
   // Phase 80.19: Direct model addition to existing group
   activeGroupId?: string | null;
   hasActiveSlot?: boolean;
@@ -104,6 +108,26 @@ const CATEGORY_GROUPS: CategoryGroup[] = [
     filters: ['voice', 'mcp']
   }
 ];
+
+// Phase 112.5: Mapping API key provider to model filter criteria
+// Fixes the mismatch between key names (MISTRAL, POE) and model source/provider fields
+const KEY_TO_MODEL_FILTER: Record<string, {
+  sources?: string[],
+  providers?: string[],
+  idPrefixes?: string[]
+}> = {
+  'openrouter': { sources: ['openrouter'] },
+  'poe': { sources: ['poe'] },
+  'polza': { sources: ['polza'] },
+  'nanogpt': { sources: ['nanogpt'] },
+  'xai': { sources: ['direct'], providers: ['xai'], idPrefixes: ['x-ai/'] },
+  'mistral': { idPrefixes: ['mistralai/', 'mistral/'] },
+  'openai': { sources: ['direct'], providers: ['openai'], idPrefixes: ['openai/', 'gpt-'] },
+  'anthropic': { sources: ['direct'], providers: ['anthropic'], idPrefixes: ['anthropic/', 'claude-'] },
+  'gemini': { sources: ['gemini_direct'], idPrefixes: ['google/', 'gemini'] },
+  'google': { sources: ['gemini_direct'], idPrefixes: ['google/', 'gemini'] },
+  'perplexity': { sources: ['perplexity'], idPrefixes: ['perplexity/'] },
+};
 
 export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
   isOpen,
@@ -152,6 +176,9 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
 
   // Phase 111: Refresh state
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Phase 112: Source filter - filter models by provider/source
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
 
   // Fetch models when opened (cloud, local, and MCP agents)
   useEffect(() => {
@@ -269,6 +296,7 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
   }, [localModels, mcpAgents, models]);
 
   // Filter models - Phase 48.1: Fixed premium threshold ($1/1M = 0.000001 per token)
+  // Phase 112: Added sourceFilter for filtering by provider/source
   const filteredModels = useMemo(() => {
     return allModels.filter(m => {
       // Search filter
@@ -276,6 +304,29 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
         m.name.toLowerCase().includes(search.toLowerCase()) ||
         m.id.toLowerCase().includes(search.toLowerCase()) ||
         m.provider.toLowerCase().includes(search.toLowerCase());
+
+      // Phase 112.5: Source filter using KEY_TO_MODEL_FILTER mapping
+      // Fixes mismatch between key names (MISTRAL, POE) and model source/provider fields
+      const matchSource = !sourceFilter || (() => {
+        const sf = sourceFilter.toLowerCase();
+        const mapping = KEY_TO_MODEL_FILTER[sf];
+
+        if (mapping) {
+          // Check by mapping rules
+          if (mapping.sources?.includes(m.source || '')) return true;
+          if (mapping.providers?.includes(m.provider?.toLowerCase() || '')) return true;
+          if (mapping.idPrefixes?.some(prefix =>
+            m.id?.toLowerCase().startsWith(prefix.toLowerCase())
+          )) return true;
+          return false;
+        }
+
+        // Fallback for unknown providers - check everywhere
+        return m.source === sf ||
+               m.provider?.toLowerCase() === sf ||
+               m.source_display?.toLowerCase() === sf ||
+               m.id?.toLowerCase().includes(sf);
+      })();
 
       // Price/type filter
       const pricePerToken = parseFloat(m.pricing?.prompt || '0');
@@ -298,13 +349,14 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
         matchPrice = m.type === 'mcp_agent';
       }
 
-      return matchSearch && matchPrice;
+      return matchSearch && matchPrice && matchSource;
     });
-  }, [allModels, search, filter]);
+  }, [allModels, search, filter, sourceFilter]);
 
   // Handle model selection
+  // Phase 111.9: Pass model.source for multi-provider routing
   const handleSelect = useCallback((model: Model) => {
-    onSelect(model.id, model.name);
+    onSelect(model.id, model.name, model.source);
     onClose();
   }, [onSelect, onClose]);
 
@@ -729,24 +781,26 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
           </div>
         )}
 
+        {/* Phase 112.4b: Use compound key to prevent React dedup of same model from different sources */}
         {!loading && !error && filteredModels.map(model => (
           <div
-            key={model.id}
+            key={model._compound_key || `${model.id}@${model.source || 'unknown'}`}
             onClick={() => {
               // Phase 57.3: In group mode, ONLY call onSelectForGroup (don't switch to chat)
               // In solo mode, call handleSelect to insert @model and switch to chat
               // Phase 80.19: If in group mode with active group but no active slot,
               // add model directly to group via API
+              // Phase 111.9: Pass model.source for multi-provider routing
               if (isGroupMode) {
                 if (hasActiveSlot && onSelectForGroup) {
                   // Fill the active role slot
-                  onSelectForGroup(model.id, model.name);
+                  onSelectForGroup(model.id, model.name, model.source);
                 } else if (activeGroupId) {
                   // Phase 80.19: Add directly to existing group
                   handleAddModelDirect(model);
                 } else if (onSelectForGroup) {
                   // Creating new group - pass to parent for slot handling
-                  onSelectForGroup(model.id, model.name);
+                  onSelectForGroup(model.id, model.name, model.source);
                 }
               } else {
                 handleSelect(model);
@@ -1189,21 +1243,77 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
               scrollbarWidth: 'thin',
               scrollbarColor: '#333 #111'
             }}>
+              {/* Phase 112: Source filter indicator */}
+              {sourceFilter && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '6px 10px',
+                  marginBottom: 8,
+                  background: '#1a1a2a',
+                  borderRadius: 4,
+                  fontSize: 10,
+                  border: '1px solid #234'
+                }}>
+                  <span style={{ color: '#68a' }}>
+                    Filtering by: <strong>{sourceFilter}</strong>
+                  </span>
+                  <button
+                    onClick={() => setSourceFilter(null)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#68a',
+                      cursor: 'pointer',
+                      padding: '2px 6px',
+                      fontSize: 11
+                    }}
+                  >
+                    ✕ Clear
+                  </button>
+                </div>
+              )}
+
               {/* Flatten all provider keys into single list */}
-              {providers.filter(p => !p.isLocal).flatMap(provider =>
-                provider.keys.map((apiKey, idx) => (
+              {providers.filter(p => !p.isLocal).flatMap(provider => {
+                const providerName = provider.provider.toLowerCase().trim();
+                const isSelected = sourceFilter === providerName;
+
+                return provider.keys.map((apiKey, idx) => (
                   <div
-                    key={apiKey.id}
+                    key={`${provider.provider}-${apiKey.id}-${idx}`}
+                    onClick={(e) => {
+                      e.stopPropagation(); // Phase 112: Prevent bubbling
+                      // Phase 112: Toggle source filter on key click
+                      if (isSelected) {
+                        setSourceFilter(null);
+                      } else {
+                        setSourceFilter(providerName);
+                      }
+                    }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       padding: '8px 10px',
                       marginBottom: 4,
-                      background: '#0a0a0a',
+                      background: isSelected ? '#1a1a2a' : '#0a0a0a',
                       borderRadius: 4,
                       fontSize: 11,
-                      borderLeft: '2px solid #444' // Phase 80.3: Monochrome
+                      borderLeft: isSelected ? '2px solid #68a' : '2px solid #444',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isSelected) {
+                        (e.currentTarget as HTMLElement).style.background = '#111';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isSelected) {
+                        (e.currentTarget as HTMLElement).style.background = '#0a0a0a';
+                      }
                     }}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 0 }}>
@@ -1249,7 +1359,10 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
                     </div>
                     {/* Delete button */}
                     <button
-                      onClick={() => handleRemoveKey(provider.provider, apiKey.id)}
+                      onClick={(e) => {
+                        e.stopPropagation(); // Phase 112: Prevent triggering parent click
+                        handleRemoveKey(provider.provider, apiKey.id);
+                      }}
                       style={{
                         background: 'transparent',
                         border: 'none',
@@ -1273,8 +1386,8 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
                       ×
                     </button>
                   </div>
-                ))
-              )}
+                ));
+              })}
 
               {/* No keys message */}
               {providers.filter(p => !p.isLocal).every(p => p.keys.length === 0) && (

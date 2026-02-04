@@ -327,7 +327,8 @@ async def llm_stream_grok(
     api_key = _get_api_key("xai")
 
     if not api_key:
-        logger.debug("[LLM] No X.AI key, will fallback to OpenRouter")
+        logger.debug("[LLM] No X.AI key - NO FALLBACK available")
+        yield "❌ XAI API key not configured."
         return
 
     try:
