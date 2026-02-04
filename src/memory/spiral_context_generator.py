@@ -333,16 +333,16 @@ class SpiralContextGenerator:
     ) -> Tuple[Dict, Dict, Optional[Dict], float]:
         """Apply ELISION compression to all generations."""
         try:
-            from src.memory.elision import elision_compress
+            from src.memory.elision import compress_context
 
             original_size = len(json.dumps(gen0)) + len(json.dumps(gen1))
             if gen2:
                 original_size += len(json.dumps(gen2))
 
             # Compress each generation
-            gen0_str = elision_compress(gen0)
-            gen1_str = elision_compress(gen1)
-            gen2_str = elision_compress(gen2) if gen2 else None
+            gen0_str = compress_context(gen0)
+            gen1_str = compress_context(gen1)
+            gen2_str = compress_context(gen2) if gen2 else None
 
             # Parse back (ELISION returns compressed JSON string)
             gen0 = json.loads(gen0_str) if isinstance(gen0_str, str) else gen0_str
