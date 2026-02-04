@@ -11373,12 +11373,29 @@
             "role": "MCP Agent"
           },
           "created_at": "2026-02-04T09:12:22.508486"
+        },
+        {
+          "id": "68644ab6-54f9-40f5-8d2c-de71673c9f53",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_git_commit** `req-44f9db14`\n```\n{\"message\": \"Phase 109.11: Provider Persistence + Agent Notes + Reply Context\\n\\nMARKERS (требует тестирования):\\n\\nMARKER_109_9_REPLY_CONTEXT (group_message_handler.py:904-917):\\n- Reply context в промптах агентов\\n- TEST: Отправить reply на сообщение агента, проверить что видит контекст\\n\\nMARKER_109_10_PROVIDER (ChatPanel.tsx:569-573, GroupCreatorPanel.tsx:17,43,115,276):\\n- Model source flow frontend → backend\\n- TEST: Создать НОВУЮ группу с Grok, выбрать POE, перезагрузить - должен остаться POE\\n\\nMARKER_109_11_UPDATE_SOURCE (group_routes.py:234-258, group_chat_manager.py:619-650):\\n- PATCH endpoint для обновления source существующих участников\\n- TEST: curl -X PATCH localhost:5001/api/groups/{id}/participants/@grok-4/source -d '{\\\"model_source\\\":\\\"poe\\\"}'\\n\\nMARKER_109_12_AGENT_NOTES (project_digest.json:169-183, update_project_digest.py:291,338-348):\\n- Agent notes в digest + CLI args\\n- TEST: python scripts/update_project_digest.py --agent-note \\\"Test\\\" --agent-name \\\"Haiku\\\"\\n\\nMigration: groups.json lines 29,51,106 - Grok participants → \\\"poe\\\"\\n\\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\", \"files\": [\"client/src/components/chat/ChatPanel.tsx\", \"client/src/components/chat/GroupCreatorPanel.tsx\", \"src/api/handlers/group_message_handler.py\", \"src/api/routes/group_routes.py\", \"src/services/group_chat_manager.py\", \"data/project_digest.json\", \"scripts/update_project_digest.py\", \"data/groups.json\"], \"dry_run\": false}\n```",
+          "mentions": [
+            "grok-4/source",
+            "anthropic.com"
+          ],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-04T09:56:31.809029"
         }
       ],
       "shared_context": {},
       "project_id": null,
       "created_at": "2026-01-23T04:07:54.662090",
-      "last_activity": "2026-02-04T09:12:22.508490"
+      "last_activity": "2026-02-04T09:56:31.809034"
     },
     "335389bb-3d50-4ce3-b23b-80b13723ec78": {
       "id": "335389bb-3d50-4ce3-b23b-80b13723ec78",
@@ -12158,5 +12175,5 @@
       "last_activity": "2026-02-04T04:41:26.126550"
     }
   },
-  "saved_at": "2026-02-04T09:12:22.509247"
+  "saved_at": "2026-02-04T09:56:31.809603"
 }
