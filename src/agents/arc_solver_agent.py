@@ -70,8 +70,8 @@ class MGCGraphCache:
     def cascade_update(self, key: str, graph_state: Dict[str, Any]) -> None:
         """Update cache with cascading replication."""
         try:
-            from src.memory.elision import compress_context
-            compressed = compress_context(graph_state)
+            from src.memory.elision import elision_compress
+            compressed = elision_compress(graph_state)
         except Exception:
             compressed = graph_state
 
