@@ -763,40 +763,15 @@ def calculate_tree_layout(
         - root_folders: List of root folder paths
     """
 
-    # MARKER_111_2: Compact spacing + time-based Y
-    X_SPACING = 50         # Компактный шаг (было 120) - чтобы дерево помещалось на экран
-    FILE_Y_STEP = 30       # Шаг между файлами в цепочке
-    Y_MAX = 2000           # Максимальная высота для времени
-    Y_PER_DEPTH = Y_MAX    # Legacy return value (теперь Y определяется временем, не глубиной)
+    # MARKER_111_3: Компактный X, высокий Y
+    Y_PER_DEPTH = 300      # УВЕЛИЧЕН: Вертикальный шаг между уровнями (дерево растёт ВВЕРХ)
+    X_SPACING = 40         # УМЕНЬШЕН: Компактный горизонтальный шаг (дерево помещается на экран)
+    FILE_Y_STEP = 50       # Шаг между файлами в цепочке
 
     positions = {}
     subtree_widths = {}
 
     print(f"[TREE_LAYOUT] Starting classic tree layout for {len(folders)} folders")
-
-    # === PHASE 111.2: Вычислить временной диапазон для Y-координат ===
-    all_times = []
-    for folder_files in files_by_folder.values():
-        for f in folder_files:
-            t = f.get('created_time', 0)
-            if t > 0:
-                all_times.append(t)
-
-    if all_times:
-        min_time = min(all_times)
-        max_time = max(all_times)
-        time_range = max_time - min_time if max_time > min_time else 1
-        print(f"[TREE_LAYOUT] Time range: {min_time} to {max_time} ({time_range} seconds)")
-    else:
-        min_time, max_time, time_range = 0, 1, 1
-        print("[TREE_LAYOUT] WARNING: No file timestamps found, using default Y")
-
-    def time_to_y(created_time: float) -> float:
-        """Конвертировать timestamp в Y координату (0 = старые, Y_MAX = новые)"""
-        if created_time <= 0 or time_range <= 0:
-            return 100  # Дефолт для файлов без времени
-        normalized = (created_time - min_time) / time_range
-        return 100 + normalized * (Y_MAX - 100)  # Минимум 100, чтобы не на земле
 
     # === ШАГ 1: Подсчитать ширину каждого поддерева ===
     def count_width(folder_path: str) -> int:
@@ -820,48 +795,48 @@ def calculate_tree_layout(
         return max(1, width)
 
     # === ШАГ 2: Рекурсивный layout ===
-    def layout_subtree(folder_path: str, center_x: float) -> None:
+    def layout_subtree(folder_path: str, center_x: float, parent_y: float) -> None:
         """
-        PHASE 111.2: Рекурсивно размещает папку и её детей.
-        Y папки = минимальное время файлов внутри (или времени детей).
-        Y файлов = их created_time (нормализованное).
+        Рекурсивно размещает папку и её детей.
+        Папка размещается строго над родителем.
+        Дети центрируются под папкой.
         """
         folder = folders.get(folder_path)
         if not folder:
             return
 
-        # PHASE 111.2: Y папки = минимальное время её файлов
-        folder_files = files_by_folder.get(folder_path, [])
-        if folder_files:
-            min_file_time = min(f.get('created_time', 0) for f in folder_files)
-            folder_y = time_to_y(min_file_time) - 50  # Папка чуть ниже файлов
-        else:
-            # Папка без файлов - используем время из metadata или 0
-            folder_time = folder.get('created_time', 0)
-            folder_y = time_to_y(folder_time) if folder_time > 0 else 50
-
+        # Позиция этой папки: строго над родителем
+        folder_y = parent_y + Y_PER_DEPTH
         positions[folder_path] = {
             'x': center_x,
-            'y': max(50, folder_y),  # Минимум 50, чтобы не на земле
+            'y': folder_y,
             'z': 0,
-            'angle': 0
+            'angle': 0  # Не используется в tree layout
         }
 
         # === Дочерние папки ===
         children = folder.get('children', [])
         if children:
+            # Вычислить ширину каждого ребёнка
             child_widths = [subtree_widths.get(c, 1) for c in children]
             total_width = sum(child_widths) * X_SPACING
+
+            # Начать слева от центра родителя
             current_x = center_x - total_width / 2
 
             for i, child_path in enumerate(children):
                 child_width = child_widths[i] * X_SPACING
                 child_center = current_x + child_width / 2
-                layout_subtree(child_path, child_center)
+
+                # Рекурсивно разместить ребёнка
+                layout_subtree(child_path, child_center, folder_y)
+
                 current_x += child_width
 
-        # === PHASE 111.2: Файлы - Y по времени создания ===
+        # === Файлы в этой папке: ЦЕПОЧКА ("шашлык") ===
+        folder_files = files_by_folder.get(folder_path, [])
         if folder_files:
+            # Сортировать по времени создания (старые внизу, новые вверху)
             folder_files_sorted = sorted(
                 folder_files,
                 key=lambda f: f.get('created_time', 0)
@@ -870,14 +845,10 @@ def calculate_tree_layout(
             for i, file_data in enumerate(folder_files_sorted):
                 file_id = file_data.get('id')
                 if file_id:
-                    file_time = file_data.get('created_time', 0)
-                    # Y = время создания (нормализованное)
-                    # Если несколько файлов с одинаковым временем - добавить небольшой offset
-                    file_y = time_to_y(file_time) + (i * FILE_Y_STEP * 0.1)
-
+                    # Файлы в вертикальной цепочке над папкой
                     positions[file_id] = {
                         'x': center_x,
-                        'y': file_y,
+                        'y': folder_y + FILE_Y_STEP * (i + 1),
                         'z': 0
                     }
 
@@ -911,21 +882,19 @@ def calculate_tree_layout(
             for i, child_path in enumerate(children):
                 child_width = child_widths[i] * X_SPACING
                 child_center = current_x + child_width / 2
-                layout_subtree(child_path, child_center)  # PHASE 111.2: 2 params only
+                layout_subtree(child_path, child_center, 0)
                 current_x += child_width
 
-        # Файлы в root папке - PHASE 111.2: Y по времени
+        # Файлы в root папке
         root_files = files_by_folder.get(root_path, [])
         if root_files:
             root_files_sorted = sorted(root_files, key=lambda f: f.get('created_time', 0))
             for i, file_data in enumerate(root_files_sorted):
                 file_id = file_data.get('id')
                 if file_id:
-                    file_time = file_data.get('created_time', 0)
-                    file_y = time_to_y(file_time) + (i * FILE_Y_STEP * 0.1)
                     positions[file_id] = {
                         'x': 0,
-                        'y': file_y,
+                        'y': FILE_Y_STEP * (i + 1),
                         'z': 0
                     }
     else:
@@ -952,21 +921,19 @@ def calculate_tree_layout(
                 for i, child_path in enumerate(children):
                     child_width = child_widths[i] * X_SPACING
                     child_center = child_x + child_width / 2
-                    layout_subtree(child_path, child_center)  # PHASE 111.2: 2 params only
+                    layout_subtree(child_path, child_center, 0)
                     child_x += child_width
 
-            # Файлы в root папке - PHASE 111.2: Y по времени
+            # Файлы в root папке
             root_files = files_by_folder.get(root_path, [])
             if root_files:
                 root_files_sorted = sorted(root_files, key=lambda f: f.get('created_time', 0))
                 for i, file_data in enumerate(root_files_sorted):
                     file_id = file_data.get('id')
                     if file_id:
-                        file_time = file_data.get('created_time', 0)
-                        file_y = time_to_y(file_time) + (i * FILE_Y_STEP * 0.1)
                         positions[file_id] = {
                             'x': center,
-                            'y': file_y,
+                            'y': FILE_Y_STEP * (i + 1),
                             'z': 0
                         }
 
