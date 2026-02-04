@@ -492,6 +492,10 @@ export function useSocket() {
 
     socketRef.current = socket;
 
+    // MARKER_110_FIX: Expose socket globally for DevPanel config sync
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__vetkaSocket = socket;
+
     socket.on('connect', () => {
       // console.log('[Socket] Connected to', SOCKET_URL);
       setSocketConnected(true);

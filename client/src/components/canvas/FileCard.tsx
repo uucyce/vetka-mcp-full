@@ -213,6 +213,7 @@ export function FileCard({
   const { camera } = useThree();
 
   const updateNodePosition = useStore((state) => state.updateNodePosition);
+  const moveNodeWithChildren = useStore((state) => state.moveNodeWithChildren);
   const setDraggingAny = useStore((state) => state.setDraggingAny);
 
   // Phase 61: Pinned files
@@ -745,9 +746,15 @@ export function FileCard({
         meshRef.current.position.copy(newPos);
       }
 
-      updateNodePosition(id, { x: newPos.x, y: newPos.y, z: newPos.z });
+      // MARKER_111_DRAG: Folders move with all children, files move alone
+      const newPosition = { x: newPos.x, y: newPos.y, z: newPos.z };
+      if (type === 'folder') {
+        moveNodeWithChildren(id, newPosition);
+      } else {
+        updateNodePosition(id, newPosition);
+      }
     },
-    [isDragging, id, updateNodePosition]
+    [isDragging, id, type, updateNodePosition, moveNodeWithChildren]
   );
 
   const handlePointerUp = useCallback(

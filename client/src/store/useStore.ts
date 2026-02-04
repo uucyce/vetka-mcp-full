@@ -128,6 +128,7 @@ interface TreeState {
   setSocketConnected: (connected: boolean) => void;
   setDraggingAny: (dragging: boolean) => void;
   updateNodePosition: (id: string, position: { x: number; y: number; z: number }) => void;
+  moveNodeWithChildren: (id: string, position: { x: number; y: number; z: number }) => void;
   addNode: (node: TreeNode) => void;
   removeNode: (id: string) => void;
 
@@ -236,6 +237,59 @@ export const useStore = create<TreeState>((set) => ({
         [id]: { ...state.nodes[id], position }
       }
     };
+  }),
+
+  // MARKER_111_DRAG: Move node with all children (branch follows)
+  moveNodeWithChildren: (id, newPosition) => set((state) => {
+    const node = state.nodes[id];
+    if (!node) return state;
+
+    // Calculate delta from old position to new position
+    const delta = {
+      x: newPosition.x - node.position.x,
+      y: newPosition.y - node.position.y,
+      z: newPosition.z - node.position.z,
+    };
+
+    // Find all descendants recursively
+    const findDescendants = (nodeId: string): string[] => {
+      const descendants: string[] = [];
+      Object.values(state.nodes).forEach((n) => {
+        if (n.parentId === nodeId) {
+          descendants.push(n.id);
+          descendants.push(...findDescendants(n.id));
+        }
+      });
+      return descendants;
+    };
+
+    const descendantIds = findDescendants(id);
+    const updatedNodes = { ...state.nodes };
+
+    // Update the dragged node
+    updatedNodes[id] = {
+      ...node,
+      position: newPosition,
+    };
+
+    // Update all descendants with delta
+    descendantIds.forEach((childId) => {
+      const child = updatedNodes[childId];
+      if (child) {
+        updatedNodes[childId] = {
+          ...child,
+          position: {
+            x: child.position.x + delta.x,
+            y: child.position.y + delta.y,
+            z: child.position.z + delta.z,
+          },
+        };
+      }
+    });
+
+    console.log(`[DRAG] Moved ${id} + ${descendantIds.length} children by delta (${delta.x.toFixed(1)}, ${delta.y.toFixed(1)}, ${delta.z.toFixed(1)})`);
+
+    return { nodes: updatedNodes };
   }),
 
   addNode: (node) => set((state) => ({
