@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-04T05:55:57.312107+00:00",
+  "last_updated": "2026-02-04T06:12:22.634511+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 108,
@@ -13,6 +13,7 @@
   "summary": {
     "headline": "Phase 108.7 DONE! MGC + ELISION + Spiral Context + Auto-Digest Update",
     "key_achievements": [
+      "[109f0082] Phase 109.7: Phase 109.7 + Phase 60: Unified Weighting & LangGr...",
       "Phase 108.7: Auto-digest update in git_tool.py (MARKER_108_7_AUTO_DIGEST)",
       "Phase 108.7: spiral_context_generator.py - Pi-spiral progressive disclosure",
       "Phase 108.7: MGCGraphCache - Gen0/Gen1/Gen2 hierarchical caching",
@@ -172,7 +173,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "aeb56893",
+    "commit": "109f0082",
     "dirty": true
   }
 }

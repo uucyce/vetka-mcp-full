@@ -868,7 +868,17 @@ def register_group_message_handler(sio, app=None):
 
                 # Build recent messages context
                 recent_messages = manager.get_messages(group_id, limit=5)
+
+                # MARKER_109_8_MODEL_IDENTITY: Add model identity to prevent confusion
+                # Models need to know WHO they are (Grok was signing as GLM!)
+                model_identity = f"""## YOUR IDENTITY
+You are **{display_name}** (model: `{model_id}`).
+When signing messages, use your ACTUAL name: {display_name}.
+Do NOT confuse yourself with other models.
+"""
+
                 context_parts = [
+                    model_identity,  # MARKER_109_8: Identity first!
                     f"## ROLE\n{system_prompt}\n",
                     f"## GROUP: {group.get('name', 'Team Chat')}\n",
                 ]
