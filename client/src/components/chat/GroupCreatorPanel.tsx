@@ -15,6 +15,8 @@ interface Agent {
   model: string | null;
   // Phase 80.12: Track agent_id for existing participants
   agent_id?: string;
+  // MARKER_109_10_PROVIDER: Phase 109.10 - Track model source/provider
+  modelSource?: string;
 }
 
 // Phase 80.12: Participant data from API
@@ -36,6 +38,8 @@ interface Group {
 
 interface GroupCreatorPanelProps {
   selectedModel: string | null;
+  // MARKER_109_10_PROVIDER: Phase 109.10 - Model source for provider persistence
+  selectedModelSource?: string;
   onClearSelectedModel: () => void;
   onCreateGroup: (name: string, agents: Agent[]) => void;
   onAddCustomRole?: () => void;
@@ -108,6 +112,7 @@ Your responsibilities:
 
 export const GroupCreatorPanel: React.FC<GroupCreatorPanelProps> = ({
   selectedModel,
+  selectedModelSource,  // MARKER_109_10_PROVIDER: Phase 109.10
   onClearSelectedModel,
   onCreateGroup,
   onAddCustomRole,
@@ -258,6 +263,7 @@ export const GroupCreatorPanel: React.FC<GroupCreatorPanelProps> = ({
 
   // When model is selected from left sidebar, fill the active slot
   // Phase 80.12: Also handle edit mode - update participant via API
+  // MARKER_109_10_PROVIDER: Phase 109.10 - Include modelSource
   useEffect(() => {
     if (selectedModel && activeSlot !== null) {
       // Phase 80.12: In edit mode with existing agent, update via API
@@ -265,15 +271,15 @@ export const GroupCreatorPanel: React.FC<GroupCreatorPanelProps> = ({
       if (editMode && agent?.agent_id) {
         handleUpdateParticipantModel(agent.agent_id, selectedModel);
       } else {
-        // Create mode - just update local state
+        // Create mode - just update local state with modelSource
         setAgents(prev => prev.map((a, i) =>
-          i === activeSlot ? { ...a, model: selectedModel } : a
+          i === activeSlot ? { ...a, model: selectedModel, modelSource: selectedModelSource } : a
         ));
       }
       setActiveSlot(null);
       onClearSelectedModel();
     }
-  }, [selectedModel, activeSlot, onClearSelectedModel, editMode, agents]);
+  }, [selectedModel, selectedModelSource, activeSlot, onClearSelectedModel, editMode, agents]);
 
   const filledAgents = agents.filter(a => a.model !== null);
   // Phase 60.4: Only require filled agents, groupName is optional

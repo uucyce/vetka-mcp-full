@@ -616,6 +616,39 @@ class GroupChatManager:
         await self.save_to_json()
         return True
 
+    # MARKER_109_11_UPDATE_SOURCE: Phase 109.11 - Update model source for existing participants
+    async def update_participant_source(
+        self,
+        group_id: str,
+        agent_id: str,
+        model_source: Optional[str]
+    ) -> bool:
+        """
+        Update participant's model_source for provider routing.
+        Phase 109.11: Fix provider persistence for existing groups.
+        """
+        async with self._lock:
+            group = self._groups.get(group_id)
+            if not group or agent_id not in group.participants:
+                logger.warning(f"[GroupChat] Cannot update source: group or participant not found")
+                return False
+
+            # Update model_source
+            group.participants[agent_id].model_source = model_source
+            logger.info(f"[GroupChat] Updated {agent_id} model_source to {model_source}")
+
+        # Emit event
+        if self._socketio:
+            await self._socketio.emit('group_participant_updated', {
+                'group_id': group_id,
+                'agent_id': agent_id,
+                'model_source': model_source
+            })
+
+        # Auto-save
+        await self.save_to_json()
+        return True
+
     async def parse_mentions(self, content: str) -> List[str]:
         """Parse @mentions from message content (non-blocking)."""
         # ✅ PHASE 56.2: Run regex in executor (non-blocking)

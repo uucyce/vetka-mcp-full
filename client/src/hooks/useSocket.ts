@@ -406,6 +406,11 @@ interface ClientToServerEvents {
     filters?: Record<string, unknown>;
     min_score?: number;
   }) => void;
+  // MARKER_109_4_VIEWPORT: Phase 109.4 - Viewport sync for MCP agents
+  viewport_update: (data: {
+    viewport_context: ViewportContext;
+    timestamp: number;
+  }) => void;
 }
 
 export function useSocket() {
@@ -1565,6 +1570,9 @@ export function useSocket() {
       agent_id: agentId,
     });
   }, []);
+
+  // NOTE: Phase 109.4 - Viewport is already sent with user_message (line ~1490)
+  // No separate viewport_update needed - it's bundled with each message
 
   // === PHASE 56.5: CHAT-AS-TREE FUNCTIONS ===
 

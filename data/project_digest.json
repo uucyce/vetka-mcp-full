@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-04T06:12:22.634511+00:00",
+  "last_updated": "2026-02-04T06:54:09.105356+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 108,
@@ -166,6 +166,22 @@
       "HOPE frequency layers for ARC"
     ]
   },
+  "agent_notes": [
+    {
+      "agent": "Claude Code",
+      "note": "Phase 109.11: Fixed provider persistence. Added PATCH /api/groups/{id}/participants/{agent_id}/source endpoint. Migrated existing Grok participants to POE. Reply context added to agent prompts (MARKER_109_9).",
+      "timestamp": "2026-02-04T09:50:00Z",
+      "phase": "109.11",
+      "status": "completed"
+    },
+    {
+      "agent": "Grok-4.1-fast",
+      "note": "Phase 19 viewport research: Confirmed buildViewportContext() works - sent with every user_message. Recommended viewport-tools injection for MCP agents.",
+      "timestamp": "2026-02-04T09:45:00Z",
+      "phase": "109",
+      "status": "completed"
+    }
+  ],
   "quick_commands": {
     "refresh_models": "curl -X POST localhost:5001/api/models/refresh",
     "check_health": "curl localhost:5001/health/deep",
@@ -173,7 +189,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "109f0082",
+    "commit": "45470b67",
     "dirty": true
   }
 }

@@ -896,6 +896,22 @@ Do NOT confuse yourself with other models.
                     msg_content = msg.get("content", "")[:200]
                     context_parts.append(f"[{msg.get('sender_id')}]: {msg_content}")
 
+                # MARKER_109_9_REPLY_CONTEXT: Add reply context if this is a reply
+                # Kimi K2 identified this gap - agents need to know they're responding to a reply
+                if reply_to_id and reply_to_agent:
+                    # Find the original message being replied to
+                    reply_message_content = None
+                    for msg in recent_messages:
+                        if msg.get("id") == reply_to_id:
+                            reply_message_content = msg.get("content", "")[:300]
+                            break
+
+                    if reply_message_content:
+                        context_parts.append(f"\n## REPLY CONTEXT")
+                        context_parts.append(f"User is replying to **{reply_to_agent}**'s message:")
+                        context_parts.append(f'> "{reply_message_content}"')
+                        context_parts.append(f"Consider this context when responding.\n")
+
                 # Current request
                 context_parts.append(f"\n## CURRENT REQUEST\n{content}")
 

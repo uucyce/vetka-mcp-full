@@ -169,6 +169,7 @@ def load_digest() -> dict:
         "architecture": {},
         "documentation": {},
         "agent_instructions": {},
+        "agent_notes": [],  # MARKER_109_12: Phase 109.12 - Agent research notes
         "quick_commands": {}
     }
 
@@ -286,7 +287,8 @@ def update_digest(
     headline: str = None,
     add_achievement: str = None,
     add_pending: str = None,
-    add_fix: dict = None
+    add_fix: dict = None,
+    add_agent_note: dict = None  # MARKER_109_12: {"agent": "...", "note": "...", "phase": "...", "status": "..."}
 ):
     """Update digest with new information."""
     print("=" * 60)
@@ -331,6 +333,20 @@ def update_digest(
             digest.setdefault("recent_fixes", []).insert(0, add_fix)
             print(f"  Added fix: {add_fix.get('id')}")
 
+    # MARKER_109_12: Add agent note if provided
+    if add_agent_note:
+        note_entry = {
+            "agent": add_agent_note.get("agent", "Unknown"),
+            "note": add_agent_note.get("note", ""),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "phase": add_agent_note.get("phase", ""),
+            "status": add_agent_note.get("status", "completed")
+        }
+        digest.setdefault("agent_notes", []).insert(0, note_entry)
+        # Keep only last 10 notes
+        digest["agent_notes"] = digest["agent_notes"][:10]
+        print(f"  Added agent note from: {note_entry['agent']}")
+
     # Auto-update system status
     print("\nUpdating system status...")
     qdrant_stats = get_qdrant_stats()
@@ -373,6 +389,12 @@ def main():
     parser.add_argument("--fix-line", type=int, help="Line number for fix")
     parser.add_argument("--fix-desc", type=str, help="Fix description")
 
+    # MARKER_109_12: Agent notes
+    parser.add_argument("--agent-note", type=str, help="Agent note text")
+    parser.add_argument("--agent-name", type=str, help="Agent name (e.g., 'Haiku Scout', 'Grok')")
+    parser.add_argument("--agent-phase", type=str, help="Phase for agent note")
+    parser.add_argument("--agent-status", type=str, help="Agent status (completed/in_progress/blocked)")
+
     # Git options
     parser.add_argument("--commit", action="store_true", help="Commit digest to git after update")
     parser.add_argument("--push", action="store_true", help="Push to remote after commit (implies --commit)")
@@ -390,6 +412,16 @@ def main():
             "description": args.fix_desc or ""
         }
 
+    # Build agent note dict if provided
+    add_agent_note = None
+    if args.agent_note:
+        add_agent_note = {
+            "agent": args.agent_name or "Unknown",
+            "note": args.agent_note,
+            "phase": args.agent_phase or "",
+            "status": args.agent_status or "completed"
+        }
+
     update_digest(
         phase_number=args.phase,
         phase_name=args.name,
@@ -397,7 +429,8 @@ def main():
         headline=args.headline,
         add_achievement=args.achievement,
         add_pending=args.pending,
-        add_fix=add_fix
+        add_fix=add_fix,
+        add_agent_note=add_agent_note
     )
 
     # Git operations

@@ -229,6 +229,32 @@ async def update_participant_role(
     )
 
 
+# MARKER_109_11_UPDATE_SOURCE: Phase 109.11 - Update model source for provider routing
+class UpdateParticipantSourceRequest(BaseModel):
+    model_source: Optional[str] = None  # "poe", "polza", "xai", "openai", etc.
+
+
+@router.patch("/{group_id}/participants/{agent_id}/source")
+async def update_participant_source(
+    group_id: str,
+    agent_id: str,
+    body: UpdateParticipantSourceRequest
+):
+    """
+    Update participant's model_source for provider routing.
+    Phase 109.11: Fix provider persistence for existing groups.
+    """
+    manager = get_group_chat_manager()
+
+    if await manager.update_participant_source(group_id, agent_id, body.model_source):
+        return {'success': True, 'model_source': body.model_source}
+
+    raise HTTPException(
+        status_code=404,
+        detail="Group or participant not found"
+    )
+
+
 @router.get("/{group_id}/messages")
 async def get_messages(group_id: str, limit: int = 50):
     """Get group messages."""

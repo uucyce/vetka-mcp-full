@@ -565,15 +565,19 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   // Phase 56.6: Handle model selection for group creation
   // Phase 60.4: Fixed - don't modify input, only set model for group slot
   // Phase 80.12: Simplified - model selection now handled within GroupCreatorPanel
-  const handleModelSelectForGroup = useCallback((modelId: string, _modelName: string) => {
-    // console.log('[ChatPanel] Model selected for group:', modelId);
+  // MARKER_109_10_PROVIDER: Phase 109.10 - Accept and store model source
+  const [modelSourceForGroup, setModelSourceForGroup] = useState<string | undefined>(undefined);
+  const handleModelSelectForGroup = useCallback((modelId: string, _modelName: string, modelSource?: string) => {
+    // console.log('[ChatPanel] Model selected for group:', modelId, 'source:', modelSource);
     setModelForGroup(modelId);
+    setModelSourceForGroup(modelSource);
     // Note: Don't modify input here - only set model for group creation
     // Input modification is handled separately for regular chat mode
   }, []);
 
   // Phase 57.3: Handle group creation via REST API
-  const handleCreateGroup = useCallback(async (name: string, agents: Array<{role: string, model: string | null}>) => {
+  // MARKER_109_10_PROVIDER: Phase 109.10 - Accept modelSource in agents
+  const handleCreateGroup = useCallback(async (name: string, agents: Array<{role: string, model: string | null, modelSource?: string}>) => {
     // console.log('[ChatPanel] Creating group:', { name, agents });
 
     // Filter out agents without models
@@ -601,6 +605,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         const prettyModel = shortName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
         return `${role} (${prettyModel})`;
       };
+      // MARKER_109_10_PROVIDER: Phase 109.10 - Include model_source for persistence
       const createResponse = await fetch('/api/groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -609,7 +614,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           description: `Group chat with ${validAgents.length} agents`,
           admin_agent_id: `@${firstAgent.role}`,
           admin_model_id: firstAgent.model,
-          admin_display_name: getDisplayName(firstAgent.role, firstAgent.model!)
+          admin_display_name: getDisplayName(firstAgent.role, firstAgent.model!),
+          admin_model_source: firstAgent.modelSource  // Phase 109.10: Provider persistence
         })
       });
 
@@ -623,6 +629,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       // console.log('[ChatPanel] Group created:', groupId);
 
       // Step 2: Add remaining agents as participants
+      // MARKER_109_10_PROVIDER: Phase 109.10 - Include model_source for each participant
       for (let i = 1; i < validAgents.length; i++) {
         const agent = validAgents[i];
         const addResponse = await fetch(`/api/groups/${groupId}/participants`, {
@@ -632,7 +639,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
             agent_id: `@${agent.role}`,
             model_id: agent.model,
             display_name: getDisplayName(agent.role, agent.model!),  // Phase 80.8: Include model name
-            role: 'worker'
+            role: 'worker',
+            model_source: agent.modelSource  // Phase 109.10: Provider persistence
           })
         });
 
@@ -2505,7 +2513,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           }}>
             <GroupCreatorPanel
               selectedModel={modelForGroup}
-              onClearSelectedModel={() => setModelForGroup(null)}
+              selectedModelSource={modelSourceForGroup}  // MARKER_109_10_PROVIDER
+              onClearSelectedModel={() => { setModelForGroup(null); setModelSourceForGroup(undefined); }}
               onCreateGroup={handleCreateGroup}
               onAddCustomRole={() => {
                 // console.log('[ChatPanel] Add custom role requested');
