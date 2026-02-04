@@ -33,6 +33,33 @@ MIN_Y_FLOOR = 20      # minimum Y position - nothing below this
 MAX_Y_CEILING = 5000  # maximum Y position - reasonable upper bound
 
 
+# MARKER_110_BACKEND_CONFIG: Import config getter with fallback for standalone usage
+def _get_layout_config():
+    """
+    Get layout config from socket handler, with fallback for standalone usage.
+
+    This function attempts to import the layout config from the socket handler.
+    If the import fails (e.g., when running standalone without the full server),
+    it returns the default config values.
+
+    Returns:
+        dict with layout configuration values
+    """
+    try:
+        from src.api.handlers.layout_socket_handler import get_layout_config
+        return get_layout_config()
+    except ImportError:
+        # Fallback for standalone usage (tests, CLI, etc.)
+        return {
+            'Y_WEIGHT_TIME': 0.5,
+            'Y_WEIGHT_KNOWLEDGE': 0.5,
+            'MIN_Y_FLOOR': 20,
+            'MAX_Y_CEILING': 5000,
+            'FALLBACK_THRESHOLD': 0.5,
+            'USE_SEMANTIC_FALLBACK': True,
+        }
+
+
 def calculate_adaptive_branch_params(
     folder_path: str,
     files_by_folder: Dict[str, List[dict]],
@@ -517,6 +544,11 @@ def calculate_directory_fan_layout(
             # Oldest files at bottom (lower Y), newest at top (higher Y)
             # All files align along the branch direction (X-Z plane)
 
+            # MARKER_110_Y_FORMULA: Get Y-axis weights from config
+            layout_config = _get_layout_config()
+            y_weight_time = layout_config.get('Y_WEIGHT_TIME', 0.5)
+            y_weight_knowledge = layout_config.get('Y_WEIGHT_KNOWLEDGE', 0.5)
+
             for i, file_data in enumerate(folder_files):
                 # Phase 27.9: Files positioned along branch using adaptive length
                 # Distance along branch (70% toward parent from folder)
@@ -527,7 +559,15 @@ def calculate_directory_fan_layout(
                 # Phase 14: ADAPTIVE spacing per folder
                 mid_index = (n_files - 1) / 2.0
                 y_offset = (i - mid_index) * FILE_SPACING
-                file_y = folder_y + y_offset
+
+                # MARKER_110_Y_FORMULA: Blend time-based and knowledge-based Y positioning
+                # y_time_component: older files lower (based on sort index)
+                # y_knowledge_component: semantic clustering (folder_y as base)
+                y_time_component = folder_y + y_offset  # Original time-sorted stacking
+                y_knowledge_component = folder_y  # Semantic: all files at folder level
+
+                # Final Y = weighted blend: time vs knowledge
+                file_y = (y_weight_time * y_time_component) + (y_weight_knowledge * y_knowledge_component)
 
                 # Phase 27.9: Z-axis offset to prevent z-fighting
                 # Each file in stack gets small Z offset (index * 0.1)
@@ -651,9 +691,16 @@ def calculate_directory_fan_layout(
     print(f"[ANTI-GRAVITY] Repositioned {files_repositioned} files to follow their parent branches")
 
     # ========================================================================
-    # MARKER_109_Y_FLOOR: ENFORCE HARD FLOOR/CEILING
+    # MARKER_109_Y_FLOOR + MARKER_110_BACKEND_CONFIG: ENFORCE HARD FLOOR/CEILING
     # Phase 109: Prevent nodes from going "underground" or too high
+    # Phase 110: Use dynamic config values from DevPanel
     # ========================================================================
+
+    # MARKER_110_BACKEND_CONFIG: Get dynamic config values
+    config = _get_layout_config()
+    min_y = config.get('MIN_Y_FLOOR', MIN_Y_FLOOR)
+    max_y = config.get('MAX_Y_CEILING', MAX_Y_CEILING)
+
     floor_violations = 0
     ceiling_violations = 0
 
@@ -661,19 +708,19 @@ def calculate_directory_fan_layout(
         original_y = pos.get('y', 0)
 
         # Enforce floor
-        if original_y < MIN_Y_FLOOR:
-            positions[node_id]['y'] = MIN_Y_FLOOR
-            positions[node_id]['y_time'] = max(pos.get('y_time', MIN_Y_FLOOR), MIN_Y_FLOOR)
+        if original_y < min_y:
+            positions[node_id]['y'] = min_y
+            positions[node_id]['y_time'] = max(pos.get('y_time', min_y), min_y)
             floor_violations += 1
 
         # Enforce ceiling
-        elif original_y > MAX_Y_CEILING:
-            positions[node_id]['y'] = MAX_Y_CEILING
-            positions[node_id]['y_time'] = min(pos.get('y_time', MAX_Y_CEILING), MAX_Y_CEILING)
+        elif original_y > max_y:
+            positions[node_id]['y'] = max_y
+            positions[node_id]['y_time'] = min(pos.get('y_time', max_y), max_y)
             ceiling_violations += 1
 
     if floor_violations > 0 or ceiling_violations > 0:
         print(f"[Y-FLOOR] Enforced position limits: {floor_violations} floor violations, {ceiling_violations} ceiling violations")
-        print(f"[Y-FLOOR] MIN_Y={MIN_Y_FLOOR}, MAX_Y={MAX_Y_CEILING}")
+        print(f"[Y-FLOOR] MIN_Y={min_y}, MAX_Y={max_y} (from dynamic config)")
 
     return positions, root_folders, BRANCH_LENGTH, FAN_ANGLE, Y_PER_DEPTH
