@@ -1444,7 +1444,8 @@ export function useSocket() {
   // [PHASE70-M3] useSocket.ts: Viewport in sendMessage — IMPLEMENTED
   // FIX_109.4b: Added chatId parameter for immediate passing (React setState is async)
   // Phase 111.9: Added modelSource for multi-provider routing
-  const sendMessage = useCallback((message: string, nodePath?: string, modelId?: string, chatId?: string, modelSource?: string) => {
+  // MARKER_109_14: Added displayName for chat naming (priority: pinned > node > keywords)
+  const sendMessage = useCallback((message: string, nodePath?: string, modelId?: string, chatId?: string, modelSource?: string, displayName?: string) => {
     if (!socketRef.current?.connected) {
       // console.warn('[Socket] Not connected, cannot send message');
       return;
@@ -1499,6 +1500,8 @@ export function useSocket() {
       viewport_context: viewportContext || undefined,
       // FIX_109.4b: Pass chat_id for unified ID system
       chat_id: effectiveChatId || undefined,
+      // MARKER_109_14: Pass display_name for chat naming (priority: pinned > node > keywords)
+      display_name: displayName || undefined,
     });
 
     if (effectiveChatId) {

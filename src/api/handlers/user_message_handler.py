@@ -234,6 +234,11 @@ def register_user_message_handler(sio, app=None):
         if client_chat_id:
             print(f"[FIX_109.4] Using client-provided chat_id: {client_chat_id}")
 
+        # MARKER_109_14: Accept display_name from frontend (priority: pinned > node > keywords)
+        client_display_name = data.get("display_name", None)
+        if client_display_name:
+            print(f"[MARKER_109_14] Using client-provided display_name: {client_display_name}")
+
         # Save request timestamp (all responses use same timestamp)
         request_node_id = node_id
         request_timestamp = time.time()
@@ -337,7 +342,8 @@ def register_user_message_handler(sio, app=None):
                         # Fallback to node_path if semantic key is empty
                         return semantic_key if semantic_key else node_path
 
-                    semantic_chat_key = generate_semantic_key(text, node_path)
+                    # MARKER_109_14: Prefer client_display_name
+                    semantic_chat_key = client_display_name or generate_semantic_key(text, node_path)
                     chat_id = chat_history.get_or_create_chat('unknown', context_type='topic', display_name=semantic_chat_key)
                     history_messages = chat_history.get_chat_messages(chat_id)
                     history_context = format_history_for_prompt(
@@ -512,12 +518,13 @@ def register_user_message_handler(sio, app=None):
                 # Phase 51.1: Load chat history
                 # MARKER_CHAT_NAMING: Fix 1/6 - Use semantic key for chat naming
                 # FIX_109.4: Pass client_chat_id for unified ID system
+                # MARKER_109_14: Prefer client_display_name (has pinned/node priority)
                 chat_history = get_chat_history_manager()
-                semantic_key = extract_semantic_key(text)
+                chat_display_name = client_display_name or extract_semantic_key(text)
                 chat_id = chat_history.get_or_create_chat(
                     'unknown',
                     context_type='topic',
-                    display_name=semantic_key,
+                    display_name=chat_display_name,
                     chat_id=client_chat_id  # FIX_109.4: Use client-provided ID if available
                 )
                 history_messages = chat_history.get_chat_messages(chat_id)
@@ -675,13 +682,14 @@ def register_user_message_handler(sio, app=None):
                 # Phase 51.4: Emit message_sent event for surprise calculation
                 # MARKER_CHAT_NAMING: Fix 2/6 - Use semantic key for chat naming
                 # FIX_109.4: Pass client_chat_id for unified ID system
+                # MARKER_109_14: Prefer client_display_name
                 try:
                     chat_history = get_chat_history_manager()
-                    semantic_key = extract_semantic_key(text)
+                    chat_display_name = client_display_name or extract_semantic_key(text)
                     chat_id = chat_history.get_or_create_chat(
                         'unknown',
                         context_type='topic',
-                        display_name=semantic_key,
+                        display_name=chat_display_name,
                         chat_id=client_chat_id  # FIX_109.4
                     )
                     await emit_cam_event(
@@ -761,12 +769,13 @@ def register_user_message_handler(sio, app=None):
                     # Phase 51.1: Load chat history
                     # MARKER_CHAT_NAMING: Fix 3/6 - Use semantic key for chat naming
                     # FIX_109.4: Pass client_chat_id for unified ID system
+                    # MARKER_109_14: Prefer client_display_name
                     chat_history = get_chat_history_manager()
-                    semantic_key = extract_semantic_key(text)
+                    chat_display_name = client_display_name or extract_semantic_key(text)
                     chat_id = chat_history.get_or_create_chat(
                         'unknown',
                         context_type='topic',
-                        display_name=semantic_key,
+                        display_name=chat_display_name,
                         chat_id=client_chat_id  # FIX_109.4
                     )
                     history_messages = chat_history.get_chat_messages(chat_id)
@@ -1079,13 +1088,14 @@ When user asks about code - USE search_semantic or read_code_file!"""
                     # Phase 51.4: Emit message_sent event for surprise calculation
                     # MARKER_CHAT_NAMING: Fix 4/6 - Use semantic key for chat naming
                     # FIX_109.4: Pass client_chat_id for unified ID system
+                    # MARKER_109_14: Prefer client_display_name
                     try:
                         chat_history = get_chat_history_manager()
-                        semantic_key = extract_semantic_key(text)
+                        chat_display_name = client_display_name or extract_semantic_key(text)
                         chat_id = chat_history.get_or_create_chat(
                             'unknown',
                             context_type='topic',
-                            display_name=semantic_key,
+                            display_name=chat_display_name,
                             chat_id=client_chat_id  # FIX_109.4
                         )
                         await emit_cam_event(
@@ -1139,13 +1149,14 @@ When user asks about code - USE search_semantic or read_code_file!"""
 
         # Phase 51.4: Emit message_sent event for surprise calculation
         # MARKER_CHAT_NAMING: Fix 5/6 - Use semantic key for chat naming
+        # MARKER_109_14: Prefer client_display_name
         try:
             chat_history = get_chat_history_manager()
-            semantic_key = extract_semantic_key(text)
+            chat_display_name = client_display_name or extract_semantic_key(text)
             chat_id = chat_history.get_or_create_chat(
                 'unknown',
                 context_type='topic',
-                display_name=semantic_key
+                display_name=chat_display_name
             )
             await emit_cam_event(
                 "message_sent",
@@ -1927,13 +1938,14 @@ Provide your {agent_name} analysis:
 
             # Phase 51.4: Emit message_sent event for surprise calculation
             # MARKER_CHAT_NAMING: Fix 6/6 - Use semantic key for chat naming
+            # MARKER_109_14: Prefer client_display_name
             try:
                 chat_history = get_chat_history_manager()
-                semantic_key = extract_semantic_key(text)
+                chat_display_name = client_display_name or extract_semantic_key(text)
                 chat_id = chat_history.get_or_create_chat(
                     'unknown',
                     context_type='topic',
-                    display_name=semantic_key
+                    display_name=chat_display_name
                 )
                 await emit_cam_event(
                     "message_sent",

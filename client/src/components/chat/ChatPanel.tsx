@@ -830,8 +830,9 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       // FIX_109.4b: Pass chatId directly to avoid React async setState issue
       // Phase 111.9: Pass modelSource for multi-provider routing
       // Phase 111.10.2: Use replyTo.source if replying, otherwise selectedModelSource
+      // MARKER_109_14: Pass fileName for chat naming
       const sourceToUse = replyTo?.source || selectedModelSource || undefined;
-      sendMessage(input.trim(), contextPath, modelToUse, newChatId, sourceToUse);
+      sendMessage(input.trim(), contextPath, modelToUse, newChatId, sourceToUse, fileName);
     } else {
       // Existing chat - use currentChatId from state
       // Phase 111.9: Pass modelSource for multi-provider routing
