@@ -2005,12 +2005,16 @@ def format_write_result(tool_name: str, result: dict) -> str:
 
     elif status == "committed":
         # Git committed
-        return (
-            f"✅ Git Commit Created\n"
-            f"━{'━' * 39}\n"
-            f"Hash: {data.get('hash', '?')}\n"
+        lines = [
+            "✅ Git Commit Created",
+            "━" * 40,
+            f"Hash: {data.get('hash', '?')}",
             f"Message: {data.get('message', '?')}"
-        )
+        ]
+        # MARKER_108_7_AUTO_DIGEST: Show digest update status
+        if data.get("digest_updated"):
+            lines.append(f"📰 Digest: {data.get('digest_status', 'updated')}")
+        return "\n".join(lines)
 
     # Unknown status
     return json.dumps(data, indent=2)
