@@ -12,8 +12,12 @@ Provides adaptive branch length, file spacing, and repulsion calculations.
 """
 
 import math
+import re
 from collections import defaultdict
 from typing import Dict, List, Tuple, Optional, Callable
+
+# MARKER_111_5: Import phase number extraction for folder sorting
+from src.knowledge_graph.position_calculator import extract_phase_number
 
 
 # ============================================================================
@@ -817,6 +821,14 @@ def calculate_tree_layout(
         # === Дочерние папки ===
         children = folder.get('children', [])
         if children:
+            # MARKER_111_5: Сортировать по номеру фазы (60_phase, 103_ph, 111_ph...)
+            def get_sort_key(child_path: str) -> float:
+                child_folder = folders.get(child_path, {})
+                child_name = child_folder.get('name', child_path.split('/')[-1])
+                return extract_phase_number(child_name)
+
+            children = sorted(children, key=get_sort_key)
+
             # Вычислить ширину каждого ребёнка
             child_widths = [subtree_widths.get(c, 1) for c in children]
             total_width = sum(child_widths) * X_SPACING

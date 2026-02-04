@@ -2379,16 +2379,17 @@ def calculate_chat_positions(
             if last_activity.tzinfo is None:
                 last_activity = last_activity.replace(tzinfo=timezone.utc)
 
-            # Calculate Y based on time (normalized to [y_min, y_max])
-            time_delta = (last_activity - min_time).total_seconds()
-            normalized_time = time_delta / time_span if time_span > 0 else 0
-            y_pos = y_min + (normalized_time * height_range)
+            # MARKER_111_5: Fix "blue bars" - chats positioned in grid, not stacked
+            # Calculate X/Y with proper stagger so chats don't overlap
 
-            # Calculate X with staggered offset (8-12 units to the right)
-            # Stagger multiple chats from same parent
-            base_x_offset = 10  # Base offset from parent
-            stagger_offset = (idx % 3) * 2  # Stagger up to 3 chats: 0, 2, 4
-            x_pos = parent_pos['x'] + base_x_offset + stagger_offset
+            # Grid layout: 5 chats per row, then wrap to next row
+            base_x_offset = 30   # Увеличено с 10 до 30
+            stagger_x = (idx % 5) * 12  # 5 чатов в ряду: 0, 12, 24, 36, 48
+            stagger_y = (idx // 5) * 25  # Новый ряд каждые 5 чатов
+
+            x_pos = parent_pos['x'] + base_x_offset + stagger_x
+            # Чаты ВЫШЕ родительского файла (не по глобальному времени)
+            y_pos = parent_pos.get('y', 0) + 20 + stagger_y
 
             # Z stays same as parent (same depth plane)
             z_pos = parent_pos.get('z', 0.0)
