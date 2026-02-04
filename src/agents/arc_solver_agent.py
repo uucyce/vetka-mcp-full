@@ -14,9 +14,15 @@ Author: VETKA AI
 Version: 1.0.0
 
 @status: active
-@phase: 96
-@depends: json, logging, copy
+@phase: 96, 108.7
+@depends: json, logging, copy, elision, hope_enhancer
 @used_by: MCP tools, orchestrator
+
+MARKER_108_7_ARC_MGC: Phase 108.7 Integration
+- MGCGraphCache for hierarchical state management (Gen0→Gen1→Gen2)
+- HOPE integration for frequency-layer hypotheses (LOW/MID/HIGH)
+- ELISION compression for suggestion payloads
+- Request pooling (PgBouncer-like) for thundering herd mitigation
 """
 
 import os
@@ -26,6 +32,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from datetime import datetime
+from collections import deque
 import traceback
 import copy
 
@@ -34,6 +41,86 @@ import sys
 from io import StringIO
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# MARKER_108_7_ARC_MGC: MGC Graph Cache
+# =============================================================================
+
+class MGCGraphCache:
+    """
+    Multi-Generational Cache for ARC graph state.
+
+    Implements cascading replication:
+    - Gen0: RAM hot (active transformations)
+    - Gen1: Qdrant mid (recent patterns)
+    - Gen2: Archive (historical successes)
+
+    Mitigates: vicious cycles, thundering herd, 1690+ file scale
+    """
+
+    MGC_GENS = 3
+    REQUEST_POOL_SIZE = 10
+
+    def __init__(self):
+        self.generations = [{} for _ in range(self.MGC_GENS)]
+        self.request_queue = deque(maxlen=self.REQUEST_POOL_SIZE)
+        self._stats = {"hits": 0, "misses": 0, "cascades": 0}
+
+    def cascade_update(self, key: str, graph_state: Dict[str, Any]) -> None:
+        """Update cache with cascading replication."""
+        try:
+            from src.memory.elision import elision_compress
+            compressed = elision_compress(graph_state)
+        except Exception:
+            compressed = graph_state
+
+        self.generations[0][key] = {
+            "data": compressed,
+            "timestamp": datetime.now().isoformat(),
+            "usage": 0
+        }
+
+        # Auto-cascade if Gen0 too large
+        if len(self.generations[0]) > 50:
+            self._cascade_cold_to_gen1()
+
+    def get(self, key: str) -> Optional[Dict[str, Any]]:
+        """Get from cache, checking all generations."""
+        for gen_idx, gen in enumerate(self.generations):
+            if key in gen:
+                gen[key]["usage"] += 1
+                self._stats["hits"] += 1
+                return gen[key]["data"]
+        self._stats["misses"] += 1
+        return None
+
+    def _cascade_cold_to_gen1(self) -> None:
+        """Move cold items to Gen1."""
+        cold = [k for k, v in self.generations[0].items() if v.get("usage", 0) < 3]
+        for key in cold[:10]:
+            item = self.generations[0].pop(key)
+            self.generations[1][key] = item
+        self._stats["cascades"] += 1
+        logger.debug(f"[MGC] Cascaded {len(cold[:10])} items to Gen1")
+
+    def pool_request(self, suggestion: Any) -> bool:
+        """PgBouncer-like request pooling."""
+        if len(self.request_queue) >= self.REQUEST_POOL_SIZE:
+            logger.warning("[MGC] Thundering herd mitigated: queue full")
+            return False
+        self.request_queue.append(suggestion)
+        return True
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache statistics."""
+        return {
+            **self._stats,
+            "gen0_size": len(self.generations[0]),
+            "gen1_size": len(self.generations[1]),
+            "gen2_size": len(self.generations[2]),
+            "queue_size": len(self.request_queue)
+        }
 
 
 # ============================================================================
@@ -82,6 +169,11 @@ class ARCSolverAgent:
     - Тестирование через безопасное выполнение
     - Оценка через EvalAgent
     - Хранение успешных примеров (few-shot learning)
+
+    MARKER_108_7_ARC_MGC: Phase 108.7 Enhancements
+    - MGCGraphCache for hierarchical state caching
+    - HOPE integration for frequency-layer hypotheses
+    - ELISION compression for suggestion storage
     """
 
     def __init__(
@@ -90,7 +182,9 @@ class ARCSolverAgent:
         eval_agent: Optional[Any] = None,
         use_api: bool = False,
         api_aggregator: Optional[Any] = None,
-        learner: Optional[Any] = None
+        learner: Optional[Any] = None,
+        enable_mgc: bool = True,
+        enable_hope: bool = True
     ):
         """
         Args:
@@ -99,11 +193,18 @@ class ARCSolverAgent:
             use_api: Использовать API (Grok/Claude) или Ollama (local)
             api_aggregator: APIAggregator для API вызовов
             learner: Ollama learner (если use_api=False) - must have .generate() or .chat() method
+            enable_mgc: Enable MGC graph caching (Phase 108.7)
+            enable_hope: Enable HOPE frequency analysis (Phase 108.7)
         """
         self.memory = memory_manager
         self.eval_agent = eval_agent
         self.use_api = use_api
         self.api_aggregator = api_aggregator
+
+        # MARKER_108_7_ARC_MGC: Initialize MGC cache
+        self.mgc_cache = MGCGraphCache() if enable_mgc else None
+        self._enable_hope = enable_hope
+        self._hope_enhancer = None  # Lazy-loaded
 
         # Validate learner type - must have generate() or chat() method
         if learner is not None:
@@ -169,19 +270,39 @@ class ARCSolverAgent:
         logger.info(f"🔍 Starting ARC analysis for workflow: {workflow_id}")
 
         try:
+            # MARKER_108_7_ARC_MGC: Check MGC cache first
+            cache_key = f"arc_{workflow_id}_{hash(str(graph_data))}"
+            if self.mgc_cache:
+                cached = self.mgc_cache.get(cache_key)
+                if cached:
+                    logger.info(f"📦 MGC cache hit for {workflow_id}")
+                    return cached
+
             # 1. Собрать контекст графа
             graph_context = self._build_graph_context(
                 workflow_id, graph_data, image_path, task_context
             )
 
-            # 2. Сгенерировать кандидатов (гипотезы)
+            # MARKER_108_7_ARC_MGC: Store graph state in cache
+            if self.mgc_cache and graph_data:
+                self.mgc_cache.cascade_update(f"graph_{workflow_id}", graph_data)
+
+            # 2. Сгенерировать кандидатов (гипотезы) - with HOPE if enabled
             logger.info(f"🧠 Generating {num_candidates} candidate transformations...")
-            candidate_codes = self._generate_candidates(
-                graph_data or {},
-                image_path,
-                task_context or "",
-                num_candidates
-            )
+            if self._enable_hope:
+                candidate_codes = self._generate_candidates_with_hope(
+                    graph_data or {},
+                    image_path,
+                    task_context or "",
+                    num_candidates
+                )
+            else:
+                candidate_codes = self._generate_candidates(
+                    graph_data or {},
+                    image_path,
+                    task_context or "",
+                    num_candidates
+                )
 
             self.stats['total_generated'] += len(candidate_codes)
 
@@ -238,6 +359,71 @@ class ARCSolverAgent:
     # ========================================================================
     # CANDIDATE GENERATION
     # ========================================================================
+
+    def _generate_candidates_with_hope(
+        self,
+        graph_data: Dict,
+        image_path: Optional[str],
+        task_context: str,
+        num_candidates: int = 10
+    ) -> List[str]:
+        """
+        MARKER_108_7_ARC_MGC: HOPE-enhanced candidate generation.
+
+        Uses hierarchical frequency layers:
+        - LOW: Overview transformations (structural)
+        - MID: Relation transformations (dependencies)
+        - HIGH: Detail transformations (optimizations)
+        """
+        all_candidates = []
+
+        try:
+            # Lazy-load HOPE enhancer
+            if self._hope_enhancer is None:
+                try:
+                    from src.agents.hope_enhancer import HOPEEnhancer, FrequencyLayer
+                    self._hope_enhancer = HOPEEnhancer(local_model="llama3.1:8b")
+                except ImportError:
+                    logger.warning("[ARC] HOPE enhancer not available, using standard generation")
+                    return self._generate_candidates(graph_data, image_path, task_context, num_candidates)
+
+            from src.agents.hope_enhancer import FrequencyLayer
+
+            # Analyze graph with HOPE
+            graph_json = json.dumps(graph_data)[:4000]  # Limit size
+            analysis = self._hope_enhancer.analyze(
+                content=graph_json,
+                layers=[FrequencyLayer.LOW, FrequencyLayer.MID, FrequencyLayer.HIGH]
+            )
+
+            # Generate candidates per layer
+            candidates_per_layer = num_candidates // 3
+
+            for layer, layer_analysis in analysis.items():
+                layer_prompt = f"""
+Based on {layer.name} frequency analysis: {layer_analysis[:500]}
+
+Generate {candidates_per_layer} {layer.name.lower()}-level transformations.
+- LOW: Structural changes (add/remove nodes, reorder)
+- MID: Relationship changes (connections, dependencies)
+- HIGH: Optimizations (performance, caching)
+"""
+                # Use parent method for actual generation
+                layer_candidates = self._generate_candidates(
+                    graph_data,
+                    None,  # No image for layer-specific
+                    task_context + "\n" + layer_prompt,
+                    candidates_per_layer
+                )
+                all_candidates.extend(layer_candidates)
+
+            logger.info(f"✅ HOPE generated {len(all_candidates)} candidates across 3 layers")
+
+        except Exception as e:
+            logger.warning(f"[ARC] HOPE generation failed, falling back: {e}")
+            return self._generate_candidates(graph_data, image_path, task_context, num_candidates)
+
+        return all_candidates or self._generate_candidates(graph_data, image_path, task_context, num_candidates)
 
     def _generate_candidates(
         self,

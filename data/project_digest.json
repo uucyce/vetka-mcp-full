@@ -1,31 +1,32 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-04T02:50:39.252529+00:00",
+  "last_updated": "2026-02-04T03:04:56.495161+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 112,
-    "subphase": "4b",
-    "name": "Multi-Source Model Aggregator + Key Filter",
-    "status": "IN_PROGRESS",
-    "started": "2026-02-03",
-    "completed": null
+    "number": 108,
+    "subphase": "7",
+    "name": "MGC + ELISION + Spiral Context Integration",
+    "status": "COMPLETED",
+    "started": "2026-02-04",
+    "completed": "2026-02-04"
   },
   "summary": {
-    "headline": "Phase 112.4b - React key collision FIXED, Polza models should now appear",
+    "headline": "Phase 108.7 DONE! MGC + ELISION + Spiral Context + Auto-Digest Update",
     "key_achievements": [
-      "Phase 112.1: POLZA, POE, MISTRAL added to ProviderType enum",
-      "Phase 112.2: MULTI_SOURCE_MODELS config replaces DUAL_SOURCE_MODELS",
-      "Phase 112.3: Deduplication fixed - all sources kept with compound keys",
-      "Phase 112.4: sourceFilter state + key click handler in ModelDirectory",
-      "Phase 112.4b: React key collision FIXED (compound key pattern)",
-      "Phase 112.4b: Dead code removed (polza_direct check)",
-      "Phase 112.4b: Recovery logic enhanced (name + source_display)",
-      "6x Haiku analysis complete - HAIKU_ANALYSIS_REPORT.md saved"
+      "Phase 108.7: Auto-digest update in git_tool.py (MARKER_108_7_AUTO_DIGEST)",
+      "Phase 108.7: spiral_context_generator.py - Pi-spiral progressive disclosure",
+      "Phase 108.7: MGCGraphCache - Gen0/Gen1/Gen2 hierarchical caching",
+      "Phase 108.7: ELISION integration in engram_user_memory.py",
+      "Phase 108.7: HOPE frequency layers in arc_solver_agent.py",
+      "Phase 109.1: vetka_get_viewport_detail MCP tool",
+      "Phase 109.1: vetka_get_pinned_files MCP tool",
+      "Phase 109.1: vetka_get_context_dag MCP tool"
     ],
     "pending_items": [
-      "Phase 112.5: Create quota_fetcher.py for OpenRouter /auth/key",
-      "TEST: Verify Polza models appear separately in UI",
-      "TEST: Click Polza key \u2192 filter to Polza models only"
+      "Phase 109.2: Test with live VETKA UI (Socket.IO sync)",
+      "Phase 109.3: Integrate with Jarvis super-agent",
+      "Phase 109.4: Add viewport sync from React \u2192 Backend",
+      "TEST: Verify MGC cascade works with 1690+ files"
     ]
   },
   "system_status": {
@@ -58,10 +59,46 @@
         "anthropic",
         "tavily"
       ],
-      "health": "9 providers in ProviderType enum (Phase 112)"
+      "health": "9 providers in ProviderType enum"
     }
   },
   "recent_fixes": [
+    {
+      "id": "Phase_108_7",
+      "files": [
+        "src/mcp/tools/git_tool.py",
+        "src/memory/spiral_context_generator.py",
+        "src/memory/engram_user_memory.py",
+        "src/agents/arc_solver_agent.py"
+      ],
+      "description": "MGC + ELISION + Spiral Context: Auto-digest, Pi-spiral disclosure, hierarchical caching",
+      "markers": [
+        "MARKER_108_7_AUTO_DIGEST",
+        "MARKER_108_7_SPIRAL_CONTEXT",
+        "MARKER_108_7_ENGRAM_ELISION",
+        "MARKER_108_7_ARC_MGC"
+      ],
+      "grok_research": "\u041e\u043f\u0442\u0438\u043c\u0438\u0437\u0430\u0446\u0438\u044f \u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u0430 \u0432 Vetka: MGC + Elision + \u0421\u043f\u0438\u0440\u0430\u043b\u044c\u043d\u043e\u0435 \u041f\u043e\u0433\u0440\u0443\u0436\u0435\u043d\u0438\u0435"
+    },
+    {
+      "id": "Phase_109",
+      "files": [
+        "src/mcp/tools/viewport_tool.py",
+        "src/mcp/tools/pinned_files_tool.py",
+        "src/mcp/tools/context_dag_tool.py",
+        "src/mcp/tools/session_tools.py",
+        "src/services/activity_emitter.py"
+      ],
+      "description": "Dynamic MCP Context Injection: Context DAG, viewport/pinned tools, Socket.IO context_update",
+      "markers": [
+        "MARKER_109_1_VIEWPORT_INJECT",
+        "MARKER_109_2_VIEWPORT_TOOL",
+        "MARKER_109_2_PINNED_TOOL",
+        "MARKER_109_3_CONTEXT_DAG",
+        "MARKER_109_4_REALTIME_CONTEXT"
+      ],
+      "commit": "2c06c39d"
+    },
     {
       "id": "Phase_112",
       "files": [
@@ -71,101 +108,71 @@
         "ModelDirectory.tsx"
       ],
       "description": "Multi-source models: POLZA/POE/MISTRAL providers, MULTI_SOURCE_MODELS config, sourceFilter UI"
-    },
-    {
-      "id": "Phase_111",
-      "files": [
-        "doctor_tool.py",
-        "model_routes.py",
-        "model_fetcher.py",
-        "ModelDirectory.tsx"
-      ],
-      "description": "Doctor Tool health check + Refresh UI + NEW markers + provider extraction"
-    },
-    {
-      "id": "Phase_110",
-      "files": [
-        "model_fetcher.py",
-        "api_key_detector.py",
-        "tools.py"
-      ],
-      "description": "Polza Fetcher 333 models, TruffleHog 36 patterns, SaveAPIKeyTool"
     }
   ],
-  "phase_112_plan": {
-    "goal": "Multi-source model display with key-based filtering",
+  "phase_108_7_plan": {
+    "goal": "MGC + ELISION integration for 80% token savings, Pi-spiral progressive disclosure",
     "tasks": [
       {
-        "id": "112.1",
-        "task": "Add POLZA, POE, MISTRAL to ProviderType enum",
+        "id": "108.7a",
+        "task": "Add auto-digest update to git_tool.py",
         "files": [
-          "src/utils/unified_key_manager.py"
+          "src/mcp/tools/git_tool.py"
         ],
         "status": "DONE"
       },
       {
-        "id": "112.2",
-        "task": "Extend model_duplicator.py to MULTI_SOURCE_MODELS",
+        "id": "108.7b",
+        "task": "Create spiral_context_generator.py with MGC + ELISION",
         "files": [
-          "src/services/model_duplicator.py"
+          "src/memory/spiral_context_generator.py"
         ],
         "status": "DONE"
       },
       {
-        "id": "112.3",
-        "task": "Remove deduplication, add compound keys to models",
+        "id": "108.7c",
+        "task": "Integrate ELISION into engram_user_memory.py",
         "files": [
-          "src/elisya/model_fetcher.py"
+          "src/memory/engram_user_memory.py"
         ],
         "status": "DONE"
       },
       {
-        "id": "112.4",
-        "task": "Add sourceFilter state + click handler in ModelDirectory",
+        "id": "108.7d",
+        "task": "Add MGC + HOPE to arc_solver_agent.py",
         "files": [
-          "client/src/components/ModelDirectory.tsx"
+          "src/agents/arc_solver_agent.py"
         ],
         "status": "DONE"
-      },
-      {
-        "id": "112.5",
-        "task": "Create quota_fetcher.py for OpenRouter /auth/key",
-        "files": [
-          "src/elisya/quota_fetcher.py"
-        ],
-        "status": "pending"
       }
     ],
-    "grok_research": "docs/111_ph/GROK_RESEARCH_REQUEST.md",
-    "haiku_markers": "docs/111_ph/HAIKU_MARKERS_REPORT.md"
+    "grok_research": "Based on Grok's '\u041e\u043f\u0442\u0438\u043c\u0438\u0437\u0430\u0446\u0438\u044f \u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u0430 \u0432 Vetka' proposal",
+    "token_savings": "Target 80% via MGC+ELISION+Spiral"
   },
   "documentation": {
-    "phase_111_report": "docs/111_ph/PHASE_111_STATUS_REPORT.md",
-    "phase_111_plan": "docs/111_ph/PHASE_111_FINAL_PLAN.md",
-    "haiku_markers": "docs/111_ph/HAIKU_MARKERS_REPORT.md",
-    "haiku_analysis": "docs/111_ph/HAIKU_ANALYSIS_REPORT.md",
-    "grok_request": "docs/111_ph/GROK_RESEARCH_REQUEST.md"
+    "phase_109_recon": "docs/109_ph/PHASE_109_RECON_REPORT.md",
+    "phase_109_summary": "docs/109_ph/PHASE_109_IMPLEMENTATION_SUMMARY.md",
+    "phase_111_report": "docs/111_ph/PHASE_111_STATUS_REPORT.md"
   },
   "agent_instructions": {
-    "on_connect": "Read this digest. Phase 112.1-112.4 DONE. Remaining: quota_fetcher.py",
+    "on_connect": "Read digest. Phase 108.7+109.1 COMPLETE! Auto-digest now works. Test with git commit.",
     "methodology": "Use Haiku scouts for recon, Sonnet for verify, Opus for synthesis",
     "key_constraint": "NO NEW PANELS OR BUTTONS - use existing UI, add functions only",
-    "files_modified": [
-      "unified_key_manager.py",
-      "model_duplicator.py",
-      "model_fetcher.py",
-      "ModelDirectory.tsx"
+    "new_features": [
+      "Auto-digest update after git commit",
+      "Spiral context generation (Pi-spiral)",
+      "MGC hierarchical caching (Gen0\u2192Gen1\u2192Gen2)",
+      "HOPE frequency layers for ARC"
     ]
   },
   "quick_commands": {
     "refresh_models": "curl -X POST localhost:5001/api/models/refresh",
     "check_health": "curl localhost:5001/health/deep",
-    "check_polza": "curl -s https://api.polza.ai/api/v1/models -H 'Authorization: Bearer $POLZA_KEY'",
-    "check_or_quota": "curl https://openrouter.ai/api/v1/auth/key -H 'Authorization: Bearer $OR_KEY'"
+    "test_phase109": "pytest tests/test_phase109_context_dag.py -v"
   },
   "git": {
     "branch": "main",
-    "commit": "0eea7325",
+    "commit": "2c06c39d",
     "dirty": true
   }
 }

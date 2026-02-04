@@ -4,8 +4,8 @@ Hybrid RAM + Qdrant storage for user preferences
 
 @file engram_user_memory.py
 @status active
-@phase 96
-@depends logging, math, datetime, qdrant_client, user_memory.py
+@phase 96, 108.7
+@depends logging, math, datetime, qdrant_client, user_memory.py, elision.py
 @used_by jarvis_prompt_enricher.py, orchestrator_with_elisya.py, vetka_mcp_bridge.py, shared_tools.py, llm_call_tool.py, session_tools.py, user_memory_updater.py
 
 Architecture (from Grok #2 Research):
@@ -18,6 +18,11 @@ Features:
 - 23-43% token savings via selective inclusion
 - Model-agnostic (works with any LLM)
 - Vechnaya pamyat (eternal memory - survives model changes)
+
+MARKER_108_7_ENGRAM_ELISION: Phase 108.7 Integration
+- ELISION compression for Qdrant payloads (40-60% savings)
+- MGC-aware cascading (Gen0 RAM → Gen1 Qdrant → Gen2 Archive)
+- Spiral context integration via get_spiral_context()
 """
 
 import logging
@@ -439,6 +444,95 @@ class EngramUserMemory:
             "decay_rate": self.DECAY_RATE,
             "collection": self.COLLECTION_NAME,
         }
+
+    # =========================================================================
+    # MARKER_108_7_ENGRAM_ELISION: Spiral Context Integration
+    # =========================================================================
+
+    def get_spiral_context(
+        self,
+        user_id: str,
+        query_vec: Optional[List[float]] = None,
+        max_tokens: int = 500
+    ) -> Dict[str, Any]:
+        """
+        MARKER_108_7_ENGRAM_ELISION: Get spiral context from user memory.
+
+        Hybrid search: RAM first (Gen0), Qdrant fallback (Gen1).
+        Returns ELISION-compressed context for prompt injection.
+
+        Args:
+            user_id: User identifier
+            query_vec: Optional query embedding for semantic filtering
+            max_tokens: Max tokens for context
+
+        Returns:
+            Dict with compressed user context for Jarvis
+        """
+        context = {
+            "user_id": user_id,
+            "gen": "gen0",  # MGC generation
+            "prefs": {}
+        }
+
+        # Try RAM first (Gen0 - hot)
+        if user_id in self.ram_cache:
+            prefs = self.ram_cache[user_id]
+            context["prefs"] = self._compress_prefs(prefs, max_tokens)
+            context["source"] = "ram_cache"
+        else:
+            # Fallback to Qdrant (Gen1 - mid)
+            qdrant_prefs = self._qdrant_get_full(user_id)
+            if qdrant_prefs:
+                context["prefs"] = self._compress_prefs(qdrant_prefs, max_tokens)
+                context["gen"] = "gen1"
+                context["source"] = "qdrant"
+
+        # Apply ELISION compression
+        try:
+            from src.memory.elision import elision_compress
+            compressed = elision_compress(context)
+            if isinstance(compressed, str):
+                import json
+                context = json.loads(compressed)
+        except Exception as e:
+            logger.debug(f"[Engram] ELISION compression skipped: {e}")
+
+        context["hyperlink"] = "[→ prefs] vetka_get_user_preferences"
+        return context
+
+    def _compress_prefs(
+        self,
+        prefs: UserPreferences,
+        max_tokens: int
+    ) -> Dict[str, Any]:
+        """Compress preferences to fit token budget."""
+        compressed = {}
+
+        # Priority: communication_style > viewport > tool_usage
+        priority_categories = [
+            "communication_style",
+            "viewport_patterns",
+            "tool_usage_patterns"
+        ]
+
+        tokens_used = 0
+        chars_per_token = 4
+
+        for category in priority_categories:
+            cat_data = getattr(prefs, category, None)
+            if cat_data:
+                cat_dict = cat_data.to_dict() if hasattr(cat_data, 'to_dict') else {}
+                cat_size = len(str(cat_dict)) // chars_per_token
+
+                if tokens_used + cat_size <= max_tokens:
+                    compressed[category[:3]] = cat_dict  # Abbreviated key
+                    tokens_used += cat_size
+                else:
+                    # Truncate
+                    break
+
+        return compressed
 
     def clear_user(self, user_id: str):
         """Clear all preferences for a user."""

@@ -2,16 +2,25 @@
 Git operations tools - status (read-only) and commit (requires approval).
 
 @status: active
-@phase: 96
-@depends: base_tool, subprocess, pathlib
+@phase: 96, 108.7
+@depends: base_tool, subprocess, pathlib, json
 @used_by: mcp_server, stdio_server
+
+MARKER_108_7_AUTO_DIGEST: Auto-update project_digest.json after successful commit
+- Updates git.commit hash
+- Sets git.dirty = false
+- Preserves all other digest fields
+- Enables "breaking news" pattern for agents
 """
 import subprocess
+import json
 from pathlib import Path
-from typing import Any, Dict
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
 from .base_tool import BaseMCPTool
 
 PROJECT_ROOT = Path("/Users/danilagulin/Documents/VETKA_Project/vetka_live_03")
+DIGEST_PATH = PROJECT_ROOT / "data" / "project_digest.json"
 
 
 class GitStatusTool(BaseMCPTool):
@@ -220,6 +229,14 @@ class GitCommitTool(BaseMCPTool):
                 "message": message
             }
 
+            # MARKER_108_7_AUTO_DIGEST: Update digest after successful commit
+            digest_update = self._update_digest_after_commit(commit_hash, message)
+            if digest_update:
+                result_data["digest_updated"] = True
+                result_data["digest_status"] = digest_update
+            else:
+                result_data["digest_updated"] = False
+
             # MARKER_GIT_AUTO_PUSH: Auto-push to remote if requested
             if auto_push:
                 push_result = self._git_push()
@@ -240,6 +257,69 @@ class GitCommitTool(BaseMCPTool):
             return {"success": False, "error": "Git command timed out", "result": None}
         except Exception as e:
             return {"success": False, "error": str(e), "result": None}
+
+    def _update_digest_after_commit(self, commit_hash: str, message: str) -> Optional[str]:
+        """
+        MARKER_108_7_AUTO_DIGEST: Update project_digest.json after successful commit.
+
+        This is the "breaking news" pattern - agents reading digest will see
+        the latest commit immediately, enabling context-aware collaboration.
+
+        Updates:
+        - git.commit: new hash
+        - git.dirty: false
+        - last_updated: now
+        - Extracts phase from commit message if present (e.g., "Phase 109.1: ...")
+        """
+        try:
+            if not DIGEST_PATH.exists():
+                return None
+
+            with open(DIGEST_PATH, 'r') as f:
+                digest = json.load(f)
+
+            # Update git section
+            if "git" not in digest:
+                digest["git"] = {}
+            digest["git"]["commit"] = commit_hash
+            digest["git"]["dirty"] = False
+
+            # Update timestamp
+            digest["last_updated"] = datetime.now(timezone.utc).isoformat()
+
+            # Extract phase from commit message if present
+            # Pattern: "Phase 109.1: ..." or "Phase 108.7 - ..."
+            import re
+            phase_match = re.search(r'Phase\s+(\d+)\.?(\d*)', message, re.IGNORECASE)
+            if phase_match:
+                phase_num = int(phase_match.group(1))
+                subphase = phase_match.group(2) or None
+
+                # Add to recent commits in summary
+                commit_entry = f"Phase {phase_num}"
+                if subphase:
+                    commit_entry += f".{subphase}"
+                commit_entry += f": {message[:50]}..."
+
+                # Add to key_achievements if not already there
+                if "summary" in digest and "key_achievements" in digest["summary"]:
+                    achievements = digest["summary"]["key_achievements"]
+                    # Prepend new achievement (breaking news at top!)
+                    new_achievement = f"[{commit_hash}] {commit_entry}"
+                    if new_achievement not in achievements:
+                        achievements.insert(0, new_achievement)
+                        # Keep max 10 achievements
+                        digest["summary"]["key_achievements"] = achievements[:10]
+
+            # Write updated digest
+            with open(DIGEST_PATH, 'w') as f:
+                json.dump(digest, f, indent=2)
+
+            return f"Updated: commit={commit_hash}, dirty=false"
+
+        except Exception as e:
+            # Don't fail commit if digest update fails
+            return None
 
     def _git_push(self, remote: str = "origin", branch: str = None) -> Dict[str, Any]:
         """
