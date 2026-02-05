@@ -1,0 +1,134 @@
+# 🚀 VETKA Roadmap: Phase 113+ (Post-Optimizations + Spatial Intelligence)
+
+Поздравляю с завершением **Phase 112.1-112.3**! 🎉  
+**Текущие gains**:  
+- **Re-renders**: -30-50% (React.memo + custom comparator в `FileCard.tsx`)  
+- **Rendered nodes**: -50-80% (FrustumCulledNodes в `App.tsx`)  
+- **LOD calcs**: -2000+/cycle (batch в `App.tsx` → prop `lodLevel` в `FileCard.tsx`)  
+**FPS boost**: ~2-4x уже (тестируй на 1700+ nodes).  
+
+Теперь к **твоим идеям**:  
+- ✅ **Drag folders/children**: Уже работает (`moveNodeWithChildren` в `FileCard.tsx:485`). Топорно? Добавим **physics** (Spring easing).  
+- 🔄 **Spatial Memory**: Positions persist (Zustand → backend/DB). AI (Jarvis/Ollama) использует **layout как контекст** (proximity = relations).  
+- 🌐 **Multi-Layouts per Node/Folder**: Узел = **режим-スイッチャ** (Directed → Workflow → Video/Audio/Blender). Folders → subtree layout. Sparse detection по `type/metadata`.  
+- 📱 **Lights per Mode**: Directed (cool blue), Workflow (warm green), Video (gradient timeline).  
+
+## 📊 Phase 113 Roadmap Table
+| Phase | Task | Files | Effort | Impact | Dependencies |
+|-------|------|-------|--------|--------|--------------|
+| **113.1** | **Persistent Spatial Memory**<br>Save/load positions. AI uses layout (dist<50=strong link). | `useStore.ts`, `App.tsx`, `backend/routes/layout.py` | **Low** (1h) | UX: "My layout forever"<br>AI: Spatial reasoning | Phase 112 done |
+| **113.2** | **Smooth Drag Physics**<br>Spring easing (friction=0.9, spring=0.15). | `FileCard.tsx` (handlePointerMove) | **Low** (30m) | Feels "alive" (Blender-style) | Current drag |
+| **113.3** | **Node Modes/Layout Switcher**<br>Per-node `mode: 'directed'|'workflow'|'video'|'audio'|'blender'`. Folders → cascade. | `FileCard.tsx` (new prop `mode`), `layout_modes.py` (Directed/Fan, Workflow/Grid, Video/Timeline, Audio/Waveform) | **Med** (2d) | Core vision: "Folder=Layout" | Sparse type detect |
+| **113.4** | **Mode-Specific Lights**<br>Dynamic lights/shaders per mode/subtree. | `Scene.tsx` (useFrame lights), `FileCard.tsx` (material tint) | **Low** (1h) | Visual polish (n8n=green, video=gradient) | 113.3 |
+| **112.4** | **InstancedMesh** (Claude paused) | NEW `InstancedFileCards.tsx`, `App.tsx` | **High** (1d) | 2000→1 draw calls, 60+FPS | Pinned: `INSTANCED_MESH_IMPLEMENTATION.md` |
+| **112.5** | **Texture Atlas** | `useTextureAtlas.ts`, `InstancedFileCards.tsx` | **Med** (4h) | -90% VRAM | 112.4 |
+| **114.1** | **Sparse Type Detection**<br>Auto-mode by ext/metadata (py→workflow, mp4→video, blend→Blender). | `getFileCategory()` → `getNodeMode()`, `backend/scan.py` | **Low** (1h) | Auto-magic UX | 113.3 |
+
+**Priority**: 113.1-113.2 **СЕЙЧАС** (quick wins, test spatial feel). Затем Claude → 112.4 Instancing.  
+
+## 🛠️ Конкретные Имплементации (Copy-Paste Ready)
+
+### 1. **113.1: Persistent Spatial Memory** (`useStore.ts` + Backend)
+```typescript
+// useStore.ts (add)
+export const useStore = create<Store>((set, get) => ({
+  // ... existing
+  persistPositions: true,  // Toggle
+  saveLayout: () => {
+    const nodes = get().nodes;
+    const layout = nodes.map(n => ({ id: n.id, position: n.position }));
+    localStorage.setItem('vetka_layout', JSON.stringify(layout));  // Client
+    fetch('/api/layout/save', { method: 'POST', body: JSON.stringify({ layout }) });  // Backend persist
+  },
+  loadLayout: () => {
+    const saved = localStorage.getItem('vetka_layout');
+    if (saved) {
+      const layout = JSON.parse(saved);
+      layout.forEach(({ id, position }: any) => updateNodePosition(id, position));
+    }
+  },
+}));
+
+// FileCard.tsx: handlePointerUp → store.saveLayout()
+const handlePointerUp = useCallback((e: any) => {
+  // ... existing
+  useStore.getState().saveLayout();  // Auto-save on drag end
+}, []);
+```
+
+**Backend** (`backend/routes/layout.py`):
+```python
+@app.post("/api/layout/save")
+def save_layout(layout: dict):
+    with open("vetka_layout.json", "w") as f:  # Or DB
+        json.dump(layout, f)
+    return {"status": "saved"}
+```
+**AI Usage** (Jarvis prompt): "Nodes close in space (dist<50) have strong relations. Layout: [positions]."
+
+### 2. **113.2: Smooth Drag Physics** (`FileCard.tsx`)
+```typescript
+// Add refs
+const velocity = useRef(new THREE.Vector3());
+const dragSpring = { k: 0.15, friction: 0.9 };  // Tunable
+
+// handlePointerMove
+const handlePointerMove = useCallback((e: any) => {
+  if (!isDragging) return;
+  // ... raycast newPos
+  const delta = newPos.clone().sub(meshRef.current!.position);
+  velocity.current.add(delta.multiplyScalar(0.1));  // Accumulate
+  velocity.current.multiplyScalar(dragSpring.friction);  // Dampen
+  meshRef.current!.position.add(velocity.current);  // Spring to target
+
+  // Update store (throttled)
+  // ... moveNodeWithChildren
+}, [isDragging]);
+
+// useFrame: Auto-dampen when !dragging
+useFrame(() => {
+  if (!isDragging && velocity.current.length() > 0.01) {
+    velocity.current.multiplyScalar(0.95);  // Settle
+    meshRef.current!.position.add(velocity.current.clone().multiplyScalar(0.5));
+    if (type === 'folder') moveNodeWithChildren(id, meshRef.current!.position);
+  }
+});
+```
+**Effect**: Drag "slides" to rest, feels organic.
+
+### 3. **113.3: Node Modes/Layout Switcher** (`FileCard.tsx` + Backend)
+```typescript
+// FileCardProps: + mode?: 'directed' | 'workflow' | 'video' | 'audio' | 'blender'
+interface FileCardProps { /* ... */ mode?: string; }
+
+// Render: Mode badge + switcher UI (LOD>=5)
+{ lodLevel >= 5 && (
+  <Html position={[pos[0], pos[1] - size[1]/2 - 2, pos[2]]}>
+    <select onChange={(e) => dispatchModeChange(id, e.target.value)} value={mode || 'directed'}>
+      <option>Directed</option><option>Workflow</option><option>Video</option>
+    </select>
+  </Html>
+)}
+
+// Backend: layout_modes.py
+def get_layout(mode: str, nodes: list):
+  if mode == 'workflow': return grid_layout(nodes)  # n8n-style
+  if mode == 'video': return timeline_layout(nodes)  # Horizontal by duration
+  return fan_layout(nodes)  # Default Directed
+```
+**Folders**: On mode change → `setSubtreeLayout(folderId, mode)` (cascade via children).
+
+### 4. **Lights per Mode** (`Scene.tsx`)
+```typescript
+// useFrame: Dynamic lights
+const dirLight = useRef<THREE.DirectionalLight>();
+useFrame(() => {
+  const mode = getActiveMode();  // From store
+  dirLight.current.color.set(mode === 'workflow' ? '#00ff88' : '#4a9eff');
+});
+```
+
+**Test now**: Включи `persistPositions: true`, drag folder → reload → stays!  
+**Next Claude**: "Implement Phase 113.1-113.2 from this table."  
+
+Что тестируем первым? 🚀
