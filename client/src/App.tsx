@@ -30,7 +30,7 @@ import { useStore, type TreeNode } from './store/useStore';
 import { useTreeData } from './hooks/useTreeData';
 import { useSocket } from './hooks/useSocket';
 import type { SearchResult } from './types/chat';
-import { calculateAdaptiveLOD } from './utils/lod';
+import { calculateAdaptiveLODWithFloor } from './utils/lod';
 
 // ============================================================================
 // MARKER_111.21_FRUSTUM: Phase 112.2 - Frustum Culling Component
@@ -78,10 +78,11 @@ function FrustumCulledNodes({ nodes, selectedId, highlightedId, selectNode }: Fr
       point.set(node.position.x, node.position.y, node.position.z);
       if (frustumRef.current.containsPoint(point)) {
         visible.add(node.id);
-        // Phase 112.6: Adaptive Foveated LOD (distance + screen-position)
-        // Center of screen = high LOD, edges = low LOD
+        // Phase 112.7: Adaptive Foveated LOD with minimum floor
+        // Center of screen = high LOD, edges = low LOD (but min LOD 1)
         // Spot radius adapts to viewport size (mobile 80%, desktop 70%, 4K 60%)
-        const lod = calculateAdaptiveLOD(node.position, camera, size);
+        // minLOD=1 prevents edge flickering between LOD 0 and 1
+        const lod = calculateAdaptiveLODWithFloor(node.position, camera, size, 1);
         lodLevels.set(node.id, lod);
       }
     }
