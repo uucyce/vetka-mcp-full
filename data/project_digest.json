@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-05T14:18:11.597990+00:00",
+  "last_updated": "2026-02-05T15:09:45.811425+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 108,
@@ -13,6 +13,7 @@
   "summary": {
     "headline": "Phase 108.7 DONE! MGC + ELISION + Spiral Context + Auto-Digest Update",
     "key_achievements": [
+      "[aed22d78] Phase 112.5: Phase 112.5: Hybrid LOD with InstancedMesh\n\n- NEW:...",
       "[7c59220f] Phase 112.4: Phase 112.4: Texture Cache + Fast Hover\n\n- Global ...",
       "[e0dcfc9a] Phase 112.3: Phase 112.3b: Edge Frustum Culling\n\n- Added frustu...",
       "[a8266d05] Phase 112.1: Phase 112.1-112.3: 3D Performance Optimizations\n\n-...",
@@ -21,8 +22,7 @@
       "[3686b9b2] Phase 111.3: Phase 111.3: Compact X (40), taller Y (300) - tree...",
       "[2c1caa83] Phase 111.2: Phase 111.2: Time-based Y positioning + compact X ...",
       "[c75e5285] Phase 111: Phase 111: Classic tree layout (inverted DAG)\n\n- A...",
-      "[dd41da9f] Phase 109.11: Phase 109.11: Provider Persistence + Agent Notes +...",
-      "[109f0082] Phase 109.7: Phase 109.7 + Phase 60: Unified Weighting & LangGr..."
+      "[dd41da9f] Phase 109.11: Phase 109.11: Provider Persistence + Agent Notes +..."
     ],
     "pending_items": [
       "Phase 109.2: Test with live VETKA UI (Socket.IO sync)",
@@ -190,7 +190,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "7c59220f",
+    "commit": "aed22d78",
     "dirty": true
   }
 }

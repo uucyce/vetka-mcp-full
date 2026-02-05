@@ -17,7 +17,6 @@ import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { MessageSquare } from 'lucide-react';
 import { FileCard } from './components/canvas/FileCard';
-import { InstancedFileCards } from './components/canvas/InstancedFileCards';
 import { TreeEdges } from './components/canvas/TreeEdges';
 import { CameraController } from './components/canvas/CameraController';
 import { ChatPanel } from './components/chat';
@@ -116,44 +115,9 @@ function FrustumCulledNodes({ nodes, selectedId, highlightedId, selectNode }: Fr
     return nodes.filter(n => visibleNodeIds.has(n.id));
   }, [nodes, visibleNodeIds]);
 
-  // Phase 112.5: Hybrid LOD - split into low/high LOD groups
-  // LOD 0-3 (far): InstancedMesh (1 draw call for many nodes)
-  // LOD 4+  (close): FileCard (full interactivity)
-  const LOD_THRESHOLD = 3;
-
-  const { lowLodNodes, highLodNodes } = useMemo(() => {
-    const low: TreeNode[] = [];
-    const high: TreeNode[] = [];
-
-    for (const node of visibleNodes) {
-      const lod = nodeLodLevels.get(node.id) ?? 4;
-      if (lod <= LOD_THRESHOLD) {
-        low.push(node);
-      } else {
-        high.push(node);
-      }
-    }
-
-    return { lowLodNodes: low, highLodNodes: high };
-  }, [visibleNodes, nodeLodLevels]);
-
-  // Get pinned IDs for InstancedFileCards
-  const pinnedIds = useStore((state) => state.pinnedFileIds);
-
   return (
     <>
-      {/* Phase 112.5: Low LOD - InstancedMesh (1 draw call for 100+ nodes) */}
-      {lowLodNodes.length > 0 && (
-        <InstancedFileCards
-          nodes={lowLodNodes}
-          selectedId={selectedId}
-          highlightedId={highlightedId}
-          pinnedIds={pinnedIds}
-        />
-      )}
-
-      {/* High LOD - Individual FileCards (full interactivity) */}
-      {highLodNodes.map((node) => (
+      {visibleNodes.map((node) => (
         <FileCard
           key={node.id}
           id={node.id}
