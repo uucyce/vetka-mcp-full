@@ -30,9 +30,11 @@ import { useStore, type TreeNode } from './store/useStore';
 import { useTreeData } from './hooks/useTreeData';
 import { useSocket } from './hooks/useSocket';
 import type { SearchResult } from './types/chat';
+import { calculateAdaptiveLOD } from './utils/lod';
 
 // ============================================================================
 // MARKER_111.21_FRUSTUM: Phase 112.2 - Frustum Culling Component
+// Phase 112.6: Adaptive Foveated Spot - screen-position LOD
 // Filters 2000+ nodes to only render those visible in camera frustum
 // Expected improvement: 50-80% reduction in rendered components
 // ============================================================================
@@ -44,22 +46,9 @@ interface FrustumCulledNodesProps {
   selectNode: (id: string | null) => void;
 }
 
-// LOD level calculation function (matches FileCard.tsx levels)
-function calculateLodLevel(distance: number): number {
-  if (distance < 20) return 9;         // Ultra close - full detail
-  if (distance < 40) return 8;         // Very close - full preview
-  if (distance < 70) return 7;         // Close - large preview
-  if (distance < 100) return 6;        // Medium close - medium preview
-  if (distance < 150) return 5;        // Medium - mini preview starts
-  if (distance < 400) return 4;        // Medium far - card only
-  if (distance < 800) return 3;        // Far - shape + name
-  if (distance < 1500) return 2;       // Farther - shape visible
-  if (distance < 2500) return 1;       // Very far - small shape
-  return 0;                             // Extra wide - tiny dot
-}
-
 function FrustumCulledNodes({ nodes, selectedId, highlightedId, selectNode }: FrustumCulledNodesProps) {
-  const { camera } = useThree();
+  // Phase 112.6: Get viewport size for adaptive foveated LOD
+  const { camera, size } = useThree();
   const [visibleNodeIds, setVisibleNodeIds] = useState<Set<string>>(() => new Set(nodes.map(n => n.id)));
   // Phase 112.3: Batch LOD calculation
   const [nodeLodLevels, setNodeLodLevels] = useState<Map<string, number>>(() => new Map());
@@ -89,9 +78,11 @@ function FrustumCulledNodes({ nodes, selectedId, highlightedId, selectNode }: Fr
       point.set(node.position.x, node.position.y, node.position.z);
       if (frustumRef.current.containsPoint(point)) {
         visible.add(node.id);
-        // Phase 112.3: Calculate LOD for visible nodes only
-        const dist = camera.position.distanceTo(point);
-        lodLevels.set(node.id, calculateLodLevel(dist));
+        // Phase 112.6: Adaptive Foveated LOD (distance + screen-position)
+        // Center of screen = high LOD, edges = low LOD
+        // Spot radius adapts to viewport size (mobile 80%, desktop 70%, 4K 60%)
+        const lod = calculateAdaptiveLOD(node.position, camera, size);
+        lodLevels.set(node.id, lod);
       }
     }
 

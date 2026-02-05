@@ -16,6 +16,7 @@
 
 import * as THREE from 'three';
 import type { TreeNode } from '../store/useStore';
+import { calculateDistanceLOD } from './lod';
 
 // ============================================================
 // TYPES
@@ -59,27 +60,19 @@ export interface ViewportContext {
 }
 
 // ============================================================
-// LOD LEVELS (matches FileCard.tsx:9-28)
+// LOD LEVELS - Phase 112.6: Unified with utils/lod.ts
 // ============================================================
 
 /**
  * Get LOD level based on distance to camera.
- * Matches the 10-level system in FileCard.tsx.
+ * Phase 112.6: Now uses unified LOD from utils/lod.ts
  *
  * @param distance - Distance from camera to node
  * @returns LOD level 0-9 (0 = far, 9 = close)
  */
 export function getLODLevel(distance: number): number {
-  if (distance > 300) return 0;  // Tiny dot
-  if (distance > 200) return 1;  // Small shape
-  if (distance > 150) return 2;  // Shape + name starting
-  if (distance > 100) return 3;  // Clear shape + name
-  if (distance > 70) return 4;   // Larger card
-  if (distance > 50) return 5;   // Mini preview starts
-  if (distance > 35) return 6;   // Mini preview full
-  if (distance > 20) return 7;   // Large preview
-  if (distance > 10) return 8;   // Full preview
-  return 9;                       // Ultra close
+  // Phase 112.6: Use unified LOD calculation
+  return calculateDistanceLOD(distance);
 }
 
 /**
