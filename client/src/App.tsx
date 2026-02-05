@@ -11,8 +11,8 @@
  * @depends ./store/useStore, ./hooks/useTreeData, ./hooks/useSocket
  * @used_by ./main.tsx
  */
-import { useState, useEffect, useCallback } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { MessageSquare } from 'lucide-react';
@@ -26,10 +26,118 @@ import { DevPanel } from './components/panels/DevPanel';
 import { DropZoneRouter, type DropZoneEvent } from './components/DropZoneRouter';
 import JarvisWave from './components/jarvis/JarvisWave';
 import { useJarvis } from './hooks/useJarvis';
-import { useStore } from './store/useStore';
+import { useStore, type TreeNode } from './store/useStore';
 import { useTreeData } from './hooks/useTreeData';
 import { useSocket } from './hooks/useSocket';
 import type { SearchResult } from './types/chat';
+
+// ============================================================================
+// MARKER_111.21_FRUSTUM: Phase 112.2 - Frustum Culling Component
+// Filters 2000+ nodes to only render those visible in camera frustum
+// Expected improvement: 50-80% reduction in rendered components
+// ============================================================================
+
+interface FrustumCulledNodesProps {
+  nodes: TreeNode[];
+  selectedId: string | null;
+  highlightedId: string | null;
+  selectNode: (id: string | null) => void;
+}
+
+// LOD level calculation function (matches FileCard.tsx levels)
+function calculateLodLevel(distance: number): number {
+  if (distance < 20) return 9;         // Ultra close - full detail
+  if (distance < 40) return 8;         // Very close - full preview
+  if (distance < 70) return 7;         // Close - large preview
+  if (distance < 100) return 6;        // Medium close - medium preview
+  if (distance < 150) return 5;        // Medium - mini preview starts
+  if (distance < 400) return 4;        // Medium far - card only
+  if (distance < 800) return 3;        // Far - shape + name
+  if (distance < 1500) return 2;       // Farther - shape visible
+  if (distance < 2500) return 1;       // Very far - small shape
+  return 0;                             // Extra wide - tiny dot
+}
+
+function FrustumCulledNodes({ nodes, selectedId, highlightedId, selectNode }: FrustumCulledNodesProps) {
+  const { camera } = useThree();
+  const [visibleNodeIds, setVisibleNodeIds] = useState<Set<string>>(() => new Set(nodes.map(n => n.id)));
+  // Phase 112.3: Batch LOD calculation
+  const [nodeLodLevels, setNodeLodLevels] = useState<Map<string, number>>(() => new Map());
+  const lastUpdateRef = useRef(0);
+  const frustumRef = useRef(new THREE.Frustum());
+  const projMatrixRef = useRef(new THREE.Matrix4());
+
+  // Update frustum culling + LOD every 200ms (5 FPS, saves CPU)
+  useFrame((state) => {
+    const now = state.clock.elapsedTime;
+    if (now - lastUpdateRef.current < 0.2) return; // 200ms throttle
+    lastUpdateRef.current = now;
+
+    // Update projection matrix and frustum
+    projMatrixRef.current.multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse
+    );
+    frustumRef.current.setFromProjectionMatrix(projMatrixRef.current);
+
+    // Filter visible nodes AND calculate LOD in single pass
+    const visible = new Set<string>();
+    const lodLevels = new Map<string, number>();
+    const point = new THREE.Vector3();
+
+    for (const node of nodes) {
+      point.set(node.position.x, node.position.y, node.position.z);
+      if (frustumRef.current.containsPoint(point)) {
+        visible.add(node.id);
+        // Phase 112.3: Calculate LOD for visible nodes only
+        const dist = camera.position.distanceTo(point);
+        lodLevels.set(node.id, calculateLodLevel(dist));
+      }
+    }
+
+    // Only update state if visibility changed significantly
+    const sizeDiff = Math.abs(visible.size - visibleNodeIds.size);
+    const needsUpdate = sizeDiff > 5 ||
+      (visible.size > 0 && visibleNodeIds.size === 0) ||
+      (visible.size === 0 && visibleNodeIds.size > 0);
+
+    if (needsUpdate) {
+      setVisibleNodeIds(visible);
+      setNodeLodLevels(lodLevels);
+    } else {
+      // Even if visibility didn't change, update LOD levels (camera zoom)
+      setNodeLodLevels(lodLevels);
+    }
+  });
+
+  // Memoize visible nodes array
+  const visibleNodes = useMemo(() => {
+    return nodes.filter(n => visibleNodeIds.has(n.id));
+  }, [nodes, visibleNodeIds]);
+
+  return (
+    <>
+      {visibleNodes.map((node) => (
+        <FileCard
+          key={node.id}
+          id={node.id}
+          name={node.name}
+          path={node.path}
+          type={node.type}
+          position={[node.position.x, node.position.y, node.position.z]}
+          isSelected={selectedId === node.id}
+          isHighlighted={highlightedId === node.id}
+          onClick={() => selectNode(node.id)}
+          children={node.children}
+          depth={node.depth}
+          metadata={node.metadata}
+          opacity={node.opacity}
+          lodLevel={nodeLodLevels.get(node.id) ?? 4}
+        />
+      ))}
+    </>
+  );
+}
 
 export default function App() {
   useTreeData();  // Initialize tree data
@@ -319,27 +427,15 @@ export default function App() {
 
         <TreeEdges />
 
-        {/* MARKER_111.21_FRUSTUM: Add frustum culling */}
-        {/* Current: All 2000+ nodes rendered regardless of visibility */}
-        {/* Fix: Filter nodes by camera frustum before mapping */}
+        {/* MARKER_111.21_FRUSTUM: Phase 112.2 - Frustum culling DONE */}
+        {/* Filters 2000+ nodes to only render those visible in camera */}
         {/* Expected improvement: 50-80% reduction in rendered components */}
-        {nodes.map((node) => (
-          <FileCard
-            key={node.id}
-            id={node.id}
-            name={node.name}
-            path={node.path}
-            type={node.type}
-            position={[node.position.x, node.position.y, node.position.z]}
-            isSelected={selectedId === node.id}
-            isHighlighted={highlightedId === node.id}
-            onClick={() => selectNode(node.id)}
-            children={node.children}
-            depth={node.depth}
-            metadata={node.metadata}
-            opacity={node.opacity}
-          />
-        ))}
+        <FrustumCulledNodes
+          nodes={nodes}
+          selectedId={selectedId}
+          highlightedId={highlightedId}
+          selectNode={selectNode}
+        />
       </Canvas>
 
       <ChatPanel

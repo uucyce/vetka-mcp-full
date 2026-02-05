@@ -9,7 +9,7 @@
  * @used_by Scene
  */
 
-import { useRef, useMemo, useState, useCallback, useEffect } from 'react';
+import { useRef, useMemo, useState, useCallback, useEffect, memo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -177,9 +177,12 @@ interface FileCardProps {
   opacity?: number;
   // MARKER_108_4_APPROVE_UI: Phase 108.4 - Artifact approval metadata
   artifactId?: string;
+  // MARKER_111.21_USEFRAME: Phase 112.3 - LOD level from parent (batch calculation)
+  // If provided, skip internal LOD calculation (saves 2000+ distance calcs per frame)
+  lodLevel?: number;
 }
 
-export function FileCard({
+function FileCardComponent({
   id,
   name,
   path,
@@ -197,6 +200,7 @@ export function FileCard({
   artifactProgress = 0,
   opacity = 1.0,
   artifactId,
+  lodLevel: propLodLevel,  // Phase 112.3: LOD from parent (undefined = calculate locally)
 }: FileCardProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -208,7 +212,9 @@ export function FileCard({
   const [loadingPreview, setLoadingPreview] = useState(false);
 
   // Phase 62: LOD state
-  const [lodLevel, setLodLevel] = useState(0);
+  // MARKER_111.21_USEFRAME: Phase 112.3 - Use prop if provided, else internal state
+  const [internalLodLevel, setInternalLodLevel] = useState(0);
+  const lodLevel = propLodLevel ?? internalLodLevel;  // Prefer parent-calculated LOD
   const lastLodUpdate = useRef(0);
   const { camera } = useThree();
 
@@ -251,12 +257,12 @@ export function FileCard({
       }
     }
 
-    // MARKER_111.21_USEFRAME: Batch LOD updates
-    // Current: runs every frame for ALL 2000+ nodes (expensive distance calculations)
-    // Problem: 60fps * 2000 nodes * distance calc = performance bottleneck
-    // Fix: Spatial partitioning or throttle to every N frames (e.g., 6 frames = 10fps LOD updates)
-    // Status: PENDING - needs quadtree/octree or frame batching
-    // Phase 62: Calculate LOD based on distance (throttled to 100ms)
+    // MARKER_111.21_USEFRAME: Phase 112.3 - Batch LOD DONE
+    // If propLodLevel is provided, skip local calculation (parent handles it)
+    // This saves 2000+ distance calculations per throttle cycle
+    if (propLodLevel !== undefined) return;
+
+    // Fallback: Calculate LOD locally if parent doesn't provide it
     const now = state.clock.elapsedTime;
     if (now - lastLodUpdate.current < 0.1) return;
     lastLodUpdate.current = now;
@@ -278,8 +284,8 @@ export function FileCard({
     else if (dist < 2500) newLod = 1;  // Very far - small shape
     else newLod = 0;                    // Extra wide - tiny dot (>2500)
 
-    if (newLod !== lodLevel) {
-      setLodLevel(newLod);
+    if (newLod !== internalLodLevel) {
+      setInternalLodLevel(newLod);
     }
   });
 
@@ -1147,9 +1153,50 @@ export function FileCard({
   );
 }
 
-// MARKER_111.21_MEMO: Add React.memo with custom comparator
-// Current: No memoization, re-renders on every parent update
-// Problem: Scene re-renders 2000 FileCard components even when only 1-2 change
-// Fix: export const FileCard = React.memo(FileCardComponent, arePropsEqual)
-// Custom comparator: Compare only props that affect visual output (ignore internal state)
-// Status: PENDING - implement React.memo + custom comparator to prevent unnecessary re-renders
+// MARKER_111.21_MEMO: React.memo with custom comparator - Phase 112.1 DONE
+// Custom comparator: Compare only props that affect visual output
+// Skip comparing: onClick (callback reference changes), children (array reference)
+// Focus on: visual state (position, selection, opacity, artifact status)
+
+function arePropsEqual(prev: FileCardProps, next: FileCardProps): boolean {
+  // Identity check - if same node
+  if (prev.id !== next.id) return false;
+  if (prev.name !== next.name) return false;
+  if (prev.path !== next.path) return false;
+  if (prev.type !== next.type) return false;
+
+  // Position check (array comparison)
+  if (prev.position[0] !== next.position[0] ||
+      prev.position[1] !== next.position[1] ||
+      prev.position[2] !== next.position[2]) return false;
+
+  // Visual state
+  if (prev.isSelected !== next.isSelected) return false;
+  if (prev.isHighlighted !== next.isHighlighted) return false;
+  if (prev.opacity !== next.opacity) return false;
+  if (prev.depth !== next.depth) return false;
+
+  // Phase 112.3: LOD level from parent (triggers texture/detail changes)
+  if (prev.lodLevel !== next.lodLevel) return false;
+
+  // Artifact state (for streaming/approval UI)
+  if (prev.artifactStatus !== next.artifactStatus) return false;
+  if (prev.artifactProgress !== next.artifactProgress) return false;
+  if (prev.artifactType !== next.artifactType) return false;
+  if (prev.artifactId !== next.artifactId) return false;
+
+  // Metadata comparison (shallow - for decay_factor opacity)
+  const prevDecay = prev.metadata?.decay_factor;
+  const nextDecay = next.metadata?.decay_factor;
+  if (prevDecay !== nextDecay) return false;
+
+  // Visual hints comparison (shallow)
+  if (prev.visual_hints?.opacity !== next.visual_hints?.opacity) return false;
+  if (prev.visual_hints?.color !== next.visual_hints?.color) return false;
+
+  // All relevant props are equal - skip re-render
+  return true;
+}
+
+// Export memoized component
+export const FileCard = memo(FileCardComponent, arePropsEqual);
