@@ -72,6 +72,10 @@ export function useTreeData() {
 
         const { nodes: convertedNodes, edges } = convertApiResponse(vetkaResponse);
 
+        // MARKER_111_DEBUG: Log node count at each step
+        console.log(`[useTreeData] API returned ${response.tree.nodes?.length ?? 0} nodes`);
+        console.log(`[useTreeData] After conversion: ${Object.keys(convertedNodes).length} nodes`);
+
         // MARKER_108_CHAT_FRONTEND: Phase 108.2 - Process chat nodes
         let chatTreeNodes: TreeNode[] = [];
         const chatEdges: typeof edges = [];
@@ -119,9 +123,17 @@ export function useTreeData() {
         const nodeArray = Object.values(allNodes);
         const totalNodes = nodeArray.length;
 
-        // Count nodes with invalid (zero) positions
+        // MARKER_111_FIX: Count nodes with TRULY invalid positions
+        // Y=0 is VALID for root nodes! Only count as invalid if ALL coords are exactly 0
+        // AND it's not a root node (depth > 0 or has parent)
         const invalidCount = nodeArray.filter(
-          (n) => n.position.x === 0 && n.position.y === 0 && n.position.z === 0
+          (n) => {
+            const isZeroPosition = n.position.x === 0 && n.position.y === 0 && n.position.z === 0;
+            const isRootNode = n.depth === 0 || !n.parentId;
+            // Root nodes with (0,0,0) are VALID - they should be at origin
+            // Only non-root nodes with (0,0,0) are invalid
+            return isZeroPosition && !isRootNode;
+          }
         ).length;
 
         const invalidRatio = totalNodes > 0 ? invalidCount / totalNodes : 0;
@@ -144,13 +156,18 @@ export function useTreeData() {
           });
         }
 
+        // MARKER_111_FIX: Backend уже сделал layout в fan_layout.py
+        // НЕ перезаписываем позиции! Fallback ломал всё дерево
         if (needsLayout) {
-          console.log(`[useTreeData] Layout fallback triggered: ${invalidCount}/${totalNodes} nodes invalid (${(invalidRatio * 100).toFixed(1)}% > ${(config.FALLBACK_THRESHOLD * 100).toFixed(0)}% threshold)`);
-          const positioned = calculateSimpleLayout(Object.values(allNodes));
-          setNodes(positioned);
-        } else {
-          setNodesFromRecord(allNodes);
+          console.warn(`[useTreeData] Layout fallback DISABLED (Phase 111): ${invalidCount}/${totalNodes} nodes would trigger, but backend positions preserved`);
         }
+
+        // MARKER_111_DEBUG: Final count before store
+        console.log(`[useTreeData] Setting ${Object.keys(allNodes).length} nodes to store`);
+        setNodesFromRecord(allNodes);
+
+        // Phase 113.1: Restore saved positions (overrides API positions for known nodes)
+        useStore.getState().loadPositions();
 
         setEdges(allEdges);
       } else if (response.nodes) {

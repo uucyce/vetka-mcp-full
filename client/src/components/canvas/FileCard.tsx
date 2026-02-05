@@ -262,6 +262,12 @@ function FileCardComponent({
   const dragOffset = useRef(new THREE.Vector3());
   const intersection = useRef(new THREE.Vector3());
 
+  // Phase 113.2: Smooth Drag Physics — spring refs
+  const dragVelocity = useRef(new THREE.Vector3(0, 0, 0));
+  const dragTarget = useRef(new THREE.Vector3(position[0], position[1], position[2]));
+  const isSettling = useRef(false);
+  const lastStoreSyncTime = useRef(0);
+
   // MARKER_108_3_SOCKETIO_UPDATE: Phase 108.3 - Smooth opacity animation
   const targetOpacity = useRef(opacity ?? 1.0);
   const currentOpacity = useRef(opacity ?? 1.0);
@@ -282,6 +288,62 @@ function FileCardComponent({
         if (material) {
           material.opacity = currentOpacity.current;
           material.needsUpdate = true;
+        }
+      }
+
+      // Phase 113.2: Smooth Drag Physics — spring follow + settle
+      if (isDragging || isSettling.current) {
+        const current = meshRef.current.position;
+        const target = dragTarget.current;
+        const dx = target.x - current.x;
+        const dy = target.y - current.y;
+        const dz = target.z - current.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
+
+        if (distSq > 0.0001) {
+          // Spring force: k=0.12 (smooth), friction=0.92 (anti-tremble)
+          // Tuned per Grok feedback: higher friction prevents oscillation
+          dragVelocity.current.x += dx * 0.12;
+          dragVelocity.current.y += dy * 0.12;
+          dragVelocity.current.z += dz * 0.12;
+          dragVelocity.current.multiplyScalar(0.92);
+
+          // Velocity clamp: prevent overshoot trembling at any frame rate
+          const MAX_VEL = 2.0;
+          dragVelocity.current.x = Math.max(-MAX_VEL, Math.min(MAX_VEL, dragVelocity.current.x));
+          dragVelocity.current.y = Math.max(-MAX_VEL, Math.min(MAX_VEL, dragVelocity.current.y));
+          dragVelocity.current.z = Math.max(-MAX_VEL, Math.min(MAX_VEL, dragVelocity.current.z));
+
+          current.x += dragVelocity.current.x;
+          current.y += dragVelocity.current.y;
+          current.z += dragVelocity.current.z;
+
+          // Throttled store sync during drag (every 100ms)
+          const now = state.clock.elapsedTime;
+          if (now - lastStoreSyncTime.current > 0.1) {
+            const pos = { x: current.x, y: current.y, z: current.z };
+            if (type === 'folder') {
+              moveNodeWithChildren(id, pos);
+            } else {
+              updateNodePosition(id, pos);
+            }
+            lastStoreSyncTime.current = now;
+          }
+        } else {
+          // Settled — snap to target and stop
+          current.copy(target);
+          dragVelocity.current.set(0, 0, 0);
+
+          if (isSettling.current) {
+            isSettling.current = false;
+            // Final sync to store
+            const pos = { x: current.x, y: current.y, z: current.z };
+            if (type === 'folder') {
+              moveNodeWithChildren(id, pos);
+            } else {
+              updateNodePosition(id, pos);
+            }
+          }
         }
       }
     }
@@ -756,10 +818,17 @@ function FileCardComponent({
         setIsDragging(true);
         setDraggingAny(true);
 
+        // Phase 113.2: Reset spring state on drag start
+        dragVelocity.current.set(0, 0, 0);
+        isSettling.current = false;
+
         e.target?.setPointerCapture?.(e.pointerId);
 
         const mesh = meshRef.current!;
         const camera = e.camera as THREE.Camera;
+
+        // Phase 113.2: Initialize drag target to current mesh position
+        dragTarget.current.copy(mesh.position);
 
         dragPlane.current.setFromNormalAndCoplanarPoint(
           camera.getWorldDirection(new THREE.Vector3()).negate(),
@@ -787,17 +856,11 @@ function FileCardComponent({
 
       const newPos = intersection.current.clone().add(dragOffset.current);
 
-      if (meshRef.current) {
-        meshRef.current.position.copy(newPos);
-      }
+      // Phase 113.2: Set spring target instead of instant snap
+      // useFrame spring physics will smoothly move mesh toward target
+      dragTarget.current.copy(newPos);
 
-      // MARKER_111_DRAG: Folders move with all children, files move alone
-      const newPosition = { x: newPos.x, y: newPos.y, z: newPos.z };
-      if (type === 'folder') {
-        moveNodeWithChildren(id, newPosition);
-      } else {
-        updateNodePosition(id, newPosition);
-      }
+      // Store updates handled by useFrame throttle (100ms)
     },
     [isDragging, id, type, updateNodePosition, moveNodeWithChildren]
   );
@@ -810,9 +873,23 @@ function FileCardComponent({
       setIsDragging(false);
       setDraggingAny(false);
 
-      // console.log('[FileCard] Drag ended:', id, meshRef.current?.position);
+      // Phase 113.2: Let spring settle after drag ends
+      isSettling.current = true;
+
+      // Final store sync at drag end position
+      if (meshRef.current) {
+        const pos = { x: meshRef.current.position.x, y: meshRef.current.position.y, z: meshRef.current.position.z };
+        if (type === 'folder') {
+          moveNodeWithChildren(id, pos);
+        } else {
+          updateNodePosition(id, pos);
+        }
+      }
+
+      // Phase 113.1: Persist positions after drag ends
+      useStore.getState().savePositions();
     },
-    [isDragging, id, setDraggingAny]
+    [isDragging, id, type, setDraggingAny, moveNodeWithChildren, updateNodePosition]
   );
 
   const handleClick = useCallback(

@@ -164,9 +164,17 @@ interface TreeState {
   // Phase 65: Grab mode for Blender-style node movement
   grabMode: boolean;
   setGrabMode: (enabled: boolean) => void;
+
+  // Phase 113.1: Persistent Spatial Memory
+  savePositions: () => void;
+  loadPositions: () => void;
 }
 
-export const useStore = create<TreeState>((set) => ({
+// Phase 113.1: Persistent Spatial Memory
+const POSITIONS_STORAGE_KEY = 'vetka_node_positions';
+let _positionSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+export const useStore = create<TreeState>((set, get) => ({
   nodes: {},
   edges: [],
   rootPath: null,
@@ -406,4 +414,87 @@ export const useStore = create<TreeState>((set) => ({
 
   // Phase 65: Grab mode toggle
   setGrabMode: (grabMode) => set({ grabMode }),
+
+  // Phase 113.1: Persistent Spatial Memory
+  savePositions: () => {
+    const { nodes } = get();
+    const entries = Object.values(nodes);
+    if (entries.length === 0) return;
+
+    const positionMap: Record<string, { x: number; y: number; z: number }> = {};
+    for (const node of entries) {
+      positionMap[node.id] = node.position;
+    }
+
+    const payload = { positions: positionMap, ts: Date.now() };
+
+    // Immediate: localStorage (offline-first)
+    try {
+      localStorage.setItem(POSITIONS_STORAGE_KEY, JSON.stringify(payload));
+    } catch (e) {
+      console.error('[Layout] localStorage save failed:', e);
+    }
+
+    // Debounced: backend via socket (500ms)
+    if (_positionSaveTimer) clearTimeout(_positionSaveTimer);
+    _positionSaveTimer = setTimeout(() => {
+      try {
+        // Use socket if available, fallback to fetch
+        const socketEl = document.querySelector('[data-vetka-socket]') as any;
+        if (socketEl?.socket?.emit) {
+          socketEl.socket.emit('save_positions', payload);
+        } else {
+          fetch('/api/layout/positions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          }).catch(() => {});
+        }
+      } catch (e) {
+        console.error('[Layout] Backend save failed:', e);
+      }
+    }, 500);
+
+    console.log(`[Layout] Saved ${entries.length} positions`);
+  },
+
+  loadPositions: () => {
+    try {
+      const saved = localStorage.getItem(POSITIONS_STORAGE_KEY);
+      if (!saved) return;
+
+      const { positions, ts } = JSON.parse(saved) as {
+        positions: Record<string, { x: number; y: number; z: number }>;
+        ts: number;
+      };
+
+      if (!positions || typeof positions !== 'object') return;
+
+      // Only apply if saved data is less than 7 days old
+      const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() - ts > MAX_AGE_MS) {
+        console.log('[Layout] Saved positions expired, ignoring');
+        localStorage.removeItem(POSITIONS_STORAGE_KEY);
+        return;
+      }
+
+      set((state) => {
+        const updatedNodes = { ...state.nodes };
+        let applied = 0;
+
+        for (const [id, pos] of Object.entries(positions)) {
+          if (updatedNodes[id]) {
+            updatedNodes[id] = { ...updatedNodes[id], position: pos };
+            applied++;
+          }
+          // New nodes not in saved positions keep their API-calculated positions
+        }
+
+        console.log(`[Layout] Restored ${applied} positions from localStorage (${Object.keys(positions).length} saved, ${Object.keys(updatedNodes).length} total nodes)`);
+        return { nodes: updatedNodes };
+      });
+    } catch (e) {
+      console.error('[Layout] Load positions failed:', e);
+    }
+  },
 }));

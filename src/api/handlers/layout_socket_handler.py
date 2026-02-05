@@ -16,7 +16,9 @@ Phase 110: Backend Config Integration
 
 from socketio import AsyncServer
 from typing import Dict, Any
+from pathlib import Path
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,7 @@ def register_layout_socket_handlers(sio: AsyncServer, app=None):
         }
         """
         try:
+            print(f"[LAYOUT_CONFIG] *** RECEIVED CONFIG UPDATE ***: {data}")
             logger.info(f"[LAYOUT_CONFIG] Received update from {sid}: {data}")
 
             # Validate data is a dict
@@ -139,4 +142,45 @@ def register_layout_socket_handlers(sio: AsyncServer, app=None):
                 'error': str(e)
             }, to=sid)
 
-    logger.info("[LAYOUT_CONFIG] Socket handlers registered")
+    # Phase 113.1: Persistent Spatial Memory — position save/load handlers
+    POSITIONS_FILE = Path("data/node_positions.json")
+
+    @sio.on('save_positions')
+    async def handle_save_positions(sid, data):
+        """Save node positions from frontend drag operations."""
+        try:
+            if not isinstance(data, dict) or 'positions' not in data:
+                await sio.emit('positions_saved', {'success': False, 'error': 'Invalid format'}, to=sid)
+                return
+
+            POSITIONS_FILE.parent.mkdir(exist_ok=True)
+            with POSITIONS_FILE.open('w') as f:
+                json.dump(data, f)
+
+            count = len(data.get('positions', {}))
+            logger.info(f"[POSITIONS] Saved {count} positions from {sid}")
+            await sio.emit('positions_saved', {'success': True, 'count': count}, to=sid)
+
+        except Exception as e:
+            logger.error(f"[POSITIONS] Save error: {e}", exc_info=True)
+            await sio.emit('positions_saved', {'success': False, 'error': str(e)}, to=sid)
+
+    @sio.on('load_positions')
+    async def handle_load_positions(sid, data=None):
+        """Return saved positions to client."""
+        try:
+            if not POSITIONS_FILE.exists():
+                await sio.emit('positions_loaded', {'positions': {}, 'ts': 0}, to=sid)
+                return
+
+            with POSITIONS_FILE.open('r') as f:
+                positions_data = json.load(f)
+
+            logger.info(f"[POSITIONS] Loaded {len(positions_data.get('positions', {}))} positions for {sid}")
+            await sio.emit('positions_loaded', positions_data, to=sid)
+
+        except Exception as e:
+            logger.error(f"[POSITIONS] Load error: {e}", exc_info=True)
+            await sio.emit('positions_loaded', {'positions': {}, 'ts': 0}, to=sid)
+
+    logger.info("[LAYOUT_CONFIG] Socket handlers registered (+ Phase 113.1 positions)")
