@@ -8,7 +8,9 @@
  * @used_by Canvas3D
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState, useRef } from 'react';
+import { useThree, useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
 import { Edge } from './Edge';
 import { useStore } from '../../store/useStore';
 
@@ -17,6 +19,13 @@ export function TreeEdges() {
   const storeEdges = useStore((state) => state.edges);
   const selectedId = useStore((state) => state.selectedId);
   const highlightedId = useStore((state) => state.highlightedId);
+
+  // Phase 112: Frustum culling for edges
+  const { camera } = useThree();
+  const [visibleEdgeIds, setVisibleEdgeIds] = useState<Set<string>>(() => new Set());
+  const lastUpdateRef = useRef(0);
+  const frustumRef = useRef(new THREE.Frustum());
+  const projMatrixRef = useRef(new THREE.Matrix4());
 
   const edges = useMemo(() => {
     const result: Array<{
@@ -76,9 +85,63 @@ export function TreeEdges() {
     return result;
   }, [nodes, storeEdges, selectedId, highlightedId]);
 
+  // Phase 112: Frustum culling for edges (check midpoint visibility)
+  useFrame((state) => {
+    const now = state.clock.elapsedTime;
+    if (now - lastUpdateRef.current < 0.25) return; // 250ms throttle (slower than nodes)
+    lastUpdateRef.current = now;
+
+    // Update frustum
+    projMatrixRef.current.multiplyMatrices(
+      camera.projectionMatrix,
+      camera.matrixWorldInverse
+    );
+    frustumRef.current.setFromProjectionMatrix(projMatrixRef.current);
+
+    // Check edge visibility (midpoint OR either endpoint in frustum)
+    const visible = new Set<string>();
+    const point = new THREE.Vector3();
+
+    for (const edge of edges) {
+      // Check start point
+      point.set(edge.start[0], edge.start[1], edge.start[2]);
+      if (frustumRef.current.containsPoint(point)) {
+        visible.add(edge.id);
+        continue;
+      }
+      // Check end point
+      point.set(edge.end[0], edge.end[1], edge.end[2]);
+      if (frustumRef.current.containsPoint(point)) {
+        visible.add(edge.id);
+        continue;
+      }
+      // Check midpoint (for long edges crossing the viewport)
+      point.set(
+        (edge.start[0] + edge.end[0]) / 2,
+        (edge.start[1] + edge.end[1]) / 2,
+        (edge.start[2] + edge.end[2]) / 2
+      );
+      if (frustumRef.current.containsPoint(point)) {
+        visible.add(edge.id);
+      }
+    }
+
+    // Update state if changed significantly
+    const sizeDiff = Math.abs(visible.size - visibleEdgeIds.size);
+    if (sizeDiff > 10 || (visible.size > 0 && visibleEdgeIds.size === 0)) {
+      setVisibleEdgeIds(visible);
+    }
+  });
+
+  // Filter to visible edges only
+  const visibleEdges = useMemo(() => {
+    if (visibleEdgeIds.size === 0) return edges; // Initial render: show all
+    return edges.filter(e => visibleEdgeIds.has(e.id));
+  }, [edges, visibleEdgeIds]);
+
   return (
     <group name="edges">
-      {edges.map((edge) => {
+      {visibleEdges.map((edge) => {
         // MARKER_3D_EDGE_STYLE: Edge rendering with monochrome color scheme
         // - Default color: '#6b7280' (gray, opacity 0.6, lineWidth 1.5)
         // - Agent highlight: '#9ca3af' (lighter gray, opacity 0.8, lineWidth 2.5)
