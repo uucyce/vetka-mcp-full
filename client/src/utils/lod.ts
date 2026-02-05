@@ -41,14 +41,15 @@ export function calculateDistanceLOD(distance: number): number {
 
 /**
  * Get adaptive spot radius based on viewport width
- * - Mobile: larger spot (80%) - less peripheral detail saves perf
- * - Desktop: medium spot (70%) - balanced
- * - 4K: smaller spot (60%) - more pixels to spare
+ * Phase 112.8: Expanded radius (+10-15%) for less edge flicker
+ * - Mobile: almost full screen (95%) - minimal edge processing
+ * - Desktop: large spot (85%) - most nodes in stable zone
+ * - 4K: generous spot (75%) - still saves GPU on true edges
  */
 function getAdaptiveRadius(width: number): number {
-  if (width < 768) return 0.80;   // Mobile: 80% coverage
-  if (width < 2560) return 0.70;  // 1080p/1440p: 70% coverage
-  return 0.60;                     // 4K+: 60% coverage
+  if (width < 768) return 0.95;   // Mobile: 95% coverage (almost full screen)
+  if (width < 2560) return 0.85;  // 1080p/1440p: 85% coverage
+  return 0.75;                     // 4K+: 75% coverage
 }
 
 /**
