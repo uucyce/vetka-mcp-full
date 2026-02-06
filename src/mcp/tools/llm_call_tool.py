@@ -387,16 +387,19 @@ class LLMCallTool(BaseMCPTool):
     # MARKER_55.2_END
 
     # MARKER_102.15_START: Synchronous OpenRouter call with key rotation
+    # MARKER_114.6_TOOLS_IN_PAYLOAD: Added tools parameter (Grok feedback)
     def _call_openrouter_sync(
         self,
         messages: List[Dict],
         model: str,
         temperature: float = 0.7,
         max_tokens: int = 4096,
-        source: Optional[str] = None  # Phase 111.11
+        source: Optional[str] = None,  # Phase 111.11
+        tools: Optional[List[Dict]] = None,  # MARKER_114.6: Function calling tools
     ) -> Dict[str, Any]:
         """
         Phase 102: Synchronous OpenRouter call with proper key rotation.
+        Phase 114.6: Added tools support for function calling.
 
         Mirrors the logic from provider_registry._stream_openrouter but synchronous.
         This works inside MCP's running event loop.
@@ -442,6 +445,12 @@ class LLMCallTool(BaseMCPTool):
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             }
+
+            # MARKER_114.6_TOOLS_IN_PAYLOAD: Pass tools for function calling
+            if tools:
+                payload["tools"] = tools
+                payload["tool_choice"] = "auto"
+                logger.info(f"[MCP_OPENROUTER] Passing {len(tools)} tools for function calling")
 
             # Phase 111.11: Add source to metadata for OpenRouter
             if source:
@@ -644,12 +653,14 @@ class LLMCallTool(BaseMCPTool):
             # MARKER_102.14_START: Sync OpenRouter call with key rotation
             # Phase 102: MCP runs inside event loop, can't use async.
             # Use synchronous httpx with manual key rotation (same logic as _stream_openrouter).
+            # MARKER_114.6: Pass tools for function calling (Grok feedback)
             response = self._call_openrouter_sync(
                 messages=messages,
                 model=model,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                source=model_source  # Phase 111.11
+                source=model_source,  # Phase 111.11
+                tools=tools,  # MARKER_114.6: Function calling tools
             )
             # MARKER_102.14_END
 

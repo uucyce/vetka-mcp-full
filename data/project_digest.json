@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-06T01:32:48.522877+00:00",
+  "last_updated": "2026-02-06T01:58:00.557522+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 108,
@@ -13,6 +13,7 @@
   "summary": {
     "headline": "Phase 108.7 DONE! MGC + ELISION + Spiral Context + Auto-Digest Update",
     "key_achievements": [
+      "[78bb8109] Phase 114: Phase 114: Unified Tool Fix + MCP Integration + Co...",
       "[e5b7bf08] Phase 113.1: Phase 113.1+113.2: Persistent Spatial Memory + Smo...",
       "[60578492] Phase 113: Phase 113: Add Labels Championship plan + roadmap\n...",
       "[aed22d78] Phase 112.5: Phase 112.5: Hybrid LOD with InstancedMesh\n\n- NEW:...",
@@ -21,8 +22,7 @@
       "[a8266d05] Phase 112.1: Phase 112.1-112.3: 3D Performance Optimizations\n\n-...",
       "[de383953] Phase 111.5: Phase 111.5: Folder sorting by phase + chat nodes ...",
       "[24018b2d] Phase 111.4: Phase 111.4: Compact tree scale for easier navigat...",
-      "[3686b9b2] Phase 111.3: Phase 111.3: Compact X (40), taller Y (300) - tree...",
-      "[2c1caa83] Phase 111.2: Phase 111.2: Time-based Y positioning + compact X ..."
+      "[3686b9b2] Phase 111.3: Phase 111.3: Compact X (40), taller Y (300) - tree..."
     ],
     "pending_items": [
       "Phase 109.2: Test with live VETKA UI (Socket.IO sync)",
@@ -190,7 +190,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "e5b7bf08",
+    "commit": "78bb8109",
     "dirty": true
   }
 }
