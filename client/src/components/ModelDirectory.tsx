@@ -42,6 +42,9 @@ interface APIKeyInfo {
   provider: string;
   key: string;
   status: 'active' | 'backup' | 'invalid' | 'rate_limited';
+  balance?: number;         // MARKER_117_UI
+  balance_limit?: number;   // MARKER_117_UI
+  balance_percent?: number; // MARKER_117_UI
 }
 
 interface ProviderKeys {
@@ -413,6 +416,44 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
       fetchKeys();
     }
   }, [showKeys, providers.length, fetchKeys]);
+
+  // MARKER_117_UI: Fetch balance data for providers
+  const fetchBalances = useCallback(async () => {
+    try {
+      const res = await fetch('/api/keys/balance');
+      const data = await res.json();
+      if (data.success && data.balances) {
+        // Merge balance data into providers
+        setProviders((prevProviders) =>
+          prevProviders.map((provider) => {
+            const balanceData = data.balances[provider.provider];
+            if (!balanceData || balanceData.error) {
+              return provider;
+            }
+
+            // Update keys with balance info
+            const updatedKeys = provider.keys.map((key) => ({
+              ...key,
+              balance: balanceData.balance,
+              balance_limit: balanceData.limit,
+              balance_percent: balanceData.percent,
+            }));
+
+            return { ...provider, keys: updatedKeys };
+          })
+        );
+      }
+    } catch (err) {
+      console.error('[ModelDirectory] Failed to fetch balances:', err);
+    }
+  }, []);
+
+  // MARKER_117_UI: Load balances after keys are loaded
+  useEffect(() => {
+    if (showKeys && providers.length > 0) {
+      fetchBalances();
+    }
+  }, [showKeys, providers.length, fetchBalances]);
 
   // Phase 57.1: Auto-detect provider from key input
   const handleSmartKeyInput = useCallback(async (value: string) => {
@@ -1356,6 +1397,38 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
                       }}>
                         {apiKey.key}
                       </span>
+                      {/* MARKER_117_UI: Balance status bar */}
+                      {apiKey.balance !== undefined && apiKey.balance !== null && (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          marginTop: 3,
+                        }}>
+                          <div style={{
+                            flex: 1,
+                            height: 3,
+                            background: '#1a1a1a',
+                            borderRadius: 2,
+                            overflow: 'hidden',
+                          }}>
+                            <div style={{
+                              width: `${Math.min(apiKey.balance_percent || 0, 100)}%`,
+                              height: '100%',
+                              background: (apiKey.balance_percent || 0) > 20 ? '#7ab3d4' : '#555',
+                              transition: 'width 0.3s ease',
+                            }} />
+                          </div>
+                          <span style={{
+                            fontSize: 8,
+                            color: '#666',
+                            fontFamily: 'monospace',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            ${typeof apiKey.balance === 'number' ? apiKey.balance.toFixed(2) : '—'}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     {/* Delete button */}
                     <button

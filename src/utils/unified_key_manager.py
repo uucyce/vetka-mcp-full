@@ -81,6 +81,10 @@ class APIKeyRecord:
     failure_count: int = 0
     success_count: int = 0
     last_used: Optional[datetime] = None
+    # MARKER_117_BALANCE: Balance tracking fields
+    balance: Optional[float] = None
+    balance_limit: Optional[float] = None
+    balance_updated_at: Optional[datetime] = None
 
     def mask(self) -> str:
         """Return masked version of key for logging."""
@@ -124,6 +128,11 @@ class APIKeyRecord:
     def get_status(self) -> Dict[str, Any]:
         """Get key status for display."""
         cooldown = self.cooldown_remaining()
+        # MARKER_117_BALANCE: Include balance info in status
+        balance_percent = None
+        if self.balance is not None and self.balance_limit is not None and self.balance_limit > 0:
+            balance_percent = round((self.balance / self.balance_limit) * 100, 1)
+
         return {
             'masked': self.mask(),
             'alias': self.alias,
@@ -131,7 +140,10 @@ class APIKeyRecord:
             'available': self.is_available(),
             'success_count': self.success_count,
             'failure_count': self.failure_count,
-            'cooldown_hours': round(cooldown.total_seconds() / 3600, 1) if cooldown else None
+            'cooldown_hours': round(cooldown.total_seconds() / 3600, 1) if cooldown else None,
+            'balance': self.balance,
+            'balance_limit': self.balance_limit,
+            'balance_percent': balance_percent
         }
 
 
@@ -436,6 +448,84 @@ class UnifiedKeyManager:
         """Get status of all keys for a provider."""
         self._ensure_provider_initialized(provider)
         return [record.get_status() for record in self.keys.get(provider, [])]
+
+    # ============================================================
+    # BALANCE CHECKING (Phase 117)
+    # ============================================================
+
+    # MARKER_117_BALANCE: Async balance fetcher
+    async def fetch_provider_balance(self, provider: str) -> Optional[Dict[str, Any]]:
+        """Fetch balance from provider API. Returns {balance, limit, used} or None."""
+        import httpx
+
+        BALANCE_ENDPOINTS = {
+            'openrouter': {
+                'url': 'https://openrouter.ai/api/v1/auth/key',
+                'auth': 'Bearer',
+                'parse': lambda data: {
+                    'balance': data.get('data', {}).get('limit_remaining'),
+                    'limit': data.get('data', {}).get('limit'),
+                    'used': data.get('data', {}).get('usage')
+                }
+            },
+            'polza': {
+                'url': 'https://api.polza.ai/api/v1/account/balance',
+                'auth': 'Bearer',
+                'parse': lambda data: {
+                    'balance': data.get('balance'),
+                    'limit': data.get('limit'),
+                    'used': data.get('used')
+                }
+            }
+        }
+
+        endpoint = BALANCE_ENDPOINTS.get(provider)
+        if not endpoint:
+            return None
+
+        # Get active key for this provider
+        key = self.get_key(provider)
+        if not key:
+            return None
+
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
+                headers = {'Authorization': f'{endpoint["auth"]} {key}'}
+                resp = await client.get(endpoint['url'], headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    parsed = endpoint['parse'](data)
+                    # Update record
+                    provider_key = self._get_provider_key(provider)
+                    for record in self.keys.get(provider_key, []):
+                        if record.key == key:
+                            record.balance = parsed.get('balance')
+                            record.balance_limit = parsed.get('limit')
+                            record.balance_updated_at = datetime.now()
+                            break
+                    return parsed
+                elif resp.status_code in (401, 403):
+                    return {'error': 'unauthorized', 'status': resp.status_code}
+                else:
+                    return {'error': f'HTTP {resp.status_code}', 'status': resp.status_code}
+        except Exception as e:
+            logger.warning(f"[MARKER_117_BALANCE] Balance check failed for {provider}: {e}")
+            return {'error': str(e)}
+
+    async def get_full_provider_status(self, provider: Optional[str] = None) -> Dict[str, Any]:
+        """Get unified status: local state + remote balance."""
+        providers_to_check = [provider] if provider else list(self.keys.keys())
+        result = {}
+        for p in providers_to_check:
+            p_name = p.value if hasattr(p, 'value') else str(p)
+            local_status = self.get_keys_status(p)
+            remote_balance = await self.fetch_provider_balance(p_name)
+            result[p_name] = {
+                'keys': local_status,
+                'balance': remote_balance,
+                'provider': p_name
+            }
+        return result
 
     # ============================================================
     # VALIDATION RULES

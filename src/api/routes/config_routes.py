@@ -524,7 +524,10 @@ async def get_keys_list():
                             'provider': provider_name,
                             'key': mask_key(keys_data),
                             'key_full': keys_data,  # For deletion operations
-                            'status': 'active'
+                            'status': 'active',
+                            # MARKER_117_UI: Add balance fields (populated by /api/keys/balance)
+                            'balance': None,
+                            'balance_percent': None
                         })
                     elif isinstance(keys_data, dict):
                         # OpenRouter format: {'paid': key, 'free': [keys]}
@@ -535,7 +538,10 @@ async def get_keys_list():
                                 'key': mask_key(keys_data['paid']),
                                 'key_full': keys_data['paid'],
                                 'status': 'active',
-                                'type': 'paid'
+                                'type': 'paid',
+                                # MARKER_117_UI: Add balance fields (populated by /api/keys/balance)
+                                'balance': None,
+                                'balance_percent': None
                             })
                         for i, key in enumerate(keys_data.get('free', [])):
                             if key:
@@ -545,7 +551,10 @@ async def get_keys_list():
                                     'key': mask_key(key),
                                     'key_full': key,
                                     'status': 'active',
-                                    'type': 'free'
+                                    'type': 'free',
+                                    # MARKER_117_UI: Add balance fields (populated by /api/keys/balance)
+                                    'balance': None,
+                                    'balance_percent': None
                                 })
                     elif isinstance(keys_data, list):
                         # Array of keys (gemini, nanogpt)
@@ -556,7 +565,10 @@ async def get_keys_list():
                                     'provider': provider_name,
                                     'key': mask_key(key),
                                     'key_full': key,
-                                    'status': 'active'
+                                    'status': 'active',
+                                    # MARKER_117_UI: Add balance fields (populated by /api/keys/balance)
+                                    'balance': None,
+                                    'balance_percent': None
                                 })
 
                     if keys_list:
@@ -581,6 +593,25 @@ async def get_keys_list():
             'error': str(e),
             'providers': []
         }
+
+
+@router.get("/keys/balance")
+async def get_keys_balance():
+    """MARKER_117_UI: Get balance for all providers with balance API support."""
+    from src.utils.unified_key_manager import get_key_manager
+    km = get_key_manager()
+
+    result = {}
+    # Only check providers that have balance APIs
+    for provider_name in ['openrouter', 'polza']:
+        try:
+            balance_data = await km.fetch_provider_balance(provider_name)
+            if balance_data and 'error' not in balance_data:
+                result[provider_name] = balance_data
+        except Exception as e:
+            result[provider_name] = {'error': str(e)}
+
+    return {'success': True, 'balances': result}
 
 
 @router.get("/agents/status")

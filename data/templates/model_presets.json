@@ -1,0 +1,61 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "phase": "117",
+    "marker": "MARKER_117_PRESETS",
+    "comment": "Team presets for mycelium pipeline. Each preset overrides model per role + optional provider."
+  },
+  "default_preset": null,
+  "presets": {
+    "polza_research": {
+      "description": "Research team via Polza AI aggregator",
+      "provider": "polza",
+      "roles": {
+        "architect": "claude-sonnet-4",
+        "researcher": "grok-4",
+        "coder": "claude-sonnet-4",
+        "verifier": "claude-sonnet-4"
+      }
+    },
+    "xai_direct": {
+      "description": "All agents via xAI direct API",
+      "provider": "xai",
+      "roles": {
+        "architect": "grok-4",
+        "researcher": "grok-4",
+        "coder": "grok-4",
+        "verifier": "grok-4"
+      }
+    },
+    "openrouter_mixed": {
+      "description": "Mixed team via OpenRouter (default)",
+      "provider": "openrouter",
+      "roles": {
+        "architect": "anthropic/claude-sonnet-4",
+        "researcher": "x-ai/grok-4",
+        "coder": "anthropic/claude-sonnet-4",
+        "verifier": "anthropic/claude-sonnet-4"
+      }
+    },
+    "budget": {
+      "description": "Free models for testing and low-cost tasks",
+      "provider": "openrouter",
+      "roles": {
+        "architect": "meta-llama/llama-3.1-8b-instruct:free",
+        "researcher": "meta-llama/llama-3.1-8b-instruct:free",
+        "coder": "meta-llama/llama-3.1-8b-instruct:free",
+        "verifier": "meta-llama/llama-3.1-8b-instruct:free"
+      }
+    },
+    "quality": {
+      "description": "Best models for critical tasks",
+      "provider": null,
+      "roles": {
+        "architect": "anthropic/claude-opus-4-5",
+        "researcher": "x-ai/grok-4",
+        "coder": "anthropic/claude-opus-4-5",
+        "verifier": "anthropic/claude-opus-4-5"
+      }
+    }
+  }
+}

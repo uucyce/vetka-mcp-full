@@ -53,6 +53,8 @@ from src.memory.elision import ElisionCompressor, get_elision_compressor
 # MARKER_102.1_START: Pipeline storage paths
 TASKS_FILE = Path(__file__).parent.parent.parent / "data" / "pipeline_tasks.json"
 PROMPTS_FILE = Path(__file__).parent.parent.parent / "data" / "templates" / "pipeline_prompts.json"
+# MARKER_117_PRESETS: Presets config file
+PRESETS_FILE = Path(__file__).parent.parent.parent / "data" / "templates" / "model_presets.json"
 # MARKER_102.1_END
 
 
@@ -101,8 +103,15 @@ class AgentPipeline:
     Auto-triggers Grok researcher on any "?" or needs_research=True.
     """
 
-    def __init__(self, chat_id: Optional[str] = None, auto_write: bool = True):
+    def __init__(self, chat_id: Optional[str] = None, auto_write: bool = True,
+                 provider: Optional[str] = None, preset: Optional[str] = None):
         self.llm_tool = None  # Lazy load
+        # MARKER_117_PROVIDER: Provider override for all pipeline LLM calls
+        # If set, all agents use this provider via model_source routing
+        self.provider_override = provider
+        # MARKER_117_PRESETS: Preset team configuration
+        self.preset_name = preset
+        self.preset_models: Optional[Dict[str, str]] = None
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
         self.stm_limit = 5  # Keep last 5 results
@@ -123,6 +132,7 @@ class AgentPipeline:
         self.elision_level = 2  # Default: key abbreviation + path compression
         # MARKER_104_ELISION_PROMPTS_END
         self._load_prompts()
+        self._apply_preset()
 
     def _load_prompts(self):
         """Load prompt templates"""
@@ -181,6 +191,42 @@ Respond with implementation plan or code."""
                 }
             }
             # MARKER_102.2_END
+
+    # MARKER_117_PRESETS: Apply preset model overrides
+    def _apply_preset(self):
+        """Load and apply preset team configuration if specified."""
+        if not self.preset_name:
+            return
+
+        if not PRESETS_FILE.exists():
+            logger.warning(f"[Pipeline] Presets file not found: {PRESETS_FILE}")
+            return
+
+        try:
+            presets_data = json.loads(PRESETS_FILE.read_text())
+            preset = presets_data.get("presets", {}).get(self.preset_name)
+            if not preset:
+                logger.warning(f"[Pipeline] Preset '{self.preset_name}' not found. Available: {list(presets_data.get('presets', {}).keys())}")
+                return
+
+            # Apply model overrides from preset
+            roles = preset.get("roles", {})
+            for role_name, model_name in roles.items():
+                if role_name in self.prompts:
+                    self.prompts[role_name]["model"] = model_name
+                    logger.info(f"[Pipeline] Preset '{self.preset_name}': {role_name} → {model_name}")
+
+            # Apply provider override from preset (if not already set explicitly)
+            if not self.provider_override and preset.get("provider"):
+                self.provider_override = preset["provider"]
+                logger.info(f"[Pipeline] Preset '{self.preset_name}': provider → {self.provider_override}")
+
+            self.preset_models = roles
+            logger.info(f"[Pipeline] Applied preset '{self.preset_name}': {preset.get('description', '')}")
+
+        except Exception as e:
+            logger.error(f"[Pipeline] Failed to load preset '{self.preset_name}': {e}")
+    # MARKER_117_PRESETS_END
 
     def _get_llm_tool(self):
         """Lazy load LLM tool to avoid circular imports"""
@@ -1038,7 +1084,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         temperature = prompt.get("temperature", 0.3)
 
         # LLMCallTool.execute is synchronous
-        result = tool.execute({
+        # MARKER_117_PROVIDER: Pass model_source for provider routing
+        call_args = {
             "model": model,
             "messages": [
                 {"role": "system", "content": prompt["system"]},
@@ -1046,7 +1093,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             ],
             "temperature": temperature,
             "max_tokens": 2000
-        })
+        }
+        if self.provider_override:
+            call_args["model_source"] = self.provider_override
+        result = tool.execute(call_args)
 
         # MARKER_102.16_START: Parse JSON response with robust extraction
         try:
@@ -1102,7 +1152,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         logger.info(f"[Pipeline] Researching: {question[:50]}...")
 
         # LLMCallTool.execute is synchronous
-        result = tool.execute({
+        # MARKER_117_PROVIDER: Pass model_source for provider routing
+        call_args = {
             "model": model,
             "messages": [
                 {"role": "system", "content": prompt["system"]},
@@ -1116,7 +1167,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 "include_prefs": True,
                 "compress": True
             }
-        })
+        }
+        if self.provider_override:
+            call_args["model_source"] = self.provider_override
+        result = tool.execute(call_args)
 
         # MARKER_102.18_START: Parse researcher JSON with robust extraction
         try:
@@ -1187,7 +1241,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         # MARKER_102.22_START: Fixed LLM call + context passing
         # LLMCallTool.execute is synchronous
-        result = tool.execute({
+        # MARKER_117_PROVIDER: Pass model_source for provider routing
+        call_args = {
             "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -1202,7 +1257,10 @@ Execute this subtask. Provide clear, actionable output."""}
             ],
             "temperature": temperature,
             "max_tokens": 2000
-        })
+        }
+        if self.provider_override:
+            call_args["model_source"] = self.provider_override
+        result = tool.execute(call_args)
 
         # Extract content from LLMCallTool response format
         if result.get("success"):

@@ -661,6 +661,11 @@ async def list_tools() -> list[Tool]:
                                 "description": "Apply ELISION compression (default: true)"
                             }
                         }
+                    },
+                    # MARKER_117_PROVIDER: Provider override for model routing
+                    "model_source": {
+                        "type": "string",
+                        "description": "Source provider for routing (e.g., 'polza', 'poe', 'openrouter'). Overrides auto-detection from model name."
                     }
                 },
                 "required": ["model", "messages"]
@@ -896,6 +901,15 @@ async def list_tools() -> list[Tool]:
                         "type": "boolean",
                         "description": "If true (default), write files immediately. If false, save to JSON for later review with retro_apply_spawn.py",
                         "default": True
+                    },
+                    # MARKER_117_PROVIDER: Provider override and preset support
+                    "provider": {
+                        "type": "string",
+                        "description": "LLM provider override for all pipeline agents (e.g., 'polza', 'openrouter', 'xai'). If set, all agents use this provider."
+                    },
+                    "preset": {
+                        "type": "string",
+                        "description": "Team preset from model_presets.json (e.g., 'polza_research', 'budget', 'quality'). Overrides individual agent models."
                     }
                 },
                 "required": ["task"]
@@ -933,6 +947,15 @@ async def list_tools() -> list[Tool]:
                         "type": "boolean",
                         "description": "If true (default), write files immediately. If false, save to JSON for later review with retro_apply_spawn.py",
                         "default": True
+                    },
+                    # MARKER_117_PROVIDER: Provider override and preset support
+                    "provider": {
+                        "type": "string",
+                        "description": "LLM provider override for all pipeline agents (e.g., 'polza', 'openrouter', 'xai'). If set, all agents use this provider."
+                    },
+                    "preset": {
+                        "type": "string",
+                        "description": "Team preset from model_presets.json (e.g., 'polza_research', 'budget', 'quality'). Overrides individual agent models."
                     }
                 },
                 "required": ["task"]
@@ -1793,9 +1816,12 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 # True (default): Write files to disk immediately
                 # False: Only save to JSON, use retro_apply_spawn.py later
                 auto_write = arguments.get("auto_write", True)
+                # MARKER_117_PROVIDER: Extract provider override and preset
+                provider = arguments.get("provider")
+                preset = arguments.get("preset")
 
                 # Create pipeline with chat_id for progress streaming
-                pipeline = AgentPipeline(chat_id=chat_id, auto_write=auto_write)
+                pipeline = AgentPipeline(chat_id=chat_id, auto_write=auto_write, provider=provider, preset=preset)
                 task_id = f"task_{int(time_module.time())}"
 
                 # Fire-and-forget: schedule execution without awaiting
