@@ -1250,13 +1250,30 @@ Please provide a helpful response based on the file content shown above.""",
         # Build agent system prompt with tool guidance
         # Phase 22: Include camera_focus guidance for visual navigation
         # Phase 57.8: Use role-specific prompts from role_prompts.py
+        # MARKER_114.5_AUTO_TOOL_GUIDANCE: Enhanced tool guidance with workflow recommendations
+        # Grok improvement 1: "В system prompt добавь workflow recommendations"
         tool_guidance = """
-Available tools you SHOULD use:
-- camera_focus: Move the 3D camera to show users specific files or folders. USE THIS when discussing code location or showing files.
-- search_semantic: Search the codebase by meaning
-- get_tree_context: Get file/folder structure and related files
+## Available Tools (use them proactively!)
 
-When the user asks to "show", "focus on", or "navigate to" something - USE camera_focus tool!
+### Search & Navigate
+- **vetka_search_semantic**: Search codebase by meaning (Qdrant vectors). USE FIRST for any question about code.
+- **search_codebase**: Search code by pattern (grep-based). Use for exact matches.
+- **get_tree_context**: Get file/folder hierarchy. Use to understand project structure.
+- **vetka_camera_focus**: Move 3D camera to show files. USE when discussing code locations.
+
+### Create & Edit
+- **vetka_edit_artifact**: Create/edit code artifacts for review (PM/Dev/Architect).
+
+### Recommended Workflow
+1. Start with vetka_search_semantic to find relevant context
+2. Use get_tree_context to understand file relationships
+3. Use vetka_camera_focus to show the user what you found
+4. For code changes: use vetka_edit_artifact (creates reviewable artifact)
+
+### Triggers
+- "show", "focus on", "navigate to" → vetka_camera_focus
+- "find", "search", "where is" → vetka_search_semantic
+- "create", "write", "implement" → vetka_edit_artifact
 """
         # Try to get role-specific prompt, fallback to generic
         try:
@@ -1271,30 +1288,40 @@ When the user asks to "show", "focus on", or "navigate to" something - USE camer
         # Phase 19: Track tool executions for response formatting
         tool_executions = []
 
-        # MARKER_104_ELISION_INTEGRATION: Compress context for LLM efficiency
-        # Apply Level 2 compression (safe default) to large contexts
+        # MARKER_114.4_ELISION_WITH_EXPAND: Compress context with expand support
+        # Phase 104 base + Phase 114.4: Save legend for expand, use medium compression
+        # Grok feedback: "compression too aggressive, no expand" — fixed here
         compressed_prompt = prompt
         compression_info = None
+        _elision_legend = None  # MARKER_114.4: Save legend for potential expand
 
         if len(str(prompt)) > 5000:  # Only compress large contexts
             try:
                 from src.memory.elision import get_elision_compressor
 
                 compressor = get_elision_compressor()
-                result = compressor.compress(prompt, level=2)
+                result = compressor.compress(prompt, level=2)  # Level 2 = safe medium
 
                 # Use compressed version for LLM
                 compressed_prompt = result.compressed
+                _elision_legend = result.legend  # MARKER_114.4: Save for expand
                 compression_info = {
                     "original_size": result.original_length,
                     "compressed_size": result.compressed_length,
                     "ratio": f"{result.compression_ratio:.2f}x",
                     "tokens_saved": result.tokens_saved_estimate,
                     "level": result.level,
+                    "legend_keys": len(result.legend) if result.legend else 0,  # MARKER_114.4
                 }
                 logger.debug(
-                    f"[ELISION] Compressed context: {result.original_length} → {result.compressed_length} bytes ({result.compression_ratio:.2f}x compression, ~{result.tokens_saved_estimate} tokens saved)"
+                    f"[ELISION] Compressed context: {result.original_length} → {result.compressed_length} bytes ({result.compression_ratio:.2f}x, ~{result.tokens_saved_estimate} tokens saved, legend: {len(result.legend) if result.legend else 0} keys)"
                 )
+
+                # MARKER_114.4_EXPAND_HINT: Add expand hint to system prompt so agent knows
+                # expand is available (Grok requested this feature)
+                if result.legend and len(result.legend) > 0:
+                    system_prompt += f"\n\nNote: Context was compressed with ELISION level 2 ({len(result.legend)} abbreviations). If you need full detail on any section, mention it and the system will expand."
+
             except ImportError:
                 logger.debug("[ELISION] Compressor not available, using raw context")
                 compressed_prompt = prompt

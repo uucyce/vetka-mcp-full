@@ -917,6 +917,25 @@ Do NOT confuse yourself with other models.
                 # Current request
                 context_parts.append(f"\n## CURRENT REQUEST\n{content}")
 
+                # MARKER_114.2_PINNED_IN_GROUP: Add pinned files context to agent prompt
+                # Uses same build_pinned_context as solo chat (Phase 67 → 109.7 unified weighting)
+                # Sources: Qdrant(40%) + CAM(20%) + Engram(15%) + Viewport(15%) + HOPE(5%) + MGC(5%)
+                # MARKER_114.5_AGENT_WEIGHTS: Grok improvement 3 — model_name for dynamic token budget
+                if pinned_files:
+                    try:
+                        from src.api.handlers.message_utils import build_pinned_context
+                        pinned_context = build_pinned_context(
+                            pinned_files,
+                            user_query=content,
+                            model_name=model_id,  # MARKER_114.5: dynamic token budget per model
+                        )
+                        if pinned_context:
+                            context_parts.append(pinned_context)
+                            print(f"[MARKER_114.2] Added pinned context ({len(pinned_context)} chars, model={model_id}) to group agent prompt")
+                    except Exception as pinned_err:
+                        print(f"[MARKER_114.2] Pinned context build failed (non-blocking): {pinned_err}")
+                # MARKER_114.2_PINNED_IN_GROUP_END
+
                 # Phase 95: ARC Integration - Group Chat Suggestions
                 try:
                     from src.agents.arc_solver_agent import ARCSolverAgent

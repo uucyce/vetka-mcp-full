@@ -232,6 +232,76 @@ class GetTreeContextTool(BaseTool):
             return ToolResult(success=False, result=None, error=str(e))
 
 
+# MARKER_114.3_CREATE_ARTIFACT: Wrapper for MCP EditArtifactTool → internal registry
+# Restores create_artifact capability for Architect/Dev (removed by Big Pickle Phase 92)
+# Phase 108.4 MCP tools (vetka_edit_artifact) are the replacement
+class VetkaEditArtifactTool(BaseTool):
+    """
+    Create/edit artifacts for Architect/PM/Dev review workflow.
+
+    MARKER_114.3: Wraps MCP EditArtifactTool (Phase 108.4) for internal registry.
+    Replaces CreateArtifactTool removed in Phase 92.
+    """
+
+    def __init__(self):
+        try:
+            from src.mcp.tools.artifact_tools import EditArtifactTool
+            self._tool = EditArtifactTool()
+        except ImportError:
+            self._tool = None
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="vetka_edit_artifact",
+            description="Create or edit an artifact (code file) and submit for approval. Use for generating code, configs, or documents that need review.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "artifact_id": {
+                        "type": "string",
+                        "description": "Artifact ID to edit (optional for new artifacts)"
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "File path for the artifact (e.g., 'artifacts/my_module.py')"
+                    },
+                    "new_content": {
+                        "type": "string",
+                        "description": "Content for the artifact"
+                    }
+                },
+                "required": ["new_content"]
+            },
+            permission_level=PermissionLevel.WRITE,
+            needs_user_approval=True
+        )
+
+    async def execute(self, new_content: str, artifact_id: str = None, path: str = None) -> ToolResult:
+        try:
+            if not self._tool:
+                return ToolResult(success=False, result=None, error="EditArtifactTool not available (import failed)")
+
+            arguments = {"new_content": new_content}
+            if artifact_id:
+                arguments["artifact_id"] = artifact_id
+            if path:
+                arguments["path"] = path
+
+            result = self._tool.execute(arguments)
+
+            if not result.get("success", False):
+                return ToolResult(success=False, result=None, error=result.get("error", "Artifact edit failed"))
+
+            return ToolResult(
+                success=True,
+                result=result.get("result", {"message": "Artifact saved"})
+            )
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+# MARKER_114.3_CREATE_ARTIFACT_END
+
+
 # ============================================================================
 # REGISTER MCP TOOLS
 # ============================================================================
@@ -240,10 +310,12 @@ class GetTreeContextTool(BaseTool):
 registry.register(VetkaSearchSemanticTool())
 registry.register(VetkaCameraFocusTool())
 registry.register(GetTreeContextTool())
+registry.register(VetkaEditArtifactTool())  # MARKER_114.3: Artifact tool for Architect/Dev
 
 # Export for direct access
 __all__ = [
     "VetkaSearchSemanticTool",
     "VetkaCameraFocusTool",
     "GetTreeContextTool",
+    "VetkaEditArtifactTool",
 ]

@@ -719,6 +719,10 @@ class AdaptiveMemorySizingTool(BaseTool):
             return "Low complexity - can reduce memory allocation"
 
 
+# MARKER_114.1_REGISTER_MISSING: Register tools that had classes but no register() calls
+registry.register(SearchCodebaseTool())
+registry.register(ExecuteCodeTool())
+
 # Register CAM tools
 registry.register(CalculateSurpriseTool())
 registry.register(CompressWithElisionTool())
@@ -1178,18 +1182,20 @@ registry.register(AnalyzeUnknownKeyTool())
 # Phase 57.8: Added Researcher agent
 # Phase 97: Added arc_suggest for creative agents (PM, Architect, Researcher, Hostess)
 # FIX_98.4: Added Default for models without roles (read-only tools)
+# MARKER_114.1_TOOL_NAME_FIX: Fixed name mismatches + removed phantoms + registered missing tools
+# search_semantic → vetka_search_semantic, camera_focus → vetka_camera_focus
+# Removed phantoms: search_weaviate, get_file_info, create_artifact, validate_syntax, run_tests
+# Registered: SearchCodebaseTool, ExecuteCodeTool (were classes without register())
 AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
     # FIX_98.4: Default tools for models without explicit role (e.g., Grok in chat)
-    # Read-only: NO write_code_file, execute_code, create_artifact
+    # MARKER_114.1: Read-only tools, unified names
     "Default": [
         "read_code_file",
         "list_files",
-        "search_codebase",
-        "search_weaviate",
-        "search_semantic",
+        "search_codebase",  # MARKER_114.1: now registered
+        "vetka_search_semantic",  # MARKER_114.1: was "search_semantic"
         "get_tree_context",
-        "get_file_info",
-        "camera_focus",
+        "vetka_camera_focus",  # MARKER_114.1: was "camera_focus"
         # CAM tools (read-only)
         "calculate_surprise",
         "compress_with_elision",
@@ -1200,12 +1206,11 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
     "PM": [
         "read_code_file",
         "list_files",
-        "search_codebase",
-        "search_weaviate",
-        "search_semantic",  # Phase 19
-        "get_tree_context",  # Phase 19
-        "get_file_info",
-        "camera_focus",  # Phase 22
+        "search_codebase",  # MARKER_114.1: now registered
+        "vetka_search_semantic",  # MARKER_114.1: was "search_semantic"
+        "get_tree_context",
+        "vetka_camera_focus",  # MARKER_114.1: was "camera_focus"
+        "vetka_edit_artifact",  # MARKER_114.3: for creating specs/plans
         # Phase 76.4: CAM Tools
         "calculate_surprise",  # Novelty detection for strategic analysis
         "adaptive_memory_sizing",  # Optimize memory for project management
@@ -1216,14 +1221,12 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "read_code_file",
         "write_code_file",
         "list_files",
-        "execute_code",
-        "search_codebase",
-        "search_semantic",  # Phase 19
-        "get_tree_context",  # Phase 19
-        "create_artifact",
-        "validate_syntax",
-        "get_file_info",
-        "camera_focus",  # Phase 22
+        "execute_code",  # MARKER_114.1: now registered
+        "search_codebase",  # MARKER_114.1: now registered
+        "vetka_search_semantic",  # MARKER_114.1: was "search_semantic"
+        "get_tree_context",
+        "vetka_camera_focus",  # MARKER_114.1: was "camera_focus"
+        "vetka_edit_artifact",  # MARKER_114.3: restored (was create_artifact, Big Pickle Phase 92)
         # Phase 76.4: CAM Tools
         "calculate_surprise",  # Detect novel implementation challenges
         "compress_with_elision",  # Reduce token usage for large codebases
@@ -1231,14 +1234,11 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
     ],
     "QA": [
         "read_code_file",
-        "execute_code",
-        "run_tests",
-        "validate_syntax",
-        "search_codebase",
-        "search_semantic",  # Phase 19
-        "get_tree_context",  # Phase 19
-        "get_file_info",
-        "camera_focus",  # Phase 22
+        "execute_code",  # MARKER_114.1: now registered
+        "search_codebase",  # MARKER_114.1: now registered
+        "vetka_search_semantic",  # MARKER_114.1: was "search_semantic"
+        "get_tree_context",
+        "vetka_camera_focus",  # MARKER_114.1: was "camera_focus"
         # Phase 76.4: CAM Tools
         "calculate_surprise",  # Detect novel issues in testing
         "adaptive_memory_sizing",  # Optimize memory for test analysis
@@ -1246,13 +1246,11 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
     "Architect": [
         "read_code_file",
         "list_files",
-        "search_codebase",
-        "search_weaviate",
-        "search_semantic",  # Phase 19
-        "get_tree_context",  # Phase 19
-        "get_file_info",
-        "create_artifact",
-        "camera_focus",  # Phase 22
+        "search_codebase",  # MARKER_114.1: now registered
+        "vetka_search_semantic",  # MARKER_114.1: was "search_semantic"
+        "get_tree_context",
+        "vetka_camera_focus",  # MARKER_114.1: was "camera_focus"
+        "vetka_edit_artifact",  # MARKER_114.3: restored (was create_artifact, Big Pickle Phase 92)
         # Phase 76.4: CAM Tools (Full access for architect)
         "calculate_surprise",
         "compress_with_elision",
@@ -1262,14 +1260,12 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
     ],
     # Phase 57.8: Researcher Agent - Knowledge Investigator (Full CAM access)
     "Researcher": [
-        "search_semantic",  # Primary tool for semantic search
-        "search_weaviate",  # Knowledge base search
-        "search_codebase",  # Code pattern search
+        "vetka_search_semantic",  # MARKER_114.1: was "search_semantic" - Primary tool
+        "search_codebase",  # MARKER_114.1: now registered - Code pattern search
         "read_code_file",  # Read specific files
         "list_files",  # Browse project structure
         "get_tree_context",  # Understand file relationships
-        "get_file_info",  # File metadata
-        "camera_focus",  # Navigate to files
+        "vetka_camera_focus",  # MARKER_114.1: was "camera_focus" - Navigate to files
         # Phase 76.4: Full CAM Tools for research
         "calculate_surprise",
         "compress_with_elision",
@@ -1278,12 +1274,10 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "arc_suggest",  # Get creative suggestions during research
     ],
     "Hostess": [
-        "search_weaviate",
-        "search_semantic",  # Phase 19
-        "get_tree_context",  # Phase 19
+        "vetka_search_semantic",  # MARKER_114.1: was "search_semantic"
+        "get_tree_context",
         "list_files",
-        "get_file_info",
-        "camera_focus",  # Phase 22
+        "vetka_camera_focus",  # MARKER_114.1: was "camera_focus"
         "save_api_key",  # Phase 57.1: Accept API keys via chat
         "learn_api_key",  # Phase 57.9: Learn new key types
         "get_api_key_status",  # Phase 57.9: Check key status
@@ -1294,6 +1288,7 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "arc_suggest",  # Suggest creative connections to help users
     ],
 }
+# MARKER_114.1_TOOL_NAME_FIX_END
 
 
 def get_tools_for_agent(agent_type: str) -> List[Dict]:
