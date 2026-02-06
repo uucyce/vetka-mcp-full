@@ -1,20 +1,60 @@
 {
   "_meta": {
-    "version": "1.0",
-    "phase": "117",
-    "marker": "MARKER_117_PRESETS",
-    "comment": "Team presets for mycelium pipeline. Each preset overrides model per role + optional provider."
+    "version": "2.0",
+    "phase": "117.1",
+    "marker": "MARKER_117.1_PRESETS",
+    "comment": "Team presets for mycelium pipeline. Phase 117.1: Added dragon (Asian), fixed Polza model names (vendor/model format required)."
   },
-  "default_preset": null,
+  "default_preset": "dragon",
   "presets": {
-    "polza_research": {
-      "description": "Research team via Polza AI aggregator",
+    "dragon": {
+      "description": "Dragon team: fast + cheap Asian models via Polza (Qwen/DeepSeek/GLM/Kimi)",
       "provider": "polza",
       "roles": {
-        "architect": "claude-sonnet-4",
-        "researcher": "grok-4",
-        "coder": "claude-sonnet-4",
-        "verifier": "claude-sonnet-4"
+        "architect": "moonshotai/kimi-k2.5",
+        "researcher": "x-ai/grok-4",
+        "coder": "qwen/qwen3-coder",
+        "verifier": "z-ai/glm-4.7-flash"
+      }
+    },
+    "dragon_budget": {
+      "description": "Ultra-cheap Asian team: smallest fast models via Polza",
+      "provider": "polza",
+      "roles": {
+        "architect": "qwen/qwen3-30b-a3b",
+        "researcher": "z-ai/glm-4.7-flash",
+        "coder": "qwen/qwen3-coder-flash",
+        "verifier": "xiaomi/mimo-v2-flash"
+      }
+    },
+    "dragon_quality": {
+      "description": "Best Asian models via Polza for critical tasks",
+      "provider": "polza",
+      "roles": {
+        "architect": "moonshotai/kimi-k2.5",
+        "researcher": "deepseek/deepseek-r1-0528",
+        "coder": "qwen/qwen3-coder",
+        "verifier": "qwen/qwen3-235b-a22b"
+      }
+    },
+    "polza_research": {
+      "description": "Research team via Polza AI (fixed vendor/model format)",
+      "provider": "polza",
+      "roles": {
+        "architect": "anthropic/claude-sonnet-4",
+        "researcher": "x-ai/grok-4",
+        "coder": "anthropic/claude-sonnet-4",
+        "verifier": "anthropic/claude-sonnet-4"
+      }
+    },
+    "polza_mixed": {
+      "description": "Mixed Western+Asian team via Polza",
+      "provider": "polza",
+      "roles": {
+        "architect": "anthropic/claude-sonnet-4",
+        "researcher": "x-ai/grok-4",
+        "coder": "deepseek/deepseek-v3.2",
+        "verifier": "qwen/qwen3-235b-a22b"
       }
     },
     "xai_direct": {
@@ -28,7 +68,7 @@
       }
     },
     "openrouter_mixed": {
-      "description": "Mixed team via OpenRouter (default)",
+      "description": "Mixed team via OpenRouter (legacy, keys may be exhausted)",
       "provider": "openrouter",
       "roles": {
         "architect": "anthropic/claude-sonnet-4",
@@ -38,7 +78,7 @@
       }
     },
     "budget": {
-      "description": "Free models for testing and low-cost tasks",
+      "description": "Free models for testing (OpenRouter free tier)",
       "provider": "openrouter",
       "roles": {
         "architect": "meta-llama/llama-3.1-8b-instruct:free",
@@ -48,13 +88,13 @@
       }
     },
     "quality": {
-      "description": "Best models for critical tasks",
-      "provider": null,
+      "description": "Best Western models for critical tasks",
+      "provider": "polza",
       "roles": {
-        "architect": "anthropic/claude-opus-4-5",
+        "architect": "anthropic/claude-opus-4.6",
         "researcher": "x-ai/grok-4",
-        "coder": "anthropic/claude-opus-4-5",
-        "verifier": "anthropic/claude-opus-4-5"
+        "coder": "anthropic/claude-opus-4.6",
+        "verifier": "anthropic/claude-sonnet-4.5"
       }
     }
   }

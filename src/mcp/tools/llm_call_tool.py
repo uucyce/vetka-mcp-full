@@ -26,6 +26,7 @@ Supported models:
 
 from typing import Any, Dict, List, Optional
 import logging
+import asyncio
 from .base_tool import BaseMCPTool
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -564,6 +565,68 @@ class LLMCallTool(BaseMCPTool):
         raise ValueError(f"All OpenRouter keys exhausted after {max_retries} attempts. Last error: {last_error}")
     # MARKER_102.15_END
 
+    # MARKER_117.1_MULTI_PROVIDER_START: Sync wrapper for call_model_v2
+    def _call_provider_sync(
+        self,
+        messages: List[Dict],
+        model: str,
+        provider_name: str,
+        source: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        tools: Optional[List[Dict]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Phase 117.1: Synchronous wrapper for call_model_v2.
+        Routes to ANY provider (Polza, Poe, xAI, Anthropic, Gemini, etc.)
+        via the existing async provider_registry infrastructure.
+
+        Uses thread pool to run async call_model_v2 from sync MCP context.
+        """
+        import concurrent.futures
+
+        async def _async_call():
+            from src.elisya.provider_registry import call_model_v2, Provider
+
+            try:
+                provider_enum = Provider(provider_name)
+            except ValueError:
+                provider_enum = None
+
+            result = await call_model_v2(
+                messages=messages,
+                model=model,
+                provider=provider_enum,
+                source=source,
+                tools=tools,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return result
+
+        # Run async code in a new event loop in a separate thread
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(asyncio.run, _async_call())
+            result = future.result(timeout=120)
+
+        # Normalize response format to match _call_openrouter_sync output
+        if isinstance(result, dict):
+            # call_model_v2 returns {message: {content, role}, model, provider, usage}
+            return {
+                "message": result.get("message", {}),
+                "model": result.get("model", model),
+                "provider": result.get("provider", provider_name),
+                "usage": result.get("usage"),
+            }
+        else:
+            return {
+                "message": {"content": str(result), "role": "assistant"},
+                "model": model,
+                "provider": provider_name,
+                "usage": None,
+            }
+    # MARKER_117.1_MULTI_PROVIDER_END
+
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute LLM call through VETKA provider registry"""
 
@@ -713,19 +776,34 @@ class LLMCallTool(BaseMCPTool):
             self._emit_request_to_chat(model, messages, temperature, max_tokens)
             # MARKER_90.4.0_END
 
-            # MARKER_102.14_START: Sync OpenRouter call with key rotation
-            # Phase 102: MCP runs inside event loop, can't use async.
-            # Use synchronous httpx with manual key rotation (same logic as _stream_openrouter).
-            # MARKER_114.6: Pass tools for function calling (Grok feedback)
-            response = self._call_openrouter_sync(
-                messages=messages,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                source=model_source,  # Phase 111.11
-                tools=tools,  # MARKER_114.6: Function calling tools
-            )
-            # MARKER_102.14_END
+            # MARKER_117.1_START: Multi-provider routing (was: OpenRouter-only)
+            # Phase 117.1: Route through correct provider, not just OpenRouter.
+            # OpenRouter remains default; Polza/Poe/Mistral/etc use call_model_v2.
+            if provider_name in ('openrouter', 'openai'):
+                # Legacy path: sync OpenRouter call with key rotation
+                response = self._call_openrouter_sync(
+                    messages=messages,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    source=model_source,
+                    tools=tools,
+                )
+            else:
+                # Phase 117.1: Universal path via call_model_v2 (async → sync)
+                # Works for: polza, poe, xai, anthropic, gemini, mistral, etc.
+                logger.info(f"[MCP_MULTI_PROVIDER] Routing {model} via {provider_name} (not OpenRouter)")
+                import concurrent.futures
+                response = self._call_provider_sync(
+                    messages=messages,
+                    model=model,
+                    provider_name=provider_name,
+                    source=model_source,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tools=tools,
+                )
+            # MARKER_117.1_END
 
             # Extract response content
             message_data = response.get('message', {})
