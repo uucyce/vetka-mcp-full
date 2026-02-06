@@ -3,7 +3,7 @@ VETKA CAM Routes - FastAPI Version
 
 @file cam_routes.py
 @status active
-@phase 98, 99.3
+@phase 98, 99.3, 115
 @depends fastapi, pydantic, src.orchestration.cam_engine
 @used_by src.api.routes.__init__, client/src/components/chat/ChatPanel
 
@@ -32,14 +32,194 @@ Emoji weight mapping (from NeurIPS 2025 CAM paper + VETKA adaptation):
 """
 
 import logging
+import asyncio
+import json
+from pathlib import Path
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, Literal, Tuple, List
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 logger = logging.getLogger("VETKA_CAM_Routes")
 
+
+# ============================================================
+# PINNED FILES SERVICE - Phase 115 BUG-4
+# ============================================================
+
+class PinnedFilesService:
+    """
+    Service for managing pinned files with JSON persistence.
+
+    Phase 115 BUG-4: Replace in-memory dict with persistent storage.
+
+    Features:
+    - Async file I/O with asyncio.Lock for concurrency
+    - Automatic persistence on write
+    - Backward-compatible property access for sync code
+    - Loads from data/pinned_files.json on startup
+    """
+
+    def __init__(self, json_path: str):
+        """
+        Initialize service with path to JSON file.
+
+        Args:
+            json_path: Path to JSON file (relative to project root)
+        """
+        self._json_path = Path(json_path)
+        self._data: Dict[str, dict] = {}
+        self._lock = asyncio.Lock()
+        self._loaded = False
+
+    async def load(self) -> None:
+        """Load pinned files from JSON file."""
+        async with self._lock:
+            try:
+                if self._json_path.exists():
+                    # Read JSON file
+                    loop = asyncio.get_event_loop()
+                    content = await loop.run_in_executor(
+                        None,
+                        self._json_path.read_text,
+                        'utf-8'
+                    )
+                    data = json.loads(content)
+                    self._data = data.get("pins", {})
+                    logger.info(f"[PinnedFilesService] Loaded {len(self._data)} pinned files from {self._json_path}")
+                else:
+                    # Create empty file
+                    await self._save_unsafe()
+                    logger.info(f"[PinnedFilesService] Created new pinned files storage at {self._json_path}")
+
+                self._loaded = True
+
+            except Exception as e:
+                logger.error(f"[PinnedFilesService] Failed to load from {self._json_path}: {e}")
+                self._data = {}
+                self._loaded = True
+
+    async def _save_unsafe(self) -> None:
+        """Save current state to JSON (without lock - internal use only)."""
+        try:
+            # Ensure parent directory exists
+            self._json_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Prepare JSON structure
+            data = {
+                "pins": self._data,
+                "last_updated": datetime.now(timezone.utc).isoformat()
+            }
+
+            # Write to file
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                self._json_path.write_text,
+                json.dumps(data, indent=2),
+                'utf-8'
+            )
+
+        except Exception as e:
+            logger.error(f"[PinnedFilesService] Failed to save to {self._json_path}: {e}")
+
+    async def save(self) -> None:
+        """Save current state to JSON (public method with lock)."""
+        async with self._lock:
+            await self._save_unsafe()
+
+    async def add_pin(self, file_path: str, reason: str = "", timestamp: str = None) -> None:
+        """
+        Add or update a pinned file.
+
+        Args:
+            file_path: Absolute path to file
+            reason: Optional reason for pinning
+            timestamp: Optional timestamp (defaults to now)
+        """
+        async with self._lock:
+            if timestamp is None:
+                timestamp = datetime.now(timezone.utc).isoformat()
+
+            self._data[file_path] = {
+                "reason": reason,
+                "timestamp": timestamp
+            }
+
+            # Persist immediately
+            await self._save_unsafe()
+
+    async def remove_pin(self, file_path: str) -> bool:
+        """
+        Remove a pinned file.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            True if file was pinned and removed, False if not found
+        """
+        async with self._lock:
+            if file_path in self._data:
+                del self._data[file_path]
+                await self._save_unsafe()
+                return True
+            return False
+
+    async def get_all_pins(self) -> List[Tuple[str, dict]]:
+        """
+        Get all pinned files as list of tuples.
+
+        Returns:
+            List of (file_path, data_dict) tuples
+        """
+        async with self._lock:
+            return list(self._data.items())
+
+    @property
+    def pinned_files(self) -> Dict[str, dict]:
+        """
+        Property for backward-compatible sync access.
+
+        Used by pinned_files_tool.py which imports _pinned_files
+        and iterates with .items() in sync context.
+
+        Returns reference to internal dict (read-only recommended).
+        """
+        return self._data
+
+    def ensure_loaded(self) -> None:
+        """Ensure service is loaded (for sync contexts)."""
+        if not self._loaded:
+            # If called from sync context before async load, do sync load
+            try:
+                if self._json_path.exists():
+                    content = self._json_path.read_text('utf-8')
+                    data = json.loads(content)
+                    self._data = data.get("pins", {})
+                else:
+                    self._data = {}
+                    self._json_path.parent.mkdir(parents=True, exist_ok=True)
+                    self._json_path.write_text(json.dumps({"pins": {}, "last_updated": ""}), 'utf-8')
+                self._loaded = True
+            except Exception as e:
+                logger.error(f"[PinnedFilesService] Sync load failed: {e}")
+                self._data = {}
+
 router = APIRouter(prefix="/api/cam", tags=["cam"])
+
+
+# ============================================================
+# STARTUP INITIALIZATION - Phase 115 BUG-4
+# ============================================================
+
+async def initialize_pinned_files_service():
+    """Initialize and load pinned files service on app startup."""
+    try:
+        await _pinned_service.load()
+        logger.info("[CAM] Pinned files service initialized")
+    except Exception as e:
+        logger.error(f"[CAM] Failed to initialize pinned files service: {e}")
 
 
 # ============================================================
@@ -99,8 +279,10 @@ EMOJI_TO_REACTION: Dict[str, str] = {
 _model_weights: Dict[str, float] = {}  # model_id -> weight (0.0-1.0)
 _reaction_history: list = []  # List of reaction records for analysis
 
-# Phase 99.3: Pinned files for JARVIS-like context suggestions
-_pinned_files: Dict[str, dict] = {}  # file_path -> {reason, timestamp}
+# Phase 115 BUG-4: Pinned files service with JSON persistence
+_pinned_service = PinnedFilesService(json_path="data/pinned_files.json")
+# Backward-compatible reference for sync code (pinned_files_tool.py)
+_pinned_files = _pinned_service.pinned_files
 
 DEFAULT_MODEL_WEIGHT = 0.5  # Starting weight for new models
 
@@ -579,11 +761,8 @@ async def pin_file_for_context(file_path: str, reason: str = ""):
     try:
         timestamp = datetime.now(timezone.utc).isoformat()
 
-        # Store pinned file
-        _pinned_files[file_path] = {
-            "reason": reason,
-            "timestamp": timestamp
-        }
+        # Store pinned file with persistence (Phase 115 BUG-4)
+        await _pinned_service.add_pin(file_path, reason, timestamp)
 
         logger.info(f"[CAM] File pinned: {file_path} (reason: {reason})")
 
@@ -621,6 +800,9 @@ async def get_pinned_files():
         }
     """
     try:
+        # Get pinned files from service (Phase 115 BUG-4)
+        pins = await _pinned_service.get_all_pins()
+
         # Format pinned files
         pinned_list = [
             {
@@ -628,7 +810,7 @@ async def get_pinned_files():
                 "reason": data.get("reason", ""),
                 "timestamp": data.get("timestamp", "")
             }
-            for file_path, data in _pinned_files.items()
+            for file_path, data in pins
         ]
 
         # Sort by timestamp (most recent first)

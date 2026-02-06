@@ -213,6 +213,14 @@ async def lifespan(app: FastAPI):
         logger.error(f"[Startup] Model registry init failed: {e}")
         app.state.model_registry = None
 
+    # === PHASE 115 BUG-4: Initialize pinned files service ===
+    try:
+        from src.api.routes.cam_routes import initialize_pinned_files_service
+        await initialize_pinned_files_service()
+        logger.info("[Startup] Pinned files service initialized")
+    except Exception as e:
+        logger.error(f"[Startup] Pinned files service init failed: {e}")
+
     # === PHASE 56: Initialize group chat manager ===
     try:
         from src.services.group_chat_manager import get_group_chat_manager

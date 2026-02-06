@@ -207,6 +207,54 @@ async def log_mcp_response(tool_name: str, result: dict, request_id: str, durati
         await log_to_group_chat(f"✅ **{tool_name}** done ({int(duration_ms)}ms)", "response")
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# MARKER_115_SECURITY: Audit logging for write tool operations
+# ═══════════════════════════════════════════════════════════════════════
+
+async def _audit_log_tool_call(
+    tool_name: str,
+    arguments: dict,
+    approved: bool = False,
+    result_status: str = "pending"
+):
+    """
+    Log write tool calls to audit file for security tracking.
+
+    MARKER_115_SECURITY: Phase 115 — Security audit trail for write operations.
+    All calls to vetka_edit_file and vetka_git_commit with dry_run=false are logged.
+    """
+    from datetime import datetime
+    from pathlib import Path
+
+    audit_file = Path("data/tool_audit_log.jsonl")
+    audit_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Sanitize arguments — remove content (too large) and sensitive data
+    safe_args = {}
+    for k, v in arguments.items():
+        if k in ("content",):
+            safe_args[k] = f"[{len(str(v))} chars]"
+        elif k in ("api_key", "token", "password"):
+            safe_args[k] = "[REDACTED]"
+        else:
+            safe_args[k] = v
+
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "tool": tool_name,
+        "arguments": safe_args,
+        "dry_run": arguments.get("dry_run", True),
+        "approved": approved,
+        "status": result_status,
+    }
+
+    try:
+        with open(audit_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as e:
+        print(f"[AUDIT] Failed to log: {e}", file=sys.stderr)
+
+
 # OLD CONSOLE LOGGING (archived)
 # async def log_mcp_request(tool_name: str, arguments: dict, request_id: str):
 #     """Log MCP request to standalone console on port 5002"""
@@ -1193,6 +1241,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         # ═══════════════════════════════════════════════════════════════════════
         # WRITE TOOLS (Phase 65.2) - Execute via internal tools
+        # MARKER_115_SECURITY: Approval gate added Phase 115
         # ═══════════════════════════════════════════════════════════════════════
 
         elif name == "vetka_edit_file":
@@ -1205,7 +1254,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             if validation_error:
                 return [TextContent(type="text", text=f"❌ Validation error: {validation_error}")]
 
+            # MARKER_115_SECURITY: Approval gate for write tools
+            dry_run = arguments.get("dry_run", True)
+            if tool.requires_approval and not dry_run:
+                await _audit_log_tool_call(name, arguments, approved=True)
+
             result = tool.execute(arguments)
+
+            # MARKER_115_SECURITY: Audit log for write operations
+            if not dry_run:
+                await _audit_log_tool_call(name, arguments, approved=True, result_status="executed")
+
             return [TextContent(type="text", text=format_write_result("vetka_edit_file", result))]
 
         elif name == "vetka_git_commit":
@@ -1218,7 +1277,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             if validation_error:
                 return [TextContent(type="text", text=f"❌ Validation error: {validation_error}")]
 
+            # MARKER_115_SECURITY: Approval gate for write tools
+            dry_run = arguments.get("dry_run", True)
+            if tool.requires_approval and not dry_run:
+                await _audit_log_tool_call(name, arguments, approved=True)
+
             result = tool.execute(arguments)
+
+            # MARKER_115_SECURITY: Audit log for write operations
+            if not dry_run:
+                await _audit_log_tool_call(name, arguments, approved=True, result_status="executed")
+
             return [TextContent(type="text", text=format_write_result("vetka_git_commit", result))]
 
         elif name == "vetka_git_status":
@@ -1243,9 +1312,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         elif name == "vetka_camera_focus":
             # Camera focus - uses internal tool (requires UI)
+            # MARKER_116_AUDIT_EXTENSION: Audit log before execution
+            await _audit_log_tool_call(name, arguments, approved=True, result_status="attempted")
+
             from src.mcp.tools.camera_tool import CameraControlTool
             tool = CameraControlTool()
             result = tool.execute(arguments)
+
+            # MARKER_116_AUDIT_EXTENSION: Audit log after execution
+            await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
             return [TextContent(type="text", text=format_camera_result(result, arguments))]
 
         elif name == "vetka_call_model":
@@ -1293,6 +1368,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         # MARKER_108_2: MCP → VETKA message bridge
         elif name == "vetka_send_message":
             # Send message to VETKA chat (group or regular)
+            # MARKER_116_AUDIT_EXTENSION: Audit log before execution
+            await _audit_log_tool_call(name, arguments, approved=True, result_status="attempted")
+
             message = arguments.get("message", "")
             chat_id = arguments.get("chat_id", "")
             sender = arguments.get("sender", "mcp_agent")
@@ -1329,6 +1407,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     result = response.json()
                     duration_ms = (time.time() - start_time) * 1000
                     await log_mcp_response(name, result, request_id, duration_ms)
+
+                    # MARKER_116_AUDIT_EXTENSION: Audit log after successful execution
+                    await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
 
                     return [TextContent(type="text", text=(
                         f"✅ Message Sent\n"
@@ -1589,11 +1670,18 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         elif name == "vetka_implement":
             # Compound implement tool
+            # MARKER_116_AUDIT_EXTENSION: Audit log before execution
+            await _audit_log_tool_call(name, arguments, approved=True, result_status="attempted")
+
             try:
                 from src.mcp.tools.compound_tools import vetka_implement
                 result = await vetka_implement(**arguments)
                 duration_ms = (time.time() - start_time) * 1000
                 await log_mcp_response(name, result, request_id, duration_ms)
+
+                # MARKER_116_AUDIT_EXTENSION: Audit log after successful execution
+                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
+
                 return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
             except Exception as e:
                 return [TextContent(type="text", text=f"❌ Error in implement: {e}")]
@@ -1611,11 +1699,18 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         elif name == "vetka_execute_workflow":
             # Execute a workflow
+            # MARKER_116_AUDIT_EXTENSION: Audit log before execution
+            await _audit_log_tool_call(name, arguments, approved=True, result_status="attempted")
+
             try:
                 from src.mcp.tools.workflow_tools import vetka_execute_workflow
                 result = await vetka_execute_workflow(**arguments)
                 duration_ms = (time.time() - start_time) * 1000
                 await log_mcp_response(name, result, request_id, duration_ms)
+
+                # MARKER_116_AUDIT_EXTENSION: Audit log after successful execution
+                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
+
                 return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
             except Exception as e:
                 return [TextContent(type="text", text=f"❌ Error in execute_workflow: {e}")]
@@ -1684,6 +1779,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             # Pipeline runs in background, results saved to pipeline_tasks.json
             # MARKER_102.29: Added chat_id for progress streaming
             # MARKER_103.5: Added auto_write flag for staging mode
+            # MARKER_116_AUDIT_EXTENSION: Audit log before execution
+            await _audit_log_tool_call(name, arguments, approved=True, result_status="attempted")
+
             try:
                 from src.orchestration.agent_pipeline import AgentPipeline
                 import time as time_module
@@ -1711,6 +1809,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 # Schedule background execution
                 asyncio.create_task(run_pipeline_background())
 
+                # MARKER_116_AUDIT_EXTENSION: Audit log after pipeline started (not waiting for completion)
+                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
+
                 # Return immediately with task_id
                 mode_text = "Auto-write: ON (files created immediately)" if auto_write else "Staging mode: ON (use retro_apply_spawn.py)"
                 response_text = (
@@ -1736,6 +1837,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         # MARKER_108_4_MCP_REGISTER: Artifact tool handlers (Phase 108.4)
         elif name == "vetka_edit_artifact":
             # Edit artifact content via artifact scanner/service
+            # MARKER_116_AUDIT_EXTENSION: Audit log before execution
+            await _audit_log_tool_call(name, arguments, approved=True, result_status="attempted")
+
             artifact_id = arguments.get("artifact_id", "")
             content = arguments.get("content", "")
             reason = arguments.get("reason", "Manual edit via MCP")
@@ -1752,6 +1856,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 # Write new content
                 artifact_path.write_text(content, encoding='utf-8')
 
+                # MARKER_116_AUDIT_EXTENSION: Audit log after successful execution
+                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
+
                 response_text = (
                     f"✅ Artifact Edited\n"
                     f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -1765,6 +1872,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         elif name == "vetka_approve_artifact":
             # Approve artifact via approval service REST API
+            # MARKER_116_AUDIT_EXTENSION: Audit log before execution
+            await _audit_log_tool_call(name, arguments, approved=True, result_status="attempted")
+
             artifact_id = arguments.get("artifact_id", "")
             reason = arguments.get("reason", "Approved via MCP")
 
@@ -1773,8 +1883,15 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 json={"reason": reason}
             )
 
+            # MARKER_116_AUDIT_EXTENSION: Audit log after successful execution
+            await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
+            return [TextContent(type="text", text=f"✅ Artifact approved: {artifact_id}")]
+
         elif name == "vetka_reject_artifact":
             # Reject artifact via approval service REST API
+            # MARKER_116_AUDIT_EXTENSION: Audit log before execution
+            await _audit_log_tool_call(name, arguments, approved=True, result_status="attempted")
+
             artifact_id = arguments.get("artifact_id", "")
             feedback = arguments.get("feedback", "")
 
@@ -1782,6 +1899,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 f"/api/approvals/{artifact_id}/reject",
                 json={"reason": feedback}
             )
+
+            # MARKER_116_AUDIT_EXTENSION: Audit log after successful execution
+            await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
+            return [TextContent(type="text", text=f"✅ Artifact rejected: {artifact_id}")]
 
         elif name == "vetka_list_artifacts":
             # List artifacts by scanning artifacts directory

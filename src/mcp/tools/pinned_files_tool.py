@@ -179,13 +179,17 @@ class PinnedFilesTool(BaseMCPTool):
         try:
             # Try to import from cam_routes (requires FastAPI to be available)
             try:
-                from src.api.routes.cam_routes import _pinned_files
+                # Phase 115 BUG-4: Import service and ensure it's loaded
+                from src.api.routes.cam_routes import _pinned_service, _pinned_files
+                # Ensure service is loaded for sync context
+                _pinned_service.ensure_loaded()
             except ImportError as e:
                 logger.debug(f"[PinnedFilesTool] CAM routes not available: {e}")
                 return []
 
             pinned_list = []
 
+            # Phase 115 BUG-4: Access via backward-compatible property
             for file_path, data in _pinned_files.items():
                 # Filter by session if requested
                 if session_id:

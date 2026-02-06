@@ -446,7 +446,7 @@ def emit_layout_update(
     Emit real-time layout update via SocketIO.
 
     Args:
-        socketio_instance: Flask-SocketIO instance
+        socketio_instance: python-socketio AsyncServer
         new_branches: List of new branch paths
         affected_count: Number of affected nodes
         total_folders: Total folder count

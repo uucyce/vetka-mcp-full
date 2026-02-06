@@ -159,7 +159,7 @@ class OrchestratorWithElisya:
         Initialize orchestrator with Elisya and refactored services.
 
         Args:
-            socketio: Legacy Flask-SocketIO instance (deprecated)
+            socketio: Legacy python-socketio AsyncServer (deprecated parameter name)
             sio: python-socketio AsyncServer instance (Phase 60.2)
             use_parallel: Enable parallel Dev+QA execution
         """

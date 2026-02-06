@@ -49,7 +49,7 @@ class ProgressTracker:
         Initialize progress tracker
         
         Args:
-            socketio: Flask-SocketIO instance
+            socketio: python-socketio AsyncServer
             agent_names: List of agent names to track (e.g., ['PM', 'Architect', 'Dev', 'QA'])
         """
         self.socketio = socketio

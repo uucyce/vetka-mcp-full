@@ -19,7 +19,7 @@ class Router:
             agents: Dictionary of agent instances (pm, architect, dev, qa, ops, visual)
             weaviate_helper: WeaviateHelper instance
             context_manager: ContextManager instance
-            socketio: Flask-SocketIO instance
+            socketio: python-socketio AsyncServer
         """
         self.agents = agents
         self.whelper = weaviate_helper

@@ -28,6 +28,53 @@ from typing import Any, Dict, List, Optional
 import logging
 from .base_tool import BaseMCPTool
 
+# ═══════════════════════════════════════════════════════════════════════
+# MARKER_115_SECURITY: Tool allowlist for function calling
+# Safe tools that can be passed to LLM models via function calling.
+# Write tools (edit_file, git_commit) are EXCLUDED by default.
+# ═══════════════════════════════════════════════════════════════════════
+SAFE_FUNCTION_CALLING_TOOLS = {
+    "vetka_search_semantic",
+    "vetka_read_file",
+    "vetka_list_files",
+    "vetka_get_tree",
+    "vetka_search_files",
+    "vetka_get_metrics",
+    "vetka_get_knowledge_graph",
+    "vetka_health",
+    "vetka_get_pinned_files",
+    "vetka_get_context_dag",
+    "vetka_get_memory_summary",
+    "vetka_get_user_preferences",
+    "vetka_get_conversation_context",
+    "vetka_read_group_messages",
+    "vetka_get_chat_digest",
+    "vetka_session_init",
+    "vetka_session_status",
+    "vetka_research",
+    "vetka_review",
+    "vetka_git_status",
+    "vetka_run_tests",
+    "vetka_list_artifacts",
+    "vetka_workflow_status",
+    "vetka_arc_suggest",
+}
+
+WRITE_TOOLS_REQUIRING_APPROVAL = {
+    "vetka_edit_file",
+    "vetka_git_commit",
+    "vetka_edit_artifact",
+    "vetka_approve_artifact",
+    "vetka_reject_artifact",
+    "vetka_send_message",
+    "vetka_camera_focus",
+    "vetka_execute_workflow",
+    "vetka_mycelium_pipeline",
+    "vetka_spawn_pipeline",
+    "vetka_implement",
+    "vetka_call_model",  # Prevent recursive LLM calls
+}
+
 logger = logging.getLogger(__name__)
 
 # MARKER_90.4.0_START: VETKA chat ID for call_model streaming
@@ -528,6 +575,20 @@ class LLMCallTool(BaseMCPTool):
         inject_context = arguments.get('inject_context')
         model_source = arguments.get('model_source')  # Phase 111.11
 
+        # MARKER_115_SECURITY: Filter tools by allowlist
+        if tools:
+            filtered_tools = []
+            for tool_def in tools:
+                tool_func_name = tool_def.get('function', {}).get('name', '') if isinstance(tool_def, dict) else ''
+                if tool_func_name in SAFE_FUNCTION_CALLING_TOOLS:
+                    filtered_tools.append(tool_def)
+                elif tool_func_name in WRITE_TOOLS_REQUIRING_APPROVAL:
+                    logger.warning(f"[SECURITY] Blocked write tool '{tool_func_name}' from function calling")
+                else:
+                    # MARKER_116_SECURITY_HARDENING: Deny unknown tools by default (was: allow)
+                    logger.warning(f"[SECURITY] Blocked unknown tool '{tool_func_name}' — not in allowlist")
+            tools = filtered_tools if filtered_tools else None
+
         # MARKER_55.2_START: Process context injection
         if inject_context:
             try:
@@ -679,8 +740,17 @@ class LLMCallTool(BaseMCPTool):
                 'usage': response.get('usage'),
             }
 
+            # MARKER_116_SECURITY_HARDENING: Filter response tool_calls by allowlist
             if tool_calls:
-                result['tool_calls'] = tool_calls
+                filtered_calls = []
+                for tc in tool_calls:
+                    tc_name = tc.get('function', {}).get('name', '') if isinstance(tc, dict) else ''
+                    if tc_name in SAFE_FUNCTION_CALLING_TOOLS:
+                        filtered_calls.append(tc)
+                    else:
+                        logger.warning(f"[SECURITY] Filtered out tool_call '{tc_name}' from LLM response")
+                if filtered_calls:
+                    result['tool_calls'] = filtered_calls
 
             # MARKER_90.4.0_START: Emit response to VETKA chat
             self._emit_response_to_chat(model, content, result.get('usage'))

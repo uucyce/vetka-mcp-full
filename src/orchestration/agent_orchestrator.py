@@ -29,7 +29,7 @@ class AgentOrchestrator:
         Initialize orchestrator with optional Socket.IO for real-time updates
         
         Args:
-            socketio: Flask-SocketIO instance for real-time updates (optional)
+            socketio: python-socketio AsyncServer for real-time updates (optional)
         """
         self.pm = VETKAPMAgent()
         self.dev = VETKADevAgent()

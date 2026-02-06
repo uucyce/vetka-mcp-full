@@ -414,7 +414,7 @@ def calculate_directory_fan_layout(
                 'content': str
             }
         all_files: List of all file data (for reference)
-        socketio_instance: Optional Flask-SocketIO instance for real-time updates
+        socketio_instance: Optional python-socketio AsyncServer for real-time updates
         screen_width: Screen width in pixels (default 1920)
         screen_height: Screen height in pixels (default 1080)
 

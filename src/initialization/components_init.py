@@ -110,7 +110,7 @@ def initialize_all_components(
 
     Args:
         app: Flask application instance
-        socketio: Flask-SocketIO instance
+        socketio: python-socketio AsyncServer
         debug: Enable debug mode
 
     Returns:

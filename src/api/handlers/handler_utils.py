@@ -247,6 +247,7 @@ def save_chat_message(
             "agent": message.get("agent"),
             "model": message.get("model"),
             "model_provider": message.get("model_provider"),  # Provider attribution for model disambiguation
+            "model_source": message.get("model_source"),  # MARKER_115_BUG3: model_source persistence
             "node_id": message.get("node_id"),
             "metadata": message.get("metadata", {}),
         }

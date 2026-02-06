@@ -32,8 +32,12 @@ import time
 import json
 import asyncio
 import uuid
+import logging  # MARKER_116_CLEANUP
 
 from src.utils.chat_utils import detect_response_type, get_agent_model_name
+
+# MARKER_116_CLEANUP: Logger for debug output
+logger = logging.getLogger(__name__)
 
 
 def extract_semantic_key(message_text: str, fallback: str = "chat") -> str:
@@ -248,7 +252,7 @@ def register_user_message_handler(sio, app=None):
         # Phase 111.9: Source for multi-provider routing (poe, polza, openrouter, etc.)
         model_source = data.get("model_source")
         # Phase 111.10.2: DEBUG - trace model_source
-        print(f"[DEBUG_SOURCE] model={requested_model}, model_source={model_source}")
+        logger.debug(f"[DEBUG_SOURCE] model={requested_model}, model_source={model_source}")  # MARKER_116_CLEANUP
 
         # Phase 61: Pinned files for multi-file context
         pinned_files = data.get("pinned_files", [])
@@ -260,12 +264,12 @@ def register_user_message_handler(sio, app=None):
         # This allows MCP to interact with solo chats using the same ID
         client_chat_id = data.get("chat_id", None)
         if client_chat_id:
-            print(f"[FIX_109.4] Using client-provided chat_id: {client_chat_id}")
+            logger.debug(f"[FIX_109.4] Using client-provided chat_id: {client_chat_id}")  # MARKER_116_CLEANUP
 
         # MARKER_109_14: Accept display_name from frontend (priority: pinned > node > keywords)
         client_display_name = data.get("display_name", None)
         if client_display_name:
-            print(f"[MARKER_109_14] Using client-provided display_name: {client_display_name}")
+            logger.debug(f"[MARKER_109_14] Using client-provided display_name: {client_display_name}")  # MARKER_116_CLEANUP
 
         # Save request timestamp (all responses use same timestamp)
         request_node_id = node_id
@@ -372,7 +376,12 @@ def register_user_message_handler(sio, app=None):
 
                     # MARKER_109_14: Prefer client_display_name
                     semantic_chat_key = client_display_name or generate_semantic_key(text, node_path)
-                    chat_id = chat_history.get_or_create_chat('unknown', context_type='topic', display_name=semantic_chat_key)
+                    chat_id = chat_history.get_or_create_chat(
+                        'unknown',
+                        context_type='topic',
+                        display_name=semantic_chat_key,
+                        chat_id=client_chat_id  # MARKER_115_BUG1: Chat hygiene fix
+                    )
                     history_messages = chat_history.get_chat_messages(chat_id)
                     history_context = format_history_for_prompt(
                         history_messages, max_messages=10
@@ -421,7 +430,7 @@ def register_user_message_handler(sio, app=None):
                     # Phase 74: Pass pinned_files for group chat context
                     save_chat_message(
                         node_path,
-                        {"role": "user", "text": text, "node_id": node_id},
+                        {"role": "user", "text": text, "node_id": node_id, "model_source": model_source},  # MARKER_115_BUG3
                         pinned_files=pinned_files,
                     )
 
@@ -498,6 +507,7 @@ def register_user_message_handler(sio, app=None):
                             "agent": requested_model,
                             "model": requested_model,
                             "model_provider": "ollama",  # Provider for Ollama local models
+                            "model_source": model_source,  # MARKER_115_BUG3
                             "text": full_response,
                             "node_id": node_id,
                         },
@@ -601,7 +611,7 @@ def register_user_message_handler(sio, app=None):
                 # Phase 74: Pass pinned_files for group chat context
                 save_chat_message(
                     node_path,
-                    {"role": "user", "text": text, "node_id": node_id},
+                    {"role": "user", "text": text, "node_id": node_id, "model_source": model_source},  # MARKER_115_BUG3
                     pinned_files=pinned_files,
                 )
 
@@ -769,6 +779,7 @@ def register_user_message_handler(sio, app=None):
                         "agent": requested_model,
                         "model": requested_model,
                         "model_provider": detected_provider.value if detected_provider else "unknown",  # Provider from detection
+                        "model_source": model_source,  # MARKER_115_BUG3
                         "text": full_response,
                         "node_id": node_id,
                     },
@@ -925,6 +936,7 @@ def register_user_message_handler(sio, app=None):
                         {
                             "role": "user",
                             "text": text,  # Original text (with @mention)
+                            "model_source": model_source,  # MARKER_115_BUG3
                             "node_id": node_id,
                         },
                         pinned_files=pinned_files,
@@ -1182,6 +1194,7 @@ When user asks about code - USE vetka_search_semantic or read_code_file!"""
                             "agent": model_to_use,
                             "model": model_to_use,
                             "model_provider": detected_provider.value if 'detected_provider' in locals() and detected_provider else "ollama",  # Provider from detection or default to ollama
+                            "model_source": model_source,  # MARKER_115_BUG3
                             "text": response_text,
                             "node_id": node_id,
                         },
@@ -1246,7 +1259,7 @@ When user asks about code - USE vetka_search_semantic or read_code_file!"""
         # Phase 74: Pass pinned_files for group chat context
         save_chat_message(
             node_path,
-            {"role": "user", "text": text, "node_id": node_id},
+            {"role": "user", "text": text, "node_id": node_id, "model_source": model_source},  # MARKER_115_BUG3
             pinned_files=pinned_files,
         )
 
@@ -1259,7 +1272,8 @@ When user asks about code - USE vetka_search_semantic or read_code_file!"""
             chat_id = chat_history.get_or_create_chat(
                 'unknown',
                 context_type='topic',
-                display_name=chat_display_name
+                display_name=chat_display_name,
+                chat_id=client_chat_id  # MARKER_115_BUG1: Chat hygiene fix
             )
             await emit_cam_event(
                 "message_sent",
@@ -2033,6 +2047,7 @@ Provide your {agent_name} analysis:
                     "role": "agent",
                     "agent": resp["agent"],
                     "model": resp["model"],
+                    "model_source": resp.get("model_source", model_source),  # MARKER_115_BUG3: fallback to outer scope
                     "text": resp["text"],
                     "node_id": resp["node_id"],
                 },
@@ -2048,7 +2063,8 @@ Provide your {agent_name} analysis:
                 chat_id = chat_history.get_or_create_chat(
                     'unknown',
                     context_type='topic',
-                    display_name=chat_display_name
+                    display_name=chat_display_name,
+                    chat_id=client_chat_id  # MARKER_115_BUG1: Chat hygiene fix
                 )
                 await emit_cam_event(
                     "message_sent",

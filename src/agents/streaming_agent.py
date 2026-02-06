@@ -17,7 +17,7 @@ class StreamingAgent:
         """
         Args:
             agent: BaseAgent instance to wrap
-            socketio: Flask-SocketIO instance for real-time updates
+            socketio: python-socketio AsyncServer for real-time updates
         """
         self.agent = agent
         self.socketio = socketio
