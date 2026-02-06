@@ -166,8 +166,9 @@ export function useTreeData() {
         console.log(`[useTreeData] Setting ${Object.keys(allNodes).length} nodes to store`);
         setNodesFromRecord(allNodes);
 
-        // Phase 113.1: Restore saved positions (overrides API positions for known nodes)
-        useStore.getState().loadPositions();
+        // Phase 113.1: Restore saved positions — DISABLED (Phase 113.3 cleanup)
+        // Positions come from backend fan_layout.py, no localStorage override needed
+        // useStore.getState().loadPositions();
 
         setEdges(allEdges);
       } else if (response.nodes) {

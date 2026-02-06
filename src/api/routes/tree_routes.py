@@ -465,7 +465,7 @@ async def get_tree_data(
             'type': 'root',
             'name': 'VETKA',
             'visual_hints': {
-                'layout_hint': {'expected_x': 0, 'expected_y': 0, 'expected_z': 0},
+                'layout_hint': {'expected_x': 0, 'expected_y': -80, 'expected_z': 0},
                 'color': '#8B4513'
             }
         })

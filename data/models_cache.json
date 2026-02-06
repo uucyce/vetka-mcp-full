@@ -1,8 +1,68 @@
 {
-  "cached_at": "2026-02-04T07:39:23.887354",
+  "cached_at": "2026-02-06T06:31:05.120916",
   "source": "mixed",
-  "count": 1588,
+  "count": 1589,
   "models": [
+    {
+      "id": "anthropic/claude-opus-4.6",
+      "canonical_slug": "anthropic/claude-4.6-opus-20260205",
+      "hugging_face_id": "",
+      "name": "Anthropic: Claude Opus 4.6",
+      "created": 1770219050,
+      "description": "Opus 4.6 is Anthropic\u2019s strongest model for coding and long-running professional tasks. It is built for agents that operate across entire workflows rather than single prompts, making it especially effective for large codebases, complex refactors, and multi-step debugging that unfolds over time. The model shows deeper contextual understanding, stronger problem decomposition, and greater reliability on hard engineering tasks than prior generations.\n\nBeyond coding, Opus 4.6 excels at sustained knowledge work. It produces near-production-ready documents, plans, and analyses in a single pass, and maintains coherence across very long outputs and extended sessions. This makes it a strong default for tasks that require persistence, judgment, and follow-through, such as technical design, migration planning, and end-to-end project execution.\n\nFor users upgrading from earlier Opus versions, see our [official migration guide here](https://openrouter.ai/docs/guides/guides/model-migrations/claude-4-6-opus)\n",
+      "context_length": 1000000,
+      "architecture": {
+        "modality": "text+image->text",
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Claude",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.000005",
+        "completion": "0.000025",
+        "web_search": "0.01",
+        "input_cache_read": "0.0000005",
+        "input_cache_write": "0.00000625"
+      },
+      "top_provider": {
+        "context_length": 1000000,
+        "max_completion_tokens": 128000,
+        "is_moderated": true
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "response_format",
+        "stop",
+        "structured_outputs",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_k",
+        "top_p",
+        "verbosity"
+      ],
+      "default_parameters": {
+        "temperature": null,
+        "top_p": null,
+        "frequency_penalty": null
+      },
+      "expiration_date": null,
+      "capabilities": [
+        "vision"
+      ],
+      "source": "openrouter",
+      "provider": "anthropic",
+      "_compound_key": "anthropic/claude-opus-4.6@openrouter"
+    },
     {
       "id": "qwen/qwen3-coder-next",
       "canonical_slug": "qwen/qwen3-coder-next-2025-02-03",
@@ -23,8 +83,8 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0.0000002",
-        "completion": "0.0000015"
+        "prompt": "0.00000007",
+        "completion": "0.0000003"
       },
       "top_provider": {
         "context_length": 262144,
@@ -92,7 +152,6 @@
       "supported_parameters": [
         "frequency_penalty",
         "include_reasoning",
-        "logit_bias",
         "max_tokens",
         "min_p",
         "presence_penalty",
@@ -768,10 +827,10 @@
       "_compound_key": "openai/gpt-5.2-codex@openrouter"
     },
     {
-      "id": "allenai/molmo-2-8b:free",
+      "id": "allenai/molmo-2-8b",
       "canonical_slug": "allenai/molmo-2-8b-20260109",
       "hugging_face_id": "allenai/Molmo2-8B",
-      "name": "AllenAI: Molmo2 8B (free)",
+      "name": "AllenAI: Molmo2 8B",
       "created": 1767996672,
       "description": "Molmo2-8B is an open vision-language model developed by the Allen Institute for AI (Ai2) as part of the Molmo2 family, supporting image, video, and multi-image understanding and grounding. It is based on Qwen3-8B and uses SigLIP 2 as its vision backbone, outperforming other open-weight, open-data models on short videos, counting, and captioning, while remaining competitive on long-video tasks.",
       "context_length": 36864,
@@ -789,8 +848,8 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0",
-        "completion": "0"
+        "prompt": "0.0000002",
+        "completion": "0.0000002"
       },
       "top_provider": {
         "context_length": 36864,
@@ -804,7 +863,6 @@
         "max_tokens",
         "presence_penalty",
         "repetition_penalty",
-        "response_format",
         "seed",
         "stop",
         "temperature",
@@ -822,7 +880,7 @@
       ],
       "source": "openrouter",
       "provider": "allenai",
-      "_compound_key": "allenai/molmo-2-8b:free@openrouter"
+      "_compound_key": "allenai/molmo-2-8b@openrouter"
     },
     {
       "id": "allenai/olmo-3.1-32b-instruct",
@@ -1014,11 +1072,12 @@
       },
       "pricing": {
         "prompt": "0.00000027",
-        "completion": "0.0000011"
+        "completion": "0.00000095",
+        "input_cache_read": "0.0000000299999997"
       },
       "top_provider": {
         "context_length": 196608,
-        "max_completion_tokens": 196608,
+        "max_completion_tokens": null,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -4042,63 +4101,6 @@
       "_compound_key": "ibm-granite/granite-4.0-h-micro@openrouter"
     },
     {
-      "id": "deepcogito/cogito-v2-preview-llama-405b",
-      "canonical_slug": "deepcogito/cogito-v2-preview-llama-405b",
-      "hugging_face_id": "deepcogito/cogito-v2-preview-llama-405B",
-      "name": "Deep Cogito: Cogito V2 Preview Llama 405B",
-      "created": 1760709933,
-      "description": "Cogito v2 405B is a dense hybrid reasoning model that combines direct answering capabilities with advanced self-reflection. It represents a significant step toward frontier intelligence with dense architecture delivering performance competitive with leading closed models. This advanced reasoning system combines policy improvement with massive scale for exceptional capabilities.\n",
-      "context_length": 32768,
-      "architecture": {
-        "modality": "text->text",
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ],
-        "tokenizer": "Llama3",
-        "instruct_type": null
-      },
-      "pricing": {
-        "prompt": "0.0000035",
-        "completion": "0.0000035"
-      },
-      "top_provider": {
-        "context_length": 32768,
-        "max_completion_tokens": null,
-        "is_moderated": false
-      },
-      "per_request_limits": null,
-      "supported_parameters": [
-        "frequency_penalty",
-        "include_reasoning",
-        "logit_bias",
-        "max_tokens",
-        "min_p",
-        "presence_penalty",
-        "reasoning",
-        "repetition_penalty",
-        "response_format",
-        "stop",
-        "structured_outputs",
-        "temperature",
-        "tool_choice",
-        "tools",
-        "top_k",
-        "top_p"
-      ],
-      "default_parameters": {
-        "temperature": null,
-        "top_p": null,
-        "frequency_penalty": null
-      },
-      "expiration_date": "2026-02-04",
-      "source": "openrouter",
-      "provider": "deepcogito",
-      "_compound_key": "deepcogito/cogito-v2-preview-llama-405b@openrouter"
-    },
-    {
       "id": "openai/gpt-5-image-mini",
       "canonical_slug": "openai/gpt-5-image-mini",
       "hugging_face_id": "",
@@ -5418,7 +5420,8 @@
       },
       "pricing": {
         "prompt": "0.0000002",
-        "completion": "0.0000012"
+        "completion": "0.00000088",
+        "input_cache_read": "0.00000011"
       },
       "top_provider": {
         "context_length": 262144,
@@ -5701,7 +5704,7 @@
       "pricing": {
         "prompt": "0.00000021",
         "completion": "0.00000079",
-        "input_cache_read": "0.000000168"
+        "input_cache_read": "0.0000001300000002"
       },
       "top_provider": {
         "context_length": 163840,
@@ -5817,7 +5820,8 @@
       },
       "pricing": {
         "prompt": "0.00000009",
-        "completion": "0.0000004"
+        "completion": "0.00000045",
+        "input_cache_read": "0.00000009"
       },
       "top_provider": {
         "context_length": 131072,
@@ -5826,21 +5830,14 @@
       },
       "per_request_limits": null,
       "supported_parameters": [
-        "frequency_penalty",
         "include_reasoning",
         "max_tokens",
-        "min_p",
-        "presence_penalty",
         "reasoning",
-        "repetition_penalty",
         "response_format",
-        "seed",
-        "stop",
         "structured_outputs",
         "temperature",
         "tool_choice",
         "tools",
-        "top_k",
         "top_p"
       ],
       "default_parameters": {
@@ -6469,118 +6466,6 @@
       "source": "openrouter",
       "provider": "moonshotai",
       "_compound_key": "moonshotai/kimi-k2-0905:exacto@openrouter"
-    },
-    {
-      "id": "deepcogito/cogito-v2-preview-llama-70b",
-      "canonical_slug": "deepcogito/cogito-v2-preview-llama-70b",
-      "hugging_face_id": "deepcogito/cogito-v2-preview-llama-70B",
-      "name": "Deep Cogito: Cogito V2 Preview Llama 70B",
-      "created": 1756831784,
-      "description": "Cogito v2 70B is a dense hybrid reasoning model that combines direct answering capabilities with advanced self-reflection. Built with iterative policy improvement, it delivers strong performance across reasoning tasks while maintaining efficiency through shorter reasoning chains and improved intuition.",
-      "context_length": 32768,
-      "architecture": {
-        "modality": "text->text",
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ],
-        "tokenizer": "Llama3",
-        "instruct_type": null
-      },
-      "pricing": {
-        "prompt": "0.00000088",
-        "completion": "0.00000088"
-      },
-      "top_provider": {
-        "context_length": 32768,
-        "max_completion_tokens": null,
-        "is_moderated": false
-      },
-      "per_request_limits": null,
-      "supported_parameters": [
-        "frequency_penalty",
-        "include_reasoning",
-        "logit_bias",
-        "max_tokens",
-        "min_p",
-        "presence_penalty",
-        "reasoning",
-        "repetition_penalty",
-        "response_format",
-        "stop",
-        "structured_outputs",
-        "temperature",
-        "tool_choice",
-        "tools",
-        "top_k",
-        "top_p"
-      ],
-      "default_parameters": {
-        "temperature": null,
-        "top_p": null,
-        "frequency_penalty": null
-      },
-      "expiration_date": "2026-02-04",
-      "source": "openrouter",
-      "provider": "deepcogito",
-      "_compound_key": "deepcogito/cogito-v2-preview-llama-70b@openrouter"
-    },
-    {
-      "id": "deepcogito/cogito-v2-preview-llama-109b-moe",
-      "canonical_slug": "deepcogito/cogito-v2-preview-llama-109b-moe",
-      "hugging_face_id": "deepcogito/cogito-v2-preview-llama-109B-MoE",
-      "name": "Cogito V2 Preview Llama 109B",
-      "created": 1756831568,
-      "description": "An instruction-tuned, hybrid-reasoning Mixture-of-Experts model built on Llama-4-Scout-17B-16E. Cogito v2 can answer directly or engage an extended \u201cthinking\u201d phase, with alignment guided by Iterated Distillation & Amplification (IDA). It targets coding, STEM, instruction following, and general helpfulness, with stronger multilingual, tool-calling, and reasoning performance than size-equivalent baselines. The model supports long-context use (up to 10M tokens) and standard Transformers workflows. Users can control the reasoning behaviour with the `reasoning` `enabled` boolean. [Learn more in our docs](https://openrouter.ai/docs/use-cases/reasoning-tokens#enable-reasoning-with-default-config)",
-      "context_length": 32767,
-      "architecture": {
-        "modality": "text+image->text",
-        "input_modalities": [
-          "image",
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ],
-        "tokenizer": "Llama4",
-        "instruct_type": null
-      },
-      "pricing": {
-        "prompt": "0.00000018",
-        "completion": "0.00000059"
-      },
-      "top_provider": {
-        "context_length": 32767,
-        "max_completion_tokens": null,
-        "is_moderated": false
-      },
-      "per_request_limits": null,
-      "supported_parameters": [
-        "frequency_penalty",
-        "include_reasoning",
-        "logit_bias",
-        "max_tokens",
-        "min_p",
-        "presence_penalty",
-        "reasoning",
-        "repetition_penalty",
-        "stop",
-        "temperature",
-        "tool_choice",
-        "tools",
-        "top_k",
-        "top_p"
-      ],
-      "default_parameters": {},
-      "expiration_date": "2026-02-04",
-      "capabilities": [
-        "vision"
-      ],
-      "source": "openrouter",
-      "provider": "deepcogito",
-      "_compound_key": "deepcogito/cogito-v2-preview-llama-109b-moe@openrouter"
     },
     {
       "id": "stepfun-ai/step3",
@@ -8355,7 +8240,6 @@
         "frequency_penalty",
         "max_tokens",
         "presence_penalty",
-        "reasoning",
         "repetition_penalty",
         "response_format",
         "seed",
@@ -8511,7 +8395,7 @@
       },
       "pricing": {
         "prompt": "0.000000071",
-        "completion": "0.000000463"
+        "completion": "0.0000001"
       },
       "top_provider": {
         "context_length": 262144,
@@ -10710,22 +10594,14 @@
       },
       "per_request_limits": null,
       "supported_parameters": [
-        "frequency_penalty",
         "include_reasoning",
-        "logit_bias",
-        "logprobs",
         "max_tokens",
-        "presence_penalty",
         "reasoning",
-        "repetition_penalty",
         "response_format",
-        "stop",
         "structured_outputs",
         "temperature",
         "tool_choice",
         "tools",
-        "top_k",
-        "top_logprobs",
         "top_p"
       ],
       "default_parameters": {
@@ -11698,7 +11574,6 @@
       "per_request_limits": null,
       "supported_parameters": [
         "frequency_penalty",
-        "logit_bias",
         "max_tokens",
         "min_p",
         "presence_penalty",
@@ -12417,7 +12292,7 @@
       "name": "Google: Gemma 3 27B",
       "created": 1741756359,
       "description": "Gemma 3 introduces multimodality, supporting vision-language input and text outputs. It handles context windows up to 128k tokens, understands over 140 languages, and offers improved math, reasoning, and chat capabilities, including structured outputs and function calling. Gemma 3 27B is Google's latest open source model, successor to [Gemma 2](google/gemma-2-27b-it)",
-      "context_length": 96000,
+      "context_length": 128000,
       "architecture": {
         "modality": "text+image->text",
         "input_modalities": [
@@ -12435,8 +12310,8 @@
         "completion": "0.00000015"
       },
       "top_provider": {
-        "context_length": 96000,
-        "max_completion_tokens": 96000,
+        "context_length": 128000,
+        "max_completion_tokens": 65536,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -16012,7 +15887,7 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null,
+      "expiration_date": "2026-02-17",
       "capabilities": [
         "vision"
       ],
@@ -16236,7 +16111,7 @@
       "name": "Meta: Llama 3.1 405B Instruct",
       "created": 1721692800,
       "description": "The highly anticipated 400B class of Llama3 is here! Clocking in at 128k context with impressive eval scores, the Meta AI team continues to push the frontier of open-source LLMs.\n\nMeta's latest class of model (Llama 3.1) launched with a variety of sizes & flavors. This 405B instruct-tuned version is optimized for high quality dialogue usecases.\n\nIt has demonstrated strong performance compared to leading closed-source models including GPT-4o and Claude 3.5 Sonnet in evaluations.\n\nTo read more about the model release, [click here](https://ai.meta.com/blog/meta-llama-3-1/). Usage of this model is subject to [Meta's Acceptable Use Policy](https://llama.meta.com/llama3/use-policy/).",
-      "context_length": 10000,
+      "context_length": 131000,
       "architecture": {
         "modality": "text->text",
         "input_modalities": [
@@ -16249,11 +16124,11 @@
         "instruct_type": "llama3"
       },
       "pricing": {
-        "prompt": "0.0000035",
-        "completion": "0.0000035"
+        "prompt": "0.000004",
+        "completion": "0.000004"
       },
       "top_provider": {
-        "context_length": 10000,
+        "context_length": 131000,
         "max_completion_tokens": null,
         "is_moderated": false
       },
@@ -16276,7 +16151,7 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": "2026-02-06",
+      "expiration_date": null,
       "source": "openrouter",
       "provider": "meta-llama",
       "_compound_key": "meta-llama/llama-3.1-405b-instruct@openrouter"
@@ -18471,32 +18346,6 @@
       "_compound_key": "google/deep-research-pro-preview-12-2025@gemini_direct"
     },
     {
-      "id": "google/embedding-001",
-      "name": "Embedding 001",
-      "description": "Obtain a distributed representation of a text.",
-      "context_length": 2048,
-      "pricing": {
-        "prompt": "0.00015",
-        "completion": "0.0006"
-      },
-      "provider": "google",
-      "source": "gemini_direct",
-      "_compound_key": "google/embedding-001@gemini_direct"
-    },
-    {
-      "id": "google/text-embedding-004",
-      "name": "Text Embedding 004",
-      "description": "Obtain a distributed representation of a text.",
-      "context_length": 2048,
-      "pricing": {
-        "prompt": "0.00015",
-        "completion": "0.0006"
-      },
-      "provider": "google",
-      "source": "gemini_direct",
-      "_compound_key": "google/text-embedding-004@gemini_direct"
-    },
-    {
       "id": "google/gemini-embedding-001",
       "name": "Gemini Embedding 001",
       "description": "Obtain a distributed representation of a text.",
@@ -18690,6 +18539,36 @@
       "provider": "google",
       "source": "gemini_direct",
       "_compound_key": "google/gemini-2.5-flash-native-audio-preview-12-2025@gemini_direct"
+    },
+    {
+      "id": "anthropic/claude-opus-4.6",
+      "name": "Anthropic: Claude Opus 4.6 (Polza)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "polza",
+      "source": "polza",
+      "source_display": "Polza",
+      "owned_by": "polza",
+      "_compound_key": "anthropic/claude-opus-4.6@polza"
+    },
+    {
+      "id": "qwen/qwen3-coder-next",
+      "name": "Qwen: Qwen3 Coder Next (Polza)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "polza",
+      "source": "polza",
+      "source_display": "Polza",
+      "owned_by": "polza",
+      "_compound_key": "qwen/qwen3-coder-next@polza"
     },
     {
       "id": "z-ai/glm-4.7-flash",
@@ -23718,10 +23597,10 @@
       "_compound_key": "gemini-3-flash@poe"
     },
     {
-      "id": "claude-opus-4.5",
-      "name": "claude-opus-4.5 (Poe)",
-      "description": "Claude Opus 4.5 from Anthropic, supports customizable thinking budget (up to 64k tokens) and 200k context window.\nTo instruct the bot to use more thinking effort, add --thinking_budget and a number ranging from 0 to 63999 to the end of your message.",
-      "context_length": 196608,
+      "id": "claude-opus-4-6",
+      "name": "claude-opus-4-6 (Poe)",
+      "description": "Claude Opus 4.6 from Anthropic, supports 1 million context window.\n\nOptional parameters:\noutput effort: At the default effort level (high), the model uses extended thinking when useful, but developers can adjust the effort level to make it more or less selective. Choose none to turn off thinking.\nweb search: enable web search and real-time information access.",
+      "context_length": 983040,
       "pricing": {
         "prompt": "0.0000043",
         "completion": "0.000021",
@@ -23734,7 +23613,7 @@
       "source": "poe",
       "source_display": "Poe",
       "owned_by": "Anthropic",
-      "_compound_key": "claude-opus-4.5@poe"
+      "_compound_key": "claude-opus-4-6@poe"
     },
     {
       "id": "gpt-5.2-instant",
@@ -24233,6 +24112,25 @@
       "source_display": "Poe",
       "owned_by": "OpenAI",
       "_compound_key": "gpt-5-chat@poe"
+    },
+    {
+      "id": "claude-opus-4.5",
+      "name": "claude-opus-4.5 (Poe)",
+      "description": "Claude Opus 4.5 from Anthropic, supports customizable thinking budget (up to 64k tokens) and 200k context window.\nTo instruct the bot to use more thinking effort, add --thinking_budget and a number ranging from 0 to 63999 to the end of your message.",
+      "context_length": 196608,
+      "pricing": {
+        "prompt": "0.0000043",
+        "completion": "0.000021",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.00000043",
+        "input_cache_write": "0.0000053"
+      },
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Anthropic",
+      "_compound_key": "claude-opus-4.5@poe"
     },
     {
       "id": "claude-code",
@@ -26263,7 +26161,7 @@
     {
       "id": "web-search",
       "name": "web-search (Poe)",
-      "description": "Web-enabled assistant bot that searches the internet to inform its responses. Particularly good for queries regarding up-to-date information or specific facts. Powered by Gemini 2.5 Flash-Lite.",
+      "description": "Web-enabled assistant bot that searches the internet to inform its responses. Particularly good for queries regarding up-to-date information or specific facts. Powered by Gemini 2.5 Flash-Lite.\nThis bot does not support attachments. ",
       "context_length": null,
       "pricing": null,
       "provider": "poe",
@@ -26701,7 +26599,7 @@
     {
       "id": "flux-2-klein-4b",
       "name": "flux-2-klein-4b (Poe)",
-      "description": "Text-to-image generation and Image Editing with Flux 2 [klein] 4B Distilled from Black Forest Labs. Enhanced realism, crisper text generation, and native editing capabilities. Send up to 3 images (jpeg/png/webp) to use for image editing/ as references.",
+      "description": "Text-to-image generation and Image Editing with Flux 2 [klein] 4B Distilled from Black Forest Labs. Enhanced realism, crisper text generation, and native editing capabilities. Send up to 3 images (jpeg/png/webp) to use for image editing or as references.\n\nOptional parameters:\nUse `--aspect` to set aspect ratio. Supported aspect ratios - 16:9, 4:3, 1:1, 3:4, 9:16",
       "context_length": null,
       "pricing": null,
       "provider": "poe",
@@ -28004,9 +27902,9 @@
       "_compound_key": "qwen-2.5-vl-32b@poe"
     },
     {
-      "id": "qwen2.5-vl-72b-t",
-      "name": "qwen2.5-vl-72b-t (Poe)",
-      "description": "Qwen 2.5 VL 72B, a cutting-edge multimodal model from the Qwen Team, excels in visual and video understanding, multilingual text/image processing (including Japanese, Arabic, and Korean), and dynamic agentic reasoning for automation. It supports long-context comprehension (32K tokens)",
+      "id": "qwen3-vl-32b-t",
+      "name": "qwen3-vl-32b-t (Poe)",
+      "description": "Meet Qwen3-VL \u2014 the most powerful vision-language model in the Qwen series to date.\n\nThis generation delivers comprehensive upgrades across the board: superior text understanding & generation, deeper visual perception & reasoning, extended context length, enhanced spatial and video dynamics comprehension, and stronger agent interaction capabilities.\n\nAvailable in Dense and MoE architectures that scale from edge to cloud, with Instruct and reasoning\u2011enhanced Thinking editions for flexible, on\u2011demand deployment.",
       "context_length": 32768,
       "pricing": {
         "prompt": null,
@@ -28020,7 +27918,7 @@
       "source": "poe",
       "source_display": "Poe",
       "owned_by": "Together AI",
-      "_compound_key": "qwen2.5-vl-72b-t@poe"
+      "_compound_key": "qwen3-vl-32b-t@poe"
     },
     {
       "id": "mistral-small-3",
@@ -28866,6 +28764,25 @@
       "source_display": "Poe",
       "owned_by": "Poe Tools",
       "_compound_key": "code-editor@poe"
+    },
+    {
+      "id": "runway-gen-4.5",
+      "name": "runway-gen-4.5 (Poe)",
+      "description": "Runway Gen 4.5 is an advanced video model that generates cinematic, high\u2011fidelity video from natural language and images. It offers fine\u2011grained control over motion, camera behavior, composition, and style, producing physically realistic and temporally consistent scenes.\n\nOptional parameters:\nUse --aspect_ratio to set aspect ratio (21:9, 16:9, 4:3, 1:1, 3:4, 9:16). Set to 16:9 aspect as default.\nUse --duration (5, 8, 10) to specify video length in seconds. Set to 5 seconds as default.",
+      "context_length": 256,
+      "pricing": {
+        "prompt": null,
+        "completion": null,
+        "image": null,
+        "request": "0.00",
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "RunwayML",
+      "_compound_key": "runway-gen-4.5@poe"
     },
     {
       "id": "study_gpt-chatgpt-4o-latest",
@@ -30260,23 +30177,6 @@
       "object": "model",
       "created": 1765324800,
       "_compound_key": "nex-agi/deepseek-v3.1-nex-n1@nanogpt"
-    },
-    {
-      "id": "gemini-2.0-flash-exp",
-      "name": "gemini-2.0-flash-exp (NanoGPT)",
-      "description": "",
-      "context_length": 128000,
-      "pricing": {
-        "prompt": "0.0001",
-        "completion": "0.0003"
-      },
-      "provider": "nanogpt",
-      "source": "nanogpt",
-      "source_display": "NanoGPT",
-      "owned_by": "google",
-      "object": "model",
-      "created": 1737763200,
-      "_compound_key": "gemini-2.0-flash-exp@nanogpt"
     },
     {
       "id": "gemini-2.0-flash-thinking-exp-01-21",
@@ -35583,6 +35483,91 @@
       "_compound_key": "claude-opus-4-thinking:32000@nanogpt"
     },
     {
+      "id": "anthropic/claude-opus-4.6",
+      "name": "claude-opus-4.6 (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "anthropic",
+      "object": "model",
+      "created": 1770249600,
+      "_compound_key": "anthropic/claude-opus-4.6@nanogpt"
+    },
+    {
+      "id": "anthropic/claude-opus-4.6:thinking",
+      "name": "claude-opus-4.6:thinking (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "anthropic",
+      "object": "model",
+      "created": 1770249600,
+      "_compound_key": "anthropic/claude-opus-4.6:thinking@nanogpt"
+    },
+    {
+      "id": "anthropic/claude-opus-4.6:thinking:max",
+      "name": "claude-opus-4.6:thinking:max (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "anthropic",
+      "object": "model",
+      "created": 1770249600,
+      "_compound_key": "anthropic/claude-opus-4.6:thinking:max@nanogpt"
+    },
+    {
+      "id": "anthropic/claude-opus-4.6:thinking:medium",
+      "name": "claude-opus-4.6:thinking:medium (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "anthropic",
+      "object": "model",
+      "created": 1770249600,
+      "_compound_key": "anthropic/claude-opus-4.6:thinking:medium@nanogpt"
+    },
+    {
+      "id": "anthropic/claude-opus-4.6:thinking:low",
+      "name": "claude-opus-4.6:thinking:low (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "anthropic",
+      "object": "model",
+      "created": 1770249600,
+      "_compound_key": "anthropic/claude-opus-4.6:thinking:low@nanogpt"
+    },
+    {
       "id": "claude-opus-4-5-20251101",
       "name": "claude-opus-4-5-20251101 (NanoGPT)",
       "description": "",
@@ -37502,57 +37487,6 @@
       "object": "model",
       "created": 1752537600,
       "_compound_key": "kimi-k2-instruct-fast@nanogpt"
-    },
-    {
-      "id": "deepcogito/cogito-v2-preview-llama-70B",
-      "name": "cogito-v2-preview-llama-70B (NanoGPT)",
-      "description": "",
-      "context_length": 128000,
-      "pricing": {
-        "prompt": "0.0001",
-        "completion": "0.0003"
-      },
-      "provider": "nanogpt",
-      "source": "nanogpt",
-      "source_display": "NanoGPT",
-      "owned_by": "organization-owner",
-      "object": "model",
-      "created": 1704067200,
-      "_compound_key": "deepcogito/cogito-v2-preview-llama-70B@nanogpt"
-    },
-    {
-      "id": "deepcogito/cogito-v2-preview-llama-109B-MoE",
-      "name": "cogito-v2-preview-llama-109B-MoE (NanoGPT)",
-      "description": "",
-      "context_length": 128000,
-      "pricing": {
-        "prompt": "0.0001",
-        "completion": "0.0003"
-      },
-      "provider": "nanogpt",
-      "source": "nanogpt",
-      "source_display": "NanoGPT",
-      "owned_by": "organization-owner",
-      "object": "model",
-      "created": 1704067200,
-      "_compound_key": "deepcogito/cogito-v2-preview-llama-109B-MoE@nanogpt"
-    },
-    {
-      "id": "deepcogito/cogito-v2-preview-llama-405B",
-      "name": "cogito-v2-preview-llama-405B (NanoGPT)",
-      "description": "",
-      "context_length": 128000,
-      "pricing": {
-        "prompt": "0.0001",
-        "completion": "0.0003"
-      },
-      "provider": "nanogpt",
-      "source": "nanogpt",
-      "source_display": "NanoGPT",
-      "owned_by": "organization-owner",
-      "object": "model",
-      "created": 1704067200,
-      "_compound_key": "deepcogito/cogito-v2-preview-llama-405B@nanogpt"
     },
     {
       "id": "baidu/ernie-4.5-vl-28b-a3b",

@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-02-03T17:26:27.027398",
+  "updated_at": "2026-02-04T10:21:27.089357",
   "api_keys": {
     "openrouter": {
       "paid": "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",
@@ -42,7 +42,14 @@
       "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"
     ],
     "poe": [
-      "kwodYaOPh6Oix7rI-XJMVDigFvkFdrDv420N5TauLqo"
+      "kwodYaOPh6Oix7rI-XJMVDigFvkFdrDv420N5TauLqo",
+      "mcwqG-NzpXr1uMS_2Hv9p0Ifk2TtDoZil2qS0eUw3F8",
+      "Ifi1MDyb3wqqPWf-7xs1_EOSDlBak8Zpfbl96gE5TcM",
+      "W-2xMBYIlAEz_JMM8Bih8shRIKdHU-68EJKJq4OOnOM",
+      "Jlxq6f4FqQfPsMmxb8hPnO7jBBnpMCcD4EFAZSYSHZg",
+      "nJtJtIEQhTIz8tW9ZlIemdSu5hUDQdudPTsUm0QTdcc",
+      "Daf_h_U0lpCNxg7SOerxscau5ZAiv2aerFItd_I6cSM",
+      "yaFm_dxjX9IR5a-S192jzLG8FvG2Edwym5jBsejqimQ"
     ],
     "perplexity": [
       "pa-eT5WNsImTVf3IGeDvyO-tLx2GgTn8Tb2dhu1wiKJZIQ"

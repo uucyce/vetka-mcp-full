@@ -886,8 +886,8 @@ function FileCardComponent({
         }
       }
 
-      // Phase 113.1: Persist positions after drag ends
-      useStore.getState().savePositions();
+      // Phase 113.1: Persist positions — DISABLED (Phase 113.3 cleanup)
+      // useStore.getState().savePositions();
     },
     [isDragging, id, type, setDraggingAny, moveNodeWithChildren, updateNodePosition]
   );
