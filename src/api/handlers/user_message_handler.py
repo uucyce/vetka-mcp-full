@@ -605,35 +605,49 @@ def register_user_message_handler(sio, app=None):
                     pinned_files=pinned_files,
                 )
 
-                # ============ PHASE 114.8: PRE-FETCH TOOLS BEFORE STREAM ============
-                # Async pre-fetch semantic search results BEFORE stream starts
-                # Results injected into stream_system_prompt so models reference REAL data
+                # ============ PHASE 114.8.1: MGC-CACHED PRE-FETCH BEFORE STREAM ============
+                # Async pre-fetch semantic search with MGC cache (Multi-Generational)
+                # Pattern: mgc.get_or_compute(key, async_fn) → cache HIT = 0ms, MISS = hybrid search
                 # handle_user_message is async — await works directly, no ThreadPool needed
                 prefetch_context = ""
                 try:
                     from src.search.hybrid_search import get_hybrid_search
-                    hybrid = get_hybrid_search()
-                    semantic_query = text[:200] if text else "project overview"
+                    from src.memory.mgc_cache import get_mgc_cache
 
-                    search_response = await hybrid.search(
-                        query=semantic_query,
-                        limit=5,
-                        mode="hybrid",
-                        collection="leaf",
-                        skip_cache=False,
+                    hybrid = get_hybrid_search()
+                    mgc = get_mgc_cache()
+                    semantic_query = text[:200] if text else "project overview"
+                    cache_key = f"stream_prefetch:{semantic_query[:100]}"
+
+                    # Proper async compute_fn (no lambda — must be Awaitable)
+                    async def _compute_search():
+                        return await hybrid.search(
+                            query=semantic_query,
+                            limit=5,
+                            mode="hybrid",
+                            collection="leaf",
+                            skip_cache=False,
+                        )
+
+                    # MGC: cache HIT → instant (0ms), MISS → hybrid search (~50-100ms)
+                    search_response = await mgc.get_or_compute(
+                        key=cache_key,
+                        compute_fn=_compute_search,
+                        size_bytes=1024,  # ~1KB estimated result size
                     )
 
-                    if search_response.get("count", 0) > 0:
+                    if isinstance(search_response, dict) and search_response.get("count", 0) > 0:
                         prefetch_context = _format_search_results_for_stream(
                             search_response["results"]
                         )
-                        print(f"[PHASE_114.8] Pre-fetched {search_response['count']} results "
+                        print(f"[PHASE_114.8.1] MGC {'HIT' if search_response.get('cache_hit') else 'MISS'} | "
+                              f"{search_response['count']} results "
                               f"({search_response.get('timing_ms', 0):.0f}ms) for: {semantic_query[:50]}")
                     else:
-                        print(f"[PHASE_114.8] No pre-fetch results for: {semantic_query[:50]}")
+                        print(f"[PHASE_114.8.1] No pre-fetch results for: {semantic_query[:50]}")
                 except Exception as prefetch_err:
                     print(f"[PHASE_114.8] Pre-fetch failed (non-fatal): {prefetch_err}")
-                # ============ END PHASE 114.8 PRE-FETCH ============
+                # ============ END PHASE 114.8.1 MGC PRE-FETCH ============
 
                 # Phase 64.3: Use extracted helper for prompt building
                 # Phase 71: Added viewport_summary parameter
