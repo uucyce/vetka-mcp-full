@@ -351,10 +351,12 @@ class LLMCallTool(BaseMCPTool):
         semantic_query = inject_config.get("semantic_query")
         if semantic_query:
             try:
-                from src.search.hybrid_search import HybridSearch
-                search = HybridSearch()
+                # FIX_114.8.2: Use singleton getter (HybridSearch class doesn't exist)
+                from src.search.hybrid_search import get_hybrid_search
+                search = get_hybrid_search()
                 limit = inject_config.get("semantic_limit", 5)
-                results = await search.search(semantic_query, limit=limit)
+                search_response = await search.search(semantic_query, limit=limit)
+                results = search_response.get("results", []) if isinstance(search_response, dict) else search_response
                 if results:
                     search_text = []
                     for r in results[:limit]:

@@ -1,0 +1,456 @@
+================================================================================
+PHASE 114.8 - CODE INSERTION POINTS & REFERENCES
+Async Pre-fetch Tools in Solo Chat Streaming
+================================================================================
+
+FILE: src/api/handlers/user_message_handler.py
+
+================================================================================
+SECTION A: STREAM PARAMETER COLLECTION (Lines 226-229)
+================================================================================
+
+Location: 226-229
+Status: PARAMETER AVAILABILITY VERIFICATION
+
+```python
+226     # Phase 61: Pinned files for multi-file context
+227     pinned_files = data.get("pinned_files", [])
+228
+229     # [PHASE71-M1] Phase 71: Viewport context for spatial awareness
+230     viewport_context = data.get("viewport_context", None)
+```
+
+INFO: These parameters are available throughout the stream path
+- Used later for context building
+- Both available BEFORE stream starts (line 639)
+
+
+================================================================================
+SECTION B: IMPORTS (Lines ~85) - TASK 2: ADD IMPORTS HERE
+================================================================================
+
+Location: 85 (after existing provider_registry imports)
+Status: INSERT NEW IMPORTS
+Priority: CRITICAL - Without these, pre-fetch code won't run
+
+Current:
+```python
+82      from src.elisya.provider_registry import (
+83          call_model_v2,
+84          call_model_v2_stream,
+85          Provider,
+86          XaiKeysExhausted,
+87      )
+```
+
+ADD AFTER LINE 87:
+```python
+88
+89      # Phase 114.8: Pre-fetch tools before streaming
+90      from src.search.hybrid_search import get_hybrid_search
+91      from src.memory.mgc_cache import get_mgc_cache
+```
+
+
+================================================================================
+SECTION C: HELPER FUNCTION DEFINITION (Lines ~170) - TASK 1: ADD FUNCTION HERE
+================================================================================
+
+Location: ~170 (after docstring, before on_message function)
+Status: INSERT NEW FUNCTION
+Priority: HIGH - Pre-fetch results won't format without this
+
+ADD THIS FUNCTION:
+```python
+170
+171 def _format_search_results_for_stream(results: List[Dict]) -> str:
+172     """
+173     Format hybrid search results for system prompt injection in streaming.
+174     Phase 114.8: Converts nested search dicts into readable markdown.
+175
+176     Args:
+177         results: List of search result dicts from hybrid_search.search()
+178
+179     Returns:
+180         Formatted markdown string for system prompt
+181     """
+182     if not results:
+183         return ""
+184
+185     formatted = "## Pre-fetched Search Results\n\n"
+186     for i, result in enumerate(results[:5], 1):
+187         path = result.get("path", result.get("file_path", "unknown"))
+187         score = result.get("score", 0)
+188         content = result.get("content", "")[:500]
+189         source = result.get("source", "unknown")
+190
+191         formatted += f"### Result {i} ({source}, score: {score:.2f})\n"
+192         formatted += f"**Path:** `{path}`\n"
+193         formatted += f"**Preview:**\n```\n{content}\n```\n\n"
+194
+195     return formatted
+196
+
+
+================================================================================
+SECTION D: CONTEXT BUILDING SECTION (Lines 551-579)
+================================================================================
+
+Location: 551-579 (shown for reference)
+Status: REFERENCE - Shows where context is built
+Priority: LOW - No changes here, but precedes insertion point
+
+Current code:
+```python
+551                 pinned_context = (
+552                     build_pinned_context(pinned_files, user_query=text)
+553                     if pinned_files
+554                     else ""
+555                 )
+556                 history_context = format_history_for_prompt(chat_id, max_context=4000)
+557
+558                 viewport_summary = (
+559                     build_viewport_summary(viewport_context)
+560                     if viewport_context
+561                     else ""
+562                 )
+563
+564                 json_context = build_json_context(
+565                     pinned_files,
+566                     viewport_context,
+567                     client_id
+568                 )
+```
+
+Info: After line 568 (or 579 end of section), TASK 3 goes here
+
+
+================================================================================
+SECTION E: PRE-FETCH LOGIC INSERTION (Line 579) - TASK 3: INSERT HERE
+================================================================================
+
+Location: AFTER line 579 (after json_context, before model_prompt assembly)
+Status: PRIMARY INSERTION POINT
+Priority: CRITICAL - This is where pre-fetch actually happens
+
+INSERT BEFORE MODEL_PROMPT (line 583):
+
+```python
+579
+580                 # ============ PHASE 114.8: PRE-FETCH TOOLS ============
+581                 # Async pre-fetch semantic search results BEFORE stream starts
+582                 # These results will be injected into stream_system_prompt
+583                 # so streaming models can reference real tool output
+584
+585                 tools_context = ""
+586                 try:
+587                     # Use user query (text) as semantic search query
+588                     semantic_query = text[:200] if text else requested_model
+589
+590                     # Get hybrid search singleton
+591                     hybrid = get_hybrid_search()
+592
+593                     # Pre-fetch results (non-blocking, happens during setup)
+594                     search_results = await hybrid.search(
+595                         query=semantic_query,
+596                         limit=5,
+597                         mode="hybrid",
+598                         collection="leaf",
+599                         skip_cache=False
+600                     )
+601
+602                     # Format for injection into system prompt
+603                     if search_results.get("count", 0) > 0:
+604                         tools_context = _format_search_results_for_stream(
+605                             search_results["results"]
+606                         )
+607                         print(f"[PHASE_114.8] Pre-fetched {search_results['count']} results for tools context")
+608                     else:
+609                         print(f"[PHASE_114.8] No pre-fetch results for query: {semantic_query[:50]}")
+610
+611                 except Exception as e:
+612                     logger.warning(f"[PHASE_114.8] Pre-fetch failed (non-blocking): {e}")
+613                     # Continue with empty tools_context - doesn't block streaming
+614
+615                 # ============ END PHASE 114.8 ============
+616
+617                 # Phase 64.3: Use extracted helper for prompt building
+618                 model_prompt = build_model_prompt(  # <-- EXISTING LINE 583
+619                     text,
+620                     context_for_model,
+621                     pinned_context,
+622                     history_context,
+623                     viewport_summary,
+624                     json_context,
+625                 )
+```
+
+Info:
+- Runs asynchronously, doesn't block
+- Errors caught, system continues
+- Result stored in `tools_context` variable
+- Variable used later in system prompt (TASK 4)
+
+
+================================================================================
+SECTION F: MODEL PROMPT ASSEMBLY (Lines 618-625)
+================================================================================
+
+Location: 618-625 (shown for reference)
+Status: REFERENCE - Existing code, no changes
+Priority: LOW
+
+```python
+618                 # Phase 64.3: Use extracted helper for prompt building
+619                 # Phase 71: Added viewport_summary parameter
+620                 # Phase 73: Added json_context parameter
+621                 model_prompt = build_model_prompt(
+622                     text,
+623                     context_for_model,
+624                     pinned_context,
+625                     history_context,
+626                     viewport_summary,
+627                     json_context,
+628                 )
+```
+
+Info: This code follows the pre-fetch block
+
+
+================================================================================
+SECTION G: AGENT DETECTION & STREAMING SETUP (Lines 629-637)
+================================================================================
+
+Location: 629-637 (shown for reference)
+Status: REFERENCE - Existing code, no changes
+Priority: LOW
+
+```python
+629                 # Phase 93.3: Streaming via provider_registry
+630                 agent_short_name = get_agent_short_name(requested_model)
+631                 msg_id = str(uuid.uuid4())
+632
+633                 full_response = ""
+634                 tokens_output = 0
+635
+636                 # Phase 93.3: Use call_model_v2_stream from provider_registry
+637                 # Emit stream start
+638                 # Phase 111.10.2: Include model_source for Reply routing
+```
+
+Info: Setup happens after pre-fetch, before stream starts
+
+
+================================================================================
+SECTION H: SYSTEM PROMPT DEFINITION (Lines 650-669) - TASK 4: MODIFY HERE
+================================================================================
+
+Location: 650-669 (SYSTEM PROMPT DEFINITION)
+Status: SECONDARY INSERTION POINT - Inject tools_context here
+Priority: CRITICAL - This is where pre-fetch results are used
+
+CURRENT CODE (REPLACE):
+```python
+650                     # MARKER_114.7_STREAM_TOOLS: Add tool awareness to streamed models
+651                     # Streaming can't do tool calling loop, but model should know tools exist
+652                     # so it can reference them and suggest their use
+653                     stream_system_prompt = """You are a VETKA AI agent with access to project context.
+654
+655 Available tools (mention them when relevant):
+656 - vetka_search_semantic: Search codebase by meaning (Qdrant vector search)
+657 - vetka_camera_focus: Move 3D camera to focus on files/folders
+658 - get_tree_context: Get file/folder hierarchy
+659 - search_codebase: Search code by pattern (grep)
+660 - vetka_edit_artifact: Create code artifacts for review
+661
+662 Note: In streaming mode, you cannot execute tools directly. Describe what tools you would use and what you expect to find. The user can then ask the system to execute them."""
+```
+
+REPLACE WITH:
+```python
+650                     # PHASE 114.8: Build system prompt with pre-fetched tools
+651                     stream_system_prompt = """You are a VETKA AI agent with access to project context.
+652
+653 You have the following information available from the codebase:
+654 """
+655                     if tools_context:
+656                         stream_system_prompt += tools_context
+657                     else:
+657                         stream_system_prompt += """(No pre-fetched context available - you can suggest searching with these tools)"""
+658
+659                     stream_system_prompt += """
+660
+661 Available tools (mention them when relevant):
+662 - vetka_search_semantic: Search codebase by meaning (Qdrant vector search)
+663 - vetka_camera_focus: Move 3D camera to focus on files/folders
+664 - get_tree_context: Get file/folder hierarchy
+665 - search_codebase: Search code by pattern (grep)
+666 - vetka_edit_artifact: Create code artifacts for review
+667
+668 When responding, reference the pre-fetched results above. If you need additional context, suggest using the available tools."""
+```
+
+Info:
+- Uses `tools_context` variable from TASK 3
+- Conditional: only injects if pre-fetch succeeded
+- Instructs model to reference pre-fetched data
+- Maintains tool suggestions as fallback
+
+
+================================================================================
+SECTION I: STREAM MESSAGE ASSEMBLY (Lines 670-675)
+================================================================================
+
+Location: 670-675 (shown for reference)
+Status: REFERENCE - Existing code, no changes
+Priority: LOW
+
+```python
+670                     stream_messages = [
+671                         {"role": "system", "content": stream_system_prompt},
+672                         {"role": "user", "content": model_prompt},
+673                     ]
+```
+
+Info: stream_system_prompt from TASK 4 is used here
+
+
+================================================================================
+SECTION J: STREAM INVOCATION (Lines 676-683)
+================================================================================
+
+Location: 676-683 (ACTUAL STREAM START)
+Status: REFERENCE - Where streaming begins
+Priority: CRITICAL - This must execute after Tasks 3-4
+
+```python
+676                     # Use unified streaming
+677                     async for token in call_model_v2_stream(
+678                         messages=stream_messages,  # MARKER_114.7: includes system prompt
+679                         model=requested_model,
+680                         provider=detected_provider,
+681                         source=model_source,  # Phase 111.9
+682                         temperature=0.7,
+683                     ):
+```
+
+Info:
+- Stream starts here
+- Pre-fetch tasks must complete before this
+- stream_messages includes system prompt with tools_context
+- Model receives pre-fetched results in first message
+
+
+================================================================================
+REFERENCES FOR IMPLEMENTATION
+================================================================================
+
+1. HYBRID SEARCH INTERFACE:
+   File: src/search/hybrid_search.py
+   Function: async def search(...) at line 121
+   Singleton: get_hybrid_search() at line 532
+
+2. SEARCH RESULT FORMAT:
+   Returns: Dict with keys:
+   - results: List[Dict] with path, score, content, source
+   - count: int
+   - mode: str
+   - sources: List[str]
+
+3. MGC CACHE (Optional):
+   File: src/memory/mgc_cache.py
+   Function: async def get_or_compute(...) at line 231
+   Singleton: get_mgc_cache() at line 434
+
+4. PROVEN PATTERN:
+   File: src/mcp/tools/llm_call_tool.py
+   Function: _gather_inject_context() at line 281
+   Shows working semantic search + compression pattern
+
+
+================================================================================
+QUICK REFERENCE: TASK CHECKLIST
+================================================================================
+
+Task 1: Create Helper Function
+  Where: Line ~170, before on_message()
+  What: _format_search_results_for_stream() function
+  Status: Ready to insert
+
+Task 2: Add Imports
+  Where: Line 88-91 (after provider_registry imports)
+  What: from src.search.hybrid_search import get_hybrid_search
+  What: from src.memory.mgc_cache import get_mgc_cache
+  Status: Ready to insert
+
+Task 3: Pre-fetch Logic
+  Where: Lines 580-615 (after json_context, before model_prompt)
+  What: Async hybrid search + error handling
+  Status: Ready to insert
+
+Task 4: System Prompt Injection
+  Where: Lines 650-668 (replace stream_system_prompt definition)
+  What: Conditional injection of tools_context
+  Status: Ready to insert
+
+Task 5: (Optional) MGC Caching
+  Where: In Task 3 pre-fetch block
+  What: Wrap hybrid.search() with mgc.get_or_compute()
+  Status: Performance enhancement
+
+
+================================================================================
+TESTING LOCATIONS
+================================================================================
+
+1. Test Helper: _format_search_results_for_stream()
+   Inject mock results, verify markdown output
+
+2. Test Pre-fetch: Integration test with real chat
+   Send message, verify [PHASE_114.8] logs appear
+
+3. Test Injection: Check stream_system_prompt content
+   Verify tools_context appears in first system message
+
+4. Test Error Handling: Simulate hybrid search failure
+   Verify stream continues with empty tools_context
+
+
+================================================================================
+DEBUGGING CHECKPOINTS
+================================================================================
+
+[ ] Line 590: Check if get_hybrid_search() returns service
+[ ] Line 594-600: Verify await hybrid.search() completes
+[ ] Line 603: Confirm search_results has count > 0
+[ ] Line 604-606: Verify _format_search_results_for_stream() formats correctly
+[ ] Line 655-656: Confirm tools_context injected into stream_system_prompt
+[ ] Line 677: Verify stream starts with updated system prompt
+
+
+================================================================================
+COMMIT CHECKLIST
+================================================================================
+
+Files Modified:
+  - src/api/handlers/user_message_handler.py (Tasks 1-4)
+
+Files Not Modified:
+  - src/search/hybrid_search.py (reference only)
+  - src/memory/mgc_cache.py (reference only)
+  - src/mcp/tools/llm_call_tool.py (pattern reference only)
+
+Tests to Add:
+  - tests/test_phase_114_8.py (new)
+
+Documentation:
+  - MARKER_114.8_PREFETCH_SCOUT.md (created)
+  - PHASE_114.8_IMPLEMENTATION_GUIDE.md (created)
+  - PHASE_114.8_CODE_LOCATIONS.txt (this file)
+
+
+================================================================================
+Version: 1.0
+Created: 2026-02-06
+Status: Ready for Implementation
+================================================================================

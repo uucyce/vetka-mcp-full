@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-06T02:20:33.269565+00:00",
+  "last_updated": "2026-02-06T03:08:33.991341+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 108,
@@ -13,6 +13,7 @@
   "summary": {
     "headline": "Phase 108.7 DONE! MGC + ELISION + Spiral Context + Auto-Digest Update",
     "key_achievements": [
+      "[462ae5a4] Phase 114.7: Phase 114.7: Unify tool names across ALL solo chat...",
       "[993be677] Phase 114.6: Phase 114.6: Pass tools to vetka_call_model OpenRo...",
       "[78bb8109] Phase 114: Phase 114: Unified Tool Fix + MCP Integration + Co...",
       "[e5b7bf08] Phase 113.1: Phase 113.1+113.2: Persistent Spatial Memory + Smo...",
@@ -21,8 +22,7 @@
       "[7c59220f] Phase 112.4: Phase 112.4: Texture Cache + Fast Hover\n\n- Global ...",
       "[e0dcfc9a] Phase 112.3: Phase 112.3b: Edge Frustum Culling\n\n- Added frustu...",
       "[a8266d05] Phase 112.1: Phase 112.1-112.3: 3D Performance Optimizations\n\n-...",
-      "[de383953] Phase 111.5: Phase 111.5: Folder sorting by phase + chat nodes ...",
-      "[24018b2d] Phase 111.4: Phase 111.4: Compact tree scale for easier navigat..."
+      "[de383953] Phase 111.5: Phase 111.5: Folder sorting by phase + chat nodes ..."
     ],
     "pending_items": [
       "Phase 109.2: Test with live VETKA UI (Socket.IO sync)",
@@ -33,12 +33,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2014,
+      "points": 2021,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2011,
+      "points": 2018,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -190,7 +190,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "993be677",
+    "commit": "462ae5a4",
     "dirty": true
   }
 }

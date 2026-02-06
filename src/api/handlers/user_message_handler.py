@@ -55,6 +55,34 @@ def extract_semantic_key(message_text: str, fallback: str = "chat") -> str:
     return semantic_key if semantic_key else fallback
 
 
+# Phase 114.8: Pre-fetch tools before streaming
+def _format_search_results_for_stream(results: list) -> str:
+    """
+    Format hybrid search results for system prompt injection in streaming.
+    Phase 114.8: Converts search result dicts into readable context
+    so streaming models can reference REAL codebase data.
+
+    Args:
+        results: List of search result dicts from HybridSearchService.search()
+
+    Returns:
+        Formatted string for system prompt injection
+    """
+    if not results:
+        return ""
+
+    formatted_parts = []
+    for i, result in enumerate(results[:5], 1):
+        path = result.get("path", result.get("file_path", "unknown"))
+        score = result.get("rrf_score", result.get("score", 0))
+        snippet = result.get("content", "")[:400]
+        formatted_parts.append(
+            f"### Result {i}: `{path}` (score: {score:.3f})\n```\n{snippet}\n```"
+        )
+
+    return "\n\n".join(formatted_parts)
+
+
 def register_user_message_handler(sio, app=None):
     """Register the user_message Socket.IO handler."""
 
@@ -577,6 +605,36 @@ def register_user_message_handler(sio, app=None):
                     pinned_files=pinned_files,
                 )
 
+                # ============ PHASE 114.8: PRE-FETCH TOOLS BEFORE STREAM ============
+                # Async pre-fetch semantic search results BEFORE stream starts
+                # Results injected into stream_system_prompt so models reference REAL data
+                # handle_user_message is async — await works directly, no ThreadPool needed
+                prefetch_context = ""
+                try:
+                    from src.search.hybrid_search import get_hybrid_search
+                    hybrid = get_hybrid_search()
+                    semantic_query = text[:200] if text else "project overview"
+
+                    search_response = await hybrid.search(
+                        query=semantic_query,
+                        limit=5,
+                        mode="hybrid",
+                        collection="leaf",
+                        skip_cache=False,
+                    )
+
+                    if search_response.get("count", 0) > 0:
+                        prefetch_context = _format_search_results_for_stream(
+                            search_response["results"]
+                        )
+                        print(f"[PHASE_114.8] Pre-fetched {search_response['count']} results "
+                              f"({search_response.get('timing_ms', 0):.0f}ms) for: {semantic_query[:50]}")
+                    else:
+                        print(f"[PHASE_114.8] No pre-fetch results for: {semantic_query[:50]}")
+                except Exception as prefetch_err:
+                    print(f"[PHASE_114.8] Pre-fetch failed (non-fatal): {prefetch_err}")
+                # ============ END PHASE 114.8 PRE-FETCH ============
+
                 # Phase 64.3: Use extracted helper for prompt building
                 # Phase 71: Added viewport_summary parameter
                 # Phase 73: Added json_context parameter
@@ -616,19 +674,24 @@ def register_user_message_handler(sio, app=None):
                     from src.elisya.provider_registry import ProviderRegistry
                     detected_provider = ProviderRegistry.detect_provider(requested_model, source=model_source)
 
-                    # MARKER_114.7_STREAM_TOOLS: Add tool awareness to streamed models
-                    # Streaming can't do tool calling loop, but model should know tools exist
-                    # so it can reference them and suggest their use
-                    stream_system_prompt = """You are a VETKA AI agent with access to project context.
+                    # MARKER_114.8_STREAM_PREFETCH: System prompt with pre-fetched search results
+                    # Replaces MARKER_114.7 static tool hint with REAL data from HybridSearch
+                    stream_system_prompt = "You are a VETKA AI agent with access to project context.\n\n"
 
-Available tools (mention them when relevant):
-- vetka_search_semantic: Search codebase by meaning (Qdrant vector search)
-- vetka_camera_focus: Move 3D camera to focus on files/folders
-- get_tree_context: Get file/folder hierarchy
-- search_codebase: Search code by pattern (grep)
-- vetka_edit_artifact: Create code artifacts for review
+                    if prefetch_context:
+                        stream_system_prompt += (
+                            "## Pre-fetched Codebase Search Results\n"
+                            "The following results were found by searching the codebase "
+                            "for the user's query. Reference them in your answer:\n\n"
+                            + prefetch_context + "\n\n"
+                        )
 
-Note: In streaming mode, you cannot execute tools directly. Describe what tools you would use and what you expect to find. The user can then ask the system to execute them."""
+                    stream_system_prompt += (
+                        "Available tools: vetka_search_semantic, vetka_camera_focus, "
+                        "get_tree_context, search_codebase, vetka_edit_artifact.\n"
+                        "When responding, reference the pre-fetched results above. "
+                        "If you need additional context, suggest using the available tools."
+                    )
 
                     stream_messages = [
                         {"role": "system", "content": stream_system_prompt},
