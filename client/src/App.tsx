@@ -31,6 +31,11 @@ import { useTreeData } from './hooks/useTreeData';
 import { useSocket } from './hooks/useSocket';
 import type { SearchResult } from './types/chat';
 import { calculateAdaptiveLODWithFloor } from './utils/lod';
+import {
+  computeLabelScore,
+  selectTopLabels,
+  applyHysteresis,
+} from './utils/labelScoring';
 
 // ============================================================================
 // MARKER_111.21_FRUSTUM: Phase 112.2 - Frustum Culling Component
@@ -55,6 +60,18 @@ function FrustumCulledNodes({ nodes, selectedId, highlightedId, selectNode }: Fr
   const lastUpdateRef = useRef(0);
   const frustumRef = useRef(new THREE.Frustum());
   const projMatrixRef = useRef(new THREE.Matrix4());
+
+  // Phase 113.4: Label Championship — score-based label selection
+  const scoresRef = useRef<Map<string, number>>(new Map());
+  const prevScoresRef = useRef<Map<string, number>>(new Map());
+  const pinnedFileIds = useStore(s => s.pinnedFileIds);
+  const highlightedIds = useStore(s => s.highlightedIds);
+  // Phase 113.4 FIX: Labels stored as Set in ref — zero re-renders on label change!
+  // useStore subscription for selectedLabelIds was causing full FrustumCulledNodes
+  // re-render (400+ FileCard children) every time labels changed.
+  // Instead: ref updated in useFrame, Set computed once in render from store snapshot.
+  const labelSetRef = useRef<Set<string>>(new Set());
+  const [labelGeneration, setLabelGeneration] = useState(0);
 
   // Update frustum culling + LOD every 200ms (5 FPS, saves CPU)
   useFrame((state) => {
@@ -87,6 +104,46 @@ function FrustumCulledNodes({ nodes, selectedId, highlightedId, selectNode }: Fr
       }
     }
 
+    // Phase 113.4: Label Championship — compute scores for folder labels
+    // FIX: Pre-compute pinnedSet for O(1) lookups (was O(N) per node)
+    const pinnedSet = new Set(pinnedFileIds);
+    scoresRef.current.clear();
+    for (const node of nodes) {
+      if (!visible.has(node.id)) continue;
+      if (node.type !== 'folder') continue;
+      const isPinned = pinnedSet.has(node.id);
+      const isHL = highlightedIds.has(node.id);
+      const score = computeLabelScore(node, isPinned, isHL);
+      scoresRef.current.set(node.id, score);
+    }
+
+    // Apply hysteresis (anti-flicker) and select top-N
+    const smoothed = applyHysteresis(scoresRef.current, prevScoresRef.current, 0.1);
+    // FIX: Use camera distance to OrbitControls target (not origin)
+    // OrbitControls stored in window.__orbitControls (set in App.tsx line 453)
+    const orbitControls = (window as any).__orbitControls;
+    const target = orbitControls?.target ?? new THREE.Vector3(0, 0, 0);
+    const camDist = camera.position.distanceTo(target);
+    const zoomLevel = Math.max(0, Math.min(10, 10 - Math.log2(Math.max(1, camDist / 50))));
+    const topLabels = selectTopLabels(smoothed, pinnedFileIds, visible.size, zoomLevel);
+    prevScoresRef.current = smoothed;
+
+    // FIX: Update label set via ref — NO store subscription, NO re-render cascade
+    // Only trigger minimal re-render when the SET actually changes
+    const prevLabelSet = labelSetRef.current;
+    const newLabelSet = new Set(topLabels);
+    // Quick check: same size + all items match
+    let labelsChanged = prevLabelSet.size !== newLabelSet.size;
+    if (!labelsChanged) {
+      for (const id of newLabelSet) {
+        if (!prevLabelSet.has(id)) { labelsChanged = true; break; }
+      }
+    }
+    if (labelsChanged) {
+      labelSetRef.current = newLabelSet;
+      setLabelGeneration(g => g + 1); // minimal re-render trigger
+    }
+
     // Only update state if visibility changed significantly
     const sizeDiff = Math.abs(visible.size - visibleNodeIds.size);
     const needsUpdate = sizeDiff > 5 ||
@@ -107,6 +164,10 @@ function FrustumCulledNodes({ nodes, selectedId, highlightedId, selectNode }: Fr
     return nodes.filter(n => visibleNodeIds.has(n.id));
   }, [nodes, visibleNodeIds]);
 
+  // Phase 113.4: labelGeneration drives re-render when label set changes
+  // Capture current label snapshot keyed to generation (ensures React sees the change)
+  const currentLabelSet = useMemo(() => labelSetRef.current, [labelGeneration]);
+
   return (
     <>
       {visibleNodes.map((node) => (
@@ -125,6 +186,7 @@ function FrustumCulledNodes({ nodes, selectedId, highlightedId, selectNode }: Fr
           metadata={node.metadata}
           opacity={node.opacity}
           lodLevel={nodeLodLevels.get(node.id) ?? 4}
+          showLabel={currentLabelSet.has(node.id)}
         />
       ))}
     </>

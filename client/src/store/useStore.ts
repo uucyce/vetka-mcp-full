@@ -168,6 +168,15 @@ interface TreeState {
   // Phase 113.1: Persistent Spatial Memory
   savePositions: () => void;
   loadPositions: () => void;
+
+  // Phase 113.4: Label Championship — score-based label selection
+  selectedLabelIds: string[];
+  setSelectedLabels: (labelIds: string[]) => void;
+
+  // Phase 113.4: Persist positions toggle (DevPanel control)
+  persistPositions: boolean;
+  setPersistPositions: (enabled: boolean) => void;
+  resetLayout: () => void;
 }
 
 // Phase 113.1: Persistent Spatial Memory
@@ -206,6 +215,10 @@ export const useStore = create<TreeState>((set, get) => ({
 
   // Phase 65: Grab mode
   grabMode: false,
+
+  // Phase 113.4: Label Championship
+  selectedLabelIds: [],
+  persistPositions: false,  // OFF by default (Phase 113.3 lesson: persistence = risky without toggle)
 
   setNodes: (nodesList) => set({
     nodes: Object.fromEntries(nodesList.map(n => [n.id, n])),
@@ -414,6 +427,15 @@ export const useStore = create<TreeState>((set, get) => ({
 
   // Phase 65: Grab mode toggle
   setGrabMode: (grabMode) => set({ grabMode }),
+
+  // Phase 113.4: Label Championship
+  setSelectedLabels: (labelIds) => set({ selectedLabelIds: labelIds }),
+  setPersistPositions: (enabled) => set({ persistPositions: enabled }),
+  resetLayout: () => {
+    localStorage.removeItem(POSITIONS_STORAGE_KEY);
+    // Re-fetch from API will reset positions on next load
+    console.log('[Layout] Phase 113.4: Positions cache cleared. Reload to apply API defaults.');
+  },
 
   // Phase 113.1: Persistent Spatial Memory
   savePositions: () => {

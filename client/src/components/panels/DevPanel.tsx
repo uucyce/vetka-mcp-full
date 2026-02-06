@@ -26,6 +26,7 @@ import {
   saveDevPanelConfig,
   resetDevPanelConfig,
 } from '../../utils/devConfig';
+import { useStore } from '../../store/useStore';
 
 interface DevPanelProps {
   isOpen: boolean;
@@ -337,6 +338,45 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
               Try semantic positions before full recalc
             </div>
           </div>
+        </section>
+
+        {/* Phase 113.4: Spatial Memory Controls */}
+        <section style={{ marginBottom: 16 }}>
+          <h3 style={{ color: '#a855f7', marginBottom: 8, fontSize: 13, fontWeight: 600 }}>
+            Spatial Memory (Phase 113.4)
+          </h3>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={useStore.getState().persistPositions}
+                onChange={(e) => useStore.getState().setPersistPositions(e.target.checked)}
+                style={{ accentColor: '#a855f7' }}
+              />
+              <span>Persist Drag Positions</span>
+            </label>
+            <div style={{ fontSize: 11, color: '#666', marginTop: 4, marginLeft: 24 }}>
+              Save node positions to localStorage on drag. OFF = safe (Phase 113.3 lesson).
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              useStore.getState().resetLayout();
+              alert('Position cache cleared. Reload page for API defaults.');
+            }}
+            style={{
+              padding: '6px 12px',
+              background: '#331111',
+              border: '1px solid #662222',
+              borderRadius: 4,
+              color: '#ff6666',
+              cursor: 'pointer',
+              fontSize: 12,
+              width: '100%',
+            }}
+          >
+            Reset All Positions (Clear Cache)
+          </button>
         </section>
 
         {/* MARKER_110_UX: Improved button styling */}

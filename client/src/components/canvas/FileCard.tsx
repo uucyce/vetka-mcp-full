@@ -209,6 +209,8 @@ interface FileCardProps {
   // MARKER_111.21_USEFRAME: Phase 112.3 - LOD level from parent (batch calculation)
   // If provided, skip internal LOD calculation (saves 2000+ distance calcs per frame)
   lodLevel?: number;
+  // Phase 113.4: Label Championship — score-based label visibility
+  showLabel?: boolean;
 }
 
 function FileCardComponent({
@@ -230,6 +232,7 @@ function FileCardComponent({
   opacity = 1.0,
   artifactId,
   lodLevel: propLodLevel,  // Phase 112.3: LOD from parent (undefined = calculate locally)
+  showLabel = false,       // Phase 113.4: Label Championship — score-based visibility
 }: FileCardProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -1186,6 +1189,11 @@ function FileCardComponent({
           fontSize scales with importance, decays with distance
       */}
       {type === 'folder' && (() => {
+        // Phase 113.4: Label Championship — score-based visibility from App.tsx
+        // showLabel is computed in FrustumCulledNodes via labelScoring.ts
+        // NO isRoot fallback — scoring formula decides everything
+        if (!showLabel) return null;
+
         const childCount = children.length;
 
         // Get current distance to camera
@@ -1194,27 +1202,18 @@ function FileCardComponent({
 
         // === GROK LOD FORMULA (tuned for VETKA 1701 nodes) ===
         const MAX_CHILDREN = 200;
-        const MAX_DISTANCE = 8000; // Good balance for 1701 nodes
+        const MAX_DISTANCE = 8000;
 
         // Weights
         const WEIGHT_DEPTH = 0.50;
         const WEIGHT_SIZE = 0.50;
 
-        // Calculate scores
-        const depthScore = 1 / Math.sqrt(depth + 1);  // Slower decay: 0→1.0, 1→0.71, 2→0.58
+        // Calculate scores (still used for font size + styling)
+        const depthScore = 1 / Math.sqrt(depth + 1);
         const sizeScore = Math.min(1, Math.sqrt(childCount) / Math.sqrt(MAX_CHILDREN));
 
-        // Combined importance
+        // Combined importance (for styling, not visibility)
         const importance = depthScore * WEIGHT_DEPTH + sizeScore * WEIGHT_SIZE;
-
-        // Visibility threshold
-        const visibilityThreshold = importance * MAX_DISTANCE;
-
-        // Root always visible
-        const isRoot = depth === 0;
-
-        // Hide only if too far (no MIN_IMPORTANCE filter)
-        if (!isRoot && distToCamera > visibilityThreshold) return null;
 
         // === DYNAMIC FONT SIZE ===
         // Base size + importance boost, slight decay with distance
@@ -1296,6 +1295,9 @@ function arePropsEqual(prev: FileCardProps, next: FileCardProps): boolean {
 
   // Phase 112.3: LOD level from parent (triggers texture/detail changes)
   if (prev.lodLevel !== next.lodLevel) return false;
+
+  // Phase 113.4: Label Championship
+  if (prev.showLabel !== next.showLabel) return false;
 
   // Artifact state (for streaming/approval UI)
   if (prev.artifactStatus !== next.artifactStatus) return false;
