@@ -616,9 +616,28 @@ def register_user_message_handler(sio, app=None):
                     from src.elisya.provider_registry import ProviderRegistry
                     detected_provider = ProviderRegistry.detect_provider(requested_model, source=model_source)
 
+                    # MARKER_114.7_STREAM_TOOLS: Add tool awareness to streamed models
+                    # Streaming can't do tool calling loop, but model should know tools exist
+                    # so it can reference them and suggest their use
+                    stream_system_prompt = """You are a VETKA AI agent with access to project context.
+
+Available tools (mention them when relevant):
+- vetka_search_semantic: Search codebase by meaning (Qdrant vector search)
+- vetka_camera_focus: Move 3D camera to focus on files/folders
+- get_tree_context: Get file/folder hierarchy
+- search_codebase: Search code by pattern (grep)
+- vetka_edit_artifact: Create code artifacts for review
+
+Note: In streaming mode, you cannot execute tools directly. Describe what tools you would use and what you expect to find. The user can then ask the system to execute them."""
+
+                    stream_messages = [
+                        {"role": "system", "content": stream_system_prompt},
+                        {"role": "user", "content": model_prompt},
+                    ]
+
                     # Use unified streaming
                     async for token in call_model_v2_stream(
-                        messages=[{"role": "user", "content": model_prompt}],
+                        messages=stream_messages,  # MARKER_114.7: includes system prompt
                         model=requested_model,
                         provider=detected_provider,
                         source=model_source,  # Phase 111.9
@@ -860,12 +879,16 @@ def register_user_message_handler(sio, app=None):
                         print(f"[DIRECT] Tools available: {len(model_tools)}")
 
                         # Build messages with tool guidance
+                        # MARKER_114.7b_OLLAMA_TOOL_NAMES: Updated to match registry names (Phase 114)
                         tool_system = """You have access to tools. Use them when appropriate:
-- camera_focus: Move 3D camera to show user specific files/folders. USE THIS when asked to show/navigate/focus on something.
-- search_semantic: Search codebase by meaning
-- get_tree_context: Get file structure context
+- vetka_camera_focus: Move 3D camera to show user specific files/folders. USE THIS when asked to show/navigate/focus on something.
+- vetka_search_semantic: Search codebase by meaning (Qdrant vector search)
+- get_tree_context: Get file structure and dependencies
+- search_codebase: Search by text/regex pattern
+- vetka_edit_artifact: Create code artifacts for review
 
-When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!"""
+When user asks to "show", "focus", "navigate to" a file - USE vetka_camera_focus tool!
+When user asks about code - USE vetka_search_semantic or read_code_file!"""
 
                         messages_with_tools = [
                             {"role": "system", "content": tool_system},
@@ -931,10 +954,11 @@ When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!
                                 response_text = f"Executed tools:\n{tool_summary}"
 
                                 # If camera_focus was called, add friendly message
+                                # MARKER_114.7d: Check both old and new name for compatibility
                                 camera_calls = [
                                     tr
                                     for tr in tool_results
-                                    if tr["tool"] == "camera_focus"
+                                    if tr["tool"] in ("vetka_camera_focus", "camera_focus")
                                 ]
                                 if camera_calls:
                                     target = camera_calls[0]["args"].get(
@@ -956,16 +980,18 @@ When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!
                         print(f"[DIRECT] Tools available: {len(model_tools)}")
 
                         # MARKER_109_6_TOOL_GUIDANCE: Add tool guidance system message for ALL models
+                        # MARKER_114.7c: Updated tool names to match registry (Phase 114)
                         tool_system = """You have access to tools. Use them when appropriate:
-- camera_focus: Move 3D camera to show user specific files/folders. USE THIS when asked to show/navigate/focus on something.
-- search_semantic: Search codebase by meaning/concept
+- vetka_camera_focus: Move 3D camera to show user specific files/folders. USE THIS when asked to show/navigate/focus on something.
+- vetka_search_semantic: Search codebase by meaning/concept (Qdrant vector search)
 - search_codebase: Search by text/regex pattern
 - get_tree_context: Get file structure and dependencies
 - read_code_file: Read file contents
+- vetka_edit_artifact: Create code artifacts for review
 - arc_suggest: Get creative suggestions for workflow improvements
 
-When user asks to "show", "focus", "navigate to" a file - USE camera_focus tool!
-When user asks about code - USE search_semantic or read_code_file!"""
+When user asks to "show", "focus", "navigate to" a file - USE vetka_camera_focus tool!
+When user asks about code - USE vetka_search_semantic or read_code_file!"""
 
                         try:
                             # Auto-detect provider (OpenRouter, XAI, POLZA, etc.)
