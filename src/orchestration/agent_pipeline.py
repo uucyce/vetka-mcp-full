@@ -112,7 +112,8 @@ class AgentPipeline:
     """
 
     def __init__(self, chat_id: Optional[str] = None, auto_write: bool = True,
-                 provider: Optional[str] = None, preset: Optional[str] = None):
+                 provider: Optional[str] = None, preset: Optional[str] = None,
+                 sio=None, sid: Optional[str] = None):
         self.llm_tool = None  # Lazy load
         # MARKER_117_PROVIDER: Provider override for all pipeline LLM calls
         # If set, all agents use this provider via model_source routing
@@ -127,8 +128,12 @@ class AgentPipeline:
         self.stm_limit = 5  # Keep last 5 results
         # MARKER_102.23_END
         # MARKER_102.26_START: Progress streaming to chat
-        self.chat_id = chat_id or "5e2198c2-8b1a-45df-807f-5c73c5496aa8"  # Default: Lightning chat
+        # MARKER_117.8C: No default UUID — None means use sio/sid or skip emit
+        self.chat_id = chat_id
         self.progress_hooks: List[Any] = []  # Callback hooks for progress
+        # MARKER_117.8A: SocketIO direct emit for solo chats (non-blocking, instant)
+        self.sio = sio
+        self.sid = sid
         # MARKER_102.26_END
         # MARKER_103.5_START: Auto-write vs staging mode
         # auto_write=True: Immediately write files to disk (default)
@@ -357,11 +362,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
     # MARKER_104_ELISION_PROMPTS_END
 
     # MARKER_102.27_START: Progress emission to VETKA chat
-    # MARKER_117_2A_FIX_A: Fixed endpoint URL (was /api/chat/send which doesn't exist)
-    # MARKER_117.6C: Added model parameter for attribution
-    def _emit_progress(self, role: str, message: str, subtask_idx: int = 0, total: int = 0, model: str = None):
+    # MARKER_117.8B: Async emit — SocketIO direct for solo, AsyncClient for groups
+    # Replaces sync httpx.Client that was BLOCKING the event loop for 5s per emit
+    async def _emit_progress(self, role: str, message: str, subtask_idx: int = 0, total: int = 0, model: str = None):
         """
-        Emit progress update to VETKA group chat via REST → SocketIO bridge.
+        Emit progress update to VETKA chat.
+
+        MARKER_117.8B: Two routes (both async, non-blocking):
+          1. SocketIO direct (solo chat) — via self.sio.emit() → instant
+          2. HTTP AsyncClient (group chat) — via POST to group endpoint → async
 
         Args:
             role: @architect, @researcher, @coder, or @pipeline
@@ -371,17 +380,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             model: Optional model name for attribution (e.g. "moonshotai/kimi-k2.5")
         """
         try:
-            import httpx
-
-            # MARKER_117.7A: Guard against None chat_id (solo mode without client_chat_id)
-            if not self.chat_id:
-                logger.debug(f"[Pipeline] No chat_id, skip HTTP emit: {role}: {message[:80]}")
-                return
-
             # MARKER_117.6C: Show which model is executing
             model_tag = ""
             if model:
-                # Extract short name: "moonshotai/kimi-k2.5" → "kimi-k2.5"
                 short_model = model.split("/")[-1] if "/" in model else model
                 model_tag = f" ({short_model})"
 
@@ -389,25 +390,37 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             progress = f"[{subtask_idx}/{total}] " if total > 0 else ""
             full_message = f"{role}{model_tag}: {progress}{message}"
 
-            # MARKER_117_2A_FIX_A: Use real endpoint that exists and emits SocketIO
-            # Old (broken): POST /api/chat/send (does not exist!)
-            # New (working): POST /api/debug/mcp/groups/{chat_id}/send
-            # This endpoint:
-            #   1. Saves message via group_chat_manager.send_message()
-            #   2. Emits SocketIO 'group_message' to room (real-time to UI)
-            #   3. Emits SocketIO 'group_stream_end' for UI consistency
-            with httpx.Client(timeout=5.0) as client:
-                response = client.post(
-                    f"http://localhost:5001/api/debug/mcp/groups/{self.chat_id}/send",
-                    json={
-                        "agent_id": "pipeline",
-                        "content": full_message,
-                        "message_type": "system"
-                    }
-                )
-                if response.status_code != 200:
-                    logger.warning(f"[Pipeline] Emit got status {response.status_code}: {response.text[:100]}")
-            logger.debug(f"[Pipeline] Emitted: {full_message[:80]}...")
+            # MARKER_117.8B Route 1: SocketIO direct emit (solo chat — instant, non-blocking)
+            if self.sio and self.sid:
+                await self.sio.emit("agent_message", {
+                    "agent": "pipeline",
+                    "model": model or "system",
+                    "content": full_message,
+                    "text": full_message,
+                }, to=self.sid)
+                logger.debug(f"[Pipeline] SIO emit: {full_message[:80]}...")
+                return
+
+            # MARKER_117.8B Route 2: HTTP async (group chat — non-blocking)
+            if self.chat_id:
+                import httpx
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.post(
+                        f"http://localhost:5001/api/debug/mcp/groups/{self.chat_id}/send",
+                        json={
+                            "agent_id": "pipeline",
+                            "content": full_message,
+                            "message_type": "system"
+                        }
+                    )
+                    if response.status_code != 200:
+                        logger.warning(f"[Pipeline] Emit got status {response.status_code}")
+                logger.debug(f"[Pipeline] HTTP emit: {full_message[:80]}...")
+                return
+
+            # No sio/sid and no chat_id — skip silently
+            logger.debug(f"[Pipeline] No emit target, skip: {role}: {message[:80]}")
+
         except Exception as e:
             # Don't fail pipeline on emit errors, but log as warning for visibility
             logger.warning(f"[Pipeline] Emit failed (non-fatal): {e}")
@@ -492,35 +505,40 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
     async def _emit_to_chat(self, event_type: str, data: Dict[str, Any]):
         """
-        Async emit event to Socket.IO chat via group message endpoint.
-
-        MARKER_117_2A_FIX_A: Fixed endpoint URL.
-        Old: POST /api/stream/event (doesn't exist)
-        New: POST /api/debug/mcp/groups/{chat_id}/send (real endpoint with SocketIO)
-
-        Args:
-            event_type: Event type string
-            data: Event payload
+        Async emit event to chat.
+        MARKER_117.8B: SocketIO direct for solo, HTTP async for groups.
         """
         try:
-            import httpx
-
-            # Format stream event as a readable message for group chat
+            # Format stream event as a readable message
             summary = data.get("result", data.get("marker", str(data)))
             if isinstance(summary, str) and len(summary) > 300:
                 summary = summary[:300] + "..."
             content = f"[{event_type}] {summary}"
 
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(
-                    f"http://localhost:5001/api/debug/mcp/groups/{self.chat_id}/send",
-                    json={
-                        "agent_id": "pipeline",
-                        "content": content,
-                        "message_type": "system"
-                    }
-                )
-            logger.debug(f"[Pipeline] Stream event emitted: {event_type}")
+            # MARKER_117.8B: Route 1 — SocketIO direct (solo)
+            if self.sio and self.sid:
+                await self.sio.emit("agent_message", {
+                    "agent": "pipeline",
+                    "model": "system",
+                    "content": content,
+                    "text": content,
+                }, to=self.sid)
+                logger.debug(f"[Pipeline] SIO stream event: {event_type}")
+                return
+
+            # MARKER_117.8B: Route 2 — HTTP async (group)
+            if self.chat_id:
+                import httpx
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    await client.post(
+                        f"http://localhost:5001/api/debug/mcp/groups/{self.chat_id}/send",
+                        json={
+                            "agent_id": "pipeline",
+                            "content": content,
+                            "message_type": "system"
+                        }
+                    )
+                logger.debug(f"[Pipeline] HTTP stream event: {event_type}")
         except Exception as e:
             # Don't fail pipeline on emit errors
             logger.warning(f"[Pipeline] Stream emit failed (non-fatal): {e}")
@@ -908,20 +926,20 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if self.preset_models:
             team_names = [m.split("/")[-1] for m in self.preset_models.values()]
             team_info += f" ({' → '.join(team_names)})"
-        self._emit_progress("@pipeline", f"🚀 Starting {phase_type} pipeline | {team_info}")
+        await self._emit_progress("@pipeline", f"🚀 Starting {phase_type} pipeline | {team_info}")
 
         try:
             # Phase 1: Architect breaks down task
             # MARKER_117.6C: Model attribution in progress messages
             architect_model = self.prompts.get("architect", {}).get("model", "")
-            self._emit_progress("@architect", "📋 Breaking down task into subtasks...", model=architect_model)
+            await self._emit_progress("@architect", "📋 Breaking down task into subtasks...", model=architect_model)
             plan = await self._architect_plan(task, phase_type)
             pipeline_task.subtasks = [
                 Subtask(**st) if isinstance(st, dict) else st
                 for st in plan.get("subtasks", [])
             ]
             total_subtasks = len(pipeline_task.subtasks)
-            self._emit_progress("@architect", f"✅ Plan ready: {total_subtasks} subtasks", model=self._last_used_model)
+            await self._emit_progress("@architect", f"✅ Plan ready: {total_subtasks} subtasks", model=self._last_used_model)
 
             # MARKER_117_2A_FIX_D: Emit architect plan details to chat
             # Previously plan was only saved to pipeline_task.results, invisible in UI
@@ -931,7 +949,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             ])
             if total_subtasks > 8:
                 subtask_list += f"\n  ... +{total_subtasks - 8} more"
-            self._emit_progress("@architect", f"📋 Plan:\n{subtask_list}")
+            await self._emit_progress("@architect", f"📋 Plan:\n{subtask_list}")
             pipeline_task.status = "executing"
             self._update_task(pipeline_task)
 
@@ -944,7 +962,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 old_tier = self.preset_name
                 self.preset_name = tier_preset
                 self._apply_preset()
-                self._emit_progress(
+                await self._emit_progress(
                     "system",
                     f"⚡ Auto-tier: {complexity} complexity → {tier_preset} (was {old_tier})"
                 )
@@ -1025,7 +1043,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_104_MEMORY_STM: Log memory compression statistics even on failure
             self._log_stm_summary()
 
-            self._emit_progress("@pipeline", f"❌ Pipeline failed: {str(e)[:50]}")
+            await self._emit_progress("@pipeline", f"❌ Pipeline failed: {str(e)[:50]}")
             return asdict(pipeline_task)
     # MARKER_102.4_END
 
@@ -1065,7 +1083,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 # MARKER_117.6C: Model attribution for researcher
                 researcher_model = self.prompts.get("researcher", {}).get("model", "")
                 if subtask.visible:
-                    self._emit_progress("@researcher", f"🔍 Researching: {subtask.description[:40]}...", i+1, total_subtasks, model=researcher_model)
+                    await self._emit_progress("@researcher", f"🔍 Researching: {subtask.description[:40]}...", i+1, total_subtasks, model=researcher_model)
 
                 # Use description as question if no explicit question
                 question = subtask.question or subtask.description
@@ -1081,7 +1099,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     confidence = research.get("confidence", "N/A")
                     insights = research.get("insights", [])
                     insights_preview = "; ".join(str(ins)[:60] for ins in insights[:3])
-                    self._emit_progress(
+                    await self._emit_progress(
                         "@researcher",
                         f"🔍 Research done (confidence: {confidence}): {insights_preview}",
                         i+1, total_subtasks, model=self._last_used_model
@@ -1102,7 +1120,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             coder_model = self.prompts.get("coder", {}).get("model", "")
             # Emit progress only if subtask is visible
             if subtask.visible:
-                self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks, model=coder_model)
+                await self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks, model=coder_model)
 
             result = await self._execute_subtask(subtask, phase_type)
             subtask.result = result
@@ -1110,14 +1128,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # Emit completion based on visibility flags
             if subtask.visible:
-                self._emit_progress("@coder", f"✅ Done: {subtask.marker or f'step_{i+1}'}", i+1, total_subtasks, model=self._last_used_model)
+                await self._emit_progress("@coder", f"✅ Done: {subtask.marker or f'step_{i+1}'}", i+1, total_subtasks, model=self._last_used_model)
                 # MARKER_117_2A_FIX_D: Emit coder result preview to chat
                 # Previously only marker name was emitted, not the actual result
                 if result and isinstance(result, str) and len(result) > 10:
                     result_preview = result[:300].replace('\n', ' ')
                     if len(result) > 300:
                         result_preview += "..."
-                    self._emit_progress("@coder", f"💻 Result: {result_preview}", i+1, total_subtasks)
+                    await self._emit_progress("@coder", f"💻 Result: {result_preview}", i+1, total_subtasks)
 
             # MARKER_104_STREAM_VISIBILITY: Emit stream event with result if stream_result=True
             if subtask.stream_result and pipeline_task.visible_to_user:
@@ -1145,7 +1163,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     "marker": "CONTEXT_RESET",
                     "result": f"[Reset after {MAX_STM_BEFORE_RESET} subtasks] Summary: {summary[:500]}"
                 }]
-                self._emit_progress(
+                await self._emit_progress(
                     "system",
                     f"🔄 Context reset after {MAX_STM_BEFORE_RESET} subtasks (anti-drift)"
                 )
@@ -1170,7 +1188,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         semaphore = _get_pipeline_semaphore()
         stream_level = pipeline_task.stream_level
 
-        self._emit_progress(
+        await self._emit_progress(
             "@pipeline",
             f"⚡ Parallel execution mode (max {MAX_PARALLEL_PIPELINES} concurrent)"
         )
@@ -1183,13 +1201,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
                 # MARKER_104_STREAM_VISIBILITY: Check subtask visibility before emitting
                 if subtask.visible:
-                    self._emit_progress("@coder", f"⚙️ [P] Executing: {subtask.description[:35]}...", idx+1, total_subtasks)
+                    await self._emit_progress("@coder", f"⚙️ [P] Executing: {subtask.description[:35]}...", idx+1, total_subtasks)
 
                 # Auto-trigger research if needed (inside semaphore)
                 if subtask.needs_research:
                     subtask.status = "researching"
                     if subtask.visible:
-                        self._emit_progress("@researcher", f"🔍 [P] Researching: {subtask.description[:35]}...", idx+1, total_subtasks)
+                        await self._emit_progress("@researcher", f"🔍 [P] Researching: {subtask.description[:35]}...", idx+1, total_subtasks)
 
                     question = subtask.question or subtask.description
                     research = await self._research(question)
@@ -1203,7 +1221,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         confidence = research.get("confidence", "N/A")
                         insights = research.get("insights", [])
                         insights_preview = "; ".join(str(ins)[:60] for ins in insights[:3])
-                        self._emit_progress(
+                        await self._emit_progress(
                             "@researcher",
                             f"🔍 [P] Research done (confidence: {confidence}): {insights_preview}",
                             idx+1, total_subtasks
@@ -1224,13 +1242,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
                 # MARKER_104_STREAM_VISIBILITY: Emit based on visibility flags
                 if subtask.visible:
-                    self._emit_progress("@coder", f"✅ [P] Done: {subtask.marker or f'step_{idx+1}'}", idx+1, total_subtasks)
+                    await self._emit_progress("@coder", f"✅ [P] Done: {subtask.marker or f'step_{idx+1}'}", idx+1, total_subtasks)
                     # MARKER_117_2A_FIX_D: Emit coder result preview (parallel path)
                     if result and isinstance(result, str) and len(result) > 10:
                         result_preview = result[:300].replace('\n', ' ')
                         if len(result) > 300:
                             result_preview += "..."
-                        self._emit_progress("@coder", f"💻 [P] Result: {result_preview}", idx+1, total_subtasks)
+                        await self._emit_progress("@coder", f"💻 [P] Result: {result_preview}", idx+1, total_subtasks)
 
                 logger.info(f"[Pipeline] Parallel subtask {idx+1}/{total_subtasks} completed")
 
@@ -1505,11 +1523,11 @@ Execute this subtask. Provide clear, actionable output."""}
                     if self.auto_write:
                         files_created = self._extract_and_write_files(content, subtask)
                         if files_created:
-                            self._emit_progress("@coder", f"📁 Created {len(files_created)} files: {', '.join(files_created)}")
+                            await self._emit_progress("@coder", f"📁 Created {len(files_created)} files: {', '.join(files_created)}")
                             content += f"\n\n[Pipeline Note: Created files - {', '.join(files_created)}]"
                     else:
                         # Staging mode - just log, files stay in JSON for retro_apply
-                        self._emit_progress("@coder", f"📝 Code staged in JSON (auto_write=False)")
+                        await self._emit_progress("@coder", f"📝 Code staged in JSON (auto_write=False)")
                         content += f"\n\n[Pipeline Note: Code staged - use retro_apply_spawn.py to create files]"
                 # MARKER_103.4_END
 

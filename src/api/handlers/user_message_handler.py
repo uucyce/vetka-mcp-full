@@ -2377,10 +2377,10 @@ async def _dispatch_solo_system_command(sio, sid: str, agent_id: str, content: s
     try:
         from src.orchestration.agent_pipeline import AgentPipeline
 
-        # MARKER_117.7A: Pass client_chat_id so pipeline can emit progress
-        # Previously was None → HTTP POST to /groups/None/send → timeout 5s
-        # Now uses client-provided chat_id for proper progress emission
-        pipeline = AgentPipeline(chat_id=chat_id)
+        # MARKER_117.8A: Pass sio+sid for SocketIO direct emit (non-blocking)
+        # Previously: sync httpx.Client(5s) × 20 emits = VETKA freeze
+        # Now: async sio.emit() → instant, no blocking
+        pipeline = AgentPipeline(chat_id=chat_id, sio=sio, sid=sid)
         result = await pipeline.execute(task_text, phase_type)
 
         # Build expanded report

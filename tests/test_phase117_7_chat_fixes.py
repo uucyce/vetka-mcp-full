@@ -43,11 +43,11 @@ class TestSoloChatIdFix:
         )
 
     def test_dispatch_solo_passes_chat_id_to_pipeline(self):
-        """MARKER_117.7A: Source should pass chat_id to AgentPipeline (not None)."""
+        """MARKER_117.7A→117.8A: Source should pass chat_id to AgentPipeline (not None)."""
         handler_file = Path(__file__).parent.parent / "src" / "api" / "handlers" / "user_message_handler.py"
         source = handler_file.read_text()
-        # Check that pipeline is created with chat_id=chat_id (not None)
-        assert "AgentPipeline(chat_id=chat_id)" in source, (
+        # Phase 117.8 upgraded to also pass sio+sid, so check for chat_id=chat_id presence
+        assert "chat_id=chat_id" in source, (
             "AgentPipeline should be created with chat_id=chat_id (not None)"
         )
 
@@ -59,12 +59,13 @@ class TestSoloChatIdFix:
             "Dispatch call should pass chat_id=client_chat_id"
         )
 
-    def test_emit_progress_guards_none_chat_id(self):
-        """MARKER_117.7A: _emit_progress should guard against None chat_id."""
+    def test_emit_progress_handles_none_chat_id(self):
+        """MARKER_117.7A→117.8B: _emit_progress should handle None chat_id gracefully."""
         pipeline_file = Path(__file__).parent.parent / "src" / "orchestration" / "agent_pipeline.py"
         source = pipeline_file.read_text()
-        assert "if not self.chat_id:" in source, (
-            "_emit_progress should have guard for None chat_id"
+        # Phase 117.8 replaced guard with SocketIO route + conditional check
+        assert "if self.chat_id:" in source, (
+            "_emit_progress should conditionally check chat_id before HTTP emit"
         )
 
     def test_emit_progress_no_none_in_url(self):
