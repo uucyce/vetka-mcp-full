@@ -104,7 +104,26 @@ KNOWN_AGENTS = {
         "can_modify": False,
         "capabilities": ["reasoning", "chat", "code"],
         "model_id": None  # Pipeline uses multiple models internally
-    }
+    },
+    # MARKER_117_3: System command agents for UI display
+    "dragon": {
+        "name": "Dragon",
+        "icon": "flame",
+        "role": "Orchestrator",
+        "description": "Mycelium Dragon — autonomous task executor",
+        "can_modify": False,
+        "capabilities": ["reasoning", "code", "chat"],
+        "model_id": None
+    },
+    "doctor": {
+        "name": "Doctor",
+        "icon": "stethoscope",
+        "role": "Diagnostic",
+        "description": "VETKA diagnostics — health checks and issue detection",
+        "can_modify": False,
+        "capabilities": ["reasoning", "chat"],
+        "model_id": None
+    },
 }
 
 

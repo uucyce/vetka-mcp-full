@@ -92,7 +92,61 @@ MCP_AGENTS = {
         "role": "Executor",
         "aliases": ["claudecode", "claude", "code"],
     },
+    # MARKER_117_3: System commands — dev tools that auto-dispatch to Mycelium pipeline
+    "dragon": {
+        "name": "Dragon",
+        "endpoint": "mcp/dragon",
+        "icon": "flame",
+        "role": "Orchestrator",
+        "aliases": ["dragon", "mcp/dragon"],
+    },
+    "doctor": {
+        "name": "Doctor",
+        "endpoint": "mcp/doctor",
+        "icon": "stethoscope",
+        "role": "Diagnostic",
+        "aliases": ["doctor", "doc", "mcp/doctor"],
+    },
+    "pipeline": {
+        "name": "Mycelium Pipeline",
+        "endpoint": "mcp/pipeline",
+        "icon": "git-branch",
+        "role": "Builder",
+        "aliases": ["pipeline", "mycelium", "mcp/pipeline"],
+    },
+    # MARKER_117_3_RESERVES: Future system commands (registered to prevent Ollama hijack)
+    "grok": {
+        "name": "Grok Detective",
+        "endpoint": "mcp/grok",
+        "icon": "search",
+        "role": "Investigator",
+        "aliases": ["grok", "detective", "mcp/grok"],
+    },
+    "haiku_scout": {
+        "name": "Haiku Scout",
+        "endpoint": "mcp/haiku_scout",
+        "icon": "zap",
+        "role": "Recon",
+        "aliases": ["haiku_scout", "scout", "mcp/haiku_scout"],
+    },
+    "opus": {
+        "name": "Opus All-Stars",
+        "endpoint": "mcp/opus",
+        "icon": "star",
+        "role": "Dream Team",
+        "aliases": ["opus", "all-stars", "dreamteam", "mcp/opus"],
+    },
+    "gemini": {
+        "name": "Gemini Heavy",
+        "endpoint": "mcp/gemini",
+        "icon": "rocket",
+        "role": "Heavy Lifter",
+        "aliases": ["gemini", "heavy", "mcp/gemini"],
+    },
 }
+
+# MARKER_117_3: Agents that auto-dispatch to Mycelium pipeline on @mention
+HEARTBEAT_AGENTS = {"dragon", "doctor", "pipeline"}
 
 
 async def notify_mcp_agents(
@@ -215,6 +269,127 @@ async def notify_mcp_agents(
         print(f"[MCP_MENTION] Could not import debug_routes: {e}")
     except Exception as e:
         print(f"[MCP_MENTION] Error storing message: {e}")
+
+    # MARKER_117_3: Auto-dispatch system commands to Mycelium pipeline
+    for agent_id in mentioned_mcp_agents:
+        if agent_id in HEARTBEAT_AGENTS:
+            print(f"[MCP_MENTION] Phase 117.3: Auto-dispatching @{agent_id} to Mycelium pipeline (chat={group_id[:8]}...)")
+            asyncio.create_task(_dispatch_system_command(
+                agent_id=agent_id,
+                chat_id=group_id,
+                content=content,
+                message_id=message_id,
+                sender_id=sender_id,
+            ))
+
+
+# MARKER_117_3: System command dispatch
+# Phase type mapping for system commands
+_SYSTEM_COMMAND_PHASES = {
+    "dragon": "build",
+    "doctor": "research",
+    "pipeline": "build",
+}
+
+
+async def _dispatch_system_command(
+    agent_id: str,
+    chat_id: str,
+    content: str,
+    message_id: str,
+    sender_id: str,
+):
+    """
+    Phase 117.3: Dispatch system command to Mycelium pipeline.
+
+    Called automatically when @dragon, @doctor, or @pipeline is mentioned
+    in any group chat. The pipeline streams results back to the SAME chat.
+
+    Args:
+        agent_id: System command name (dragon, doctor, pipeline)
+        chat_id: Group chat ID — pipeline will stream results here
+        content: Full message content with @mention
+        message_id: Source message ID
+        sender_id: Who sent the command
+    """
+    import re as _re
+
+    # Extract task text: remove the @mention prefix
+    task_text = _re.sub(
+        r"@\w+\s*",
+        "",
+        content,
+        count=1
+    ).strip()
+
+    if not task_text:
+        task_text = f"General {agent_id} task requested by {sender_id}"
+
+    phase_type = _SYSTEM_COMMAND_PHASES.get(agent_id, "build")
+
+    print(
+        f"[SYSTEM_CMD] Phase 117.3: Dispatching @{agent_id}\n"
+        f"  Task: {task_text[:100]}\n"
+        f"  Phase: {phase_type}\n"
+        f"  Chat: {chat_id[:12]}...\n"
+        f"  Sender: {sender_id}"
+    )
+
+    try:
+        from src.orchestration.agent_pipeline import AgentPipeline
+
+        # Notify chat that pipeline is starting
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
+                json={
+                    "agent_id": agent_id,
+                    "content": (
+                        f"\U0001f525 @{agent_id} activated by {sender_id}\n"
+                        f"Phase: `{phase_type}` | Task: {task_text[:200]}\n"
+                        f"Pipeline starting..."
+                    ),
+                    "message_type": "system"
+                }
+            )
+
+        # Execute pipeline — results stream to THIS chat
+        pipeline = AgentPipeline(chat_id=chat_id)
+        result = await pipeline.execute(task_text, phase_type)
+
+        # Report completion
+        completed = result.get("results", {}).get("subtasks_completed", "?") if result else "?"
+        total = result.get("results", {}).get("subtasks_total", "?") if result else "?"
+        status = result.get("status", "unknown") if result else "unknown"
+
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
+                json={
+                    "agent_id": agent_id,
+                    "content": f"\u2705 @{agent_id} complete: {completed}/{total} subtasks ({status})",
+                    "message_type": "system"
+                }
+            )
+
+        print(f"[SYSTEM_CMD] @{agent_id} completed: {completed}/{total}")
+
+    except Exception as e:
+        print(f"[SYSTEM_CMD] @{agent_id} failed: {e}")
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
+                    json={
+                        "agent_id": agent_id,
+                        "content": f"\u274c @{agent_id} failed: {str(e)[:200]}",
+                        "message_type": "error"
+                    }
+                )
+        except Exception:
+            pass
 
 
 # ============================================================================

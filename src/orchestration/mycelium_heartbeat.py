@@ -41,8 +41,10 @@ _STATE_FILE = Path(__file__).parent.parent.parent / "data" / "heartbeat_state.js
 _STATE_FILE_FALLBACK = Path(os.environ.get('TMPDIR', '/tmp')) / "vetka_heartbeat_state.json"
 
 # Task trigger patterns
+# MARKER_117_3: Added @doctor for diagnostic research
 TASK_PATTERNS = [
     re.compile(r"@dragon\s+(.+)", re.IGNORECASE | re.DOTALL),
+    re.compile(r"@doctor\s+(.+)", re.IGNORECASE | re.DOTALL),
     re.compile(r"@pipeline\s+(.+)", re.IGNORECASE | re.DOTALL),
     re.compile(r"/task\s+(.+)", re.IGNORECASE | re.DOTALL),
     re.compile(r"/fix\s+(.+)", re.IGNORECASE | re.DOTALL),
@@ -53,6 +55,7 @@ TASK_PATTERNS = [
 # Phase type mapping from trigger
 PHASE_TYPE_MAP = {
     "dragon": "build",
+    "doctor": "research",
     "pipeline": "build",
     "task": "build",
     "fix": "fix",
