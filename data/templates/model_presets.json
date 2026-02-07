@@ -1,48 +1,53 @@
 {
   "_meta": {
-    "version": "2.0",
-    "phase": "117.1",
-    "marker": "MARKER_117.1_PRESETS",
-    "comment": "Team presets for mycelium pipeline. Phase 117.1: Added dragon (Asian), fixed Polza model names (vendor/model format required)."
+    "version": "3.0",
+    "phase": "117.4",
+    "marker": "MARKER_117.4B_PRESETS",
+    "comment": "Phase 117.4: Dragon Триада (Bronze→Silver→Gold). Grok Fast 4.1 = 'The Last Samurai' researcher in all tiers. Auto-tier via _tier_map."
   },
-  "default_preset": "dragon",
+  "default_preset": "dragon_silver",
+  "_tier_map": {
+    "low": "dragon_bronze",
+    "medium": "dragon_silver",
+    "high": "dragon_gold"
+  },
   "presets": {
-    "dragon": {
-      "description": "Dragon team: fast + cheap Asian models via Polza (Qwen/DeepSeek/GLM/Kimi)",
-      "provider": "polza",
-      "roles": {
-        "architect": "moonshotai/kimi-k2.5",
-        "researcher": "x-ai/grok-4",
-        "coder": "qwen/qwen3-coder",
-        "verifier": "z-ai/glm-4.7-flash"
-      }
-    },
-    "dragon_budget": {
-      "description": "Ultra-cheap Asian team: smallest fast models via Polza",
+    "dragon_bronze": {
+      "description": "🥉 Dragon Bronze: ultra-cheap Asian team for simple tasks",
       "provider": "polza",
       "roles": {
         "architect": "qwen/qwen3-30b-a3b",
-        "researcher": "z-ai/glm-4.7-flash",
+        "researcher": "x-ai/grok-4.1-fast",
         "coder": "qwen/qwen3-coder-flash",
         "verifier": "xiaomi/mimo-v2-flash"
       }
     },
-    "dragon_quality": {
-      "description": "Best Asian models via Polza for critical tasks",
+    "dragon_silver": {
+      "description": "🥈 Dragon Silver: standard Asian team (Kimi+Grok+Qwen+GLM)",
       "provider": "polza",
       "roles": {
         "architect": "moonshotai/kimi-k2.5",
-        "researcher": "deepseek/deepseek-r1-0528",
+        "researcher": "x-ai/grok-4.1-fast",
+        "coder": "qwen/qwen3-coder",
+        "verifier": "z-ai/glm-4.7-flash"
+      }
+    },
+    "dragon_gold": {
+      "description": "🥇 Dragon Gold: best Asian models for complex/critical tasks",
+      "provider": "polza",
+      "roles": {
+        "architect": "moonshotai/kimi-k2.5",
+        "researcher": "x-ai/grok-4.1-fast",
         "coder": "qwen/qwen3-coder",
         "verifier": "qwen/qwen3-235b-a22b"
       }
     },
     "polza_research": {
-      "description": "Research team via Polza AI (fixed vendor/model format)",
+      "description": "Research team via Polza AI (Claude+Grok)",
       "provider": "polza",
       "roles": {
         "architect": "anthropic/claude-sonnet-4",
-        "researcher": "x-ai/grok-4",
+        "researcher": "x-ai/grok-4.1-fast",
         "coder": "anthropic/claude-sonnet-4",
         "verifier": "anthropic/claude-sonnet-4"
       }
@@ -52,7 +57,7 @@
       "provider": "polza",
       "roles": {
         "architect": "anthropic/claude-sonnet-4",
-        "researcher": "x-ai/grok-4",
+        "researcher": "x-ai/grok-4.1-fast",
         "coder": "deepseek/deepseek-v3.2",
         "verifier": "qwen/qwen3-235b-a22b"
       }
@@ -61,18 +66,18 @@
       "description": "All agents via xAI direct API",
       "provider": "xai",
       "roles": {
-        "architect": "grok-4",
-        "researcher": "grok-4",
-        "coder": "grok-4",
-        "verifier": "grok-4"
+        "architect": "grok-4.1-fast",
+        "researcher": "grok-4.1-fast",
+        "coder": "grok-4.1-fast",
+        "verifier": "grok-4.1-fast"
       }
     },
     "openrouter_mixed": {
-      "description": "Mixed team via OpenRouter (legacy, keys may be exhausted)",
+      "description": "Mixed team via OpenRouter (legacy)",
       "provider": "openrouter",
       "roles": {
         "architect": "anthropic/claude-sonnet-4",
-        "researcher": "x-ai/grok-4",
+        "researcher": "x-ai/grok-4.1-fast",
         "coder": "anthropic/claude-sonnet-4",
         "verifier": "anthropic/claude-sonnet-4"
       }
@@ -92,7 +97,7 @@
       "provider": "polza",
       "roles": {
         "architect": "anthropic/claude-opus-4.6",
-        "researcher": "x-ai/grok-4",
+        "researcher": "x-ai/grok-4.1-fast",
         "coder": "anthropic/claude-opus-4.6",
         "verifier": "anthropic/claude-sonnet-4.5"
       }

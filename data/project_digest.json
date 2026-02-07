@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-07T03:30:19.748403+00:00",
+  "last_updated": "2026-02-07T04:01:20.602480+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 108,
@@ -13,6 +13,7 @@
   "summary": {
     "headline": "Phase 108.7 DONE! MGC + ELISION + Spiral Context + Auto-Digest Update",
     "key_achievements": [
+      "[40f5fcac] Phase 117.3: Phase 117.3b: System commands in solo chat + Menti...",
       "[1c0d2faa] Phase 114: Phase 114 session: docs, data sync, client updates...",
       "[462ae5a4] Phase 114.7: Phase 114.7: Unify tool names across ALL solo chat...",
       "[993be677] Phase 114.6: Phase 114.6: Pass tools to vetka_call_model OpenRo...",
@@ -21,8 +22,7 @@
       "[60578492] Phase 113: Phase 113: Add Labels Championship plan + roadmap\n...",
       "[aed22d78] Phase 112.5: Phase 112.5: Hybrid LOD with InstancedMesh\n\n- NEW:...",
       "[7c59220f] Phase 112.4: Phase 112.4: Texture Cache + Fast Hover\n\n- Global ...",
-      "[e0dcfc9a] Phase 112.3: Phase 112.3b: Edge Frustum Culling\n\n- Added frustu...",
-      "[a8266d05] Phase 112.1: Phase 112.1-112.3: 3D Performance Optimizations\n\n-..."
+      "[e0dcfc9a] Phase 112.3: Phase 112.3b: Edge Frustum Culling\n\n- Added frustu..."
     ],
     "pending_items": [
       "Phase 109.2: Test with live VETKA UI (Socket.IO sync)",
@@ -190,7 +190,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "1c096363",
+    "commit": "40f5fcac",
     "dirty": true
   }
 }

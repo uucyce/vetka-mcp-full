@@ -71,9 +71,10 @@ class TestPipelineProviderOverride:
         pipeline = AgentPipeline(provider="openrouter")
         assert pipeline.provider_override == "openrouter"
 
-        # Test with None
+        # Test with None — auto-loads default preset (dragon_silver → polza)
+        # MARKER_117.4A: provider is now auto-set from default preset
         pipeline_none = AgentPipeline(provider=None)
-        assert pipeline_none.provider_override is None
+        assert pipeline_none.provider_override == "polza"  # auto-loaded from dragon_silver preset
 
     @pytest.mark.phase_117
     def test_preset_not_found_logs_warning(self, caplog):

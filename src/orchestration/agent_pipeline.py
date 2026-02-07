@@ -166,7 +166,13 @@ Respond in STRICT JSON format:
     ],
     "execution_order": "sequential" or "parallel",
     "estimated_complexity": "low|medium|high"
-}"""
+}
+
+IMPORTANT - estimated_complexity determines which team tier handles the task:
+- "low": simple tasks, single file, trivial logic → bronze team (fast/cheap models)
+- "medium": standard tasks, 2-5 files, moderate logic → silver team (balanced)
+- "high": complex tasks, 5+ files, architectural decisions → gold team (best models)
+Choose carefully — this directly affects quality and cost of execution."""
                 },
                 "researcher": {
                     "system": """You are a deep researcher for VETKA project.
@@ -196,39 +202,74 @@ Respond with implementation plan or code."""
 
     # MARKER_117_PRESETS: Apply preset model overrides
     def _apply_preset(self):
-        """Load and apply preset team configuration if specified."""
-        if not self.preset_name:
-            return
+        """Load and apply preset team configuration if specified.
 
+        MARKER_117.4A: If preset_name is None, auto-loads default_preset from
+        model_presets.json. This ensures @dragon always uses the Asian team
+        (dragon_silver) instead of falling back to Claude.
+        """
         if not PRESETS_FILE.exists():
             logger.warning(f"[Pipeline] Presets file not found: {PRESETS_FILE}")
             return
 
         try:
             presets_data = json.loads(PRESETS_FILE.read_text())
-            preset = presets_data.get("presets", {}).get(self.preset_name)
-            if not preset:
-                logger.warning(f"[Pipeline] Preset '{self.preset_name}' not found. Available: {list(presets_data.get('presets', {}).keys())}")
-                return
-
-            # Apply model overrides from preset
-            roles = preset.get("roles", {})
-            for role_name, model_name in roles.items():
-                if role_name in self.prompts:
-                    self.prompts[role_name]["model"] = model_name
-                    logger.info(f"[Pipeline] Preset '{self.preset_name}': {role_name} → {model_name}")
-
-            # Apply provider override from preset (if not already set explicitly)
-            if not self.provider_override and preset.get("provider"):
-                self.provider_override = preset["provider"]
-                logger.info(f"[Pipeline] Preset '{self.preset_name}': provider → {self.provider_override}")
-
-            self.preset_models = roles
-            logger.info(f"[Pipeline] Applied preset '{self.preset_name}': {preset.get('description', '')}")
-
         except Exception as e:
-            logger.error(f"[Pipeline] Failed to load preset '{self.preset_name}': {e}")
+            logger.error(f"[Pipeline] Failed to read presets file: {e}")
+            return
+
+        # MARKER_117.4A: Auto-load default preset when none specified
+        if not self.preset_name:
+            self.preset_name = presets_data.get("default_preset")
+            if not self.preset_name:
+                return
+            logger.info(f"[Pipeline] Auto-loaded default preset: '{self.preset_name}'")
+
+        preset = presets_data.get("presets", {}).get(self.preset_name)
+        if not preset:
+            logger.warning(f"[Pipeline] Preset '{self.preset_name}' not found. Available: {list(presets_data.get('presets', {}).keys())}")
+            return
+
+        # Apply model overrides from preset
+        roles = preset.get("roles", {})
+        for role_name, model_name in roles.items():
+            if role_name in self.prompts:
+                self.prompts[role_name]["model"] = model_name
+                logger.info(f"[Pipeline] Preset '{self.preset_name}': {role_name} → {model_name}")
+
+        # Apply provider override from preset (if not already set explicitly)
+        if not self.provider_override and preset.get("provider"):
+            self.provider_override = preset["provider"]
+            logger.info(f"[Pipeline] Preset '{self.preset_name}': provider → {self.provider_override}")
+
+        self.preset_models = roles
+        logger.info(f"[Pipeline] Applied preset '{self.preset_name}': {preset.get('description', '')}")
     # MARKER_117_PRESETS_END
+
+    # MARKER_117.4C: Auto-tier resolution
+    def _resolve_tier(self, complexity: str) -> Optional[str]:
+        """Map architect's estimated_complexity to a dragon tier preset.
+
+        Reads _tier_map from model_presets.json:
+        - "low"    → dragon_bronze (fast/cheap)
+        - "medium" → dragon_silver (standard)
+        - "high"   → dragon_gold  (best models)
+
+        Returns None if no tier mapping found or presets unavailable.
+        """
+        if not PRESETS_FILE.exists():
+            return None
+        try:
+            data = json.loads(PRESETS_FILE.read_text())
+            tier_map = data.get("_tier_map", {
+                "low": "dragon_bronze",
+                "medium": "dragon_silver",
+                "high": "dragon_gold"
+            })
+            return tier_map.get(complexity)
+        except Exception:
+            return None
+    # MARKER_117.4C_END
 
     def _get_llm_tool(self):
         """Lazy load LLM tool to avoid circular imports"""
@@ -864,6 +905,21 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             self._emit_progress("@architect", f"📋 Plan:\n{subtask_list}")
             pipeline_task.status = "executing"
             self._update_task(pipeline_task)
+
+            # MARKER_117.4C: Auto-tier selection based on architect's complexity estimate
+            # Architect (e.g. Kimi K2.5) evaluates complexity → pipeline switches tier
+            # for coder/researcher roles. Architect itself always runs on initial preset.
+            complexity = plan.get("estimated_complexity", "medium")
+            tier_preset = self._resolve_tier(complexity)
+            if tier_preset and tier_preset != self.preset_name:
+                old_tier = self.preset_name
+                self.preset_name = tier_preset
+                self._apply_preset()
+                self._emit_progress(
+                    "system",
+                    f"⚡ Auto-tier: {complexity} complexity → {tier_preset} (was {old_tier})"
+                )
+            # MARKER_117.4C_END
 
             # MARKER_102.24_START: Phase 2 with STM context passing
             # Phase 2: Execute each subtask (with research triggers + STM)
