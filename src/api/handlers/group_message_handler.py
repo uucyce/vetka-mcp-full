@@ -848,7 +848,7 @@ def register_group_message_handler(sio, app=None):
             group_name = group.get("name", f"Group {group_id[:8]}")
             # Find or create chat by group_id (stable key) instead of display_name
             chat_id = chat_history.get_or_create_chat(
-                file_path="unknown", context_type="group", display_name=group_name,
+                file_path=group_id, context_type="group", display_name=group_name,  # MARKER_117.6B: was "unknown"
                 group_id=group_id  # MARKER_109_13: Stable key for deduplication!
             )
             chat_history.add_message(
@@ -1251,7 +1251,7 @@ Do NOT confuse yourself with other models.
                     chat_history = get_chat_history_manager()
                     group_name = group.get("name", f"Group {group_id[:8]}")
                     chat_id = chat_history.get_or_create_chat(
-                        file_path="unknown",
+                        file_path=group_id,  # MARKER_117.6B: was "unknown"
                         context_type="group",
                         display_name=group_name,
                         group_id=group_id,  # MARKER_109_13: Stable key!

@@ -120,6 +120,8 @@ class AgentPipeline:
         # MARKER_117_PRESETS: Preset team configuration
         self.preset_name = preset
         self.preset_models: Optional[Dict[str, str]] = None
+        # MARKER_117.6C: Track last used model for attribution in chat
+        self._last_used_model: str = ""
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
         self.stm_limit = 5  # Keep last 5 results
@@ -356,7 +358,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
     # MARKER_102.27_START: Progress emission to VETKA chat
     # MARKER_117_2A_FIX_A: Fixed endpoint URL (was /api/chat/send which doesn't exist)
-    def _emit_progress(self, role: str, message: str, subtask_idx: int = 0, total: int = 0):
+    # MARKER_117.6C: Added model parameter for attribution
+    def _emit_progress(self, role: str, message: str, subtask_idx: int = 0, total: int = 0, model: str = None):
         """
         Emit progress update to VETKA group chat via REST → SocketIO bridge.
 
@@ -365,13 +368,21 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             message: Status message
             subtask_idx: Current subtask index (1-based for display)
             total: Total subtasks count
+            model: Optional model name for attribution (e.g. "moonshotai/kimi-k2.5")
         """
         try:
             import httpx
 
+            # MARKER_117.6C: Show which model is executing
+            model_tag = ""
+            if model:
+                # Extract short name: "moonshotai/kimi-k2.5" → "kimi-k2.5"
+                short_model = model.split("/")[-1] if "/" in model else model
+                model_tag = f" ({short_model})"
+
             # Format progress message
             progress = f"[{subtask_idx}/{total}] " if total > 0 else ""
-            full_message = f"{role}: {progress}{message}"
+            full_message = f"{role}{model_tag}: {progress}{message}"
 
             # MARKER_117_2A_FIX_A: Use real endpoint that exists and emits SocketIO
             # Old (broken): POST /api/chat/send (does not exist!)
@@ -887,18 +898,25 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         logger.info(f"[Pipeline] Starting {phase_type} pipeline for: {task[:50]}...")
 
         # MARKER_102.28_START: Progress emission during execution
-        self._emit_progress("@pipeline", f"🚀 Starting {phase_type} pipeline...")
+        # MARKER_117.6C: Show team composition at pipeline start
+        team_info = f"🐉 {self.preset_name or 'default'}"
+        if self.preset_models:
+            team_names = [m.split("/")[-1] for m in self.preset_models.values()]
+            team_info += f" ({' → '.join(team_names)})"
+        self._emit_progress("@pipeline", f"🚀 Starting {phase_type} pipeline | {team_info}")
 
         try:
             # Phase 1: Architect breaks down task
-            self._emit_progress("@architect", "📋 Breaking down task into subtasks...")
+            # MARKER_117.6C: Model attribution in progress messages
+            architect_model = self.prompts.get("architect", {}).get("model", "")
+            self._emit_progress("@architect", "📋 Breaking down task into subtasks...", model=architect_model)
             plan = await self._architect_plan(task, phase_type)
             pipeline_task.subtasks = [
                 Subtask(**st) if isinstance(st, dict) else st
                 for st in plan.get("subtasks", [])
             ]
             total_subtasks = len(pipeline_task.subtasks)
-            self._emit_progress("@architect", f"✅ Plan ready: {total_subtasks} subtasks")
+            self._emit_progress("@architect", f"✅ Plan ready: {total_subtasks} subtasks", model=self._last_used_model)
 
             # MARKER_117_2A_FIX_D: Emit architect plan details to chat
             # Previously plan was only saved to pipeline_task.results, invisible in UI
@@ -1039,8 +1057,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 self._update_task(pipeline_task)
 
                 # Emit progress only if subtask is visible
+                # MARKER_117.6C: Model attribution for researcher
+                researcher_model = self.prompts.get("researcher", {}).get("model", "")
                 if subtask.visible:
-                    self._emit_progress("@researcher", f"🔍 Researching: {subtask.description[:40]}...", i+1, total_subtasks)
+                    self._emit_progress("@researcher", f"🔍 Researching: {subtask.description[:40]}...", i+1, total_subtasks, model=researcher_model)
 
                 # Use description as question if no explicit question
                 question = subtask.question or subtask.description
@@ -1059,7 +1079,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     self._emit_progress(
                         "@researcher",
                         f"🔍 Research done (confidence: {confidence}): {insights_preview}",
-                        i+1, total_subtasks
+                        i+1, total_subtasks, model=self._last_used_model
                     )
 
                 # Recursive: if researcher has further questions with low confidence
@@ -1073,9 +1093,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             subtask.status = "executing"
             self._update_task(pipeline_task)
 
+            # MARKER_117.6C: Model attribution for coder
+            coder_model = self.prompts.get("coder", {}).get("model", "")
             # Emit progress only if subtask is visible
             if subtask.visible:
-                self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks)
+                self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks, model=coder_model)
 
             result = await self._execute_subtask(subtask, phase_type)
             subtask.result = result
@@ -1083,7 +1105,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # Emit completion based on visibility flags
             if subtask.visible:
-                self._emit_progress("@coder", f"✅ Done: {subtask.marker or f'step_{i+1}'}", i+1, total_subtasks)
+                self._emit_progress("@coder", f"✅ Done: {subtask.marker or f'step_{i+1}'}", i+1, total_subtasks, model=self._last_used_model)
                 # MARKER_117_2A_FIX_D: Emit coder result preview to chat
                 # Previously only marker name was emitted, not the actual result
                 if result and isinstance(result, str) and len(result) > 10:
@@ -1291,6 +1313,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if self.provider_override:
             call_args["model_source"] = self.provider_override
         result = tool.execute(call_args)
+        # MARKER_117.6C: Track architect model for attribution
+        self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
 
         # MARKER_102.16_START: Parse JSON response with robust extraction
         try:
@@ -1367,6 +1391,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if self.provider_override:
             call_args["model_source"] = self.provider_override
         result = tool.execute(call_args)
+        # MARKER_117.6C: Track researcher model for attribution
+        self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
 
         # MARKER_102.18_START: Parse researcher JSON with robust extraction
         try:
@@ -1457,6 +1483,8 @@ Execute this subtask. Provide clear, actionable output."""}
         if self.provider_override:
             call_args["model_source"] = self.provider_override
         result = tool.execute(call_args)
+        # MARKER_117.6C: Track coder model for attribution
+        self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
 
         # Extract content from LLMCallTool response format
         if result.get("success"):

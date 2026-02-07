@@ -117,19 +117,24 @@ def parse_mentions(message: str) -> dict:
     - "@deepseek fix main.py" → single model (alias)
     - "@PM @Dev analyze this" → specific team (agents)
     - "@nemotron-3-nano-30b-a3b:free hello" → direct model ID
+    - "@dragon build feature" → system command (Mycelium pipeline)
     - "fix this bug" → Hostess decides (auto mode)
 
     Returns:
         {
             'mentions': [{'alias': '@deepseek', 'target': 'deepseek/deepseek-chat', 'type': 'model'}],
             'clean_message': 'fix main.py',
-            'mode': 'single',  # auto | single | team | agents
+            'mode': 'single',  # auto | single | team | agents | system_command
             'models': ['deepseek/deepseek-chat'],
             'agents': []
         }
     """
     config = load_config()
     aliases = config.get('models', {}).get('aliases', {})
+
+    # MARKER_117.6A: System command agents that route to Mycelium pipeline
+    # These are NOT regular model aliases — they trigger Dragon team dispatch
+    SYSTEM_COMMAND_AGENTS = {"dragon", "doctor", "pipeline", "help"}
 
     # Phase 57.2: Find all @mentions with full model ID support (including : . and /)
     # This captures both aliases (@deepseek) and direct model IDs (@nvidia/nemotron-3-nano-30b-a3b:free)
@@ -146,6 +151,20 @@ def parse_mentions(message: str) -> dict:
     for mention in mentions:
         mention_key = f"@{mention.lower()}"
         original_text = f"@{mention}"
+
+        # MARKER_117.6A: Check system commands FIRST (before aliases)
+        # @dragon, @doctor, @pipeline, @help → route to Mycelium pipeline
+        if mention.lower() in SYSTEM_COMMAND_AGENTS:
+            result['mentions'].append({
+                'alias': mention_key,
+                'target': mention.lower(),
+                'type': 'system_command'
+            })
+            # Remove mention from message (task text is what follows)
+            result['clean_message'] = result['clean_message'].replace(original_text, '').strip()
+            print(f"[MENTIONS] System command detected: @{mention.lower()}")
+            continue
+        # MARKER_117.6A_END
 
         if mention_key in aliases:
             # Known alias - use mapped target
@@ -193,7 +212,11 @@ def parse_mentions(message: str) -> dict:
     result['clean_message'] = ' '.join(result['clean_message'].split())
 
     # Determine mode
-    if len(result['mentions']) == 0:
+    # MARKER_117.6A: System commands take priority over all other modes
+    has_system_commands = any(m['type'] == 'system_command' for m in result['mentions'])
+    if has_system_commands:
+        result['mode'] = 'system_command'
+    elif len(result['mentions']) == 0:
         result['mode'] = 'auto'
     elif len(result['agents']) > 0 and len(result['models']) == 0:
         result['mode'] = 'agents'
