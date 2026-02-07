@@ -368,8 +368,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         """
         Emit progress update to VETKA chat.
 
-        MARKER_117.8B: Two routes (both async, non-blocking):
-          1. SocketIO direct (solo chat) — via self.sio.emit() → instant
+        MARKER_118.6: Emits 'chat_response' (not legacy 'agent_message') for ChatPanel visibility.
+        Two routes (both async, non-blocking):
+          1. SocketIO direct (solo chat) — via self.sio.emit("chat_response") → instant
           2. HTTP AsyncClient (group chat) — via POST to group endpoint → async
 
         Args:
@@ -390,13 +391,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             progress = f"[{subtask_idx}/{total}] " if total > 0 else ""
             full_message = f"{role}{model_tag}: {progress}{message}"
 
-            # MARKER_117.8B Route 1: SocketIO direct emit (solo chat — instant, non-blocking)
+            # MARKER_118.6: Route 1 — emit "chat_response" so ChatPanel sees it
+            # (Was "agent_message" → wrote to legacy messages[], invisible in ChatPanel)
             if self.sio and self.sid:
-                await self.sio.emit("agent_message", {
+                await self.sio.emit("chat_response", {
+                    "message": full_message,
                     "agent": "pipeline",
                     "model": model or "system",
-                    "content": full_message,
-                    "text": full_message,
                 }, to=self.sid)
                 logger.debug(f"[Pipeline] SIO emit: {full_message[:80]}...")
                 return
@@ -515,13 +516,12 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 summary = summary[:300] + "..."
             content = f"[{event_type}] {summary}"
 
-            # MARKER_117.8B: Route 1 — SocketIO direct (solo)
+            # MARKER_118.6: Route 1 — emit "chat_response" for ChatPanel visibility
             if self.sio and self.sid:
-                await self.sio.emit("agent_message", {
+                await self.sio.emit("chat_response", {
+                    "message": content,
                     "agent": "pipeline",
                     "model": "system",
-                    "content": content,
-                    "text": content,
                 }, to=self.sid)
                 logger.debug(f"[Pipeline] SIO stream event: {event_type}")
                 return

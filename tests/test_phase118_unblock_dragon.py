@@ -285,3 +285,130 @@ class TestEngramFixes:
         """MARKER_118.5 should be in engram_user_memory.py."""
         source = ENGRAM_FILE.read_text()
         assert "MARKER_118.5" in source
+
+
+# ============================================================================
+# MARKER_118.6: Pipeline emit uses chat_response (not agent_message)
+# ============================================================================
+
+PIPELINE_FILE = Path(__file__).parent.parent / "src" / "orchestration" / "agent_pipeline.py"
+HANDLER_FILE = Path(__file__).parent.parent / "src" / "api" / "handlers" / "user_message_handler.py"
+
+
+class TestChatResponseEmit:
+    """MARKER_118.6: Pipeline emit uses 'chat_response' event for ChatPanel visibility."""
+
+    def test_emit_progress_uses_chat_response(self):
+        """_emit_progress Route 1 should emit 'chat_response', not 'agent_message'."""
+        source = PIPELINE_FILE.read_text()
+        # Find _emit_progress method
+        match = re.search(
+            r'async def _emit_progress\(self.*?\n(.*?)(?=\n    # MARKER_102\.27_END|\n    async def |\n    def )',
+            source, re.DOTALL
+        )
+        assert match, "_emit_progress method not found"
+        body = match.group(1)
+
+        # Route 1 (sio direct) should use chat_response
+        assert '"chat_response"' in body, (
+            "_emit_progress Route 1 should emit 'chat_response' for ChatPanel visibility"
+        )
+        # Actual emit calls should NOT use agent_message (ignore docstrings/comments)
+        emit_calls = re.findall(r'sio\.emit\("([^"]+)"', body)
+        for event_name in emit_calls:
+            assert event_name == "chat_response", (
+                f"_emit_progress sio.emit uses '{event_name}', should be 'chat_response'"
+            )
+
+    def test_emit_progress_data_has_message_key(self):
+        """chat_response format requires 'message' key (not 'content')."""
+        source = PIPELINE_FILE.read_text()
+        match = re.search(
+            r'async def _emit_progress\(self.*?\n(.*?)(?=\n    # MARKER_102\.27_END|\n    async def |\n    def )',
+            source, re.DOTALL
+        )
+        assert match
+        body = match.group(1)
+        assert '"message":' in body or '"message"' in body, (
+            "chat_response data must have 'message' key for ChatPanel rendering"
+        )
+
+    def test_emit_to_chat_uses_chat_response(self):
+        """_emit_to_chat Route 1 should emit 'chat_response', not 'agent_message'."""
+        source = PIPELINE_FILE.read_text()
+        match = re.search(
+            r'async def _emit_to_chat\(self.*?\n(.*?)(?=\n    # MARKER_104_STREAM_VISIBILITY_END|\n    async def |\n    def )',
+            source, re.DOTALL
+        )
+        assert match, "_emit_to_chat method not found"
+        body = match.group(1)
+        assert '"chat_response"' in body, (
+            "_emit_to_chat Route 1 should emit 'chat_response'"
+        )
+
+    def test_dispatch_initial_emit_uses_chat_response(self):
+        """Initial 'Pipeline starting...' emit should use chat_response."""
+        source = HANDLER_FILE.read_text()
+        # Find the block around "Pipeline starting..."
+        idx = source.find("Pipeline starting...")
+        assert idx > 0, "'Pipeline starting...' message not found"
+        # Check nearby context (100 chars before)
+        nearby = source[max(0, idx-200):idx+100]
+        assert "chat_response" in nearby, (
+            "Initial 'Pipeline starting...' should emit via 'chat_response'"
+        )
+
+    def test_dispatch_final_report_uses_chat_response(self):
+        """Final report emit in _dispatch_solo_system_command should use chat_response."""
+        source = HANDLER_FILE.read_text()
+        # Find _dispatch_solo_system_command
+        match = re.search(
+            r'async def _dispatch_solo_system_command\(.*?\n(.*?)(?=\nasync def |\ndef |\Z)',
+            source, re.DOTALL
+        )
+        assert match, "_dispatch_solo_system_command not found"
+        body = match.group(1)
+
+        # All sio.emit calls should use chat_response
+        emit_calls = re.findall(r'sio\.emit\("([^"]+)"', body)
+        for event_name in emit_calls:
+            assert event_name == "chat_response", (
+                f"sio.emit in _dispatch_solo_system_command uses '{event_name}', should be 'chat_response'"
+            )
+
+    def test_marker_118_6_in_pipeline(self):
+        """MARKER_118.6 should be in agent_pipeline.py."""
+        source = PIPELINE_FILE.read_text()
+        assert "MARKER_118.6" in source
+
+    def test_marker_118_6_in_handler(self):
+        """MARKER_118.6 should be in user_message_handler.py."""
+        source = HANDLER_FILE.read_text()
+        assert "MARKER_118.6" in source
+
+
+# ============================================================================
+# MARKER_118.7: Error callback for asyncio.create_task
+# ============================================================================
+
+class TestErrorCallback:
+    """MARKER_118.7: Background task has error callback for exception logging."""
+
+    def test_create_task_has_done_callback(self):
+        """asyncio.create_task for @dragon should have add_done_callback."""
+        source = HANDLER_FILE.read_text()
+        assert "add_done_callback" in source, (
+            "asyncio.create_task for @dragon pipeline should have error callback via add_done_callback"
+        )
+
+    def test_callback_checks_exception(self):
+        """Error callback should check t.exception()."""
+        source = HANDLER_FILE.read_text()
+        assert "t.exception()" in source or "task.exception()" in source, (
+            "Done callback should check for task exceptions"
+        )
+
+    def test_marker_118_7_present(self):
+        """MARKER_118.7 should be in user_message_handler.py."""
+        source = HANDLER_FILE.read_text()
+        assert "MARKER_118.7" in source

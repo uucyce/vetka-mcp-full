@@ -72,8 +72,9 @@ class TestEmitProgressAsync:
     def test_sio_emit_in_source(self):
         """SocketIO direct emit should be present in _emit_progress."""
         source = PIPELINE_FILE.read_text()
-        assert 'sio.emit("agent_message"' in source or "sio.emit('agent_message'" in source, (
-            "_emit_progress should use sio.emit('agent_message', ...) for solo chat"
+        # Phase 118.6: Changed from "agent_message" to "chat_response" for ChatPanel visibility
+        assert 'sio.emit("chat_response"' in source or "sio.emit('chat_response'" in source, (
+            "_emit_progress should use sio.emit('chat_response', ...) for solo chat (Phase 118.6)"
         )
 
     def test_async_client_for_groups(self):

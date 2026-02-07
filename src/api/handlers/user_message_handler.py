@@ -863,24 +863,30 @@ def register_user_message_handler(sio, app=None):
                 if resolved_agent and resolved_agent in HEARTBEAT_AGENTS:
                     print(f"[MENTIONS] Phase 117.3b: System command @{mention_target} → @{resolved_agent} (solo chat)")
 
-                    # Notify user
-                    await sio.emit("agent_message", {
+                    # MARKER_118.6: Notify user via chat_response (visible in ChatPanel)
+                    await sio.emit("chat_response", {
+                        "message": f"\U0001f525 @{resolved_agent} activated. Pipeline starting...",
                         "agent": resolved_agent,
                         "model": "system",
-                        "content": f"\U0001f525 @{resolved_agent} activated. Pipeline starting...",
-                        "text": f"\U0001f525 @{resolved_agent} activated. Pipeline starting...",
-                        "node_id": request_node_id if 'request_node_id' in dir() else None,
                     }, to=sid)
 
                     # Dispatch pipeline in background
                     # MARKER_117.7A: Pass client_chat_id so pipeline can emit progress to chat
-                    asyncio.create_task(_dispatch_solo_system_command(
+                    # MARKER_118.7: Error callback — don't swallow exceptions silently
+                    _dragon_task = asyncio.create_task(_dispatch_solo_system_command(
                         sio=sio,
                         sid=sid,
                         agent_id=resolved_agent,
                         content=text,
                         chat_id=client_chat_id,
                     ))
+
+                    def _on_dragon_done(t):
+                        exc = t.exception()
+                        if exc:
+                            logger.error(f"[SOLO_SYSTEM_CMD] Background task @{resolved_agent} failed: {exc}")
+
+                    _dragon_task.add_done_callback(_on_dragon_done)
                     return  # Skip normal model routing
             except ImportError:
                 pass  # Graceful fallback if group_message_handler unavailable
@@ -2401,18 +2407,18 @@ async def _dispatch_solo_system_command(sio, sid: str, agent_id: str, content: s
                 preview = str(st["result"])[:150].replace('\n', ' ')
                 report_lines.append(f"     \u2514 {preview}")
 
-        await sio.emit("agent_message", {
+        # MARKER_118.6: Use chat_response so ChatPanel renders the final report
+        await sio.emit("chat_response", {
+            "message": "\n".join(report_lines),
             "agent": agent_id,
             "model": "system",
-            "content": "\n".join(report_lines),
-            "text": "\n".join(report_lines),
         }, to=sid)
 
     except Exception as e:
         print(f"[SOLO_SYSTEM_CMD] @{agent_id} failed: {e}")
-        await sio.emit("agent_message", {
+        # MARKER_118.6: Error also via chat_response for visibility
+        await sio.emit("chat_response", {
+            "message": f"\u274c @{agent_id} failed: {str(e)[:200]}",
             "agent": agent_id,
             "model": "system",
-            "content": f"\u274c @{agent_id} failed: {str(e)[:200]}",
-            "text": f"\u274c @{agent_id} failed: {str(e)[:200]}",
         }, to=sid)
