@@ -868,59 +868,12 @@ async def list_tools() -> list[Tool]:
                 "required": ["context"]
             }
         ),
-        # MARKER_102.9_START: Agent Pipeline tool
+        # MARKER_102.9_START: Mycelium Pipeline tool
         # MARKER_103.5: Added auto_write parameter
-        # Phase 111.13: Renamed vetka_spawn_pipeline → vetka_mycelium_pipeline
         Tool(
             name="vetka_mycelium_pipeline",
             description=(
-                "Spawn Mycelium agent pipeline for fractal task execution. "
-                "Auto-triggers Grok researcher on unclear parts (?). "
-                "Phases: research (explore), fix (debug), build (implement). "
-                "Progress streams to chat in real-time! "
-                "Use auto_write=false for staging mode (safe review before file creation)."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "task": {
-                        "type": "string",
-                        "description": "Task description to execute through pipeline"
-                    },
-                    "phase_type": {
-                        "type": "string",
-                        "enum": ["research", "fix", "build"],
-                        "description": "Pipeline type: research (explore), fix (debug), build (implement)",
-                        "default": "research"
-                    },
-                    "chat_id": {
-                        "type": "string",
-                        "description": "Optional chat ID for progress streaming (default: Lightning chat)"
-                    },
-                    "auto_write": {
-                        "type": "boolean",
-                        "description": "If true (default), write files immediately. If false, save to JSON for later review with retro_apply_spawn.py",
-                        "default": True
-                    },
-                    # MARKER_117_PROVIDER: Provider override and preset support
-                    "provider": {
-                        "type": "string",
-                        "description": "LLM provider override for all pipeline agents (e.g., 'polza', 'openrouter', 'xai'). If set, all agents use this provider."
-                    },
-                    "preset": {
-                        "type": "string",
-                        "description": "Team preset from model_presets.json (e.g., 'polza_research', 'budget', 'quality'). Overrides individual agent models."
-                    }
-                },
-                "required": ["task"]
-            }
-        ),
-        # Phase 111.13: Backward compatibility alias for vetka_spawn_pipeline
-        Tool(
-            name="vetka_spawn_pipeline",
-            description=(
-                "[DEPRECATED: Use vetka_mycelium_pipeline instead] "
-                "Spawn Mycelium agent pipeline for fractal task execution. "
+                "Mycelium agent pipeline for fractal task execution. "
                 "Auto-triggers Grok researcher on unclear parts (?). "
                 "Phases: research (explore), fix (debug), build (implement). "
                 "Progress streams to chat in real-time! "
@@ -1835,8 +1788,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             # MARKER_102.21_END
 
         # MARKER_102.10_START: Agent Pipeline handler (fire-and-forget)
-        # Phase 111.13: Handle both vetka_mycelium_pipeline and vetka_spawn_pipeline (backward compatibility)
-        elif name in ("vetka_mycelium_pipeline", "vetka_spawn_pipeline"):
+        elif name == "vetka_mycelium_pipeline":
             # MARKER_102.19_START: Async fire-and-forget pipeline
             # Phase 102.2: Don't wait for completion - return task_id immediately
             # Pipeline runs in background, results saved to pipeline_tasks.json

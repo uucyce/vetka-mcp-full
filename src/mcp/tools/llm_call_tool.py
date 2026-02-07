@@ -71,7 +71,6 @@ WRITE_TOOLS_REQUIRING_APPROVAL = {
     "vetka_camera_focus",
     "vetka_execute_workflow",
     "vetka_mycelium_pipeline",
-    "vetka_spawn_pipeline",
     "vetka_implement",
     "vetka_call_model",  # Prevent recursive LLM calls
 }
