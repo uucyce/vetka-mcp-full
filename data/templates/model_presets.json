@@ -1,9 +1,9 @@
 {
   "_meta": {
-    "version": "3.0",
-    "phase": "117.4",
-    "marker": "MARKER_117.4B_PRESETS",
-    "comment": "Phase 117.4: Dragon Триада (Bronze→Silver→Gold). Grok Fast 4.1 = 'The Last Samurai' researcher in all tiers. Auto-tier via _tier_map."
+    "version": "3.1",
+    "phase": "117.5",
+    "marker": "MARKER_117.5C_PRESETS",
+    "comment": "Phase 117.5: Added dragon_gold_gpt (GPT-5.2 for extended autonomous work). Cursor insight: model-task matching."
   },
   "default_preset": "dragon_silver",
   "_tier_map": {
@@ -39,6 +39,16 @@
         "architect": "moonshotai/kimi-k2.5",
         "researcher": "x-ai/grok-4.1-fast",
         "coder": "qwen/qwen3-coder",
+        "verifier": "qwen/qwen3-235b-a22b"
+      }
+    },
+    "dragon_gold_gpt": {
+      "description": "🥇+ Dragon Gold+GPT: GPT-5.2 coder for extended autonomous work (Cursor insight)",
+      "provider": "polza",
+      "roles": {
+        "architect": "moonshotai/kimi-k2.5",
+        "researcher": "x-ai/grok-4.1-fast",
+        "coder": "openai/gpt-5.2",
         "verifier": "qwen/qwen3-235b-a22b"
       }
     },

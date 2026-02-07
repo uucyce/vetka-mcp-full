@@ -366,3 +366,31 @@ def get_heartbeat_status() -> Dict[str, Any]:
         "tasks_failed": state.tasks_failed,
         "recent_runs": state.recent_runs[-5:]
     }
+
+
+# MARKER_117.5A: Event-driven wakeup after pipeline completion
+# Cursor insight: "Planners should wake when tasks complete"
+# Instead of only polling, heartbeat auto-checks for follow-up tasks
+# when a pipeline finishes execution.
+async def on_pipeline_complete(chat_id: str) -> Dict[str, Any]:
+    """Event-driven wakeup — check for follow-up tasks after pipeline completes.
+
+    Called by AgentPipeline.execute() after successful completion.
+    Triggers a quick heartbeat tick on the same chat to detect chained tasks.
+
+    Args:
+        chat_id: Group chat ID where pipeline completed
+
+    Returns:
+        Heartbeat tick result (or empty dict if wakeup skipped)
+    """
+    logger.info(f"[Heartbeat] ⚡ Wakeup triggered by pipeline completion in {chat_id}")
+
+    try:
+        result = await heartbeat_tick(group_id=chat_id, dry_run=False)
+        logger.info(f"[Heartbeat] Wakeup tick: {result.get('tasks_found', 0)} follow-up tasks found")
+        return result
+    except Exception as e:
+        logger.warning(f"[Heartbeat] Wakeup tick failed (non-fatal): {e}")
+        return {"wakeup": "skipped", "error": str(e)}
+# MARKER_117.5A_END

@@ -34,6 +34,12 @@ logger = logging.getLogger(__name__)
 # Default: 5 pipelines max to protect M4 Pro from overload (Grok Phase 103 Audit recommendation)
 # Override via environment: VETKA_MAX_PARALLEL=10
 MAX_PARALLEL_PIPELINES = int(os.getenv("VETKA_MAX_PARALLEL", "5"))
+
+# MARKER_117.5B: Auto context reset threshold to combat drift
+# Cursor insight: "Periodic fresh starts to combat drift"
+# After this many subtasks, STM is compressed to a summary and reset.
+# Prevents context drift in long pipeline runs (10+ subtasks).
+MAX_STM_BEFORE_RESET = int(os.getenv("VETKA_STM_RESET_THRESHOLD", "10"))
 _pipeline_semaphore: Optional[asyncio.Semaphore] = None
 
 
@@ -975,6 +981,16 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             self._emit_to_chat("@pipeline", "\n".join(report_lines))
             # MARKER_102.28_END
 
+            # MARKER_117.5A: Event-driven wakeup after pipeline completion
+            # Cursor insight: "Planners should wake when tasks complete"
+            # Auto-check chat for follow-up @dragon tasks
+            try:
+                from src.orchestration.mycelium_heartbeat import on_pipeline_complete
+                await on_pipeline_complete(self.chat_id)
+            except Exception as e:
+                logger.debug(f"[Pipeline] Wakeup hook skipped: {e}")
+            # MARKER_117.5A_END
+
             return asdict(pipeline_task)
 
         except Exception as e:
@@ -1092,6 +1108,22 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # Add to STM for next subtask
             self._add_to_stm(subtask.marker or f"step_{i+1}", result)
+
+            # MARKER_117.5B: Auto context reset to combat drift (Cursor insight)
+            # "Periodic fresh starts" — when STM grows beyond threshold,
+            # compress to summary and reset. Prevents context drift in long runs.
+            if len(self.stm) >= MAX_STM_BEFORE_RESET:
+                summary = self._get_stm_summary()
+                self.stm = [{
+                    "marker": "CONTEXT_RESET",
+                    "result": f"[Reset after {MAX_STM_BEFORE_RESET} subtasks] Summary: {summary[:500]}"
+                }]
+                self._emit_progress(
+                    "system",
+                    f"🔄 Context reset after {MAX_STM_BEFORE_RESET} subtasks (anti-drift)"
+                )
+                logger.info(f"[Pipeline] STM reset after {MAX_STM_BEFORE_RESET} subtasks (anti-drift)")
+            # MARKER_117.5B_END
 
             self._update_task(pipeline_task)
     # MARKER_104_PARALLEL_3_END
