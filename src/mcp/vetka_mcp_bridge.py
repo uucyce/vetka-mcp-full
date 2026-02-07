@@ -1824,13 +1824,51 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 pipeline = AgentPipeline(chat_id=chat_id, auto_write=auto_write, provider=provider, preset=preset)
                 task_id = f"task_{int(time_module.time())}"
 
-                # Fire-and-forget: schedule execution without awaiting
+                # MARKER_117_2A_FIX_B: Fire-and-forget WITH result capture and notification
+                # Old: execute() return value was discarded, no completion notification
+                # New: capture result, send summary to group chat on completion/failure
                 async def run_pipeline_background():
                     try:
-                        await pipeline.execute(task, phase_type)
+                        result = await pipeline.execute(task, phase_type)
                         logger.info(f"[MCP] Pipeline {task_id} completed")
+
+                        # Send completion notification to group chat
+                        try:
+                            import httpx
+                            completed = result.get("results", {}).get("subtasks_completed", "?") if result else "?"
+                            total = result.get("results", {}).get("subtasks_total", "?") if result else "?"
+                            status = result.get("status", "unknown") if result else "unknown"
+
+                            summary = f"✅ Pipeline {task_id} complete: {completed}/{total} subtasks ({status})"
+                            async with httpx.AsyncClient(timeout=5.0) as client:
+                                await client.post(
+                                    f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
+                                    json={
+                                        "agent_id": "pipeline",
+                                        "content": summary,
+                                        "message_type": "system"
+                                    }
+                                )
+                            logger.info(f"[MCP] Pipeline {task_id} completion notified to chat")
+                        except Exception as notify_err:
+                            logger.warning(f"[MCP] Pipeline {task_id} notify failed: {notify_err}")
+
                     except Exception as e:
                         logger.error(f"[MCP] Pipeline {task_id} failed: {e}")
+                        # Notify failure to group chat
+                        try:
+                            import httpx
+                            async with httpx.AsyncClient(timeout=5.0) as client:
+                                await client.post(
+                                    f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
+                                    json={
+                                        "agent_id": "pipeline",
+                                        "content": f"❌ Pipeline {task_id} failed: {str(e)[:200]}",
+                                        "message_type": "error"
+                                    }
+                                )
+                        except Exception:
+                            pass  # Best effort
 
                 # Schedule background execution
                 asyncio.create_task(run_pipeline_background())

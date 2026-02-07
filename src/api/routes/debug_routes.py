@@ -94,6 +94,16 @@ KNOWN_AGENTS = {
         "can_modify": True,
         "capabilities": ["all"],
         "model_id": None  # Human, no ModelRegistry entry
+    },
+    # MARKER_117_2A: Pipeline agent for Mycelium/Dragon streaming
+    "pipeline": {
+        "name": "Mycelium Pipeline",
+        "icon": "git-branch",  # Lucide: git-branch icon (fractal pipeline)
+        "role": "Pipeline",
+        "description": "Fractal agent pipeline (Architect → Researcher → Coder)",
+        "can_modify": False,
+        "capabilities": ["reasoning", "chat", "code"],
+        "model_id": None  # Pipeline uses multiple models internally
     }
 }
 

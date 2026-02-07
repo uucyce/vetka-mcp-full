@@ -51,7 +51,9 @@ from src.memory.elision import ElisionCompressor, get_elision_compressor
 # MARKER_104_ELISION_PROMPTS_END
 
 # MARKER_102.1_START: Pipeline storage paths
+# MARKER_117_2B_SANDBOX: Primary path + TMPDIR fallback for MCP sandbox
 TASKS_FILE = Path(__file__).parent.parent.parent / "data" / "pipeline_tasks.json"
+_TASKS_FILE_FALLBACK = Path(os.environ.get('TMPDIR', '/tmp')) / "vetka_pipeline_tasks.json"
 PROMPTS_FILE = Path(__file__).parent.parent.parent / "data" / "templates" / "pipeline_prompts.json"
 # MARKER_117_PRESETS: Presets config file
 PRESETS_FILE = Path(__file__).parent.parent.parent / "data" / "templates" / "model_presets.json"
@@ -306,9 +308,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
     # MARKER_104_ELISION_PROMPTS_END
 
     # MARKER_102.27_START: Progress emission to VETKA chat
+    # MARKER_117_2A_FIX_A: Fixed endpoint URL (was /api/chat/send which doesn't exist)
     def _emit_progress(self, role: str, message: str, subtask_idx: int = 0, total: int = 0):
         """
-        Emit progress update to VETKA chat.
+        Emit progress update to VETKA group chat via REST → SocketIO bridge.
 
         Args:
             role: @architect, @researcher, @coder, or @pipeline
@@ -323,21 +326,28 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             progress = f"[{subtask_idx}/{total}] " if total > 0 else ""
             full_message = f"{role}: {progress}{message}"
 
-            # Send to VETKA chat (fire-and-forget, don't block pipeline)
+            # MARKER_117_2A_FIX_A: Use real endpoint that exists and emits SocketIO
+            # Old (broken): POST /api/chat/send (does not exist!)
+            # New (working): POST /api/debug/mcp/groups/{chat_id}/send
+            # This endpoint:
+            #   1. Saves message via group_chat_manager.send_message()
+            #   2. Emits SocketIO 'group_message' to room (real-time to UI)
+            #   3. Emits SocketIO 'group_stream_end' for UI consistency
             with httpx.Client(timeout=5.0) as client:
-                client.post(
-                    "http://localhost:5001/api/chat/send",
+                response = client.post(
+                    f"http://localhost:5001/api/debug/mcp/groups/{self.chat_id}/send",
                     json={
-                        "group_id": self.chat_id,
-                        "sender_id": "@pipeline",
+                        "agent_id": "pipeline",
                         "content": full_message,
                         "message_type": "system"
                     }
                 )
-            logger.debug(f"[Pipeline] Emitted: {full_message[:50]}...")
+                if response.status_code != 200:
+                    logger.warning(f"[Pipeline] Emit got status {response.status_code}: {response.text[:100]}")
+            logger.debug(f"[Pipeline] Emitted: {full_message[:80]}...")
         except Exception as e:
-            # Don't fail pipeline on emit errors
-            logger.debug(f"[Pipeline] Emit failed (non-fatal): {e}")
+            # Don't fail pipeline on emit errors, but log as warning for visibility
+            logger.warning(f"[Pipeline] Emit failed (non-fatal): {e}")
 
         # Call registered hooks
         for hook in self.progress_hooks:
@@ -419,7 +429,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
     async def _emit_to_chat(self, event_type: str, data: Dict[str, Any]):
         """
-        Async emit event to Socket.IO chat.
+        Async emit event to Socket.IO chat via group message endpoint.
+
+        MARKER_117_2A_FIX_A: Fixed endpoint URL.
+        Old: POST /api/stream/event (doesn't exist)
+        New: POST /api/debug/mcp/groups/{chat_id}/send (real endpoint with SocketIO)
 
         Args:
             event_type: Event type string
@@ -428,20 +442,25 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         try:
             import httpx
 
+            # Format stream event as a readable message for group chat
+            summary = data.get("result", data.get("marker", str(data)))
+            if isinstance(summary, str) and len(summary) > 300:
+                summary = summary[:300] + "..."
+            content = f"[{event_type}] {summary}"
+
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(
-                    "http://localhost:5001/api/stream/event",
+                    f"http://localhost:5001/api/debug/mcp/groups/{self.chat_id}/send",
                     json={
-                        "event_type": event_type,
-                        "group_id": self.chat_id,
-                        "data": data,
-                        "timestamp": time.time()
+                        "agent_id": "pipeline",
+                        "content": content,
+                        "message_type": "system"
                     }
                 )
             logger.debug(f"[Pipeline] Stream event emitted: {event_type}")
         except Exception as e:
             # Don't fail pipeline on emit errors
-            logger.debug(f"[Pipeline] Stream emit failed (non-fatal): {e}")
+            logger.warning(f"[Pipeline] Stream emit failed (non-fatal): {e}")
     # MARKER_104_STREAM_VISIBILITY_END
 
     # MARKER_102.17_START: Robust JSON extraction from LLM responses
@@ -500,16 +519,34 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
     # MARKER_102.17_END
 
     # MARKER_102.3_START: Task storage
+    # MARKER_117_2B_SANDBOX: Sandbox-safe load/save with TMPDIR fallback
     def _load_tasks(self) -> Dict[str, Any]:
-        """Load tasks from JSON storage"""
+        """Load tasks from JSON storage (tries primary, then TMPDIR fallback)"""
         if TASKS_FILE.exists():
-            return json.loads(TASKS_FILE.read_text())
+            try:
+                return json.loads(TASKS_FILE.read_text())
+            except Exception:
+                pass
+        if _TASKS_FILE_FALLBACK.exists():
+            try:
+                return json.loads(_TASKS_FILE_FALLBACK.read_text())
+            except Exception:
+                pass
         return {}
 
     def _save_tasks(self, tasks: Dict[str, Any]):
-        """Save tasks to JSON storage"""
-        TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        TASKS_FILE.write_text(json.dumps(tasks, indent=2, default=str))
+        """Save tasks to JSON storage with sandbox-safe fallback"""
+        try:
+            TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            TASKS_FILE.write_text(json.dumps(tasks, indent=2, default=str))
+        except (PermissionError, OSError) as e:
+            # MCP sandbox: project dir is read-only, fall back to TMPDIR
+            logger.warning(f"[Pipeline] Sandboxed write blocked, using TMPDIR: {e}")
+            try:
+                _TASKS_FILE_FALLBACK.write_text(json.dumps(tasks, indent=2, default=str))
+                logger.info(f"[Pipeline] Tasks saved to fallback: {_TASKS_FILE_FALLBACK}")
+            except Exception as e2:
+                logger.error(f"[Pipeline] TMPDIR fallback also failed: {e2}")
 
     def _update_task(self, task: PipelineTask):
         """Update single task in storage"""
@@ -815,6 +852,16 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             ]
             total_subtasks = len(pipeline_task.subtasks)
             self._emit_progress("@architect", f"✅ Plan ready: {total_subtasks} subtasks")
+
+            # MARKER_117_2A_FIX_D: Emit architect plan details to chat
+            # Previously plan was only saved to pipeline_task.results, invisible in UI
+            subtask_list = "\n".join([
+                f"  {i+1}. {st.description[:80]}"
+                for i, st in enumerate(pipeline_task.subtasks[:8])
+            ])
+            if total_subtasks > 8:
+                subtask_list += f"\n  ... +{total_subtasks - 8} more"
+            self._emit_progress("@architect", f"📋 Plan:\n{subtask_list}")
             pipeline_task.status = "executing"
             self._update_task(pipeline_task)
 
@@ -917,6 +964,18 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     subtask.context = {}
                 subtask.context.update(research)
 
+                # MARKER_117_2A_FIX_D: Emit research summary to chat
+                # Previously research was only stored in subtask.context, invisible in UI
+                if subtask.visible:
+                    confidence = research.get("confidence", "N/A")
+                    insights = research.get("insights", [])
+                    insights_preview = "; ".join(str(ins)[:60] for ins in insights[:3])
+                    self._emit_progress(
+                        "@researcher",
+                        f"🔍 Research done (confidence: {confidence}): {insights_preview}",
+                        i+1, total_subtasks
+                    )
+
                 # Recursive: if researcher has further questions with low confidence
                 if research.get("confidence", 1.0) < 0.7:
                     for fq in research.get("further_questions", [])[:2]:  # Max 2 recursions
@@ -939,6 +998,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # Emit completion based on visibility flags
             if subtask.visible:
                 self._emit_progress("@coder", f"✅ Done: {subtask.marker or f'step_{i+1}'}", i+1, total_subtasks)
+                # MARKER_117_2A_FIX_D: Emit coder result preview to chat
+                # Previously only marker name was emitted, not the actual result
+                if result and isinstance(result, str) and len(result) > 10:
+                    result_preview = result[:300].replace('\n', ' ')
+                    if len(result) > 300:
+                        result_preview += "..."
+                    self._emit_progress("@coder", f"💻 Result: {result_preview}", i+1, total_subtasks)
 
             # MARKER_104_STREAM_VISIBILITY: Emit stream event with result if stream_result=True
             if subtask.stream_result and pipeline_task.visible_to_user:
@@ -1003,6 +1069,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         subtask.context = {}
                     subtask.context.update(research)
 
+                    # MARKER_117_2A_FIX_D: Emit research summary (parallel path)
+                    if subtask.visible:
+                        confidence = research.get("confidence", "N/A")
+                        insights = research.get("insights", [])
+                        insights_preview = "; ".join(str(ins)[:60] for ins in insights[:3])
+                        self._emit_progress(
+                            "@researcher",
+                            f"🔍 [P] Research done (confidence: {confidence}): {insights_preview}",
+                            idx+1, total_subtasks
+                        )
+
                     # Recursive research for low confidence
                     if research.get("confidence", 1.0) < 0.7:
                         for fq in research.get("further_questions", [])[:2]:
@@ -1019,6 +1096,12 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 # MARKER_104_STREAM_VISIBILITY: Emit based on visibility flags
                 if subtask.visible:
                     self._emit_progress("@coder", f"✅ [P] Done: {subtask.marker or f'step_{idx+1}'}", idx+1, total_subtasks)
+                    # MARKER_117_2A_FIX_D: Emit coder result preview (parallel path)
+                    if result and isinstance(result, str) and len(result) > 10:
+                        result_preview = result[:300].replace('\n', ' ')
+                        if len(result) > 300:
+                            result_preview += "..."
+                        self._emit_progress("@coder", f"💻 [P] Result: {result_preview}", idx+1, total_subtasks)
 
                 logger.info(f"[Pipeline] Parallel subtask {idx+1}/{total_subtasks} completed")
 
@@ -1085,6 +1168,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         # LLMCallTool.execute is synchronous
         # MARKER_117_PROVIDER: Pass model_source for provider routing
+        # MARKER_117_2B_INJECT: Inject chat context so architect sees recent messages/bugs
         call_args = {
             "model": model,
             "messages": [
@@ -1092,7 +1176,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 {"role": "user", "content": f"Phase type: {phase_type}\n\nTask to break down:\n{task}"}
             ],
             "temperature": temperature,
-            "max_tokens": 2000
+            "max_tokens": 2000,
+            "inject_context": {
+                "chat_id": self.chat_id,
+                "chat_limit": 5,
+                "semantic_query": task,
+                "semantic_limit": 3,
+                "include_prefs": True,
+                "compress": True
+            }
         }
         if self.provider_override:
             call_args["model_source"] = self.provider_override
@@ -1162,6 +1254,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             "temperature": temperature,
             "max_tokens": 1500,
             "inject_context": {
+                "chat_id": self.chat_id,
+                "chat_limit": 3,
                 "semantic_query": question,
                 "semantic_limit": 5,
                 "include_prefs": True,

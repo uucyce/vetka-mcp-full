@@ -277,7 +277,7 @@ class LLMCallTool(BaseMCPTool):
             async def emit_async():
                 await socketio.emit('group_message', message_data, room=room)
 
-            # Run in event loop if available, otherwise skip
+            # Run in event loop if available, otherwise fallback to HTTP POST
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
@@ -287,7 +287,24 @@ class LLMCallTool(BaseMCPTool):
                     # Run directly
                     asyncio.run(emit_async())
             except Exception as e:
-                logger.debug(f"[LLM_CALL_TOOL] Could not emit to chat (no event loop): {e}")
+                # MARKER_117_2A_FIX_C: Upgraded from debug to warning + HTTP fallback
+                # When called from ThreadPoolExecutor (pipeline context), event loop
+                # is not available. Fall back to HTTP POST to group chat endpoint.
+                logger.warning(f"[LLM_CALL_TOOL] SocketIO emit failed (no event loop): {e}")
+                try:
+                    import httpx
+                    with httpx.Client(timeout=5.0) as http_client:
+                        http_client.post(
+                            f"http://localhost:5001/api/debug/mcp/groups/{LIGHTNING_CHAT_ID}/send",
+                            json={
+                                "agent_id": "vetka_internal",
+                                "content": content,
+                                "message_type": message_type
+                            }
+                        )
+                    logger.debug(f"[LLM_CALL_TOOL] HTTP fallback emit succeeded")
+                except Exception as http_err:
+                    logger.warning(f"[LLM_CALL_TOOL] HTTP fallback also failed: {http_err}")
 
         except Exception as e:
             logger.warning(f"[LLM_CALL_TOOL] Failed to emit to chat: {e}")
@@ -415,6 +432,27 @@ class LLMCallTool(BaseMCPTool):
                     context_parts.append(f"### Semantic Search: '{semantic_query}'\n" + "\n\n".join(search_text))
             except Exception as e:
                 logger.warning(f"[INJECT_CONTEXT] Semantic search error: {e}")
+
+        # MARKER_117_2B_INJECT: 6. Recent chat messages for pipeline context
+        chat_id = inject_config.get("chat_id")
+        if chat_id:
+            try:
+                from src.chat.chat_history_manager import get_chat_history_manager
+                manager = get_chat_history_manager()
+                max_msgs = inject_config.get("chat_limit", 10)
+                digest = manager.get_chat_digest(chat_id, max_messages=max_msgs)
+                recent = digest.get("recent_messages", [])
+                if recent:
+                    msg_lines = []
+                    for m in recent[-max_msgs:]:
+                        sender = m.get("sender_id", m.get("sender", "?"))
+                        text = m.get("content", "")[:200]
+                        ts = m.get("timestamp", "")[:19]
+                        msg_lines.append(f"[{ts}] {sender}: {text}")
+                    context_parts.append(f"### Recent Chat Messages\n" + "\n".join(msg_lines))
+                    logger.debug(f"[INJECT_CONTEXT] Added {len(recent)} chat messages from {chat_id[:8]}...")
+            except Exception as e:
+                logger.warning(f"[INJECT_CONTEXT] Chat history error: {e}")
 
         # Combine all context
         if not context_parts:
