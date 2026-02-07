@@ -33,9 +33,11 @@ from typing import Optional, Dict, Any, List
 # FIX_95.8: Setup proper logging for TripleWrite errors
 logger = logging.getLogger(__name__)
 
-# Weaviate
+# Weaviate v4 API (MARKER_117.7C: migrated from v3)
 try:
     import weaviate
+    from weaviate.classes.config import Configure, Property, DataType
+    from weaviate.classes.data import DataObject
     WEAVIATE_AVAILABLE = True
 except ImportError:
     WEAVIATE_AVAILABLE = False
@@ -131,7 +133,9 @@ class TripleWriteManager:
         return False
 
     def _init_weaviate(self):
-        """Initialize Weaviate client and ensure schema exists."""
+        """Initialize Weaviate client and ensure schema exists.
+        MARKER_117.7C: Migrated from v3 Client(url) to v4 connect_to_local().
+        """
         self.weaviate_client = None
 
         if not WEAVIATE_AVAILABLE:
@@ -139,7 +143,14 @@ class TripleWriteManager:
             return
 
         try:
-            self.weaviate_client = weaviate.Client(self.weaviate_url)
+            # MARKER_117.7C: Weaviate v4 API — connect_to_local instead of Client(url)
+            # Parse host and port from URL (e.g. "http://localhost:8080")
+            url_clean = self.weaviate_url.replace("http://", "").replace("https://", "")
+            parts = url_clean.split(":")
+            host = parts[0] if parts else "localhost"
+            port = int(parts[1]) if len(parts) > 1 else 8080
+
+            self.weaviate_client = weaviate.connect_to_local(host=host, port=port)
 
             # Check connection
             if not self.weaviate_client.is_ready():
@@ -149,55 +160,42 @@ class TripleWriteManager:
 
             # Ensure VetkaLeaf class exists with correct schema
             self._ensure_vetka_leaf_schema()
+            logger.info("[TripleWrite] Weaviate: AVAILABLE (v4 API)")
 
         except Exception as e:
             logger.error(f"[TripleWrite] Weaviate init error: {e}")
             self.weaviate_client = None
 
     def _ensure_vetka_leaf_schema(self):
-        """Create or update VetkaLeaf class with file-oriented schema."""
+        """Create or update VetkaLeaf collection with file-oriented schema.
+        MARKER_117.7C: Migrated from v3 schema API to v4 collections API.
+        """
         if not self.weaviate_client:
             return
 
         try:
-            schema = self.weaviate_client.schema.get()
-            existing_classes = [c['class'] for c in schema.get('classes', [])]
+            # Weaviate v4 API: list collections
+            existing_collections = [c.name for c in self.weaviate_client.collections.list_all().values()]
 
-            # Correct schema for files
-            file_schema = {
-                "class": "VetkaLeaf",
-                "vectorizer": "none",  # We provide our own vectors
-                "properties": [
-                    {"name": "file_path", "dataType": ["text"], "description": "Full relative path"},
-                    {"name": "file_name", "dataType": ["text"], "description": "File name only"},
-                    {"name": "content", "dataType": ["text"], "description": "File content (truncated)"},
-                    {"name": "file_type", "dataType": ["text"], "description": "Extension without dot"},
-                    {"name": "depth", "dataType": ["int"], "description": "Directory depth"},
-                    {"name": "size", "dataType": ["int"], "description": "File size in bytes"},
-                    {"name": "created_at", "dataType": ["date"], "description": "Index timestamp"},
-                    {"name": "modified_at", "dataType": ["date"], "description": "File mtime"}
-                ]
-            }
-
-            if 'VetkaLeaf' not in existing_classes:
-                logger.info("[TripleWrite] Creating VetkaLeaf class...")
-                self.weaviate_client.schema.create_class(file_schema)
-                logger.info("[TripleWrite] VetkaLeaf class created!")
+            if 'VetkaLeaf' not in existing_collections:
+                logger.info("[TripleWrite] Creating VetkaLeaf collection (v4 API)...")
+                self.weaviate_client.collections.create(
+                    name="VetkaLeaf",
+                    vectorizer_config=Configure.Vectorizer.none(),
+                    properties=[
+                        Property(name="file_path", data_type=DataType.TEXT, description="Full relative path"),
+                        Property(name="file_name", data_type=DataType.TEXT, description="File name only"),
+                        Property(name="content", data_type=DataType.TEXT, description="File content (truncated)"),
+                        Property(name="file_type", data_type=DataType.TEXT, description="Extension without dot"),
+                        Property(name="depth", data_type=DataType.INT, description="Directory depth"),
+                        Property(name="size", data_type=DataType.INT, description="File size in bytes"),
+                        Property(name="created_at", data_type=DataType.DATE, description="Index timestamp"),
+                        Property(name="modified_at", data_type=DataType.DATE, description="File mtime")
+                    ]
+                )
+                logger.info("[TripleWrite] VetkaLeaf collection created!")
             else:
-                # Check if schema is correct (has file_path property)
-                existing_props = []
-                for cls in schema.get('classes', []):
-                    if cls['class'] == 'VetkaLeaf':
-                        existing_props = [p['name'] for p in cls.get('properties', [])]
-                        break
-
-                if 'file_path' not in existing_props:
-                    logger.info("[TripleWrite] VetkaLeaf has wrong schema, recreating...")
-                    # Delete old class with wrong schema
-                    self.weaviate_client.schema.delete_class('VetkaLeaf')
-                    # Create new with correct schema
-                    self.weaviate_client.schema.create_class(file_schema)
-                    logger.info("[TripleWrite] VetkaLeaf class recreated with file schema!")
+                logger.info("[TripleWrite] VetkaLeaf collection exists")
         except Exception as e:
             logger.error(f"[TripleWrite] Schema setup error: {e}")
 
@@ -364,7 +362,7 @@ class TripleWriteManager:
                 return dt_str.replace(' ', 'T').split('.')[0] + '.000000Z'
             return dt_str
 
-        data_object = {
+        properties = {
             'file_path': file_path,
             'file_name': file_name,
             'content': content,
@@ -375,17 +373,16 @@ class TripleWriteManager:
             'modified_at': to_rfc3339(modified_at)
         }
 
-        # Try to update existing, otherwise create
+        # MARKER_117.7C: Weaviate v4 API — use collections.get() + data.insert/replace
+        collection = self.weaviate_client.collections.get("VetkaLeaf")
+
+        # Try to replace existing (upsert pattern)
         try:
-            existing = self.weaviate_client.data_object.get_by_id(
-                file_id,
-                class_name='VetkaLeaf'
-            )
+            existing = collection.data.get_by_id(file_id)
             if existing:
-                self.weaviate_client.data_object.update(
+                collection.data.replace(
                     uuid=file_id,
-                    class_name='VetkaLeaf',
-                    data_object=data_object,
+                    properties=properties,
                     vector=embedding
                 )
                 return True
@@ -394,14 +391,13 @@ class TripleWriteManager:
             logger.debug(f"[TripleWrite] Object {file_id} not found, creating new: {e}")
 
         # Create new
-        self.weaviate_client.data_object.create(
+        collection.data.insert(
             uuid=file_id,
-            class_name='VetkaLeaf',
-            data_object=data_object,
+            properties=properties,
             vector=embedding
         )
         # FIX_96.5: Log successful Weaviate write
-        logger.info(f"[TripleWrite] ✅ Weaviate write OK: {file_name}")
+        logger.info(f"[TripleWrite] \u2705 Weaviate write OK: {file_name}")
         return True
 
     def _write_weaviate(

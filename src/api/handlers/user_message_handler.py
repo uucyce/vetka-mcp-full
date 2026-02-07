@@ -873,11 +873,13 @@ def register_user_message_handler(sio, app=None):
                     }, to=sid)
 
                     # Dispatch pipeline in background
+                    # MARKER_117.7A: Pass client_chat_id so pipeline can emit progress to chat
                     asyncio.create_task(_dispatch_solo_system_command(
                         sio=sio,
                         sid=sid,
                         agent_id=resolved_agent,
                         content=text,
+                        chat_id=client_chat_id,
                     ))
                     return  # Skip normal model routing
             except ImportError:
@@ -2349,12 +2351,16 @@ IMPORTANT: Return ONLY plain text. Do NOT use JSON format. Do NOT use markdown c
 
 
 # MARKER_117_3B: Solo chat system command dispatch
-async def _dispatch_solo_system_command(sio, sid: str, agent_id: str, content: str):
+# MARKER_117.7A: Added chat_id parameter to pass client_chat_id for pipeline progress
+async def _dispatch_solo_system_command(sio, sid: str, agent_id: str, content: str, chat_id: str = None):
     """
     Phase 117.3b: Dispatch system command from solo chat to Mycelium pipeline.
 
     Unlike group dispatch, solo chat streams results via SocketIO to=sid
     instead of HTTP POST to group endpoint.
+
+    Args:
+        chat_id: Optional client-provided chat_id for pipeline progress emission (MARKER_117.7A)
     """
     import re as _re
 
@@ -2371,10 +2377,10 @@ async def _dispatch_solo_system_command(sio, sid: str, agent_id: str, content: s
     try:
         from src.orchestration.agent_pipeline import AgentPipeline
 
-        # Pipeline uses chat_id for HTTP-based streaming to group chats.
-        # For solo, we don't have a group_id, so we use a placeholder.
-        # The real-time feedback goes via SocketIO emit below.
-        pipeline = AgentPipeline(chat_id=None)
+        # MARKER_117.7A: Pass client_chat_id so pipeline can emit progress
+        # Previously was None → HTTP POST to /groups/None/send → timeout 5s
+        # Now uses client-provided chat_id for proper progress emission
+        pipeline = AgentPipeline(chat_id=chat_id)
         result = await pipeline.execute(task_text, phase_type)
 
         # Build expanded report

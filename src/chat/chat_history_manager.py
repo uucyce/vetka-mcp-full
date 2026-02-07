@@ -298,7 +298,8 @@ class ChatHistoryManager:
             file_name = normalized_path
 
         # Phase 74.10: Strip display_name to prevent trailing space issues
-        clean_display_name = display_name.strip() if display_name else None
+        # MARKER_117.7B: Fallback for display_name — never store None (prevents "unknown" in UI)
+        clean_display_name = (display_name.strip() if display_name else None) or f"Chat {datetime.now().strftime('%H:%M')}"
 
         # MARKER_109_13: Build metadata with group_id for stable lookup
         chat_metadata = {}

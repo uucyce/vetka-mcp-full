@@ -373,6 +373,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         try:
             import httpx
 
+            # MARKER_117.7A: Guard against None chat_id (solo mode without client_chat_id)
+            if not self.chat_id:
+                logger.debug(f"[Pipeline] No chat_id, skip HTTP emit: {role}: {message[:80]}")
+                return
+
             # MARKER_117.6C: Show which model is executing
             model_tag = ""
             if model:
