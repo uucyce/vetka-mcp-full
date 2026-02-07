@@ -1,10 +1,10 @@
 /**
  * MentionPopup - Dropdown for @mention autocomplete in chat input.
- * Shows group participants in group mode, tracked models in solo mode.
- * Dynamically filters based on user input.
+ * Shows system commands (always), group participants (group mode),
+ * or tracked models (solo mode).
  *
  * @status active
- * @phase 96
+ * @phase 117.3b
  * @depends react, lucide-react, MENTION_ALIASES
  * @used_by MessageInput
  */
@@ -22,6 +22,9 @@ import {
   Search,
   Users,
   Bot,
+  Flame,
+  Stethoscope,
+  GitBranch,
 } from 'lucide-react';
 import { MENTION_ALIASES } from '../../types/chat';
 
@@ -38,6 +41,37 @@ const ICONS: Record<string, React.ReactNode> = {
   Search: <Search size={14} />,
   Users: <Users size={14} />,
   Bot: <Bot size={14} />,
+};
+
+// MARKER_117_3B: System commands — always visible in dropdown
+const SYSTEM_COMMANDS = [
+  { alias: '@dragon', label: 'Dragon (Orchestrator)', icon: <Flame size={14} />, searchAliases: ['dragon', 'build', 'fix'] },
+  { alias: '@doctor', label: 'Doctor / Help (Diagnostic)', icon: <Stethoscope size={14} />, searchAliases: ['doctor', 'doc', 'help', 'support', 'diagnose'] },
+  { alias: '@pipeline', label: 'Mycelium Pipeline', icon: <GitBranch size={14} />, searchAliases: ['pipeline', 'mycelium'] },
+];
+
+// Shared button style
+const btnStyle: React.CSSProperties = {
+  width: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  padding: '10px 12px',
+  background: 'transparent',
+  border: 'none',
+  borderBottom: '1px solid #222',
+  cursor: 'pointer',
+  textAlign: 'left',
+};
+
+// Shared section header style
+const headerStyle: React.CSSProperties = {
+  padding: '6px 12px',
+  fontSize: 10,
+  color: '#666',
+  background: '#111',
+  textTransform: 'uppercase',
+  letterSpacing: 1,
 };
 
 // Phase 80.22: Group participant type with model info
@@ -62,181 +96,108 @@ interface Props {
 
 export function MentionPopup({ filter, onSelect, groupParticipants, isGroupMode, soloModels }: Props) {
   // MARKER_94.7_MENTION_POPUP: @ mention popup component
-  // Phase 80.22: Dynamic mention dropdown based on group mode
+  // Phase 117.3b: Unified popup with system commands always on top
+
+  // Filter system commands by typed text (including searchAliases like 'help' → doctor)
+  const filterLower = filter.toLowerCase();
+  const filteredCommands = SYSTEM_COMMANDS.filter(cmd =>
+    cmd.alias.toLowerCase().includes(filterLower) ||
+    cmd.label.toLowerCase().includes(filterLower) ||
+    cmd.searchAliases.some(a => a.includes(filterLower))
+  );
+
+  // Build context-specific items below system commands
+  let contextItems: React.ReactNode = null;
+  let contextHeader: string | null = null;
+  let hasContextItems = false;
 
   // Phase 80.30: Solo chat mode with tracked models
   if (!isGroupMode && soloModels && soloModels.length > 0) {
     const filteredModels = soloModels.filter(model =>
       model.toLowerCase().includes(filter.toLowerCase())
     );
-
-    if (filteredModels.length === 0) {
-      return null;
+    if (filteredModels.length > 0) {
+      hasContextItems = true;
+      contextHeader = 'Models in this chat';
+      contextItems = filteredModels.map((model) => (
+        <button
+          key={model}
+          onClick={() => onSelect(`@${model}`)}
+          style={btnStyle}
+          onMouseEnter={(e) => (e.currentTarget.style.background = '#222')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        >
+          <span style={{ color: '#8a8a8a' }}>{ICONS.Bot}</span>
+          <div>
+            <div style={{ color: '#e0e0e0', fontSize: 13 }}>@{model.split('/').pop()}</div>
+            <div style={{ color: '#666', fontSize: 11 }}>{model}</div>
+          </div>
+        </button>
+      ));
     }
-
-    return (
-      <div style={{
-        position: 'absolute',
-        bottom: '100%',
-        left: 12,
-        right: 12,
-        marginBottom: 8,
-        background: '#1a1a1a',
-        border: '1px solid #333',
-        borderRadius: 8,
-        overflow: 'hidden',
-        boxShadow: '0 -4px 20px rgba(0,0,0,0.5)',
-        maxHeight: 300,
-        overflowY: 'auto',
-      }}>
-        <div style={{
-          padding: '6px 12px',
-          fontSize: 10,
-          color: '#666',
-          background: '#111',
-          textTransform: 'uppercase',
-          letterSpacing: 1,
-        }}>
-          Models in this chat
-        </div>
-        {filteredModels.map((model) => (
-          <button
-            key={model}
-            onClick={() => onSelect(`@${model}`)}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '10px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: '1px solid #222',
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#222')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <span style={{ color: '#8a8a8a' }}>{ICONS.Bot}</span>
-            <div>
-              <div style={{ color: '#e0e0e0', fontSize: 13 }}>@{model.split('/').pop()}</div>
-              <div style={{ color: '#666', fontSize: 11 }}>{model}</div>
-            </div>
-          </button>
-        ))}
-      </div>
-    );
   }
 
-  // In group mode with participants - show ONLY dynamic participants
+  // In group mode with participants
   if (isGroupMode && groupParticipants && groupParticipants.length > 0) {
-    // Build dynamic entries from group participants
     const dynamicParticipants = groupParticipants
       .filter(p => {
-        // Filter by search text
         const alias = p.agent_id.replace('@', '').toLowerCase();
         const displayName = p.display_name?.toLowerCase() || '';
         return alias.includes(filter.toLowerCase()) || displayName.includes(filter.toLowerCase());
       })
       .map(p => ({
-        alias: p.agent_id, // e.g., "@PM"
-        label: p.display_name || p.agent_id, // e.g., "PM (GPT-4o)"
+        alias: p.agent_id,
+        label: p.display_name || p.agent_id,
         role: p.role,
       }));
 
-    // Always include Hostess in group mode (if matches filter)
     const showHostess = 'hostess'.includes(filter.toLowerCase());
 
-    if (dynamicParticipants.length === 0 && !showHostess) {
-      return null;
+    if (dynamicParticipants.length > 0 || showHostess) {
+      hasContextItems = true;
+      contextHeader = 'Group Members';
+      contextItems = (
+        <>
+          {dynamicParticipants.map(({ alias, label }) => (
+            <button
+              key={alias}
+              onClick={() => onSelect(alias)}
+              style={btnStyle}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#222')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <span style={{ color: '#8a8a8a' }}>{ICONS.Bot}</span>
+              <div>
+                <div style={{ color: '#e0e0e0', fontSize: 13 }}>{alias}</div>
+                <div style={{ color: '#666', fontSize: 11 }}>{label}</div>
+              </div>
+            </button>
+          ))}
+          {showHostess && (
+            <button
+              key="@hostess"
+              onClick={() => onSelect('@hostess')}
+              style={btnStyle}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#222')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <span style={{ color: '#8a8a8a' }}>{ICONS.Users}</span>
+              <div>
+                <div style={{ color: '#e0e0e0', fontSize: 13 }}>@hostess</div>
+                <div style={{ color: '#666', fontSize: 11 }}>Hostess (Orchestrator)</div>
+              </div>
+            </button>
+          )}
+        </>
+      );
     }
-
-    return (
-      <div style={{
-        position: 'absolute',
-        bottom: '100%',
-        left: 12,
-        right: 12,
-        marginBottom: 8,
-        background: '#1a1a1a',
-        border: '1px solid #333',
-        borderRadius: 8,
-        overflow: 'hidden',
-        boxShadow: '0 -4px 20px rgba(0,0,0,0.5)',
-        maxHeight: 300,
-        overflowY: 'auto',
-      }}>
-        <div style={{
-          padding: '6px 12px',
-          fontSize: 10,
-          color: '#666',
-          background: '#111',
-          textTransform: 'uppercase',
-          letterSpacing: 1,
-        }}>
-          Group Members
-        </div>
-        {/* Phase 80.22: Dynamic participants from group */}
-        {dynamicParticipants.map(({ alias, label }) => (
-          <button
-            key={alias}
-            onClick={() => onSelect(alias)}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '10px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: '1px solid #222',
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#222')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <span style={{ color: '#8a8a8a' }}>{ICONS.Bot}</span>
-            <div>
-              <div style={{ color: '#e0e0e0', fontSize: 13 }}>{alias}</div>
-              <div style={{ color: '#666', fontSize: 11 }}>{label}</div>
-            </div>
-          </button>
-        ))}
-        {/* Hostess - always available in group mode */}
-        {showHostess && (
-          <button
-            key="@hostess"
-            onClick={() => onSelect('@hostess')}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '10px 12px',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: '1px solid #222',
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#222')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <span style={{ color: '#8a8a8a' }}>{ICONS.Users}</span>
-            <div>
-              <div style={{ color: '#e0e0e0', fontSize: 13 }}>@hostess</div>
-              <div style={{ color: '#666', fontSize: 11 }}>Hostess (Orchestrator)</div>
-            </div>
-          </button>
-        )}
-      </div>
-    );
   }
 
-  // Phase 80.33: Empty solo chat - show invitation to add model
-  // No hardcoded fallback - only show models that are actually in the chat
+  // Nothing to show at all
+  if (filteredCommands.length === 0 && !hasContextItems) {
+    return null;
+  }
+
   return (
     <div style={{
       position: 'absolute',
@@ -249,18 +210,38 @@ export function MentionPopup({ filter, onSelect, groupParticipants, isGroupMode,
       borderRadius: 8,
       overflow: 'hidden',
       boxShadow: '0 -4px 20px rgba(0,0,0,0.5)',
-      padding: '16px 12px',
-      textAlign: 'center',
+      maxHeight: 300,
+      overflowY: 'auto',
     }}>
-      <div style={{ color: '#666', fontSize: 12, marginBottom: 8 }}>
-        {ICONS.Bot}
-      </div>
-      <div style={{ color: '#888', fontSize: 13, marginBottom: 4 }}>
-        No models in this chat yet
-      </div>
-      <div style={{ color: '#555', fontSize: 11 }}>
-        Select a model from the sidebar to start chatting
-      </div>
+      {/* MARKER_117_3B: System commands — always on top */}
+      {filteredCommands.length > 0 && (
+        <>
+          <div style={headerStyle}>System Commands</div>
+          {filteredCommands.map((cmd) => (
+            <button
+              key={cmd.alias}
+              onClick={() => onSelect(cmd.alias)}
+              style={btnStyle}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#2a1a1a')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <span style={{ color: '#e67e22' }}>{cmd.icon}</span>
+              <div>
+                <div style={{ color: '#e0e0e0', fontSize: 13 }}>{cmd.alias}</div>
+                <div style={{ color: '#666', fontSize: 11 }}>{cmd.label}</div>
+              </div>
+            </button>
+          ))}
+        </>
+      )}
+
+      {/* Context-specific items (models or group members) */}
+      {hasContextItems && contextHeader && (
+        <>
+          <div style={headerStyle}>{contextHeader}</div>
+          {contextItems}
+        </>
+      )}
     </div>
   );
 }

@@ -105,7 +105,7 @@ MCP_AGENTS = {
         "endpoint": "mcp/doctor",
         "icon": "stethoscope",
         "role": "Diagnostic",
-        "aliases": ["doctor", "doc", "mcp/doctor"],
+        "aliases": ["doctor", "doc", "help", "support", "mcp/doctor"],
     },
     "pipeline": {
         "name": "Mycelium Pipeline",
@@ -358,21 +358,9 @@ async def _dispatch_system_command(
         pipeline = AgentPipeline(chat_id=chat_id)
         result = await pipeline.execute(task_text, phase_type)
 
-        # Report completion
+        # Report completion — pipeline's _emit_to_chat already sent expanded report
         completed = result.get("results", {}).get("subtasks_completed", "?") if result else "?"
         total = result.get("results", {}).get("subtasks_total", "?") if result else "?"
-        status = result.get("status", "unknown") if result else "unknown"
-
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(
-                f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
-                json={
-                    "agent_id": agent_id,
-                    "content": f"\u2705 @{agent_id} complete: {completed}/{total} subtasks ({status})",
-                    "message_type": "system"
-                }
-            )
-
         print(f"[SYSTEM_CMD] @{agent_id} completed: {completed}/{total}")
 
     except Exception as e:

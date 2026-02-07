@@ -902,7 +902,21 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_104_MEMORY_STM: Log memory compression statistics
             self._log_stm_summary()
 
-            self._emit_progress("@pipeline", f"🎉 Pipeline complete! {completed}/{total} subtasks done")
+            # MARKER_117_3B: Expanded final report with subtask details
+            report_lines = [
+                f"📊 **Pipeline Report** — {completed}/{total} subtasks",
+                f"Phase: `{pipeline_task.phase_type}` | Order: `{plan.get('execution_order', 'sequential')}`",
+                "",
+            ]
+            for i, subtask in enumerate(pipeline_task.subtasks or []):
+                s_icon = "✅" if subtask.status == "done" else "❌"
+                marker = subtask.marker or f"step_{i+1}"
+                report_lines.append(f"{s_icon} **{marker}**: {subtask.description[:80]}")
+                if subtask.result:
+                    preview = str(subtask.result)[:200].replace('\n', ' ')
+                    report_lines.append(f"   └ {preview}")
+            report_lines.append(f"\n🎉 Pipeline complete!")
+            self._emit_to_chat("@pipeline", "\n".join(report_lines))
             # MARKER_102.28_END
 
             return asdict(pipeline_task)

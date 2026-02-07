@@ -844,6 +844,45 @@ def register_user_message_handler(sio, app=None):
                 f"[MENTIONS] Mode: {parsed_mentions['mode']}, Clean text: {clean_text[:50]}..."
             )
 
+            # MARKER_117_3B: Check for system commands BEFORE model routing
+            # @dragon, @doctor, @help etc. → dispatch to Mycelium pipeline
+            try:
+                from src.api.handlers.group_message_handler import MCP_AGENTS, HEARTBEAT_AGENTS
+                mention_target = parsed_mentions["mentions"][0]["target"].lower()
+
+                # Resolve alias (e.g., @help → doctor, @doc → doctor)
+                resolved_agent = None
+                if mention_target in MCP_AGENTS:
+                    resolved_agent = mention_target
+                else:
+                    for _aid, _info in MCP_AGENTS.items():
+                        if mention_target in _info.get("aliases", []):
+                            resolved_agent = _aid
+                            break
+
+                if resolved_agent and resolved_agent in HEARTBEAT_AGENTS:
+                    print(f"[MENTIONS] Phase 117.3b: System command @{mention_target} → @{resolved_agent} (solo chat)")
+
+                    # Notify user
+                    await sio.emit("agent_message", {
+                        "agent": resolved_agent,
+                        "model": "system",
+                        "content": f"\U0001f525 @{resolved_agent} activated. Pipeline starting...",
+                        "text": f"\U0001f525 @{resolved_agent} activated. Pipeline starting...",
+                        "node_id": request_node_id if 'request_node_id' in dir() else None,
+                    }, to=sid)
+
+                    # Dispatch pipeline in background
+                    asyncio.create_task(_dispatch_solo_system_command(
+                        sio=sio,
+                        sid=sid,
+                        agent_id=resolved_agent,
+                        content=text,
+                    ))
+                    return  # Skip normal model routing
+            except ImportError:
+                pass  # Graceful fallback if group_message_handler unavailable
+
             # If specific model mentioned, use it directly (NOT agent)
             if parsed_mentions["mode"] == "single" and parsed_mentions["models"]:
                 model_to_use = parsed_mentions["models"][0]
@@ -2307,3 +2346,67 @@ IMPORTANT: Return ONLY plain text. Do NOT use JSON format. Do NOT use markdown c
                 print(f"[CAM] Single agent CAM error (non-critical): {cam_error}")
 
         print(f"[SOCKET] Processing complete\n")
+
+
+# MARKER_117_3B: Solo chat system command dispatch
+async def _dispatch_solo_system_command(sio, sid: str, agent_id: str, content: str):
+    """
+    Phase 117.3b: Dispatch system command from solo chat to Mycelium pipeline.
+
+    Unlike group dispatch, solo chat streams results via SocketIO to=sid
+    instead of HTTP POST to group endpoint.
+    """
+    import re as _re
+
+    # Extract task text (remove @mention prefix)
+    task_text = _re.sub(r"@\w+\s*", "", content, count=1).strip()
+    if not task_text:
+        task_text = f"General {agent_id} diagnostic requested"
+
+    from src.api.handlers.group_message_handler import _SYSTEM_COMMAND_PHASES
+    phase_type = _SYSTEM_COMMAND_PHASES.get(agent_id, "build")
+
+    print(f"[SOLO_SYSTEM_CMD] @{agent_id} | phase={phase_type} | task={task_text[:80]}")
+
+    try:
+        from src.orchestration.agent_pipeline import AgentPipeline
+
+        # Pipeline uses chat_id for HTTP-based streaming to group chats.
+        # For solo, we don't have a group_id, so we use a placeholder.
+        # The real-time feedback goes via SocketIO emit below.
+        pipeline = AgentPipeline(chat_id=None)
+        result = await pipeline.execute(task_text, phase_type)
+
+        # Build expanded report
+        completed = result.get("results", {}).get("subtasks_completed", "?") if result else "?"
+        total = result.get("results", {}).get("subtasks_total", "?") if result else "?"
+        status = result.get("status", "unknown") if result else "unknown"
+
+        report_lines = [f"\u2705 @{agent_id} complete: {completed}/{total} subtasks ({status})"]
+
+        # Add subtask details
+        subtasks = result.get("subtasks", []) if result else []
+        for i, st in enumerate(subtasks[:5]):  # Max 5 subtasks in report
+            s_icon = "\u2705" if st.get("status") == "done" else "\u274c"
+            marker = st.get("marker") or f"step_{i+1}"
+            desc = st.get("description", "")[:80]
+            report_lines.append(f"  {s_icon} {marker}: {desc}")
+            if st.get("result"):
+                preview = str(st["result"])[:150].replace('\n', ' ')
+                report_lines.append(f"     \u2514 {preview}")
+
+        await sio.emit("agent_message", {
+            "agent": agent_id,
+            "model": "system",
+            "content": "\n".join(report_lines),
+            "text": "\n".join(report_lines),
+        }, to=sid)
+
+    except Exception as e:
+        print(f"[SOLO_SYSTEM_CMD] @{agent_id} failed: {e}")
+        await sio.emit("agent_message", {
+            "agent": agent_id,
+            "model": "system",
+            "content": f"\u274c @{agent_id} failed: {str(e)[:200]}",
+            "text": f"\u274c @{agent_id} failed: {str(e)[:200]}",
+        }, to=sid)
