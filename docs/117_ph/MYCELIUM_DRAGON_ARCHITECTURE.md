@@ -188,22 +188,52 @@ Phase 117.2e: Chat favorites + CAM integration
 
 ---
 
-## 7. WHAT GROK GOT RIGHT vs WRONG
+## 7. GROK ANALYSIS SCORECARD
 
-### Right (verified):
+### Existing infra (correctly identified):
 - Elisya + Elision sisters architecture
 - Artifact workflow for safe writes
 - Doctor tool for health checks
 - Yielding cycle in agent_pipeline
 - `LIGHTNING_CHAT_ID` streaming
 
-### Wrong (hallucinated):
-- `mycelium_engine.py` — doesn't exist (functionality in agent_pipeline.py)
-- `mycelium_heartbeat.py` — doesn't exist yet (we need to create it)
-- `mycelium_digest.json` — doesn't exist (use project_digest.json)
-- `Qwen3-235B` Arena Elo 1425 — exact benchmarks fabricated
-- `DeepSeek-V4-300B` — model doesn't exist (V3.2 is latest)
-- `GLM-5-200B` — model doesn't exist (GLM-4.7 is latest)
+### New components (correctly proposed for creation):
+- `mycelium_engine.py` — NEW: orchestration layer on top of agent_pipeline.py
+- `mycelium_heartbeat.py` — NEW: cron-triggered eval loop (OpenClaw-inspired)
+- `mycelium_digest.json` — NEW: separate from project_digest.json (tactical vs strategic)
+  - `project_digest.json` = strategic (phases, achievements, architecture) — Claude reads
+  - `mycelium_digest.json` = tactical (bug queue, runs, pass/fail, health) — Dragon reads
+  - Separation prevents Dragon overwrites during heartbeat from corrupting session context
+
+### Benchmarks (fabricated, don't trust):
+- `Qwen3-235B` Arena Elo 1425 — exact numbers invented
+- `DeepSeek-V4-300B` — model doesn't exist (V3.2 is latest on Polza)
+- `GLM-5-200B` — model doesn't exist (GLM-4.7 is latest on Polza)
+
+---
+
+## 8. SESSION HANDOFF (Phase 117.1 → 117.2)
+
+### Commit: `abc25a9a` — pushed to origin/main
+
+### What was done:
+1. **Multi-Provider MCP fix** — `_call_provider_sync()` routes to ANY provider (not just OpenRouter)
+2. **335 models verified** on Polza AI (Claude/Grok/GPT/Gemini/DeepSeek/Qwen/GLM/Kimi)
+3. **9 Dragon team presets** created and tested
+4. **Balance API research** — Grok prompt sent, response verified (DeepSeek schema wrong, Mistral unconfirmed)
+5. **This architecture doc** — unified plan for Mycelium anti-bug conveyor
+
+### Next session starts with:
+- **Phase 117.2a:** Fix SocketIO streaming in Mycelium pipeline
+- **Phase 117.2b:** Create `mycelium_heartbeat.py` + `mycelium_digest.json` + `bug_queue.json`
+- **Phase 117.2c:** Eval loop (tests → approve/reject → retry)
+- **Phase 117.2d:** First Dragon auto-fix run
+
+### Key files to read:
+- `docs/117_ph/MYCELIUM_DRAGON_ARCHITECTURE.md` (this file)
+- `data/templates/model_presets.json` (9 team presets)
+- `src/mcp/tools/llm_call_tool.py` (_call_provider_sync at line ~566)
+- `src/orchestration/agent_pipeline.py` (mycelium_pipeline at line ~1301)
 
 ---
 
