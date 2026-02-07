@@ -29,9 +29,12 @@ Think of Hostess as a smart receptionist who directs visitors to the right depar
 
 import json
 import re
+import logging
 from typing import Optional, Dict, Any, List
 import requests
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class HostessAgent:
@@ -267,45 +270,46 @@ class HostessAgent:
             },
         ]
 
-    def _find_available_model(self) -> str:
-        """Find first available Qwen model, with fallback chain"""
+    def _find_available_model(self) -> Optional[str]:
+        """
+        MARKER_118.4: Find available local model, but return None if none found.
+        No more hardcoded fallback to qwen2:7b — prevents blocking event loop
+        with unwanted local model calls when user hasn't selected a model.
+        """
         candidates = [
-            "qwen2.5:0.5b",  # Smallest and fastest
-            "qwen2.5:1.5b",  # Fallback
-            "qwen2:0.5b",  # Older version
-            "qwen2:1.5b",  # Older version
-            "qwen2:7b",  # Already installed in this setup
-            "llama3.2:1b",  # Other fast model
+            "qwen2.5:0.5b",
+            "qwen2.5:1.5b",
+            "qwen2:0.5b",
+            "qwen2:1.5b",
+            "qwen2:7b",
+            "llama3.2:1b",
         ]
 
         try:
-            resp = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
+            resp = requests.get(f"{self.ollama_url}/api/tags", timeout=2)
             if resp.status_code == 200:
                 data = resp.json()
                 available_models = [m["name"] for m in data.get("models", [])]
-                available_bases = [m.split(":")[0] for m in available_models]
 
-                print(f"[HOSTESS] Available models: {available_models[:5]}")
+                logger.debug(f"[HOSTESS] Available local models: {available_models[:5]}")
 
-                # Find first candidate available (exact match or base match)
                 for candidate in candidates:
-                    # Try exact match first
                     if candidate in available_models:
-                        print(f"[HOSTESS] Using model: {candidate}")
+                        logger.debug(f"[HOSTESS] Found local model: {candidate}")
                         return candidate
 
-                    # Try base match (e.g., "qwen2" for "qwen2:7b")
                     base = candidate.split(":")[0]
                     for model in available_models:
                         if model.startswith(base):
-                            print(f"[HOSTESS] Using model: {model} (matched {base})")
+                            logger.debug(f"[HOSTESS] Found local model: {model}")
                             return model
         except Exception as e:
-            print(f"[HOSTESS] Could not check available models: {e}")
+            logger.debug(f"[HOSTESS] Ollama not available: {e}")
 
-        # Default fallback - use qwen2:7b if available, else llama3.2:1b
-        print(f"[HOSTESS] Using default fallback model")
-        return "qwen2:7b"
+        # MARKER_118.4: Return None instead of hardcoded fallback
+        # This prevents blocking the event loop with unwanted Ollama calls
+        logger.info("[HOSTESS] No local model available — user should select a cloud model via @mention")
+        return None
 
     def process(self, user_message: str, context: Dict = None) -> Dict[str, Any]:
         """
@@ -326,6 +330,17 @@ class HostessAgent:
                 "task": <task description if applicable>
             }
         """
+
+        # MARKER_118.4: Guard — if no local model available, skip Ollama call
+        if not self.model:
+            logger.info("[HOSTESS] No model available — returning 'select_model' action")
+            return {
+                "action": "select_model",
+                "task": user_message,
+                "tool_used": "none",
+                "confidence": 0.0,
+                "reason": "No model selected. Use @mention to invite a cloud model or select from phone book.",
+            }
 
         # Build system prompt with available tools and rich context (Phase 44)
         system_prompt = self._build_system_prompt(context)

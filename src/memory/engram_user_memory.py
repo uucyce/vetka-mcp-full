@@ -333,6 +333,20 @@ class EngramUserMemory:
 
         return None
 
+    def get_all_preferences(self, user_id: str) -> Optional[dict]:
+        """
+        MARKER_118.5: Public method — returns all preferences for user as dict.
+        Called by llm_call_tool, context_dag_tool, vetka_mcp_bridge.
+        """
+        # Check RAM cache first
+        if user_id in self.ram_cache:
+            return self.ram_cache[user_id].to_dict()
+        # Fallback to Qdrant
+        prefs = self._qdrant_get_full(user_id)
+        if prefs:
+            return prefs.to_dict()
+        return None
+
     def _qdrant_get_full(self, user_id: str) -> Optional[UserPreferences]:
         """Retrieve full preferences from Qdrant."""
         if not self.qdrant or not QDRANT_AVAILABLE:

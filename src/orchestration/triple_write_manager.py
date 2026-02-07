@@ -373,29 +373,33 @@ class TripleWriteManager:
             'modified_at': to_rfc3339(modified_at)
         }
 
-        # MARKER_117.7C: Weaviate v4 API — use collections.get() + data.insert/replace
+        # MARKER_118.2: Atomic upsert — insert first, catch 422 → replace
+        # (Replaces MARKER_117.7C TOCTOU pattern that caused race condition / 422 errors)
         collection = self.weaviate_client.collections.get("VetkaLeaf")
 
-        # Try to replace existing (upsert pattern)
         try:
-            existing = collection.data.get_by_id(file_id)
-            if existing:
-                collection.data.replace(
-                    uuid=file_id,
-                    properties=properties,
-                    vector=embedding
-                )
-                return True
-        except Exception as e:
-            # Object doesn't exist, will create below
-            logger.debug(f"[TripleWrite] Object {file_id} not found, creating new: {e}")
+            # Try insert first (fast path for new objects)
+            collection.data.insert(
+                uuid=file_id,
+                properties=properties,
+                vector=embedding
+            )
+        except Exception as insert_err:
+            if "already exists" in str(insert_err).lower():
+                # Object exists → replace (atomic, no race condition)
+                try:
+                    collection.data.replace(
+                        uuid=file_id,
+                        properties=properties,
+                        vector=embedding
+                    )
+                except Exception as replace_err:
+                    logger.warning(f"[TripleWrite] Replace failed for {file_id}: {replace_err}")
+                    return False
+            else:
+                logger.warning(f"[TripleWrite] Insert failed for {file_id}: {insert_err}")
+                return False
 
-        # Create new
-        collection.data.insert(
-            uuid=file_id,
-            properties=properties,
-            vector=embedding
-        )
         # FIX_96.5: Log successful Weaviate write
         logger.info(f"[TripleWrite] \u2705 Weaviate write OK: {file_name}")
         return True

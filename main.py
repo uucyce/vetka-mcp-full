@@ -30,11 +30,17 @@ import logging
 from typing import Dict
 from src.memory.hostess_memory import HostessMemory
 
-# ✅ PHASE 56.2: Configure logging
+# MARKER_118.3: Configure logging — suppress noisy loggers EARLY
+# (Previously: basicConfig(INFO) ran before setup_logging → httpx flood)
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.WARNING, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
+# Set our own logger to INFO (we want to see our messages)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+# Suppress noisy third-party loggers immediately (before any imports trigger them)
+for _noisy in ['httpx', 'httpcore', 'urllib3', 'qdrant_client', 'weaviate', 'ollama', 'grpc']:
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 # Add project to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

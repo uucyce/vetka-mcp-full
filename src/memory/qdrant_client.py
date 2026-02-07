@@ -726,6 +726,19 @@ class QdrantVetkaClient:
                 vectors_config = VectorParams(size=size, distance=Distance[distance.upper()])
         return self.client.create_collection(collection_name=collection_name, vectors_config=vectors_config, **kwargs)
 
+    # MARKER_118.5: scroll + retrieve proxies — EngramUserMemory needs these
+    def scroll(self, collection_name: str, limit: int = 100, **kwargs):
+        """Proxy to underlying Qdrant client scroll"""
+        if not self.client:
+            raise RuntimeError("Qdrant client not initialized")
+        return self.client.scroll(collection_name=collection_name, limit=limit, **kwargs)
+
+    def retrieve(self, collection_name: str, ids: list, **kwargs):
+        """Proxy to underlying Qdrant client retrieve"""
+        if not self.client:
+            raise RuntimeError("Qdrant client not initialized")
+        return self.client.retrieve(collection_name=collection_name, ids=ids, **kwargs)
+
 
 # ===== MARKER_103.7: CHAT HISTORY PERSISTENCE =====
 
