@@ -962,6 +962,46 @@ async def list_tools() -> list[Tool]:
             }
         ),
         # MARKER_102.9_END
+        # MARKER_117_2C_HEARTBEAT: Heartbeat Engine tools (Phase 117.2c)
+        Tool(
+            name="vetka_heartbeat_tick",
+            description=(
+                "Execute one heartbeat tick: read new messages from group chat, "
+                "parse task triggers (@dragon, /task, /fix, /build, /research), "
+                "and dispatch Mycelium pipeline for each task. "
+                "Use dry_run=true to preview tasks without executing. "
+                "The heartbeat monitors MCP Dev group chat for autonomous task execution."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "group_id": {
+                        "type": "string",
+                        "description": "Group chat ID to monitor (default: MCP Dev group)"
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "If true, parse tasks but don't execute them (preview mode)",
+                        "default": False
+                    }
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="vetka_heartbeat_status",
+            description=(
+                "Get current Heartbeat Engine status: last tick time, total ticks, "
+                "tasks dispatched/completed/failed, recent run history. "
+                "Use to check if heartbeat is running and what it has processed."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        ),
+        # MARKER_117_2C_END
         # MARKER_108_4_MCP_REGISTER: Artifact management tools (Phase 108.4)
         Tool(
             name="vetka_edit_artifact",
@@ -1897,6 +1937,90 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 return [TextContent(type="text", text=f"❌ Pipeline error: {e}")]
             # MARKER_102.19_END
         # MARKER_102.10_END
+
+        # MARKER_117_2C_HEARTBEAT: Heartbeat tool handlers (Phase 117.2c)
+        elif name == "vetka_heartbeat_tick":
+            try:
+                from src.orchestration.mycelium_heartbeat import heartbeat_tick
+
+                group_id = arguments.get("group_id", None)
+                dry_run = arguments.get("dry_run", False)
+
+                kwargs = {"dry_run": dry_run}
+                if group_id:
+                    kwargs["group_id"] = group_id
+
+                result = await heartbeat_tick(**kwargs)
+
+                tick_num = result.get("tick", 0)
+                new_msgs = result.get("new_messages", 0)
+                tasks_found = result.get("tasks_found", 0)
+                tasks_dispatched = result.get("tasks_dispatched", 0)
+                duration = result.get("duration_ms", 0)
+                dr = " (DRY RUN)" if dry_run else ""
+
+                lines = [
+                    f"❤️ Heartbeat Tick #{tick_num}{dr}",
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                    f"New messages: {new_msgs}",
+                    f"Tasks found: {tasks_found}",
+                    f"Tasks dispatched: {tasks_dispatched}",
+                    f"Duration: {duration}ms",
+                ]
+
+                if result.get("results"):
+                    lines.append("\nTask Results:")
+                    for r in result["results"]:
+                        status = "✅" if r.get("success") else ("👀" if r.get("dry_run") else "❌")
+                        lines.append(f"  {status} [{r.get('trigger', '?')}] {r.get('task', '?')[:80]}")
+
+                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
+                return [TextContent(type="text", text="\n".join(lines))]
+
+            except Exception as e:
+                logger.error(f"[MCP] heartbeat_tick error: {e}")
+                return [TextContent(type="text", text=f"❌ Heartbeat error: {e}")]
+
+        elif name == "vetka_heartbeat_status":
+            try:
+                from src.orchestration.mycelium_heartbeat import get_heartbeat_status
+
+                status = get_heartbeat_status()
+
+                import time as _time
+                last_tick = status.get("last_tick_time", 0)
+                last_tick_str = _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(last_tick)) if last_tick else "never"
+
+                lines = [
+                    "❤️ Heartbeat Engine Status",
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                    f"Total ticks: {status.get('total_ticks', 0)}",
+                    f"Last tick: {last_tick_str}",
+                    f"Last message ID: {status.get('last_message_id', 'none')[:12] if status.get('last_message_id') else 'none'}...",
+                    f"Tasks dispatched: {status.get('tasks_dispatched', 0)}",
+                    f"Tasks completed: {status.get('tasks_completed', 0)}",
+                    f"Tasks failed: {status.get('tasks_failed', 0)}",
+                ]
+
+                recent = status.get("recent_runs", [])
+                if recent:
+                    lines.append(f"\nRecent runs ({len(recent)}):")
+                    for run in recent[-5:]:
+                        dr = " DRY" if run.get("dry_run") else ""
+                        lines.append(
+                            f"  Tick #{run.get('tick', '?')} @ {run.get('time', '?')} — "
+                            f"{run.get('new_messages', 0)} msgs, "
+                            f"{run.get('tasks_found', 0)} tasks, "
+                            f"{run.get('tasks_dispatched', 0)} dispatched{dr}"
+                        )
+
+                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
+                return [TextContent(type="text", text="\n".join(lines))]
+
+            except Exception as e:
+                logger.error(f"[MCP] heartbeat_status error: {e}")
+                return [TextContent(type="text", text=f"❌ Heartbeat status error: {e}")]
+        # MARKER_117_2C_END
 
         # MARKER_108_4_MCP_REGISTER: Artifact tool handlers (Phase 108.4)
         elif name == "vetka_edit_artifact":
