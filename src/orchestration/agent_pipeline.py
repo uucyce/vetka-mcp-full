@@ -1176,7 +1176,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     preview = str(subtask.result)[:200].replace('\n', ' ')
                     report_lines.append(f"   └ {preview}")
             report_lines.append(f"\n🎉 Pipeline complete!")
-            self._emit_to_chat("@pipeline", "\n".join(report_lines))
+            await self._emit_to_chat("@pipeline", "\n".join(report_lines))  # MARKER_120.1: was missing await
             # MARKER_102.28_END
 
             # MARKER_117.5A: Event-driven wakeup after pipeline completion
@@ -1565,7 +1565,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         try:
             from src.mcp.tools.web_search_tool import WebSearchTool
             web_tool = WebSearchTool()
-            web_result = web_tool.execute({"query": question, "max_results": 3})
+            # MARKER_120.4: Enrich query with tech keywords for better Tavily results
+            # Raw VETKA-specific questions return nothing; add technology context
+            tech_keywords = self._extract_library_names(question)
+            search_query = question[:150]
+            if tech_keywords:
+                search_query = f"{' '.join(tech_keywords)} {search_query}"
+            web_result = web_tool.execute({"query": search_query, "max_results": 3})
             if web_result.get("success"):
                 results = web_result.get("result", {}).get("results", [])
                 if results:
@@ -1748,12 +1754,14 @@ Execute this subtask. Provide clear, actionable output."""}
     # MARKER_102.7_END
 
     # MARKER_119.8_HELPER: Extract library names from task description
+    # MARKER_120.2: Enhanced with known frameworks + capitalized name detection
     @staticmethod
     def _extract_library_names(text: str) -> list:
         """Extract library/package names from text for Context7 lookup.
 
-        Looks for patterns like 'import X', 'using X', 'X library', etc.
-        Returns up to 3 unique library names, filtering common stopwords.
+        Looks for patterns like 'import X', 'using X', 'X library',
+        and known framework names (React, Three.js, Zustand, etc.).
+        Returns up to 5 unique library names, filtering common stopwords.
         """
         import re
 
@@ -1765,29 +1773,57 @@ Execute this subtask. Provide clear, actionable output."""}
             "build", "test", "error", "bug", "feature", "new", "old", "use",
             "using", "import", "module", "package", "library", "framework",
             "vetka", "marker", "phase", "research", "context", "system",
+            "check", "look", "find", "should", "must", "need", "make",
+            "component", "components", "canvas", "client", "src", "app",
+        }
+
+        # Known frameworks/libraries that Context7 has docs for
+        known_libs = {
+            "react": "react", "vue": "vue", "angular": "angular",
+            "svelte": "svelte", "nextjs": "nextjs", "next.js": "nextjs",
+            "three.js": "threejs", "threejs": "threejs", "three": "threejs",
+            "zustand": "zustand", "redux": "redux", "mobx": "mobx",
+            "fastapi": "fastapi", "django": "django", "flask": "flask",
+            "express": "express", "nestjs": "nestjs",
+            "tailwindcss": "tailwindcss", "tailwind": "tailwindcss",
+            "typescript": "typescript", "prisma": "prisma",
+            "tauri": "tauri", "electron": "electron",
+            "numpy": "numpy", "pandas": "pandas", "pytorch": "pytorch",
+            "tensorflow": "tensorflow", "scipy": "scipy",
+            "httpx": "httpx", "requests": "requests", "axios": "axios",
+            "socketio": "socketio", "socket.io": "socketio",
+            "qdrant": "qdrant", "weaviate": "weaviate",
+            "ffmpeg": "ffmpeg", "whisper": "whisper",
+            "pydantic": "pydantic", "sqlalchemy": "sqlalchemy",
         }
 
         names = set()
+        text_lower = text.lower()
 
-        # Pattern: import X / from X
+        # Pattern 1: Known framework names (case-insensitive scan)
+        for keyword, lib_name in known_libs.items():
+            if keyword in text_lower:
+                names.add(lib_name)
+
+        # Pattern 2: import X / from X
         for m in re.finditer(r'(?:import|from)\s+([a-zA-Z][a-zA-Z0-9_-]+)', text):
             name = m.group(1).lower().split(".")[0]
             if name not in stopwords and len(name) > 1:
                 names.add(name)
 
-        # Pattern: using X / with X framework/library
+        # Pattern 3: using X / with X framework/library
         for m in re.finditer(r'(?:using|with)\s+([a-zA-Z][a-zA-Z0-9_.-]+)\s*(?:library|framework|package|sdk)?', text, re.IGNORECASE):
             name = m.group(1).lower().rstrip(".")
             if name not in stopwords and len(name) > 1:
                 names.add(name)
 
-        # Pattern: X library/framework/package
-        for m in re.finditer(r'([a-zA-Z][a-zA-Z0-9_.-]+)\s+(?:library|framework|package|sdk|docs|documentation)', text, re.IGNORECASE):
+        # Pattern 4: X library/framework/package/docs
+        for m in re.finditer(r'([a-zA-Z][a-zA-Z0-9_.-]+)\s+(?:library|framework|package|sdk|docs|documentation|api|hook|hooks|store)', text, re.IGNORECASE):
             name = m.group(1).lower().rstrip(".")
             if name not in stopwords and len(name) > 1:
                 names.add(name)
 
-        return list(names)[:3]
+        return list(names)[:5]
     # MARKER_119.8_HELPER_END
 
 

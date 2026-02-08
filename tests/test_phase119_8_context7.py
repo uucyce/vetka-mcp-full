@@ -160,9 +160,26 @@ class TestExtractLibraryNames:
         names = self._extract("")
         assert names == []
 
-    def test_max_three(self):
+    def test_known_libs_react(self):
+        """Known framework names detected without import/using keywords."""
+        names = self._extract("Fix the React component in TreeCanvas.tsx")
+        assert "react" in names
+
+    def test_known_libs_threejs(self):
+        """Three.js detected from task description."""
+        names = self._extract("Raycasting performance in Three.js scene with Zustand store")
+        assert "threejs" in names
+        assert "zustand" in names
+
+    def test_known_libs_fastapi(self):
+        """FastAPI detected in backend task."""
+        names = self._extract("Add a new FastAPI endpoint for file upload with httpx client")
+        assert "fastapi" in names
+        assert "httpx" in names
+
+    def test_max_five(self):
         names = self._extract("import fastapi\nimport numpy\nimport pandas\nimport scipy\nimport torch")
-        assert len(names) <= 3
+        assert len(names) <= 5
 
 
 # --- TestCoderDocsIntegration ---
