@@ -19,7 +19,7 @@ Version: 1.0.0
 @used_by: MCP tools, orchestrator
 
 MARKER_108_7_ARC_MGC: Phase 108.7 Integration
-- MGCGraphCache for hierarchical state management (Gen0→Gen1→Gen2)
+- MGCCache (canonical singleton) for hierarchical state management
 - HOPE integration for frequency-layer hypotheses (LOW/MID/HIGH)
 - ELISION compression for suggestion payloads
 - Request pooling (PgBouncer-like) for thundering herd mitigation
@@ -42,85 +42,8 @@ from io import StringIO
 
 logger = logging.getLogger(__name__)
 
-
-# =============================================================================
-# MARKER_108_7_ARC_MGC: MGC Graph Cache
-# =============================================================================
-
-class MGCGraphCache:
-    """
-    Multi-Generational Cache for ARC graph state.
-
-    Implements cascading replication:
-    - Gen0: RAM hot (active transformations)
-    - Gen1: Qdrant mid (recent patterns)
-    - Gen2: Archive (historical successes)
-
-    Mitigates: vicious cycles, thundering herd, 1690+ file scale
-    """
-
-    MGC_GENS = 3
-    REQUEST_POOL_SIZE = 10
-
-    def __init__(self):
-        self.generations = [{} for _ in range(self.MGC_GENS)]
-        self.request_queue = deque(maxlen=self.REQUEST_POOL_SIZE)
-        self._stats = {"hits": 0, "misses": 0, "cascades": 0}
-
-    def cascade_update(self, key: str, graph_state: Dict[str, Any]) -> None:
-        """Update cache with cascading replication."""
-        try:
-            from src.memory.elision import compress_context
-            compressed = compress_context(graph_state)
-        except Exception:
-            compressed = graph_state
-
-        self.generations[0][key] = {
-            "data": compressed,
-            "timestamp": datetime.now().isoformat(),
-            "usage": 0
-        }
-
-        # Auto-cascade if Gen0 too large
-        if len(self.generations[0]) > 50:
-            self._cascade_cold_to_gen1()
-
-    def get(self, key: str) -> Optional[Dict[str, Any]]:
-        """Get from cache, checking all generations."""
-        for gen_idx, gen in enumerate(self.generations):
-            if key in gen:
-                gen[key]["usage"] += 1
-                self._stats["hits"] += 1
-                return gen[key]["data"]
-        self._stats["misses"] += 1
-        return None
-
-    def _cascade_cold_to_gen1(self) -> None:
-        """Move cold items to Gen1."""
-        cold = [k for k, v in self.generations[0].items() if v.get("usage", 0) < 3]
-        for key in cold[:10]:
-            item = self.generations[0].pop(key)
-            self.generations[1][key] = item
-        self._stats["cascades"] += 1
-        logger.debug(f"[MGC] Cascaded {len(cold[:10])} items to Gen1")
-
-    def pool_request(self, suggestion: Any) -> bool:
-        """PgBouncer-like request pooling."""
-        if len(self.request_queue) >= self.REQUEST_POOL_SIZE:
-            logger.warning("[MGC] Thundering herd mitigated: queue full")
-            return False
-        self.request_queue.append(suggestion)
-        return True
-
-    def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
-        return {
-            **self._stats,
-            "gen0_size": len(self.generations[0]),
-            "gen1_size": len(self.generations[1]),
-            "gen2_size": len(self.generations[2]),
-            "queue_size": len(self.request_queue)
-        }
+# MARKER_119.1: MGCGraphCache removed — using canonical MGCCache singleton
+from src.memory.mgc_cache import get_mgc_cache
 
 
 # ============================================================================
@@ -171,7 +94,7 @@ class ARCSolverAgent:
     - Хранение успешных примеров (few-shot learning)
 
     MARKER_108_7_ARC_MGC: Phase 108.7 Enhancements
-    - MGCGraphCache for hierarchical state caching
+    - MGCCache (canonical singleton) for hierarchical state caching
     - HOPE integration for frequency-layer hypotheses
     - ELISION compression for suggestion storage
     """
@@ -202,7 +125,7 @@ class ARCSolverAgent:
         self.api_aggregator = api_aggregator
 
         # MARKER_108_7_ARC_MGC: Initialize MGC cache
-        self.mgc_cache = MGCGraphCache() if enable_mgc else None
+        self.mgc_cache = get_mgc_cache() if enable_mgc else None  # MARKER_119.1
         self._enable_hope = enable_hope
         self._hope_enhancer = None  # Lazy-loaded
 
@@ -273,7 +196,7 @@ class ARCSolverAgent:
             # MARKER_108_7_ARC_MGC: Check MGC cache first
             cache_key = f"arc_{workflow_id}_{hash(str(graph_data))}"
             if self.mgc_cache:
-                cached = self.mgc_cache.get(cache_key)
+                cached = self.mgc_cache.get_sync(cache_key)
                 if cached:
                     logger.info(f"📦 MGC cache hit for {workflow_id}")
                     return cached
@@ -285,7 +208,7 @@ class ARCSolverAgent:
 
             # MARKER_108_7_ARC_MGC: Store graph state in cache
             if self.mgc_cache and graph_data:
-                self.mgc_cache.cascade_update(f"graph_{workflow_id}", graph_data)
+                self.mgc_cache.set_sync(f"graph_{workflow_id}", graph_data)
 
             # 2. Сгенерировать кандидатов (гипотезы) - with HOPE if enabled
             logger.info(f"🧠 Generating {num_candidates} candidate transformations...")

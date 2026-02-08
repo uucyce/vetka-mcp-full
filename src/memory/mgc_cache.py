@@ -422,6 +422,41 @@ class MGCCache:
             self.json_path.unlink()
         logger.info("MGC cache cleared")
 
+    # MARKER_119.1: Sync Gen0-only access for sync callers
+    # (SpiralContextGenerator, ARCSolverAgent — both sync methods)
+    def get_sync(self, key: str) -> Optional[Any]:
+        """Sync Gen0-only get. Returns None if not in Gen0.
+
+        For use by sync callers that only need RAM-speed cache hits.
+        Does NOT check Gen1 (Qdrant) or Gen2 (JSON).
+        """
+        if key in self.gen0:
+            entry = self.gen0[key]
+            entry.touch()
+            self._hits["gen0"] += 1
+            return entry.value
+        self._misses += 1
+        return None
+
+    def set_sync(self, key: str, value: Any, size_bytes: int = 0) -> None:
+        """Sync Gen0-only set. LRU evicts oldest if Gen0 is full."""
+        if len(self.gen0) >= self.gen0_max and key not in self.gen0:
+            self._evict_lru_sync()
+        if key in self.gen0:
+            self.gen0[key].value = value
+            self.gen0[key].touch()
+        else:
+            self.gen0[key] = MGCEntry(key=key, value=value, size_bytes=size_bytes)
+
+    def _evict_lru_sync(self) -> None:
+        """Sync LRU eviction — drop oldest from Gen0."""
+        if not self.gen0:
+            return
+        lru_key = min(self.gen0, key=lambda k: self.gen0[k].last_accessed)
+        self.gen0.pop(lru_key)
+        self._evictions += 1
+    # MARKER_119.1_END
+
     def __repr__(self) -> str:
         stats = self.get_stats()
         return f"MGCCache(gen0={stats['gen0_size']}/{self.gen0_max}, hit_rate={stats['hit_rate']:.2%})"

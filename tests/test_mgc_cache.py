@@ -1550,5 +1550,45 @@ class TestMGCPerformance:
         await large_cache.clear()
 
 
+# ============================================================================
+# TEST: Sync Gen0 Methods (Phase 119.1)
+# ============================================================================
+
+class TestMGCSyncMethods:
+    """Phase 119.1: Test sync Gen0-only access methods."""
+
+    def test_get_sync_hit(self, mgc_cache):
+        """get_sync returns value when key is in Gen0."""
+        mgc_cache.gen0["test_key"] = MGCEntry(key="test_key", value={"data": 42})
+        result = mgc_cache.get_sync("test_key")
+        assert result == {"data": 42}
+
+    def test_get_sync_miss(self, mgc_cache):
+        """get_sync returns None when key not in Gen0."""
+        result = mgc_cache.get_sync("missing")
+        assert result is None
+
+    def test_set_sync_basic(self, mgc_cache):
+        """set_sync stores value in Gen0."""
+        mgc_cache.set_sync("key1", {"value": "hello"})
+        assert "key1" in mgc_cache.gen0
+        assert mgc_cache.gen0["key1"].value == {"value": "hello"}
+
+    def test_set_sync_eviction(self, json_cache_path):
+        """set_sync evicts LRU when Gen0 is full."""
+        cache = MGCCache(gen0_max=2, json_path=json_cache_path)
+        cache.set_sync("a", "val_a")
+        cache.set_sync("b", "val_b")
+        cache.set_sync("c", "val_c")  # should evict "a"
+        assert len(cache.gen0) == 2
+        assert "c" in cache.gen0
+
+    def test_set_sync_roundtrip(self, mgc_cache):
+        """set_sync + get_sync roundtrip works."""
+        mgc_cache.set_sync("rt_key", [1, 2, 3])
+        result = mgc_cache.get_sync("rt_key")
+        assert result == [1, 2, 3]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--asyncio-mode=auto"])

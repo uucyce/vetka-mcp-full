@@ -33,6 +33,8 @@ from enum import Enum
 from datetime import datetime
 import math
 
+from src.memory.mgc_cache import get_mgc_cache
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,78 +87,8 @@ class SpiralContext:
 
 
 # =============================================================================
-# MARKER_108_7_SPIRAL_CONTEXT: MGC Graph Cache
-# =============================================================================
-
-class MGCGraphCache:
-    """
-    Multi-Generational Cache for graph state.
-
-    Cascade pattern: Gen0 (RAM) ← Gen1 (Qdrant) ← Gen2 (Archive)
-    Solves: vicious cycles, thundering herd, 1690+ file scale
-    """
-
-    def __init__(self, pool_size: int = 10):
-        self.generations: List[Dict[str, Any]] = [{}, {}, {}]  # Gen0, Gen1, Gen2
-        self.pool_size = pool_size
-        self.request_queue: List[Any] = []
-        self._decay_rate = 0.05  # 5% per week
-        self._offload_threshold = 5  # Usage count before offload
-
-    def cascade_update(self, key: str, data: Dict[str, Any], gen: int = 0) -> None:
-        """Update cache with cascading replication."""
-        # Compress data for storage
-        compressed = self._compress_for_gen(data, gen)
-        self.generations[gen][key] = {
-            "data": compressed,
-            "timestamp": datetime.now().isoformat(),
-            "usage_count": 0
-        }
-
-        # Cascade to lower generations (async in production)
-        if gen == 0 and len(self.generations[0]) > 100:
-            self._cascade_to_gen1()
-
-    def get(self, key: str) -> Optional[Dict[str, Any]]:
-        """Get from cache, checking all generations."""
-        for gen_idx, gen in enumerate(self.generations):
-            if key in gen:
-                gen[key]["usage_count"] += 1
-                return gen[key]["data"]
-        return None
-
-    def _compress_for_gen(self, data: Dict[str, Any], gen: int) -> Dict[str, Any]:
-        """Compress data based on generation level."""
-        if gen == 0:
-            return data  # Gen0: full data
-        elif gen == 1:
-            # Gen1: summary + key fields
-            return {
-                "summary": str(data)[:500],
-                "keys": list(data.keys())[:10],
-                "size": len(str(data))
-            }
-        else:
-            # Gen2: minimal archive
-            return {
-                "hash": hash(str(data)),
-                "archived_at": datetime.now().isoformat()
-            }
-
-    def _cascade_to_gen1(self) -> None:
-        """Move cold items from Gen0 to Gen1."""
-        cold_keys = [
-            k for k, v in self.generations[0].items()
-            if v.get("usage_count", 0) < self._offload_threshold
-        ]
-        for key in cold_keys[:10]:  # Batch of 10
-            item = self.generations[0].pop(key)
-            self.generations[1][key] = item
-        logger.debug(f"[MGC] Cascaded {len(cold_keys[:10])} items to Gen1")
-
-
-# =============================================================================
-# MARKER_108_7_SPIRAL_CONTEXT: Main Generator
+# MARKER_119.1: MGCGraphCache removed — using canonical MGCCache singleton
+# See src/memory/mgc_cache.py for the unified implementation
 # =============================================================================
 
 class SpiralContextGenerator:
@@ -171,7 +103,7 @@ class SpiralContextGenerator:
 
     def __init__(self, config: Optional[SpiralConfig] = None):
         self.config = config or SpiralConfig()
-        self.mgc_cache = MGCGraphCache()
+        self.mgc_cache = get_mgc_cache()  # MARKER_119.1: canonical singleton
         self._elision_enabled = self.config.enable_elision
         self._hope_enabled = self.config.enable_hope
 
@@ -269,7 +201,7 @@ class SpiralContextGenerator:
 
         # Cache in MGC
         cache_key = f"gen0_{hash(user_query)}"
-        self.mgc_cache.cascade_update(cache_key, gen0, gen=0)
+        self.mgc_cache.set_sync(cache_key, gen0)  # MARKER_119.1
 
         return gen0
 

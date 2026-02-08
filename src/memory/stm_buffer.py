@@ -49,14 +49,14 @@ class STMEntry:
     Attributes:
         content: The text content of this memory
         timestamp: When this entry was created
-        source: Origin of the entry ('user', 'agent', 'system', 'hope', 'cam_surprise')
+        source: Origin of the entry ('user', 'agent', 'system', 'hope', 'cam_surprise', 'pipeline')
         weight: Current weight (decays over time, boosted by surprise)
         surprise_score: CAM-detected novelty score (0.0-1.0)
         metadata: Optional additional data (workflow_id, group_id, etc.)
     """
     content: str
     timestamp: datetime = field(default_factory=datetime.now)
-    source: str = "system"  # 'user', 'agent', 'system', 'hope', 'cam_surprise'
+    source: str = "system"  # 'user', 'agent', 'system', 'hope', 'cam_surprise', 'pipeline'
     weight: float = 1.0
     surprise_score: float = 0.0
     metadata: Optional[Dict[str, Any]] = None

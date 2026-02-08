@@ -1,17 +1,17 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T14:15:26.355196+00:00",
+  "last_updated": "2026-02-08T14:38:48.069236+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 108,
-    "subphase": "7",
-    "name": "MGC + ELISION + Spiral Context Integration",
+    "number": 118,
+    "subphase": "10",
+    "name": "STM Smart Algorithm + Naming Audit + Titans League",
     "status": "COMPLETED",
-    "started": "2026-02-04",
-    "completed": "2026-02-04"
+    "started": "2026-02-08",
+    "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 108.7 DONE! MGC + ELISION + Spiral Context + Auto-Digest Update",
+    "headline": "Phase 118.10 DONE! STM config + vetka_out naming + Titans League (Lite/Core/Prime)",
     "key_achievements": [
       "[40f5fcac] Phase 117.3: Phase 117.3b: System commands in solo chat + Menti...",
       "[1c0d2faa] Phase 114: Phase 114 session: docs, data sync, client updates...",
@@ -25,20 +25,22 @@
       "[e0dcfc9a] Phase 112.3: Phase 112.3b: Edge Frustum Culling\n\n- Added frustu..."
     ],
     "pending_items": [
-      "Phase 109.2: Test with live VETKA UI (Socket.IO sync)",
-      "Phase 109.3: Integrate with Jarvis super-agent",
-      "Phase 109.4: Add viewport sync from React \u2192 Backend",
+      "Phase 119.1: MGC Deduplication (P0) \u2014 remove triple MGCGraphCache",
+      "Phase 119.2: STM Unification (P0) \u2014 pipeline list \u2192 STMBuffer singleton",
+      "Phase 119.3: Heartbeat Live Test \u2014 @dragon + @titan E2E",
+      "Phase 119.4: Scout Role \u2014 full implementation in Titans pipeline",
+      "Phase 119.5: CAM rename \u2014 cam_memory.py \u2192 surprise_detector.py",
       "TEST: Verify MGC cascade works with 1690+ files"
     ]
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2103,
+      "points": 2105,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2097,
+      "points": 2098,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -190,7 +192,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "253aff69",
+    "commit": "774b285f",
     "dirty": true
   }
 }

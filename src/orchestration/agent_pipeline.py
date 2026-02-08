@@ -49,6 +49,9 @@ PIPELINE_TRUNCATE_RESULT = int(os.getenv("VETKA_PIPELINE_TRUNCATE_RESULT", "500"
 PIPELINE_STM_SUMMARY_WINDOW = int(os.getenv("VETKA_PIPELINE_STM_SUMMARY_WINDOW", "3"))
 PIPELINE_SUMMARY_TRUNCATE = int(os.getenv("VETKA_PIPELINE_SUMMARY_TRUNCATE", "200"))
 
+# MARKER_119.2: Import for pipeline-to-STMBuffer bridge
+from src.memory.stm_buffer import get_stm_buffer
+
 _pipeline_semaphore: Optional[asyncio.Semaphore] = None
 
 
@@ -854,6 +857,34 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 f"({stats['compression_ratio']}x compression)"
             )
     # MARKER_102.25_END
+
+    # MARKER_119.2: Pipeline-to-STMBuffer bridge
+    def _bridge_to_global_stm(self, task_id: str, phase_type: str):
+        """Report pipeline completion summary to global STMBuffer.
+
+        Bridges ephemeral pipeline STM (subtask context passing) with
+        persistent STMBuffer (cross-agent conversation continuity).
+        Jarvis and other consumers can then see pipeline results.
+        """
+        if not self.stm:
+            return
+        try:
+            stm = get_stm_buffer()
+            markers = [item.get("marker", "?") for item in self.stm]
+            previews = []
+            for item in self.stm[-3:]:
+                r = str(item.get("result", ""))[:100]
+                previews.append(f"[{item.get('marker', '?')}]: {r}")
+            summary = (
+                f"Pipeline {task_id} ({phase_type}): "
+                f"{len(self.stm)} subtasks [{', '.join(markers)}]. "
+                f"{'; '.join(previews)}"
+            )[:500]
+            stm.add_message(summary, source="pipeline")
+            logger.info(f"[Pipeline] Bridged STM summary to global STMBuffer ({len(summary)} chars)")
+        except Exception as e:
+            logger.warning(f"[Pipeline] STM bridge failed (non-fatal): {e}")
+    # MARKER_119.2_END
     # MARKER_102.3_END
 
     # MARKER_103.4_START: Extract code blocks and write files to disk
@@ -1051,6 +1082,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # MARKER_104_MEMORY_STM: Log memory compression statistics
             self._log_stm_summary()
+            # MARKER_119.2: Report pipeline results to global STMBuffer
+            self._bridge_to_global_stm(task_id, phase_type)
 
             # MARKER_117_3B: Expanded final report with subtask details
             report_lines = [
@@ -1089,6 +1122,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # MARKER_104_MEMORY_STM: Log memory compression statistics even on failure
             self._log_stm_summary()
+            # MARKER_119.2: Report even failed pipeline to global STMBuffer
+            self._bridge_to_global_stm(task_id, phase_type)
 
             await self._emit_progress("@pipeline", f"❌ Pipeline failed: {str(e)[:50]}")
             return asdict(pipeline_task)
