@@ -1,9 +1,9 @@
 {
   "_meta": {
-    "version": "4.0",
-    "phase": "118.10",
-    "marker": "MARKER_118.10_TITANS",
-    "comment": "Phase 118.10: Titans League (Lite/Core/Prime) — multi-provider premium teams. All API IDs verified on polza.ai."
+    "version": "5.0",
+    "phase": "119.4",
+    "marker": "MARKER_119.4_SCOUT",
+    "comment": "Phase 119.4: Scout role added to ALL presets. 5th pipeline agent scans codebase before Architect."
   },
   "default_preset": "dragon_silver",
   "_tier_map": {
@@ -29,7 +29,8 @@
         "architect": "qwen/qwen3-30b-a3b",
         "researcher": "x-ai/grok-4.1-fast",
         "coder": "qwen/qwen3-coder-flash",
-        "verifier": "xiaomi/mimo-v2-flash"
+        "verifier": "xiaomi/mimo-v2-flash",
+        "scout": "xiaomi/mimo-v2-flash"
       }
     },
     "dragon_silver": {
@@ -39,7 +40,8 @@
         "architect": "moonshotai/kimi-k2.5",
         "researcher": "x-ai/grok-4.1-fast",
         "coder": "qwen/qwen3-coder",
-        "verifier": "z-ai/glm-4.7-flash"
+        "verifier": "z-ai/glm-4.7-flash",
+        "scout": "z-ai/glm-4.7-flash"
       }
     },
     "dragon_gold": {
@@ -49,7 +51,8 @@
         "architect": "moonshotai/kimi-k2.5",
         "researcher": "x-ai/grok-4.1-fast",
         "coder": "qwen/qwen3-coder",
-        "verifier": "qwen/qwen3-235b-a22b"
+        "verifier": "qwen/qwen3-235b-a22b",
+        "scout": "moonshotai/kimi-k2.5"
       }
     },
     "dragon_gold_gpt": {
@@ -59,7 +62,8 @@
         "architect": "moonshotai/kimi-k2.5",
         "researcher": "x-ai/grok-4.1-fast",
         "coder": "openai/gpt-5.2",
-        "verifier": "qwen/qwen3-235b-a22b"
+        "verifier": "qwen/qwen3-235b-a22b",
+        "scout": "moonshotai/kimi-k2.5"
       }
     },
     "polza_research": {
@@ -69,7 +73,8 @@
         "architect": "anthropic/claude-sonnet-4",
         "researcher": "x-ai/grok-4.1-fast",
         "coder": "anthropic/claude-sonnet-4",
-        "verifier": "anthropic/claude-sonnet-4"
+        "verifier": "anthropic/claude-sonnet-4",
+        "scout": "anthropic/claude-haiku-4.5"
       }
     },
     "polza_mixed": {
@@ -79,7 +84,8 @@
         "architect": "anthropic/claude-sonnet-4",
         "researcher": "x-ai/grok-4.1-fast",
         "coder": "deepseek/deepseek-v3.2",
-        "verifier": "qwen/qwen3-235b-a22b"
+        "verifier": "qwen/qwen3-235b-a22b",
+        "scout": "anthropic/claude-haiku-4.5"
       }
     },
     "xai_direct": {
@@ -89,7 +95,8 @@
         "architect": "grok-4.1-fast",
         "researcher": "grok-4.1-fast",
         "coder": "grok-4.1-fast",
-        "verifier": "grok-4.1-fast"
+        "verifier": "grok-4.1-fast",
+        "scout": "grok-4.1-fast"
       }
     },
     "openrouter_mixed": {
@@ -99,7 +106,8 @@
         "architect": "anthropic/claude-sonnet-4",
         "researcher": "x-ai/grok-4.1-fast",
         "coder": "anthropic/claude-sonnet-4",
-        "verifier": "anthropic/claude-sonnet-4"
+        "verifier": "anthropic/claude-sonnet-4",
+        "scout": "anthropic/claude-haiku-4.5"
       }
     },
     "budget": {
@@ -109,7 +117,8 @@
         "architect": "meta-llama/llama-3.1-8b-instruct:free",
         "researcher": "meta-llama/llama-3.1-8b-instruct:free",
         "coder": "meta-llama/llama-3.1-8b-instruct:free",
-        "verifier": "meta-llama/llama-3.1-8b-instruct:free"
+        "verifier": "meta-llama/llama-3.1-8b-instruct:free",
+        "scout": "meta-llama/llama-3.1-8b-instruct:free"
       }
     },
     "quality": {
@@ -119,7 +128,8 @@
         "architect": "anthropic/claude-opus-4.6",
         "researcher": "x-ai/grok-4.1-fast",
         "coder": "anthropic/claude-opus-4.6",
-        "verifier": "anthropic/claude-sonnet-4.5"
+        "verifier": "anthropic/claude-sonnet-4.5",
+        "scout": "anthropic/claude-haiku-4.5"
       }
     },
     "titan_lite": {

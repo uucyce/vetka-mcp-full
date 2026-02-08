@@ -13,7 +13,7 @@ Based on Grok research:
 - Low surprise (<0.3) = compress aggressively (vowel skip)
 - High surprise (>0.7) = keep full (preserve semantics)
 
-@file cam_memory.py
+@file surprise_detector.py
 @status active
 @phase 104
 @depends numpy, typing, collections, re
@@ -21,7 +21,7 @@ Based on Grok research:
 
 DISTINCTION from src/orchestration/cam_engine.py:
 - cam_engine.py: Constructivist Agentic Memory for TREE RESTRUCTURING
-- cam_memory.py: Context Awareness Module for ELISION COMPRESSION
+- surprise_detector.py: Context Awareness Module for ELISION COMPRESSION
 """
 
 import logging

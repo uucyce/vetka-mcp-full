@@ -161,10 +161,10 @@ class TestGPTGoldPreset:
         )
 
     def test_presets_version_updated(self):
-        """MARKER_118.10: Presets version should be 4.0 (Phase 118.10 Titans League)."""
+        """MARKER_119.4: Presets version should be 5.0 (Phase 119.4 Scout Role)."""
         meta = self.data.get("_meta", {})
-        assert meta.get("version") == "4.0", (
-            f"Expected presets version 4.0, got {meta.get('version')}"
+        assert meta.get("version") == "5.0", (
+            f"Expected presets version 5.0, got {meta.get('version')}"
         )
 
     def test_original_dragon_tiers_intact(self):

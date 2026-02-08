@@ -476,7 +476,7 @@ class ElisionCompressor:
         # Try to get surprise map from CAM if not provided
         if surprise_map is None:
             try:
-                from src.memory.cam_memory import get_surprise_metrics
+                from src.memory.surprise_detector import get_surprise_metrics
                 surprise_map = get_surprise_metrics(json_str)
             except (ImportError, AttributeError):
                 # CAM not available, use empty map (moderate compression)
@@ -610,7 +610,7 @@ class ElisionCompressor:
         Args:
             data: Data to compress (dict, list, or string)
             surprise_map: Optional CAM surprise metrics {word: score}
-                         If None, attempts to import from cam_memory
+                         If None, attempts to import from surprise_detector
 
         Returns:
             ElisionResult with compressed data and vowel_skip legend

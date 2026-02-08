@@ -256,8 +256,7 @@ Respond with implementation plan or code."""
             return
 
         # Apply model overrides from preset
-        # MARKER_118.10_SCOUT_PREP: "scout" role in titan presets is reserved for Phase 119.4
-        # Currently ignored by _apply_preset() since self.prompts has no "scout" key
+        # MARKER_119.4: "scout" role now active — pipeline_prompts.json has scout key
         roles = preset.get("roles", {})
         for role_name, model_name in roles.items():
             if role_name in self.prompts:
@@ -272,6 +271,67 @@ Respond with implementation plan or code."""
         self.preset_models = roles
         logger.info(f"[Pipeline] Applied preset '{self.preset_name}': {preset.get('description', '')}")
     # MARKER_117_PRESETS_END
+
+    # MARKER_119.4: Scout role — codebase scan before Architect
+    async def _scout_scan(self, task: str, phase_type: str) -> Optional[Dict[str, Any]]:
+        """Run scout to gather codebase context before architect planning.
+
+        Scout uses inject_context (semantic search + chat history) to scan
+        relevant code. Returns structured JSON with context_summary,
+        relevant_files, patterns_found, risks, recommendations.
+
+        Returns None if scout prompt not configured or LLM call fails.
+        """
+        if "scout" not in self.prompts:
+            logger.debug("[Pipeline] Scout role not configured, skipping")
+            return None
+
+        tool = self._get_llm_tool()
+        if not tool:
+            return None
+
+        prompt = self.prompts["scout"]
+        model = prompt.get("model", "anthropic/claude-haiku-4.5")
+        temperature = prompt.get("temperature", 0.1)
+
+        call_args = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": prompt["system"]},
+                {"role": "user", "content": f"Phase type: {phase_type}\n\nTask to scout:\n{task}"}
+            ],
+            "temperature": temperature,
+            "max_tokens": 1000,
+            "inject_context": {
+                "chat_id": self.chat_id,
+                "chat_limit": 3,
+                "semantic_query": task,
+                "semantic_limit": 5,
+                "include_prefs": False,
+                "compress": True
+            }
+        }
+        if self.provider_override:
+            call_args["model_source"] = self.provider_override
+
+        result = tool.execute(call_args)
+        self._last_used_model = result.get("result", {}).get("model", model)
+
+        try:
+            if not result.get("success"):
+                logger.warning(f"[Pipeline] Scout LLM call failed: {result.get('error')}")
+                return None
+            response_text = result.get("result", {}).get("content", "{}")
+            scout_data = self._extract_json(response_text)
+            logger.info(
+                f"[Pipeline] Scout found {len(scout_data.get('relevant_files', []))} files, "
+                f"{len(scout_data.get('patterns_found', []))} patterns"
+            )
+            return scout_data
+        except Exception as e:
+            logger.warning(f"[Pipeline] Scout parse failed (non-fatal): {e}")
+            return None
+    # MARKER_119.4_END
 
     # MARKER_117.4C: Auto-tier resolution
     def _resolve_tier(self, complexity: str) -> Optional[str]:
@@ -996,11 +1056,28 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         await self._emit_progress("@pipeline", f"🚀 Starting {phase_type} pipeline | {team_info}")
 
         try:
+            # MARKER_119.4: Phase 0 — Scout scans codebase before Architect plans
+            scout_context = None
+            if "scout" in self.prompts:
+                scout_model = self.prompts.get("scout", {}).get("model", "")
+                await self._emit_progress("@scout", "🔍 Scanning codebase...", model=scout_model)
+                scout_context = await self._scout_scan(task, phase_type)
+                if scout_context:
+                    await self._emit_progress(
+                        "@scout",
+                        f"✅ Found {len(scout_context.get('relevant_files', []))} files, "
+                        f"{len(scout_context.get('patterns_found', []))} patterns",
+                        model=self._last_used_model
+                    )
+                else:
+                    await self._emit_progress("@scout", "⚠️ No scout data (skipping)", model=self._last_used_model)
+            # MARKER_119.4_END
+
             # Phase 1: Architect breaks down task
             # MARKER_117.6C: Model attribution in progress messages
             architect_model = self.prompts.get("architect", {}).get("model", "")
             await self._emit_progress("@architect", "📋 Breaking down task into subtasks...", model=architect_model)
-            plan = await self._architect_plan(task, phase_type)
+            plan = await self._architect_plan(task, phase_type, scout_context=scout_context)
             pipeline_task.subtasks = [
                 Subtask(**st) if isinstance(st, dict) else st
                 for st in plan.get("subtasks", [])
@@ -1376,10 +1453,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
     # MARKER_104_PARALLEL_5_END
 
     # MARKER_102.5_START: Architect planning
-    async def _architect_plan(self, task: str, phase_type: str) -> Dict[str, Any]:
+    async def _architect_plan(self, task: str, phase_type: str, scout_context: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Architect breaks down task into subtasks.
         Marks unclear parts with needs_research=True.
+
+        Args:
+            scout_context: Optional scout report injected into user message (MARKER_119.4).
         """
         tool = self._get_llm_tool()
         if not tool:
@@ -1398,11 +1478,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         # LLMCallTool.execute is synchronous
         # MARKER_117_PROVIDER: Pass model_source for provider routing
         # MARKER_117_2B_INJECT: Inject chat context so architect sees recent messages/bugs
+        # MARKER_119.4: Build user message with optional scout context
+        user_content = f"Phase type: {phase_type}\n\nTask to break down:\n{task}"
+        if scout_context:
+            scout_summary = json.dumps(scout_context, indent=2)[:800]
+            user_content += f"\n\n[Scout Report]\n{scout_summary}"
+
         call_args = {
             "model": model,
             "messages": [
                 {"role": "system", "content": prompt["system"]},
-                {"role": "user", "content": f"Phase type: {phase_type}\n\nTask to break down:\n{task}"}
+                {"role": "user", "content": user_content}
             ],
             "temperature": temperature,
             "max_tokens": 2000,

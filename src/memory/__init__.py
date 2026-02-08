@@ -45,8 +45,9 @@ from src.memory.memory_proxy import (
     reset_all_proxies,
 )
 
-# Phase 104: CAM Memory (Context Awareness Module for ELISION)
-from src.memory.cam_memory import (
+# Phase 104: Surprise Detector (Context Awareness Module for ELISION)
+# MARKER_119.5: Renamed cam_memory.py -> surprise_detector.py
+from src.memory.surprise_detector import (
     CAMMemory,
     get_cam_memory,
     reset_cam_memory,
