@@ -1263,11 +1263,11 @@ function FileCardComponent({
         // === DYNAMIC FONT SIZE ===
         // Base size + importance boost + heat boost, slight decay with distance
         // MARKER_119.2J: Phase 119.2 - Heat-based size scaling
-        // MARKER_123.4C: Phase 123.4 - Smaller labels to reduce overlap
-        const BASE_FONT_SIZE = 12;   // Was 14, smaller base
-        const MAX_FONT_SIZE = 26;    // Was 36, smaller max
-        const importanceBoost = importance * 10;  // 0-10px bonus (was 16)
-        const heatBoostPx = heatScore * 4;  // 0-4px bonus for active directories
+        // MARKER_123.5A: Phase 123.5 - Even smaller labels to reduce overlap
+        const BASE_FONT_SIZE = 10;   // Was 12, even smaller
+        const MAX_FONT_SIZE = 20;    // Was 26, reduced max
+        const importanceBoost = importance * 8;  // 0-8px bonus (was 10)
+        const heatBoostPx = heatScore * 3;  // 0-3px bonus for active directories
         const distanceDecay = Math.max(0.5, 1 - (distToCamera / MAX_DISTANCE) * 0.3);
         const fontSize = Math.min(MAX_FONT_SIZE, (BASE_FONT_SIZE + importanceBoost + heatBoostPx) * distanceDecay);
 
@@ -1298,10 +1298,10 @@ function FileCardComponent({
                 console.log('[FileCard] Phase 119.1: Label click zooming to folder', name);
               }}
               style={{
-                // MARKER_123.4C: Phase 123.4 - Smaller padding
+                // MARKER_123.5A: Phase 123.5 - Even smaller padding
                 background: `rgba(0, 0, 0, ${0.7 + importance * 0.2})`,
                 color: '#ffffff',
-                padding: `${4 + importance * 4}px ${8 + importance * 6}px`,
+                padding: `${3 + importance * 3}px ${6 + importance * 5}px`,
                 borderRadius: '4px',
                 fontSize: `${fontSize}px`,
                 fontWeight: importance > 0.5 ? '600' : '500',
