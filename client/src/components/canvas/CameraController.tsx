@@ -150,8 +150,9 @@ export function CameraController() {
     );
 
     // Final distance based on zoom (Phase 52.6.3: increased for comfortable view)
-    const finalDistance = cameraCommand.zoom === 'close' ? 20
-                        : cameraCommand.zoom === 'medium' ? 30 : 45;
+    // MARKER_124.2A: Phase 124.2 - Adjusted medium to 55 for better overview on new files
+    const finalDistance = cameraCommand.zoom === 'close' ? 25
+                        : cameraCommand.zoom === 'medium' ? 55 : 80;
 
     // Phase 52.6.2: Simple frontal positioning (ALWAYS approach from Z+ direction)
     const targetPos = new THREE.Vector3(
