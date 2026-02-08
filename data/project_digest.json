@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T17:48:33.459010+00:00",
+  "last_updated": "2026-02-08T17:49:49.930702+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 119,
-    "subphase": "8",
-    "name": "Context7 library docs for @coder",
+    "subphase": "1",
+    "name": "Folder label click \u2192 zoom camera",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 119.8 DONE! Context7 library docs for @coder",
+    "headline": "Phase 119.1 DONE! Folder label click \u2192 zoom camera",
     "key_achievements": [
+      "[09235b3e] Phase 119.1: Phase 119.1: Folder label click \u2192 zoom camera",
       "[16f9c6cc] Phase 119.8: Phase 119.8: Context7 library docs for @coder",
       "[c0560e29] Phase 119.7: Phase 119.7: Tavily web search for @researcher",
       "[82c70e4c] Phase 119.6: Phase 119.6: Digest Harmony \u2014 auto-sync phase from git + cle",
@@ -21,8 +22,7 @@
       "[d809c81d] Phase 119.1-119.3: MGC Dedup + STM Bridge + Heartbeat @titan E2E",
       "[1e5525a5] Phase 118: Move artifact icon to ChatPanel header",
       "[774b285f] Phase 118.8-118.10: STM Smart Algorithm + Naming Audit + Titans League",
-      "[253aff69] Phase 118: Completion report + Mycelium capabilities audit",
-      "[85d7a1fb] Phase 118.6-118.7: Fix pipeline messages visibility + error callback"
+      "[253aff69] Phase 118: Completion report + Mycelium capabilities audit"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "bff9c22e",
+    "commit": "09235b3e",
     "dirty": true
   }
 }
