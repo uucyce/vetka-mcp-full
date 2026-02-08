@@ -1267,13 +1267,23 @@ function FileCardComponent({
             position={[position[0], labelY, labelZ]}
             center
             style={{
-              pointerEvents: 'none',
+              pointerEvents: 'auto',  // Phase 119.1: Enable click on folder labels
               whiteSpace: 'nowrap',
             }}
             // Phase 62.1: Lower z-index so labels appear BEHIND chat panels
             zIndexRange={[50, 0]}
           >
             <div
+              onClick={(e) => {
+                e.stopPropagation();
+                // Phase 119.1: Click on folder label = zoom to folder
+                setCameraCommand({
+                  target: path,
+                  zoom: 'medium',
+                  highlight: true,
+                });
+                console.log('[FileCard] Phase 119.1: Label click zooming to folder', name);
+              }}
               style={{
                 background: `rgba(0, 0, 0, ${0.7 + importance * 0.25})`,
                 color: '#ffffff',
@@ -1284,6 +1294,14 @@ function FileCardComponent({
                 fontFamily: 'system-ui, -apple-system, sans-serif',
                 boxShadow: `0 ${2 + importance * 4}px ${8 + importance * 12}px rgba(0,0,0,${0.4 + importance * 0.3})`,
                 border: `1px solid rgba(255,255,255,${0.15 + importance * 0.2})`,
+                cursor: 'pointer',  // Phase 119.1: Visual feedback
+                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                (e.target as HTMLElement).style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={(e) => {
+                (e.target as HTMLElement).style.transform = 'scale(1)';
               }}
             >
               {name}
