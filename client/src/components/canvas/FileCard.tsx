@@ -987,8 +987,28 @@ function FileCardComponent({
   // Phase 61.1 + 62: File category for preview styling
   // Phase 62: Preview is drawn on texture, no floating previews needed
 
+  // MARKER_123.7A: Phase 123.7 - Glow sprite size based on heat intensity
+  const glowSize: [number, number] = [
+    cardSize[0] * (1.3 + heatScore * 0.4),  // Width expands with heat
+    cardSize[1] * (1.3 + heatScore * 0.4),  // Height expands with heat
+  ];
+
   return (
     <group>
+      {/* MARKER_123.7B: Phase 123.7 - White glow sprite behind active cards */}
+      {heatScore > 0 && (
+        <mesh position={[position[0], position[1], position[2] - 0.5]}>
+          <planeGeometry args={glowSize} />
+          <meshBasicMaterial
+            color="#ffffff"
+            transparent
+            opacity={Math.min(0.6, heatScore * 0.8)}  // Max 60% opacity
+            side={THREE.DoubleSide}
+            depthWrite={false}  // Don't occlude other objects
+          />
+        </mesh>
+      )}
+
       {/* Card mesh - always visible */}
       <mesh
         ref={meshRef}
@@ -1014,16 +1034,11 @@ function FileCardComponent({
           side={THREE.DoubleSide}
           opacity={opacity ?? 1.0}
           // Phase 112.4: Fast hover/drag highlight via color tint (no texture regen)
-          // MARKER_123.2C: Phase 123.6 - Heat-based glow tint (Scanner Panel blue #5c8aaa → #7ab3d4)
-          // Stronger blue colors for visible glow effect
+          // MARKER_123.7C: Phase 123.7 - White glow (removed blue tint, using sprite instead)
           color={
             isDragging ? '#88ff88' :
             isHovered ? '#aaffaa' :
-            heatScore > 0.7 ? '#7ab3d4' :  // Hot activity = Scanner Panel bright blue
-            heatScore > 0.4 ? '#8fc3e0' :  // Medium-high activity = mid blue
-            heatScore > 0.2 ? '#a5d0e8' :  // Medium activity = light blue
-            heatScore > 0 ? '#bfdfef' :    // Low activity = very light blue
-            '#ffffff'  // No activity = white
+            '#ffffff'  // Clean white - glow handled by sprite
           }
         />
       </mesh>
