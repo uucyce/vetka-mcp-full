@@ -990,8 +990,8 @@ function FileCardComponent({
   // Phase 62: Preview is drawn on texture, no floating previews needed
 
   // MARKER_123.8B: Phase 123.8 - Glow sprite with radial gradient (Grok research)
-  // Scale: 1.5x-2.5x card size based on heatScore
-  const glowScale = 1.5 + heatScore * 1.0;
+  // Scale: 1.2x-1.6x card size based on heatScore (reduced from 1.5x-2.5x)
+  const glowScale = 1.2 + heatScore * 0.4;
 
   return (
     <group>
@@ -1006,7 +1006,7 @@ function FileCardComponent({
             transparent
             blending={THREE.AdditiveBlending}
             depthWrite={false}
-            opacity={Math.min(0.7, heatScore * 0.9)}
+            opacity={Math.min(0.5, heatScore * 0.6)}
           />
         </sprite>
       )}
