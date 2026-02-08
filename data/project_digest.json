@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T23:23:54.659926+00:00",
+  "last_updated": "2026-02-08T23:25:51.374227+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 124,
-    "subphase": "1",
-    "name": "E2E fixes \u2014 coder prompt, replan threshold, text tool_call cleanup",
+    "subphase": "2",
+    "name": "Camera zoom distances for better overview",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 124.1 DONE! E2E fixes \u2014 coder prompt, replan threshold, text tool_call cleanup",
+    "headline": "Phase 124.2 DONE! Camera zoom distances for better overview",
     "key_achievements": [
+      "[d823c4f9] Phase 124.2: Phase 124.2: Camera zoom distances for better overview",
       "[8a374b08] Phase 124.1: Phase 124.1: E2E fixes \u2014 coder prompt, replan threshold, tex",
       "[214cb6ec] Phase 124.0: Phase 124.0a+124.1: FC tool wrappers + E2E validation fixes",
       "[ff8d5e67] Phase 123.8: Phase 123.8.2: Balance glow intensity (halfway back)",
@@ -21,8 +22,7 @@
       "[d3fbbefc] Phase 123.7: Phase 123.7: White glow sprite for active files",
       "[5ea402ac] Phase 123.6: Phase 123.6: Visible glow with Scanner Panel blue palette",
       "[aab505c9] Phase 123.1: Phase 123.1: Coder Function Calling \u2014 Async FC Loop",
-      "[5ff58204] Phase 123.5: Phase 123.5: Smaller labels to reduce overlap",
-      "[45452cc6] Phase 122.5: Phase 122.5: Coder Context Enrichment \u2014 STM, Scout, inject_c"
+      "[5ff58204] Phase 123.5: Phase 123.5: Smaller labels to reduce overlap"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -30,12 +30,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2122,
+      "points": 2123,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2115,
+      "points": 2116,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "7b2ba6aa",
+    "commit": "d823c4f9",
     "dirty": true
   }
 }
