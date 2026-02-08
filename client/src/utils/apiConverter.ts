@@ -117,10 +117,28 @@ export function convertApiResponse(response: VetkaApiResponse): {
 
   for (const apiNode of response.tree.nodes) {
     const node = convertApiNode(apiNode);
+    // MARKER_119.2K: Phase 119.2 - Pass through heatScore from API
+    node.heatScore = (apiNode as any).heatScore ?? 0;
     nodes[node.id] = node;
   }
 
   const edges = response.tree.edges.map((e, i) => convertApiEdge(e, i));
+
+  // MARKER_119.2L: Phase 119.2 - Build children arrays from edges
+  // This is critical for labelScoring which uses children.length
+  for (const edge of edges) {
+    const parentNode = nodes[edge.source];
+    if (parentNode) {
+      if (!parentNode.children) {
+        parentNode.children = [];
+      }
+      parentNode.children.push(edge.target);
+    }
+  }
+
+  // Debug log
+  const nodesWithChildren = Object.values(nodes).filter(n => (n.children?.length ?? 0) > 0);
+  console.log(`[apiConverter] Phase 119.2: Built children for ${nodesWithChildren.length} nodes`);
 
   return { nodes, edges };
 }
