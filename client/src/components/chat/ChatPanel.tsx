@@ -1581,9 +1581,30 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   );
 
   // Phase 54.3: SVG Scanner/Folder Icon
+  // MARKER_118.3A: ScannerIcon — иконка папки (ЦЕЛЕВОЕ МЕСТО для иконки артефакта рядом)
   const ScannerIcon = () => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+    </svg>
+  );
+
+  // Phase 118: ChestIcon — иконка артефакта (сундук)
+  const ChestIcon = ({ isOpen }: { isOpen: boolean }) => (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      {isOpen ? (
+        <>
+          <path d="M4 14 L4 11 Q4 8 12 8 Q20 8 20 11 L20 14" />
+          <path d="M4 11 L4 8 Q4 5 12 3 Q20 5 20 8 L20 11" />
+          <rect x="3" y="14" width="18" height="6" rx="1" />
+        </>
+      ) : (
+        <>
+          <path d="M4 10 L4 7 Q4 4 12 4 Q20 4 20 7 L20 10" />
+          <rect x="3" y="10" width="18" height="8" rx="1" />
+          <circle cx="12" cy="14" r="1.5" fill="currentColor" />
+        </>
+      )}
     </svg>
   );
 
@@ -1936,7 +1957,53 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           {/* Spacer */}
           <div style={{ flex: 1 }} />
 
-          {/* RIGHT SIDE: Scanner + Close */}
+          {/* RIGHT SIDE: Artifact + Scanner + Close */}
+          {/* Phase 118: Artifact button - opens artifact for selected file */}
+          <button
+            onClick={() => {
+              if (selectedNode) {
+                const ext = selectedNode.name?.includes('.') ? selectedNode.name.split('.').pop() : undefined;
+                setArtifactData({
+                  title: selectedNode.name || 'Artifact',
+                  file: {
+                    path: selectedNode.path,
+                    name: selectedNode.name || 'file',
+                    extension: ext
+                  }
+                });
+              }
+            }}
+            disabled={!selectedNode}
+            style={{
+              background: artifactData ? '#1a1a1a' : 'transparent',
+              border: 'none',
+              borderRadius: 4,
+              padding: 6,
+              cursor: selectedNode ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: selectedNode ? 1 : 0.4,
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              if (selectedNode && !artifactData) {
+                (e.currentTarget as HTMLButtonElement).style.background = '#1a1a1a';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!artifactData) {
+                (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+              }
+            }}
+            title={selectedNode ? 'View artifact' : 'Select a file first'}
+          >
+            <div style={{ color: artifactData ? '#fff' : (selectedNode ? '#666' : '#444'), transition: 'color 0.2s' }}>
+              <ChestIcon isOpen={!!artifactData} />
+            </div>
+          </button>
+
+          {/* MARKER_118.3B: Кнопка Scanner */}
           <button
             onClick={() => setActiveTab(activeTab === 'scanner' ? 'chat' : 'scanner')}
             style={{
@@ -2167,6 +2234,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         </div>
 
         {/* Phase 68.2: UnifiedSearchBar - always visible in chat/group mode */}
+        {/* MARKER_118.3C: UnifiedSearchBar в ChatPanel — альтернативное место для иконки артефакта */}
         {(activeTab === 'chat' || activeTab === 'group') && (
           <UnifiedSearchBar
             onSelectResult={handleSearchSelect}

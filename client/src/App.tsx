@@ -237,16 +237,7 @@ export default function App() {
     // Note: Chat will be cleared by ChatPanel's useEffect when selectedNode becomes null
   };
 
-  // Phase 50.3: Calculate icon container left position based on chat + sidebar state
-  const getIconsLeft = () => {
-    if (!isChatOpen) {
-      return 20;  // Чат закрыт - слева
-    }
-    if (leftPanel !== 'none') {
-      return 380 + 360 + 20;  // Чат + sidebar открыты (760px)
-    }
-    return 360 + 20;  // Только чат открыт (380px)
-  };
+  // Phase 118: getIconsLeft REMOVED - floating icons moved to ChatPanel header
 
   // Phase 68: Search handlers for standalone search bar
   const setCameraCommand = useStore((state) => state.setCameraCommand);
@@ -408,6 +399,7 @@ export default function App() {
   }, [grabMode, setGrabMode]);
 
   // Phase 50.2: ChestIcon component
+  // MARKER_118.1B: ChestIcon — иконка артефакта (сундук)
   const ChestIcon = ({ isOpen }: { isOpen: boolean }) => (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
          stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -539,6 +531,7 @@ export default function App() {
       </div>
 
       {/* Phase 68.3: Search bar + icons container (top-left) */}
+      {/* MARKER_118.2A: Контейнер когда чат ЗАКРЫТ — SearchBar + иконки справа */}
       {!isChatOpen && (
         <div style={{
           position: 'fixed',
@@ -652,65 +645,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Icon container when chat is OPEN - near chat panel */}
-      {isChatOpen && (
-        <div style={{
-          position: 'fixed',
-          bottom: 20,
-          left: getIconsLeft(),
-          display: 'flex',
-          gap: 12,
-          zIndex: 200,
-          transition: 'left 0.3s ease',
-        }}>
-          {/* Chat toggle button (to close) */}
-          <button
-            onClick={() => setIsChatOpen(false)}
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: '50%',
-              background: '#333',
-              border: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-              transition: 'background 0.2s',
-              color: '#fff',
-            }}
-            title="Close chat"
-          >
-            <MessageSquare size={22} />
-          </button>
-
-          {/* Artifact/Chest button */}
-          <button
-            onClick={() => setIsArtifactOpen(!isArtifactOpen)}
-            disabled={!selectedNode}
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: '50%',
-              background: 'transparent',
-              border: 'none',
-              cursor: selectedNode ? 'pointer' : 'not-allowed',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: isArtifactOpen ? '0 0 20px rgba(255,255,255,0.4)' : 'none',
-              transition: 'all 0.3s ease',
-              color: (selectedNode && !isArtifactOpen) ? '#fff' : (selectedNode ? '#ccc' : '#666'),
-              opacity: selectedNode ? 1 : 0.3,
-              filter: (selectedNode && !isArtifactOpen) ? 'drop-shadow(0 0 6px rgba(255,255,255,0.6))' : 'none',
-            }}
-            title={selectedNode ? 'View artifact' : 'Select a file first'}
-          >
-            <ChestIcon isOpen={isArtifactOpen} />
-          </button>
-        </div>
-      )}
+      {/* MARKER_118.2B: REMOVED - floating icons moved to ChatPanel header */}
 
       {/* Phase 65: Grab mode indicator */}
       {grabMode && (
