@@ -20,6 +20,7 @@ Can be run:
 import os
 import sys
 import json
+import re
 import argparse
 import subprocess
 from datetime import datetime, timezone
@@ -138,6 +139,81 @@ def get_git_info() -> dict:
         print(f"  Warning: Could not get git info: {e}")
 
     return info
+
+
+# MARKER_119.6: Auto-sync phase, headline, achievements from git log
+def auto_sync_from_git(digest: dict) -> dict:
+    """Auto-sync phase, headline, and achievements from last git commit.
+
+    Called during pre-commit hook to keep digest in sync with git history.
+    Extracts phase number from commit message, updates current_phase,
+    generates headline, adds achievement, and cleans completed pending_items.
+    """
+    try:
+        # Get last commit message
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%H %s"],
+            cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=5
+        )
+        if result.returncode != 0:
+            return digest
+
+        parts = result.stdout.strip().split(" ", 1)
+        if len(parts) < 2:
+            return digest
+        commit_hash, message = parts[0][:8], parts[1]
+
+        # Extract phase from commit message (e.g., "Phase 119.5: ...")
+        phase_match = re.search(r'Phase\s+(\d+)\.(\d+)', message, re.IGNORECASE)
+        if not phase_match:
+            return digest
+
+        phase_num = int(phase_match.group(1))
+        subphase = phase_match.group(2)
+
+        # Update current_phase
+        digest.setdefault("current_phase", {})
+        digest["current_phase"]["number"] = phase_num
+        digest["current_phase"]["subphase"] = subphase
+        digest["current_phase"]["status"] = "COMPLETED"
+
+        # Extract title after "Phase XXX.Y: " or "Phase XXX.Y — "
+        title_match = re.search(r'Phase\s+\d+[\.\d]*[:\s\u2014-]+(.+?)(?:\n|$)', message)
+        if title_match:
+            digest["current_phase"]["name"] = title_match.group(1).strip()[:80]
+
+        # Auto-generate headline
+        name = digest["current_phase"].get("name", "")
+        digest.setdefault("summary", {})
+        digest["summary"]["headline"] = f"Phase {phase_num}.{subphase} DONE! {name}"
+
+        # Add achievement if not already present (breaking news pattern)
+        achievement = f"[{commit_hash}] Phase {phase_num}.{subphase}: {message[:60]}"
+        achievements = digest.get("summary", {}).get("key_achievements", [])
+        if not any(commit_hash in a for a in achievements):
+            achievements.insert(0, achievement)
+            digest["summary"]["key_achievements"] = achievements[:10]
+
+        # Clean completed items from pending_items
+        pending = digest.get("summary", {}).get("pending_items", [])
+        cleaned = []
+        for item in pending:
+            item_match = re.search(r'Phase\s+(\d+)\.(\d+)', item)
+            if item_match:
+                item_phase = int(item_match.group(1))
+                item_sub = int(item_match.group(2))
+                if item_phase < phase_num or (item_phase == phase_num and item_sub <= int(subphase)):
+                    continue  # Skip — this phase is done
+            cleaned.append(item)
+        digest["summary"]["pending_items"] = cleaned
+
+        print(f"  Auto-sync: Phase {phase_num}.{subphase} from git ({commit_hash})")
+
+    except Exception as e:
+        print(f"  Warning: auto_sync_from_git failed: {e}")
+
+    return digest
+# MARKER_119.6_END
 
 
 def load_digest() -> dict:
@@ -297,11 +373,14 @@ def update_digest(
 
     digest = load_digest()
 
+    # MARKER_119.6: Auto-sync from git before manual overrides
+    digest = auto_sync_from_git(digest)
+
     # Update timestamp
     digest["last_updated"] = datetime.now(timezone.utc).isoformat()
     digest["auto_updated"] = True
 
-    # Update phase if provided
+    # Update phase if provided (manual overrides auto-sync)
     if phase_number is not None:
         digest["current_phase"]["number"] = phase_number
         print(f"  Phase number: {phase_number}")

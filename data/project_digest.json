@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T15:29:37.504658+00:00",
+  "last_updated": "2026-02-08T15:30:33.049809+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 119,
-    "subphase": "5",
-    "name": "Scout role (5th pipeline agent) + CAM rename",
+    "number": 118,
+    "subphase": "2",
+    "name": "Double-click support for files and folders",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 119.5 DONE! Scout role + CAM rename + MGC Dedup + STM Bridge + Heartbeat E2E",
+    "headline": "Phase 118.2 DONE! Double-click support for files and folders",
     "key_achievements": [
+      "[89ad375b] Phase 118.2: Phase 118.2: Double-click support for files and fo...",
       "[05c2800c] Phase 119.4-119.5: Scout role (5th pipeline agent) + CAM rename",
       "[d809c81d] Phase 119.1-119.3: MGC Dedup + STM Bridge + Heartbeat @titan E2E",
       "[1e5525a5] Phase 118: Move artifact icon to ChatPanel header",
@@ -21,8 +22,7 @@
       "[85d7a1fb] Phase 118.6-118.7: Fix pipeline messages visibility + error callback",
       "[b02d2c91] Phase 118: Unblock @dragon \u2014 async embeddings, Weaviate upsert, Engram fixes",
       "[26ea95a1] Phase 117.8: SocketIO direct emit \u2014 unblock VETKA during @dragon",
-      "[8d6be290] Phase 117.7: Solo chat_id fix + chat naming fallback + Weaviate v4 migration",
-      "[5fee5a2c] Phase 117.6: @dragon E2E fix \u2014 route to Mycelium + model attribution"
+      "[8d6be290] Phase 117.7: Solo chat_id fix + chat naming fallback + Weaviate v4 migration"
     ],
     "pending_items": [
       "Phase 119.6: Digest Harmony \u2014 auto-sync phase from git + cleanup",
@@ -145,7 +145,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "1e5525a5",
+    "commit": "89ad375b",
     "dirty": true
   }
 }
