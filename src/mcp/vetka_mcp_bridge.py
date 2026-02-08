@@ -107,6 +107,8 @@ from src.mcp.tools.pinned_files_tool import register_pinned_files_tool
 from src.mcp.tools.context_dag_tool import register_context_dag_tool
 # MARKER_119.7: Tavily web search for @researcher
 from src.mcp.tools.web_search_tool import register_web_search_tool
+# MARKER_119.8: Context7 library docs for @coder
+from src.mcp.tools.library_docs_tool import register_library_docs_tool
 
 # VETKA server configuration
 VETKA_BASE_URL = "http://localhost:5001"
@@ -1054,6 +1056,7 @@ async def list_tools() -> list[Tool]:
     register_pinned_files_tool(mcp_tools)  # MARKER_109_2_PINNED_TOOL
     register_context_dag_tool(mcp_tools)  # MARKER_109_3_CONTEXT_DAG
     register_web_search_tool(mcp_tools)  # MARKER_119.7
+    register_library_docs_tool(mcp_tools)  # MARKER_119.8
 
     # Convert to MCP format (handle both dict and BaseMCPTool objects)
     for tool in mcp_tools:

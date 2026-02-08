@@ -60,6 +60,7 @@ SAFE_FUNCTION_CALLING_TOOLS = {
     "vetka_workflow_status",
     "vetka_arc_suggest",
     "vetka_web_search",  # MARKER_119.7: Tavily web search
+    "vetka_library_docs",  # MARKER_119.8: Context7 library docs
 }
 
 WRITE_TOOLS_REQUIRING_APPROVAL = {

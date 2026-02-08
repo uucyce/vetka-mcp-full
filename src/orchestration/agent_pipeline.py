@@ -1671,6 +1671,24 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         temperature = prompt.get("temperature", 0.4)
         system_prompt = prompt.get("system", "Execute the subtask. Be concise.")
 
+        # MARKER_119.8: Pre-fetch library docs for coder context
+        lib_context = ""
+        if phase_type in ["fix", "build"]:
+            try:
+                from src.mcp.tools.library_docs_tool import LibraryDocsTool
+                lib_tool = LibraryDocsTool()
+                libraries = self._extract_library_names(subtask.description + " " + context_str)
+                for lib_name in libraries[:2]:
+                    lib_result = lib_tool.execute({"library": lib_name, "topic": subtask.description, "tokens": 2000})
+                    if lib_result.get("success"):
+                        docs = lib_result.get("result", {}).get("docs", "")
+                        if docs:
+                            lib_context += f"\n\n[{lib_name} docs]\n{docs[:1500]}"
+                            logger.info(f"[Pipeline] Library docs: fetched {lib_name} for coder")
+            except Exception as e:
+                logger.debug(f"[Pipeline] Library docs skipped: {e}")
+        # MARKER_119.8_END
+
         # MARKER_102.22_START: Fixed LLM call + context passing
         # LLMCallTool.execute is synchronous
         # MARKER_117_PROVIDER: Pass model_source for provider routing
@@ -1683,7 +1701,7 @@ Phase type: {phase_type}
 Subtask: {subtask.description}
 Marker: {subtask.marker or 'MARKER_102.X'}
 
-{context_str}
+{context_str}{lib_context}
 
 Execute this subtask. Provide clear, actionable output."""}
             ],
@@ -1728,6 +1746,49 @@ Execute this subtask. Provide clear, actionable output."""}
             return f"Error: {error}"
     # MARKER_102.22_END
     # MARKER_102.7_END
+
+    # MARKER_119.8_HELPER: Extract library names from task description
+    @staticmethod
+    def _extract_library_names(text: str) -> list:
+        """Extract library/package names from text for Context7 lookup.
+
+        Looks for patterns like 'import X', 'using X', 'X library', etc.
+        Returns up to 3 unique library names, filtering common stopwords.
+        """
+        import re
+
+        stopwords = {
+            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+            "of", "is", "it", "this", "that", "with", "from", "as", "by", "be",
+            "code", "file", "function", "class", "method", "variable", "project",
+            "task", "subtask", "implement", "create", "add", "fix", "update",
+            "build", "test", "error", "bug", "feature", "new", "old", "use",
+            "using", "import", "module", "package", "library", "framework",
+            "vetka", "marker", "phase", "research", "context", "system",
+        }
+
+        names = set()
+
+        # Pattern: import X / from X
+        for m in re.finditer(r'(?:import|from)\s+([a-zA-Z][a-zA-Z0-9_-]+)', text):
+            name = m.group(1).lower().split(".")[0]
+            if name not in stopwords and len(name) > 1:
+                names.add(name)
+
+        # Pattern: using X / with X framework/library
+        for m in re.finditer(r'(?:using|with)\s+([a-zA-Z][a-zA-Z0-9_.-]+)\s*(?:library|framework|package|sdk)?', text, re.IGNORECASE):
+            name = m.group(1).lower().rstrip(".")
+            if name not in stopwords and len(name) > 1:
+                names.add(name)
+
+        # Pattern: X library/framework/package
+        for m in re.finditer(r'([a-zA-Z][a-zA-Z0-9_.-]+)\s+(?:library|framework|package|sdk|docs|documentation)', text, re.IGNORECASE):
+            name = m.group(1).lower().rstrip(".")
+            if name not in stopwords and len(name) > 1:
+                names.add(name)
+
+        return list(names)[:3]
+    # MARKER_119.8_HELPER_END
 
 
 # MARKER_102.8_START: Convenience functions
