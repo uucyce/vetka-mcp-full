@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T22:42:39.912240+00:00",
+  "last_updated": "2026-02-08T22:44:16.003299+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 123,
     "subphase": "8",
-    "name": "Radial gradient glow sprite (Grok research)",
+    "name": "Reduce glow intensity",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 123.8 DONE! Radial gradient glow sprite (Grok research)",
+    "headline": "Phase 123.8 DONE! Reduce glow intensity",
     "key_achievements": [
+      "[5a62c29d] Phase 123.8: Phase 123.8.1: Reduce glow intensity",
       "[ef8e6c0e] Phase 123.8: Phase 123.8: Radial gradient glow sprite (Grok research)",
       "[d3fbbefc] Phase 123.7: Phase 123.7: White glow sprite for active files",
       "[5ea402ac] Phase 123.6: Phase 123.6: Visible glow with Scanner Panel blue palette",
@@ -21,8 +22,7 @@
       "[45452cc6] Phase 122.5: Phase 122.5: Coder Context Enrichment \u2014 STM, Scout, inject_c",
       "[734dd39e] Phase 119.2: FIX Phase 119.2: Build children arrays from edges + pass hea",
       "[ab1216b4] Phase 119.2: Phase 119.2: Heat-based label visibility + size scaling",
-      "[09235b3e] Phase 119.1: Phase 119.1: Folder label click \u2192 zoom camera",
-      "[16f9c6cc] Phase 119.8: Phase 119.8: Context7 library docs for @coder"
+      "[09235b3e] Phase 119.1: Phase 119.1: Folder label click \u2192 zoom camera"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "ef8e6c0e",
+    "commit": "5a62c29d",
     "dirty": true
   }
 }
