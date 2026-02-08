@@ -353,6 +353,7 @@ async def heartbeat_tick(
     logger.info(f"[Heartbeat] Parsed {len(tasks)} tasks from {new_count} messages")
 
     # 4. Dispatch tasks
+    # MARKER_124.2B: Route through TaskBoard for priority ordering
     results = []
     if tasks and not dry_run:
         _emit_heartbeat_status(
@@ -361,13 +362,48 @@ async def heartbeat_tick(
             f"{new_count} new messages, {len(tasks)} tasks detected!"
         )
 
+        # Phase 124.2B: Add all tasks to TaskBoard first, then dispatch by priority
+        from src.orchestration.task_board import get_task_board
+        board = get_task_board()
+
         for task in tasks:
-            result = await _dispatch_task(task, group_id)
+            # @board commands handled directly (not queued)
+            if task.trigger == "board":
+                result = await _handle_board_command(task, group_id)
+                results.append({
+                    "task": task.task[:100],
+                    "phase_type": task.phase_type,
+                    "trigger": task.trigger,
+                    "sender": task.sender_id,
+                    **result
+                })
+                continue
+
+            # Add to board for priority-ordered dispatch
+            task_id = board.add_task(
+                title=task.task[:100],
+                description=task.task,
+                priority=2 if task.trigger in ("dragon", "titan") else 3,
+                phase_type=task.phase_type,
+                preset="titan_core" if task.trigger == "titan" else None,
+                source=f"heartbeat_{task.trigger}",
+                tags=[task.trigger],
+            )
+            logger.info(f"[Heartbeat] Task queued in board: {task_id}")
+
+        # Dispatch from board in priority order (max_concurrent tasks)
+        max_dispatch = board.settings.get("max_concurrent", 2)
+        dispatched = 0
+        while dispatched < max_dispatch:
+            result = await board.dispatch_next(chat_id=group_id)
+            if not result or not result.get("success"):
+                break
+            dispatched += 1
             results.append({
-                "task": task.task[:100],
-                "phase_type": task.phase_type,
-                "trigger": task.trigger,
-                "sender": task.sender_id,
+                "task": result.get("task_title", "")[:100],
+                "phase_type": result.get("phase_type", "build"),
+                "trigger": "board_dispatch",
+                "sender": "heartbeat",
                 **result
             })
 
@@ -377,6 +413,7 @@ async def heartbeat_tick(
                 state.tasks_failed += 1
 
             state.tasks_dispatched += 1
+        # MARKER_124.2B_END
 
     elif tasks and dry_run:
         _emit_heartbeat_status(

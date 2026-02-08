@@ -291,6 +291,154 @@ _SYSTEM_COMMAND_PHASES = {
     "pipeline": "build",
 }
 
+# MARKER_124.2A: Interactive task intake — pending intakes per chat
+_PENDING_INTAKES: dict = {}  # chat_id → {"agent_id", "task_text", "sender_id", "created_at"}
+_INTAKE_TIMEOUT_SEC = 60  # Auto-queue after 60s with no reply
+
+
+async def _send_intake_prompt(chat_id: str, agent_id: str, task_text: str, sender_id: str):
+    """Send interactive urgency/team prompt to chat instead of immediate dispatch."""
+    import httpx
+
+    _PENDING_INTAKES[chat_id] = {
+        "agent_id": agent_id,
+        "task_text": task_text,
+        "sender_id": sender_id,
+        "created_at": time.time(),
+    }
+
+    prompt_msg = (
+        f"📋 New task from {sender_id}:\n"
+        f"**{task_text[:200]}**\n\n"
+        f"⏰ Urgency:\n"
+        f"  `1` — Now (immediate pipeline)\n"
+        f"  `2` — Queue (heartbeat, priority order)\n\n"
+        f"🐉 Team:\n"
+        f"  `d` — Dragon (code/build)\n"
+        f"  `t` — Titan (research/analysis)\n\n"
+        f"Reply: `1d` = now+dragon, `2t` = queue+titan, `1t` = now+titan, `2d` = queue+dragon\n"
+        f"_(auto-queue as `2d` in 60s if no reply)_"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
+                json={
+                    "agent_id": agent_id,
+                    "content": prompt_msg,
+                    "message_type": "system",
+                }
+            )
+    except Exception as e:
+        logger.warning(f"[INTAKE] Failed to send prompt: {e}")
+
+    # Schedule auto-timeout
+    async def _auto_timeout():
+        await asyncio.sleep(_INTAKE_TIMEOUT_SEC)
+        if chat_id in _PENDING_INTAKES:
+            logger.info(f"[INTAKE] Auto-timeout for {chat_id}, defaulting to 2d (queue+dragon)")
+            await handle_intake_reply(chat_id, "2d")
+
+    asyncio.create_task(_auto_timeout())
+
+
+async def handle_intake_reply(chat_id: str, reply_text: str) -> bool:
+    """Handle intake reply (e.g., '1d', '2t'). Returns True if intake was handled."""
+    pending = _PENDING_INTAKES.pop(chat_id, None)
+    if not pending:
+        return False
+
+    reply = reply_text.strip().lower()
+    urgency = "now" if "1" in reply else "queue"
+    team = "titan" if "t" in reply else "dragon"
+
+    agent_id = pending["agent_id"]
+    task_text = pending["task_text"]
+    sender_id = pending["sender_id"]
+
+    phase_type = _SYSTEM_COMMAND_PHASES.get(agent_id, "build")
+    if team == "titan":
+        phase_type = "research" if agent_id == "doctor" else "build"
+
+    import httpx
+
+    if urgency == "now":
+        # Immediate pipeline execution
+        preset = "titan_core" if team == "titan" else "dragon_silver"
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
+                    json={
+                        "agent_id": agent_id,
+                        "content": (
+                            f"🔥 Dispatching NOW with {'⚡ Titan' if team == 'titan' else '🐉 Dragon'}!\n"
+                            f"Task: {task_text[:200]}"
+                        ),
+                        "message_type": "system",
+                    }
+                )
+        except Exception:
+            pass
+
+        from src.orchestration.agent_pipeline import AgentPipeline
+        pipeline = AgentPipeline(chat_id=chat_id, preset=preset)
+
+        try:
+            result = await pipeline.execute(task_text, phase_type)
+            completed = result.get("results", {}).get("subtasks_completed", "?")
+            total = result.get("results", {}).get("subtasks_total", "?")
+            logger.info(f"[INTAKE] Now dispatch done: {completed}/{total}")
+        except Exception as e:
+            logger.error(f"[INTAKE] Now dispatch failed: {e}")
+    else:
+        # Queue via TaskBoard
+        from src.orchestration.task_board import get_task_board
+        board = get_task_board()
+        preset = "titan_core" if team == "titan" else "dragon_silver"
+        task_id = board.add_task(
+            title=task_text[:100],
+            description=task_text,
+            priority=3,  # Medium — user can reprioritize in Task Board UI
+            phase_type=phase_type,
+            preset=preset,
+            source=f"intake_{agent_id}",
+            tags=[team, agent_id],
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
+                    json={
+                        "agent_id": agent_id,
+                        "content": (
+                            f"📥 Task queued as `{task_id}` with {'⚡ Titan' if team == 'titan' else '🐉 Dragon'}\n"
+                            f"Priority: P3 (medium) — edit in Task Board (Cmd+Shift+D)\n"
+                            f"Task: {task_text[:150]}"
+                        ),
+                        "message_type": "system",
+                    }
+                )
+        except Exception:
+            pass
+
+    return True
+
+
+def has_pending_intake(chat_id: str) -> bool:
+    """Check if chat has a pending intake prompt (for message interception)."""
+    pending = _PENDING_INTAKES.get(chat_id)
+    if not pending:
+        return False
+    # Check timeout
+    if time.time() - pending["created_at"] > _INTAKE_TIMEOUT_SEC + 5:
+        _PENDING_INTAKES.pop(chat_id, None)
+        return False
+    return True
+
 
 async def _dispatch_system_command(
     agent_id: str,
@@ -300,10 +448,11 @@ async def _dispatch_system_command(
     sender_id: str,
 ):
     """
-    Phase 117.3: Dispatch system command to Mycelium pipeline.
+    Phase 117.3 + 124.2A: Dispatch system command to Mycelium pipeline.
 
     Called automatically when @dragon, @doctor, or @pipeline is mentioned
-    in any group chat. The pipeline streams results back to the SAME chat.
+    in any group chat. Now uses interactive intake flow — asks urgency and team
+    before dispatching.
 
     Args:
         agent_id: System command name (dragon, doctor, pipeline)
@@ -325,15 +474,19 @@ async def _dispatch_system_command(
     if not task_text:
         task_text = f"General {agent_id} task requested by {sender_id}"
 
-    phase_type = _SYSTEM_COMMAND_PHASES.get(agent_id, "build")
-
+    # MARKER_124.2A: Interactive intake — ask urgency and team before dispatch
     print(
-        f"[SYSTEM_CMD] Phase 117.3: Dispatching @{agent_id}\n"
+        f"[SYSTEM_CMD] Phase 124.2A: Interactive intake for @{agent_id}\n"
         f"  Task: {task_text[:100]}\n"
-        f"  Phase: {phase_type}\n"
         f"  Chat: {chat_id[:12]}...\n"
         f"  Sender: {sender_id}"
     )
+
+    await _send_intake_prompt(chat_id, agent_id, task_text, sender_id)
+    return  # Wait for user reply via handle_intake_reply()
+    # MARKER_124.2A_END — old direct dispatch code below kept for reference
+
+    phase_type = _SYSTEM_COMMAND_PHASES.get(agent_id, "build")
 
     try:
         from src.orchestration.agent_pipeline import AgentPipeline
@@ -820,6 +973,15 @@ def register_group_message_handler(sio, app=None):
             print(
                 f"[GROUP_DEBUG] Phase 80.28: User message, decay now {group_object.last_responder_decay}"
             )
+
+        # MARKER_124.2A: Check for pending intake reply before normal routing
+        if sender_id == "user" and has_pending_intake(group_id):
+            # Short replies like "1d", "2t", "1t", "2d" are intake responses
+            if len(content.strip()) <= 5 and any(c in content for c in "12"):
+                print(f"[INTAKE] Intercepting intake reply: '{content.strip()}' in {group_id[:8]}...")
+                handled = await handle_intake_reply(group_id, content)
+                if handled:
+                    return  # Don't process as normal message
 
         # Phase 80.13: Check for MCP agent @mentions and notify them
         # MCP agents (browser_haiku, claude_code) are not in participants

@@ -1,434 +1,321 @@
 /**
- * MARKER_110_UX
- * DevPanel - Developer configuration panel for VETKA.
- * Provides controls for Y-axis formula weights, position protection,
- * and fallback threshold settings.
+ * MARKER_124.2C: DevPanel → Task Board UI
+ * Phase 124.2C: Replaced Y-axis sliders and fallback settings with
+ * Task Board management panel. Keeps spatial memory controls.
  *
- * Phase 110 UX Improvements:
- * - Sliders for MIN_Y_FLOOR and MAX_Y_CEILING
- * - Visual progress bars for all sliders
- * - Helper text for each control
- * - Keyboard shortcut hint in header
- * - Improved button styling
+ * Features:
+ * - Task list from backend (GET /api/debug/task-board)
+ * - Priority badges, status chips, phase type icons
+ * - Quick-add task input
+ * - Dispatch next button
+ * - Spatial Memory controls (persist positions, reset cache)
  *
  * @status active
- * @phase 110
- * @depends react, FloatingWindow, devConfig
+ * @phase 124.2
+ * @depends react, FloatingWindow, TaskCard, useStore
  * @used_by App
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { FloatingWindow } from '../artifact/FloatingWindow';
-import {
-  DevPanelConfig,
-  DEFAULT_CONFIG,
-  getDevPanelConfig,
-  saveDevPanelConfig,
-  resetDevPanelConfig,
-} from '../../utils/devConfig';
 import { useStore } from '../../store/useStore';
+import { TaskCard, TaskData } from './TaskCard';
 
 interface DevPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-// MARKER_110_UX: Button base style for consistent button appearance
-const buttonBaseStyle = {
-  padding: '8px 16px',
-  borderRadius: 4,
-  border: 'none',
-  cursor: 'pointer',
-  fontSize: 13,
-  fontWeight: 500 as const,
-  transition: 'all 0.15s ease',
-};
+const API_BASE = 'http://localhost:5001/api/debug';
 
-// MARKER_110_UX: Developer configuration panel component
+// MARKER_124.2C: Task Board panel component
 export function DevPanel({ isOpen, onClose }: DevPanelProps) {
-  const [config, setConfig] = useState<DevPanelConfig>(DEFAULT_CONFIG);
-  const [isDirty, setIsDirty] = useState(false);
+  const [tasks, setTasks] = useState<TaskData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskTeam, setNewTaskTeam] = useState<'dragon' | 'titan'>('dragon');
+  const [summary, setSummary] = useState<{ total: number; by_status: Record<string, number> } | null>(null);
 
-  // Load config on mount
-  useEffect(() => {
-    setConfig(getDevPanelConfig());
+  // Fetch tasks from backend
+  const fetchTasks = useCallback(async () => {
+    if (!isOpen) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/task-board`);
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data.tasks || []);
+        setSummary(data.summary || null);
+      }
+    } catch (err) {
+      console.error('[TaskBoard] Fetch failed:', err);
+    } finally {
+      setLoading(false);
+    }
   }, [isOpen]);
 
-  // Update local config state
-  const updateConfig = useCallback((updates: Partial<DevPanelConfig>) => {
-    setConfig((prev) => {
-      const newConfig = { ...prev, ...updates };
-      // Auto-calculate knowledge weight as inverse of time weight
-      if ('Y_WEIGHT_TIME' in updates) {
-        newConfig.Y_WEIGHT_KNOWLEDGE = 1 - newConfig.Y_WEIGHT_TIME;
-      }
-      return newConfig;
-    });
-    setIsDirty(true);
-  }, []);
+  // Fetch on open and poll every 10s
+  useEffect(() => {
+    if (!isOpen) return;
+    fetchTasks();
+    const interval = setInterval(fetchTasks, 10000);
+    return () => clearInterval(interval);
+  }, [isOpen, fetchTasks]);
 
-  // Apply configuration
-  // MARKER_110_BACKEND_CONFIG: Save config and trigger tree refresh
-  const handleApply = useCallback(async () => {
-    saveDevPanelConfig(config);
-    setIsDirty(false);
+  // Add task
+  const handleAddTask = useCallback(async () => {
+    if (!newTaskTitle.trim()) return;
 
-    // Emit to backend via socket for server-side layout recalculation
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const socket = (window as any).__vetkaSocket;
-    if (socket?.connected) {
-      socket.emit('update_layout_config', {
-        ...config,
-        apply_immediately: true
+    try {
+      const res = await fetch(`${API_BASE}/task-board/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newTaskTitle.trim(),
+          phase_type: newTaskTeam === 'titan' ? 'research' : 'build',
+          preset: newTaskTeam === 'titan' ? 'titan_core' : 'dragon_silver',
+          tags: [newTaskTeam],
+        }),
       });
-      console.log('[DevPanel] Config emitted to backend via socket');
+      if (res.ok) {
+        setNewTaskTitle('');
+        fetchTasks();
+      }
+    } catch (err) {
+      console.error('[TaskBoard] Add failed:', err);
     }
+  }, [newTaskTitle, newTaskTeam, fetchTasks]);
 
-    // Local event for other components to react to config changes
-    window.dispatchEvent(new CustomEvent('vetka-dev-config-changed', { detail: config }));
+  // Update task priority
+  const handlePriorityChange = useCallback(async (taskId: string, priority: number) => {
+    try {
+      await fetch(`${API_BASE}/task-board/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority }),
+      });
+      fetchTasks();
+    } catch (err) {
+      console.error('[TaskBoard] Priority update failed:', err);
+    }
+  }, [fetchTasks]);
 
-    // MARKER_110_FIX: Force tree reload to apply new layout config
-    // Dispatch custom event that useTreeData can listen to
-    window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
-    console.log('[DevPanel] Config applied, tree refresh triggered');
-  }, [config]);
+  // Remove task
+  const handleRemove = useCallback(async (taskId: string) => {
+    try {
+      await fetch(`${API_BASE}/task-board/${taskId}`, { method: 'DELETE' });
+      fetchTasks();
+    } catch (err) {
+      console.error('[TaskBoard] Remove failed:', err);
+    }
+  }, [fetchTasks]);
 
-  // Reset to defaults
-  const handleReset = useCallback(() => {
-    resetDevPanelConfig();
-    setConfig(DEFAULT_CONFIG);
-    setIsDirty(false);
-    window.dispatchEvent(new CustomEvent('vetka-dev-config-changed', { detail: DEFAULT_CONFIG }));
-    console.log('[DevPanel] Config reset to defaults');
-  }, []);
+  // Dispatch specific task
+  const handleDispatchTask = useCallback(async (taskId: string) => {
+    try {
+      await fetch(`${API_BASE}/task-board/dispatch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: taskId }),
+      });
+      fetchTasks();
+    } catch (err) {
+      console.error('[TaskBoard] Dispatch failed:', err);
+    }
+  }, [fetchTasks]);
+
+  // Dispatch next (highest priority)
+  const handleDispatchNext = useCallback(async () => {
+    try {
+      await fetch(`${API_BASE}/task-board/dispatch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      fetchTasks();
+    } catch (err) {
+      console.error('[TaskBoard] Dispatch next failed:', err);
+    }
+  }, [fetchTasks]);
 
   if (!isOpen) return null;
 
+  const pendingCount = tasks.filter(t => t.status === 'pending').length;
+  const runningCount = tasks.filter(t => t.status === 'running').length;
+
   return (
     <FloatingWindow
-      title="Dev Panel"
+      title="Task Board"
       isOpen={isOpen}
       onClose={onClose}
-      defaultWidth={360}
-      defaultHeight={520}
+      defaultWidth={380}
+      defaultHeight={560}
     >
-      {/* MARKER_110_UX: Keyboard shortcut hint in header */}
-      <div style={{ padding: '4px 16px 0', color: '#666', fontSize: 11 }}>
-        Cmd+Shift+D to toggle
+      {/* Header with shortcut hint and summary */}
+      <div style={{ padding: '4px 12px 0', color: '#666', fontSize: 11, display: 'flex', justifyContent: 'space-between' }}>
+        <span>Cmd+Shift+D to toggle</span>
+        {summary && (
+          <span>
+            {summary.total} tasks
+            {pendingCount > 0 && ` · ${pendingCount} pending`}
+            {runningCount > 0 && ` · ${runningCount} running`}
+          </span>
+        )}
       </div>
+
       <div style={{
-        padding: 16,
+        padding: 12,
         paddingTop: 8,
         display: 'flex',
         flexDirection: 'column',
-        gap: 20,
         height: 'calc(100% - 24px)',
-        overflowY: 'auto',
         color: '#e0e0e0',
         fontSize: 13,
       }}>
-        {/* Section: Y-Axis Formula */}
-        <section>
-          <h3 style={{ margin: '0 0 12px 0', color: '#fff', fontSize: 14, fontWeight: 600 }}>
-            Y-Axis Formula
-          </h3>
+        {/* Quick Add Section */}
+        <div style={{
+          display: 'flex',
+          gap: 6,
+          marginBottom: 10,
+        }}>
+          <input
+            type="text"
+            placeholder="New task..."
+            value={newTaskTitle}
+            onChange={(e) => setNewTaskTitle(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
+            style={{
+              flex: 1,
+              background: '#1e1e1e',
+              border: '1px solid #333',
+              borderRadius: 4,
+              color: '#e0e0e0',
+              padding: '6px 10px',
+              fontSize: 12,
+              outline: 'none',
+            }}
+          />
+          <select
+            value={newTaskTeam}
+            onChange={(e) => setNewTaskTeam(e.target.value as 'dragon' | 'titan')}
+            style={{
+              background: '#1e1e1e',
+              border: '1px solid #333',
+              borderRadius: 4,
+              color: '#ccc',
+              fontSize: 11,
+              padding: '4px',
+            }}
+          >
+            <option value="dragon">🐉</option>
+            <option value="titan">⚡</option>
+          </select>
+          <button
+            onClick={handleAddTask}
+            disabled={!newTaskTitle.trim()}
+            style={{
+              background: newTaskTitle.trim() ? '#2563eb' : '#333',
+              color: newTaskTitle.trim() ? '#fff' : '#666',
+              border: 'none',
+              borderRadius: 4,
+              padding: '6px 12px',
+              fontSize: 13,
+              cursor: newTaskTitle.trim() ? 'pointer' : 'not-allowed',
+              fontWeight: 600,
+            }}
+          >
+            +
+          </button>
+        </div>
 
-          {/* MARKER_110_UX: Y_WEIGHT_TIME slider with visual progress bar */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <label>Time Weight</label>
-              <span style={{ color: '#888' }}>{config.Y_WEIGHT_TIME.toFixed(2)}</span>
+        {/* Task List */}
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          marginBottom: 10,
+          minHeight: 0,
+        }}>
+          {loading && tasks.length === 0 && (
+            <div style={{ color: '#666', textAlign: 'center', padding: 20, fontSize: 12 }}>
+              Loading...
             </div>
-            {/* Visual indicator bar */}
-            <div style={{
-              height: 4,
-              background: '#333',
-              borderRadius: 2,
-              overflow: 'hidden',
-              marginBottom: 6,
-            }}>
-              <div style={{
-                height: '100%',
-                width: `${config.Y_WEIGHT_TIME * 100}%`,
-                background: '#6366f1',
-                borderRadius: 2,
-                transition: 'width 0.15s ease',
-              }} />
+          )}
+
+          {!loading && tasks.length === 0 && (
+            <div style={{ color: '#555', textAlign: 'center', padding: 20, fontSize: 12, lineHeight: 1.5 }}>
+              No tasks yet.<br />
+              Use <code style={{ color: '#888' }}>@doctor</code> or <code style={{ color: '#888' }}>@dragon</code> in chat,<br />
+              or add one above.
             </div>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={config.Y_WEIGHT_TIME}
-              onChange={(e) => updateConfig({ Y_WEIGHT_TIME: parseFloat(e.target.value) })}
-              style={{ width: '100%', accentColor: '#6366f1' }}
+          )}
+
+          {tasks.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              onPriorityChange={handlePriorityChange}
+              onRemove={handleRemove}
+              onDispatch={handleDispatchTask}
             />
-            <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
-              Higher = older files lower on Y-axis
-            </div>
-          </div>
+          ))}
+        </div>
 
-          {/* MARKER_110_UX: Y_WEIGHT_KNOWLEDGE (read-only, calculated) with helper text */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <label>Knowledge Weight</label>
-              <span style={{ color: '#888' }}>{config.Y_WEIGHT_KNOWLEDGE.toFixed(2)}</span>
-            </div>
-            {/* Visual indicator bar */}
-            <div style={{
-              height: 4,
-              background: '#333',
-              borderRadius: 2,
-              overflow: 'hidden',
-              marginBottom: 6,
-            }}>
-              <div style={{
-                height: '100%',
-                width: `${config.Y_WEIGHT_KNOWLEDGE * 100}%`,
-                background: '#22c55e',
-                borderRadius: 2,
-                transition: 'width 0.15s ease',
-              }} />
-            </div>
-            <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
-              Higher = semantic clustering affects Y (Auto = 1 - Time Weight)
-            </div>
-          </div>
-        </section>
+        {/* Footer: Dispatch + Spatial Memory */}
+        <div style={{
+          borderTop: '1px solid #333',
+          paddingTop: 10,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+        }}>
+          {/* Dispatch button */}
+          <button
+            onClick={handleDispatchNext}
+            disabled={pendingCount === 0}
+            style={{
+              width: '100%',
+              padding: '8px 16px',
+              background: pendingCount > 0 ? '#2563eb' : '#333',
+              color: pendingCount > 0 ? '#fff' : '#666',
+              border: 'none',
+              borderRadius: 4,
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: pendingCount > 0 ? 'pointer' : 'not-allowed',
+            }}
+          >
+            ▶ Dispatch Next {pendingCount > 0 && `(${pendingCount} pending)`}
+          </button>
 
-        {/* Section: Position Protection */}
-        <section>
-          <h3 style={{ margin: '0 0 12px 0', color: '#fff', fontSize: 14, fontWeight: 600 }}>
-            Position Protection
-          </h3>
-
-          {/* MARKER_110_UX: MIN_Y_FLOOR slider with visual progress bar */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <label>Min Y Floor</label>
-              <span style={{ color: '#888' }}>{config.MIN_Y_FLOOR}</span>
-            </div>
-            {/* Visual indicator bar */}
-            <div style={{
-              height: 4,
-              background: '#333',
-              borderRadius: 2,
-              overflow: 'hidden',
-              marginBottom: 6,
-            }}>
-              <div style={{
-                height: '100%',
-                width: `${(config.MIN_Y_FLOOR / 200) * 100}%`,
-                background: '#22c55e',
-                borderRadius: 2,
-                transition: 'width 0.15s ease',
-              }} />
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="200"
-              step="5"
-              value={config.MIN_Y_FLOOR}
-              onChange={(e) => updateConfig({ MIN_Y_FLOOR: parseInt(e.target.value) })}
-              style={{ width: '100%', accentColor: '#22c55e' }}
-            />
-            <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
-              Protection against underground nodes (Y={config.MIN_Y_FLOOR})
-            </div>
-          </div>
-
-          {/* MARKER_110_UX: MAX_Y_CEILING slider with visual progress bar */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <label>Max Y Ceiling</label>
-              <span style={{ color: '#888' }}>{config.MAX_Y_CEILING}</span>
-            </div>
-            {/* Visual indicator bar */}
-            <div style={{
-              height: 4,
-              background: '#333',
-              borderRadius: 2,
-              overflow: 'hidden',
-              marginBottom: 6,
-            }}>
-              <div style={{
-                height: '100%',
-                width: `${((config.MAX_Y_CEILING - 1000) / 9000) * 100}%`,
-                background: '#f59e0b',
-                borderRadius: 2,
-                transition: 'width 0.15s ease',
-              }} />
-            </div>
-            <input
-              type="range"
-              min="1000"
-              max="10000"
-              step="100"
-              value={config.MAX_Y_CEILING}
-              onChange={(e) => updateConfig({ MAX_Y_CEILING: parseInt(e.target.value) })}
-              style={{ width: '100%', accentColor: '#f59e0b' }}
-            />
-            <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
-              Keeps tree within visible bounds (Y={config.MAX_Y_CEILING})
-            </div>
-          </div>
-        </section>
-
-        {/* Section: Fallback Settings */}
-        <section>
-          <h3 style={{ margin: '0 0 12px 0', color: '#fff', fontSize: 14, fontWeight: 600 }}>
-            Fallback Settings
-          </h3>
-
-          {/* MARKER_110_UX: FALLBACK_THRESHOLD slider with visual progress bar */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <label>Fallback Threshold</label>
-              <span style={{ color: '#888' }}>{(config.FALLBACK_THRESHOLD * 100).toFixed(0)}%</span>
-            </div>
-            {/* Visual indicator bar */}
-            <div style={{
-              height: 4,
-              background: '#333',
-              borderRadius: 2,
-              overflow: 'hidden',
-              marginBottom: 6,
-            }}>
-              <div style={{
-                height: '100%',
-                width: `${config.FALLBACK_THRESHOLD * 100}%`,
-                background: '#ef4444',
-                borderRadius: 2,
-                transition: 'width 0.15s ease',
-              }} />
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={config.FALLBACK_THRESHOLD}
-              onChange={(e) => updateConfig({ FALLBACK_THRESHOLD: parseFloat(e.target.value) })}
-              style={{ width: '100%', accentColor: '#ef4444' }}
-            />
-            <div style={{ fontSize: 11, color: '#666', marginTop: 2 }}>
-              % invalid nodes to trigger layout recalc
-            </div>
-          </div>
-
-          {/* MARKER_110_UX: USE_SEMANTIC_FALLBACK toggle with helper text */}
-          <div style={{ marginBottom: 12 }}>
-            <label style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              cursor: 'pointer',
-            }}>
-              <input
-                type="checkbox"
-                checked={config.USE_SEMANTIC_FALLBACK}
-                onChange={(e) => updateConfig({ USE_SEMANTIC_FALLBACK: e.target.checked })}
-                style={{ accentColor: '#6366f1' }}
-              />
-              <span>Use Semantic Fallback</span>
-            </label>
-            <div style={{ fontSize: 11, color: '#666', marginTop: 4, marginLeft: 24 }}>
-              Try semantic positions before full recalc
-            </div>
-          </div>
-        </section>
-
-        {/* Phase 113.4: Spatial Memory Controls */}
-        <section style={{ marginBottom: 16 }}>
-          <h3 style={{ color: '#a855f7', marginBottom: 8, fontSize: 13, fontWeight: 600 }}>
-            Spatial Memory (Phase 113.4)
-          </h3>
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          {/* Spatial Memory — kept from Phase 113.4 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }}>
               <input
                 type="checkbox"
                 checked={useStore.getState().persistPositions}
                 onChange={(e) => useStore.getState().setPersistPositions(e.target.checked)}
                 style={{ accentColor: '#a855f7' }}
               />
-              <span>Persist Drag Positions</span>
+              <span style={{ color: '#888' }}>Persist Positions</span>
             </label>
-            <div style={{ fontSize: 11, color: '#666', marginTop: 4, marginLeft: 24 }}>
-              Save node positions to localStorage on drag. OFF = safe (Phase 113.3 lesson).
-            </div>
+            <button
+              onClick={() => {
+                useStore.getState().resetLayout();
+                alert('Position cache cleared. Reload page for API defaults.');
+              }}
+              style={{
+                padding: '3px 8px',
+                background: '#331111',
+                border: '1px solid #662222',
+                borderRadius: 3,
+                color: '#ff6666',
+                cursor: 'pointer',
+                fontSize: 10,
+              }}
+            >
+              Reset Positions
+            </button>
           </div>
-          <button
-            onClick={() => {
-              useStore.getState().resetLayout();
-              alert('Position cache cleared. Reload page for API defaults.');
-            }}
-            style={{
-              padding: '6px 12px',
-              background: '#331111',
-              border: '1px solid #662222',
-              borderRadius: 4,
-              color: '#ff6666',
-              cursor: 'pointer',
-              fontSize: 12,
-              width: '100%',
-            }}
-          >
-            Reset All Positions (Clear Cache)
-          </button>
-        </section>
-
-        {/* MARKER_110_UX: Improved button styling */}
-        <div style={{
-          marginTop: 'auto',
-          paddingTop: 16,
-          borderTop: '1px solid #333',
-          display: 'flex',
-          gap: 10,
-        }}>
-          {/* Reset button (secondary) */}
-          <button
-            onClick={handleReset}
-            style={{
-              ...buttonBaseStyle,
-              flex: 1,
-              background: 'transparent',
-              border: '1px solid #444',
-              color: '#888',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = '#666';
-              e.currentTarget.style.color = '#aaa';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = '#444';
-              e.currentTarget.style.color = '#888';
-            }}
-          >
-            Reset
-          </button>
-          {/* Apply button (primary) */}
-          <button
-            onClick={handleApply}
-            disabled={!isDirty}
-            style={{
-              ...buttonBaseStyle,
-              flex: 2,
-              background: isDirty ? '#6366f1' : '#333',
-              color: isDirty ? '#fff' : '#666',
-              opacity: isDirty ? 1 : 0.6,
-              cursor: isDirty ? 'pointer' : 'not-allowed',
-            }}
-            onMouseEnter={(e) => {
-              if (isDirty) e.currentTarget.style.background = '#5558dd';
-            }}
-            onMouseLeave={(e) => {
-              if (isDirty) e.currentTarget.style.background = '#6366f1';
-            }}
-          >
-            Apply
-          </button>
         </div>
       </div>
     </FloatingWindow>

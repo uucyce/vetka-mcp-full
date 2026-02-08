@@ -1688,3 +1688,110 @@ async def notify_mcp_agent(
         "agent": agent_id,
         "tip": f"Agent can poll via GET /api/debug/mcp/mentions/{agent_id}"
     }
+
+
+# ============================================================================
+# MARKER_124.2C: TASK BOARD REST API
+# ============================================================================
+# Phase 124.2C: REST endpoints for Task Board UI (DevPanel).
+# Exposes CRUD + dispatch for the TaskBoard backend (Phase 121).
+
+
+@router.get("/task-board")
+async def get_task_board_api() -> Dict[str, Any]:
+    """Get all tasks and settings from Task Board."""
+    from src.orchestration.task_board import get_task_board
+
+    board = get_task_board()
+    tasks = board.get_queue()  # All tasks, sorted by priority
+    summary = board.get_board_summary()
+
+    return {
+        "success": True,
+        "tasks": tasks,
+        "settings": board.settings,
+        "summary": summary,
+    }
+
+
+@router.post("/task-board/add")
+async def add_task_api(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Add a new task to the board.
+
+    Body params:
+    - title: str (required)
+    - description: str
+    - priority: int (1-5, default 3)
+    - phase_type: str (build/fix/research)
+    - preset: str (dragon_silver, titan_core, etc.)
+    - tags: list[str]
+    """
+    from src.orchestration.task_board import get_task_board
+
+    title = body.get("title")
+    if not title:
+        return {"success": False, "error": "Title is required"}
+
+    board = get_task_board()
+    task_id = board.add_task(
+        title=title,
+        description=body.get("description", ""),
+        priority=body.get("priority", 3),
+        phase_type=body.get("phase_type", "build"),
+        preset=body.get("preset"),
+        tags=body.get("tags", []),
+        source="api",
+    )
+
+    return {"success": True, "task_id": task_id}
+
+
+@router.patch("/task-board/{task_id}")
+async def update_task_api(task_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    """Update a task's fields (priority, status, title, etc.)."""
+    from src.orchestration.task_board import get_task_board
+
+    board = get_task_board()
+
+    # Filter allowed update fields
+    allowed_fields = {"title", "description", "priority", "phase_type", "preset", "status", "tags"}
+    updates = {k: v for k, v in body.items() if k in allowed_fields}
+
+    if not updates:
+        return {"success": False, "error": "No valid fields to update"}
+
+    ok = board.update_task(task_id, **updates)
+    return {"success": ok, "task_id": task_id}
+
+
+@router.delete("/task-board/{task_id}")
+async def remove_task_api(task_id: str) -> Dict[str, Any]:
+    """Remove a task from the board."""
+    from src.orchestration.task_board import get_task_board
+
+    board = get_task_board()
+    ok = board.remove_task(task_id)
+    return {"success": ok, "task_id": task_id}
+
+
+@router.post("/task-board/dispatch")
+async def dispatch_next_task_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Dispatch the highest-priority pending task.
+
+    Body params:
+    - chat_id: str (optional, for progress streaming)
+    - task_id: str (optional, dispatch specific task instead of next)
+    """
+    from src.orchestration.task_board import get_task_board
+
+    body = body or {}
+    board = get_task_board()
+    chat_id = body.get("chat_id")
+    task_id = body.get("task_id")
+
+    if task_id:
+        result = await board.dispatch_task(task_id, chat_id=chat_id)
+    else:
+        result = await board.dispatch_next(chat_id=chat_id)
+
+    return result

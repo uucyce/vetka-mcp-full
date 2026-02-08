@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T23:27:57.453112+00:00",
+  "last_updated": "2026-02-08T23:34:58.008749+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 124,
@@ -13,6 +13,7 @@
   "summary": {
     "headline": "Phase 124.2 DONE! Even wider camera zoom (medium: 70, far: 100)",
     "key_achievements": [
+      "[b84b6935] Phase 124.2: Phase 124.2B: Crane up \u2014 camera higher, object in lower thir",
       "[76a6a716] Phase 124.2: Phase 124.2: Even wider camera zoom (medium: 70, far: 100)",
       "[d823c4f9] Phase 124.2: Phase 124.2: Camera zoom distances for better overview",
       "[8a374b08] Phase 124.1: Phase 124.1: E2E fixes \u2014 coder prompt, replan threshold, tex",
@@ -21,8 +22,7 @@
       "[5a62c29d] Phase 123.8: Phase 123.8.1: Reduce glow intensity",
       "[ef8e6c0e] Phase 123.8: Phase 123.8: Radial gradient glow sprite (Grok research)",
       "[d3fbbefc] Phase 123.7: Phase 123.7: White glow sprite for active files",
-      "[5ea402ac] Phase 123.6: Phase 123.6: Visible glow with Scanner Panel blue palette",
-      "[aab505c9] Phase 123.1: Phase 123.1: Coder Function Calling \u2014 Async FC Loop"
+      "[5ea402ac] Phase 123.6: Phase 123.6: Visible glow with Scanner Panel blue palette"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "76a6a716",
+    "commit": "b84b6935",
     "dirty": true
   }
 }
