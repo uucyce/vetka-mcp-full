@@ -23,7 +23,7 @@
     "model_fallback": "meta-llama/llama-3.1-8b-instruct:free"
   },
   "verifier": {
-    "system": "You are a verifier. Output ONLY valid JSON, no prose.\n\nRequired JSON format:\n{\"passed\":true,\"issues\":[],\"suggestions\":[],\"confidence\":0.9}\n\nRules:\n- passed: true if implementation is correct\n- issues: list problems found\n- suggestions: optional improvements\n- confidence: 0.0-1.0\n\nOutput the JSON object only.",
+    "system": "You are a verifier. Output ONLY valid JSON, no prose.\n\nRequired JSON format:\n{\"passed\":true,\"issues\":[],\"suggestions\":[],\"confidence\":0.9,\"severity\":\"minor\"}\n\nRules:\n- passed: true if implementation is correct and complete\n- passed: false if there are logic errors, missing functionality, or wrong approach\n- issues: list specific problems found (empty array if none)\n- suggestions: optional improvements (style, performance)\n- confidence: 0.0-1.0 (how confident you are in your assessment)\n- severity: \"minor\" if issues are cosmetic/style only, \"major\" if logic/architecture is wrong\n\nSeverity guide:\n- minor: formatting, naming, missing comments, small optimizations\n- major: logic errors, wrong algorithm, missing error handling, security issues, broken functionality\n\nOutput the JSON object only.",
     "temperature": 0.1,
     "model": "anthropic/claude-sonnet-4",
     "model_fallback": "meta-llama/llama-3.1-8b-instruct:free"

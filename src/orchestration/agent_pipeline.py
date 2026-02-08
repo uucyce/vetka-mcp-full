@@ -49,6 +49,12 @@ PIPELINE_TRUNCATE_RESULT = int(os.getenv("VETKA_PIPELINE_TRUNCATE_RESULT", "500"
 PIPELINE_STM_SUMMARY_WINDOW = int(os.getenv("VETKA_PIPELINE_STM_SUMMARY_WINDOW", "3"))
 PIPELINE_SUMMARY_TRUNCATE = int(os.getenv("VETKA_PIPELINE_SUMMARY_TRUNCATE", "200"))
 
+# MARKER_122: Feedback loop constants
+MAX_CODER_RETRIES = int(os.getenv("VETKA_MAX_CODER_RETRIES", "2"))
+MAX_ARCHITECT_REPLANS = int(os.getenv("VETKA_MAX_ARCHITECT_REPLANS", "1"))
+VERIFIER_PASS_THRESHOLD = float(os.getenv("VETKA_VERIFIER_PASS_THRESHOLD", "0.75"))
+# MARKER_122_END
+
 # MARKER_119.2: Import for pipeline-to-STMBuffer bridge
 from src.memory.stm_buffer import get_stm_buffer
 
@@ -91,6 +97,10 @@ class Subtask:
     # MARKER_104_STREAM_VISIBILITY: Visibility control for subtasks
     visible: bool = True  # Show progress in UI
     stream_result: bool = True  # Stream completion to chat
+    # MARKER_122: Feedback loop fields
+    retry_count: int = 0
+    verifier_feedback: Optional[str] = None
+    escalated: bool = False
 
 
 # MARKER_104_STREAM_VISIBILITY: PipelineTask with visibility control
@@ -365,6 +375,182 @@ Respond with implementation plan or code."""
         except Exception:
             return None
     # MARKER_117.4C_END
+
+    # MARKER_122.1_START: Parallel recon — Scout + Researcher concurrently
+    async def _parallel_recon(self, task: str, phase_type: str) -> tuple:
+        """Run Scout and Researcher in parallel for initial reconnaissance.
+
+        Returns (scout_context, research_context) — either can be None on failure.
+        """
+        try:
+            results = await asyncio.gather(
+                self._scout_scan(task, phase_type) if "scout" in self.prompts else asyncio.sleep(0),
+                self._research(task),
+                return_exceptions=True
+            )
+            scout_ctx = results[0] if not isinstance(results[0], (Exception, type(None), float)) else None
+            research_ctx = results[1] if not isinstance(results[1], (Exception, type(None), float)) else None
+            return (scout_ctx, research_ctx)
+        except Exception as e:
+            logger.warning(f"[Pipeline] Parallel recon failed: {e}")
+            return (None, None)
+    # MARKER_122.1_END
+
+    # MARKER_122.2_START: Verify subtask after coder execution
+    async def _verify_subtask(self, subtask, coder_result: str, phase_type: str) -> Dict[str, Any]:
+        """Call verifier model to evaluate coder output.
+
+        Returns:
+            {"passed": bool, "issues": [], "suggestions": [], "confidence": float, "severity": "minor"|"major"}
+        Graceful degradation: on any failure returns {"passed": True}.
+        """
+        default_pass = {"passed": True, "issues": [], "suggestions": [], "confidence": 0.5, "severity": "minor"}
+        try:
+            tool = self._get_llm_tool()
+            if not tool or "verifier" not in self.prompts:
+                return default_pass
+
+            prompt = self.prompts["verifier"]
+            model = prompt.get("model", "anthropic/claude-sonnet-4")
+            temperature = prompt.get("temperature", 0.1)
+
+            user_content = (
+                f"Phase type: {phase_type}\n\n"
+                f"Subtask: {subtask.description}\n\n"
+                f"Coder output:\n{str(coder_result)[:3000]}"
+            )
+
+            call_args = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": prompt["system"]},
+                    {"role": "user", "content": user_content}
+                ],
+                "temperature": temperature,
+                "max_tokens": 1000
+            }
+            if self.provider_override:
+                call_args["model_source"] = self.provider_override
+
+            result = tool.execute(call_args)
+            self._last_used_model = result.get("result", {}).get("model", model)
+
+            if not result.get("success"):
+                logger.warning(f"[Pipeline] Verifier LLM call failed: {result.get('error')}")
+                return default_pass
+
+            response_text = result.get("result", {}).get("content", "{}")
+            verification = self._extract_json(response_text)
+
+            # Auto-determine severity if not set by model
+            if "severity" not in verification:
+                issues = verification.get("issues", [])
+                confidence = verification.get("confidence", 0.5)
+                verification["severity"] = "minor" if len(issues) <= 2 and confidence >= 0.6 else "major"
+
+            return verification
+
+        except Exception as e:
+            logger.warning(f"[Pipeline] Verifier failed (graceful degradation): {e}")
+            return default_pass
+    # MARKER_122.2_END
+
+    # MARKER_122.3_START: Retry coder with verifier feedback
+    async def _retry_coder(self, subtask, verifier_result: Dict, phase_type: str) -> str:
+        """Re-run coder with verifier feedback injected into context."""
+        subtask.retry_count += 1
+        if subtask.context is None:
+            subtask.context = {}
+
+        # Format verifier feedback for coder
+        issues = verifier_result.get("issues", [])
+        suggestions = verifier_result.get("suggestions", [])
+        feedback = f"VERIFIER FEEDBACK (attempt {subtask.retry_count}):\n"
+        feedback += f"Issues: {'; '.join(str(i) for i in issues)}\n"
+        if suggestions:
+            feedback += f"Suggestions: {'; '.join(str(s) for s in suggestions)}\n"
+        feedback += f"Previous output was rejected. Fix the issues above."
+
+        subtask.context["verifier_feedback"] = feedback
+        subtask.verifier_feedback = feedback
+
+        await self._emit_progress(
+            "@verifier",
+            f"⚠️ Issues found, retrying coder (attempt {subtask.retry_count}/{MAX_CODER_RETRIES})",
+            model=self._last_used_model
+        )
+
+        result = await self._execute_subtask(subtask, phase_type)
+        return result
+    # MARKER_122.3_END
+
+    # MARKER_122.4_START: Upgrade coder tier on repeated failures
+    def _upgrade_coder_tier(self) -> bool:
+        """Upgrade coder to higher-tier model when repeated failures occur.
+
+        Upgrade path:
+            dragon: bronze → silver → gold
+            titan: lite → core → prime
+        Returns True if upgrade happened, False if already at max tier.
+        """
+        upgrade_map = {
+            "dragon_bronze": "dragon_silver",
+            "dragon_silver": "dragon_gold",
+            "titan_lite": "titan_core",
+            "titan_core": "titan_prime",
+        }
+        new_tier = upgrade_map.get(self.preset_name)
+        if not new_tier:
+            logger.info(f"[Pipeline] Already at max tier ({self.preset_name}), no upgrade possible")
+            return False
+
+        old_tier = self.preset_name
+        self.preset_name = new_tier
+        self._apply_preset()
+        logger.info(f"[Pipeline] ⚡ Tier upgrade: {old_tier} → {new_tier}")
+        return True
+    # MARKER_122.4_END
+
+    # MARKER_122.5_START: Escalate to architect for re-planning
+    async def _escalate_to_architect(
+        self, task: str, failed_subtasks: list, original_plan: Dict,
+        phase_type: str, scout_context: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """Re-plan when verifier reports major issues on subtasks.
+
+        Calls architect with context about what failed and why.
+        Returns new plan (same format as _architect_plan).
+        """
+        # Build failure context
+        failure_lines = []
+        for s in failed_subtasks:
+            desc = s.description if hasattr(s, 'description') else str(s)[:100]
+            fb = s.verifier_feedback if hasattr(s, 'verifier_feedback') and s.verifier_feedback else "No feedback"
+            failure_lines.append(f"- {desc[:80]}: {fb[:200]}")
+
+        replan_context = (
+            f"IMPORTANT: Previous plan partially failed. Re-plan ONLY the failed subtasks.\n"
+            f"Keep successful subtasks as-is.\n\n"
+            f"Failed subtasks:\n" + "\n".join(failure_lines)
+        )
+
+        await self._emit_progress(
+            "@architect",
+            f"🔄 Re-planning {len(failed_subtasks)} failed subtasks...",
+            model=self.prompts.get("architect", {}).get("model", "")
+        )
+
+        try:
+            plan = await self._architect_plan(task, phase_type, scout_context=scout_context,
+                                               replan_context=replan_context)
+            return plan
+        except Exception as e:
+            logger.warning(f"[Pipeline] Architect re-plan failed: {e}")
+            # Fallback: mark failed subtasks as needs_research and return original plan
+            for st in original_plan.get("subtasks", []):
+                st["needs_research"] = True
+            return original_plan
+    # MARKER_122.5_END
 
     # MARKER_118.8_ADAPTIVE_ELISION
     def _get_adaptive_elision_level(self) -> int:
@@ -1056,28 +1242,26 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         await self._emit_progress("@pipeline", f"🚀 Starting {phase_type} pipeline | {team_info}")
 
         try:
-            # MARKER_119.4: Phase 0 — Scout scans codebase before Architect plans
-            scout_context = None
-            if "scout" in self.prompts:
-                scout_model = self.prompts.get("scout", {}).get("model", "")
-                await self._emit_progress("@scout", "🔍 Scanning codebase...", model=scout_model)
-                scout_context = await self._scout_scan(task, phase_type)
-                if scout_context:
-                    await self._emit_progress(
-                        "@scout",
-                        f"✅ Found {len(scout_context.get('relevant_files', []))} files, "
-                        f"{len(scout_context.get('patterns_found', []))} patterns",
-                        model=self._last_used_model
-                    )
-                else:
-                    await self._emit_progress("@scout", "⚠️ No scout data (skipping)", model=self._last_used_model)
-            # MARKER_119.4_END
+            # MARKER_122.1: Phase 0 — Parallel Recon (Scout + Researcher concurrently)
+            await self._emit_progress("@pipeline", "🔍 Parallel recon: Scout + Researcher...")
+            scout_context, initial_research = await self._parallel_recon(task, phase_type)
+            if scout_context:
+                await self._emit_progress(
+                    "@scout",
+                    f"✅ Found {len(scout_context.get('relevant_files', []))} files, "
+                    f"{len(scout_context.get('patterns_found', []))} patterns"
+                )
+            if initial_research:
+                confidence = initial_research.get("confidence", "N/A")
+                await self._emit_progress("@researcher", f"✅ Research done (confidence: {confidence})")
+            # MARKER_122.1_END
 
-            # Phase 1: Architect breaks down task
+            # Phase 1: Architect breaks down task (with recon context)
             # MARKER_117.6C: Model attribution in progress messages
             architect_model = self.prompts.get("architect", {}).get("model", "")
             await self._emit_progress("@architect", "📋 Breaking down task into subtasks...", model=architect_model)
-            plan = await self._architect_plan(task, phase_type, scout_context=scout_context)
+            plan = await self._architect_plan(task, phase_type, scout_context=scout_context,
+                                               research_context=initial_research)
             pipeline_task.subtasks = [
                 Subtask(**st) if isinstance(st, dict) else st
                 for st in plan.get("subtasks", [])
@@ -1123,9 +1307,24 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             except Exception:
                 pass  # Keep default
 
+            # MARKER_122.2: Architect PM Pass — refine plan with research context
+            # If initial research confidence is moderate, architect re-evaluates with enriched context
+            if initial_research and isinstance(initial_research, dict) and initial_research.get("confidence", 1.0) < 0.9:
+                await self._emit_progress("@architect", "📋 PM pass: refining plan with research context...", model=architect_model)
+                plan = await self._architect_plan(task, phase_type, scout_context=scout_context,
+                                                   research_context=initial_research)
+                pipeline_task.subtasks = [
+                    Subtask(**st) if isinstance(st, dict) else st
+                    for st in plan.get("subtasks", [])
+                ]
+                total_subtasks = len(pipeline_task.subtasks)
+                await self._emit_progress("@architect", f"✅ PM refined plan: {total_subtasks} subtasks", model=self._last_used_model)
+            # MARKER_122.2_END
+
             # MARKER_102.24_START: Phase 2 with STM context passing
             # Phase 2: Execute each subtask (with research triggers + STM)
             self.stm = []  # Reset STM for new pipeline
+            replan_count = 0  # MARKER_122.4: Track architect re-plans
 
             # MARKER_104_PARALLEL_2: Check execution order and branch accordingly
             execution_order = plan.get("execution_order", "sequential")
@@ -1301,6 +1500,37 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 await self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks, model=coder_model)
 
             result = await self._execute_subtask(subtask, phase_type)
+
+            # MARKER_122.3: Verify-Retry loop (only for fix/build phases)
+            if phase_type in ("fix", "build") and "verifier" in self.prompts:
+                verifier_model = self.prompts.get("verifier", {}).get("model", "")
+                if subtask.visible:
+                    await self._emit_progress("@verifier", f"🔎 Verifying: {subtask.marker or f'step_{i+1}'}...", i+1, total_subtasks, model=verifier_model)
+                verification = await self._verify_subtask(subtask, result, phase_type)
+
+                while not verification.get("passed", True) and subtask.retry_count < MAX_CODER_RETRIES:
+                    if verification.get("severity") == "major":
+                        subtask.escalated = True
+                        if subtask.visible:
+                            await self._emit_progress("@verifier", f"🚨 Major issue — escalating to architect", i+1, total_subtasks)
+                        break
+                    # Minor issue — retry coder with feedback
+                    result = await self._retry_coder(subtask, verification, phase_type)
+                    verification = await self._verify_subtask(subtask, result, phase_type)
+
+                # MARKER_122.4: Tier upgrade as last resort
+                if not verification.get("passed", True) and subtask.retry_count >= MAX_CODER_RETRIES and not subtask.escalated:
+                    if self._upgrade_coder_tier():
+                        await self._emit_progress("system", f"⚡ Upgrading coder tier to {self.preset_name}")
+                        subtask.retry_count = 0
+                        result = await self._execute_subtask(subtask, phase_type)
+                        verification = await self._verify_subtask(subtask, result, phase_type)
+
+                if subtask.visible:
+                    v_icon = "✅" if verification.get("passed", True) else "⚠️"
+                    await self._emit_progress("@verifier", f"{v_icon} Verified: confidence={verification.get('confidence', 'N/A')}", i+1, total_subtasks, model=self._last_used_model)
+            # MARKER_122.3_END
+
             subtask.result = result
             subtask.status = "done"
 
@@ -1349,6 +1579,37 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_117.5B_END
 
             self._update_task(pipeline_task)
+
+        # MARKER_122.5: Architect escalation for major failures
+        escalated = [s for s in pipeline_task.subtasks if getattr(s, 'escalated', False)]
+        if escalated and hasattr(self, '_replan_count'):
+            pass  # replan_count tracked in execute()
+        if escalated:
+            replan_count = getattr(pipeline_task, '_replan_count', 0)
+            if replan_count < MAX_ARCHITECT_REPLANS:
+                pipeline_task._replan_count = replan_count + 1
+                await self._emit_progress("@architect", f"🔄 Escalation: re-planning {len(escalated)} failed subtasks...")
+                new_plan = await self._escalate_to_architect(
+                    pipeline_task.task, escalated, {},
+                    phase_type, None
+                )
+                # Create new subtasks from re-plan and execute them
+                new_subtasks = [
+                    Subtask(**st) if isinstance(st, dict) else st
+                    for st in new_plan.get("subtasks", [])
+                ]
+                if new_subtasks:
+                    # Replace escalated subtasks with new ones
+                    for ns in new_subtasks:
+                        pipeline_task.subtasks.append(ns)
+                    new_total = len(new_subtasks)
+                    await self._emit_progress("@architect", f"📋 Re-plan: {new_total} new subtasks")
+                    # Execute only new subtasks
+                    old_subtasks = pipeline_task.subtasks
+                    pipeline_task.subtasks = new_subtasks
+                    await self._execute_subtasks_sequential(pipeline_task, phase_type, new_total)
+                    pipeline_task.subtasks = old_subtasks + new_subtasks
+        # MARKER_122.5_END
     # MARKER_104_PARALLEL_3_END
 
     # MARKER_104_PARALLEL_4: Parallel execution with asyncio.gather()
@@ -1415,6 +1676,20 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 # Execute subtask
                 subtask.status = "executing"
                 result = await self._execute_subtask(subtask, phase_type)
+
+                # MARKER_122.3: Verify-Retry loop (parallel path)
+                if phase_type in ("fix", "build") and "verifier" in self.prompts:
+                    if subtask.visible:
+                        await self._emit_progress("@verifier", f"🔎 [P] Verifying: {subtask.marker or f'step_{idx+1}'}...", idx+1, total_subtasks)
+                    verification = await self._verify_subtask(subtask, result, phase_type)
+                    while not verification.get("passed", True) and subtask.retry_count < MAX_CODER_RETRIES:
+                        if verification.get("severity") == "major":
+                            subtask.escalated = True
+                            break
+                        result = await self._retry_coder(subtask, verification, phase_type)
+                        verification = await self._verify_subtask(subtask, result, phase_type)
+                # MARKER_122.3_END
+
                 subtask.result = result
                 subtask.status = "done"
 
@@ -1472,13 +1747,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
     # MARKER_104_PARALLEL_5_END
 
     # MARKER_102.5_START: Architect planning
-    async def _architect_plan(self, task: str, phase_type: str, scout_context: Optional[Dict] = None) -> Dict[str, Any]:
+    async def _architect_plan(self, task: str, phase_type: str, scout_context: Optional[Dict] = None,
+                               research_context: Optional[Dict] = None,
+                               replan_context: Optional[str] = None) -> Dict[str, Any]:
         """
         Architect breaks down task into subtasks.
         Marks unclear parts with needs_research=True.
 
         Args:
             scout_context: Optional scout report injected into user message (MARKER_119.4).
+            research_context: Optional research results for PM pass (MARKER_122).
+            replan_context: Optional failure context for re-planning (MARKER_122).
         """
         tool = self._get_llm_tool()
         if not tool:
@@ -1502,6 +1781,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if scout_context:
             scout_summary = json.dumps(scout_context, indent=2)[:800]
             user_content += f"\n\n[Scout Report]\n{scout_summary}"
+        # MARKER_122: Inject research context for PM pass
+        if research_context and isinstance(research_context, dict):
+            research_summary = research_context.get("enriched_context", "")[:600]
+            insights = research_context.get("insights", [])
+            if research_summary or insights:
+                user_content += f"\n\n[Research Results]\n{research_summary}"
+                if insights:
+                    user_content += f"\nKey insights: {'; '.join(str(i)[:80] for i in insights[:3])}"
+        # MARKER_122: Inject replan context for architect escalation
+        if replan_context:
+            user_content += f"\n\n[Re-plan Context]\n{replan_context[:800]}"
 
         call_args = {
             "model": model,
