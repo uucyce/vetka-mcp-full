@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T22:25:46.724609+00:00",
+  "last_updated": "2026-02-08T22:36:37.373659+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 123,
-    "subphase": "6",
-    "name": "Visible glow with Scanner Panel blue palette",
+    "subphase": "7",
+    "name": "White glow sprite for active files",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 123.6 DONE! Visible glow with Scanner Panel blue palette",
+    "headline": "Phase 123.7 DONE! White glow sprite for active files",
     "key_achievements": [
+      "[d3fbbefc] Phase 123.7: Phase 123.7: White glow sprite for active files",
       "[5ea402ac] Phase 123.6: Phase 123.6: Visible glow with Scanner Panel blue palette",
       "[aab505c9] Phase 123.1: Phase 123.1: Coder Function Calling \u2014 Async FC Loop",
       "[5ff58204] Phase 123.5: Phase 123.5: Smaller labels to reduce overlap",
@@ -21,8 +22,7 @@
       "[ab1216b4] Phase 119.2: Phase 119.2: Heat-based label visibility + size scaling",
       "[09235b3e] Phase 119.1: Phase 119.1: Folder label click \u2192 zoom camera",
       "[16f9c6cc] Phase 119.8: Phase 119.8: Context7 library docs for @coder",
-      "[c0560e29] Phase 119.7: Phase 119.7: Tavily web search for @researcher",
-      "[82c70e4c] Phase 119.6: Phase 119.6: Digest Harmony \u2014 auto-sync phase from git + cle"
+      "[c0560e29] Phase 119.7: Phase 119.7: Tavily web search for @researcher"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "5ea402ac",
+    "commit": "d3fbbefc",
     "dirty": true
   }
 }

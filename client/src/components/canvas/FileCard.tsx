@@ -14,6 +14,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { useStore } from '../../store/useStore';
+// MARKER_123.8A: Phase 123.8 - Glow texture for activity visualization
+import { getWhiteGlowTexture } from '../../utils/glowTexture';
 
 /**
  * LOD Levels (Google Maps style - 10 levels for smooth transitions):
@@ -987,26 +989,26 @@ function FileCardComponent({
   // Phase 61.1 + 62: File category for preview styling
   // Phase 62: Preview is drawn on texture, no floating previews needed
 
-  // MARKER_123.7A: Phase 123.7 - Glow sprite size based on heat intensity
-  const glowSize: [number, number] = [
-    cardSize[0] * (1.3 + heatScore * 0.4),  // Width expands with heat
-    cardSize[1] * (1.3 + heatScore * 0.4),  // Height expands with heat
-  ];
+  // MARKER_123.8B: Phase 123.8 - Glow sprite with radial gradient (Grok research)
+  // Scale: 1.5x-2.5x card size based on heatScore
+  const glowScale = 1.5 + heatScore * 1.0;
 
   return (
     <group>
-      {/* MARKER_123.7B: Phase 123.7 - White glow sprite behind active cards */}
-      {heatScore > 0 && (
-        <mesh position={[position[0], position[1], position[2] - 0.5]}>
-          <planeGeometry args={glowSize} />
-          <meshBasicMaterial
-            color="#ffffff"
+      {/* MARKER_123.8C: Phase 123.8 - Radial gradient glow sprite with AdditiveBlending */}
+      {heatScore > 0.1 && (
+        <sprite
+          position={[position[0], position[1], position[2] - 0.3]}
+          scale={[cardSize[0] * glowScale, cardSize[1] * glowScale, 1]}
+        >
+          <spriteMaterial
+            map={getWhiteGlowTexture()}
             transparent
-            opacity={Math.min(0.6, heatScore * 0.8)}  // Max 60% opacity
-            side={THREE.DoubleSide}
-            depthWrite={false}  // Don't occlude other objects
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            opacity={Math.min(0.7, heatScore * 0.9)}
           />
-        </mesh>
+        </sprite>
       )}
 
       {/* Card mesh - always visible */}
@@ -1034,11 +1036,11 @@ function FileCardComponent({
           side={THREE.DoubleSide}
           opacity={opacity ?? 1.0}
           // Phase 112.4: Fast hover/drag highlight via color tint (no texture regen)
-          // MARKER_123.7C: Phase 123.7 - White glow (removed blue tint, using sprite instead)
+          // MARKER_123.8D: Phase 123.8 - Clean color, glow handled by sprite
           color={
             isDragging ? '#88ff88' :
             isHovered ? '#aaffaa' :
-            '#ffffff'  // Clean white - glow handled by sprite
+            '#ffffff'
           }
         />
       </mesh>
@@ -1384,7 +1386,7 @@ function arePropsEqual(prev: FileCardProps, next: FileCardProps): boolean {
   // Phase 113.4: Label Championship
   if (prev.showLabel !== next.showLabel) return false;
 
-  // MARKER_123.6A: Phase 123.6 - Heat score for glow effect
+  // MARKER_123.8E: Phase 123.8 - Heat score for glow sprite
   if (prev.heatScore !== next.heatScore) return false;
 
   // Artifact state (for streaming/approval UI)
