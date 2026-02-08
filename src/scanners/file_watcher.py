@@ -392,15 +392,8 @@ class VetkaFileWatcher:
         self.adaptive_scanner.update_heat(dir_path, event_type)
         self.adaptive_scanner.maybe_decay()
 
-        # MARKER_123.1A: Phase 123.1 - Emit glow event via ActivityHub
-        try:
-            from src.services.activity_hub import get_activity_hub
-            hub = get_activity_hub()
-            # Intensity based on event type
-            intensity = 0.9 if event_type == 'created' else 0.7 if event_type == 'modified' else 0.5
-            hub.emit_glow_sync(path, intensity, f"watcher:{event_type}")
-        except Exception as e:
-            print(f"[Watcher] Glow emit failed: {e}")
+        # MARKER_123.1A: Moved to after node_added (Phase 124.3 fix)
+        # Glow must be emitted AFTER node_added so frontend has the node in store
 
         # MARKER_90.11_START: Index FIRST, emit AFTER
         # Phase 90.11: Fix race condition - emit node_added AFTER Qdrant indexing
@@ -452,6 +445,18 @@ class VetkaFileWatcher:
                         'count': event.get('count', 0),
                         'events': event.get('events', [])
                     })
+
+                # MARKER_124.3A: Phase 124.3 - Emit glow AFTER node_added
+                # Fix: Node must exist in frontend store before glow can be applied
+                if event_type in ('created', 'modified'):
+                    try:
+                        from src.services.activity_hub import get_activity_hub
+                        hub = get_activity_hub()
+                        intensity = 0.9 if event_type == 'created' else 0.7
+                        hub.emit_glow_sync(path, intensity, f"watcher:{event_type}")
+                    except Exception as glow_err:
+                        print(f"[Watcher] Glow emit failed: {glow_err}")
+
             except Exception as e:
                 print(f"[Watcher] Error emitting socket event: {e}")
         # MARKER_90.11_END

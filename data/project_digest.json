@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T23:35:41.293480+00:00",
+  "last_updated": "2026-02-08T23:37:02.494709+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 124,
@@ -13,6 +13,7 @@
   "summary": {
     "headline": "Phase 124.2 DONE! Interactive task intake + heartbeat board routing + Task Board UI",
     "key_achievements": [
+      "[06ae5438] Phase 124.2: Phase 124.2B: Fix crane \u2014 subtle Y+5, no tilt (was Y+15)",
       "[57dfcccb] Phase 124.2: Phase 124.2: Interactive task intake + heartbeat board routi",
       "[b84b6935] Phase 124.2: Phase 124.2B: Crane up \u2014 camera higher, object in lower thir",
       "[76a6a716] Phase 124.2: Phase 124.2: Even wider camera zoom (medium: 70, far: 100)",
@@ -21,8 +22,7 @@
       "[214cb6ec] Phase 124.0: Phase 124.0a+124.1: FC tool wrappers + E2E validation fixes",
       "[ff8d5e67] Phase 123.8: Phase 123.8.2: Balance glow intensity (halfway back)",
       "[5a62c29d] Phase 123.8: Phase 123.8.1: Reduce glow intensity",
-      "[ef8e6c0e] Phase 123.8: Phase 123.8: Radial gradient glow sprite (Grok research)",
-      "[d3fbbefc] Phase 123.7: Phase 123.7: White glow sprite for active files"
+      "[ef8e6c0e] Phase 123.8: Phase 123.8: Radial gradient glow sprite (Grok research)"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "57dfcccb",
+    "commit": "06ae5438",
     "dirty": true
   }
 }
