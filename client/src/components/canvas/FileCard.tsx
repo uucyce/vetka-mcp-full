@@ -282,6 +282,11 @@ function FileCardComponent({
   const targetOpacity = useRef(opacity ?? 1.0);
   const currentOpacity = useRef(opacity ?? 1.0);
 
+  // MARKER_124.1A: Phase 124 - Pixar Lamp Wobble Animation refs
+  const prevHeatScore = useRef(heatScore);
+  const wobbleStartTime = useRef(0);
+  const isWobbling = useRef(false);
+
   useFrame((state) => {
     // Billboard effect - face camera
     if (meshRef.current) {
@@ -298,6 +303,31 @@ function FileCardComponent({
         if (material) {
           material.opacity = currentOpacity.current;
           material.needsUpdate = true;
+        }
+      }
+
+      // MARKER_124.1B: Phase 124 - Pixar Lamp Wobble Animation
+      // Trigger wobble when heatScore increases significantly (new activity)
+      if (heatScore > prevHeatScore.current + 0.05) {
+        isWobbling.current = true;
+        wobbleStartTime.current = state.clock.elapsedTime;
+      }
+      prevHeatScore.current = heatScore;
+
+      // Animate wobble: damped spring oscillation on scale
+      if (isWobbling.current) {
+        const elapsed = state.clock.elapsedTime - wobbleStartTime.current;
+        const decay = Math.exp(-elapsed * 4);      // Fast decay (4 = ~0.5s to settle)
+        const frequency = 12;                       // Wobble frequency
+        const amplitude = Math.sin(elapsed * frequency) * decay * 0.12;
+
+        // Apply scale wobble (uniform X/Y, Z stays 1)
+        meshRef.current.scale.set(1 + amplitude, 1 + amplitude, 1);
+
+        // Stop wobbling when decay is negligible
+        if (decay < 0.01) {
+          isWobbling.current = false;
+          meshRef.current.scale.set(1, 1, 1);  // Reset to normal
         }
       }
 
