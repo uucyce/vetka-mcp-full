@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T20:49:35.880418+00:00",
+  "last_updated": "2026-02-08T22:01:46.758224+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 119,
-    "subphase": "2",
-    "name": "Build children arrays from edges + pass heatScore",
+    "number": 122,
+    "subphase": "5",
+    "name": "Coder Context Enrichment \u2014 STM, Scout, inject_context",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 119.2 DONE! Build children arrays from edges + pass heatScore",
+    "headline": "Phase 122.5 DONE! Coder Context Enrichment \u2014 STM, Scout, inject_context",
     "key_achievements": [
+      "[45452cc6] Phase 122.5: Phase 122.5: Coder Context Enrichment \u2014 STM, Scout, inject_c",
       "[734dd39e] Phase 119.2: FIX Phase 119.2: Build children arrays from edges + pass hea",
       "[ab1216b4] Phase 119.2: Phase 119.2: Heat-based label visibility + size scaling",
       "[09235b3e] Phase 119.1: Phase 119.1: Folder label click \u2192 zoom camera",
@@ -21,8 +22,7 @@
       "[82c70e4c] Phase 119.6: Phase 119.6: Digest Harmony \u2014 auto-sync phase from git + cle",
       "[89ad375b] Phase 118.2: Phase 118.2: Double-click support for files and fo...",
       "[05c2800c] Phase 119.4-119.5: Scout role (5th pipeline agent) + CAM rename",
-      "[d809c81d] Phase 119.1-119.3: MGC Dedup + STM Bridge + Heartbeat @titan E2E",
-      "[1e5525a5] Phase 118: Move artifact icon to ChatPanel header"
+      "[d809c81d] Phase 119.1-119.3: MGC Dedup + STM Bridge + Heartbeat @titan E2E"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -30,12 +30,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2119,
+      "points": 2122,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2112,
+      "points": 2115,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "f39be5e3",
+    "commit": "45452cc6",
     "dirty": true
   }
 }

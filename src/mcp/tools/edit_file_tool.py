@@ -127,6 +127,14 @@ class EditFileTool(BaseMCPTool):
             with open(full_path, write_mode, encoding="utf-8") as f:
                 f.write(content)
 
+            # MARKER_123.1B: Phase 123.1 - Emit glow for MCP file edit
+            try:
+                from src.services.activity_hub import get_activity_hub
+                hub = get_activity_hub()
+                hub.emit_glow_sync(str(full_path), 0.9, f"mcp:edit_{mode}")
+            except Exception:
+                pass  # Non-critical, don't fail the edit
+
             return {
                 "success": True,
                 "result": {

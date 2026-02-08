@@ -1197,7 +1197,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 try:
                     from src.services.activity_hub import get_activity_hub
                     hub = get_activity_hub()
-                    hub.emit_glow_sync(str(path_obj.absolute()), 1.0, "pipeline:spawn")
+                    hub.emit_glow_sync(str(path_obj.absolute()), 1.0, "vetka_out:created")
                 except Exception:
                     pass  # Non-critical
 

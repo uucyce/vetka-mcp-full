@@ -185,6 +185,14 @@ async def create_disk_artifact(
             f"({len(content)} chars, type={artifact_type})"
         )
 
+        # MARKER_123.1F: Phase 123.1 - Emit glow for artifact creation
+        try:
+            from src.services.activity_hub import get_activity_hub
+            hub = get_activity_hub()
+            hub.emit_glow_sync(str(filepath), 1.0, "artifact:created")
+        except Exception:
+            pass  # Non-critical
+
         # 7. Emit artifact_approval event if socketio provided
         if socketio:
             artifact_data = {

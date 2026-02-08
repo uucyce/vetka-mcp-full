@@ -362,6 +362,14 @@ interface ServerToClientEvents {
   highlight_nodes: (data: {
     nodeIds: string[];
   }) => void;
+  // MARKER_123.2A: Phase 123 - Activity glow event from ActivityHub
+  activity_glow: (data: {
+    node_id: string;
+    intensity: number;
+    reason: string;
+    color: string;
+    timestamp: string;
+  }) => void;
 }
 
 // Phase 61: Pinned file type
@@ -1298,6 +1306,21 @@ export function useSocket() {
       setTimeout(() => {
         clearHighlights();
       }, 5000);
+    });
+
+    // MARKER_123.2A: Phase 123 - Activity glow from ActivityHub
+    socket.on('activity_glow', (data: {
+      node_id: string;
+      intensity: number;
+      reason: string;
+      color: string;
+      timestamp: string;
+    }) => {
+      console.log('[Socket] activity_glow:', data.node_id, 'intensity:', data.intensity, 'reason:', data.reason);
+
+      // Update heatScore in store
+      const { setNodeHeatScore } = useStore.getState();
+      setNodeHeatScore(data.node_id, data.intensity);
     });
 
     // MARKER_104_FRONTEND

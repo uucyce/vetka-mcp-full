@@ -388,6 +388,15 @@ class QdrantIncrementalUpdater:
             if tw_success:
                 logger.info(f"[QdrantUpdater] ✅ TripleWrite OK: {file_path.name} (Qdrant+Weaviate)")
                 self.updated_count += 1
+
+                # MARKER_123.1E: Phase 123.1 - Emit glow for scanner indexing (TripleWrite path)
+                try:
+                    from src.services.activity_hub import get_activity_hub
+                    hub = get_activity_hub()
+                    hub.emit_glow_sync(str(file_path), 0.6, "scanner:indexed_tw")
+                except Exception:
+                    pass  # Non-critical
+
                 return True
             else:
                 logger.warning(f"[QdrantUpdater] TripleWrite failed, falling back to Qdrant-only: {file_path.name}")
@@ -419,6 +428,15 @@ class QdrantIncrementalUpdater:
 
             logger.info(f"[QdrantUpdater] Updated (Qdrant-only): {file_path.name}")
             self.updated_count += 1
+
+            # MARKER_123.1E: Phase 123.1 - Emit glow for scanner indexing
+            try:
+                from src.services.activity_hub import get_activity_hub
+                hub = get_activity_hub()
+                hub.emit_glow_sync(str(file_path), 0.6, "scanner:indexed")
+            except Exception:
+                pass  # Non-critical
+
             return True
 
         except Exception as e:

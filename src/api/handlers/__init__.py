@@ -60,6 +60,9 @@ from .stream_handler import (
     emit_stream_event,
 )
 
+# MARKER_123.0A: Phase 123.0 - ActivityHub for glow events
+from src.services.activity_hub import get_activity_hub, ActivityHub
+
 
 async def register_all_handlers(sio: AsyncServer, app=None):
     """
@@ -102,6 +105,12 @@ async def register_all_handlers(sio: AsyncServer, app=None):
     register_approval_socket_handlers(sio, app)  # Phase 104.4 - Approval Socket
     await register_mcp_socket_handlers(sio, app)  # MARKER_106e_2: MCP socket handlers
     register_layout_socket_handlers(sio, app)  # MARKER_110_BACKEND_CONFIG: Layout config handlers
+
+    # MARKER_123.0A: Phase 123.0 - Initialize ActivityHub with Socket.IO
+    hub = get_activity_hub()
+    hub.set_socketio(sio)
+    hub.start_decay_loop()
+    print("  [Handlers] ✅ ActivityHub initialized with decay loop - MARKER_123.0A")
 
     print("  [Handlers] Socket.IO async handlers registered (Phase 104.7)")
     print("  [Handlers] ✅ group_message_handler registered (join_group, leave_group, group_message, group_typing)")

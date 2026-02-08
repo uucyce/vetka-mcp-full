@@ -97,6 +97,15 @@ class ReadFileTool(BaseMCPTool):
             if is_text:
                 lines = full_path.read_text(encoding=encoding, errors='replace').splitlines()
                 content = "\n".join(lines[:max_lines])
+
+                # MARKER_123.1C: Phase 123.1 - Emit glow for MCP file read (low intensity)
+                try:
+                    from src.services.activity_hub import get_activity_hub
+                    hub = get_activity_hub()
+                    hub.emit_glow_sync(str(full_path), 0.4, "mcp:read")
+                except Exception:
+                    pass  # Non-critical
+
                 return {
                     "success": True,
                     "result": {

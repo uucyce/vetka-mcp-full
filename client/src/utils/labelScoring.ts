@@ -68,6 +68,10 @@ export function computeLabelScore(
   // Pinned always wins
   if (isPinned) return 1.0;
 
+  // MARKER_123.4A: Phase 123.4 - Hardcode for artificial root "vetka"
+  // This is a design element, always show it
+  if (node.name.toLowerCase() === 'vetka') return 0.99;
+
   // Type boost: folders = structural anchors, code = important, rest = lower
   const typeBoost =
     node.type === 'folder' ? 1.5 :
@@ -145,18 +149,19 @@ export function selectTopLabels(
   // Key insight: visibleCount should REDUCE labels (more nodes = less % labeled)
   // zoomLevel (0-10) should be the PRIMARY driver
   //
-  // Overview  (zoom 0-1, 400+ visible): 1 label (project root only!)
-  // Far       (zoom 2-3, 300 visible):  3-5 labels (top-level dirs)
-  // Medium    (zoom 4-5, 200 visible):  8-12 labels
-  // Close     (zoom 6-8,  50 visible):  15-20 labels
+  // MARKER_123.4B: Phase 123.4 - Minimum 5 labels at overview (was 1)
+  // Overview  (zoom 0-1, 400+ visible): 5 labels (vetka + top dirs)
+  // Far       (zoom 2-3, 300 visible):  6-8 labels (top-level dirs)
+  // Medium    (zoom 4-5, 200 visible):  10-14 labels
+  // Close     (zoom 6-8,  50 visible):  18-22 labels
   // Very close(zoom 9-10, 20 visible):  up to 25 labels
   //
   // Formula: base from zoom² curve, penalty for high node density
   const zoomBase = Math.floor(zoomLevel * zoomLevel * 0.25); // 0,0,1,2,4,6,9,12,16,20,25
   const densityPenalty = Math.max(0, Math.floor(Math.log2(Math.max(1, visibleCount / 50))));
   const adaptiveMax = Math.max(
-    1,
-    Math.min(25, zoomBase - densityPenalty + 2),
+    5,  // MARKER_123.4B: Minimum 5 labels at overview
+    Math.min(25, zoomBase - densityPenalty + 5),
   );
 
   // Sort entries by score descending, take top-N

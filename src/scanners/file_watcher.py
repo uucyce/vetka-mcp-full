@@ -392,6 +392,16 @@ class VetkaFileWatcher:
         self.adaptive_scanner.update_heat(dir_path, event_type)
         self.adaptive_scanner.maybe_decay()
 
+        # MARKER_123.1A: Phase 123.1 - Emit glow event via ActivityHub
+        try:
+            from src.services.activity_hub import get_activity_hub
+            hub = get_activity_hub()
+            # Intensity based on event type
+            intensity = 0.9 if event_type == 'created' else 0.7 if event_type == 'modified' else 0.5
+            hub.emit_glow_sync(path, intensity, f"watcher:{event_type}")
+        except Exception as e:
+            print(f"[Watcher] Glow emit failed: {e}")
+
         # MARKER_90.11_START: Index FIRST, emit AFTER
         # Phase 90.11: Fix race condition - emit node_added AFTER Qdrant indexing
         # Problem: Frontend receives node_added -> requests tree/data -> file not yet in Qdrant

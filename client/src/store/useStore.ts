@@ -179,6 +179,9 @@ interface TreeState {
   persistPositions: boolean;
   setPersistPositions: (enabled: boolean) => void;
   resetLayout: () => void;
+
+  // MARKER_123.2B: Phase 123 - Activity heat score for glow effect
+  setNodeHeatScore: (nodeId: string, intensity: number) => void;
 }
 
 // Phase 113.1: Persistent Spatial Memory
@@ -438,6 +441,42 @@ export const useStore = create<TreeState>((set, get) => ({
     // Re-fetch from API will reset positions on next load
     console.log('[Layout] Phase 113.4: Positions cache cleared. Reload to apply API defaults.');
   },
+
+  // MARKER_123.2B: Phase 123 - Activity heat score for glow effect
+  setNodeHeatScore: (nodeId: string, intensity: number) => set((state) => {
+    // Find the node - could be by path or by id
+    const possibleIds = [nodeId, nodeId.split('/').pop()];
+    let foundId: string | null = null;
+
+    for (const id of possibleIds) {
+      if (id && state.nodes[id]) {
+        foundId = id;
+        break;
+      }
+    }
+
+    // Also try matching by path
+    if (!foundId) {
+      for (const [id, node] of Object.entries(state.nodes)) {
+        if (node.path === nodeId || node.path.endsWith(nodeId)) {
+          foundId = id;
+          break;
+        }
+      }
+    }
+
+    if (!foundId) return state;
+
+    return {
+      nodes: {
+        ...state.nodes,
+        [foundId]: {
+          ...state.nodes[foundId],
+          heatScore: Math.max(0, Math.min(1, intensity)),
+        },
+      },
+    };
+  }),
 
   // Phase 113.1: Persistent Spatial Memory
   savePositions: () => {

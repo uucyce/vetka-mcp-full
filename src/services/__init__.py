@@ -60,6 +60,12 @@ from src.services.mycelium_auditor import (
     VETKAToolsClient,
     get_vetka_tools_client,
 )
+# MARKER_123.0A: Phase 123.0 - ActivityHub for glow events
+from src.services.activity_hub import (
+    get_activity_hub,
+    reset_activity_hub,
+    ActivityHub,
+)
 
 __all__ = [
     # Approval service (VETKA + MYCELIUM modes)
@@ -105,4 +111,8 @@ __all__ = [
     # MARKER_MYCELIUM_MCP_INTEGRATION: VETKA Tools client
     'VETKAToolsClient',
     'get_vetka_tools_client',
+    # MARKER_123.0A: Phase 123.0 - ActivityHub
+    'get_activity_hub',
+    'reset_activity_hub',
+    'ActivityHub',
 ]

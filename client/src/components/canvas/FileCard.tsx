@@ -1014,7 +1014,14 @@ function FileCardComponent({
           side={THREE.DoubleSide}
           opacity={opacity ?? 1.0}
           // Phase 112.4: Fast hover/drag highlight via color tint (no texture regen)
-          color={isDragging ? '#88ff88' : isHovered ? '#aaffaa' : '#ffffff'}
+          // MARKER_123.2C: Phase 123 - Heat-based glow tint (cold blue like Scanner Panel)
+          color={
+            isDragging ? '#88ff88' :
+            isHovered ? '#aaffaa' :
+            heatScore > 0.5 ? '#c8e4f4' :  // Strong activity = subtle cold blue
+            heatScore > 0.2 ? '#e8f4fc' :  // Medium activity = very subtle blue
+            '#ffffff'  // No activity = white
+          }
         />
       </mesh>
 
@@ -1256,10 +1263,11 @@ function FileCardComponent({
         // === DYNAMIC FONT SIZE ===
         // Base size + importance boost + heat boost, slight decay with distance
         // MARKER_119.2J: Phase 119.2 - Heat-based size scaling
-        const BASE_FONT_SIZE = 14;
-        const MAX_FONT_SIZE = 36;  // Increased to allow heat boost
-        const importanceBoost = importance * 16;  // 0-16px bonus (reduced from 18)
-        const heatBoostPx = heatScore * 6;  // 0-6px bonus for active directories
+        // MARKER_123.4C: Phase 123.4 - Smaller labels to reduce overlap
+        const BASE_FONT_SIZE = 12;   // Was 14, smaller base
+        const MAX_FONT_SIZE = 26;    // Was 36, smaller max
+        const importanceBoost = importance * 10;  // 0-10px bonus (was 16)
+        const heatBoostPx = heatScore * 4;  // 0-4px bonus for active directories
         const distanceDecay = Math.max(0.5, 1 - (distToCamera / MAX_DISTANCE) * 0.3);
         const fontSize = Math.min(MAX_FONT_SIZE, (BASE_FONT_SIZE + importanceBoost + heatBoostPx) * distanceDecay);
 
@@ -1290,14 +1298,15 @@ function FileCardComponent({
                 console.log('[FileCard] Phase 119.1: Label click zooming to folder', name);
               }}
               style={{
-                background: `rgba(0, 0, 0, ${0.7 + importance * 0.25})`,
+                // MARKER_123.4C: Phase 123.4 - Smaller padding
+                background: `rgba(0, 0, 0, ${0.7 + importance * 0.2})`,
                 color: '#ffffff',
-                padding: `${6 + importance * 6}px ${12 + importance * 10}px`,
-                borderRadius: '6px',
+                padding: `${4 + importance * 4}px ${8 + importance * 6}px`,
+                borderRadius: '4px',
                 fontSize: `${fontSize}px`,
-                fontWeight: importance > 0.5 ? '700' : '600',
+                fontWeight: importance > 0.5 ? '600' : '500',
                 fontFamily: 'system-ui, -apple-system, sans-serif',
-                boxShadow: `0 ${2 + importance * 4}px ${8 + importance * 12}px rgba(0,0,0,${0.4 + importance * 0.3})`,
+                boxShadow: `0 ${1 + importance * 2}px ${4 + importance * 6}px rgba(0,0,0,${0.3 + importance * 0.2})`,
                 border: `1px solid rgba(255,255,255,${0.15 + importance * 0.2})`,
                 cursor: 'pointer',  // Phase 119.1: Visual feedback
                 transition: 'transform 0.15s ease, box-shadow 0.15s ease',
