@@ -155,9 +155,10 @@ export function CameraController() {
                         : cameraCommand.zoom === 'medium' ? 70 : 100;
 
     // Phase 52.6.2: Simple frontal positioning (ALWAYS approach from Z+ direction)
+    // MARKER_124.2B: Phase 124.2 - Crane up: camera higher, object in lower third of frame
     const targetPos = new THREE.Vector3(
       nodePos.x,
-      nodePos.y + 3,  // Slightly above
+      nodePos.y + 15,  // Crane up: object sits in lower third
       nodePos.z + finalDistance  // In front on Z axis
     );
 

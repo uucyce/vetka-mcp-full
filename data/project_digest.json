@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T23:25:51.374227+00:00",
+  "last_updated": "2026-02-08T23:27:57.453112+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 124,
     "subphase": "2",
-    "name": "Camera zoom distances for better overview",
+    "name": "Even wider camera zoom (medium: 70, far: 100)",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 124.2 DONE! Camera zoom distances for better overview",
+    "headline": "Phase 124.2 DONE! Even wider camera zoom (medium: 70, far: 100)",
     "key_achievements": [
+      "[76a6a716] Phase 124.2: Phase 124.2: Even wider camera zoom (medium: 70, far: 100)",
       "[d823c4f9] Phase 124.2: Phase 124.2: Camera zoom distances for better overview",
       "[8a374b08] Phase 124.1: Phase 124.1: E2E fixes \u2014 coder prompt, replan threshold, tex",
       "[214cb6ec] Phase 124.0: Phase 124.0a+124.1: FC tool wrappers + E2E validation fixes",
@@ -21,8 +22,7 @@
       "[ef8e6c0e] Phase 123.8: Phase 123.8: Radial gradient glow sprite (Grok research)",
       "[d3fbbefc] Phase 123.7: Phase 123.7: White glow sprite for active files",
       "[5ea402ac] Phase 123.6: Phase 123.6: Visible glow with Scanner Panel blue palette",
-      "[aab505c9] Phase 123.1: Phase 123.1: Coder Function Calling \u2014 Async FC Loop",
-      "[5ff58204] Phase 123.5: Phase 123.5: Smaller labels to reduce overlap"
+      "[aab505c9] Phase 123.1: Phase 123.1: Coder Function Calling \u2014 Async FC Loop"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -30,12 +30,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2123,
+      "points": 2124,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2116,
+      "points": 2117,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "d823c4f9",
+    "commit": "76a6a716",
     "dirty": true
   }
 }
