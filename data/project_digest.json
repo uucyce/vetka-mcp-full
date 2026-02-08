@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T22:13:52.161353+00:00",
+  "last_updated": "2026-02-08T22:22:30.189722+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 123,
-    "subphase": "5",
-    "name": "Smaller labels to reduce overlap",
+    "subphase": "1",
+    "name": "Coder Function Calling \u2014 Async FC Loop",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 123.5 DONE! Smaller labels to reduce overlap",
+    "headline": "Phase 123.1 DONE! Coder Function Calling \u2014 Async FC Loop",
     "key_achievements": [
+      "[aab505c9] Phase 123.1: Phase 123.1: Coder Function Calling \u2014 Async FC Loop",
       "[5ff58204] Phase 123.5: Phase 123.5: Smaller labels to reduce overlap",
       "[45452cc6] Phase 122.5: Phase 122.5: Coder Context Enrichment \u2014 STM, Scout, inject_c",
       "[734dd39e] Phase 119.2: FIX Phase 119.2: Build children arrays from edges + pass hea",
@@ -21,8 +22,7 @@
       "[16f9c6cc] Phase 119.8: Phase 119.8: Context7 library docs for @coder",
       "[c0560e29] Phase 119.7: Phase 119.7: Tavily web search for @researcher",
       "[82c70e4c] Phase 119.6: Phase 119.6: Digest Harmony \u2014 auto-sync phase from git + cle",
-      "[89ad375b] Phase 118.2: Phase 118.2: Double-click support for files and fo...",
-      "[05c2800c] Phase 119.4-119.5: Scout role (5th pipeline agent) + CAM rename"
+      "[89ad375b] Phase 118.2: Phase 118.2: Double-click support for files and fo..."
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "5ff58204",
+    "commit": "aab505c9",
     "dirty": true
   }
 }

@@ -1014,12 +1014,15 @@ function FileCardComponent({
           side={THREE.DoubleSide}
           opacity={opacity ?? 1.0}
           // Phase 112.4: Fast hover/drag highlight via color tint (no texture regen)
-          // MARKER_123.2C: Phase 123 - Heat-based glow tint (cold blue like Scanner Panel)
+          // MARKER_123.2C: Phase 123.6 - Heat-based glow tint (Scanner Panel blue #5c8aaa → #7ab3d4)
+          // Stronger blue colors for visible glow effect
           color={
             isDragging ? '#88ff88' :
             isHovered ? '#aaffaa' :
-            heatScore > 0.5 ? '#c8e4f4' :  // Strong activity = subtle cold blue
-            heatScore > 0.2 ? '#e8f4fc' :  // Medium activity = very subtle blue
+            heatScore > 0.7 ? '#7ab3d4' :  // Hot activity = Scanner Panel bright blue
+            heatScore > 0.4 ? '#8fc3e0' :  // Medium-high activity = mid blue
+            heatScore > 0.2 ? '#a5d0e8' :  // Medium activity = light blue
+            heatScore > 0 ? '#bfdfef' :    // Low activity = very light blue
             '#ffffff'  // No activity = white
           }
         />
@@ -1365,6 +1368,9 @@ function arePropsEqual(prev: FileCardProps, next: FileCardProps): boolean {
 
   // Phase 113.4: Label Championship
   if (prev.showLabel !== next.showLabel) return false;
+
+  // MARKER_123.6A: Phase 123.6 - Heat score for glow effect
+  if (prev.heatScore !== next.heatScore) return false;
 
   // Artifact state (for streaming/approval UI)
   if (prev.artifactStatus !== next.artifactStatus) return false;

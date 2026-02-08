@@ -48,11 +48,18 @@ Source → ActivityHub.emit_glow_sync()
        → color tint + label boost
 ```
 
-## Color Scheme
+## Color Scheme (Phase 123.6 — Visible Glow)
 Scanner Panel gradient: `#5c8aaa → #7ab3d4`
-- `heatScore > 0.5` → `#c8e4f4` (subtle cold blue)
-- `heatScore > 0.2` → `#e8f4fc` (very subtle blue)
-- No activity → `#ffffff` (white)
+
+| heatScore | Color | Description |
+|-----------|-------|-------------|
+| > 0.7 | `#7ab3d4` | Hot activity = Scanner Panel bright blue |
+| > 0.4 | `#8fc3e0` | Medium-high activity = mid blue |
+| > 0.2 | `#a5d0e8` | Medium activity = light blue |
+| > 0 | `#bfdfef` | Low activity = very light blue |
+| 0 | `#ffffff` | No activity = white |
+
+**MARKER_123.6A**: Added heatScore to arePropsEqual comparator for proper re-renders.
 
 ## Label Sizes (Phase 123.4C)
 - BASE_FONT_SIZE: 12px (was 14)
