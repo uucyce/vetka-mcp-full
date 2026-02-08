@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T19:04:44.676518+00:00",
+  "last_updated": "2026-02-08T19:06:18.284760+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 119,
     "subphase": "2",
-    "name": "Heat-based label visibility + size scaling",
+    "name": "Build children arrays from edges + pass heatScore",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 119.2 DONE! Heat-based label visibility + size scaling",
+    "headline": "Phase 119.2 DONE! Build children arrays from edges + pass heatScore",
     "key_achievements": [
+      "[734dd39e] Phase 119.2: FIX Phase 119.2: Build children arrays from edges + pass hea",
       "[ab1216b4] Phase 119.2: Phase 119.2: Heat-based label visibility + size scaling",
       "[09235b3e] Phase 119.1: Phase 119.1: Folder label click \u2192 zoom camera",
       "[16f9c6cc] Phase 119.8: Phase 119.8: Context7 library docs for @coder",
@@ -21,8 +22,7 @@
       "[89ad375b] Phase 118.2: Phase 118.2: Double-click support for files and fo...",
       "[05c2800c] Phase 119.4-119.5: Scout role (5th pipeline agent) + CAM rename",
       "[d809c81d] Phase 119.1-119.3: MGC Dedup + STM Bridge + Heartbeat @titan E2E",
-      "[1e5525a5] Phase 118: Move artifact icon to ChatPanel header",
-      "[774b285f] Phase 118.8-118.10: STM Smart Algorithm + Naming Audit + Titans League"
+      "[1e5525a5] Phase 118: Move artifact icon to ChatPanel header"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -30,12 +30,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2111,
+      "points": 2112,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2104,
+      "points": 2105,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "ab1216b4",
+    "commit": "734dd39e",
     "dirty": true
   }
 }

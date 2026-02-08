@@ -1162,6 +1162,25 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_119.2: Report pipeline results to global STMBuffer
             self._bridge_to_global_stm(task_id, phase_type)
 
+            # MARKER_121.3: Update Task Board if this was a board-dispatched task
+            if hasattr(self, '_board_task_id') and self._board_task_id:
+                try:
+                    from src.orchestration.task_board import get_task_board
+                    from datetime import datetime as _dt
+                    board = get_task_board()
+                    board.update_task(
+                        self._board_task_id,
+                        status="done" if pipeline_task.status == "done" else "failed",
+                        completed_at=_dt.now().isoformat(),
+                        pipeline_task_id=task_id,
+                        assigned_tier=self.preset_name,
+                        result_summary=str(pipeline_task.results)[:500]
+                    )
+                    logger.info(f"[Pipeline] Task board updated: {self._board_task_id} → {pipeline_task.status}")
+                except Exception as e:
+                    logger.debug(f"[Pipeline] Task board update skipped: {e}")
+            # MARKER_121.3_END
+
             # MARKER_117_3B: Expanded final report with subtask details
             report_lines = [
                 f"📊 **Pipeline Report** — {completed}/{total} subtasks",

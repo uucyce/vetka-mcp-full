@@ -959,6 +959,68 @@ async def list_tools() -> list[Tool]:
             }
         ),
         # MARKER_117_2C_END
+        # MARKER_121_TASK_BOARD: Task Board tools (Phase 121)
+        Tool(
+            name="vetka_task_board",
+            description=(
+                "Manage Task Board: add/list/get/update/remove/summary. "
+                "Task Board is a priority queue for Mycelium pipeline dispatch. "
+                "Use action='summary' to see board overview, action='list' to see tasks."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["add", "list", "get", "update", "remove", "summary"],
+                        "description": "Operation to perform"
+                    },
+                    "title": {"type": "string", "description": "Task title (for add)"},
+                    "description": {"type": "string", "description": "Task description (for add)"},
+                    "priority": {"type": "number", "description": "1=critical to 5=someday (for add/update)"},
+                    "phase_type": {"type": "string", "description": "build/fix/research (for add)"},
+                    "complexity": {"type": "string", "description": "low/medium/high (for add)"},
+                    "preset": {"type": "string", "description": "Pipeline preset override (for add)"},
+                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags (for add)"},
+                    "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Dependency task IDs"},
+                    "task_id": {"type": "string", "description": "Task ID (for get/update/remove)"},
+                    "status": {"type": "string", "description": "New status (for update)"},
+                    "filter_status": {"type": "string", "description": "Filter by status (for list)"}
+                },
+                "required": ["action"]
+            }
+        ),
+        Tool(
+            name="vetka_task_dispatch",
+            description=(
+                "Dispatch tasks from Task Board to Mycelium pipeline. "
+                "If task_id given, dispatches that task. Otherwise picks highest-priority pending task. "
+                "Tasks run in staging mode (auto_write=False) for safety."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "string", "description": "Task ID to dispatch (optional, picks top if omitted)"},
+                    "chat_id": {"type": "string", "description": "Chat ID for progress streaming (optional)"}
+                }
+            }
+        ),
+        Tool(
+            name="vetka_task_import",
+            description=(
+                "Import tasks from a todo text file into the Task Board. "
+                "Auto-detects priority and phase_type from content."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Path to todo file"},
+                    "source_tag": {"type": "string", "description": "Source tag (e.g., 'dragon_todo', 'titan_todo')"}
+                },
+                "required": ["file_path"]
+            }
+        ),
+        # MARKER_121_TASK_BOARD_END
         # MARKER_108_4_MCP_REGISTER: Artifact management tools (Phase 108.4)
         Tool(
             name="vetka_edit_artifact",
@@ -1979,6 +2041,44 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 logger.error(f"[MCP] heartbeat_status error: {e}")
                 return [TextContent(type="text", text=f"❌ Heartbeat status error: {e}")]
         # MARKER_117_2C_END
+
+        # MARKER_121_TASK_BOARD_HANDLERS: Task Board tool handlers (Phase 121)
+        elif name == "vetka_task_board":
+            try:
+                from src.mcp.tools.task_board_tools import handle_task_board
+
+                result = handle_task_board(arguments)
+                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
+                return [TextContent(type="text", text=json.dumps(result, indent=2, default=str, ensure_ascii=False))]
+
+            except Exception as e:
+                logger.error(f"[MCP] task_board error: {e}")
+                return [TextContent(type="text", text=f"❌ Task Board error: {e}")]
+
+        elif name == "vetka_task_dispatch":
+            try:
+                from src.mcp.tools.task_board_tools import handle_task_dispatch
+
+                result = await handle_task_dispatch(arguments)
+                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
+                return [TextContent(type="text", text=json.dumps(result, indent=2, default=str, ensure_ascii=False))]
+
+            except Exception as e:
+                logger.error(f"[MCP] task_dispatch error: {e}")
+                return [TextContent(type="text", text=f"❌ Task Dispatch error: {e}")]
+
+        elif name == "vetka_task_import":
+            try:
+                from src.mcp.tools.task_board_tools import handle_task_import
+
+                result = handle_task_import(arguments)
+                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
+                return [TextContent(type="text", text=json.dumps(result, indent=2, default=str, ensure_ascii=False))]
+
+            except Exception as e:
+                logger.error(f"[MCP] task_import error: {e}")
+                return [TextContent(type="text", text=f"❌ Task Import error: {e}")]
+        # MARKER_121_TASK_BOARD_HANDLERS_END
 
         # MARKER_108_4_MCP_REGISTER: Artifact tool handlers (Phase 108.4)
         elif name == "vetka_edit_artifact":

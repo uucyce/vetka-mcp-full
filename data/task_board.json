@@ -1,0 +1,290 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "phase": "121",
+    "updated": "2026-02-08T22:05:38.158835"
+  },
+  "tasks": {
+    "tb_1770577538_1": {
+      "id": "tb_1770577538_1",
+      "title": "Fix file positioning in directed mode",
+      "description": "New files appear in middle of tree. Should appear at top (highest Y-axis). Sort by creation date.",
+      "priority": 2,
+      "complexity": "low",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "dragon_todo",
+      "tags": [
+        "frontend",
+        "canvas",
+        "bug"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-08T22:05:38.157112",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null
+    },
+    "tb_1770577538_2": {
+      "id": "tb_1770577538_2",
+      "title": "Wire highlight_artifacts to frontend",
+      "description": "highlight_artifacts not used in frontend. Need to connect CAM surprise metrics/Engram.",
+      "priority": 3,
+      "complexity": "low",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "dragon_todo",
+      "tags": [
+        "frontend",
+        "cam",
+        "artifacts"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-08T22:05:38.157435",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null
+    },
+    "tb_1770577538_3": {
+      "id": "tb_1770577538_3",
+      "title": "Chat star/favorite toggle",
+      "description": "Chats should have ability to set stars/favorites.",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "dragon_todo",
+      "tags": [
+        "frontend",
+        "chat",
+        "feature"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-08T22:05:38.157570",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null
+    },
+    "tb_1770577538_4": {
+      "id": "tb_1770577538_4",
+      "title": "Solo chat model provider persistence",
+      "description": "In solo chat, model provider API key name does not persist, falls back to openrouter on re-entry.",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "dragon_todo",
+      "tags": [
+        "chat",
+        "models",
+        "bug"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-08T22:05:38.157650",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null
+    },
+    "tb_1770577538_5": {
+      "id": "tb_1770577538_5",
+      "title": "Fix single file import (drag and drop)",
+      "description": "File import is broken - sometimes cannot drop single file, only folders work. VETKA should react when files are dropped.",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "dragon_todo",
+      "tags": [
+        "frontend",
+        "import",
+        "bug"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-08T22:05:38.157742",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null
+    },
+    "tb_1770577538_6": {
+      "id": "tb_1770577538_6",
+      "title": "@titan command in chat popup solo/team",
+      "description": "Add @titan command support to popup chat solo/team interface.",
+      "priority": 3,
+      "complexity": "low",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "dragon_todo",
+      "tags": [
+        "chat",
+        "pipeline",
+        "ui"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-08T22:05:38.157815",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null
+    },
+    "tb_1770577538_7": {
+      "id": "tb_1770577538_7",
+      "title": "Fix group chat naming bug",
+      "description": "Group chat has two names. Edit name creates new chat, falls back to old untitled. When files-folder name is present, rename happens tragically.",
+      "priority": 2,
+      "complexity": "high",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "dragon_todo",
+      "tags": [
+        "chat",
+        "bug",
+        "naming"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-08T22:05:38.158041",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null
+    },
+    "tb_1770577538_8": {
+      "id": "tb_1770577538_8",
+      "title": "File collapse/expand in folders",
+      "description": "Files in folders should collapse and expand. Multiple folder modes - knowledge mode.",
+      "priority": 4,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "dragon_todo",
+      "tags": [
+        "frontend",
+        "folders",
+        "feature"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-08T22:05:38.158189",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null
+    },
+    "tb_1770577538_9": {
+      "id": "tb_1770577538_9",
+      "title": "Research: search/embedding model categories",
+      "description": "How to use models for search (like Tavily) or embedding, how to connect and display them. Separate category?",
+      "priority": 4,
+      "complexity": "low",
+      "phase_type": "research",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "titan_todo",
+      "tags": [
+        "models",
+        "search",
+        "embedding"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-08T22:05:38.158336",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null
+    },
+    "tb_1770577538_10": {
+      "id": "tb_1770577538_10",
+      "title": "Research: folder content auto-detection",
+      "description": "Auto-detect folder mode by content type: documents→knowledge+directed, video+audio→media-editor.",
+      "priority": 4,
+      "complexity": "medium",
+      "phase_type": "research",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "titan_todo",
+      "tags": [
+        "folders",
+        "auto-detection",
+        "ux"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-08T22:05:38.158451",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null
+    },
+    "tb_1770577538_11": {
+      "id": "tb_1770577538_11",
+      "title": "Research: unified search window architecture",
+      "description": "Unified search window integrating soc/www/file search + Jarvis (superagent with user memory, default working settings).",
+      "priority": 3,
+      "complexity": "high",
+      "phase_type": "research",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "titan_todo",
+      "tags": [
+        "search",
+        "jarvis",
+        "architecture"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-08T22:05:38.158579",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null
+    },
+    "tb_1770577538_12": {
+      "id": "tb_1770577538_12",
+      "title": "Model fallback chain with key roaming",
+      "description": "When model unavailable after key roaming, call local Hostess (ollama), then try other provider keys. Memory of successful connections for priority.",
+      "priority": 4,
+      "complexity": "high",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "dragon_todo",
+      "tags": [
+        "models",
+        "fallback",
+        "resilience"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-08T22:05:38.158830",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null
+    }
+  },
+  "settings": {
+    "max_concurrent": 2,
+    "auto_dispatch": false,
+    "default_preset": "dragon_silver"
+  }
+}

@@ -52,6 +52,7 @@ TASK_PATTERNS = [
     re.compile(r"/fix\s+(.+)", re.IGNORECASE | re.DOTALL),
     re.compile(r"/build\s+(.+)", re.IGNORECASE | re.DOTALL),
     re.compile(r"/research\s+(.+)", re.IGNORECASE | re.DOTALL),
+    re.compile(r"@board\s+(.+)", re.IGNORECASE | re.DOTALL),  # MARKER_121_BOARD
 ]
 
 # Phase type mapping from trigger
@@ -65,6 +66,7 @@ PHASE_TYPE_MAP = {
     "fix": "fix",
     "build": "build",
     "research": "research",
+    "board": "board",  # MARKER_121_BOARD: Special — handled by TaskBoard
 }
 
 
@@ -209,8 +211,6 @@ def _emit_heartbeat_status(group_id: str, message: str):
 
 async def _dispatch_task(task: ParsedTask, group_id: str) -> Dict[str, Any]:
     """Dispatch a parsed task to Mycelium pipeline."""
-    from src.orchestration.agent_pipeline import AgentPipeline
-
     logger.info(f"[Heartbeat] Dispatching: {task.task[:60]}... (phase={task.phase_type})")
 
     _emit_heartbeat_status(
@@ -219,6 +219,12 @@ async def _dispatch_task(task: ParsedTask, group_id: str) -> Dict[str, Any]:
         f"Trigger: `{task.trigger}` | Phase: `{task.phase_type}`\n"
         f"Task: {task.task[:200]}"
     )
+
+    # MARKER_121_BOARD: Handle @board commands via TaskBoard
+    if task.trigger == "board":
+        return await _handle_board_command(task, group_id)
+
+    from src.orchestration.agent_pipeline import AgentPipeline
 
     # MARKER_118.10_TITAN_DISPATCH: Use titan_core preset for @titan trigger
     preset = "titan_core" if task.trigger == "titan" else None
@@ -236,6 +242,60 @@ async def _dispatch_task(task: ParsedTask, group_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"[Heartbeat] Pipeline failed: {e}")
         return {"success": False, "error": str(e)}
+
+
+# MARKER_121_BOARD: Handle @board commands
+async def _handle_board_command(task: ParsedTask, group_id: str) -> Dict[str, Any]:
+    """Handle @board <command> from chat.
+
+    Supported commands:
+        @board dispatch — dispatch highest-priority task
+        @board list — show pending tasks
+        @board summary — show board summary
+    """
+    try:
+        from src.orchestration.task_board import get_task_board
+
+        board = get_task_board()
+        command = task.task.strip().lower()
+
+        if command.startswith("dispatch"):
+            result = await board.dispatch_next(chat_id=group_id)
+            _emit_heartbeat_status(
+                group_id,
+                f"@board: {'✅' if result.get('success') else '❌'} Dispatch: {json.dumps(result, default=str)[:300]}"
+            )
+            return result
+
+        elif command.startswith("list"):
+            tasks = board.get_queue(status="pending")
+            task_lines = [f"  P{t['priority']} [{t['phase_type']}] {t['title'][:60]}" for t in tasks[:10]]
+            _emit_heartbeat_status(
+                group_id,
+                f"@board: 📋 {len(tasks)} pending tasks:\n" + "\n".join(task_lines)
+            )
+            return {"success": True, "count": len(tasks)}
+
+        elif command.startswith("summary"):
+            summary = board.get_board_summary()
+            _emit_heartbeat_status(
+                group_id,
+                f"@board: 📊 Task Board: {summary['total']} total, "
+                f"{json.dumps(summary.get('by_status', {}), default=str)}"
+            )
+            return {"success": True, **summary}
+
+        else:
+            _emit_heartbeat_status(
+                group_id,
+                f"@board: ❓ Unknown command '{command}'. Use: dispatch, list, summary"
+            )
+            return {"success": False, "error": f"Unknown board command: {command}"}
+
+    except Exception as e:
+        logger.error(f"[Heartbeat] Board command failed: {e}")
+        return {"success": False, "error": str(e)}
+# MARKER_121_BOARD_END
 
 
 async def heartbeat_tick(
