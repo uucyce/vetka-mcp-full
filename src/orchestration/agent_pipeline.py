@@ -1193,6 +1193,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 files_created.append(filepath)
                 logger.info(f"[Pipeline] Spawn created: {filepath} ({len(code)} chars)")
 
+                # MARKER_123.1D: Phase 123.1 - Emit glow for pipeline-created files
+                try:
+                    from src.services.activity_hub import get_activity_hub
+                    hub = get_activity_hub()
+                    hub.emit_glow_sync(str(path_obj.absolute()), 1.0, "pipeline:spawn")
+                except Exception:
+                    pass  # Non-critical
+
             except Exception as e:
                 logger.error(f"[Pipeline] Failed to write {filepath}: {e}")
                 # Fallback to staging directory
@@ -1245,6 +1253,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_122.1: Phase 0 — Parallel Recon (Scout + Researcher concurrently)
             await self._emit_progress("@pipeline", "🔍 Parallel recon: Scout + Researcher...")
             scout_context, initial_research = await self._parallel_recon(task, phase_type)
+            # MARKER_122.5C: Store scout context for subtask injection
+            self._scout_context = scout_context
             if scout_context:
                 await self._emit_progress(
                     "@scout",
@@ -1451,6 +1461,12 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     subtask.context = {}
                 subtask.context["previous_results"] = stm_summary
 
+            # MARKER_122.5D: Inject scout report for coder awareness
+            if getattr(self, '_scout_context', None):
+                if subtask.context is None:
+                    subtask.context = {}
+                subtask.context["scout_report"] = self._scout_context
+
             # Auto-trigger research on needs_research flag
             if subtask.needs_research:
                 subtask.status = "researching"
@@ -1642,8 +1658,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 if subtask.visible:
                     await self._emit_progress("@coder", f"⚙️ [P] Executing: {subtask.description[:35]}...", idx+1, total_subtasks)
 
+                # MARKER_122.5E: Inject scout report for parallel subtasks
+                if getattr(self, '_scout_context', None):
+                    if subtask.context is None:
+                        subtask.context = {}
+                    subtask.context["scout_report"] = self._scout_context
+
                 # Auto-trigger research if needed (inside semaphore)
-                if subtask.needs_research:
                     subtask.status = "researching"
                     if subtask.visible:
                         await self._emit_progress("@researcher", f"🔍 [P] Researching: {subtask.description[:35]}...", idx+1, total_subtasks)
@@ -1972,6 +1993,18 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if subtask.context.get("actionable_steps"):
                 steps = "\n".join([f"- {s.get('step', s)}" for s in subtask.context["actionable_steps"]])
                 context_parts.append(f"Actionable steps:\n{steps}")
+            # MARKER_122.5A: Pass STM previous results to coder
+            if subtask.context.get("previous_results"):
+                context_parts.append(f"Previous subtask results:\n{subtask.context['previous_results']}")
+            # MARKER_122.5B: Pass scout report to coder
+            if subtask.context.get("scout_report"):
+                scout = subtask.context["scout_report"]
+                files = ", ".join(scout.get("relevant_files", [])[:5])
+                patterns = "; ".join(scout.get("patterns_found", [])[:3])
+                scout_str = f"Project files: {files}"
+                if patterns:
+                    scout_str += f"\nPatterns to follow: {patterns}"
+                context_parts.append(f"Scout report:\n{scout_str}")
 
         context_str = "\n\n".join(context_parts) if context_parts else "No additional context."
 
@@ -2025,6 +2058,13 @@ Execute this subtask. Provide clear, actionable output."""}
         }
         if self.provider_override:
             call_args["model_source"] = self.provider_override
+        # MARKER_122.5F: Inject codebase context for coder (semantic search from Qdrant)
+        if phase_type in ("fix", "build"):
+            call_args["inject_context"] = {
+                "semantic_query": subtask.description,
+                "semantic_limit": 3,
+                "compress": True
+            }
         result = tool.execute(call_args)
         # MARKER_117.6C: Track coder model for attribution
         self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))

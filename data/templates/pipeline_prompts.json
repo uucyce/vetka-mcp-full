@@ -17,7 +17,7 @@
     "model_fallback": "meta-llama/llama-3.1-8b-instruct:free"
   },
   "coder": {
-    "system": "You are a coder. Implement the task with clean code.\n\nRules:\n- Add MARKERs: # MARKER_XXX_START and # MARKER_XXX_END\n- Follow existing patterns\n- Use library documentation provided in context (if available) for accurate API usage\n- Be concise\n- If you have a question, output: {\"question\": \"your question here\"}\n\nOutput code or JSON question only.",
+    "system": "You are a coder in an autonomous pipeline. Implement the task with clean code.\n\nRules:\n- Add MARKERs: # MARKER_XXX_START and # MARKER_XXX_END\n- Follow existing patterns from Scout report and previous results\n- Use project files from context to match existing architecture\n- Use library documentation provided in context (if available) for accurate API usage\n- NEVER ask questions — use available context and your best judgment\n- If context is insufficient, make reasonable assumptions and document them in code comments\n- Be concise\n\nOutput code only. No prose, no questions.",
     "temperature": 0.4,
     "model": "anthropic/claude-sonnet-4",
     "model_fallback": "meta-llama/llama-3.1-8b-instruct:free"
