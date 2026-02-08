@@ -13,6 +13,8 @@ Integrates with HOPE for quick context and CAM for surprise events.
 MARKER-99-01: STM decay formula - weight *= (1 - decay_rate * (age_seconds / 60))
 """
 
+import os
+import threading
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -20,6 +22,23 @@ from typing import Optional, Dict, Any, List
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class STMConfig:
+    """Configuration for STM Buffer with env var overrides.
+
+    MARKER_118.8_STM_CONFIG
+    All defaults match current hardcoded values for backward compatibility.
+    Override via VETKA_STM_* environment variables.
+    """
+    max_size: int = int(os.getenv("VETKA_STM_MAX_SIZE", "10"))
+    decay_rate: float = float(os.getenv("VETKA_STM_DECAY_RATE", "0.1"))
+    min_weight: float = float(os.getenv("VETKA_STM_MIN_WEIGHT", "0.1"))
+    surprise_base_weight: float = float(os.getenv("VETKA_STM_SURPRISE_BASE", "1.0"))
+    surprise_preserve_coeff: float = float(os.getenv("VETKA_STM_SURPRISE_PRESERVE", "0.3"))
+    hope_weight: float = float(os.getenv("VETKA_STM_HOPE_WEIGHT", "1.2"))
+    hope_truncate: int = int(os.getenv("VETKA_STM_HOPE_TRUNCATE", "500"))
 
 
 @dataclass
@@ -83,9 +102,10 @@ class STMBuffer:
 
     def __init__(
         self,
-        max_size: int = 10,
-        decay_rate: float = 0.1,
-        min_weight: float = 0.1
+        max_size: int = None,
+        decay_rate: float = None,
+        min_weight: float = None,
+        config: STMConfig = None
     ):
         """
         Initialize STM buffer.
@@ -94,13 +114,16 @@ class STMBuffer:
             max_size: Maximum entries to keep (oldest evicted on overflow)
             decay_rate: Weight decay per minute (0.1 = 10% per minute)
             min_weight: Minimum weight before entry is considered stale
+            config: Optional STMConfig with env var overrides
         """
-        self._buffer: deque[STMEntry] = deque(maxlen=max_size)
-        self.decay_rate = decay_rate
-        self.min_weight = min_weight
-        self.max_size = max_size
+        cfg = config or STMConfig()
+        self._config = cfg
+        self.max_size = max_size if max_size is not None else cfg.max_size
+        self.decay_rate = decay_rate if decay_rate is not None else cfg.decay_rate
+        self.min_weight = min_weight if min_weight is not None else cfg.min_weight
+        self._buffer: deque[STMEntry] = deque(maxlen=self.max_size)
 
-        logger.debug(f"STMBuffer initialized: max_size={max_size}, decay_rate={decay_rate}")
+        logger.debug(f"STMBuffer initialized: max_size={self.max_size}, decay_rate={self.decay_rate}")
 
     def add(self, entry: STMEntry) -> None:
         """
@@ -149,7 +172,7 @@ class STMBuffer:
             content=content,
             timestamp=datetime.now(),
             source="cam_surprise",
-            weight=1.0 + surprise_score,  # Surprise boosts initial weight
+            weight=self._config.surprise_base_weight + surprise_score,
             surprise_score=surprise_score
         )
         self.add(entry)
@@ -164,10 +187,10 @@ class STMBuffer:
             workflow_id: Optional workflow identifier
         """
         entry = STMEntry(
-            content=summary[:500],  # Truncate for efficiency
+            content=summary[:self._config.hope_truncate],
             timestamp=datetime.now(),
             source="hope",
-            weight=1.2,  # Slight boost for HOPE summaries
+            weight=self._config.hope_weight,
             metadata={"workflow_id": workflow_id} if workflow_id else None
         )
         self.add(entry)
@@ -251,11 +274,11 @@ class STMBuffer:
             # FIX_99.2: Adaptive surprise preservation (soft coefficient 0.3)
             # High-surprise items decay 30% slower to maintain important context
             # This reduces the decay amount, not multiplies the weight
-            surprise_preservation = 1.0 + (entry.surprise_score * 0.3)
+            coeff = self._config.surprise_preserve_coeff
+            surprise_preservation = 1.0 + (entry.surprise_score * coeff)
 
             # Apply surprise preservation to reduce decay impact
-            # decay_factor of 0.5 with preservation 1.3 becomes 0.5 + (1-0.5) * 0.3 * surprise = 0.65
-            adjusted_decay = decay_factor + (1 - decay_factor) * (entry.surprise_score * 0.3)
+            adjusted_decay = decay_factor + (1 - decay_factor) * (entry.surprise_score * coeff)
             adjusted_decay = max(0, min(1.0, adjusted_decay))  # Clamp to [0, 1]
 
             entry.weight = max(self.min_weight, entry.weight * adjusted_decay)
@@ -291,20 +314,24 @@ class STMBuffer:
         return f"STMBuffer(size={len(self)}/{self.max_size}, decay_rate={self.decay_rate})"
 
 
-# === Singleton instance for global access ===
+# === Thread-safe singleton (MARKER_118.8_SINGLETON) ===
+_stm_lock = threading.Lock()
 _global_stm: Optional[STMBuffer] = None
 
 
 def get_stm_buffer() -> STMBuffer:
-    """Get or create global STM buffer instance."""
+    """Get or create global STM buffer instance (thread-safe)."""
     global _global_stm
     if _global_stm is None:
-        _global_stm = STMBuffer()
-        logger.info("Global STM buffer initialized")
+        with _stm_lock:
+            if _global_stm is None:
+                _global_stm = STMBuffer()
+                logger.info("Global STM buffer initialized")
     return _global_stm
 
 
 def reset_stm_buffer() -> None:
     """Reset global STM buffer (for testing)."""
     global _global_stm
-    _global_stm = None
+    with _stm_lock:
+        _global_stm = None

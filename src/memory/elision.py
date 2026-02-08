@@ -22,6 +22,7 @@ Target: 60-70% token savings without semantic loss
 
 import json
 import re
+import threading
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -87,6 +88,23 @@ ELISION_MAP = {
     "folder": "d",  # directory
     "module": "mod",
     "package": "pkg",
+
+    # Pipeline terms (MARKER_118.9_ELISION_PIPELINE)
+    "estimated_complexity": "ec",
+    "enriched_context": "ectx",
+    "subtasks": "sts",
+    "needs_research": "nr",
+    "execution_order": "eo",
+    "pipeline": "pl",
+    "mycelium": "myc",
+    "architect": "arc",
+    "researcher": "res",
+    "verifier": "ver",
+    "description": "desc",
+    "vetka_out": "vo",
+    "vetka_staging": "vs",
+    "vetka_mycelium_pipeline": "vmp",
+    "surprise_detector": "sd",
 }
 
 # Reverse map for expansion
@@ -655,16 +673,18 @@ class ElisionCompressor:
 # FACTORY FUNCTIONS
 # =============================================================================
 
+# MARKER_118.8_SINGLETON: Thread-safe singleton
+_elision_lock = threading.Lock()
 _compressor_instance: Optional[ElisionCompressor] = None
 
 
 def get_elision_compressor() -> ElisionCompressor:
-    """Get singleton ElisionCompressor instance"""
+    """Get singleton ElisionCompressor instance (thread-safe)."""
     global _compressor_instance
-
     if _compressor_instance is None:
-        _compressor_instance = ElisionCompressor()
-
+        with _elision_lock:
+            if _compressor_instance is None:
+                _compressor_instance = ElisionCompressor()
     return _compressor_instance
 
 

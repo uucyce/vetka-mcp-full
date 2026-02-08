@@ -482,7 +482,7 @@ def upsert_to_qdrant(
     """
     Upsert staged item to Qdrant VetkaLeaf collection.
 
-    Adds type='artifact' or type='spawn_output' to payload.
+    Adds type='artifact' or type='vetka_out' to payload.
     """
     try:
         from src.memory.qdrant_client import get_qdrant_client

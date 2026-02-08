@@ -40,6 +40,15 @@ MAX_PARALLEL_PIPELINES = int(os.getenv("VETKA_MAX_PARALLEL", "5"))
 # After this many subtasks, STM is compressed to a summary and reset.
 # Prevents context drift in long pipeline runs (10+ subtasks).
 MAX_STM_BEFORE_RESET = int(os.getenv("VETKA_STM_RESET_THRESHOLD", "10"))
+
+# MARKER_118.8_PIPELINE_CONSTANTS: Extracted from hardcoded values
+PIPELINE_STM_LIMIT = int(os.getenv("VETKA_PIPELINE_STM_LIMIT", "5"))
+PIPELINE_ELISION_LEVEL = int(os.getenv("VETKA_PIPELINE_ELISION_LEVEL", "2"))
+PIPELINE_COMPRESS_THRESHOLD = int(os.getenv("VETKA_PIPELINE_COMPRESS_THRESHOLD", "1000"))
+PIPELINE_TRUNCATE_RESULT = int(os.getenv("VETKA_PIPELINE_TRUNCATE_RESULT", "500"))
+PIPELINE_STM_SUMMARY_WINDOW = int(os.getenv("VETKA_PIPELINE_STM_SUMMARY_WINDOW", "3"))
+PIPELINE_SUMMARY_TRUNCATE = int(os.getenv("VETKA_PIPELINE_SUMMARY_TRUNCATE", "200"))
+
 _pipeline_semaphore: Optional[asyncio.Semaphore] = None
 
 
@@ -125,7 +134,7 @@ class AgentPipeline:
         self._last_used_model: str = ""
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
-        self.stm_limit = 5  # Keep last 5 results
+        self.stm_limit = PIPELINE_STM_LIMIT
         # MARKER_102.23_END
         # MARKER_102.26_START: Progress streaming to chat
         # MARKER_117.8C: No default UUID — None means use sio/sid or skip emit
@@ -137,14 +146,14 @@ class AgentPipeline:
         # MARKER_102.26_END
         # MARKER_103.5_START: Auto-write vs staging mode
         # auto_write=True: Immediately write files to disk (default)
-        # auto_write=False: Only save to JSON, use retro_apply_spawn.py later
+        # auto_write=False: Only save to JSON, use retro_apply_myc.py later
         self.auto_write = auto_write
         # MARKER_103.5_END
         # MARKER_104_ELISION_PROMPTS_START: Initialize ELISION compressor
         # ELISION = Efficient Language-Independent Symbolic Inversion of Names
         # Provides 40-60% token savings without semantic loss
         self.elision_compressor = get_elision_compressor()
-        self.elision_level = 2  # Default: key abbreviation + path compression
+        self.elision_level = PIPELINE_ELISION_LEVEL
         # MARKER_104_ELISION_PROMPTS_END
         self._load_prompts()
         self._apply_preset()
@@ -244,6 +253,8 @@ Respond with implementation plan or code."""
             return
 
         # Apply model overrides from preset
+        # MARKER_118.10_SCOUT_PREP: "scout" role in titan presets is reserved for Phase 119.4
+        # Currently ignored by _apply_preset() since self.prompts has no "scout" key
         roles = preset.get("roles", {})
         for role_name, model_name in roles.items():
             if role_name in self.prompts:
@@ -274,15 +285,40 @@ Respond with implementation plan or code."""
             return None
         try:
             data = json.loads(PRESETS_FILE.read_text())
-            tier_map = data.get("_tier_map", {
-                "low": "dragon_bronze",
-                "medium": "dragon_silver",
-                "high": "dragon_gold"
-            })
+            # MARKER_118.10_TITAN_TIER: Use titan tier map if current preset is a titan
+            if self.preset_name and self.preset_name.startswith("titan_"):
+                tier_map = data.get("_titan_tier_map", {
+                    "low": "titan_lite",
+                    "medium": "titan_core",
+                    "high": "titan_prime"
+                })
+            else:
+                tier_map = data.get("_tier_map", {
+                    "low": "dragon_bronze",
+                    "medium": "dragon_silver",
+                    "high": "dragon_gold"
+                })
             return tier_map.get(complexity)
         except Exception:
             return None
     # MARKER_117.4C_END
+
+    # MARKER_118.8_ADAPTIVE_ELISION
+    def _get_adaptive_elision_level(self) -> int:
+        """Adjust ELISION compression based on STM fill percentage.
+
+        - STM < 30% full -> Level 1 (light compression)
+        - STM 30-70%     -> Level 2 (standard)
+        - STM > 70%      -> Level 3 (aggressive, vowel skip)
+        """
+        if not self.stm_limit or self.stm_limit == 0:
+            return PIPELINE_ELISION_LEVEL
+        fill_ratio = len(self.stm) / self.stm_limit
+        if fill_ratio < 0.3:
+            return 1
+        elif fill_ratio > 0.7:
+            return 3
+        return 2
 
     def _get_llm_tool(self):
         """Lazy load LLM tool to avoid circular imports"""
@@ -677,7 +713,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             logger.warning("[STM] ELISION import failed, using truncation only")
             self.stm.append({
                 "marker": marker,
-                "result": result[:500] if result else "",
+                "result": result[:PIPELINE_TRUNCATE_RESULT] if result else "",
                 "compressed": False
             })
             if len(self.stm) > self.stm_limit:
@@ -688,9 +724,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         original_size = len(result_str)
 
         # Only compress if result is large enough
-        if original_size > 1000:
+        if original_size > PIPELINE_COMPRESS_THRESHOLD:
             try:
-                compression = compressor.compress(result_str, level=2)
+                compression = compressor.compress(result_str, level=self._get_adaptive_elision_level())
                 stm_entry = {
                     "marker": marker,
                     "result": compression.compressed,
@@ -711,14 +747,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 logger.warning(f"[STM] Compression failed for {marker}: {e}, using truncation")
                 stm_entry = {
                     "marker": marker,
-                    "result": result_str[:500],
+                    "result": result_str[:PIPELINE_TRUNCATE_RESULT],
                     "compressed": False
                 }
         else:
             # Small results: no compression needed
             stm_entry = {
                 "marker": marker,
-                "result": result_str[:500] if result_str else "",
+                "result": result_str[:PIPELINE_TRUNCATE_RESULT] if result_str else "",
                 "compressed": False
             }
 
@@ -752,7 +788,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         except ImportError:
             compressor = None
 
-        for item in self.stm[-3:]:  # Last 3 for brevity
+        for item in self.stm[-PIPELINE_STM_SUMMARY_WINDOW:]:
             marker = item.get("marker", "unknown")
             result = item.get("result", "")
 
@@ -760,12 +796,12 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if item.get("compressed") and compressor:
                 try:
                     result = compressor.expand(result, item.get("legend", {}))
-                    result = result[:200]  # Still truncate for summary
+                    result = result[:PIPELINE_SUMMARY_TRUNCATE]
                 except Exception as e:
                     logger.warning(f"[STM] Decompression failed for {marker}: {e}")
-                    result = result[:200]
+                    result = result[:PIPELINE_SUMMARY_TRUNCATE]
             else:
-                result = result[:200]
+                result = result[:PIPELINE_SUMMARY_TRUNCATE]
 
             summary_parts.append(f"- [{marker}]: {result}...")
 
@@ -870,7 +906,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 marker = getattr(subtask, 'marker', f'file_{i+1}')
                 # Clean marker for filename
                 safe_marker = re.sub(r'[^\w\-_.]', '_', str(marker))
-                filepath = f"src/spawn_output/{safe_marker}.py"
+                filepath = f"src/vetka_out/{safe_marker}.py"
 
             # Ensure directory exists and write file
             try:
@@ -884,7 +920,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 logger.error(f"[Pipeline] Failed to write {filepath}: {e}")
                 # Fallback to staging directory
                 try:
-                    fallback_dir = Path("data/spawn_staging")
+                    fallback_dir = Path("data/vetka_staging")
                     fallback_dir.mkdir(parents=True, exist_ok=True)
                     fallback_path = fallback_dir / Path(filepath).name
                     fallback_path.write_text(code, encoding='utf-8')
@@ -967,6 +1003,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     f"⚡ Auto-tier: {complexity} complexity → {tier_preset} (was {old_tier})"
                 )
             # MARKER_117.4C_END
+
+            # MARKER_118.8_ADAPTIVE_STM: Override stm_limit based on complexity
+            try:
+                data = json.loads(PRESETS_FILE.read_text())
+                stm_window_map = data.get("_stm_window_map", {"low": 3, "medium": 5, "high": 8})
+                new_limit = stm_window_map.get(complexity, self.stm_limit)
+                if new_limit != self.stm_limit:
+                    logger.info(f"[Pipeline] Adaptive STM: {complexity} -> window={new_limit} (was {self.stm_limit})")
+                    self.stm_limit = new_limit
+            except Exception:
+                pass  # Keep default
 
             # MARKER_102.24_START: Phase 2 with STM context passing
             # Phase 2: Execute each subtask (with research triggers + STM)

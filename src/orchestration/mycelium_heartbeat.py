@@ -44,6 +44,7 @@ _STATE_FILE_FALLBACK = Path(os.environ.get('TMPDIR', '/tmp')) / "vetka_heartbeat
 # MARKER_117_3: Added @doctor for diagnostic research
 TASK_PATTERNS = [
     re.compile(r"@dragon\s+(.+)", re.IGNORECASE | re.DOTALL),
+    re.compile(r"@titan\s+(.+)", re.IGNORECASE | re.DOTALL),  # MARKER_118.10_TITAN
     re.compile(r"@doctor\s+(.+)", re.IGNORECASE | re.DOTALL),
     re.compile(r"@help\s+(.+)", re.IGNORECASE | re.DOTALL),
     re.compile(r"@pipeline\s+(.+)", re.IGNORECASE | re.DOTALL),
@@ -56,6 +57,7 @@ TASK_PATTERNS = [
 # Phase type mapping from trigger
 PHASE_TYPE_MAP = {
     "dragon": "build",
+    "titan": "build",  # MARKER_118.10_TITAN
     "doctor": "research",
     "help": "research",
     "pipeline": "build",
@@ -218,7 +220,9 @@ async def _dispatch_task(task: ParsedTask, group_id: str) -> Dict[str, Any]:
         f"Task: {task.task[:200]}"
     )
 
-    pipeline = AgentPipeline(chat_id=group_id)
+    # MARKER_118.10_TITAN_DISPATCH: Use titan_core preset for @titan trigger
+    preset = "titan_core" if task.trigger == "titan" else None
+    pipeline = AgentPipeline(chat_id=group_id, preset=preset)
 
     try:
         result = await pipeline.execute(task.task, task.phase_type)

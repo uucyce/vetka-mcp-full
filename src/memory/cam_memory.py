@@ -27,6 +27,7 @@ DISTINCTION from src/orchestration/cam_engine.py:
 import logging
 import math
 import re
+import threading
 from typing import Dict, List, Optional, Tuple, Any
 from collections import Counter
 
@@ -491,33 +492,28 @@ class CAMMemory:
 # SINGLETON AND CONVENIENCE FUNCTIONS
 # =============================================================================
 
+# MARKER_118.8_SINGLETON: Thread-safe singleton
+_cam_lock = threading.Lock()
 _cam_memory_instance: Optional[CAMMemory] = None
 
 
 def get_cam_memory(use_embeddings: bool = False) -> CAMMemory:
-    """
-    Get singleton CAM Memory instance.
-
-    Args:
-        use_embeddings: Whether to enable embedding-based surprise
-
-    Returns:
-        Singleton CAMMemory instance
-    """
+    """Get singleton CAM Memory instance (thread-safe)."""
     global _cam_memory_instance
-
     if _cam_memory_instance is None:
-        _cam_memory_instance = CAMMemory(use_embeddings=use_embeddings)
-        logger.info("[CAM Memory] Singleton initialized")
-
+        with _cam_lock:
+            if _cam_memory_instance is None:
+                _cam_memory_instance = CAMMemory(use_embeddings=use_embeddings)
+                logger.info("[CAM Memory] Singleton initialized")
     return _cam_memory_instance
 
 
 def reset_cam_memory() -> None:
     """Reset singleton for testing purposes."""
     global _cam_memory_instance
-    _cam_memory_instance = None
-    logger.info("[CAM Memory] Singleton reset")
+    with _cam_lock:
+        _cam_memory_instance = None
+        logger.info("[CAM Memory] Singleton reset")
 
 
 def get_surprise_metrics(text: str) -> Dict[str, float]:
