@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T22:55:11.472618+00:00",
+  "last_updated": "2026-02-08T23:05:57.247335+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 123,
-    "subphase": "8",
+    "number": 124,
+    "subphase": "0",
     "name": "Balance glow intensity (halfway back)",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 123.8 DONE! Balance glow intensity (halfway back)",
+    "headline": "Phase 124.0 DONE! Balance glow intensity (halfway back)",
     "key_achievements": [
+      "[214cb6ec] Phase 124.0: Phase 124.0a+124.1: FC tool wrappers + E2E validation fixes",
       "[ff8d5e67] Phase 123.8: Phase 123.8.2: Balance glow intensity (halfway back)",
       "[5a62c29d] Phase 123.8: Phase 123.8.1: Reduce glow intensity",
       "[ef8e6c0e] Phase 123.8: Phase 123.8: Radial gradient glow sprite (Grok research)",
@@ -21,8 +22,7 @@
       "[aab505c9] Phase 123.1: Phase 123.1: Coder Function Calling \u2014 Async FC Loop",
       "[5ff58204] Phase 123.5: Phase 123.5: Smaller labels to reduce overlap",
       "[45452cc6] Phase 122.5: Phase 122.5: Coder Context Enrichment \u2014 STM, Scout, inject_c",
-      "[734dd39e] Phase 119.2: FIX Phase 119.2: Build children arrays from edges + pass hea",
-      "[ab1216b4] Phase 119.2: Phase 119.2: Heat-based label visibility + size scaling"
+      "[734dd39e] Phase 119.2: FIX Phase 119.2: Build children arrays from edges + pass hea"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "ff8d5e67",
+    "commit": "214cb6ec",
     "dirty": true
   }
 }

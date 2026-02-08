@@ -1326,8 +1326,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 pass  # Keep default
 
             # MARKER_122.2: Architect PM Pass — refine plan with research context
-            # If initial research confidence is moderate, architect re-evaluates with enriched context
-            if initial_research and isinstance(initial_research, dict) and initial_research.get("confidence", 1.0) < 0.9:
+            # If initial research confidence is LOW, architect re-evaluates with enriched context
+            # MARKER_124.1C: Raised threshold 0.9 → 0.7 — replan only when researcher is truly unsure
+            # At 0.9 every pipeline did double-planning (E2E showed confidence=0.85 → wasted replan)
+            if initial_research and isinstance(initial_research, dict) and initial_research.get("confidence", 1.0) < 0.7:
                 await self._emit_progress("@architect", "📋 PM pass: refining plan with research context...", model=architect_model)
                 plan = await self._architect_plan(task, phase_type, scout_context=scout_context,
                                                    research_context=initial_research)

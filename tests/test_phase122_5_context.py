@@ -271,6 +271,6 @@ class TestCoderPrompt:
         with open("data/templates/pipeline_prompts.json") as f:
             prompts = json.load(f)
         coder_prompt = prompts["coder"]["system"]
-        assert "Scout report" in coder_prompt
-        # Phase 123.1: prompt now mentions tools instead of "previous results"
+        # Phase 124.1: prompt now has CRITICAL WORKFLOW with search→read→code pattern
         assert "vetka_read_file" in coder_prompt
+        assert "MUST call vetka_read_file" in coder_prompt
