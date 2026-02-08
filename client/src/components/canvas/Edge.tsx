@@ -1,62 +1,43 @@
 /**
  * Edge - 3D curved line connecting nodes in the tree visualization.
- * Uses MeshLine for clickable edges with proper raycasting.
+ * Uses Three.js CatmullRomCurve3 for smooth connections.
  *
  * @status active
- * @phase 119
- * @depends react, three, meshline, @react-three/fiber
+ * @phase 96
+ * @depends react, three, @react-three/drei
  * @used_by TreeEdges
  */
 
-import { useMemo, memo, useRef, useState } from 'react';
-import { useThree, extend } from '@react-three/fiber';
+import { useMemo, memo } from 'react';
 import * as THREE from 'three';
-import { MeshLineGeometry, MeshLineMaterial, raycast } from 'meshline';
+import { Line } from '@react-three/drei';
 
-// Phase 119: Extend r3f with meshline components
-extend({ MeshLineGeometry, MeshLineMaterial });
-
-// Phase 119: Extended props with interactivity
 interface EdgeProps {
   start: [number, number, number];
   end: [number, number, number];
   color?: string;
   lineWidth?: number;
   opacity?: number;
-  // Phase 119: New interactive props
-  edgeId?: string;
-  sourceId?: string;
-  targetId?: string;
-  onClick?: (edgeId: string) => void;
-  onDoubleClick?: (edgeId: string, sourceId: string, targetId: string) => void;
-  onShiftClick?: (edgeId: string, sourceId: string, targetId: string) => void;
-  onHover?: (edgeId: string | null) => void;
-  isSelected?: boolean;
-  isPinned?: boolean;
 }
 
-// Phase 119: Interactive edge with MeshLine
+// Phase 111.21: React.memo to prevent unnecessary re-renders
+// Only re-renders when start/end/color/lineWidth/opacity actually change
 function EdgeComponent({
   start,
   end,
   color = '#4b5563',
   lineWidth = 1.5,
-  opacity = 0.6,
-  edgeId = '',
-  sourceId = '',
-  targetId = '',
-  onClick,
-  onDoubleClick,
-  onShiftClick,
-  onHover,
-  isSelected = false,
-  isPinned = false,
+  opacity = 0.6
 }: EdgeProps) {
-  const { size } = useThree();
-  const meshRef = useRef<THREE.Mesh>(null);
-  const [isHovered, setIsHovered] = useState(false);
+  // MARKER_3D_EDGE_RENDER: Edge component - 3D curved line rendering
+  // - Curve: CatmullRomCurve3 with 3 control points (startVec, midPoint, endVec)
+  // - Samples: 20 points along curve for smooth rendering
+  // - Props: start, end (3D coordinates), color, lineWidth, opacity
+  // - Rendering: @react-three/drei Line with depthTest=true, depthWrite=false
+  // - Default color: '#4b5563' (dark gray/blue)
+  // - For chat edges: Pass color='#4a9eff' (blue) from parent component
+  // - Opacity behavior: transparent prop automatically set if opacity < 1
 
-  // Calculate curve points
   const points = useMemo(() => {
     const startVec = new THREE.Vector3(...start);
     const endVec = new THREE.Vector3(...end);
@@ -72,88 +53,22 @@ function EdgeComponent({
     return curve.getPoints(20);
   }, [start, end]);
 
-  // Phase 119: Flatten points for meshline
-  const flatPoints = useMemo(() => {
-    return points.flatMap(p => [p.x, p.y, p.z]);
-  }, [points]);
-
-  // Phase 119: Calculate visual properties based on state
-  const visualColor = useMemo(() => {
-    if (isPinned) return '#4a9eff';  // Blue for pinned
-    if (isSelected) return '#d1d5db';  // Light gray for selected
-    if (isHovered) return '#9ca3af';  // Medium gray for hover
-    return color;
-  }, [color, isSelected, isPinned, isHovered]);
-
-  const visualWidth = useMemo(() => {
-    if (isPinned || isSelected) return lineWidth * 2;
-    if (isHovered) return lineWidth * 1.5;
-    return lineWidth;
-  }, [lineWidth, isSelected, isPinned, isHovered]);
-
-  const visualOpacity = useMemo(() => {
-    if (isPinned || isSelected || isHovered) return Math.min(opacity + 0.2, 1);
-    return opacity;
-  }, [opacity, isSelected, isPinned, isHovered]);
-
-  // Phase 119: Click handler with modifier key support
-  const handleClick = (e: any) => {
-    e.stopPropagation();
-
-    if (e.shiftKey && onShiftClick) {
-      // Shift+Click = pin edge
-      onShiftClick(edgeId, sourceId, targetId);
-    } else if (onClick) {
-      // Normal click = select edge
-      onClick(edgeId);
-    }
-  };
-
-  // Phase 119: Double-click handler for zoom
-  const handleDoubleClick = (e: any) => {
-    e.stopPropagation();
-    if (onDoubleClick) {
-      onDoubleClick(edgeId, sourceId, targetId);
-    }
-  };
-
-  // Phase 119: Hover handlers
-  const handlePointerOver = () => {
-    setIsHovered(true);
-    onHover?.(edgeId);
-  };
-
-  const handlePointerOut = () => {
-    setIsHovered(false);
-    onHover?.(null);
-  };
-
+  // Phase 54.4: Ensure edges are visible with proper rendering
   return (
-    <mesh
-      ref={meshRef}
-      raycast={raycast}
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
-      onPointerOver={handlePointerOver}
-      onPointerOut={handlePointerOut}
-    >
-      {/* @ts-ignore - meshline types */}
-      <meshLineGeometry points={flatPoints} />
-      {/* @ts-ignore - meshline types */}
-      <meshLineMaterial
-        lineWidth={visualWidth * 0.015}  // MeshLine uses different scale
-        color={visualColor}
-        opacity={visualOpacity}
-        transparent={true}
-        depthTest={true}
-        depthWrite={false}
-        resolution={[size.width, size.height]}
-      />
-    </mesh>
+    <Line
+      points={points}
+      color={color}
+      lineWidth={lineWidth}
+      transparent={opacity < 1}
+      opacity={opacity}
+      depthTest={true}
+      depthWrite={false}
+    />
   );
 }
 
-// Phase 119: Export memoized component with extended comparison
+// Phase 111.21: Export memoized component
+// Comparison: shallow equality on all props (start/end arrays, primitives)
 export const Edge = memo(EdgeComponent, (prev, next) => {
   return (
     prev.start[0] === next.start[0] &&
@@ -164,9 +79,6 @@ export const Edge = memo(EdgeComponent, (prev, next) => {
     prev.end[2] === next.end[2] &&
     prev.color === next.color &&
     prev.lineWidth === next.lineWidth &&
-    prev.opacity === next.opacity &&
-    prev.edgeId === next.edgeId &&
-    prev.isSelected === next.isSelected &&
-    prev.isPinned === next.isPinned
+    prev.opacity === next.opacity
   );
 });

@@ -16,12 +16,12 @@
     "call_count": 20
   },
   "x-ai/grok-4": {
-    "healthy": false,
-    "error_count": 6,
-    "last_success": 1769463076.0356522,
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770418431.1526022,
     "last_error": 1769785967.208161,
-    "error_code": 500,
-    "call_count": 8
+    "error_code": null,
+    "call_count": 13
   },
   "allenai/molmo-2-8b:free": {
     "healthy": true,
@@ -82,10 +82,10 @@
   "x-ai/grok-4.1-fast": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1769779722.244656,
+    "last_success": 1770477385.291959,
     "last_error": 1769776186.1882088,
     "error_code": null,
-    "call_count": 3
+    "call_count": 7
   },
   "arcee-ai/trinity-mini:free": {
     "healthy": true,
@@ -97,11 +97,11 @@
   },
   "deepseek-coder:6.7b": {
     "healthy": true,
-    "error_count": 1,
-    "last_success": null,
+    "error_count": 0,
+    "last_success": 1770457569.622935,
     "last_error": 1770028697.1748438,
-    "error_code": 500,
-    "call_count": 1
+    "error_code": null,
+    "call_count": 13
   },
   "qwen2:7b": {
     "healthy": true,
@@ -114,18 +114,18 @@
   "upstage/solar-pro-3:free": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770163386.2355032,
+    "last_success": 1770487681.270422,
     "last_error": null,
     "error_code": null,
-    "call_count": 2
+    "call_count": 3
   },
   "nvidia/nemotron-3-nano-30b-a3b:free": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770052640.443378,
+    "last_success": 1770487810.265741,
     "last_error": null,
     "error_code": null,
-    "call_count": 1
+    "call_count": 3
   },
   "google/gemma-3-27b-it:free": {
     "healthy": true,
@@ -145,11 +145,11 @@
   },
   "z-ai/glm-4.7-flash": {
     "healthy": true,
-    "error_count": 1,
-    "last_success": 1770169226.061965,
+    "error_count": 0,
+    "last_success": 1770419719.272938,
     "last_error": 1770169286.125025,
-    "error_code": 401,
-    "call_count": 23
+    "error_code": null,
+    "call_count": 30
   },
   "stepfun/step-3.5-flash:free": {
     "healthy": true,
@@ -212,6 +212,126 @@
     "error_count": 1,
     "last_success": null,
     "last_error": 1770168423.190787,
+    "error_code": 401,
+    "call_count": 1
+  },
+  "gpt-4o-mini": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770418162.395655,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
+  },
+  "claude-sonnet-4-20250514": {
+    "healthy": true,
+    "error_count": 1,
+    "last_success": null,
+    "last_error": 1770418170.535798,
+    "error_code": 401,
+    "call_count": 1
+  },
+  "gemini-2.0-flash": {
+    "healthy": true,
+    "error_count": 1,
+    "last_success": null,
+    "last_error": 1770418171.911701,
+    "error_code": 401,
+    "call_count": 1
+  },
+  "grok-3-mini": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770418180.386312,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
+  },
+  "anthropic/claude-sonnet-4": {
+    "healthy": true,
+    "error_count": 2,
+    "last_success": 1770418420.591626,
+    "last_error": 1770434043.72482,
+    "error_code": 401,
+    "call_count": 4
+  },
+  "anthropic/claude-sonnet-4-20250514": {
+    "healthy": true,
+    "error_count": 1,
+    "last_success": null,
+    "last_error": 1770418319.569071,
+    "error_code": 401,
+    "call_count": 1
+  },
+  "google/gemini-2.0-flash": {
+    "healthy": true,
+    "error_count": 1,
+    "last_success": null,
+    "last_error": 1770418320.649559,
+    "error_code": 401,
+    "call_count": 1
+  },
+  "google/gemini-2.5-flash": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770418423.8174322,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
+  },
+  "qwen/qwen3-coder-flash": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770419475.223365,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
+  },
+  "deepseek/deepseek-v3.2": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770419484.9923148,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
+  },
+  "moonshotai/kimi-k2.5": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770539716.425854,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 6
+  },
+  "qwen/qwen3-30b-a3b": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770419622.831251,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 2
+  },
+  "qwen/qwen3-coder": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770539741.6384661,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 24
+  },
+  "xiaomi/mimo-v2-flash": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770419511.002551,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
+  },
+  "anthropic/claude-opus-4.6": {
+    "healthy": true,
+    "error_count": 1,
+    "last_success": null,
+    "last_error": 1770488097.0528462,
     "error_code": 401,
     "call_count": 1
   }

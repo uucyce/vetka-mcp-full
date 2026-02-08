@@ -1,0 +1,186 @@
+================================================================================
+H5 SCOUT: CONTEXT INJECTION ANALYSIS - EXECUTIVE SUMMARY
+================================================================================
+
+TASK: Analyze how messages in chat should be injected as context into Mycelium 
+      pipeline prompts (architect, researcher, coder).
+
+FINDING: Chat history injection is NOT YET IMPLEMENTED, but infrastructure 
+         exists and is ready for implementation.
+
+================================================================================
+KEY MARKERS IDENTIFIED
+================================================================================
+
+H5_ARCHITECT_PROMPT_LINE
+  Location: src/orchestration/agent_pipeline.py:1144-1158
+  What: Architect LLM call setup
+  Status: Missing inject_context parameter - opportunity to add chat context
+  
+H5_INJECT_SOURCES  
+  Location: src/mcp/tools/llm_call_tool.py:346-454
+  What: 5 context sources are implemented:
+    1. Files (read from filesystem)
+    2. Session state (from MCPStateManager)
+    3. User preferences (from Engram)
+    4. CAM active nodes (context-aware memory)
+    5. Semantic search (HybridSearch over codebase)
+  Status: Working - researcher uses this daily
+  Missing: Source 6 (chat history not connected)
+
+H5_CHAT_HISTORY_INJECT
+  Status: PARTIAL - Infrastructure exists but NOT wired up
+  Available Tools:
+    - vetka_read_group_messages (MCP tool)
+    - vetka_get_chat_digest (MCP tool)
+    - ChatHistoryManager (Python class)
+  What's Needed: Connect these to inject_context parameter
+
+H5_PROMPT_TEMPLATE_FILE
+  Location: data/templates/pipeline_prompts.json
+  Backup: agent_pipeline.py:142-192 (in-code defaults)
+  What: External JSON storage for system prompts
+  Roles: architect, researcher, coder, verifier
+  Status: Works - updated via JSON without code changes
+
+================================================================================
+CURRENT STATE (How It Works Today)
+================================================================================
+
+Researcher DOES get injected context:
+  - Semantic search results about the research question
+  - User preferences from Engram
+  - All compressed with ELISION (40-60% token savings)
+  - Result: Better research with less tokens
+
+Architect DOES NOT get injected context:
+  - No chat history
+  - No user preferences
+  - No semantic search
+  - Result: Architect plans without context of chat discussions
+
+Coder DOES NOT get injected context:
+  - Planned subtask info only
+  - STM (short-term memory) from previous subtasks
+  - Result: Coder has some context but not chat context
+
+================================================================================
+THE OPPORTUNITY (Why H5 Matters)
+================================================================================
+
+User reports in chat:
+  "Found a bug in authentication - session expires after 5 minutes"
+
+Current behavior:
+  [Architect] - Plans generic auth subtasks (doesn't see bug report)
+  [Researcher] - Researches generic auth (doesn't see bug report)
+  [Coder] - Implements plan without knowing about bug
+
+Desired behavior (H5):
+  [Architect] - Sees bug report, plans to fix it first
+  [Researcher] - Sees bug report, researches timeout issue specifically
+  [Coder] - Sees bug report, implements fix with this context
+
+Result: Better alignment with user intent, faster bug fixes, less rework.
+
+================================================================================
+IMPLEMENTATION PATH (What Needs to Change)
+================================================================================
+
+File 1: src/mcp/tools/llm_call_tool.py
+  - Add "chat_id" + "message_limit" to inject_context schema (lines 158-200)
+  - Add Source 6 to _gather_inject_context() method (after line 434)
+  - Call ChatHistoryManager.get_recent_messages()
+  - Format into context section
+
+File 2: src/orchestration/agent_pipeline.py  
+  - Update _architect_plan() to add inject_context (after line 1158)
+  - Update _execute_subtask() to add inject_context (after line 1322)
+  - Pass self.chat_id in both calls
+
+File 3: data/templates/pipeline_prompts.json
+  - Update architect system prompt to mention chat context
+  - Update coder system prompt to mention chat context
+
+Effort: ~4 hours coding + testing
+Impact: All pipeline agents get chat context automatically
+Risk: Low - backward compatible, graceful error handling
+
+================================================================================
+DETAILED ANALYSIS DOCUMENTS
+================================================================================
+
+Created:
+1. H5_SCOUT_CONTEXT_INJECTION_ANALYSIS.md
+   - Full technical analysis
+   - Architecture overview
+   - Implementation recommendations
+   - ~800 lines
+
+2. H5_MARKERS_QUICK_REFERENCE.md
+   - Quick lookup table
+   - Code snippets for each marker
+   - Search commands
+   - Implementation checklist
+   - ~400 lines
+
+3. H5_IMPLEMENTATION_CODE_EXAMPLES.md
+   - Before/after code examples
+   - Step-by-step implementation
+   - Testing strategies
+   - Performance analysis
+   - Q&A section
+   - ~700 lines
+
+All documents located in: docs/ directory
+
+================================================================================
+ANSWER TO YOUR QUESTIONS
+================================================================================
+
+1. How are prompts built for architect/researcher/coder?
+   → Loaded from pipeline_prompts.json (or fallback in agent_pipeline.py)
+   → Used directly in messages array passed to LLMCallTool
+   → Researcher uses inject_context, architect/coder don't (yet)
+
+2. Where are system prompts defined?
+   → Primary: data/templates/pipeline_prompts.json
+   → Fallback: src/orchestration/agent_pipeline.py lines 142-192
+
+3. Does inject_context support chat history?
+   → NO - But it should (H5 goal)
+   → All infrastructure is in place
+   → Just needs 1-2 files modified
+
+4. What sources does _gather_inject_context support?
+   → 5 sources currently: files, session_id, prefs, cam, semantic_query
+   → Missing 6th source: chat_id / group_id
+   → Implementation is straightforward (copy pattern from source 5)
+
+5. Is there a way to inject recent chat messages?
+   → Tools exist: ChatHistoryManager, vetka_read_group_messages
+   → Not connected to inject_context yet
+   → Ready for implementation (see code examples)
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+Option A: Implement in next sprint
+  - Modify 2 files (llm_call_tool.py, agent_pipeline.py)
+  - Update prompts JSON
+  - Add unit tests
+  - Integrate with Lightning chat
+  - Estimated effort: 4-6 hours
+
+Option B: Research-only (current)
+  - Documents provide complete blueprint
+  - Ready for implementation when needed
+  - No risk of breaking changes
+
+Option C: Start with coder only
+  - Add chat context to _execute_subtask only (easier)
+  - Test with single role first
+  - Expand to architect/researcher after validation
+
+================================================================================

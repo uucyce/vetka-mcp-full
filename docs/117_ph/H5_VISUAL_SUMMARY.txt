@@ -1,0 +1,298 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    H5 SCOUT: CONTEXT INJECTION ANALYSIS                      ║
+║                         Visual Architecture Summary                          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+═════════════════════════════════════════════════════════════════════════════════
+1. CURRENT ARCHITECTURE: How Context Flows Today
+═════════════════════════════════════════════════════════════════════════════════
+
+    ┌─────────────────────────────────────────────────────────────────┐
+    │                      USER CHAT (Lightning)                      │
+    │   "Found a bug in auth - session expires after 5 minutes"      │
+    └──────────────────────────┬──────────────────────────────────────┘
+                               │
+                ┌──────────────┼──────────────┐
+                │              │              │
+                ▼              ▼              ▼
+        ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+        │   Architect  │  │ Researcher   │  │    Coder     │
+        │ No context ✗ │  │ With context │  │ No context ✗ │
+        └──────┬───────┘  │              │  └────────┬─────┘
+               │          │ Gets:        │           │
+               │          │ - Semantic   │           │
+               │          │ - Prefs      │           │
+               │          │ - CAM        │           │
+               │          └──────────────┘           │
+               └──────────────┬─────────────────────┘
+                              │
+                              ▼
+                    ┌──────────────────────┐
+                    │   Generic Plan       │
+                    │   Generic Research   │
+                    │   Generic Code       │
+                    │ (No bug context!)    │
+                    └──────────────────────┘
+
+
+═════════════════════════════════════════════════════════════════════════════════
+2. THE MISSING LINK: Chat History Injection
+═════════════════════════════════════════════════════════════════════════════════
+
+    TOOL EXISTS:                        NOT CONNECTED TO:
+    ┌──────────────────────┐           ┌──────────────────────┐
+    │ ChatHistoryManager   │  ──────X──│ inject_context       │
+    │ (reads messages)     │           │ parameter            │
+    └──────────────────────┘           └──────────────────────┘
+
+    WHAT'S NEEDED:
+    ┌──────────────────────┐  inject_context.get("chat_id")
+    │ Chat History Source  │ ──────────────► _gather_inject_context()
+    │ (NEW - to add)       │
+    └──────────────────────┘
+
+
+═════════════════════════════════════════════════════════════════════════════════
+3. THE 5 SOURCES (Currently Working)
+═════════════════════════════════════════════════════════════════════════════════
+
+    inject_context = {
+        "files": ["src/main.py"],              ┐
+        "session_id": "session-123",           │
+        "include_prefs": True,                 │  5 SOURCES
+        "include_cam": True,                   │  (Implemented)
+        "semantic_query": "auth flow",         │
+                                               ┘
+        "chat_id": "lightning-chat",           ← SOURCE 6 (MISSING)
+        "compress": True
+    }
+
+
+═════════════════════════════════════════════════════════════════════════════════
+4. FLOW: How Inject_Context Works
+═════════════════════════════════════════════════════════════════════════════════
+
+    User calls: await pipeline._research(question)
+                     │
+                     ▼
+            LLMCallTool.execute({
+                "inject_context": {...}
+            })
+                     │
+                     ▼
+            _gather_inject_context()
+             ├─ File 1: 8000 chars
+             ├─ Session: JSON state
+             ├─ Prefs: User memory
+             ├─ CAM: Active nodes
+             ├─ Semantic: Search results
+             └─ [CHAT: Missing!]
+                     │
+                     ▼
+            All combined + compressed
+                     │
+                     ▼
+            <vetka_context>
+            ### File: src/main.py
+            ...
+            ### User Preferences
+            ...
+            ### Semantic Search: 'auth'
+            ...
+            </vetka_context>
+                     │
+                     ▼
+            Prepended to system prompt
+                     │
+                     ▼
+            Sent to LLM (OpenRouter/Grok/Claude)
+                     │
+                     ▼
+            Response includes semantic context
+
+
+═════════════════════════════════════════════════════════════════════════════════
+5. THE 4 MARKERS YOU ASKED FOR
+═════════════════════════════════════════════════════════════════════════════════
+
+    ┌─────────────────────────────────────────────────────────────┐
+    │ H5_ARCHITECT_PROMPT_LINE                                    │
+    ├─────────────────────────────────────────────────────────────┤
+    │ File:   src/orchestration/agent_pipeline.py:1144-1158       │
+    │ What:   Architect LLM call setup                            │
+    │ Status: NO inject_context (missing opportunity)            │
+    │                                                              │
+    │ call_args = {                                               │
+    │     "model": model,                                          │
+    │     "messages": [...],                                       │
+    │     "temperature": temperature,                              │
+    │     "max_tokens": 2000                                       │
+    │     # ← Missing: "inject_context": {...}                    │
+    │ }                                                            │
+    └─────────────────────────────────────────────────────────────┘
+
+    ┌─────────────────────────────────────────────────────────────┐
+    │ H5_INJECT_SOURCES                                           │
+    ├─────────────────────────────────────────────────────────────┤
+    │ File:   src/mcp/tools/llm_call_tool.py:346-454             │
+    │ What:   5 context sources (files, session, prefs, CAM, etc) │
+    │ Status: ✓ Working (researcher uses this daily)              │
+    │                                                              │
+    │ Source 1: Files (358-373)                                   │
+    │ Source 2: Session state (375-386)                           │
+    │ Source 3: User preferences (388-400)                        │
+    │ Source 4: CAM active nodes (402-413)                        │
+    │ Source 5: Semantic search (415-434)                         │
+    │ Source 6: Chat history [MISSING]                            │
+    └─────────────────────────────────────────────────────────────┘
+
+    ┌─────────────────────────────────────────────────────────────┐
+    │ H5_CHAT_HISTORY_INJECT                                      │
+    ├─────────────────────────────────────────────────────────────┤
+    │ Status: PARTIAL (infrastructure exists, not wired)          │
+    │                                                              │
+    │ Available:                                                   │
+    │ • vetka_read_group_messages (MCP tool)                      │
+    │ • vetka_get_chat_digest (MCP tool)                          │
+    │ • ChatHistoryManager (Python class)                         │
+    │                                                              │
+    │ Missing:                                                     │
+    │ • Connection to inject_context parameter                    │
+    │ • Source 6 implementation in _gather_inject_context()       │
+    └─────────────────────────────────────────────────────────────┘
+
+    ┌─────────────────────────────────────────────────────────────┐
+    │ H5_PROMPT_TEMPLATE_FILE                                     │
+    ├─────────────────────────────────────────────────────────────┤
+    │ Location: data/templates/pipeline_prompts.json              │
+    │ Backup:   src/orchestration/agent_pipeline.py:142-192       │
+    │ Status:   ✓ Working (stores prompts for all 4 roles)        │
+    │                                                              │
+    │ Roles:                                                       │
+    │ • architect (claude-sonnet-4, T=0.1)                        │
+    │ • researcher (grok-4, T=0.3)                                │
+    │ • coder (claude-sonnet-4, T=0.4)                            │
+    │ • verifier (claude-sonnet-4, T=0.1)                         │
+    └─────────────────────────────────────────────────────────────┘
+
+
+═════════════════════════════════════════════════════════════════════════════════
+6. IMPLEMENTATION SUMMARY
+═════════════════════════════════════════════════════════════════════════════════
+
+    PHASE 1: Add Chat History Source (2 hours)
+    ┌────────────────────────────────────────────────┐
+    │ llm_call_tool.py:                              │
+    │ • Update inject_context schema (+chat_id)     │
+    │ • Add Source 6 to _gather_inject_context()    │
+    │ • Call ChatHistoryManager.get_recent_messages()
+    │ • Format with sender + timestamp               │
+    │ • Test with mock data                          │
+    └────────────────────────────────────────────────┘
+
+    PHASE 2: Enable in Pipeline (1 hour)
+    ┌────────────────────────────────────────────────┐
+    │ agent_pipeline.py:                             │
+    │ • Add inject_context to _architect_plan()     │
+    │ • Add inject_context to _execute_subtask()    │
+    │ • Pass self.chat_id in both                    │
+    │ • Update prompts to reference chat context     │
+    └────────────────────────────────────────────────┘
+
+    PHASE 3: Test & Deploy (2-3 hours)
+    ┌────────────────────────────────────────────────┐
+    │ • Unit tests for chat gathering                │
+    │ • Integration test with Lightning              │
+    │ • Performance benchmarking                     │
+    │ • Error handling validation                    │
+    │ • Merge to main                                │
+    └────────────────────────────────────────────────┘
+
+    TOTAL EFFORT: 4-6 hours
+    RISK LEVEL: Low (backward compatible)
+    IMPACT: High (all agents get chat context)
+
+
+═════════════════════════════════════════════════════════════════════════════════
+7. BEFORE vs AFTER
+═════════════════════════════════════════════════════════════════════════════════
+
+    BEFORE (Current):
+    ┌─────────────────────────────┐
+    │ User chat:                  │
+    │ "Bug in auth logout flow"   │
+    └──────────────┬──────────────┘
+                   │
+                   ▼
+    ┌─────────────────────────────┐
+    │ Architect task plan:        │
+    │ - Generic auth endpoints    │
+    │ - Session management        │
+    │ - Token refresh             │
+    │ (Doesn't address the bug!)  │
+    └─────────────────────────────┘
+
+    AFTER (H5 Implementation):
+    ┌─────────────────────────────┐
+    │ User chat:                  │
+    │ "Bug in auth logout flow"   │
+    └──────────────┬──────────────┘
+                   │
+            (inject_context)
+                   │
+                   ▼
+    ┌─────────────────────────────┐
+    │ Architect task plan:        │
+    │ - Fix logout bug [PRIORITY] │
+    │ - Review token cleanup      │
+    │ - Test edge cases           │
+    │ - Add logout timeout        │
+    │ (Directly addresses bug!)   │
+    └─────────────────────────────┘
+
+
+═════════════════════════════════════════════════════════════════════════════════
+8. KEY FILES REFERENCE
+═════════════════════════════════════════════════════════════════════════════════
+
+    Core Pipeline:
+    ├─ src/orchestration/agent_pipeline.py ........... Architect/Researcher/Coder
+    ├─ src/mcp/tools/llm_call_tool.py .............. Context injection implementation
+    └─ data/templates/pipeline_prompts.json ........ Prompt storage
+
+    Chat Management:
+    ├─ src/chat/chat_history_manager.py ............ Message history
+    └─ src/mcp/vetka_mcp_bridge.py ................ Group message tools
+
+    Memory Systems:
+    ├─ src/memory/engram_user_memory.py ............ User preferences
+    ├─ src/orchestration/cam_engine.py ............ Context-aware memory
+    ├─ src/search/hybrid_search.py ............... Semantic search
+    └─ src/memory/elision.py ..................... Token compression
+
+
+═════════════════════════════════════════════════════════════════════════════════
+9. QUICK START GUIDE
+═════════════════════════════════════════════════════════════════════════════════
+
+    Read these in order:
+
+    1. H5_SUMMARY.txt (2 min)
+       ↓ Quick overview and answers
+
+    2. H5_MARKERS_QUICK_REFERENCE.md (5 min)
+       ↓ Understand the 4 markers
+
+    3. H5_IMPLEMENTATION_CODE_EXAMPLES.md (30 min)
+       ↓ Get step-by-step implementation guide
+
+    4. H5_SCOUT_CONTEXT_INJECTION_ANALYSIS.md (20 min)
+       ↓ Deep dive into architecture
+
+    5. Start implementing (4-6 hours)
+
+
+═════════════════════════════════════════════════════════════════════════════════
+                        READY FOR IMPLEMENTATION
+═════════════════════════════════════════════════════════════════════════════════
+

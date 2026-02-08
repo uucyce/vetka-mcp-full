@@ -380,35 +380,6 @@ export default function App() {
     return () => window.removeEventListener('vetka-open-artifact-file', handleOpenArtifactFile as EventListener);
   }, []);
 
-  // Phase 119: Listen for double-click on edge — zoom to show both connected nodes
-  useEffect(() => {
-    const handleZoomToEdge = (e: CustomEvent) => {
-      const { sourceId, targetId } = e.detail;
-
-      // Get positions of both nodes
-      const sourceNode = allNodes[sourceId];
-      const targetNode = allNodes[targetId];
-
-      if (sourceNode && targetNode) {
-        // Calculate midpoint between two nodes
-        const midX = (sourceNode.position.x + targetNode.position.x) / 2;
-        const midY = (sourceNode.position.y + targetNode.position.y) / 2;
-        const midZ = (sourceNode.position.z + targetNode.position.z) / 2;
-
-        // Zoom to midpoint with medium distance
-        setCameraCommand({
-          target: `${midX},${midY},${midZ}`,  // Custom format for coordinates
-          zoom: 'medium',
-          highlight: false,
-        });
-        console.log('[App] Phase 119: Zooming to edge midpoint');
-      }
-    };
-
-    window.addEventListener('vetka-zoom-to-edge', handleZoomToEdge as EventListener);
-    return () => window.removeEventListener('vetka-zoom-to-edge', handleZoomToEdge as EventListener);
-  }, [allNodes, setCameraCommand]);
-
   // Phase 65: G key for grab mode (Blender-style node movement)
   // MARKER_109_DEVPANEL: Cmd+Shift+D for dev panel
   useEffect(() => {

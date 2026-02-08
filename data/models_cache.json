@@ -1,8 +1,61 @@
 {
-  "cached_at": "2026-02-06T06:31:05.120916",
+  "cached_at": "2026-02-08T11:33:23.609559",
   "source": "mixed",
-  "count": 1589,
+  "count": 1591,
   "models": [
+    {
+      "id": "openrouter/pony-alpha",
+      "canonical_slug": "openrouter/pony-alpha",
+      "hugging_face_id": "",
+      "name": "Pony Alpha",
+      "created": 1770393855,
+      "description": "Pony is a cutting-edge foundation model with strong performance in coding, agentic workflows, reasoning, and roleplay, making it well suited for hands-on coding and real-world use.\n\n**Note:** All prompts and completions for this model are logged by the provider and may be used to improve the model.",
+      "context_length": 200000,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0",
+        "completion": "0",
+        "request": "0",
+        "image": "0",
+        "web_search": "0",
+        "internal_reasoning": "0"
+      },
+      "top_provider": {
+        "context_length": 200000,
+        "max_completion_tokens": 131000,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "response_format",
+        "structured_outputs",
+        "temperature",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "frequency_penalty": null
+      },
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "openrouter",
+      "_compound_key": "openrouter/pony-alpha@openrouter"
+    },
     {
       "id": "anthropic/claude-opus-4.6",
       "canonical_slug": "anthropic/claude-4.6-opus-20260205",
@@ -84,7 +137,8 @@
       },
       "pricing": {
         "prompt": "0.00000007",
-        "completion": "0.0000003"
+        "completion": "0.0000003",
+        "input_cache_read": "0.000000035"
       },
       "top_provider": {
         "context_length": 262144,
@@ -298,12 +352,13 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0.00000045",
-        "completion": "0.0000025"
+        "prompt": "0.0000003",
+        "completion": "0.0000015",
+        "input_cache_read": "0.00000005"
       },
       "top_provider": {
         "context_length": 262144,
-        "max_completion_tokens": 65535,
+        "max_completion_tokens": null,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -714,7 +769,7 @@
       "name": "Z.AI: GLM 4.7 Flash",
       "created": 1768833913,
       "description": "As a 30B-class SOTA model, GLM-4.7-Flash offers a new option that balances performance and efficiency. It is further optimized for agentic coding use cases, strengthening coding capabilities, long-horizon task planning, and tool collaboration, and has achieved leading performance among open-source models of the same size on several current public benchmark leaderboards.",
-      "context_length": 200000,
+      "context_length": 202752,
       "architecture": {
         "modality": "text->text",
         "input_modalities": [
@@ -727,13 +782,13 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0.00000007",
+        "prompt": "0.00000006",
         "completion": "0.0000004",
-        "input_cache_read": "0.00000001"
+        "input_cache_read": "0.0000000100000002"
       },
       "top_provider": {
-        "context_length": 200000,
-        "max_completion_tokens": 131072,
+        "context_length": 202752,
+        "max_completion_tokens": null,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -1133,7 +1188,8 @@
       },
       "pricing": {
         "prompt": "0.0000004",
-        "completion": "0.0000015"
+        "completion": "0.0000015",
+        "input_cache_read": "0.0000002"
       },
       "top_provider": {
         "context_length": 202752,
@@ -1360,7 +1416,8 @@
       },
       "pricing": {
         "prompt": "0.00000009",
-        "completion": "0.00000029"
+        "completion": "0.00000029",
+        "input_cache_read": "0.000000045"
       },
       "top_provider": {
         "context_length": 262144,
@@ -1687,7 +1744,8 @@
       },
       "pricing": {
         "prompt": "0.00000005",
-        "completion": "0.00000022"
+        "completion": "0.00000022",
+        "input_cache_read": "0.000000025"
       },
       "top_provider": {
         "context_length": 262144,
@@ -2441,7 +2499,8 @@
       },
       "pricing": {
         "prompt": "0.00000027",
-        "completion": "0.00000041"
+        "completion": "0.00000041",
+        "input_cache_read": "0.000000135"
       },
       "top_provider": {
         "context_length": 163840,
@@ -2496,7 +2555,8 @@
       },
       "pricing": {
         "prompt": "0.00000025",
-        "completion": "0.00000038"
+        "completion": "0.00000038",
+        "input_cache_read": "0.000000125"
       },
       "top_provider": {
         "context_length": 163840,
@@ -2669,7 +2729,8 @@
       },
       "pricing": {
         "prompt": "0.00000025",
-        "completion": "0.00000085"
+        "completion": "0.00000085",
+        "input_cache_read": "0.000000125"
       },
       "top_provider": {
         "context_length": 163840,
@@ -3462,7 +3523,8 @@
       },
       "pricing": {
         "prompt": "0.0000004",
-        "completion": "0.00000175"
+        "completion": "0.00000175",
+        "input_cache_read": "0.0000002"
       },
       "top_provider": {
         "context_length": 262144,
@@ -4896,7 +4958,8 @@
       },
       "pricing": {
         "prompt": "0.00000035",
-        "completion": "0.0000015"
+        "completion": "0.0000015",
+        "input_cache_read": "0.000000175"
       },
       "top_provider": {
         "context_length": 202752,
@@ -5926,7 +5989,8 @@
       },
       "pricing": {
         "prompt": "0.0000001",
-        "completion": "0.00000039"
+        "completion": "0.00000039",
+        "input_cache_read": "0.00000005"
       },
       "top_provider": {
         "context_length": 32768,
@@ -6386,7 +6450,8 @@
       },
       "pricing": {
         "prompt": "0.00000039",
-        "completion": "0.0000019"
+        "completion": "0.0000019",
+        "input_cache_read": "0.000000195"
       },
       "top_provider": {
         "context_length": 262144,
@@ -6510,7 +6575,7 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null,
+      "expiration_date": "2026-02-08",
       "capabilities": [
         "vision"
       ],
@@ -6642,7 +6707,8 @@
       },
       "pricing": {
         "prompt": "0.00000011",
-        "completion": "0.00000038"
+        "completion": "0.00000038",
+        "input_cache_read": "0.000000055"
       },
       "top_provider": {
         "context_length": 131072,
@@ -7592,12 +7658,12 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0.00000002",
-        "completion": "0.0000001"
+        "prompt": "0.00000003",
+        "completion": "0.00000014"
       },
       "top_provider": {
         "context_length": 131072,
-        "max_completion_tokens": 131072,
+        "max_completion_tokens": null,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -7812,7 +7878,8 @@
       },
       "pricing": {
         "prompt": "0.00000008",
-        "completion": "0.00000033"
+        "completion": "0.00000033",
+        "input_cache_read": "0.00000004"
       },
       "top_provider": {
         "context_length": 262144,
@@ -7862,7 +7929,8 @@
       },
       "pricing": {
         "prompt": "0.00000035",
-        "completion": "0.00000155"
+        "completion": "0.00000155",
+        "input_cache_read": "0.000000175"
       },
       "top_provider": {
         "context_length": 131072,
@@ -7965,12 +8033,13 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0.00000005",
-        "completion": "0.00000022"
+        "prompt": "0.00000013",
+        "completion": "0.00000085",
+        "input_cache_read": "0.000000025"
       },
       "top_provider": {
         "context_length": 131072,
-        "max_completion_tokens": 131072,
+        "max_completion_tokens": 98304,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -8022,7 +8091,8 @@
       },
       "pricing": {
         "prompt": "0.00000011",
-        "completion": "0.0000006"
+        "completion": "0.0000006",
+        "input_cache_read": "0.000000055"
       },
       "top_provider": {
         "context_length": 262144,
@@ -8172,11 +8242,12 @@
       },
       "pricing": {
         "prompt": "0.00000022",
-        "completion": "0.00000095"
+        "completion": "0.000001",
+        "input_cache_read": "0.000000022"
       },
       "top_provider": {
         "context_length": 262144,
-        "max_completion_tokens": 262144,
+        "max_completion_tokens": null,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -8889,7 +8960,8 @@
       },
       "pricing": {
         "prompt": "0.00000025",
-        "completion": "0.00000085"
+        "completion": "0.00000085",
+        "input_cache_read": "0.000000125"
       },
       "top_provider": {
         "context_length": 163840,
@@ -9182,7 +9254,8 @@
       },
       "pricing": {
         "prompt": "0.00000006",
-        "completion": "0.00000018"
+        "completion": "0.00000018",
+        "input_cache_read": "0.00000003"
       },
       "top_provider": {
         "context_length": 131072,
@@ -9738,7 +9811,8 @@
       },
       "pricing": {
         "prompt": "0.0000004",
-        "completion": "0.00000175"
+        "completion": "0.00000175",
+        "input_cache_read": "0.0000002"
       },
       "top_provider": {
         "context_length": 163840,
@@ -10006,7 +10080,8 @@
       },
       "pricing": {
         "prompt": "0.00000002",
-        "completion": "0.0000001"
+        "completion": "0.0000001",
+        "input_cache_read": "0.00000001"
       },
       "top_provider": {
         "context_length": 32768,
@@ -10527,7 +10602,8 @@
       },
       "pricing": {
         "prompt": "0.00000006",
-        "completion": "0.00000022"
+        "completion": "0.00000022",
+        "input_cache_read": "0.00000003"
       },
       "top_provider": {
         "context_length": 40960,
@@ -10635,7 +10711,8 @@
       },
       "pricing": {
         "prompt": "0.00000005",
-        "completion": "0.00000022"
+        "completion": "0.00000022",
+        "input_cache_read": "0.000000025"
       },
       "top_provider": {
         "context_length": 40960,
@@ -10688,7 +10765,8 @@
       },
       "pricing": {
         "prompt": "0.00000008",
-        "completion": "0.00000024"
+        "completion": "0.00000024",
+        "input_cache_read": "0.00000004"
       },
       "top_provider": {
         "context_length": 40960,
@@ -10847,7 +10925,8 @@
       },
       "pricing": {
         "prompt": "0.0000003",
-        "completion": "0.0000012"
+        "completion": "0.0000012",
+        "input_cache_read": "0.00000015"
       },
       "top_provider": {
         "context_length": 163840,
@@ -11619,7 +11698,8 @@
       },
       "pricing": {
         "prompt": "0.00000005",
-        "completion": "0.00000022"
+        "completion": "0.00000022",
+        "input_cache_read": "0.000000025"
       },
       "top_provider": {
         "context_length": 16384,
@@ -11674,7 +11754,8 @@
       },
       "pricing": {
         "prompt": "0.00000019",
-        "completion": "0.00000087"
+        "completion": "0.00000087",
+        "input_cache_read": "0.000000095"
       },
       "top_provider": {
         "context_length": 163840,
@@ -11832,7 +11913,8 @@
       },
       "pricing": {
         "prompt": "0.00000003",
-        "completion": "0.00000011"
+        "completion": "0.00000011",
+        "input_cache_read": "0.000000015"
       },
       "top_provider": {
         "context_length": 131072,
@@ -12069,7 +12151,8 @@
       },
       "pricing": {
         "prompt": "0.00000003",
-        "completion": "0.0000001"
+        "completion": "0.0000001",
+        "input_cache_read": "0.000000015"
       },
       "top_provider": {
         "context_length": 131072,
@@ -12307,7 +12390,8 @@
       },
       "pricing": {
         "prompt": "0.00000004",
-        "completion": "0.00000015"
+        "completion": "0.00000015",
+        "input_cache_read": "0.00000002"
       },
       "top_provider": {
         "context_length": 128000,
@@ -13291,7 +13375,8 @@
       },
       "pricing": {
         "prompt": "0.00000015",
-        "completion": "0.0000006"
+        "completion": "0.0000006",
+        "input_cache_read": "0.000000075"
       },
       "top_provider": {
         "context_length": 32768,
@@ -13488,12 +13573,12 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0.00000003",
-        "completion": "0.00000011"
+        "prompt": "0.00000005",
+        "completion": "0.00000008"
       },
       "top_provider": {
         "context_length": 32768,
-        "max_completion_tokens": 32768,
+        "max_completion_tokens": 16384,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -13647,7 +13732,8 @@
       },
       "pricing": {
         "prompt": "0.00000003",
-        "completion": "0.00000011"
+        "completion": "0.00000011",
+        "input_cache_read": "0.000000015"
       },
       "top_provider": {
         "context_length": 131072,
@@ -13890,7 +13976,8 @@
       },
       "pricing": {
         "prompt": "0.0000003",
-        "completion": "0.0000012"
+        "completion": "0.0000012",
+        "input_cache_read": "0.00000015"
       },
       "top_provider": {
         "context_length": 163840,
@@ -14536,7 +14623,8 @@
       },
       "pricing": {
         "prompt": "0.00000003",
-        "completion": "0.00000011"
+        "completion": "0.00000011",
+        "input_cache_read": "0.000000015"
       },
       "top_provider": {
         "context_length": 32768,
@@ -17587,7 +17675,7 @@
       "hugging_face_id": null,
       "name": "Auto Router",
       "created": 1699401600,
-      "description": "Your prompt will be processed by a meta-model and routed to one of dozens of models (see below), optimizing for the best possible output.\n\nTo see which model was used, visit [Activity](/activity), or read the `model` attribute of the response. Your response will be priced at the same rate as the routed model.\n\nLearn more, including how to customize the models for routing, in our [docs](/docs/guides/routing/routers/auto-router).\n\nRequests will be routed to the following models:\n- [openai/gpt-5.2](/openai/gpt-5.2)\n- [openai/gpt-5.2-pro](/openai/gpt-5.2-pro)\n- [openai/gpt-5.1](/openai/gpt-5.1)\n- [openai/gpt-5](/openai/gpt-5)\n- [openai/gpt-5-mini](/openai/gpt-5-mini)\n- [openai/gpt-5-nano](/openai/gpt-5-nano)\n- [openai/gpt-4.1](/openai/gpt-4.1)\n- [openai/gpt-4.1-mini](/openai/gpt-4.1-mini)\n- [openai/gpt-4.1-nano](/openai/gpt-4.1-nano)\n- [openai/gpt-oss-120b](/openai/gpt-oss-120b)\n- [anthropic/claude-opus-4.5](/anthropic/claude-opus-4.5)\n- [anthropic/claude-sonnet-4.5](/anthropic/claude-sonnet-4.5)\n- [anthropic/claude-haiku-4.5](/anthropic/claude-haiku-4.5)\n- [google/gemini-3-pro-preview](/google/gemini-3-pro-preview)\n- [google/gemini-2.5-pro](/google/gemini-2.5-pro)\n- [google/gemini-2.5-flash](/google/gemini-2.5-flash)\n- [mistralai/mistral-large](/mistralai/mistral-large)\n- [mistralai/mistral-large-2407](/mistralai/mistral-large-2407)\n- [mistralai/mistral-large-2411](/mistralai/mistral-large-2411)\n- [mistralai/mistral-medium-3.1](/mistralai/mistral-medium-3.1)\n- [mistralai/mistral-nemo](/mistralai/mistral-nemo)\n- [mistralai/mistral-7b-instruct](/mistralai/mistral-7b-instruct)\n- [mistralai/mixtral-8x7b-instruct](/mistralai/mixtral-8x7b-instruct)\n- [mistralai/mixtral-8x22b-instruct](/mistralai/mixtral-8x22b-instruct)\n- [mistralai/codestral-2508](/mistralai/codestral-2508)\n- [x-ai/grok-4](/x-ai/grok-4)\n- [x-ai/grok-3](/x-ai/grok-3)\n- [x-ai/grok-3-mini](/x-ai/grok-3-mini)\n- [deepseek/deepseek-r1](/deepseek/deepseek-r1)\n- [meta-llama/llama-3.3-70b-instruct](/meta-llama/llama-3.3-70b-instruct)\n- [meta-llama/llama-3.1-405b-instruct](/meta-llama/llama-3.1-405b-instruct)\n- [meta-llama/llama-3.1-70b-instruct](/meta-llama/llama-3.1-70b-instruct)\n- [meta-llama/llama-3.1-8b-instruct](/meta-llama/llama-3.1-8b-instruct)\n- [meta-llama/llama-3-70b-instruct](/meta-llama/llama-3-70b-instruct)\n- [meta-llama/llama-3-8b-instruct](/meta-llama/llama-3-8b-instruct)\n- [qwen/qwen3-235b-a22b](/qwen/qwen3-235b-a22b)\n- [qwen/qwen3-32b](/qwen/qwen3-32b)\n- [qwen/qwen3-14b](/qwen/qwen3-14b)\n- [cohere/command-r-plus-08-2024](/cohere/command-r-plus-08-2024)\n- [cohere/command-r-08-2024](/cohere/command-r-08-2024)\n- [moonshotai/kimi-k2-thinking](/moonshotai/kimi-k2-thinking)\n- [perplexity/sonar](/perplexity/sonar)",
+      "description": "Your prompt will be processed by a meta-model and routed to one of dozens of models (see below), optimizing for the best possible output.\n\nTo see which model was used, visit [Activity](/activity), or read the `model` attribute of the response. Your response will be priced at the same rate as the routed model.\n\nLearn more, including how to customize the models for routing, in our [docs](/docs/guides/routing/routers/auto-router).\n\nRequests will be routed to the following models:\n- [anthropic/claude-3-haiku](/anthropic/claude-3-haiku)\n- [anthropic/claude-3.5-haiku](/anthropic/claude-3.5-haiku)\n- [anthropic/claude-3.7-sonnet](/anthropic/claude-3.7-sonnet)\n- [anthropic/claude-haiku-4.5](/anthropic/claude-haiku-4.5)\n- [anthropic/claude-opus-4](/anthropic/claude-opus-4)\n- [anthropic/claude-opus-4.1](/anthropic/claude-opus-4.1)\n- [anthropic/claude-opus-4.5](/anthropic/claude-opus-4.5)\n- [anthropic/claude-sonnet-4](/anthropic/claude-sonnet-4)\n- [anthropic/claude-sonnet-4.5](/anthropic/claude-sonnet-4.5)\n- [cohere/command-r-08-2024](/cohere/command-r-08-2024)\n- [cohere/command-r-plus-08-2024](/cohere/command-r-plus-08-2024)\n- [deepseek/deepseek-r1](/deepseek/deepseek-r1)\n- [google/gemini-2.0-flash-001](/google/gemini-2.0-flash-001)\n- [google/gemini-2.5-flash](/google/gemini-2.5-flash)\n- [google/gemini-2.5-pro](/google/gemini-2.5-pro)\n- [google/gemini-3-flash-preview](/google/gemini-3-flash-preview)\n- [google/gemini-3-pro-preview](/google/gemini-3-pro-preview)\n- [meta-llama/llama-3-70b-instruct](/meta-llama/llama-3-70b-instruct)\n- [meta-llama/llama-3-8b-instruct](/meta-llama/llama-3-8b-instruct)\n- [meta-llama/llama-3.1-405b-instruct](/meta-llama/llama-3.1-405b-instruct)\n- [meta-llama/llama-3.1-70b-instruct](/meta-llama/llama-3.1-70b-instruct)\n- [meta-llama/llama-3.1-8b-instruct](/meta-llama/llama-3.1-8b-instruct)\n- [meta-llama/llama-3.3-70b-instruct](/meta-llama/llama-3.3-70b-instruct)\n- [mistralai/codestral-2508](/mistralai/codestral-2508)\n- [mistralai/mistral-7b-instruct](/mistralai/mistral-7b-instruct)\n- [mistralai/mistral-large](/mistralai/mistral-large)\n- [mistralai/mistral-large-2407](/mistralai/mistral-large-2407)\n- [mistralai/mistral-large-2411](/mistralai/mistral-large-2411)\n- [mistralai/mistral-medium-3.1](/mistralai/mistral-medium-3.1)\n- [mistralai/mistral-nemo](/mistralai/mistral-nemo)\n- [mistralai/mistral-small-3.2-24b-instruct-2506](/mistralai/mistral-small-3.2-24b-instruct-2506)\n- [mistralai/mixtral-8x22b-instruct](/mistralai/mixtral-8x22b-instruct)\n- [mistralai/mixtral-8x7b-instruct](/mistralai/mixtral-8x7b-instruct)\n- [moonshotai/kimi-k2-thinking](/moonshotai/kimi-k2-thinking)\n- [openai/chatgpt-4o-latest](/openai/chatgpt-4o-latest)\n- [openai/gpt-3.5-turbo](/openai/gpt-3.5-turbo)\n- [openai/gpt-4](/openai/gpt-4)\n- [openai/gpt-4-1106-preview](/openai/gpt-4-1106-preview)\n- [openai/gpt-4-turbo](/openai/gpt-4-turbo)\n- [openai/gpt-4-turbo-preview](/openai/gpt-4-turbo-preview)\n- [openai/gpt-4.1](/openai/gpt-4.1)\n- [openai/gpt-4.1-mini](/openai/gpt-4.1-mini)\n- [openai/gpt-4.1-nano](/openai/gpt-4.1-nano)\n- [openai/gpt-4o](/openai/gpt-4o)\n- [openai/gpt-4o-2024-05-13](/openai/gpt-4o-2024-05-13)\n- [openai/gpt-4o-2024-08-06](/openai/gpt-4o-2024-08-06)\n- [openai/gpt-4o-2024-11-20](/openai/gpt-4o-2024-11-20)\n- [openai/gpt-4o-mini](/openai/gpt-4o-mini)\n- [openai/gpt-4o-mini-2024-07-18](/openai/gpt-4o-mini-2024-07-18)\n- [openai/gpt-5](/openai/gpt-5)\n- [openai/gpt-5-mini](/openai/gpt-5-mini)\n- [openai/gpt-5-nano](/openai/gpt-5-nano)\n- [openai/gpt-5.1](/openai/gpt-5.1)\n- [openai/gpt-5.2](/openai/gpt-5.2)\n- [openai/gpt-5.2-pro](/openai/gpt-5.2-pro)\n- [openai/gpt-oss-120b](/openai/gpt-oss-120b)\n- [perplexity/sonar](/perplexity/sonar)\n- [qwen/qwen3-14b](/qwen/qwen3-14b)\n- [qwen/qwen3-235b-a22b](/qwen/qwen3-235b-a22b)\n- [qwen/qwen3-32b](/qwen/qwen3-32b)\n- [x-ai/grok-3](/x-ai/grok-3)\n- [x-ai/grok-3-mini](/x-ai/grok-3-mini)\n- [x-ai/grok-4](/x-ai/grok-4)",
       "context_length": 2000000,
       "architecture": {
         "modality": "text+image+file+audio+video->text+image",
@@ -23597,9 +23685,9 @@
       "_compound_key": "gemini-3-flash@poe"
     },
     {
-      "id": "claude-opus-4-6",
-      "name": "claude-opus-4-6 (Poe)",
-      "description": "Claude Opus 4.6 from Anthropic, supports 1 million context window.\n\nOptional parameters:\noutput effort: At the default effort level (high), the model uses extended thinking when useful, but developers can adjust the effort level to make it more or less selective. Choose none to turn off thinking.\nweb search: enable web search and real-time information access.",
+      "id": "claude-opus-4.6",
+      "name": "claude-opus-4.6 (Poe)",
+      "description": "Claude Opus 4.6 is Anthropic\u2019s most advanced AI model, built for deep reasoning, complex coding, and long\u2011running autonomous tasks. It excels at planning, debugging, and working across large codebases, and supports a 1M\u2011token context window for understanding massive amounts of information. Designed for professional knowledge work, it combines state\u2011of\u2011the\u2011art performance with strong safety and reliability.\n\nOptional parameters:\noutput effort: At the default effort level (high), the model uses extended thinking when useful, but developers can adjust the effort level to make it more or less selective. Choose none to turn off thinking.\nweb search: enable web search and real-time information access.",
       "context_length": 983040,
       "pricing": {
         "prompt": "0.0000043",
@@ -23613,7 +23701,7 @@
       "source": "poe",
       "source_display": "Poe",
       "owned_by": "Anthropic",
-      "_compound_key": "claude-opus-4-6@poe"
+      "_compound_key": "claude-opus-4.6@poe"
     },
     {
       "id": "gpt-5.2-instant",
@@ -23749,25 +23837,6 @@
       "_compound_key": "claude-haiku-4.5@poe"
     },
     {
-      "id": "claude-opus-4.1",
-      "name": "claude-opus-4.1 (Poe)",
-      "description": "Claude Opus 4.1 from Anthropic, supports customizable thinking budget (up to 32k tokens) and 200k context window.\nTo instruct the bot to use more thinking effort, add --thinking_budget and a number ranging from 0 to 31999 to the end of your message.",
-      "context_length": 196608,
-      "pricing": {
-        "prompt": "0.000013",
-        "completion": "0.000064",
-        "image": null,
-        "request": null,
-        "input_cache_read": "0.0000013",
-        "input_cache_write": "0.000016"
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Anthropic",
-      "_compound_key": "claude-opus-4.1@poe"
-    },
-    {
       "id": "glm-4.7",
       "name": "glm-4.7 (Poe)",
       "description": "World\u2019s fastest inference for GLM 4.7 with Cerebras. GLM 4.7 is a high\u2011performance AI model designed for advanced reasoning, superior coding, and effective tool use. It supports structured outputs, parallel tool calling, and real\u2011time streaming responses. Optimized for agentic coding and automation tasks, the model delivers strong real\u2011world performance with a context window of up to 131K tokens and output up to 40K tokens. This model is an incredible update to GLM4.6.\nFor more information see: https://inference-docs.cerebras.ai/models/zai-glm-47",
@@ -23780,16 +23849,23 @@
       "_compound_key": "glm-4.7@poe"
     },
     {
-      "id": "qwen3-max-thinking",
-      "name": "qwen3-max-thinking (Poe)",
-      "description": "Qwen3-Max-Thinking is a flagship reasoning model that integrates adaptive tool use, autonomously employing search, memory, and code interpretation to address complex tasks. It further optimizes performance through test-time scaling, a strategy that allocates additional computation during inference to improve reasoning accuracy and context efficiency.\nThis model is served by Alibaba Cloud Int. from Singapore.\n\nNotes:\n- Context window: 256K\n- Supported file types: PNG, JPG, JPEG, HEIC, PDF, TXT, DOC, DOCX\n- Audio/Video files are not supported.\n\nParameter controls available:\n1. Model Configuration\n- `--enable_thinking true` (Default) enables step-by-step reasoning for complex tasks\n\n2. Tools\n- `--enable_web_search true` (Default) enables web search capability\n- `--web_search_mode standard` (Default) for efficient search\n- `--web_search_mode thorough` for comprehensive search\n- `--enable_code_interpreter true` (Default) enables Python code execution (requires Deep Thinking)\n- `--enable_web_extractor true` (Default) enables extracting content from URLs (requires Deep Thinking)",
-      "context_length": null,
-      "pricing": null,
+      "id": "claude-opus-4.5",
+      "name": "claude-opus-4.5 (Poe)",
+      "description": "Claude Opus 4.5 from Anthropic, supports customizable thinking budget (up to 64k tokens) and 200k context window.\nTo instruct the bot to use more thinking effort, add --thinking_budget and a number ranging from 0 to 63999 to the end of your message.",
+      "context_length": 196608,
+      "pricing": {
+        "prompt": "0.0000043",
+        "completion": "0.000021",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.00000043",
+        "input_cache_write": "0.0000053"
+      },
       "provider": "poe",
       "source": "poe",
       "source_display": "Poe",
-      "owned_by": "Empirio Labs AI",
-      "_compound_key": "qwen3-max-thinking@poe"
+      "owned_by": "Anthropic",
+      "_compound_key": "claude-opus-4.5@poe"
     },
     {
       "id": "grok-imagine-image",
@@ -23804,6 +23880,18 @@
       "_compound_key": "grok-imagine-image@poe"
     },
     {
+      "id": "qwen3-max-thinking",
+      "name": "qwen3-max-thinking (Poe)",
+      "description": "Qwen3-Max-Thinking is a flagship reasoning model that integrates adaptive tool use, autonomously employing search, memory, and code interpretation to address complex tasks. It further optimizes performance through test-time scaling, a strategy that allocates additional computation during inference to improve reasoning accuracy and context efficiency.\nThis model is served by Alibaba Cloud Int. from Singapore.\n\nNotes:\n- Context window: 256K\n- Supported file types: PNG, JPG, JPEG, HEIC, PDF, TXT, DOC, DOCX\n- Audio/Video files are not supported.\n\nParameter controls available:\n1. Model Configuration\n- `--enable_thinking true` (Default) enables step-by-step reasoning for complex tasks\n\n2. Tools\n- `--enable_web_search true` (Default) enables web search capability\n- `--web_search_mode standard` (Default) for efficient search\n- `--web_search_mode thorough` for comprehensive search\n- `--enable_code_interpreter true` (Default) enables Python code execution (requires Deep Thinking)\n- `--enable_web_extractor true` (Default) enables extracting content from URLs (requires Deep Thinking)",
+      "context_length": null,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Empirio Labs AI",
+      "_compound_key": "qwen3-max-thinking@poe"
+    },
+    {
       "id": "grok-imagine-video",
       "name": "grok-imagine-video (Poe)",
       "description": "Create artistic and creative videos with Grok Imagine Video. Supports text to video, image to video (single jpeg/png/webp attachment), and video editing (single mp4 video attachment). Check parameter controls for all supported controls (resolution, video duration, and aspect_ratio).",
@@ -23814,6 +23902,37 @@
       "source_display": "Poe",
       "owned_by": "fal",
       "_compound_key": "grok-imagine-video@poe"
+    },
+    {
+      "id": "runway-gen-4.5",
+      "name": "runway-gen-4.5 (Poe)",
+      "description": "Runway Gen 4.5 is an advanced video model that generates cinematic, high\u2011fidelity video from natural language and images. It offers fine\u2011grained control over motion, camera behavior, composition, and style, producing physically realistic and temporally consistent scenes.\n\nOptional parameters:\nUse --aspect_ratio to set aspect ratio (21:9, 16:9, 4:3, 1:1, 3:4, 9:16). Set to 16:9 aspect as default.\nUse --duration (5, 8, 10) to specify video length in seconds. Set to 5 seconds as default.",
+      "context_length": 256,
+      "pricing": {
+        "prompt": null,
+        "completion": null,
+        "image": null,
+        "request": "0.00",
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "RunwayML",
+      "_compound_key": "runway-gen-4.5@poe"
+    },
+    {
+      "id": "qwen3-coder-next",
+      "name": "qwen3-coder-next (Poe)",
+      "description": "Qwen3-Coder-Next is an open-weight language model specifically engineered for coding agents and local development environments. This highly efficient model delivers exceptional performance with only 3B activated parameters out of 80B total parameters, achieving results comparable to models with 10-20x more active parameters while maintaining remarkable cost-effectiveness for agent deployment. Through its sophisticated training methodology, Qwen3-Coder-Next excels in advanced agentic capabilities including long-horizon reasoning, complex tool usage, and robust recovery from execution failures, ensuring reliable performance across dynamic coding tasks. The model's versatility is further enhanced by its 256k context length and adaptability to various scaffold templates, enabling seamless integration with diverse CLI/IDE platforms such as Claude Code, Qwen Code, Qoder, Kilo, Trae, and Cline, making it an ideal solution for comprehensive development environments.\n\nFile Support: Text, Markdown and PDF files\nContext window: 262k tokens",
+      "context_length": null,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Novita AI",
+      "_compound_key": "qwen3-coder-next@poe"
     },
     {
       "id": "minimax-m2.1",
@@ -24114,23 +24233,23 @@
       "_compound_key": "gpt-5-chat@poe"
     },
     {
-      "id": "claude-opus-4.5",
-      "name": "claude-opus-4.5 (Poe)",
-      "description": "Claude Opus 4.5 from Anthropic, supports customizable thinking budget (up to 64k tokens) and 200k context window.\nTo instruct the bot to use more thinking effort, add --thinking_budget and a number ranging from 0 to 63999 to the end of your message.",
+      "id": "claude-opus-4.1",
+      "name": "claude-opus-4.1 (Poe)",
+      "description": "Claude Opus 4.1 from Anthropic, supports customizable thinking budget (up to 32k tokens) and 200k context window.\nTo instruct the bot to use more thinking effort, add --thinking_budget and a number ranging from 0 to 31999 to the end of your message.",
       "context_length": 196608,
       "pricing": {
-        "prompt": "0.0000043",
-        "completion": "0.000021",
+        "prompt": "0.000013",
+        "completion": "0.000064",
         "image": null,
         "request": null,
-        "input_cache_read": "0.00000043",
-        "input_cache_write": "0.0000053"
+        "input_cache_read": "0.0000013",
+        "input_cache_write": "0.000016"
       },
       "provider": "poe",
       "source": "poe",
       "source_display": "Poe",
       "owned_by": "Anthropic",
-      "_compound_key": "claude-opus-4.5@poe"
+      "_compound_key": "claude-opus-4.1@poe"
     },
     {
       "id": "claude-code",
@@ -24221,7 +24340,7 @@
     {
       "id": "gpt-4o",
       "name": "gpt-4o (Poe)",
-      "description": "OpenAI's GPT-4o answers user prompts in a natural, engaging & tailored writing with strong overall world knowledge. Uses GPT-Image-1 to create and edit images conversationally. For fine-grained image generation control (e.g. image quality), use https://poe.com/GPT-Image-1. Supports context window of 128k tokens.\nCheck out the newest version of this bot here: https://poe.com/GPT-5.",
+      "description": "OpenAI's GPT-4o answers user prompts in a natural, engaging & tailored writing with strong overall world knowledge. Uses GPT-Image-1 to create and edit images conversationally. For fine-grained image generation control (e.g. image quality), use https://poe.com/GPT-Image-1. Supports context window of 128k tokens.\nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2",
       "context_length": 128000,
       "pricing": null,
       "provider": "poe",
@@ -24903,6 +25022,18 @@
       "_compound_key": "glm-4.6-fw@poe"
     },
     {
+      "id": "pika-v1.5-effects",
+      "name": "pika-v1.5-effects (Poe)",
+      "description": "Apply surprising, mind blowing effects to your photo with Pika-v1.5 Effects. Attach an image and be amazed by the effects like \"cakeify,\" \"crush\" and \"crumble\", open the parameter controls shelf for a full list of effects.\n\nFull list of effects:\nCake-ify, Crumble, Crush, Decapitate, Deflate, Dissolve, Explode, Eye-pop, Inflate, Levitate, Melt, Peel, Poke, Squish, Ta-da, Tear\n\nOptional parameters:\nUse \"--seed\" for reproducible result. Default value: random\nUse `--negative_prompt` to set the negative prompt.",
+      "context_length": null,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "fal",
+      "_compound_key": "pika-v1.5-effects@poe"
+    },
+    {
       "id": "deepseek-v3.1-t",
       "name": "deepseek-v3.1-t (Poe)",
       "description": "DeepSeek-V3.1 is a hybrid model that supports both thinking mode and non-thinking mode. Compared to the previous version, this upgrade brings improvements in multiple aspects: Hybrid thinking mode: One model supports both thinking mode and non-thinking mode by changing the chat template. Smarter tool calling: Through post-training optimization, the model's performance in tool usage and agent tasks has significantly improved. Higher thinking efficiency: DeepSeek-V3.1-Think achieves comparable answer quality to DeepSeek-R1-0528, while responding more quickly.",
@@ -25107,7 +25238,7 @@
     {
       "id": "grok-3-mini",
       "name": "grok-3-mini (Poe)",
-      "description": "xAI's February 2025 release with strong performance across many domains but at a more affordable price point. Supports reasoning with a configurable reasoning effort level, and 131k tokens of context; doesn't have access to the X data feed.\nTo instruct the bot to use more reasoning effort, add --reasoning_effort to the end of your message with one of \"low\" or \"high\".",
+      "description": "xAI's February 2025 release with strong performance across many domains but at a more affordable price point. Supports reasoning with a configurable reasoning effort level, and 131k tokens of context; doesn't have access to the X data feed.\nTo instruct the bot to use more reasoning effort, add --reasoning_effort to the end of your message with one of \"low\" \"medium\" or \"high\".",
       "context_length": 131072,
       "pricing": null,
       "provider": "poe",
@@ -25226,7 +25357,7 @@
     {
       "id": "gpt-4.1",
       "name": "gpt-4.1 (Poe)",
-      "description": "OpenAI\u2019s GPT-4.1 significantly improves on past models in terms of its coding skills, long context (1M tokens), and improved instruction following. Supports native vision, and generally has more intelligence than GPT-4o. Provides a 75% chat history cache discount.\nCheck out the newest version of this bot here: https://poe.com/GPT-5.",
+      "description": "OpenAI\u2019s GPT-4.1 significantly improves on past models in terms of its coding skills, long context (1M tokens), and improved instruction following. Supports native vision, and generally has more intelligence than GPT-4o. Provides a 75% chat history cache discount.\nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2",
       "context_length": 1047576,
       "pricing": {
         "prompt": "0.0000018",
@@ -25245,7 +25376,7 @@
     {
       "id": "gpt-4.1-mini",
       "name": "gpt-4.1-mini (Poe)",
-      "description": "GPT-4.1 mini is a small, fast & affordable model that matches or beats GPT-4o in many intelligence and vision-related tasks. Supports 1M tokens of context.\nCheck out the newest version of this bot here: https://poe.com/GPT-5-mini.",
+      "description": "GPT-4.1 mini is a small, fast & affordable model that matches or beats GPT-4o in many intelligence and vision-related tasks. Supports 1M tokens of context.\nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2",
       "context_length": 1047576,
       "pricing": {
         "prompt": "0.00000036",
@@ -25264,7 +25395,7 @@
     {
       "id": "gpt-4.1-nano",
       "name": "gpt-4.1-nano (Poe)",
-      "description": "GPT-4.1 nano is an extremely fast and cheap model, ideal for text/vision summarization/categorization tasks. Supports native vision and 1M input tokens of context.\nCheck out the newest version of this bot here: https://poe.com/GPT-5-nano.",
+      "description": "GPT-4.1 nano is an extremely fast and cheap model, ideal for text/vision summarization/categorization tasks. Supports native vision and 1M input tokens of context.\nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2",
       "context_length": 1047576,
       "pricing": {
         "prompt": "0.000000090",
@@ -25279,25 +25410,6 @@
       "source_display": "Poe",
       "owned_by": "OpenAI",
       "_compound_key": "gpt-4.1-nano@poe"
-    },
-    {
-      "id": "llama-4-scout-t",
-      "name": "llama-4-scout-t (Poe)",
-      "description": "Llama 4 Scout, fast long-context multimodal model from Meta. A 16-expert MoE model that excels at multi-document analysis, codebase reasoning, and personalized tasks. A smaller model than Maverick but state of the art in its size & with text + image input support. Supports 300k context.",
-      "context_length": 300000,
-      "pricing": {
-        "prompt": null,
-        "completion": null,
-        "image": null,
-        "request": "0.0010",
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Together AI",
-      "_compound_key": "llama-4-scout-t@poe"
     },
     {
       "id": "claude-sonnet-3.7",
@@ -25340,7 +25452,7 @@
     {
       "id": "claude-haiku-3.5",
       "name": "claude-haiku-3.5 (Poe)",
-      "description": "The latest generation of Anthropic's fastest model. Claude Haiku 3.5 has fast speeds and improved instruction following. ",
+      "description": "The latest generation of Anthropic's fastest model. Claude Haiku 3.5 has fast speeds and improved instruction following. \nOptional parameters:\nUse `--web_search true` to enable web search and real-time information access, this is disabled by default.",
       "context_length": 189096,
       "pricing": {
         "prompt": "0.00000068",
@@ -25799,7 +25911,7 @@
     {
       "id": "gpt-4o-mini",
       "name": "gpt-4o-mini (Poe)",
-      "description": "This intelligent small model from OpenAI is significantly smarter, cheaper, and just as fast as GPT-3.5 Turbo.\nCheck out the newest version of this bot here: https://poe.com/GPT-5-mini.",
+      "description": "This intelligent small model from OpenAI is significantly smarter, cheaper, and just as fast as GPT-3.5 Turbo.\nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2-Instant",
       "context_length": 128000,
       "pricing": {
         "prompt": "0.00000014",
@@ -26173,7 +26285,7 @@
     {
       "id": "gpt-4o-search",
       "name": "gpt-4o-search (Poe)",
-      "description": "OpenAI's fine-tuned model for searching the web for real-time information. For less expensive messages, consider https://poe.com/GPT-4o-mini-Search. Uses medium search context size, currently in preview, supports 128k tokens of context. Does not support image search.",
+      "description": "OpenAI's fine-tuned model for searching the web for real-time information. For less expensive messages, consider https://poe.com/GPT-4o-mini-Search. Uses medium search context size, currently in preview, supports 128k tokens of context. Does not support image search.\nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2-Instant",
       "context_length": 128000,
       "pricing": {
         "prompt": "0.0000022",
@@ -26192,7 +26304,7 @@
     {
       "id": "gpt-4o-mini-search",
       "name": "gpt-4o-mini-search (Poe)",
-      "description": "OpenAI's fine-tuned model for searching the web for real-time information. For higher-performance, consider https://poe.com/GPT-4o-Search. Uses medium search context size, currently in preview, supports 128k tokens of context. Does not support image search.",
+      "description": "OpenAI's fine-tuned model for searching the web for real-time information. For higher-performance, consider https://poe.com/GPT-4o-Search. Uses medium search context size, currently in preview, supports 128k tokens of context. Does not support image search. Support for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2-Instant",
       "context_length": 128000,
       "pricing": {
         "prompt": "0.00000014",
@@ -28161,7 +28273,7 @@
     {
       "id": "gpt-3.5-turbo",
       "name": "gpt-3.5-turbo (Poe)",
-      "description": "OpenAI\u2019s GPT 3.5 Turbo model is a powerful language generation system designed to provide highly coherent, contextually relevant, and detailed responses. Supports 16,384 tokens of context. \nCheck out the newest version of this bot here: https://poe.com/GPT-5.",
+      "description": "OpenAI\u2019s GPT 3.5 Turbo model is a powerful language generation system designed to provide highly coherent, contextually relevant, and detailed responses. Supports 16,384 tokens of context. \nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2",
       "context_length": 16384,
       "pricing": {
         "prompt": "0.00000045",
@@ -28273,7 +28385,7 @@
     {
       "id": "gpt-4o-aug",
       "name": "gpt-4o-aug (Poe)",
-      "description": "OpenAI's most powerful model, GPT-4o, using the August 2024 model snapshot. Stronger than GPT-3.5 in quantitative questions (math and physics), creative writing, and many other challenging tasks. \nCheck out the newest version of this bot here: https://poe.com/GPT-5.",
+      "description": "OpenAI's most powerful model, GPT-4o, using the August 2024 model snapshot. Stronger than GPT-3.5 in quantitative questions (math and physics), creative writing, and many other challenging tasks. \nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2",
       "context_length": 128000,
       "pricing": {
         "prompt": "0.0000022",
@@ -28311,7 +28423,7 @@
     {
       "id": "gpt-4-classic",
       "name": "gpt-4-classic (Poe)",
-      "description": "OpenAI's GPT-4 model. Powered by gpt-4-0613 (non-Turbo) for text input and gpt-4o for image input. \nCheck out the newest version of this bot here: https://poe.com/GPT-5.",
+      "description": "OpenAI's GPT-4 model. Powered by gpt-4-0613 (non-Turbo) for text input and gpt-4o for image input. \nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2",
       "context_length": 8192,
       "pricing": {
         "prompt": "0.000027",
@@ -28516,25 +28628,6 @@
       "_compound_key": "qwen-2.5-7b-t@poe"
     },
     {
-      "id": "qwen-2.5-72b-t",
-      "name": "qwen-2.5-72b-t (Poe)",
-      "description": "Qwen 2.5 72B from Alibaba. Excels in coding, math, instruction following, natural language understanding, and has great multilangual support with more than 29 languages. \n\nDelivering results on par with Llama-3-405B despite using only one-fifth of the parameters.",
-      "context_length": 32768,
-      "pricing": {
-        "prompt": null,
-        "completion": null,
-        "image": null,
-        "request": "0.0090",
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Together AI",
-      "_compound_key": "qwen-2.5-72b-t@poe"
-    },
-    {
       "id": "python",
       "name": "python (Poe)",
       "description": "Executes Python code (version 3.11) from the user message and outputs the results. If there are code blocks in the user message (surrounded by triple backticks), then only the code blocks will be executed. These libraries are imported into this bot's run-time automatically -- numpy, pandas, requests, matplotlib, scikit-learn, torch, PyYAML, tensorflow, scipy, pytest -- along with ~150 of the most widely used Python libraries.",
@@ -28568,7 +28661,7 @@
     {
       "id": "gpt-4-turbo",
       "name": "gpt-4-turbo (Poe)",
-      "description": "Powered by OpenAI's GPT-4 Turbo with Vision. For most tasks, https://poe.com/GPT-4o will perform better. Supports 128k tokens of context. Requests with images will be routed to @GPT-4o.\nCheck out the newest version of this bot here: https://poe.com/GPT-5.",
+      "description": "Powered by OpenAI's GPT-4 Turbo with Vision. For most tasks, https://poe.com/GPT-4o will perform better. Supports 128k tokens of context. Requests with images will be routed to @GPT-4o.\nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2",
       "context_length": 128000,
       "pricing": {
         "prompt": "0.0000090",
@@ -28656,7 +28749,7 @@
     {
       "id": "gpt-3.5-turbo-raw",
       "name": "gpt-3.5-turbo-raw (Poe)",
-      "description": "Powered by gpt-3.5-turbo without a system prompt.\nCheck out the newest version of this bot here: https://poe.com/GPT-5.",
+      "description": "Powered by gpt-3.5-turbo without a system prompt.\nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2",
       "context_length": 4524,
       "pricing": {
         "prompt": "0.00000045",
@@ -28766,10 +28859,10 @@
       "_compound_key": "code-editor@poe"
     },
     {
-      "id": "runway-gen-4.5",
-      "name": "runway-gen-4.5 (Poe)",
-      "description": "Runway Gen 4.5 is an advanced video model that generates cinematic, high\u2011fidelity video from natural language and images. It offers fine\u2011grained control over motion, camera behavior, composition, and style, producing physically realistic and temporally consistent scenes.\n\nOptional parameters:\nUse --aspect_ratio to set aspect ratio (21:9, 16:9, 4:3, 1:1, 3:4, 9:16). Set to 16:9 aspect as default.\nUse --duration (5, 8, 10) to specify video length in seconds. Set to 5 seconds as default.",
-      "context_length": 256,
+      "id": "qwen-3-coder-next-t",
+      "name": "qwen-3-coder-next-t (Poe)",
+      "description": "Qwen3-Coder-Next-FP8 is an open-weight language model designed specifically for coding agents and local development. It features the following key enhancements:\n\nSuper Efficient with Significant Performance: With only 3B activated parameters (80B total parameters), it achieves performance comparable to models with 10\u201320x more active parameters, making it highly cost-effective for agent deployment.\nAdvanced Agentic Capabilities: Through an elaborate training recipe, it excels at long-horizon reasoning, complex tool usage, and recovery from execution failures, ensuring robust performance in dynamic coding tasks.\nVersatile Integration with Real-World IDE: Its 256k context length, combined with adaptability to various scaffold templates, enables seamless integration with different CLI/IDE platforms (e.g., Claude Code, Qwen Code, Qoder, Kilo, Trae, Cline, etc.), supporting diverse development environments.",
+      "context_length": null,
       "pricing": {
         "prompt": null,
         "completion": null,
@@ -28781,8 +28874,8 @@
       "provider": "poe",
       "source": "poe",
       "source_display": "Poe",
-      "owned_by": "RunwayML",
-      "_compound_key": "runway-gen-4.5@poe"
+      "owned_by": "Together AI",
+      "_compound_key": "qwen-3-coder-next-t@poe"
     },
     {
       "id": "study_gpt-chatgpt-4o-latest",
@@ -28919,6 +29012,23 @@
       "object": "model",
       "created": 1704067200,
       "_compound_key": "exa-research-pro@nanogpt"
+    },
+    {
+      "id": "brave",
+      "name": "brave (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1704067200,
+      "_compound_key": "brave@nanogpt"
     },
     {
       "id": "fastgpt",
@@ -31282,23 +31392,6 @@
       "object": "model",
       "created": 1764547200,
       "_compound_key": "deepseek-v3.2-thinking-original@nanogpt"
-    },
-    {
-      "id": "deepseek-v3.2-speciale-original",
-      "name": "deepseek-v3.2-speciale-original (NanoGPT)",
-      "description": "",
-      "context_length": 128000,
-      "pricing": {
-        "prompt": "0.0001",
-        "completion": "0.0003"
-      },
-      "provider": "nanogpt",
-      "source": "nanogpt",
-      "source_display": "NanoGPT",
-      "owned_by": "organization-owner",
-      "object": "model",
-      "created": 1764547200,
-      "_compound_key": "deepseek-v3.2-speciale-original@nanogpt"
     },
     {
       "id": "minimax/minimax-01",

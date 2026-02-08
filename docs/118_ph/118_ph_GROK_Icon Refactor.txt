@@ -1,0 +1,86 @@
+118_GROK_Icon Refactor
+
+# **Phase 118 Icon Refactor: Detailed Implementation Plan for Artifact Icon Integration**
+
+**Дата:** 2026-02-07  
+**Фаза:** 118 (Icon Refactor)  
+**Задача:** Перенос иконки артефакта (ChestIcon 📦) рядом со ScannerIcon (чемоданчик) в панели чата. Убрать иконку чата при открытом чате. Учёт dual-position (left/right).  
+**Автор:** VETKA AI Agent  
+**Статус:** Готово к имплементации (Critical Path: 1-2 дня).
+
+Спасибо за отзыв! Я глубоко проанализировал pinned файл `PHASE_118_ICON_REFACTOR_RECON.md` + контекст viewport (zoom=3, visible: 118_ph folder) + semantic neighbors (e.g., `__init__.py` в src/orchestration, но они не критичны). Pre-fetched результаты (watchdog тесты) нерелевантны (score 0.008, игнорирую). 
+
+**Ключевой инсайт:** Проблема в `getIconsLeft()` и fixed-positioning в `App.tsx`. Решение — **внедрить ChestIcon в ChatPanel.tsx рядом со ScannerIcon** (MARKER_118.3A/B), conditionally скрыть иконки внизу. Нет зависимостей от Surprise Metrics (118_ph файл в viewport — сосед, но отдельная фича).
+
+---
+
+## **1. Архитектурный обзор (Updated)**
+
+### **1.1. Затронутые компоненты**
+| Компонент              | Файл                          | Изменения |
+|------------------------|-------------------------------|-----------|
+| **App.tsx**            | `client/src/App.tsx`         | Убрать bottom icons при chat open (MARKER_118.2B). |
+| **ChatPanel.tsx**      | `client/src/components/chat/ChatPanel.tsx` | Добавить ChestIcon рядом со ScannerIcon (MARKER_118.3A/B). |
+| **UnifiedSearchBar.tsx**| `client/src/components/search/UnifiedSearchBar.tsx` | Опционально: пропсы для иконок (backup позиция, MARKER_118.3C). |
+
+### **1.2. Visual Before/After**
+```
+BEFORE (Chat Open — PROBLEM):
+┌─────────────┬─────────────────────────────────────┐
+│ ChatPanel   │                                     │
+│ ┌─────────┐ │                                     │
+│ │🔍Search │ │  ← ScannerIcon здесь                │
+│ └─────────┘ │                                     │
+│ [messages]  │                                     │
+└─────────────┘ │  │💬││📦│ ← Floating bottom (BAD) │
+                └─────────────────┘
+
+AFTER (Fixed):
+┌─────────────┬─────────────────────────────────────┐
+│ ChatPanel   │                                     │
+│ ┌─────────┐ │                                     │
+│ │🔍Search │ │📦 ← ChestIcon ВДЕЛАН рядом Scanner │
+│ └─────────┘ │                                     │
+│ [messages]  │                                     │
+└─────────────┘                                     ← Нет bottom icons
+```
+
+---
+
+## **2. Critical Markers (Расширенный анализ)**
+| **Маркер**          | **Файл**              | **Строка** | **Действие** |
+|---------------------|-----------------------|------------|--------------|
+| `MARKER_118.1A`     | `App.tsx`             | ~241      | Фикс `getIconsLeft()` для left/right. |
+| `MARKER_118.1B`     | `App.tsx`             | ~411      | Экспорт `ChestIcon` как reusable. |
+| `MARKER_118.2B`     | `App.tsx`             | ~656      | `if (!isChatOpen) renderBottomIcons()`. |
+| `MARKER_118.3A`     | `ChatPanel.tsx`       | ~1584     | **ЦЕЛЬ:** `<ScannerIcon /> <ChestIcon />` в header. |
+| `MARKER_118.3B`     | `ChatPanel.tsx`       | ~1940     | Добавить в ScannerButton: `onArtifactClick`. |
+| `TODO_CAM_UI`       | `UnifiedSearchBar.tsx`| 1006      | Backup: CAM-hot индикатор рядом (не обязательно). |
+
+---
+
+## **3. Предлагаемые изменения (Код + Diffs)**
+
+### **3.1. App.tsx (Скрыть bottom icons)**
+```tsx
+// MARKER_118.2B (~656): Conditional rendering
+const renderBottomIcons = () => {
+  if (isChatOpen || isChatMinimized) return null;  // ← FIX: Скрыть при open
+  return (
+    <div className="bottom-icons" style={{ left: getIconsLeft(chatPosition) }}>  // left/right support
+      <ChatIcon />
+      <ChestIcon onClick={openArtifact} />
+    </div>
+  );
+};
+```
+
+### **3.2. ChatPanel.tsx (ВДЕЛАТЬ ChestIcon рядом Scanner — PRIORITY #1)**
+```tsx
+// MARKER_118.3A (~1584): В header/search row
+<div className="chat-header-icons">
+  <ScannerIcon onClick={handleScan} />  // Чемоданчик
+  <ChestIcon onClick={handleArtifact} size={24} />  // ← НОВОЕ: Рядом, 24px
+</div>
+
+// MARKER_118.3B (~194

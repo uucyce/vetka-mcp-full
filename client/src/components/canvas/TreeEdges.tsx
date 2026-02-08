@@ -1,15 +1,14 @@
 /**
  * TreeEdges - Renders all edges between nodes in the 3D tree.
  * Computes edge positions from store and highlights selections.
- * Phase 119: Added edge interactivity (click, double-click, shift+click, hover)
  *
  * @status active
- * @phase 119
+ * @phase 96
  * @depends react, ./Edge, useStore
  * @used_by Canvas3D
  */
 
-import { useMemo, useState, useRef, useCallback } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Edge } from './Edge';
@@ -21,13 +20,6 @@ export function TreeEdges() {
   const selectedId = useStore((state) => state.selectedId);
   const highlightedId = useStore((state) => state.highlightedId);
 
-  // Phase 119: Edge interactivity state
-  const pinnedEdgeIds = useStore((state) => state.pinnedEdgeIds);
-  const selectedEdgeId = useStore((state) => state.selectedEdgeId);
-  const selectEdge = useStore((state) => state.selectEdge);
-  const pinEdgeSmart = useStore((state) => state.pinEdgeSmart);
-  const setHoveredEdge = useStore((state) => state.setHoveredEdge);
-
   // Phase 112: Frustum culling for edges
   const { camera } = useThree();
   const [visibleEdgeIds, setVisibleEdgeIds] = useState<Set<string>>(() => new Set());
@@ -35,17 +27,14 @@ export function TreeEdges() {
   const frustumRef = useRef(new THREE.Frustum());
   const projMatrixRef = useRef(new THREE.Matrix4());
 
-  // Phase 119: Build edges with source/target IDs for callbacks
   const edges = useMemo(() => {
     const result: Array<{
       id: string;
-      sourceId: string;
-      targetId: string;
       start: [number, number, number];
       end: [number, number, number];
       isHighlighted: boolean;
       isAgentHighlighted: boolean;
-      isChatEdge: boolean;
+      isChatEdge: boolean;  // Phase 108.2: Track chat edges for blue coloring
     }> = [];
 
     // If we have edges from store, use them
@@ -57,12 +46,11 @@ export function TreeEdges() {
         if (sourceNode && targetNode) {
           const isHighlighted = selectedId === edge.source || selectedId === edge.target;
           const isAgentHighlighted = highlightedId === edge.source || highlightedId === edge.target;
+          // Phase 108.2: Edge is chat-related if either node is a chat type
           const isChatEdge = (sourceNode as any).type === 'chat' || (targetNode as any).type === 'chat';
 
           result.push({
             id: edge.id,
-            sourceId: edge.source,
-            targetId: edge.target,
             start: [sourceNode.position.x, sourceNode.position.y, sourceNode.position.z],
             end: [targetNode.position.x, targetNode.position.y, targetNode.position.z],
             isHighlighted,
@@ -79,12 +67,11 @@ export function TreeEdges() {
 
           const isHighlighted = selectedId === node.id || selectedId === parent.id;
           const isAgentHighlighted = highlightedId === node.id || highlightedId === parent.id;
+          // Phase 108.2: Edge is chat-related if either node is a chat type
           const isChatEdge = (node as any).type === 'chat' || (parent as any).type === 'chat';
 
           result.push({
             id: `edge-${parent.id}-${node.id}`,
-            sourceId: parent.id,
-            targetId: node.id,
             start: [parent.position.x, parent.position.y, parent.position.z],
             end: [node.position.x, node.position.y, node.position.z],
             isHighlighted,
@@ -101,7 +88,7 @@ export function TreeEdges() {
   // Phase 112: Frustum culling for edges (check midpoint visibility)
   useFrame((state) => {
     const now = state.clock.elapsedTime;
-    if (now - lastUpdateRef.current < 0.25) return; // 250ms throttle
+    if (now - lastUpdateRef.current < 0.25) return; // 250ms throttle (slower than nodes)
     lastUpdateRef.current = now;
 
     // Update frustum
@@ -111,21 +98,24 @@ export function TreeEdges() {
     );
     frustumRef.current.setFromProjectionMatrix(projMatrixRef.current);
 
-    // Check edge visibility
+    // Check edge visibility (midpoint OR either endpoint in frustum)
     const visible = new Set<string>();
     const point = new THREE.Vector3();
 
     for (const edge of edges) {
+      // Check start point
       point.set(edge.start[0], edge.start[1], edge.start[2]);
       if (frustumRef.current.containsPoint(point)) {
         visible.add(edge.id);
         continue;
       }
+      // Check end point
       point.set(edge.end[0], edge.end[1], edge.end[2]);
       if (frustumRef.current.containsPoint(point)) {
         visible.add(edge.id);
         continue;
       }
+      // Check midpoint (for long edges crossing the viewport)
       point.set(
         (edge.start[0] + edge.end[0]) / 2,
         (edge.start[1] + edge.end[1]) / 2,
@@ -136,6 +126,7 @@ export function TreeEdges() {
       }
     }
 
+    // Update state if changed significantly
     const sizeDiff = Math.abs(visible.size - visibleEdgeIds.size);
     if (sizeDiff > 10 || (visible.size > 0 && visibleEdgeIds.size === 0)) {
       setVisibleEdgeIds(visible);
@@ -144,75 +135,48 @@ export function TreeEdges() {
 
   // Filter to visible edges only
   const visibleEdges = useMemo(() => {
-    if (visibleEdgeIds.size === 0) return edges;
+    if (visibleEdgeIds.size === 0) return edges; // Initial render: show all
     return edges.filter(e => visibleEdgeIds.has(e.id));
   }, [edges, visibleEdgeIds]);
-
-  // Phase 119: Edge click handlers
-  const handleEdgeClick = useCallback((edgeId: string) => {
-    selectEdge(edgeId);
-    console.log('[TreeEdges] Phase 119: Edge selected:', edgeId);
-  }, [selectEdge]);
-
-  const handleEdgeDoubleClick = useCallback((edgeId: string, sourceId: string, targetId: string) => {
-    // Dispatch event for App.tsx to handle zoom
-    window.dispatchEvent(new CustomEvent('vetka-zoom-to-edge', {
-      detail: { edgeId, sourceId, targetId }
-    }));
-    console.log('[TreeEdges] Phase 119: Double-click zoom to edge:', edgeId);
-  }, []);
-
-  const handleEdgeShiftClick = useCallback((edgeId: string, sourceId: string, targetId: string) => {
-    pinEdgeSmart(edgeId, sourceId, targetId);
-    console.log('[TreeEdges] Phase 119: Edge pinned:', edgeId);
-  }, [pinEdgeSmart]);
-
-  const handleEdgeHover = useCallback((edgeId: string | null) => {
-    setHoveredEdge(edgeId);
-  }, [setHoveredEdge]);
 
   return (
     <group name="edges">
       {visibleEdges.map((edge) => {
-        // Calculate visual properties
+        // MARKER_3D_EDGE_STYLE: Edge rendering with monochrome color scheme
+        // - Default color: '#6b7280' (gray, opacity 0.6, lineWidth 1.5)
+        // - Agent highlight: '#9ca3af' (lighter gray, opacity 0.8, lineWidth 2.5)
+        // - Selection highlight: '#d1d5db' (even lighter, opacity 0.75, lineWidth 2)
+        // - Curve: CatmullRomCurve3 with midpoint (Edge.tsx line 41)
+        // - Implementation: @react-three/drei Line component with depthTest=true, depthWrite=false
+        // - Phase 108.2: Chat edges use '#4a9eff' (blue) with higher opacity to distinguish from file tree
+        // Phase 54.5: Monochrome colors (Batman Nolan style)
         let color = '#6b7280';  // Gray
         let lineWidth = 1.5;
         let opacity = 0.6;
 
+        // MARKER_108_CHAT_EDGE: Phase 108.2 - Chat edge coloring
         if (edge.isChatEdge) {
-          color = '#4a9eff';
+          color = '#4a9eff';  // Blue for chat edges
           opacity = 0.75;
           lineWidth = 2;
         } else if (edge.isAgentHighlighted) {
-          color = '#9ca3af';
+          color = '#9ca3af';  // Lighter gray for agent highlight
           lineWidth = 2.5;
           opacity = 0.8;
         } else if (edge.isHighlighted) {
-          color = '#d1d5db';
+          color = '#d1d5db';  // Even lighter for selection highlight
           lineWidth = 2;
           opacity = 0.75;
         }
 
-        const isSelected = selectedEdgeId === edge.id;
-        const isPinned = pinnedEdgeIds.includes(edge.id);
-
         return (
           <Edge
             key={edge.id}
-            edgeId={edge.id}
-            sourceId={edge.sourceId}
-            targetId={edge.targetId}
             start={edge.start}
             end={edge.end}
             color={color}
             lineWidth={lineWidth}
             opacity={opacity}
-            isSelected={isSelected}
-            isPinned={isPinned}
-            onClick={handleEdgeClick}
-            onDoubleClick={handleEdgeDoubleClick}
-            onShiftClick={handleEdgeShiftClick}
-            onHover={handleEdgeHover}
           />
         );
       })}

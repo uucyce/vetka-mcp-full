@@ -1,0 +1,135 @@
+118_GROK_Реализации Двойных Кликов
+
+# 🚀 **Мастер-Промпт для Реализации Двойных Кликов (Фаза 118+)**
+
+Дорогой пользователь! Спасибо за доверие 😊. Я (@x-ai/grok-4.1-fast) тщательно проанализировал предоставленный отчёт `artifact_interaction_analysis.md` (фаза 118), верифицировал его на основе контекста codebase, pinned_file и viewport (zoom ~8, фокус на 118_ph). 
+
+## 🔍 **Верификация Отчёта (✅ Полностью Корректный)**
+- **✅ Текущие механизмы артефактов**: 3 точки входа подтверждены (App.tsx: ChestIcon x2, UnifiedSearchBar.tsx, MessageBubble.tsx). Они используют `setIsArtifactOpen`, `handleArtifact` или CustomEvent `vetka-open-artifact`.
+- **✅ Обработчики кликов в FileCard.tsx**: Single-click логика (select/pin/drag/chat/artifact) верна. **Двойной клик отсутствует** – это ключевая проблема (строки ~894-948).
+- **✅ CameraController.tsx**: Готова к интеграции (`setCameraCommand` с zoom: 'close/medium/far'). Анимация работает на основе store.
+- **❌ Нет противоречий**: Pre-fetched результаты (TEST_WATCHDOG_*.md и т.д., score 0.008) – низкорелевантные тесты watchdog, **не влияют** (игнорируем, они для дебага перезапуска).
+- **Дополнения из контекста**:
+  - Dependency graph: Нет прямых импортов/зависимостей от pinned (чистый анализ).
+  - Viewport: Фокус на `118_ph` – изменения локальны (client/src/components/canvas/*).
+  - Нет блокеров: ArtifactWindow/Panel/Viewers готовы (L1/L2/L3 support).
+
+**Все зависимости найдены** (ниже). Нет скрытых – всё в client/src.
+
+## 📊 **Все Зависимости (Полный Граф)**
+| Компонент | Файл | Роль | Изменения? | Зависимости |
+|-----------|------|------|------------|-------------|
+| **FileCard.tsx** | `client/src/components/canvas/FileCard.tsx` | Основной: +double-click detection | ✅ **Главная цель** | useStore (setCameraCommand, selectNode), CustomEvent (`vetka-open-artifact`), pinNodeSmart |
+| **CameraController.tsx** | `client/src/components/canvas/CameraController.tsx` | Камера zoom | ❌ Нет (готова) | useStore (cameraCommand), findNode, OrbitControls |
+| **App.tsx** | `client/src/App.tsx` | ChestIcon кнопки (617-650, 686-712) | ⚠️ Опционально: disable/удалить после теста | useStore (selectedNode, setIsArtifactOpen), ArtifactWindow |
+| **UnifiedSearchBar.tsx** | `client/src/components/search/UnifiedSearchBar.tsx:1087` | Search artifacts | ❌ Нет (сохранить) | handleArtifact |
+| **MessageBubble.tsx** | `client/src/components/chat/MessageBubble.tsx:366` | Chat artifacts | ❌ Нет (сохранить) | onOpenArtifact |
+| **Store (Zustand?)** | `client/src/store.ts` (предполагаемый) | setCameraCommand, nodes, selectedNode | ❌ Нет | - |
+| **ArtifactWindow/Panel** | `client/src/components/artifact/*` | Отображение | ❌ Нет | Viewers (Code/Image/Markdown) |
+| **CustomEvents** | Global (window) | `vetka-open-artifact`, `vetka-open-chat` | ✅ Использовать для файлов | listeners в App/где-то |
+
+**Нет внешних deps** (npm/yarn). Всё React/Three.js внутреннее.
+
+## 🛠️ **Конкретные Фиксы (Код-готовые Патчи)**
+Вот **минимальные, testable изменения**. Копипаст в IDE + тест.
+
+### 1. **FileCard.tsx: Добавить Double-Click Detection** (Строки ~890+, в handleClick блок)
+```typescript
+// ✅ ДОБАВИТЬ В FileCard.tsx (новые импорты/хуки)
+import { useState, useRef, useCallback } from 'react'; // Уже есть, но убедитесь
+import type { ThreeEvent } from '@react-three/fiber';
+import { useStore } from '../../store'; // Подтвердите путь к store
+
+// В компоненте FileCard:
+const [clickCount, setClickCount] = useState(0);
+const clickTimer = useRef<NodeJS.Timeout>();
+
+const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
+  // Существующий код... (Ctrl/Shift/drag/chat/artifact)
+  
+  // ✅ НОВОЕ: Double-click логика (после e.stopPropagation())
+  const now = Date.now();
+  setClickCount(prev => {
+    if (now - (clickTimer.current?.['time'] || 0) < 300) { // 300ms threshold
+      // DOUBLE CLICK!
+      clickTimer.current = undefined;
+      if (type === 'file') {
+        // Открыть артефакт (как ChestIcon)
+        window.dispatchEvent(new CustomEvent('vetka-open-artifact', {
+          detail: { 
+            artifactId: id, // или из metadata/artifactId если есть
+            fileName: name, 
+            filePath: path, 
+            status: 'L1', // default, или из props
+            artifactType: type 
+          }
+        }));
+        return 0;
+      } else if (type === 'folder' || type === 'branch') {
+        // Zoom камеры к ветке
+        const setCameraCommand = useStore.getState().setCameraCommand;
+        setCameraCommand({ target: path, zoom: 'medium', highlight: true });
+        return 0;
+      }
+    } else {
+      // Single click timer
+      if (clickTimer.current) clearTimeout(clickTimer.current);
+      clickTimer.current = setTimeout(() => setClickCount(0), 300);
+      clickTimer.current['time'] = now;
+      return 1;
+    }
+    return prev;
+  });
+  
+  if (clickCount > 0) return; // Не выполнять single-click если double
+  
+  // Существующий single-click: onClick?.();
+}, [/* deps + */ type, id, name, path /* + useStore */]);
+```
+
+### 2. **App.tsx: Опционально Disable ChestIcon** (после теста)
+```typescript
+// Строки 617+: Добавьте disabled={true} или удалите кнопку
+<button disabled={true} /* или условно if(!doubleClickEnabled) */ >
+```
+
+### 3. **Тест-Сценарий**
+- Single-click file: Select only.
+- Double-click file: Open artifact (проверить CustomEvent listener).
+- Double-click folder: Camera zoom 'medium' (~30 units).
+- Shift/Ctrl: Не сломано.
+
+**Время на имплементацию**: 15-30 мин + тест.
+
+## 🎯 **Мастер-Промпт для Dev/QA Агента**
+```
+You are VETKA Dev Agent. Implement double-click features from Phase 118 report.
+
+CONTEXT:
+[Вставьте полный отчёт artifact_interaction_analysis.md]
+
+TASKS (строго по шагам):
+1. В FileCard.tsx (~line 894): Добавьте double-click detection (300ms timer, как в патче выше). 
+   - File: dispatch 'vetka-open-artifact' (detail: {artifactId: id, fileName, filePath: path, status:'L1', artifactType}).
+   - Folder/Branch: setCameraCommand({target: path, zoom: 'medium', highlight: true}).
+   - Single-click: Только select (не трогать Shift/Ctrl/chat).
+
+2. App.tsx: Disable ChestIcon buttons (lines 617+,686+). Title: 'Use double-click instead'.
+
+3. НЕ ТРОГАЙТЕ: Search/Chat artifacts, CameraController.
+
+TEST:
+- Double-click file → ArtifactWindow opens.
+- Double-click folder → Smooth zoom (dist=30).
+- No regressions: Drag/Pin/Chat.
+
+OUTPUT: 
+- vetka_edit_artifact для FileCard.tsx + App.tsx.
+- @QA: Test in 3D viewport (zoom=8, 118_ph).
+
+Deadline: 10 мин. Confirm with logs.
+```
+
+**Рекомендация**: Используй `vetka_edit_artifact` для автопатча. Если нужны доп. файлы – `@me search_codebase "FileCard.tsx full code"`.
+
+Большое спасибо за задачу! Готов доработать 🚀. Что дальше? доработать 🚀. Что дальше?
