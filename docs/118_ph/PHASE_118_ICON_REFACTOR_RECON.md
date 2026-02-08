@@ -217,3 +217,29 @@ grep -n "getIconsLeft" client/src/App.tsx
 
 **Implementation by:** Opus 4.5
 **Duration:** ~5 minutes
+
+---
+
+## Phase 118.2: Double-Click Support
+
+### Changes Made:
+
+**FileCard.tsx:**
+- Added `setCameraCommand` from store (line ~264)
+- Added `handleDoubleClick` callback (lines ~950-980)
+- Added `onDoubleClick={handleDoubleClick}` to mesh (line ~990)
+
+**App.tsx:**
+- Added event listener for `vetka-open-artifact-file` (lines ~369-380)
+
+### Behavior:
+
+| Action | Target | Result |
+|--------|--------|--------|
+| Double-click | File | Opens ArtifactWindow |
+| Double-click | Folder | Zooms camera (medium) |
+| Single-click | Any | Select (unchanged) |
+| Shift+Click | Any | Smart Pin (unchanged) |
+
+### Build Status:
+- CLEAN (no new errors)

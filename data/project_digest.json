@@ -1,35 +1,33 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T15:21:29.530111+00:00",
+  "last_updated": "2026-02-08T15:29:37.504658+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 118,
-    "subphase": "10",
-    "name": "STM Smart Algorithm + Naming Audit + Titans League",
+    "number": 119,
+    "subphase": "5",
+    "name": "Scout role (5th pipeline agent) + CAM rename",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 118.10 DONE! STM config + vetka_out naming + Titans League (Lite/Core/Prime)",
+    "headline": "Phase 119.5 DONE! Scout role + CAM rename + MGC Dedup + STM Bridge + Heartbeat E2E",
     "key_achievements": [
-      "[40f5fcac] Phase 117.3: Phase 117.3b: System commands in solo chat + Menti...",
-      "[1c0d2faa] Phase 114: Phase 114 session: docs, data sync, client updates...",
-      "[462ae5a4] Phase 114.7: Phase 114.7: Unify tool names across ALL solo chat...",
-      "[993be677] Phase 114.6: Phase 114.6: Pass tools to vetka_call_model OpenRo...",
-      "[78bb8109] Phase 114: Phase 114: Unified Tool Fix + MCP Integration + Co...",
-      "[e5b7bf08] Phase 113.1: Phase 113.1+113.2: Persistent Spatial Memory + Smo...",
-      "[60578492] Phase 113: Phase 113: Add Labels Championship plan + roadmap\n...",
-      "[aed22d78] Phase 112.5: Phase 112.5: Hybrid LOD with InstancedMesh\n\n- NEW:...",
-      "[7c59220f] Phase 112.4: Phase 112.4: Texture Cache + Fast Hover\n\n- Global ...",
-      "[e0dcfc9a] Phase 112.3: Phase 112.3b: Edge Frustum Culling\n\n- Added frustu..."
+      "[05c2800c] Phase 119.4-119.5: Scout role (5th pipeline agent) + CAM rename",
+      "[d809c81d] Phase 119.1-119.3: MGC Dedup + STM Bridge + Heartbeat @titan E2E",
+      "[1e5525a5] Phase 118: Move artifact icon to ChatPanel header",
+      "[774b285f] Phase 118.8-118.10: STM Smart Algorithm + Naming Audit + Titans League",
+      "[253aff69] Phase 118: Completion report + Mycelium capabilities audit",
+      "[85d7a1fb] Phase 118.6-118.7: Fix pipeline messages visibility + error callback",
+      "[b02d2c91] Phase 118: Unblock @dragon \u2014 async embeddings, Weaviate upsert, Engram fixes",
+      "[26ea95a1] Phase 117.8: SocketIO direct emit \u2014 unblock VETKA during @dragon",
+      "[8d6be290] Phase 117.7: Solo chat_id fix + chat naming fallback + Weaviate v4 migration",
+      "[5fee5a2c] Phase 117.6: @dragon E2E fix \u2014 route to Mycelium + model attribution"
     ],
     "pending_items": [
-      "Phase 119.1: MGC Deduplication (P0) \u2014 remove triple MGCGraphCache",
-      "Phase 119.2: STM Unification (P0) \u2014 pipeline list \u2192 STMBuffer singleton",
-      "Phase 119.3: Heartbeat Live Test \u2014 @dragon + @titan E2E",
-      "Phase 119.4: Scout Role \u2014 full implementation in Titans pipeline",
-      "Phase 119.5: CAM rename \u2014 cam_memory.py \u2192 surprise_detector.py",
+      "Phase 119.6: Digest Harmony \u2014 auto-sync phase from git + cleanup",
+      "Phase 119.7: TAVILY integration for @researcher role",
+      "Phase 119.8: Context7 integration for @coder role",
       "TEST: Verify MGC cascade works with 1690+ files"
     ]
   },
@@ -68,131 +66,86 @@
   },
   "recent_fixes": [
     {
-      "id": "Phase_108_7",
+      "id": "Phase_119_4_5",
       "files": [
-        "src/mcp/tools/git_tool.py",
+        "src/orchestration/agent_pipeline.py",
+        "data/templates/pipeline_prompts.json",
+        "data/templates/model_presets.json",
+        "src/memory/surprise_detector.py",
+        "src/memory/__init__.py",
+        "src/memory/elision.py"
+      ],
+      "description": "Scout role (5th pipeline agent before Architect) + CAM rename (cam_memory.py -> surprise_detector.py)",
+      "markers": [
+        "MARKER_119.4_SCOUT",
+        "MARKER_119.5_CAM_RENAME"
+      ],
+      "commit": "05c2800c"
+    },
+    {
+      "id": "Phase_119_1_3",
+      "files": [
+        "src/memory/mgc_cache.py",
         "src/memory/spiral_context_generator.py",
-        "src/memory/engram_user_memory.py",
-        "src/agents/arc_solver_agent.py"
+        "src/agents/arc_solver_agent.py",
+        "src/orchestration/agent_pipeline.py",
+        "src/orchestration/mycelium_heartbeat.py"
       ],
-      "description": "MGC + ELISION + Spiral Context: Auto-digest, Pi-spiral disclosure, hierarchical caching",
+      "description": "MGC Dedup (canonical MGCCache), STM Bridge (pipeline -> STMBuffer), Heartbeat @titan E2E (13 tests)",
       "markers": [
-        "MARKER_108_7_AUTO_DIGEST",
-        "MARKER_108_7_SPIRAL_CONTEXT",
-        "MARKER_108_7_ENGRAM_ELISION",
-        "MARKER_108_7_ARC_MGC"
+        "MARKER_119.1_MGC_DEDUP",
+        "MARKER_119.2_STM_BRIDGE",
+        "MARKER_119.3_HEARTBEAT"
       ],
-      "grok_research": "\u041e\u043f\u0442\u0438\u043c\u0438\u0437\u0430\u0446\u0438\u044f \u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u0430 \u0432 Vetka: MGC + Elision + \u0421\u043f\u0438\u0440\u0430\u043b\u044c\u043d\u043e\u0435 \u041f\u043e\u0433\u0440\u0443\u0436\u0435\u043d\u0438\u0435"
+      "commit": "d809c81d"
     },
     {
-      "id": "Phase_109",
+      "id": "Phase_118",
       "files": [
-        "src/mcp/tools/viewport_tool.py",
-        "src/mcp/tools/pinned_files_tool.py",
-        "src/mcp/tools/context_dag_tool.py",
-        "src/mcp/tools/session_tools.py",
-        "src/services/activity_emitter.py"
+        "src/orchestration/agent_pipeline.py",
+        "data/templates/model_presets.json",
+        "src/orchestration/mycelium_heartbeat.py"
       ],
-      "description": "Dynamic MCP Context Injection: Context DAG, viewport/pinned tools, Socket.IO context_update",
-      "markers": [
-        "MARKER_109_1_VIEWPORT_INJECT",
-        "MARKER_109_2_VIEWPORT_TOOL",
-        "MARKER_109_2_PINNED_TOOL",
-        "MARKER_109_3_CONTEXT_DAG",
-        "MARKER_109_4_REALTIME_CONTEXT"
-      ],
-      "commit": "2c06c39d"
-    },
-    {
-      "id": "Phase_112",
-      "files": [
-        "unified_key_manager.py",
-        "model_duplicator.py",
-        "model_fetcher.py",
-        "ModelDirectory.tsx"
-      ],
-      "description": "Multi-source models: POLZA/POE/MISTRAL providers, MULTI_SOURCE_MODELS config, sourceFilter UI"
+      "description": "STM Smart Algorithm + Naming Audit (vetka_out) + Titans League (Lite/Core/Prime presets)",
+      "commit": "774b285f"
     }
   ],
-  "phase_108_7_plan": {
-    "goal": "MGC + ELISION integration for 80% token savings, Pi-spiral progressive disclosure",
-    "tasks": [
-      {
-        "id": "108.7a",
-        "task": "Add auto-digest update to git_tool.py",
-        "files": [
-          "src/mcp/tools/git_tool.py"
-        ],
-        "status": "DONE"
-      },
-      {
-        "id": "108.7b",
-        "task": "Create spiral_context_generator.py with MGC + ELISION",
-        "files": [
-          "src/memory/spiral_context_generator.py"
-        ],
-        "status": "DONE"
-      },
-      {
-        "id": "108.7c",
-        "task": "Integrate ELISION into engram_user_memory.py",
-        "files": [
-          "src/memory/engram_user_memory.py"
-        ],
-        "status": "DONE"
-      },
-      {
-        "id": "108.7d",
-        "task": "Add MGC + HOPE to arc_solver_agent.py",
-        "files": [
-          "src/agents/arc_solver_agent.py"
-        ],
-        "status": "DONE"
-      }
-    ],
-    "grok_research": "Based on Grok's '\u041e\u043f\u0442\u0438\u043c\u0438\u0437\u0430\u0446\u0438\u044f \u041a\u043e\u043d\u0442\u0435\u043a\u0441\u0442\u0430 \u0432 Vetka' proposal",
-    "token_savings": "Target 80% via MGC+ELISION+Spiral"
-  },
-  "documentation": {
-    "phase_109_recon": "docs/109_ph/PHASE_109_RECON_REPORT.md",
-    "phase_109_summary": "docs/109_ph/PHASE_109_IMPLEMENTATION_SUMMARY.md",
-    "phase_111_report": "docs/111_ph/PHASE_111_STATUS_REPORT.md"
-  },
   "agent_instructions": {
-    "on_connect": "Read digest. Phase 108.7+109.1 COMPLETE! Auto-digest now works. Test with git commit.",
+    "on_connect": "Read digest. Phase 119.5 COMPLETE! Scout role (5th pipeline agent), MGC dedup, STM bridge, Heartbeat E2E all done.",
     "methodology": "Use Haiku scouts for recon, Sonnet for verify, Opus for synthesis",
     "key_constraint": "NO NEW PANELS OR BUTTONS - use existing UI, add functions only",
     "new_features": [
-      "Auto-digest update after git commit",
-      "Spiral context generation (Pi-spiral)",
-      "MGC hierarchical caching (Gen0\u2192Gen1\u2192Gen2)",
-      "HOPE frequency layers for ARC"
+      "Scout role: 5th pipeline agent scanning codebase before Architect",
+      "MGC Dedup: canonical MGCCache.get_sync/set_sync (no duplicates)",
+      "STM Bridge: pipeline reports to global STMBuffer after completion",
+      "Heartbeat @titan: auto-tiers to lite/core/prime",
+      "Auto-digest: phase auto-synced from git commit messages"
     ]
   },
   "agent_notes": [
     {
-      "agent": "Claude Code",
-      "note": "Phase 109.11: Fixed provider persistence. Added PATCH /api/groups/{id}/participants/{agent_id}/source endpoint. Migrated existing Grok participants to POE. Reply context added to agent prompts (MARKER_109_9).",
-      "timestamp": "2026-02-04T09:50:00Z",
-      "phase": "109.11",
+      "agent": "Claude Code (Opus)",
+      "note": "Phase 119.1-119.5: Full cleanup sprint \u2014 MGC dedup, STM bridge, heartbeat E2E, scout role, CAM rename. All 119.x phases done in single session.",
+      "timestamp": "2026-02-08T16:00:00Z",
+      "phase": "119.5",
       "status": "completed"
     },
     {
       "agent": "Grok-4.1-fast",
-      "note": "Phase 19 viewport research: Confirmed buildViewportContext() works - sent with every user_message. Recommended viewport-tools injection for MCP agents.",
-      "timestamp": "2026-02-04T09:45:00Z",
-      "phase": "109",
-      "status": "completed"
+      "note": "Phase 119 suggestions: TAVILY for researcher, Context7 for coder, scout_context in ChatMessage.metadata.",
+      "timestamp": "2026-02-08T15:30:00Z",
+      "phase": "119",
+      "status": "pending"
     }
   ],
   "quick_commands": {
     "refresh_models": "curl -X POST localhost:5001/api/models/refresh",
     "check_health": "curl localhost:5001/health/deep",
-    "test_phase109": "pytest tests/test_phase109_context_dag.py -v"
+    "run_tests": "python -m pytest tests/ -v"
   },
   "git": {
     "branch": "main",
-    "commit": "05c2800c",
+    "commit": "1e5525a5",
     "dirty": true
   }
 }

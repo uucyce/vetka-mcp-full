@@ -260,6 +260,8 @@ function FileCardComponent({
   const pinNodeSmart = useStore((state) => state.pinNodeSmart);
   // Phase 65: Grab mode for Blender-style drag
   const grabMode = useStore((state) => state.grabMode);
+  // Phase 118.2: Camera command for double-click zoom
+  const setCameraCommand = useStore((state) => state.setCameraCommand);
 
   const dragPlane = useRef(new THREE.Plane());
   const dragOffset = useRef(new THREE.Vector3());
@@ -947,6 +949,38 @@ function FileCardComponent({
     [onClick, id, pinNodeSmart, type, metadata, name, path, artifactId, artifactStatus, artifactType]
   );
 
+  // Phase 118.2: Double-click handler
+  // - File: Open artifact viewer
+  // - Folder: Zoom camera to branch
+  const handleDoubleClick = useCallback(
+    (e: any) => {
+      e.stopPropagation();
+
+      if (type === 'file') {
+        // Double-click on file = open artifact
+        const ext = name.includes('.') ? name.split('.').pop() : undefined;
+        window.dispatchEvent(new CustomEvent('vetka-open-artifact-file', {
+          detail: {
+            path,
+            name,
+            extension: ext,
+          },
+        }));
+        console.log('[FileCard] Phase 118.2: Double-click opening artifact for', name);
+      } else if (type === 'folder') {
+        // Double-click on folder = zoom camera to it
+        setCameraCommand({
+          target: path,
+          zoom: 'medium',
+          highlight: true,
+        });
+        console.log('[FileCard] Phase 118.2: Double-click zooming to folder', name);
+      }
+      // chat and artifact types handled by single click
+    },
+    [type, name, path, setCameraCommand]
+  );
+
   // Phase 61.1 + 62: File category for preview styling
   // Phase 62: Preview is drawn on texture, no floating previews needed
 
@@ -957,6 +991,7 @@ function FileCardComponent({
         ref={meshRef}
         position={position}
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

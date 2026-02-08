@@ -366,6 +366,20 @@ export default function App() {
     return () => window.removeEventListener('vetka-toggle-chat-panel', handleToggleChatPanel);
   }, [isChatOpen]);
 
+  // Phase 118.2: Listen for double-click artifact open requests from FileCard
+  useEffect(() => {
+    const handleOpenArtifactFile = (e: CustomEvent) => {
+      const { path, name, extension } = e.detail;
+      setArtifactFile({ path, name, extension });
+      setArtifactContent(null);
+      setIsArtifactOpen(true);
+      console.log('[App] Phase 118.2: Opening artifact via double-click:', name);
+    };
+
+    window.addEventListener('vetka-open-artifact-file', handleOpenArtifactFile as EventListener);
+    return () => window.removeEventListener('vetka-open-artifact-file', handleOpenArtifactFile as EventListener);
+  }, []);
+
   // Phase 65: G key for grab mode (Blender-style node movement)
   // MARKER_109_DEVPANEL: Cmd+Shift+D for dev panel
   useEffect(() => {
