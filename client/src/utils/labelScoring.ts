@@ -94,6 +94,10 @@ export function computeLabelScore(
   // Search boost
   const searchBoost = isHighlighted ? 0.3 : 0.0;
 
+  // MARKER_119.2H: Phase 119.2 - Heat boost for active directories
+  // Folders with recent file activity get visibility boost
+  const heatBoost = (node.heatScore ?? 0) * 0.15;  // up to 15% boost
+
   // Weighted sum, clamped to [0, 1]
   // FIX: Combined depth×branch — shallowest branching folder wins overview
   // vetka_live_03 (depth 5, 10ch) beats docs (depth 7, 20ch) because shallower
@@ -106,12 +110,14 @@ export function computeLabelScore(
   // All remaining folders have branching (2+ children) — they ARE landmarks.
   // depthScore STRONGLY dominates: shallower = more important (Google Maps principle)
   // branchFactor provides tiebreaker for folders at same depth level
+  // Phase 119.2: heatBoost adds visibility for active directories
   return Math.min(1.0,
-    depthScore * 0.50 +       // shallower branching folders WIN overview
-    branchFactor * 0.15 +     // tiebreaker: more children = more important
+    depthScore * 0.42 +       // shallower branching folders WIN overview (reduced from 0.50)
+    branchFactor * 0.13 +     // tiebreaker: more children = more important
     sizeScore * 0.10 +        // magnitude of subtree
-    (typeBoost / 1.5) * 0.10 + // folder vs file type
-    searchBoost * 0.15         // search highlight boost
+    (typeBoost / 1.5) * 0.08 + // folder vs file type
+    searchBoost * 0.12 +       // search highlight boost
+    heatBoost                  // Phase 119.2: active directory boost
   );
 }
 

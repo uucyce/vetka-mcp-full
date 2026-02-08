@@ -34,6 +34,8 @@ export interface TreeNode {
   children?: string[];
   isGhost?: boolean;  // Phase 90.11: Deleted from disk but kept in memory
   opacity?: number;   // Phase 90.11: Transparency for ghost files (0.3 for ghosts)
+  // MARKER_119.2G: Phase 119.2 - Heat score for label visibility
+  heatScore?: number; // 0.0-1.0, higher = more active directory
   // MARKER_108_3_CHAT_METADATA: Phase 108.3 - Chat node metadata
   metadata?: {
     chat_id?: string;

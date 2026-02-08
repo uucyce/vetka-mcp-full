@@ -187,6 +187,7 @@ function FrustumCulledNodes({ nodes, selectedId, highlightedId, selectNode }: Fr
           opacity={node.opacity}
           lodLevel={nodeLodLevels.get(node.id) ?? 4}
           showLabel={currentLabelSet.has(node.id)}
+          heatScore={node.heatScore}  // Phase 119.2: Heat-based size scaling
         />
       ))}
     </>

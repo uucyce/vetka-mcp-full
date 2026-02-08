@@ -752,6 +752,36 @@ async def get_tree_data(
             traceback.print_exc()
 
         # ═══════════════════════════════════════════════════════════════════
+        # STEP 4.5: Inject Heat Scores for Label Visibility (Phase 119.2)
+        # MARKER_119.2F — Heat injection into tree nodes
+        # ═══════════════════════════════════════════════════════════════════
+        try:
+            from src.scanners.file_watcher import get_watcher
+            watcher = get_watcher()
+            heat_scores = watcher.adaptive_scanner.get_all_heat_scores()
+
+            # Inject heatScore into each node based on its directory
+            for node in nodes:
+                node_path = node.get('metadata', {}).get('path', '')
+                if node_path:
+                    # For files: use parent directory heat
+                    # For folders: use folder path heat
+                    if node.get('type') in ['leaf', 'file']:
+                        dir_path = os.path.dirname(node_path)
+                    else:
+                        dir_path = node_path
+
+                    # Get heat score (0.0-1.0)
+                    node['heatScore'] = heat_scores.get(dir_path, 0.0)
+
+            heat_count = sum(1 for n in nodes if n.get('heatScore', 0) > 0)
+            if heat_count > 0:
+                print(f"[HEAT] Phase 119.2: Injected heat scores into {heat_count} nodes")
+
+        except Exception as heat_err:
+            print(f"[HEAT] Warning: Could not inject heat scores: {heat_err}")
+
+        # ═══════════════════════════════════════════════════════════════════
         # STEP 5: Build response
         # ═══════════════════════════════════════════════════════════════════
         response = {

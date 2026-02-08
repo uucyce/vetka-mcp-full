@@ -211,6 +211,8 @@ interface FileCardProps {
   lodLevel?: number;
   // Phase 113.4: Label Championship — score-based label visibility
   showLabel?: boolean;
+  // MARKER_119.2I: Phase 119.2 - Heat score for size scaling
+  heatScore?: number;  // 0.0-1.0, from file watcher activity
 }
 
 function FileCardComponent({
@@ -233,6 +235,7 @@ function FileCardComponent({
   artifactId,
   lodLevel: propLodLevel,  // Phase 112.3: LOD from parent (undefined = calculate locally)
   showLabel = false,       // Phase 113.4: Label Championship — score-based visibility
+  heatScore = 0,           // Phase 119.2: Heat score for size scaling
 }: FileCardProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -1251,12 +1254,14 @@ function FileCardComponent({
         const importance = depthScore * WEIGHT_DEPTH + sizeScore * WEIGHT_SIZE;
 
         // === DYNAMIC FONT SIZE ===
-        // Base size + importance boost, slight decay with distance
+        // Base size + importance boost + heat boost, slight decay with distance
+        // MARKER_119.2J: Phase 119.2 - Heat-based size scaling
         const BASE_FONT_SIZE = 14;
-        const MAX_FONT_SIZE = 32;
-        const importanceBoost = importance * 18;  // 0-18px bonus
+        const MAX_FONT_SIZE = 36;  // Increased to allow heat boost
+        const importanceBoost = importance * 16;  // 0-16px bonus (reduced from 18)
+        const heatBoostPx = heatScore * 6;  // 0-6px bonus for active directories
         const distanceDecay = Math.max(0.5, 1 - (distToCamera / MAX_DISTANCE) * 0.3);
-        const fontSize = Math.min(MAX_FONT_SIZE, (BASE_FONT_SIZE + importanceBoost) * distanceDecay);
+        const fontSize = Math.min(MAX_FONT_SIZE, (BASE_FONT_SIZE + importanceBoost + heatBoostPx) * distanceDecay);
 
         // Fixed position below folder
         const labelY = position[1] - cardSize[1] / 2 - 2;

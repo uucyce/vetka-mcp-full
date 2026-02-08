@@ -82,10 +82,10 @@
   "x-ai/grok-4.1-fast": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770477385.291959,
+    "last_success": 1770573417.736265,
     "last_error": 1769776186.1882088,
     "error_code": null,
-    "call_count": 7
+    "call_count": 14
   },
   "arcee-ai/trinity-mini:free": {
     "healthy": true,
@@ -282,10 +282,10 @@
   "qwen/qwen3-coder-flash": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770419475.223365,
+    "last_success": 1770573503.9618309,
     "last_error": null,
     "error_code": null,
-    "call_count": 1
+    "call_count": 5
   },
   "deepseek/deepseek-v3.2": {
     "healthy": true,
@@ -306,10 +306,10 @@
   "qwen/qwen3-30b-a3b": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770419622.831251,
+    "last_success": 1770573480.3071308,
     "last_error": null,
     "error_code": null,
-    "call_count": 2
+    "call_count": 4
   },
   "qwen/qwen3-coder": {
     "healthy": true,
@@ -322,10 +322,10 @@
   "xiaomi/mimo-v2-flash": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770419511.002551,
+    "last_success": 1770573466.354159,
     "last_error": null,
     "error_code": null,
-    "call_count": 1
+    "call_count": 3
   },
   "anthropic/claude-opus-4.6": {
     "healthy": true,
