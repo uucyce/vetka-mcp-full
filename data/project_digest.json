@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T15:57:53.189625+00:00",
+  "last_updated": "2026-02-08T16:30:42.883809+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 119,
-    "subphase": "7",
-    "name": "Tavily web search for @researcher",
+    "subphase": "8",
+    "name": "Context7 library docs for @coder",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 119.7 DONE! Tavily web search for @researcher",
+    "headline": "Phase 119.8 DONE! Context7 library docs for @coder",
     "key_achievements": [
+      "[16f9c6cc] Phase 119.8: Phase 119.8: Context7 library docs for @coder",
       "[c0560e29] Phase 119.7: Phase 119.7: Tavily web search for @researcher",
       "[82c70e4c] Phase 119.6: Phase 119.6: Digest Harmony \u2014 auto-sync phase from git + cle",
       "[89ad375b] Phase 118.2: Phase 118.2: Double-click support for files and fo...",
@@ -21,11 +22,9 @@
       "[1e5525a5] Phase 118: Move artifact icon to ChatPanel header",
       "[774b285f] Phase 118.8-118.10: STM Smart Algorithm + Naming Audit + Titans League",
       "[253aff69] Phase 118: Completion report + Mycelium capabilities audit",
-      "[85d7a1fb] Phase 118.6-118.7: Fix pipeline messages visibility + error callback",
-      "[b02d2c91] Phase 118: Unblock @dragon \u2014 async embeddings, Weaviate upsert, Engram fixes"
+      "[85d7a1fb] Phase 118.6-118.7: Fix pipeline messages visibility + error callback"
     ],
     "pending_items": [
-      "Phase 119.8: Context7 integration for @coder role",
       "TEST: Verify MGC cascade works with 1690+ files"
     ]
   },
@@ -143,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "c0560e29",
+    "commit": "16f9c6cc",
     "dirty": true
   }
 }

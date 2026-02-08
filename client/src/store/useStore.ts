@@ -109,6 +109,10 @@ interface TreeState {
 
   // Phase 61: Pinned files for multi-file context
   pinnedFileIds: string[];
+  // Phase 119: Edge interactivity state
+  pinnedEdgeIds: string[];
+  selectedEdgeId: string | null;
+  hoveredEdgeId: string | null;
 
   // FIX_109.4: Current chat ID for unified ID system (solo chats like groups)
   currentChatId: string | null;
@@ -160,6 +164,12 @@ interface TreeState {
 
   // Phase 65: Smart pin based on node type
   pinNodeSmart: (nodeId: string) => void;
+  // Phase 119: Edge interactivity actions
+  pinEdgeSmart: (edgeId: string, sourceId: string, targetId: string) => void;
+  selectEdge: (edgeId: string | null) => void;
+  setHoveredEdge: (edgeId: string | null) => void;
+  togglePinEdge: (edgeId: string) => void;
+  clearPinnedEdges: () => void;
 
   // Phase 65: Grab mode for Blender-style node movement
   grabMode: boolean;
@@ -208,6 +218,10 @@ export const useStore = create<TreeState>((set, get) => ({
 
   // Phase 61: Pinned files
   pinnedFileIds: [],
+  // Phase 119: Edge interactivity
+  pinnedEdgeIds: [],
+  selectedEdgeId: null,
+  hoveredEdgeId: null,
 
   // FIX_109.4: Current chat ID for unified ID system
   currentChatId: null,
@@ -422,6 +436,45 @@ export const useStore = create<TreeState>((set, get) => ({
       pinnedFileIds: state.pinnedFileIds.includes(nodeId)
         ? state.pinnedFileIds.filter(id => id !== nodeId)
         : [...state.pinnedFileIds, nodeId]
+    };
+  }),
+
+  // Phase 119: Edge interactivity actions
+  selectEdge: (edgeId) => set({ selectedEdgeId: edgeId }),
+  setHoveredEdge: (edgeId) => set({ hoveredEdgeId: edgeId }),
+  togglePinEdge: (edgeId) => set((state) => ({
+    pinnedEdgeIds: state.pinnedEdgeIds.includes(edgeId)
+      ? state.pinnedEdgeIds.filter(id => id !== edgeId)
+      : [...state.pinnedEdgeIds, edgeId]
+  })),
+  clearPinnedEdges: () => set({ pinnedEdgeIds: [] }),
+
+  // Phase 119: Smart pin edge — pins edge + both connected nodes
+  pinEdgeSmart: (edgeId, sourceId, targetId) => set((state) => {
+    const newPinnedEdges = new Set(state.pinnedEdgeIds);
+    const newPinnedFiles = new Set(state.pinnedFileIds);
+
+    // Toggle edge pin
+    if (newPinnedEdges.has(edgeId)) {
+      newPinnedEdges.delete(edgeId);
+    } else {
+      newPinnedEdges.add(edgeId);
+
+      // Also pin both connected nodes (if they are files)
+      const sourceNode = state.nodes[sourceId];
+      const targetNode = state.nodes[targetId];
+
+      if (sourceNode?.type === 'file') {
+        newPinnedFiles.add(sourceId);
+      }
+      if (targetNode?.type === 'file') {
+        newPinnedFiles.add(targetId);
+      }
+    }
+
+    return {
+      pinnedEdgeIds: [...newPinnedEdges],
+      pinnedFileIds: [...newPinnedFiles]
     };
   }),
 
