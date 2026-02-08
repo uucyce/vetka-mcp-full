@@ -509,3 +509,82 @@ class TestCoderPrompt:
         assert "read" in coder_prompt.lower()
         assert "BEFORE" in coder_prompt
         assert "NEVER ask questions" in coder_prompt
+
+
+# =============================================================================
+# MARKER_124.1_TESTS: Tests for Phase 124.1 fixes
+# =============================================================================
+
+class TestCleanTextToolCalls:
+    """Phase 124.1: Test text tool_call cleanup from final response."""
+
+    def test_clean_removes_text_tool_calls(self):
+        """Text-format <tool_call> tags are removed from content."""
+        from src.tools.fc_loop import _clean_text_tool_calls
+
+        content = """Here is the code:
+```typescript
+const foo = "bar";
+```
+<tool_call>
+<function=vetka_list_files>
+<parameter=path>
+src
+</parameter>
+</function>
+</tool_call>"""
+
+        cleaned = _clean_text_tool_calls(content)
+        assert "<tool_call>" not in cleaned
+        assert "const foo" in cleaned
+
+    def test_clean_preserves_content_without_tool_calls(self):
+        """Content without tool_call tags is unchanged."""
+        from src.tools.fc_loop import _clean_text_tool_calls
+
+        content = "```typescript\nconst x = 1;\n```"
+        assert _clean_text_tool_calls(content) == content
+
+    def test_clean_returns_original_if_all_tool_calls(self):
+        """If entire content is tool_calls, return original (not empty)."""
+        from src.tools.fc_loop import _clean_text_tool_calls
+
+        content = """<tool_call>
+<function=vetka_read_file>
+<parameter=file_path>src/App.tsx</parameter>
+</function>
+</tool_call>"""
+
+        cleaned = _clean_text_tool_calls(content)
+        # Should return original since cleaning would produce empty string
+        assert cleaned == content
+
+    def test_clean_handles_empty_string(self):
+        """Empty string returns empty string."""
+        from src.tools.fc_loop import _clean_text_tool_calls
+        assert _clean_text_tool_calls("") == ""
+        assert _clean_text_tool_calls(None) is None
+
+    def test_clean_handles_multiple_tool_calls(self):
+        """Multiple text tool_calls are all removed."""
+        from src.tools.fc_loop import _clean_text_tool_calls
+
+        content = """Some code here
+<tool_call>
+<function=vetka_read_file>
+<parameter=file_path>a.ts</parameter>
+</function>
+</tool_call>
+More code
+<tool_call>
+<function=vetka_list_files>
+<parameter=path>src</parameter>
+</function>
+</tool_call>
+Final code"""
+
+        cleaned = _clean_text_tool_calls(content)
+        assert "<tool_call>" not in cleaned
+        assert "Some code here" in cleaned
+        assert "More code" in cleaned
+        assert "Final code" in cleaned

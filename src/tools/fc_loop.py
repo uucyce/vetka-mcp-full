@@ -16,6 +16,7 @@ MARKER_123.1_SCHEMAS: Hardcoded tool schemas for pipeline coder
 
 import json
 import logging
+import re
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from src.tools.executor import SafeToolExecutor
@@ -226,6 +227,38 @@ def _format_assistant_message(response: Union[Dict, Any], tool_calls_data: List)
     return {"role": "assistant", "content": "", "tool_calls": tool_calls_data}
 
 
+# MARKER_124.1B: Clean text-format tool calls from final LLM output
+_TEXT_TOOL_CALL_RE = re.compile(
+    r'<tool_call>\s*<function=[^>]*>.*?</function>\s*</tool_call>',
+    re.DOTALL
+)
+
+def _clean_text_tool_calls(content: str) -> str:
+    """
+    Remove text-format tool calls from LLM output.
+
+    Some models (Qwen3-coder via Polza) output <tool_call>...</tool_call>
+    as plain text even when tools=None on last turn. These are NOT real
+    tool calls — just text the model generated instead of code.
+
+    If cleaning removes ALL content, return original (better than empty).
+    """
+    if not content or '<tool_call>' not in content:
+        return content
+
+    cleaned = _TEXT_TOOL_CALL_RE.sub('', content).strip()
+
+    if not cleaned:
+        logger.warning("[FC Loop] Final response was entirely text tool_calls — returning as-is")
+        return content
+
+    if cleaned != content.strip():
+        logger.info(f"[FC Loop] Cleaned text tool_calls from final response ({len(content)} → {len(cleaned)} chars)")
+
+    return cleaned
+# MARKER_124.1B_END
+
+
 def get_coder_tool_schemas() -> List[Dict]:
     """
     Get OpenAI-format tool schemas for pipeline coder.
@@ -405,6 +438,19 @@ async def execute_fc_loop(
         is_last_turn = (turn >= max_turns - 1)
         next_tools = None if is_last_turn else tool_schemas
 
+        # MARKER_124.1A: Force code output on last turn
+        # Some models (Qwen3-coder) output <tool_call> as text even when tools=None.
+        # Adding explicit instruction prevents this.
+        if is_last_turn:
+            messages.append({
+                "role": "user",
+                "content": (
+                    "You have finished exploring the codebase. "
+                    "Now write your final code implementation based on what you learned. "
+                    "Output ONLY code. Do NOT call any more tools. Do NOT output <tool_call> tags."
+                ),
+            })
+
         response = await call_model_v2(
             messages=messages,
             model=model,
@@ -428,6 +474,10 @@ async def execute_fc_loop(
             content = msg.content or ""
     elif hasattr(response, "message"):
         content = response.message.content or ""
+
+    # MARKER_124.1B: Clean up text-format tool calls from final response
+    # Some models output <tool_call>...</tool_call> as plain text even on last turn
+    content = _clean_text_tool_calls(content)
 
     logger.info(f"[FC Loop] Completed: {len(all_tool_executions)} tool calls, content length={len(content)}")
 

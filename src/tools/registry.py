@@ -303,6 +303,226 @@ class VetkaEditArtifactTool(BaseTool):
 
 
 # ============================================================================
+# MARKER_124.0A: FC Loop Tool Wrappers
+# Wraps MCP-only tools as BaseTool for SafeToolExecutor in FC loop.
+# Phase 124.0: vetka_read_file, vetka_search_files, vetka_list_files
+# ============================================================================
+
+class VetkaReadFileTool(BaseTool):
+    """
+    Read file content from VETKA project.
+    Wraps MCP ReadFileTool for internal ToolRegistry.
+    """
+
+    def __init__(self):
+        try:
+            from src.mcp.tools.read_file_tool import ReadFileTool
+            self._tool = ReadFileTool()
+        except ImportError:
+            self._tool = None
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="vetka_read_file",
+            description="Read file content from VETKA project. Returns full file content with line numbers.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path to the file to read (relative to project root)"
+                    }
+                },
+                "required": ["file_path"]
+            },
+            permission_level=PermissionLevel.READ,
+            needs_user_approval=False
+        )
+
+    async def execute(self, file_path: str = "", **kwargs) -> ToolResult:
+        try:
+            if not self._tool:
+                return ToolResult(success=False, result=None, error="ReadFileTool not available")
+
+            # Map FC loop's "file_path" to MCP tool's "path"
+            arguments = {"path": file_path, "max_lines": 500}
+
+            error = self._tool.validate_arguments(arguments)
+            if error:
+                return ToolResult(success=False, result=None, error=error)
+
+            result = self._tool.execute(arguments)
+
+            if not result.get("success", False):
+                return ToolResult(success=False, result=None, error=result.get("error", "Read failed"))
+
+            # Extract content for LLM consumption
+            res_data = result.get("result", {})
+            content = res_data.get("content", "")
+            path = res_data.get("path", file_path)
+            total_lines = res_data.get("total_lines", 0)
+            truncated = res_data.get("truncated", False)
+
+            # Format as numbered lines for coder readability
+            formatted = f"File: {path} ({total_lines} lines"
+            if truncated:
+                formatted += ", truncated"
+            formatted += f")\n\n{content}"
+
+            return ToolResult(success=True, result=formatted)
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+
+
+class VetkaSearchFilesTool(BaseTool):
+    """
+    Search for files by name or content pattern.
+    Wraps MCP search endpoint for internal ToolRegistry.
+    """
+
+    def __init__(self):
+        self._memory_manager = None
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="vetka_search_files",
+            description="Search for files by name or content pattern using ripgrep-style search.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (text pattern or regex)"
+                    },
+                    "search_type": {
+                        "type": "string",
+                        "description": "Type of search: 'content' (default) or 'filename'"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max number of results (default: 10)"
+                    }
+                },
+                "required": ["query"]
+            },
+            permission_level=PermissionLevel.READ,
+            needs_user_approval=False
+        )
+
+    async def execute(self, query: str = "", search_type: str = "content", limit: int = 10, **kwargs) -> ToolResult:
+        try:
+            if not query or len(query) < 2:
+                return ToolResult(success=False, result=None, error="Query too short (min 2 chars)")
+
+            # Use Qdrant semantic search (same as MCP bridge implementation)
+            from src.initialization.singletons import get_memory_manager
+            memory = get_memory_manager()
+
+            if not memory or not memory.qdrant:
+                return ToolResult(success=False, result=None, error="Qdrant not connected")
+
+            from src.knowledge_graph.semantic_tagger import SemanticTagger
+            tagger = SemanticTagger(qdrant_client=memory.qdrant, collection='vetka_elisya')
+
+            files = tagger.find_files_by_semantic_tag(tag=query, limit=limit, min_score=0.3)
+
+            results = []
+            for f in files:
+                results.append({
+                    "name": f.get("name", "unknown"),
+                    "path": f.get("path", ""),
+                    "score": round(f.get("score", 0), 3),
+                    "snippet": (f.get("content", "")[:200] + "...") if f.get("content") else ""
+                })
+
+            formatted = f"Search: '{query}' — {len(results)} results\n"
+            for r in results:
+                formatted += f"\n  {r['path']} (score: {r['score']})"
+                if r.get("snippet"):
+                    formatted += f"\n    {r['snippet'][:100]}"
+
+            return ToolResult(success=True, result=formatted)
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=f"Search failed: {str(e)}")
+
+
+class VetkaListFilesTool(BaseTool):
+    """
+    List files in a directory or matching a pattern.
+    Wraps MCP ListFilesTool for internal ToolRegistry.
+    """
+
+    def __init__(self):
+        try:
+            from src.mcp.tools.list_files_tool import ListFilesTool as MCPListFiles
+            self._tool = MCPListFiles()
+        except ImportError:
+            self._tool = None
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="vetka_list_files",
+            description="List files in a directory or matching a pattern. Returns file paths with metadata.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Directory path (relative to project root)"
+                    },
+                    "pattern": {
+                        "type": "string",
+                        "description": "File pattern to filter (e.g., '*.tsx', '*.py')"
+                    },
+                    "recursive": {
+                        "type": "boolean",
+                        "description": "Search recursively in subdirectories"
+                    }
+                }
+            },
+            permission_level=PermissionLevel.READ,
+            needs_user_approval=False
+        )
+
+    async def execute(self, path: str = "", pattern: str = "*", recursive: bool = False, **kwargs) -> ToolResult:
+        try:
+            if not self._tool:
+                return ToolResult(success=False, result=None, error="ListFilesTool not available")
+
+            depth = 3 if recursive else 1
+            arguments = {"path": path, "pattern": pattern, "depth": depth}
+
+            error = self._tool.validate_arguments(arguments)
+            if error:
+                return ToolResult(success=False, result=None, error=error)
+
+            result = self._tool.execute(arguments)
+
+            if not result.get("success", False):
+                return ToolResult(success=False, result=None, error=result.get("error", "List failed"))
+
+            res_data = result.get("result", {})
+            items = res_data.get("items", [])
+
+            formatted = f"Directory: {path or '/'} ({len(items)} items)\n"
+            for item in items[:50]:  # Limit display
+                icon = "📁" if item.get("type") == "directory" else "📄"
+                formatted += f"\n  {icon} {item.get('path', item.get('name', ''))}"
+
+            if len(items) > 50:
+                formatted += f"\n  ... and {len(items) - 50} more"
+
+            return ToolResult(success=True, result=formatted)
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+
+# MARKER_124.0A_END
+
+
+# ============================================================================
 # REGISTER MCP TOOLS
 # ============================================================================
 
@@ -311,6 +531,10 @@ registry.register(VetkaSearchSemanticTool())
 registry.register(VetkaCameraFocusTool())
 registry.register(GetTreeContextTool())
 registry.register(VetkaEditArtifactTool())  # MARKER_114.3: Artifact tool for Architect/Dev
+# MARKER_124.0A: FC loop tool wrappers
+registry.register(VetkaReadFileTool())
+registry.register(VetkaSearchFilesTool())
+registry.register(VetkaListFilesTool())
 
 # Export for direct access
 __all__ = [
@@ -318,4 +542,7 @@ __all__ = [
     "VetkaCameraFocusTool",
     "GetTreeContextTool",
     "VetkaEditArtifactTool",
+    "VetkaReadFileTool",
+    "VetkaSearchFilesTool",
+    "VetkaListFilesTool",
 ]
