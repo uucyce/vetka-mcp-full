@@ -105,6 +105,8 @@ from src.mcp.tools.workflow_tools import register_workflow_tools
 from src.mcp.tools.pinned_files_tool import register_pinned_files_tool
 # MARKER_109_3_CONTEXT_DAG: Context DAG tool for dynamic context injection
 from src.mcp.tools.context_dag_tool import register_context_dag_tool
+# MARKER_119.7: Tavily web search for @researcher
+from src.mcp.tools.web_search_tool import register_web_search_tool
 
 # VETKA server configuration
 VETKA_BASE_URL = "http://localhost:5001"
@@ -1051,6 +1053,7 @@ async def list_tools() -> list[Tool]:
     register_workflow_tools(mcp_tools)
     register_pinned_files_tool(mcp_tools)  # MARKER_109_2_PINNED_TOOL
     register_context_dag_tool(mcp_tools)  # MARKER_109_3_CONTEXT_DAG
+    register_web_search_tool(mcp_tools)  # MARKER_119.7
 
     # Convert to MCP format (handle both dict and BaseMCPTool objects)
     for tool in mcp_tools:

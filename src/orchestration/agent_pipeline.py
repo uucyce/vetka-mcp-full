@@ -1560,13 +1560,32 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         logger.info(f"[Pipeline] Researching: {question[:50]}...")
 
+        # MARKER_119.7: Pre-fetch web search for researcher context
+        web_context = ""
+        try:
+            from src.mcp.tools.web_search_tool import WebSearchTool
+            web_tool = WebSearchTool()
+            web_result = web_tool.execute({"query": question, "max_results": 3})
+            if web_result.get("success"):
+                results = web_result.get("result", {}).get("results", [])
+                if results:
+                    snippets = []
+                    for r in results[:3]:
+                        snippets.append(f"- {r.get('title', '')} ({r.get('url', '')})\n  {r.get('content', '')[:300]}")
+                    web_context = "\n\n[Web Search Results]\n" + "\n".join(snippets)
+                    logger.info(f"[Pipeline] Web search: {len(results)} results for researcher")
+        except Exception as e:
+            logger.debug(f"[Pipeline] Web search skipped: {e}")
+        # MARKER_119.7_END
+
         # LLMCallTool.execute is synchronous
         # MARKER_117_PROVIDER: Pass model_source for provider routing
+        user_content = f"Research this for VETKA project:\n\n{question}{web_context}"
         call_args = {
             "model": model,
             "messages": [
                 {"role": "system", "content": prompt["system"]},
-                {"role": "user", "content": f"Research this for VETKA project:\n\n{question}"}
+                {"role": "user", "content": user_content}
             ],
             "temperature": temperature,
             "max_tokens": 1500,

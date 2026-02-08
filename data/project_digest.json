@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T15:30:33.049809+00:00",
+  "last_updated": "2026-02-08T15:53:04.057426+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 118,
-    "subphase": "2",
-    "name": "Double-click support for files and folders",
+    "number": 119,
+    "subphase": "6",
+    "name": "Digest Harmony \u2014 auto-sync phase from git + cleanup",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 118.2 DONE! Double-click support for files and folders",
+    "headline": "Phase 119.6 DONE! Digest Harmony \u2014 auto-sync phase from git + cleanup",
     "key_achievements": [
+      "[82c70e4c] Phase 119.6: Phase 119.6: Digest Harmony \u2014 auto-sync phase from git + cle",
       "[89ad375b] Phase 118.2: Phase 118.2: Double-click support for files and fo...",
       "[05c2800c] Phase 119.4-119.5: Scout role (5th pipeline agent) + CAM rename",
       "[d809c81d] Phase 119.1-119.3: MGC Dedup + STM Bridge + Heartbeat @titan E2E",
@@ -21,11 +22,9 @@
       "[253aff69] Phase 118: Completion report + Mycelium capabilities audit",
       "[85d7a1fb] Phase 118.6-118.7: Fix pipeline messages visibility + error callback",
       "[b02d2c91] Phase 118: Unblock @dragon \u2014 async embeddings, Weaviate upsert, Engram fixes",
-      "[26ea95a1] Phase 117.8: SocketIO direct emit \u2014 unblock VETKA during @dragon",
-      "[8d6be290] Phase 117.7: Solo chat_id fix + chat naming fallback + Weaviate v4 migration"
+      "[26ea95a1] Phase 117.8: SocketIO direct emit \u2014 unblock VETKA during @dragon"
     ],
     "pending_items": [
-      "Phase 119.6: Digest Harmony \u2014 auto-sync phase from git + cleanup",
       "Phase 119.7: TAVILY integration for @researcher role",
       "Phase 119.8: Context7 integration for @coder role",
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -145,7 +144,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "89ad375b",
+    "commit": "82c70e4c",
     "dirty": true
   }
 }

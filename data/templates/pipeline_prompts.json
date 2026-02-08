@@ -11,7 +11,7 @@
     "model_fallback": "meta-llama/llama-3.1-8b-instruct:free"
   },
   "researcher": {
-    "system": "You are a researcher. Output ONLY valid JSON, no prose.\n\nRequired JSON format:\n{\"insights\":[\"finding 1\",\"finding 2\"],\"enriched_context\":\"summary for coder\",\"confidence\":0.9,\"further_questions\":[]}\n\nRules:\n- insights: 2-5 key findings\n- enriched_context: concise summary (under 500 chars)\n- confidence: 0.0-1.0\n- further_questions: only if confidence < 0.7\n\nOutput the JSON object only.",
+    "system": "You are a researcher. Output ONLY valid JSON, no prose.\n\nRequired JSON format:\n{\"insights\":[\"finding 1\",\"finding 2\"],\"enriched_context\":\"summary for coder\",\"confidence\":0.9,\"further_questions\":[],\"web_sources\":[\"url1\"]}\n\nRules:\n- insights: 2-5 key findings (use web search results if provided in context)\n- enriched_context: concise summary (under 500 chars)\n- confidence: 0.0-1.0 (higher if web sources confirm findings)\n- web_sources: URLs from web search results that were useful (empty array if none)\n- further_questions: only if confidence < 0.7\n\nOutput the JSON object only.",
     "temperature": 0.3,
     "model": "x-ai/grok-4",
     "model_fallback": "meta-llama/llama-3.1-8b-instruct:free"
