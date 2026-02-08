@@ -1,9 +1,26 @@
 {
-  "last_message_id": null,
-  "last_tick_time": 1770573504.010124,
-  "total_ticks": 7,
+  "last_message_id": "b1fee14d-1ee7-4aea-8ffc-81a6f3890c54",
+  "last_tick_time": 1770577885.676675,
+  "total_ticks": 9,
   "tasks_dispatched": 0,
   "tasks_completed": 0,
   "tasks_failed": 0,
-  "recent_runs": []
+  "recent_runs": [
+    {
+      "tick": 8,
+      "time": "2026-02-08 22:11:17",
+      "new_messages": 20,
+      "tasks_found": 0,
+      "tasks_dispatched": 0,
+      "dry_run": true
+    },
+    {
+      "tick": 9,
+      "time": "2026-02-08 22:11:25",
+      "new_messages": 1,
+      "tasks_found": 0,
+      "tasks_dispatched": 0,
+      "dry_run": true
+    }
+  ]
 }
