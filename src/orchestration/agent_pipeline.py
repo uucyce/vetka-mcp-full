@@ -29,6 +29,14 @@ from dataclasses import dataclass, asdict
 
 logger = logging.getLogger(__name__)
 
+# MARKER_123.1_IMPORT: FC loop for coder function calling
+try:
+    from src.tools.fc_loop import execute_fc_loop, get_coder_tool_schemas, MAX_FC_TURNS_CODER
+    FC_LOOP_AVAILABLE = True
+except ImportError:
+    FC_LOOP_AVAILABLE = False
+    logger.debug("[Pipeline] FC loop not available, coder will use one-shot mode")
+
 # MARKER_104_PARALLEL_1: Semaphore control for parallel pipeline execution
 # Phase 104.2: MAX_PARALLEL_PIPELINES controls concurrent subtask execution
 # Default: 5 pipelines max to protect M4 Pro from overload (Grok Phase 103 Audit recommendation)
@@ -2065,6 +2073,59 @@ Execute this subtask. Provide clear, actionable output."""}
                 "semantic_limit": 3,
                 "compress": True
             }
+
+        # MARKER_123.1A: Function Calling for coder (async FC loop)
+        # Gives coder read-only tools (vetka_read_file, vetka_search_semantic, etc.)
+        # so it can read actual file contents before writing code.
+        # Falls back to one-shot if FC unavailable or fails.
+        if phase_type in ("fix", "build") and FC_LOOP_AVAILABLE:
+            try:
+                coder_tool_schemas = get_coder_tool_schemas()
+                if coder_tool_schemas:
+                    fc_result = await execute_fc_loop(
+                        model=model,
+                        messages=call_args["messages"],
+                        tool_schemas=coder_tool_schemas,
+                        max_turns=MAX_FC_TURNS_CODER,
+                        temperature=temperature,
+                        max_tokens=4000,
+                        provider_source=self.provider_override,
+                        progress_callback=self._emit_progress,
+                    )
+                    # Track model for attribution
+                    self._last_used_model = fc_result.get("model", model)
+                    # Log tool usage
+                    tool_execs = fc_result.get("tool_executions", [])
+                    if tool_execs:
+                        files_read = [
+                            e["args"].get("file_path", "")
+                            for e in tool_execs
+                            if e["name"] == "vetka_read_file"
+                        ]
+                        if files_read:
+                            logger.info(f"[Pipeline] Coder FC: read {len(files_read)} files: {', '.join(files_read[:5])}")
+                            await self._emit_progress("@coder", f"📖 Read {len(files_read)} files via FC")
+                    content = fc_result.get("content", "")
+                    if content:
+                        logger.info(f"[Pipeline] FC subtask result: {content[:100]}...")
+                        # Post-process: extract and write files (same as one-shot path)
+                        if phase_type == "build" and "```" in content:
+                            if self.auto_write:
+                                files_created = self._extract_and_write_files(content, subtask)
+                                if files_created:
+                                    await self._emit_progress("@coder", f"📁 Created {len(files_created)} files: {', '.join(files_created)}")
+                                    content += f"\n\n[Pipeline Note: Created files - {', '.join(files_created)}]"
+                            else:
+                                await self._emit_progress("@coder", f"📝 Code staged in JSON (auto_write=False)")
+                                content += f"\n\n[Pipeline Note: Code staged - use retro_apply_spawn.py to create files]"
+                        return content
+                    else:
+                        logger.warning("[Pipeline] FC returned empty content, falling back to one-shot")
+            except Exception as e:
+                logger.warning(f"[Pipeline] FC loop failed ({e}), falling back to one-shot")
+        # MARKER_123.1A_END
+
+        # Original one-shot path (fallback if FC unavailable/failed)
         result = tool.execute(call_args)
         # MARKER_117.6C: Track coder model for attribution
         self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))

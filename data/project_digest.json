@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-08T22:12:44.117368+00:00",
+  "last_updated": "2026-02-08T22:13:52.161353+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 122,
+    "number": 123,
     "subphase": "5",
-    "name": "Coder Context Enrichment \u2014 STM, Scout, inject_context",
+    "name": "Smaller labels to reduce overlap",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 122.5 DONE! Coder Context Enrichment \u2014 STM, Scout, inject_context",
+    "headline": "Phase 123.5 DONE! Smaller labels to reduce overlap",
     "key_achievements": [
+      "[5ff58204] Phase 123.5: Phase 123.5: Smaller labels to reduce overlap",
       "[45452cc6] Phase 122.5: Phase 122.5: Coder Context Enrichment \u2014 STM, Scout, inject_c",
       "[734dd39e] Phase 119.2: FIX Phase 119.2: Build children arrays from edges + pass hea",
       "[ab1216b4] Phase 119.2: Phase 119.2: Heat-based label visibility + size scaling",
@@ -21,8 +22,7 @@
       "[c0560e29] Phase 119.7: Phase 119.7: Tavily web search for @researcher",
       "[82c70e4c] Phase 119.6: Phase 119.6: Digest Harmony \u2014 auto-sync phase from git + cle",
       "[89ad375b] Phase 118.2: Phase 118.2: Double-click support for files and fo...",
-      "[05c2800c] Phase 119.4-119.5: Scout role (5th pipeline agent) + CAM rename",
-      "[d809c81d] Phase 119.1-119.3: MGC Dedup + STM Bridge + Heartbeat @titan E2E"
+      "[05c2800c] Phase 119.4-119.5: Scout role (5th pipeline agent) + CAM rename"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "5ec51d12",
+    "commit": "5ff58204",
     "dirty": true
   }
 }

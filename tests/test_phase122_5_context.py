@@ -267,9 +267,10 @@ class TestCoderPrompt:
         assert "NEVER ask questions" in coder_prompt
 
     def test_use_scout_report_instruction(self):
-        """Coder prompt should reference Scout report and previous results."""
+        """Coder prompt should reference Scout report and file reading tools."""
         with open("data/templates/pipeline_prompts.json") as f:
             prompts = json.load(f)
         coder_prompt = prompts["coder"]["system"]
         assert "Scout report" in coder_prompt
-        assert "previous results" in coder_prompt
+        # Phase 123.1: prompt now mentions tools instead of "previous results"
+        assert "vetka_read_file" in coder_prompt
