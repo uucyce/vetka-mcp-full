@@ -20,6 +20,7 @@ import { PipelineStats } from './PipelineStats';
 import { LeagueTester } from './LeagueTester';
 import { BalancesPanel } from './BalancesPanel';  // MARKER_126.7
 import { ActivityLog } from './ActivityLog';  // MARKER_127.2B
+import { WatcherStats } from './WatcherStats';  // MARKER_129.1B
 
 interface DevPanelProps {
   isOpen: boolean;
@@ -28,14 +29,15 @@ interface DevPanelProps {
 
 const API_BASE = 'http://localhost:5001/api/debug';
 
-type Tab = 'board' | 'stats' | 'test' | 'balance' | 'activity';  // MARKER_127.2B
+type Tab = 'board' | 'stats' | 'test' | 'balance' | 'activity' | 'watcher';  // MARKER_129.1B
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'board', label: 'Board' },
   { id: 'stats', label: 'Stats' },
   { id: 'test', label: 'Test' },
   { id: 'balance', label: 'Balance' },
-  { id: 'activity', label: 'Activity' },  // MARKER_127.2B
+  { id: 'activity', label: 'Activity' },
+  { id: 'watcher', label: 'Watcher' },  // MARKER_129.1B
 ];
 
 // MARKER_128.7A: Toast notification interface
@@ -565,6 +567,9 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
 
         {/* ═══ ACTIVITY TAB ═══ MARKER_127.2B */}
         {activeTab === 'activity' && <ActivityLog />}
+
+        {/* ═══ WATCHER TAB ═══ MARKER_129.1B */}
+        {activeTab === 'watcher' && <WatcherStats />}
       </div>
 
       {/* MARKER_128.7A: Toast notifications */}

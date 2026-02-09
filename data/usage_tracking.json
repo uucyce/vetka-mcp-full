@@ -4,17 +4,17 @@
       "provider": "test",
       "key_masked": "test****test",
       "model": "gpt-4o",
-      "tokens_in": 1000,
-      "tokens_out": 500,
-      "cost_usd": 0.007499999999999999,
+      "tokens_in": 1100,
+      "tokens_out": 550,
+      "cost_usd": 0.008249999999999999,
       "balance_usd": null,
       "balance_limit": null,
       "is_free_tier": false,
       "exhausted": false,
-      "last_used": 1770656338.9573061,
+      "last_used": 1770670774.2194161,
       "last_balance_check": 0.0,
       "created_at": 1770644447.491818,
-      "call_count": 10
+      "call_count": 11
     },
     "openrouter:sk-o****b296": {
       "provider": "openrouter",
@@ -28,7 +28,7 @@
       "is_free_tier": true,
       "exhausted": true,
       "last_used": 0.0,
-      "last_balance_check": 1770662939.28419,
+      "last_balance_check": 1770672787.0669582,
       "created_at": 1770648466.981327,
       "call_count": 0
     },
@@ -435,18 +435,18 @@
     "polza:pza_****9PUM": {
       "provider": "polza",
       "key_masked": "pza_****9PUM",
-      "model": "xiaomi/mimo-v2-flash",
-      "tokens_in": 100272,
-      "tokens_out": 110081,
-      "cost_usd": 0.659782,
+      "model": "x-ai/grok-4.1-fast",
+      "tokens_in": 139370,
+      "tokens_out": 167669,
+      "cost_usd": 1.0225449999999996,
       "balance_usd": null,
       "balance_limit": null,
       "is_free_tier": false,
       "exhausted": false,
-      "last_used": 1770667717.7012548,
+      "last_used": 1770670759.467834,
       "last_balance_check": 0.0,
       "created_at": 1770648789.31645,
-      "call_count": 120
+      "call_count": 178
     },
     "poe:kwod****uLqo": {
       "provider": "poe",
@@ -625,5 +625,5 @@
       "call_count": 0
     }
   },
-  "updated_at": 1770667717.701348
+  "updated_at": 1770672787.067028
 }

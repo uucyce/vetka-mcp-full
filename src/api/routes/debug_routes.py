@@ -2215,3 +2215,76 @@ async def reset_usage() -> Dict[str, Any]:
     tracker = get_balance_tracker()
     tracker.reset_daily()
     return {"success": True, "message": "Usage counters reset"}
+
+
+# MARKER_129.1A: Watcher Status endpoint
+@router.get("/watcher-stats")
+async def get_watcher_stats() -> Dict[str, Any]:
+    """Get watcher health statistics for DevPanel monitoring.
+
+    Returns:
+        indexed_today: Files indexed today from changelog
+        skip_patterns_count: Number of skip patterns active
+        skip_patterns: List of patterns being skipped
+        events_last_5min: Event count in last 5 minutes
+        recent_events: Last 10 processed events with timestamps
+    """
+    import json
+    from pathlib import Path
+    from datetime import datetime
+
+    base_path = Path(__file__).parent.parent.parent.parent / "data"
+
+    # Get skip patterns from file_watcher
+    try:
+        from src.scanners.file_watcher import SKIP_PATTERNS
+        skip_patterns = list(SKIP_PATTERNS)
+    except ImportError:
+        skip_patterns = []
+
+    # Count indexed files today from changelog
+    today = datetime.now().strftime("%Y-%m-%d")
+    changelog_file = base_path / "changelog" / f"changelog_{today}.json"
+    indexed_today = 0
+    if changelog_file.exists():
+        try:
+            changelog_data = json.loads(changelog_file.read_text())
+            indexed_today = len(changelog_data.get("entries", []))
+        except Exception:
+            pass
+
+    # Get recent events from watcher state
+    watcher_state_file = base_path / "watcher_state.json"
+    recent_events = []
+    events_last_5min = 0
+    watched_dirs_count = 0
+
+    if watcher_state_file.exists():
+        try:
+            watcher_data = json.loads(watcher_state_file.read_text())
+            watched_dirs_count = len(watcher_data.get("watched_dirs", []))
+
+            # Get recent events if stored
+            recent = watcher_data.get("recent_events", [])
+            recent_events = recent[-10:] if recent else []
+
+            # Count events in last 5 minutes
+            now = time.time()
+            five_min_ago = now - 300
+            for evt in recent:
+                evt_time = evt.get("timestamp", 0)
+                if evt_time > five_min_ago:
+                    events_last_5min += 1
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "indexed_today": indexed_today,
+        "skip_patterns_count": len(skip_patterns),
+        "skip_patterns": skip_patterns[:20],  # Limit to first 20
+        "events_last_5min": events_last_5min,
+        "watched_dirs_count": watched_dirs_count,
+        "recent_events": recent_events,
+        "timestamp": time.time(),
+    }

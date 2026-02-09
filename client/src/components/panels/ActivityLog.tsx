@@ -3,14 +3,15 @@
  * MARKER_128.6A: Activity message parser (tool calls, verifier, etc.)
  * MARKER_128.6B: Rich formatting (icons, badges, progress bars)
  * MARKER_128.6C: Per-task grouping with collapsible sections
+ * MARKER_129.3B: Throttled event processing (500ms flush)
  *
  * @status active
- * @phase 128.6
+ * @phase 129.3
  * @depends react
  * @used_by DevPanel
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 
 interface LogEntry {
   id: string;
@@ -231,15 +232,32 @@ function ConfidenceBar({ confidence, passed }: { confidence: number; passed: boo
   );
 }
 
-export function ActivityLog() {
+// MARKER_129.3A: Wrap with React.memo
+export const ActivityLog = memo(function ActivityLog() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [followTail, setFollowTail] = useState(true);
   const [groupByTaskEnabled, setGroupByTaskEnabled] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // MARKER_129.3B: Event buffer for throttling — max 2 updates per second
+  const eventBufferRef = useRef<LogEntry[]>([]);
+  const flushTimeoutRef = useRef<number | null>(null);
+
   // MARKER_127.2A: Listen for pipeline-activity CustomEvent
+  // MARKER_129.3B: Buffer events and flush every 500ms
   useEffect(() => {
+    const flushBuffer = () => {
+      if (eventBufferRef.current.length === 0) return;
+      const buffered = [...eventBufferRef.current];
+      eventBufferRef.current = [];
+
+      setEntries(prev => {
+        const next = [...buffered, ...prev];  // Newest on top
+        return next.slice(0, MAX_ENTRIES);  // Ring buffer
+      });
+    };
+
     const handleActivity = (e: CustomEvent) => {
       const detail = e.detail;
       if (!detail) return;
@@ -256,15 +274,24 @@ export function ActivityLog() {
         preset: detail.preset,
       };
 
-      setEntries(prev => {
-        const next = [entry, ...prev];  // Newest on top
-        return next.slice(0, MAX_ENTRIES);  // Ring buffer
-      });
+      // Buffer the event
+      eventBufferRef.current.push(entry);
+
+      // Schedule flush if not already scheduled
+      if (flushTimeoutRef.current === null) {
+        flushTimeoutRef.current = window.setTimeout(() => {
+          flushTimeoutRef.current = null;
+          flushBuffer();
+        }, 500);  // 500ms throttle
+      }
     };
 
     window.addEventListener('pipeline-activity', handleActivity as EventListener);
     return () => {
       window.removeEventListener('pipeline-activity', handleActivity as EventListener);
+      if (flushTimeoutRef.current !== null) {
+        clearTimeout(flushTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -600,4 +627,4 @@ export function ActivityLog() {
       )}
     </div>
   );
-}
+});

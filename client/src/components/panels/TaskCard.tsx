@@ -12,7 +12,7 @@
  * @used_by DevPanel
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, memo } from 'react';
 import { DiffViewer } from './DiffViewer';  // MARKER_128.4B
 
 export interface PipelineStatsData {
@@ -227,7 +227,8 @@ function injectKeyframes() {
 const API_BASE = 'http://localhost:5001/api/debug';
 
 // ── TaskCard ──
-export function TaskCard({ task, isSelected, onPriorityChange, onRemove, onDispatch, onCancel }: TaskCardProps) {
+// MARKER_129.3A: Wrap with React.memo to prevent unnecessary re-renders
+export const TaskCard = memo(function TaskCard({ task, isSelected, onPriorityChange, onRemove, onDispatch, onCancel }: TaskCardProps) {
   injectKeyframes();
   const [expanded, setExpanded] = useState(false);
   const [hover, setHover] = useState(false);
@@ -968,4 +969,4 @@ export function TaskCard({ task, isSelected, onPriorityChange, onRemove, onDispa
       )}
     </div>
   );
-}
+});

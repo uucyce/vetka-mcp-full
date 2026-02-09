@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0",
     "phase": "121",
-    "updated": "2026-02-09T23:04:07.714791"
+    "updated": "2026-02-09T23:59:27.375380"
   },
   "tasks": {
     "tb_1770577538_6": {
@@ -24,7 +24,7 @@
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157815",
       "started_at": "2026-02-09T22:34:06.754362",
-      "completed_at": "2026-02-09T22:45:13.601195",
+      "completed_at": "2026-02-09T23:58:43.457653",
       "pipeline_task_id": "task_1770665646",
       "result_summary": "{'plan': {'subtasks': [{'description': \"Add @titan command to SYSTEM_COMMANDS array in MentionPopup.tsx at MARKER_SCOUT_1 (client/src/components/chat/MentionPopup.tsx:51). Include alias: 'titan', label: 'Titan Core', appropriate icon from ICONS mapping, searchAliases for 'titan_core', and metadata referencing the titan_core preset.\", 'needs_research': False, 'marker': 'MARKER_102.1'}, {'description': 'Verify and add titan_core preset configuration to roleStore.ts (client/src/store/roleStore.ts) ",
       "stats": {
@@ -172,7 +172,7 @@
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.158579",
       "started_at": "2026-02-09T22:45:13.607423",
-      "completed_at": "2026-02-09T23:04:07.707727",
+      "completed_at": "2026-02-09T23:58:43.456593",
       "pipeline_task_id": "task_1770666313",
       "result_summary": "{'plan': {'subtasks': [{'description': 'Analyze existing UnifiedSearchBar implementation in client/src/components/search/ against federated search requirements for Jarvis integration', 'needs_research': False, 'marker': 'MARKER_102.1'}, {'description': 'Design backend router architecture for dispatching queries to file/www/soc/Jarvis APIs with result aggregation strategies', 'needs_research': False, 'marker': 'MARKER_102.2'}, {'description': 'Design SuperAgent integration with user memory (Redis",
       "stats": {
@@ -369,8 +369,8 @@
       "complexity": "medium",
       "phase_type": "fix",
       "preset": null,
-      "assigned_tier": null,
-      "status": "running",
+      "assigned_tier": "dragon_bronze",
+      "status": "done",
       "source": "heartbeat_fix",
       "tags": [
         "fix"
@@ -378,10 +378,23 @@
       "dependencies": [],
       "created_at": "2026-02-09T22:34:06.754042",
       "started_at": "2026-02-09T23:04:07.714787",
-      "completed_at": null,
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null
+      "completed_at": "2026-02-09T23:58:43.455881",
+      "pipeline_task_id": "task_1770667447",
+      "result_summary": "{'plan': {'subtasks': [{'description': 'Inspect CSS for pointer-events: none or z-index issues', 'needs_research': False, 'marker': 'MARKER_102.1'}, {'description': 'Check JavaScript console for errors preventing click handlers', 'needs_research': False, 'marker': 'MARKER_102.2'}, {'description': 'Verify button is not disabled via !disabled attribute or conditional rendering', 'needs_research': False, 'marker': 'MARKER_102.3'}, {'description': 'Validate event listeners are properly attached to t",
+      "stats": {
+        "preset": "dragon_bronze",
+        "league": "dragon",
+        "phase_type": "fix",
+        "subtasks_total": 10,
+        "subtasks_completed": 10,
+        "success": true,
+        "llm_calls": 18,
+        "tokens_in": 8459,
+        "tokens_out": 8452,
+        "verifier_avg_confidence": 0.62,
+        "completed_at": 1770667806.4232352,
+        "duration_s": 358.7
+      }
     },
     "tb_1770666313_2": {
       "id": "tb_1770666313_2",
@@ -391,22 +404,162 @@
       "complexity": "medium",
       "phase_type": "fix",
       "preset": null,
-      "assigned_tier": null,
-      "status": "pending",
+      "assigned_tier": "dragon_silver",
+      "status": "done",
       "source": "heartbeat_fix",
       "tags": [
         "fix"
       ],
       "dependencies": [],
       "created_at": "2026-02-09T22:45:13.607021",
-      "started_at": null,
-      "completed_at": null,
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null
+      "started_at": "2026-02-09T23:10:06.429627",
+      "completed_at": "2026-02-09T23:58:43.454959",
+      "pipeline_task_id": "task_1770667806",
+      "result_summary": "{'plan': {'subtasks': [{'description': 'broken button', 'needs_research': True, 'question': 'broken button', 'marker': 'MARKER_102.1'}], 'execution_order': 'sequential', 'estimated_complexity': 'medium'}, 'subtasks_completed': 1, 'subtasks_total': 1, 'execution_order': 'sequential', 'stats': {'preset': 'dragon_silver', 'league': 'dragon', 'phase_type': 'fix', 'subtasks_total': 1, 'subtasks_completed': 1, 'success': True, 'llm_calls': 6, 'tokens_in': 4358, 'tokens_out': 7285, 'verifier_avg_confid",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "fix",
+        "subtasks_total": 1,
+        "subtasks_completed": 1,
+        "success": true,
+        "llm_calls": 6,
+        "tokens_in": 4358,
+        "tokens_out": 7285,
+        "verifier_avg_confidence": 0.9,
+        "completed_at": 1770668020.627279,
+        "duration_s": 214.2
+      }
     },
     "tb_1770667447_3": {
       "id": "tb_1770667447_3",
+      "title": "broken button",
+      "description": "broken button",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": "dragon_silver",
+      "status": "done",
+      "source": "heartbeat_fix",
+      "tags": [
+        "fix"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T23:04:07.714311",
+      "started_at": "2026-02-09T23:13:40.631042",
+      "completed_at": "2026-02-09T23:58:43.453651",
+      "pipeline_task_id": "task_1770668020",
+      "result_summary": "{'plan': {'subtasks': [{'description': 'Inspect broken button element for CSS issues (pointer-events, display, visibility, z-index) and verify DOM presence', 'needs_research': False, 'marker': 'MARKER_102.1'}, {'description': 'Check browser console for JavaScript errors preventing button click handlers from executing', 'needs_research': False, 'marker': 'MARKER_102.2'}, {'description': 'Verify network tab for failed API calls if button triggers async operations', 'needs_research': False, 'marker",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "fix",
+        "subtasks_total": 6,
+        "subtasks_completed": 6,
+        "success": true,
+        "llm_calls": 16,
+        "tokens_in": 12135,
+        "tokens_out": 18428,
+        "verifier_avg_confidence": 0.7333333333333334,
+        "completed_at": 1770668767.7229471,
+        "duration_s": 747.1
+      }
+    },
+    "tb_1770667806_4": {
+      "id": "tb_1770667806_4",
+      "title": "broken button",
+      "description": "broken button",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": "dragon_silver",
+      "status": "done",
+      "source": "heartbeat_fix",
+      "tags": [
+        "fix"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T23:10:06.429380",
+      "started_at": "2026-02-09T23:26:07.727456",
+      "completed_at": "2026-02-09T23:58:43.452713",
+      "pipeline_task_id": "task_1770668767",
+      "result_summary": "{'plan': {'subtasks': [{'description': 'Inspect CSS properties (pointer-events, z-index, position) of the broken button to identify visual or click-blocking issues', 'needs_research': False, 'marker': 'MARKER_102.1'}, {'description': 'Check browser console for JavaScript errors and verify event listeners are properly attached to the button element', 'needs_research': False, 'marker': 'MARKER_102.2'}, {'description': 'Validate button type attribute (button/submit) and ensure proper form submissio",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "fix",
+        "subtasks_total": 9,
+        "subtasks_completed": 9,
+        "success": true,
+        "llm_calls": 17,
+        "tokens_in": 10763,
+        "tokens_out": 19337,
+        "verifier_avg_confidence": 0.5388888888888889,
+        "completed_at": 1770669493.097949,
+        "duration_s": 725.4
+      }
+    },
+    "tb_1770668020_5": {
+      "id": "tb_1770668020_5",
+      "title": "broken button",
+      "description": "broken button",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": "dragon_bronze",
+      "status": "done",
+      "source": "heartbeat_fix",
+      "tags": [
+        "fix"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T23:13:40.630836",
+      "started_at": "2026-02-09T23:38:13.101679",
+      "completed_at": "2026-02-09T23:58:43.450912",
+      "pipeline_task_id": "task_1770669493",
+      "result_summary": "{'plan': {'subtasks': [{'description': 'Investigate test files in /api/handlers for button-related failures', 'needs_research': False, 'marker': 'MARKER_102.1'}, {'description': 'Review TIMELINE_DECAY_FLOW_DIAGRAM.txt for UI element discrepancies', 'needs_research': False, 'marker': 'MARKER_102.2'}, {'description': 'Examine knowledge_layout.py backend logic for button functionality issues', 'needs_research': False, 'marker': 'MARKER_102.3'}], 'execution_order': 'sequential', 'estimated_complexit",
+      "stats": {
+        "preset": "dragon_bronze",
+        "league": "dragon",
+        "phase_type": "fix",
+        "subtasks_total": 7,
+        "subtasks_completed": 7,
+        "success": true,
+        "llm_calls": 13,
+        "tokens_in": 6799,
+        "tokens_out": 6652,
+        "verifier_avg_confidence": 0.6714285714285715,
+        "completed_at": 1770669711.804706,
+        "duration_s": 218.7
+      }
+    },
+    "tb_1770668767_6": {
+      "id": "tb_1770668767_6",
+      "title": "broken button",
+      "description": "broken button",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": "dragon_silver",
+      "status": "failed",
+      "source": "heartbeat_fix",
+      "tags": [
+        "fix"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T23:26:07.727125",
+      "started_at": "2026-02-09T23:41:51.810027",
+      "completed_at": "2026-02-09T23:58:43.449601",
+      "pipeline_task_id": "task_1770669711",
+      "result_summary": "{'error': \"'NoneType' object has no attribute 'get'\"}",
+      "stats": null
+    },
+    "tb_1770669493_7": {
+      "id": "tb_1770669493_7",
       "title": "broken button",
       "description": "broken button",
       "priority": 3,
@@ -420,7 +573,73 @@
         "fix"
       ],
       "dependencies": [],
-      "created_at": "2026-02-09T23:04:07.714311",
+      "created_at": "2026-02-09T23:38:13.101428",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null
+    },
+    "tb_1770669711_8": {
+      "id": "tb_1770669711_8",
+      "title": "broken button",
+      "description": "broken button",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "heartbeat_fix",
+      "tags": [
+        "fix"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T23:41:51.809715",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null
+    },
+    "tb_1770670723_9": {
+      "id": "tb_1770670723_9",
+      "title": "fix auth bug",
+      "description": "fix auth bug",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": "dragon_silver",
+      "status": "failed",
+      "source": "heartbeat_dragon",
+      "tags": [
+        "dragon"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T23:58:43.653480",
+      "started_at": "2026-02-09T23:58:43.654036",
+      "completed_at": "2026-02-09T23:59:27.375371",
+      "pipeline_task_id": "task_1770670723",
+      "result_summary": "{'error': \"'NoneType' object has no attribute 'get'\"}",
+      "stats": null
+    },
+    "tb_1770670723_10": {
+      "id": "tb_1770670723_10",
+      "title": "build new API endpoint",
+      "description": "build new API endpoint",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": "titan_core",
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "heartbeat_titan",
+      "tags": [
+        "titan"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T23:58:43.653744",
       "started_at": null,
       "completed_at": null,
       "pipeline_task_id": null,

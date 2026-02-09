@@ -54,7 +54,18 @@ SKIP_PATTERNS = [
     # FIX_95.9.3: Prevent infinite loop - TripleWrite writes to changelog, watchdog sees it, triggers TW again
     'data/changelog', 'changelog_',  # Skip changelog directory and files
     'watcher_state.json',  # Skip watcher's own state file
-    'models_cache.json', 'groups.json', 'chat_history.json'  # Skip other data files that change frequently
+    'models_cache.json', 'groups.json', 'chat_history.json',  # Skip other data files that change frequently
+    # MARKER_129.0A: Skip ALL high-frequency data files that change during pipeline execution
+    # During Dragon Silver: 50+ writes to these files → 50 TripleWrite calls → server freeze
+    'pipeline_tasks.json',      # Written ~10x per pipeline (every subtask state change)
+    'usage_tracking.json',      # Written ~25x per pipeline (every LLM call!)
+    'model_status_cache.json',  # Written ~15x per pipeline (every model health update)
+    'heartbeat_state.json',     # Written per heartbeat tick
+    'task_board.json',          # Written per task dispatch/completion + SocketIO emit
+    'project_digest.json',      # Written on git commit / sync
+    'config.json',              # App config — rarely changes, no need to index
+    'tool_audit_log.jsonl',     # Append-only audit log
+    'mcp_audit',                # MCP audit directory
 ]
 
 # Supported file extensions for watching
