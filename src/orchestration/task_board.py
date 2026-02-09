@@ -206,7 +206,8 @@ class TaskBoard:
             "started_at": None,
             "completed_at": None,
             "pipeline_task_id": None,
-            "result_summary": None
+            "result_summary": None,
+            "stats": None
         }
 
         self._save(action="added")

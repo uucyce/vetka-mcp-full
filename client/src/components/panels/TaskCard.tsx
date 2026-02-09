@@ -11,6 +11,21 @@
 
 import { useState } from 'react';
 
+export interface PipelineStatsData {
+  preset?: string;
+  league?: string;
+  phase_type?: string;
+  subtasks_total?: number;
+  subtasks_completed?: number;
+  success?: boolean;
+  llm_calls?: number;
+  tokens_in?: number;
+  tokens_out?: number;
+  verifier_avg_confidence?: number;
+  duration_s?: number;
+  completed_at?: number;
+}
+
 export interface TaskData {
   id: string;
   title: string;
@@ -22,6 +37,7 @@ export interface TaskData {
   tags?: string[];
   source?: string;
   created_at?: string;
+  stats?: PipelineStatsData;
 }
 
 interface TaskCardProps {

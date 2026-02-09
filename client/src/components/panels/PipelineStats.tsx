@@ -6,7 +6,7 @@
  * @depends TaskData
  */
 
-import { TaskData } from './TaskCard';
+import { TaskData, PipelineStatsData } from './TaskCard';
 
 interface PipelineStatsProps {
   tasks: TaskData[];
@@ -27,7 +27,7 @@ export function PipelineStats({ tasks }: PipelineStatsProps) {
   const byPreset: Record<string, PresetStats> = {};
 
   for (const task of tasks) {
-    const stats = (task as any).stats;
+    const stats: PipelineStatsData | undefined = task.stats;
     if (!stats) continue;
 
     const preset = stats.preset || task.preset || 'unknown';
