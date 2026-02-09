@@ -41,9 +41,11 @@ PRIORITY_SOMEDAY = 5
 
 # Valid statuses
 # MARKER_125.1B: Added "hold" — Doctor triage puts abstract tasks on hold for human approval
-# TODO MARKER_126.11A: Add "claimed" status for multi-agent support
-# When implemented: external agents (Claude Code, Grok) can claim tasks without Mycelium
-VALID_STATUSES = {"pending", "queued", "running", "done", "failed", "cancelled", "hold"}
+# MARKER_130.C16A: Added "claimed" status for multi-agent support
+VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "failed", "cancelled", "hold"}
+
+# Agent types
+AGENT_TYPES = {"claude_code", "cursor", "mycelium", "grok", "human", "unknown"}
 
 # Counter for generating IDs
 _task_counter = 0
@@ -127,15 +129,25 @@ class TaskBoard:
 
         logger.error("[TaskBoard] Failed to save task board to any location")
 
-    def _notify_board_update(self, action: str = "update"):
+    def _notify_board_update(self, action: str = "update", event_data: Optional[Dict[str, Any]] = None):
         """MARKER_124.3D: Emit SocketIO event for live Task Board UI updates.
+        MARKER_130.C18C: Enhanced with event_data for claim/complete actions.
 
         Uses fire-and-forget HTTP POST to our own REST endpoint which has sio access.
         Falls back silently if server isn't running.
+
+        Args:
+            action: Event action type (update, task_claimed, task_completed, etc.)
+            event_data: Optional extra data to include in event (task_id, assigned_to, etc.)
         """
         try:
             import asyncio
             summary = self.get_board_summary()
+
+            # MARKER_130.C18C: Build payload with optional event_data
+            payload = {"action": action, "summary": summary}
+            if event_data:
+                payload.update(event_data)
 
             async def _emit():
                 try:
@@ -143,7 +155,7 @@ class TaskBoard:
                     async with httpx.AsyncClient(timeout=2.0) as client:
                         await client.post(
                             "http://localhost:5001/api/debug/task-board/notify",
-                            json={"action": action, "summary": summary}
+                            json=payload
                         )
                 except Exception:
                     pass
@@ -170,7 +182,9 @@ class TaskBoard:
         preset: Optional[str] = None,
         tags: Optional[List[str]] = None,
         dependencies: Optional[List[str]] = None,
-        source: str = "manual"
+        source: str = "manual",
+        assigned_to: Optional[str] = None,  # MARKER_130.C16A
+        agent_type: Optional[str] = None,   # MARKER_130.C16A
     ) -> str:
         """Add a new task to the board.
 
@@ -184,6 +198,8 @@ class TaskBoard:
             tags: Optional tags for categorization
             dependencies: Optional list of task IDs that must complete first
             source: Origin of task ("manual", "dragon_todo", "titan_todo", etc.)
+            assigned_to: Agent name who should work on this ("opus", "cursor", "dragon")
+            agent_type: Agent type ("claude_code", "cursor", "mycelium", "grok", "human")
 
         Returns:
             Generated task ID
@@ -210,11 +226,12 @@ class TaskBoard:
             "pipeline_task_id": None,
             "result_summary": None,
             "stats": None,
-            # TODO MARKER_126.11A: Multi-agent claim fields (add when implementing)
-            # "claimed_by": None,      # Agent ID who claimed
-            # "claimed_at": None,      # Timestamp
-            # "claim_expires": None,   # Auto-release time
-            # "agent_type": None,      # "mycelium" | "mcp" | "chat"
+            # MARKER_130.C16A: Multi-agent coordination fields
+            "assigned_to": assigned_to,       # Agent name: "opus", "cursor", "dragon", "grok"
+            "assigned_at": None,              # ISO timestamp when claimed
+            "agent_type": agent_type,         # "claude_code", "cursor", "mycelium", "grok", "human"
+            "commit_hash": None,              # Git commit that completed this task
+            "commit_message": None,           # First line of commit message
         }
 
         self._save(action="added")
@@ -275,6 +292,199 @@ class TaskBoard:
             self._save(action="removed")
             logger.info(f"[TaskBoard] Removed task {task_id}")
             return True
+        return False
+
+    # ==========================================
+    # MARKER_130.C16A: AGENT COORDINATION
+    # ==========================================
+
+    def claim_task(self, task_id: str, agent_name: str, agent_type: str = "unknown") -> Dict[str, Any]:
+        """Claim a task for an agent.
+
+        Args:
+            task_id: Task identifier
+            agent_name: Name of agent claiming ("opus", "cursor", "dragon", "grok")
+            agent_type: Type of agent ("claude_code", "cursor", "mycelium", "grok", "human")
+
+        Returns:
+            Result dict with success/error
+        """
+        task = self.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+
+        if task["status"] not in ("pending", "queued"):
+            return {"success": False, "error": f"Task {task_id} is {task['status']}, can't claim"}
+
+        self.update_task(task_id,
+            status="claimed",
+            assigned_to=agent_name,
+            agent_type=agent_type,
+            assigned_at=datetime.now().isoformat(),
+        )
+
+        # MARKER_130.C18C: Emit enhanced event for claim
+        self._notify_board_update("task_claimed", {
+            "task_id": task_id,
+            "title": task.get("title", ""),
+            "assigned_to": agent_name,
+            "agent_type": agent_type,
+        })
+
+        logger.info(f"[TaskBoard] Task {task_id} claimed by {agent_name} ({agent_type})")
+        return {"success": True, "task_id": task_id, "assigned_to": agent_name}
+
+    def complete_task(self, task_id: str, commit_hash: Optional[str] = None,
+                      commit_message: Optional[str] = None) -> Dict[str, Any]:
+        """Mark a task as complete with optional commit info.
+
+        Args:
+            task_id: Task identifier
+            commit_hash: Git commit hash that completed this task
+            commit_message: First line of commit message
+
+        Returns:
+            Result dict with success/error
+        """
+        task = self.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+
+        update = {
+            "status": "done",
+            "completed_at": datetime.now().isoformat(),
+        }
+        if commit_hash:
+            update["commit_hash"] = commit_hash
+        if commit_message:
+            update["commit_message"] = commit_message[:200]  # Truncate
+
+        self.update_task(task_id, **update)
+
+        # MARKER_130.C18C: Emit enhanced event for completion
+        self._notify_board_update("task_completed", {
+            "task_id": task_id,
+            "title": task.get("title", ""),
+            "assigned_to": task.get("assigned_to"),
+            "commit_hash": commit_hash,
+            "commit_message": commit_message[:50] if commit_message else None,
+        })
+
+        logger.info(f"[TaskBoard] Task {task_id} completed" +
+                    (f" (commit: {commit_hash[:8]})" if commit_hash else ""))
+        return {"success": True, "task_id": task_id, "commit_hash": commit_hash}
+
+    def get_active_agents(self) -> List[Dict[str, Any]]:
+        """Get list of agents with active (claimed/running) tasks.
+
+        Returns:
+            List of dicts with agent_name, agent_type, task_id, task_title, elapsed_time
+        """
+        active = []
+        now = datetime.now()
+
+        for task in self.tasks.values():
+            if task["status"] in ("claimed", "running"):
+                agent = task.get("assigned_to")
+                if agent:
+                    assigned_at = task.get("assigned_at") or task.get("started_at")
+                    elapsed = 0
+                    if assigned_at:
+                        try:
+                            start = datetime.fromisoformat(assigned_at)
+                            elapsed = int((now - start).total_seconds())
+                        except (ValueError, TypeError):
+                            pass
+
+                    active.append({
+                        "agent_name": agent,
+                        "agent_type": task.get("agent_type", "unknown"),
+                        "task_id": task["id"],
+                        "task_title": task["title"],
+                        "status": task["status"],
+                        "elapsed_seconds": elapsed,
+                    })
+
+        return active
+
+    # ==========================================
+    # MARKER_130.C17A: GIT COMMIT AUTO-DETECTION
+    # ==========================================
+
+    def auto_complete_by_commit(self, commit_hash: str, commit_message: str) -> List[str]:
+        """Auto-complete tasks mentioned in commit message.
+
+        Looks for patterns in commit message:
+        - "Phase 129.C13" → find task with tag "C13" or title containing "C13"
+        - "tb_xxxx" → direct task ID reference
+        - "MARKER_130.6" → find task with matching marker
+
+        Args:
+            commit_hash: Git commit hash
+            commit_message: Full commit message
+
+        Returns:
+            List of task IDs that were auto-completed
+        """
+        completed = []
+        # Normalize commit message for matching
+        msg_lower = commit_message.lower()
+
+        # Get tasks that could be auto-completed (claimed or running)
+        eligible = [t for t in self.tasks.values() if t["status"] in ("claimed", "running")]
+
+        for task in eligible:
+            if self._commit_matches_task(task, commit_message, msg_lower):
+                self.complete_task(task["id"], commit_hash, commit_message.split('\n')[0])
+                completed.append(task["id"])
+                logger.info(f"[TaskBoard] Auto-completed {task['id']} from commit {commit_hash[:8]}")
+
+        return completed
+
+    def _commit_matches_task(self, task: Dict[str, Any], commit_msg: str, msg_lower: str) -> bool:
+        """Check if commit message matches a task.
+
+        Matches:
+        - Direct task ID mention (tb_xxx)
+        - Task title keywords in commit message
+        - Tag matches (C13, C16A, etc.)
+        - Phase/MARKER patterns
+
+        Args:
+            task: Task dict
+            commit_msg: Original commit message
+            msg_lower: Lowercased commit message for case-insensitive matching
+
+        Returns:
+            True if commit appears to complete this task
+        """
+        task_id = task["id"]
+        title = task.get("title", "")
+        tags = task.get("tags", [])
+
+        # Direct ID mention
+        if task_id in commit_msg:
+            return True
+
+        # Tag mentions (e.g., "C13", "C16A" in commit matches task with that tag)
+        for tag in tags:
+            if tag and tag in commit_msg:
+                return True
+
+        # Title keyword matching (at least 3 significant words match)
+        title_words = [w for w in re.findall(r'\w+', title.lower()) if len(w) > 3]
+        if title_words:
+            matches = sum(1 for w in title_words if w in msg_lower)
+            if matches >= min(3, len(title_words)):
+                return True
+
+        # Phase/MARKER pattern (e.g., "Phase 130.C16" matches task tagged "C16")
+        phase_match = re.search(r'Phase\s*(\d+)[\.\s]*([A-Z]\d+[A-Z]?)', commit_msg, re.IGNORECASE)
+        if phase_match:
+            phase_tag = phase_match.group(2).upper()
+            if phase_tag in [t.upper() for t in tags]:
+                return True
+
         return False
 
     # ==========================================

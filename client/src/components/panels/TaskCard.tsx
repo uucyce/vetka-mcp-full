@@ -3,11 +3,12 @@
  * MARKER_127.0B: Results Viewer — expand to see pipeline results/code
  * MARKER_128.2C: Apply button — write code to disk
  * MARKER_128.3B/C: Result lifecycle badges + action buttons
+ * MARKER_130.C18B: Commit column — agent badge + commit hash
  * CSS-only status indicators, monochrome priority, glassmorphism accents.
- * Phase 128.3: Style upgrade — "Batman Nolan, not Burton"
+ * Phase 130: Agent coordination — who committed what.
  *
  * @status active
- * @phase 128.3
+ * @phase 130
  * @depends react
  * @used_by DevPanel
  */
@@ -47,6 +48,12 @@ export interface TaskData {
   result_status?: 'applied' | 'rejected' | 'rework' | null;
   result_reviewed_at?: string;
   result_review_reason?: string;
+  // MARKER_130.C18B: Agent coordination fields
+  assigned_to?: string;
+  agent_type?: string;
+  commit_hash?: string;
+  commit_message?: string;
+  completed_at?: string;
 }
 
 // MARKER_127.0B: Pipeline results data structure
@@ -479,6 +486,32 @@ export const TaskCard = memo(function TaskCard({ task, isSelected, onPriorityCha
         >
           {task.title}
         </span>
+
+        {/* MARKER_130.C18B: Agent badge */}
+        {task.assigned_to && (
+          <span style={{
+            fontSize: 9,
+            color: '#666',
+            background: 'rgba(255,255,255,0.04)',
+            padding: '1px 5px',
+            borderRadius: 2,
+            fontFamily: 'monospace',
+          }}>
+            {task.assigned_to}
+          </span>
+        )}
+
+        {/* MARKER_130.C18B: Commit hash */}
+        {task.commit_hash && (
+          <span style={{
+            fontSize: 9,
+            color: '#555',
+            fontFamily: 'monospace',
+            letterSpacing: 0.3,
+          }}>
+            {task.commit_hash.slice(0, 8)}
+          </span>
+        )}
 
         {/* Status indicator — CSS, no emoji */}
         <StatusIndicator status={task.status} />

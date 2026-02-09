@@ -237,6 +237,11 @@ class GitCommitTool(BaseMCPTool):
             else:
                 result_data["digest_updated"] = False
 
+            # MARKER_130.C17B: Auto-complete tasks matching commit message
+            auto_completed = self._auto_complete_tasks(commit_hash, message)
+            if auto_completed:
+                result_data["auto_completed_tasks"] = auto_completed
+
             # MARKER_GIT_AUTO_PUSH: Auto-push to remote if requested
             if auto_push:
                 push_result = self._git_push()
@@ -319,6 +324,25 @@ class GitCommitTool(BaseMCPTool):
 
         except Exception as e:
             # Don't fail commit if digest update fails
+            return None
+
+    def _auto_complete_tasks(self, commit_hash: str, message: str) -> Optional[list]:
+        """
+        MARKER_130.C17B: Auto-complete tasks mentioned in commit message.
+
+        Called after successful commit to update TaskBoard. Matches:
+        - tb_xxxx (direct task ID)
+        - Phase 130.C16 patterns
+        - MARKER_130.C16A patterns
+        - Task title keywords
+        """
+        try:
+            from src.orchestration.task_board import get_task_board
+            board = get_task_board()
+            completed = board.auto_complete_by_commit(commit_hash, message)
+            return completed if completed else None
+        except Exception:
+            # Don't fail commit if task completion fails
             return None
 
     def _git_push(self, remote: str = "origin", branch: str = None) -> Dict[str, Any]:

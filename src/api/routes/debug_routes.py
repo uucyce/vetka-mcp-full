@@ -2073,6 +2073,70 @@ async def dispatch_next_task_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
     return result
 
 
+# MARKER_130.C16C: Agent claim/complete endpoints for coordination
+@router.post("/task-board/claim")
+async def claim_task_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Claim a task for an agent to work on.
+
+    Body params:
+    - task_id: str (required)
+    - agent_name: str (required — opus, cursor, dragon, grok)
+    - agent_type: str (optional — claude_code, cursor, mycelium, grok, human)
+    """
+    from src.orchestration.task_board import get_task_board
+
+    body = body or {}
+    task_id = body.get("task_id")
+    agent_name = body.get("agent_name")
+    agent_type = body.get("agent_type", "unknown")
+
+    if not task_id:
+        return {"success": False, "error": "task_id is required"}
+    if not agent_name:
+        return {"success": False, "error": "agent_name is required"}
+
+    board = get_task_board()
+    result = board.claim_task(task_id, agent_name, agent_type)
+    return result
+
+
+@router.post("/task-board/complete")
+async def complete_task_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Mark a task as completed with optional commit info.
+
+    Body params:
+    - task_id: str (required)
+    - commit_hash: str (optional — git commit hash)
+    - commit_message: str (optional — first line of commit message)
+    """
+    from src.orchestration.task_board import get_task_board
+
+    body = body or {}
+    task_id = body.get("task_id")
+    commit_hash = body.get("commit_hash")
+    commit_message = body.get("commit_message")
+
+    if not task_id:
+        return {"success": False, "error": "task_id is required"}
+
+    board = get_task_board()
+    result = board.complete_task(task_id, commit_hash, commit_message)
+    return result
+
+
+@router.get("/task-board/active-agents")
+async def get_active_agents_api() -> Dict[str, Any]:
+    """Get list of agents with claimed/running tasks.
+
+    Returns agents with their current task and elapsed time.
+    """
+    from src.orchestration.task_board import get_task_board
+
+    board = get_task_board()
+    agents = board.get_active_agents()
+    return {"success": True, "agents": agents, "count": len(agents)}
+
+
 # MARKER_126.5F: Cancel task endpoint for stop button
 @router.post("/task-board/cancel")
 async def cancel_task_api(body: Dict[str, Any] = None) -> Dict[str, Any]:

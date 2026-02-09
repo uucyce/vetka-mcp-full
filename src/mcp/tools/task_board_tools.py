@@ -31,7 +31,8 @@ TASK_BOARD_SCHEMA = {
     "properties": {
         "action": {
             "type": "string",
-            "enum": ["add", "list", "get", "update", "remove", "summary"],
+            # MARKER_130.C16B: Added claim, complete, active_agents actions
+            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents"],
             "description": "Operation to perform"
         },
         # For "add":
@@ -43,12 +44,18 @@ TASK_BOARD_SCHEMA = {
         "preset": {"type": "string", "description": "Pipeline preset override"},
         "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for categorization"},
         "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Task IDs that must complete first"},
-        # For "get", "update", "remove":
-        "task_id": {"type": "string", "description": "Task ID (required for get/update/remove)"},
+        # MARKER_130.C16B: Agent assignment fields
+        "assigned_to": {"type": "string", "description": "Agent name: opus, cursor, dragon, grok"},
+        "agent_type": {"type": "string", "description": "Agent type: claude_code, cursor, mycelium, grok, human"},
+        # For "get", "update", "remove", "claim", "complete":
+        "task_id": {"type": "string", "description": "Task ID (required for get/update/remove/claim/complete)"},
         # For "update":
-        "status": {"type": "string", "enum": ["pending", "queued", "running", "done", "failed", "cancelled"]},
+        "status": {"type": "string", "enum": ["pending", "queued", "claimed", "running", "done", "failed", "cancelled"]},
         # For "list":
         "filter_status": {"type": "string", "description": "Filter by status (optional for list)"},
+        # For "complete":
+        "commit_hash": {"type": "string", "description": "Git commit hash (for complete)"},
+        "commit_message": {"type": "string", "description": "Commit message (for complete)"},
     },
     "required": ["action"]
 }
@@ -143,6 +150,31 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     elif action == "summary":
         summary = board.get_board_summary()
         return {"success": True, **summary}
+
+    # MARKER_130.C16B: claim action
+    elif action == "claim":
+        task_id = arguments.get("task_id")
+        if not task_id:
+            return {"success": False, "error": "task_id is required for claim"}
+        agent_name = arguments.get("assigned_to", "unknown")
+        agent_type = arguments.get("agent_type", "unknown")
+        result = board.claim_task(task_id, agent_name, agent_type)
+        return result
+
+    # MARKER_130.C16B: complete action
+    elif action == "complete":
+        task_id = arguments.get("task_id")
+        if not task_id:
+            return {"success": False, "error": "task_id is required for complete"}
+        commit_hash = arguments.get("commit_hash")
+        commit_message = arguments.get("commit_message")
+        result = board.complete_task(task_id, commit_hash, commit_message)
+        return result
+
+    # MARKER_130.C16B: active_agents action
+    elif action == "active_agents":
+        agents = board.get_active_agents()
+        return {"success": True, "agents": agents, "count": len(agents)}
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}

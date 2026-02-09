@@ -6,10 +6,11 @@
  * MARKER_128.7A: Toast notifications on pipeline completion
  * MARKER_128.9A: Keyboard navigation (j/k/Enter/r/a)
  * MARKER_129.C14B: MYCELIUM WebSocket connection indicator
- * Phase 129.C14: "Batman Nolan, not Burton" — dark, serious, minimal.
+ * MARKER_130.C18A: Agent status row in Board tab
+ * Phase 130: Agent coordination — who is working on what.
  *
  * @status active
- * @phase 129.C14
+ * @phase 130
  * @depends FloatingWindow, TaskCard, PipelineStats, LeagueTester, BalancesPanel, ActivityLog, useMyceliumSocket
  */
 
@@ -50,6 +51,16 @@ interface ToastData {
   taskId?: string;
 }
 
+// MARKER_130.C18A: Agent status interface
+interface AgentStatus {
+  agent_name: string;
+  agent_type: string;
+  task_id: string;
+  task_title: string;
+  status: string;
+  elapsed_seconds: number;
+}
+
 // MARKER_126.0C: Tabbed DevPanel
 export function DevPanel({ isOpen, onClose }: DevPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>('board');
@@ -62,6 +73,9 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
 
   // MARKER_128.7A: Toast state
   const [toasts, setToasts] = useState<ToastData[]>([]);
+
+  // MARKER_130.C18A: Active agents state
+  const [activeAgents, setActiveAgents] = useState<AgentStatus[]>([]);
 
   // MARKER_128.9A: Keyboard navigation state
   const [selectedTaskIdx, setSelectedTaskIdx] = useState<number>(-1);
@@ -84,6 +98,13 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
         const data = await res.json();
         setTasks(data.tasks || []);
         setSummary(data.summary || null);
+      }
+
+      // MARKER_130.C18A: Fetch active agents
+      const agentsRes = await fetch(`${API_BASE}/task-board/active-agents`);
+      if (agentsRes.ok) {
+        const agentsData = await agentsRes.json();
+        setActiveAgents(agentsData.agents || []);
       }
     } catch (err) {
       console.error('[TaskBoard] Fetch failed:', err);
@@ -398,6 +419,49 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
               </span>
             </div>
 
+            {/* MARKER_130.C18A: Agent Status Row */}
+            {activeAgents.length > 0 && (
+              <div style={{
+                marginBottom: 10,
+                padding: '8px 10px',
+                background: 'rgba(255,255,255,0.02)',
+                borderRadius: 3,
+                border: '1px solid rgba(255,255,255,0.04)',
+              }}>
+                {activeAgents.map((agent) => {
+                  const elapsed = agent.elapsed_seconds || 0;
+                  const timeStr = elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m`;
+                  const isRunning = agent.status === 'running';
+                  return (
+                    <div
+                      key={agent.agent_name}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '3px 0',
+                        fontFamily: 'monospace',
+                        fontSize: 10,
+                      }}
+                    >
+                      <span style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: isRunning ? '#4a4' : '#555',
+                        animation: isRunning ? 'pulse 1.5s infinite' : 'none',
+                      }} />
+                      <span style={{ color: '#888', width: 48 }}>{agent.agent_name}</span>
+                      <span style={{ color: '#666', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {agent.task_title?.slice(0, 30) || agent.task_id}
+                      </span>
+                      <span style={{ color: '#555' }}>{timeStr}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* MARKER_128.5B: Quick Add — with preset selector and Add & Run */}
             <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
               <input
@@ -646,11 +710,15 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
         </div>
       )}
 
-      {/* MARKER_128.7A: Toast animation keyframes */}
+      {/* MARKER_128.7A: Toast animation keyframes + MARKER_130.C18A: Agent pulse */}
       <style>{`
         @keyframes slideUp {
           from { transform: translateY(20px); opacity: 0; }
           to { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
         }
       `}</style>
     </FloatingWindow>
