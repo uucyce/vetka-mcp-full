@@ -328,3 +328,70 @@ class TestMaxTurnsUpdate:
         """MAX_FC_TURNS_DEFAULT should still be 5."""
         from src.tools.fc_loop import MAX_FC_TURNS_DEFAULT
         assert MAX_FC_TURNS_DEFAULT == 5
+
+
+# ── Phase 124.6 Tests: Improved Search Filters ──
+
+class TestImprovedSearchFilters:
+    """Tests for MARKER_124.6A: refined Qdrant search filters."""
+
+    def test_frontend_extensions_defined(self):
+        """Should have separate frontend extensions list."""
+        from src.tools.registry import VetkaSearchSemanticTool
+        tool = VetkaSearchSemanticTool()
+        assert hasattr(tool, '_FRONTEND_EXTENSIONS')
+        assert ".ts" in tool._FRONTEND_EXTENSIONS
+        assert ".tsx" in tool._FRONTEND_EXTENSIONS
+        assert ".py" not in tool._FRONTEND_EXTENSIONS
+
+    def test_skip_path_parts_defined(self):
+        """Should skip node_modules, __pycache__, etc."""
+        from src.tools.registry import VetkaSearchSemanticTool
+        tool = VetkaSearchSemanticTool()
+        assert hasattr(tool, '_SKIP_PATH_PARTS')
+        assert "node_modules" in tool._SKIP_PATH_PARTS
+        assert "__pycache__" in tool._SKIP_PATH_PARTS
+
+    def test_skip_names_extended(self):
+        """Should skip __init__.py, index.ts, index.js."""
+        from src.tools.registry import VetkaSearchSemanticTool
+        tool = VetkaSearchSemanticTool()
+        assert "__init__.py" in tool._SKIP_NAMES
+        assert "index.ts" in tool._SKIP_NAMES
+        assert "index.js" in tool._SKIP_NAMES
+
+    def test_two_pass_search_marker_in_code(self):
+        """MARKER_124.6A should exist in registry.py."""
+        import os
+        filepath = os.path.join(os.path.dirname(__file__), "..", "src", "tools", "registry.py")
+        source = open(filepath).read()
+        assert "MARKER_124.6A" in source
+
+    @pytest.mark.asyncio
+    async def test_code_only_filters_node_modules(self):
+        """Code-only search should not return node_modules paths."""
+        from src.tools.registry import VetkaSearchSemanticTool
+        tool = VetkaSearchSemanticTool()
+        results = await tool._search_code_only("main", 20)
+        for r in results:
+            assert "node_modules" not in r.get("path", ""), \
+                f"node_modules should be filtered: {r['path']}"
+
+    @pytest.mark.asyncio
+    async def test_code_only_filters_init_py(self):
+        """Code-only search should not return __init__.py files."""
+        from src.tools.registry import VetkaSearchSemanticTool
+        tool = VetkaSearchSemanticTool()
+        results = await tool._search_code_only("import", 20)
+        for r in results:
+            assert r.get("name") != "__init__.py", \
+                f"__init__.py should be filtered: {r['path']}"
+
+    @pytest.mark.asyncio
+    async def test_hybrid_search_no_init_files(self):
+        """Full hybrid search should not return __init__.py."""
+        from src.tools.registry import VetkaSearchSemanticTool
+        tool = VetkaSearchSemanticTool()
+        result = await tool.execute(query="store management", limit=10)
+        assert result.success
+        assert "__init__.py" not in result.result

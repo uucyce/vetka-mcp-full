@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T01:21:43.655774+00:00",
+  "last_updated": "2026-02-09T01:51:17.717254+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 124,
-    "subphase": "4",
-    "name": "Pipeline quality \u2014 SearchFiles REST API, FC recovery, coder prompt",
+    "subphase": "5",
+    "name": "Hybrid search + FC max_turns increase",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 124.4 DONE! Pipeline quality \u2014 SearchFiles REST API, FC recovery, coder prompt",
+    "headline": "Phase 124.5 DONE! Hybrid search + FC max_turns increase",
     "key_achievements": [
+      "[6b47d668] Phase 124.5: Phase 124.5: Hybrid search + FC max_turns increase",
       "[5e09a050] Phase 124.4: Phase 124.4: Pipeline quality \u2014 SearchFiles REST API, FC rec",
       "[99df4496] Phase 124.3: Phase 124.3E: Fix VetkaSearchSemanticTool \u2014 REST API + path ",
       "[b7e3685b] Phase 124.3: Phase 124.3: Fix test mocks \u2014 all 19 tests passing",
@@ -21,8 +22,7 @@
       "[06ae5438] Phase 124.2: Phase 124.2B: Fix crane \u2014 subtle Y+5, no tilt (was Y+15)",
       "[57dfcccb] Phase 124.2: Phase 124.2: Interactive task intake + heartbeat board routi",
       "[b84b6935] Phase 124.2: Phase 124.2B: Crane up \u2014 camera higher, object in lower thir",
-      "[76a6a716] Phase 124.2: Phase 124.2: Even wider camera zoom (medium: 70, far: 100)",
-      "[d823c4f9] Phase 124.2: Phase 124.2: Camera zoom distances for better overview"
+      "[76a6a716] Phase 124.2: Phase 124.2: Even wider camera zoom (medium: 70, far: 100)"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -30,12 +30,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2131,
+      "points": 2132,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2124,
+      "points": 2125,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "5e09a050",
+    "commit": "6b47d668",
     "dirty": true
   }
 }

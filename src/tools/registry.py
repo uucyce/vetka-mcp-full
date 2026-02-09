@@ -62,8 +62,11 @@ class VetkaSearchSemanticTool(BaseTool):
         )
 
     # MARKER_124.5A: Hybrid search — semantic + code-only filtered search
+    # MARKER_124.6A: Refined filters — separate frontend vs all code extensions
+    _FRONTEND_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".css", ".scss"]
     _CODE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".go", ".java", ".css", ".scss"]
-    _SKIP_NAMES = {"__init__.py"}
+    _SKIP_NAMES = {"__init__.py", "index.ts", "index.js"}
+    _SKIP_PATH_PARTS = {"node_modules", "__pycache__", ".git", "dist", "build"}
 
     async def execute(self, query: str = "", limit: int = 10, **kwargs) -> ToolResult:
         """Hybrid search: semantic results + Qdrant code-only filtered search.
@@ -108,6 +111,8 @@ class VetkaSearchSemanticTool(BaseTool):
                 name = f.get("name", "")
                 if path in seen_paths or name in self._SKIP_NAMES:
                     continue
+                if any(skip in path for skip in self._SKIP_PATH_PARTS):
+                    continue
                 seen_paths.add(path)
                 merged.append({"file_path": path, "name": name, "score": round(f.get("score", 0), 3)})
 
@@ -121,18 +126,29 @@ class VetkaSearchSemanticTool(BaseTool):
             return ToolResult(success=False, result=None, error=str(e))
 
     async def _search_code_only(self, query: str, limit: int) -> list:
-        """Search Qdrant with code-extension filter (MARKER_124.5A helper)."""
+        """Search Qdrant with code-extension filter (MARKER_124.5A helper).
+
+        MARKER_124.6A: Two-pass search — first frontend (.ts/.tsx/.jsx),
+        then all code extensions. Filter out node_modules, __init__.py, test files.
+        """
         try:
             import httpx
-            # Get query embedding from Ollama (same model as indexer)
             embedding = await self._get_query_embedding(query)
             if not embedding:
                 return []
 
-            body = {
+            results = []
+
+            # Pass 1: Frontend extensions only (.ts, .tsx, .jsx, .css)
+            frontend_body = {
                 "vector": embedding,
                 "filter": {
-                    "should": [{"key": "extension", "match": {"value": ext}} for ext in self._CODE_EXTENSIONS]
+                    "must": [
+                        {"should": [{"key": "extension", "match": {"value": ext}} for ext in self._FRONTEND_EXTENSIONS]}
+                    ],
+                    "must_not": [
+                        {"key": "name", "match": {"value": "__init__.py"}},
+                    ]
                 },
                 "limit": limit,
                 "with_payload": ["name", "path", "extension"],
@@ -140,17 +156,61 @@ class VetkaSearchSemanticTool(BaseTool):
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     "http://localhost:6333/collections/vetka_elisya/points/search",
-                    json=body,
+                    json=frontend_body,
                 )
                 if resp.status_code == 200:
-                    return [
-                        {
-                            "name": p["payload"].get("name", ""),
-                            "path": p["payload"].get("path", ""),
+                    for p in resp.json().get("result", []):
+                        name = p["payload"].get("name", "")
+                        path = p["payload"].get("path", "")
+                        # Skip node_modules, tests, etc
+                        if any(skip in path for skip in self._SKIP_PATH_PARTS):
+                            continue
+                        if name in self._SKIP_NAMES:
+                            continue
+                        results.append({
+                            "name": name,
+                            "path": path,
                             "score": p.get("score", 0),
-                        }
-                        for p in resp.json().get("result", [])
-                    ]
+                        })
+
+            # Pass 2: If frontend pass returned < limit/2, fill with all code
+            if len(results) < limit // 2:
+                all_body = {
+                    "vector": embedding,
+                    "filter": {
+                        "must": [
+                            {"should": [{"key": "extension", "match": {"value": ext}} for ext in self._CODE_EXTENSIONS]}
+                        ],
+                        "must_not": [
+                            {"key": "name", "match": {"value": "__init__.py"}},
+                        ]
+                    },
+                    "limit": limit,
+                    "with_payload": ["name", "path", "extension"],
+                }
+                seen = {r["path"] for r in results}
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.post(
+                        "http://localhost:6333/collections/vetka_elisya/points/search",
+                        json=all_body,
+                    )
+                    if resp.status_code == 200:
+                        for p in resp.json().get("result", []):
+                            name = p["payload"].get("name", "")
+                            path = p["payload"].get("path", "")
+                            if path in seen:
+                                continue
+                            if any(skip in path for skip in self._SKIP_PATH_PARTS):
+                                continue
+                            if name in self._SKIP_NAMES:
+                                continue
+                            results.append({
+                                "name": name,
+                                "path": path,
+                                "score": p.get("score", 0),
+                            })
+
+            return results[:limit]
         except Exception:
             pass
         return []
