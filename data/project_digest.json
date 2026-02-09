@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T17:05:02.394480+00:00",
+  "last_updated": "2026-02-09T18:25:59.823123+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 127,
@@ -40,9 +40,9 @@
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "error: HTTPConnectionPool(host='127.0.0.1', port=5001): R",
+      "status": "running",
       "port": 5001,
-      "tools_count": 0
+      "tools_count": 15
     },
     "api_keys": {
       "total": 30,
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "c5543aa0",
+    "commit": "aaeafe8c",
     "dirty": true
   }
 }
