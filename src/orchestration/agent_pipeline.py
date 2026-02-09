@@ -360,11 +360,12 @@ Respond with implementation plan or code."""
             return None
 
     async def _scout_prefetch(self, task: str) -> Optional[str]:
-        """Pre-fetch relevant files + markers via VetkaSearchCodeTool.
+        """Pre-fetch relevant files + markers + code snippets via VetkaSearchCodeTool.
 
         MARKER_124.7B: Extracts keywords, runs ripgrep search.
-        MARKER_124.8C: Also scans found code files for existing MARKER_ tags
-        and reports them to Scout LLM for structured marker_map output.
+        MARKER_124.8C: Scans found code files for existing MARKER_ tags.
+        MARKER_124.9A: Reads file snippets with line numbers so Scout can
+        place marker_map entries at exact line positions.
         """
         try:
             from src.tools.registry import VetkaSearchCodeTool
@@ -402,14 +403,21 @@ Respond with implementation plan or code."""
             # MARKER_124.8C: Scan markers in found code files
             marker_section = self._scan_markers_in_files(code_file_paths[:5])
 
+            # MARKER_124.9A: Read file snippets with line numbers for marker placement
+            snippet_section = self._read_file_snippets(code_file_paths[:3], max_lines=60)
+
             output = "\n".join(results_text[:10])
             if marker_section:
                 output += f"\n\n--- Existing markers in these files ---\n{marker_section}"
-                output += "\n\nIMPORTANT: Include these markers in your relevant_files and patterns_found. " \
-                          "The coder can use vetka_read_file(path, marker='MARKER_XXX') to read only the relevant code block."
+            if snippet_section:
+                output += f"\n\n--- Code snippets (with line numbers for marker_map placement) ---\n{snippet_section}"
+                output += "\n\nIMPORTANT: Use these line numbers to create your marker_map. " \
+                          "Place markers at exact lines where the Coder should INSERT or MODIFY code. " \
+                          "The Coder will use vetka_read_file(path, marker='MARKER_SCOUT_X') to jump straight to those locations."
 
             logger.info(f"[Pipeline] Scout pre-fetch: {len(results_text)} files, "
-                        f"{len(marker_section.splitlines()) if marker_section else 0} markers ({keywords})")
+                        f"{len(marker_section.splitlines()) if marker_section else 0} markers, "
+                        f"{len(snippet_section.splitlines()) if snippet_section else 0} snippet lines ({keywords})")
             return output
         except Exception as e:
             logger.debug(f"[Pipeline] Scout pre-fetch failed (non-fatal): {e}")
@@ -445,6 +453,37 @@ Respond with implementation plan or code."""
                 continue
 
         return "\n".join(marker_lines[:20]) if marker_lines else ""
+
+    @staticmethod
+    def _read_file_snippets(file_paths: list, max_lines: int = 60) -> str:
+        """Read first N lines of code files with line numbers for Scout.
+
+        MARKER_124.9A: Scout needs to see actual code with line numbers
+        to place marker_map entries at exact positions. Returns numbered
+        snippets of the most relevant files (max 3 files, max_lines each).
+        """
+        from pathlib import Path
+
+        snippets = []
+        for fpath in file_paths[:3]:
+            p = Path(fpath)
+            if not p.exists():
+                continue
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+                lines = text.splitlines()
+                total = len(lines)
+                show_lines = min(max_lines, total)
+                numbered = []
+                for i in range(show_lines):
+                    numbered.append(f"  {i+1:4d} | {lines[i]}")
+                snippet = "\n".join(numbered)
+                rel_name = p.name
+                snippets.append(f"[{rel_name}] ({total} lines total, showing 1-{show_lines})\n{snippet}")
+            except Exception:
+                continue
+
+        return "\n\n".join(snippets) if snippets else ""
 
     @staticmethod
     def _extract_search_keywords(task: str) -> list:
@@ -2144,6 +2183,19 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 scout_str = f"Project files: {files}"
                 if patterns:
                     scout_str += f"\nPatterns to follow: {patterns}"
+                # MARKER_124.9B: Format marker_map as rails for coder
+                marker_map = scout.get("marker_map", [])
+                if marker_map and isinstance(marker_map, list):
+                    scout_str += "\n\n🚂 MARKER RAILS (follow these like a GPS):"
+                    for m in marker_map[:5]:
+                        if isinstance(m, dict):
+                            f_path = m.get("file", "?")
+                            line = m.get("line", "?")
+                            action = m.get("action", "MODIFY")
+                            mid = m.get("marker_id", "MARKER_SCOUT_X")
+                            desc = m.get("description", "")
+                            scout_str += f"\n  📍 {mid}: {f_path}:{line} [{action}] — {desc}"
+                    scout_str += "\n\nUse vetka_read_file(file_path, marker='MARKER_SCOUT_X') to jump to each location."
                 context_parts.append(f"Scout report:\n{scout_str}")
 
         context_str = "\n\n".join(context_parts) if context_parts else "No additional context."

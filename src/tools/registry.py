@@ -545,6 +545,11 @@ class VetkaReadFileTool(BaseTool):
 
         MARKER_124.8B: Instead of reading 500+ lines, reads ±20 lines
         around the marker. Massive token savings for large files.
+
+        MARKER_124.9C: Also supports Scout virtual markers (MARKER_SCOUT_X)
+        that aren't written to disk. If marker not found in file text,
+        tries to extract line number from marker format (e.g., 'line:42')
+        or uses a fallback line param passed as 'MARKER_SCOUT_1:42'.
         """
         from pathlib import Path
 
@@ -562,21 +567,35 @@ class VetkaReadFileTool(BaseTool):
 
             # Find marker line(s)
             marker_lines = []
+            # MARKER_124.9C: Support "MARKER_SCOUT_1:42" format (marker_id:line_number)
+            marker_text = marker
+            forced_line = None
+            if ":" in marker and marker.split(":")[-1].isdigit():
+                parts = marker.rsplit(":", 1)
+                marker_text = parts[0]
+                forced_line = int(parts[1]) - 1  # 0-indexed
+
             for i, line in enumerate(lines):
-                if marker in line:
+                if marker_text in line:
                     marker_lines.append(i)
+
+            # MARKER_124.9C: Virtual marker fallback — use forced line number
+            if not marker_lines and forced_line is not None:
+                if 0 <= forced_line < total:
+                    marker_lines = [forced_line]
 
             if not marker_lines:
                 return ToolResult(
                     success=False, result=None,
-                    error=f"Marker '{marker}' not found in {file_path} ({total} lines)"
+                    error=f"Marker '{marker_text}' not found in {file_path} ({total} lines). "
+                          f"Tip: append line number like 'MARKER_SCOUT_1:42' to jump to line 42."
                 )
 
             # Check for _START/_END block
             start_line = marker_lines[0]
             end_line = start_line
-            end_marker = marker.replace("_START", "_END")
-            if "_START" in marker:
+            end_marker = marker_text.replace("_START", "_END")
+            if "_START" in marker_text:
                 for i, line in enumerate(lines[start_line:], start_line):
                     if end_marker in line:
                         end_line = i
@@ -595,12 +614,14 @@ class VetkaReadFileTool(BaseTool):
             # Format with line numbers
             snippet_lines = []
             for i in range(from_line, to_line):
-                prefix = ">>>" if marker in lines[i] else "   "
+                # MARKER_124.9C: For virtual markers (forced_line), highlight the target line
+                is_marker_line = (marker_text in lines[i]) or (forced_line is not None and i == forced_line)
+                prefix = ">>>" if is_marker_line else "   "
                 snippet_lines.append(f"{prefix} {i+1:4d} | {lines[i]}")
 
             snippet = "\n".join(snippet_lines)
             formatted = (
-                f"File: {file_path} (focused on {marker}, lines {from_line+1}-{to_line}, "
+                f"File: {file_path} (focused on {marker_text}, lines {from_line+1}-{to_line}, "
                 f"total {total} lines)\n\n{snippet}"
             )
 
