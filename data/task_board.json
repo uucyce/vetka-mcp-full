@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0",
     "phase": "121",
-    "updated": "2026-02-09T18:01:50.080017"
+    "updated": "2026-02-09T18:12:57.437202"
   },
   "tasks": {
     "tb_1770577538_1": {
@@ -105,8 +105,8 @@
       "complexity": "medium",
       "phase_type": "fix",
       "preset": null,
-      "assigned_tier": null,
-      "status": "pending",
+      "assigned_tier": "dragon_silver",
+      "status": "done",
       "source": "dragon_todo",
       "tags": [
         "frontend",
@@ -115,10 +115,24 @@
       ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157742",
-      "started_at": null,
-      "completed_at": null,
-      "pipeline_task_id": null,
-      "result_summary": null
+      "started_at": "2026-02-09T18:06:16.814292",
+      "completed_at": "2026-02-09T18:12:57.433389",
+      "pipeline_task_id": "task_1770649576",
+      "result_summary": "{'plan': {'subtasks': [{'description': 'Enable fileDropEnabled=true in Tauri configuration (tauri.conf.json) to allow file drops in the webview', 'needs_research': False, 'marker': 'MARKER_102.1'}, {'description': 'In DropZoneRouter.tsx, add preventDefault() handlers for dragover, dragenter, and drop events to enable HTML5 drag and drop functionality', 'needs_research': False, 'marker': 'MARKER_102.2'}, {'description': 'Implement file handling logic to access dropped items via e.dataTransfer.fil",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "fix",
+        "subtasks_total": 4,
+        "subtasks_completed": 4,
+        "success": true,
+        "llm_calls": 7,
+        "tokens_in": 7100,
+        "tokens_out": 6709,
+        "verifier_avg_confidence": 0,
+        "completed_at": 1770649977.434016,
+        "duration_s": 400.6
+      }
     },
     "tb_1770577538_6": {
       "id": "tb_1770577538_6",
@@ -129,7 +143,7 @@
       "phase_type": "build",
       "preset": null,
       "assigned_tier": null,
-      "status": "pending",
+      "status": "running",
       "source": "dragon_todo",
       "tags": [
         "chat",
@@ -138,7 +152,7 @@
       ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157815",
-      "started_at": null,
+      "started_at": "2026-02-09T18:12:57.437198",
       "completed_at": null,
       "pipeline_task_id": null,
       "result_summary": null
@@ -333,6 +347,50 @@
       ],
       "dependencies": [],
       "created_at": "2026-02-09T18:01:50.079661",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null
+    },
+    "tb_1770649576_1": {
+      "id": "tb_1770649576_1",
+      "title": "broken button",
+      "description": "broken button",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "heartbeat_fix",
+      "tags": [
+        "fix"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T18:06:16.813970",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null
+    },
+    "tb_1770649977_2": {
+      "id": "tb_1770649977_2",
+      "title": "broken button",
+      "description": "broken button",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "heartbeat_fix",
+      "tags": [
+        "fix"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T18:12:57.436922",
       "started_at": null,
       "completed_at": null,
       "pipeline_task_id": null,

@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T15:15:34.755179+00:00",
+  "last_updated": "2026-02-09T15:17:35.141227+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 126,
-    "subphase": "10",
-    "name": "Fix DELETE /keys/{provider}/{key_id} endpoint mismatch",
+    "subphase": "5",
+    "name": "Pipeline stop/cancel tests + Task Board multi-agent stubs",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 126.10 DONE! Fix DELETE /keys/{provider}/{key_id} endpoint mismatch",
+    "headline": "Phase 126.5 DONE! Pipeline stop/cancel tests + Task Board multi-agent stubs",
     "key_achievements": [
+      "[4d2d2149] Phase 126.5: Phase 126.5: Pipeline stop/cancel tests + Task Board multi-a",
       "[f4f5564e] Phase 126.10: Phase 126.10: Fix DELETE /keys/{provider}/{key_id}...",
       "[5c17de8a] Phase 126.3: Phase 126.3: Key sync + Balance scroll\n\nMARKER_126...",
       "[1fdab83e] Phase 126.2: Phase 126.2: Nolan style upgrade \u2014 no emoji, glassmorphism, ",
@@ -21,8 +22,7 @@
       "[9af5b810] Phase 125.0: Phase 125.0: Role Clarity + Verifier Fixes \u2014 Researcher=web(",
       "[108d0ec0] Phase 124.9: Phase 124.9: Scout Places Markers \u2014 virtual marker_map as GP",
       "[829c8281] Phase 124.8: Phase 124.8: Marker-aware search + focused reading \u2014 Scout\u2192A",
-      "[0653771e] Phase 124.7: Phase 124.7: VetkaSearchCodeTool + Scout pre-fetch via ripgr",
-      "[cf5d07b5] Phase 124.6: Phase 124.6: Improved search filters + E2E Dragon Silver val"
+      "[0653771e] Phase 124.7: Phase 124.7: VetkaSearchCodeTool + Scout pre-fetch via ripgr"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "f4f5564e",
+    "commit": "4d2d2149",
     "dirty": true
   }
 }

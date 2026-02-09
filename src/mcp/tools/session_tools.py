@@ -310,6 +310,16 @@ class SessionInitTool(BaseMCPTool):
             context["persisted"] = False
             context["persist_error"] = str(e)
 
+        # TODO MARKER_126.11D: Include claimable tasks from Task Board
+        # When implemented, add:
+        # try:
+        #     from src.orchestration.task_board import get_task_board
+        #     board = get_task_board()
+        #     context["available_tasks"] = board.get_claimable_tasks(limit=5)
+        #     context["my_claimed_tasks"] = board.get_claimed_by(session_id)
+        # except Exception:
+        #     pass
+
         return {
             "success": True,
             "result": context

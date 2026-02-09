@@ -108,68 +108,6 @@
       },
       "messages": [
         {
-          "id": "0252cf6b-87eb-4bd1-b88d-3dfd4d0f1430",
-          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
-          "sender_id": "@grok-4.1-fast",
-          "content": "Error in Dev LLM/Tool execution: OPENROUTER",
-          "mentions": [],
-          "message_type": "response",
-          "metadata": {
-            "in_reply_to": "4c23fe82-fa95-441d-a518-a02222e8969a"
-          },
-          "created_at": "2026-01-30T15:14:07.342378"
-        },
-        {
-          "id": "5720b941-52e1-47ff-8162-49138ec37e98",
-          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
-          "sender_id": "@claude_mcp",
-          "content": "🔧 **vetka_spawn_pipeline** `req-bcce9dd5`\n```\n{\"task\": \"Research voice assistant integration for VETKA on MacBook M4 24GB RAM. Compare two models: 1) personaplex-7b-v1 - fast voice model, 2) Qwen3-TTS - Alibaba's text-to-speech. Analyze: a) Which...\n```",
-          "mentions": [],
-          "message_type": "chat",
-          "metadata": {
-            "mcp_agent": "claude_mcp",
-            "icon": "bot",
-            "role": "MCP Agent"
-          },
-          "created_at": "2026-01-30T15:16:45.753075"
-        },
-        {
-          "id": "74189f12-bd1d-443c-89f9-cb53e027c20c",
-          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
-          "sender_id": "user",
-          "content": "@Researcher проверка связи",
-          "mentions": [
-            "Researcher"
-          ],
-          "message_type": "chat",
-          "metadata": {},
-          "created_at": "2026-01-30T15:24:42.091274"
-        },
-        {
-          "id": "908b811b-385b-4345-9aa8-0a374e6b1876",
-          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
-          "sender_id": "@Researcher",
-          "content": "Error in Dev LLM/Tool execution: OPENROUTER",
-          "mentions": [],
-          "message_type": "response",
-          "metadata": {
-            "in_reply_to": "74189f12-bd1d-443c-89f9-cb53e027c20c"
-          },
-          "created_at": "2026-01-30T15:24:42.802144"
-        },
-        {
-          "id": "30d74ee1-5f34-4a21-83d2-df0e6859c62d",
-          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
-          "sender_id": "user",
-          "content": "@Researcher коротко, проверка связи, привет:)",
-          "mentions": [
-            "Researcher"
-          ],
-          "message_type": "chat",
-          "metadata": {},
-          "created_at": "2026-01-30T15:55:54.684539"
-        },
-        {
           "id": "49f753a5-2cc4-448d-99b5-d47a5d96a455",
           "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
           "sender_id": "@Researcher",
@@ -14211,13 +14149,83 @@
             "role": "MCP Agent"
           },
           "created_at": "2026-02-09T18:06:05.000451"
+        },
+        {
+          "id": "708a32d0-d966-4f1e-886c-1c9bab40db8b",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_git_status** `req-c025b6db`\n```\n{}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-09T18:06:10.230186"
+        },
+        {
+          "id": "029da3fe-9b34-4587-9fa2-2d2691e7b606",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_session_init** `req-aff63ffb`\n```\n{}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-09T18:10:09.764778"
+        },
+        {
+          "id": "d270b1ae-52f5-45c8-9a1d-ecbd9b06808a",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "✅ **vetka_session_init** done (39ms)",
+          "mentions": [],
+          "message_type": "response",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-09T18:10:09.800695"
+        },
+        {
+          "id": "1bfdbd31-489d-4f34-a134-b9fa82451c90",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_task_board** `req-dcd66270`\n```\n{\"action\": \"summary\"}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-09T18:15:59.212936"
+        },
+        {
+          "id": "16b4ed55-4847-4fe5-9c39-b245cea6a1f8",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_task_board** `req-56aeafc0`\n```\n{\"action\": \"list\"}\n```",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-09T18:15:59.231154"
         }
       ],
       "shared_context": {},
       "project_id": null,
       "created_at": "2026-01-23T04:07:54.662090",
-      "last_activity": "2026-02-09T18:06:05.000468"
+      "last_activity": "2026-02-09T18:15:59.231159"
     }
   },
-  "saved_at": "2026-02-09T18:06:05.000967"
+  "saved_at": "2026-02-09T18:15:59.231750"
 }

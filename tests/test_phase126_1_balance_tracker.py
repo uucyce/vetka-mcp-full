@@ -273,6 +273,32 @@ class TestPhase126_10_DeleteEndpoint:
         assert "/keys/{provider}/{key_id}" in source
 
 
+# ── Phase 126.11: Multi-Agent Task Board ──
+
+class TestPhase126_11_MultiAgentTaskBoard:
+    """Tests for MARKER_126.11: Multi-agent Task Board support markers."""
+
+    def test_marker_126_11a_in_task_board(self):
+        """MARKER_126.11A: Task Board should have multi-agent markers."""
+        source = _read_source("src/orchestration/task_board.py")
+        assert "MARKER_126.11A" in source
+
+    def test_marker_126_11b_in_task_board(self):
+        """MARKER_126.11B: Claim/release methods markers."""
+        source = _read_source("src/orchestration/task_board.py")
+        assert "MARKER_126.11B" in source
+
+    def test_marker_126_11c_in_mcp_tools(self):
+        """MARKER_126.11C: MCP tools should have claim tool marker."""
+        source = _read_source("src/mcp/tools/task_board_tools.py")
+        assert "MARKER_126.11C" in source
+
+    def test_marker_126_11d_in_session_init(self):
+        """MARKER_126.11D: session_init should have available_tasks marker."""
+        source = _read_source("src/mcp/tools/session_tools.py")
+        assert "MARKER_126.11D" in source
+
+
 # ── Regression Tests ──
 
 class TestRegressionPhase126_0:
