@@ -360,10 +360,11 @@ Respond with implementation plan or code."""
             return None
 
     async def _scout_prefetch(self, task: str) -> Optional[str]:
-        """Pre-fetch relevant files via VetkaSearchCodeTool (ripgrep + Qdrant name).
+        """Pre-fetch relevant files + markers via VetkaSearchCodeTool.
 
-        MARKER_124.7B: Extracts keywords from task, runs fast code search,
-        returns formatted file list for Scout LLM context injection.
+        MARKER_124.7B: Extracts keywords, runs ripgrep search.
+        MARKER_124.8C: Also scans found code files for existing MARKER_ tags
+        and reports them to Scout LLM for structured marker_map output.
         """
         try:
             from src.tools.registry import VetkaSearchCodeTool
@@ -375,12 +376,12 @@ Respond with implementation plan or code."""
                 return None
 
             all_paths = set()
+            code_file_paths = []  # Absolute paths for marker scanning
             results_text = []
 
             for kw in keywords[:3]:  # Max 3 searches to keep fast
                 result = await code_tool.execute(query=kw, limit=5)
                 if result.success and result.result:
-                    # Extract file paths from result text
                     for line in str(result.result).split("\n"):
                         line = line.strip()
                         if line and ("/" in line) and not line.startswith("Code search"):
@@ -388,15 +389,62 @@ Respond with implementation plan or code."""
                             if path and path not in all_paths:
                                 all_paths.add(path)
                                 results_text.append(line)
+                                # Collect code file paths for marker scanning
+                                if any(path.endswith(ext) for ext in ('.ts', '.tsx', '.py', '.rs', '.jsx', '.js')):
+                                    abs_path = path
+                                    if not path.startswith("/"):
+                                        abs_path = f"{code_tool._PROJECT_ROOT}/{path}"
+                                    code_file_paths.append(abs_path)
 
             if not results_text:
                 return None
 
-            logger.info(f"[Pipeline] Scout pre-fetch: {len(results_text)} files via ripgrep ({keywords})")
-            return "\n".join(results_text[:10])
+            # MARKER_124.8C: Scan markers in found code files
+            marker_section = self._scan_markers_in_files(code_file_paths[:5])
+
+            output = "\n".join(results_text[:10])
+            if marker_section:
+                output += f"\n\n--- Existing markers in these files ---\n{marker_section}"
+                output += "\n\nIMPORTANT: Include these markers in your relevant_files and patterns_found. " \
+                          "The coder can use vetka_read_file(path, marker='MARKER_XXX') to read only the relevant code block."
+
+            logger.info(f"[Pipeline] Scout pre-fetch: {len(results_text)} files, "
+                        f"{len(marker_section.splitlines()) if marker_section else 0} markers ({keywords})")
+            return output
         except Exception as e:
             logger.debug(f"[Pipeline] Scout pre-fetch failed (non-fatal): {e}")
             return None
+
+    @staticmethod
+    def _scan_markers_in_files(file_paths: list) -> str:
+        """Scan code files for MARKER_ tags and return summary.
+
+        MARKER_124.8C: Reads first 1000 lines of each file, finds MARKER_
+        comments, returns formatted list for Scout LLM context.
+        """
+        from pathlib import Path
+        import re
+
+        marker_lines = []
+        for fpath in file_paths:
+            p = Path(fpath)
+            if not p.exists():
+                continue
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+                lines = text.splitlines()[:1000]
+                name = p.name
+                for i, line in enumerate(lines):
+                    # Find MARKER_ tags (both // and # comment styles)
+                    match = re.search(r'(?://|#)\s*(MARKER_\S+)', line)
+                    if match:
+                        marker = match.group(1).rstrip(":")
+                        desc = line.strip()[:80]
+                        marker_lines.append(f"  {name}:{i+1} — {marker} — {desc}")
+            except Exception:
+                continue
+
+        return "\n".join(marker_lines[:20]) if marker_lines else ""
 
     @staticmethod
     def _extract_search_keywords(task: str) -> list:

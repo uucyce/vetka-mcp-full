@@ -60,13 +60,17 @@ CODER_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "vetka_read_file",
-            "description": "Read file content from VETKA project. Returns full file content with line numbers.",
+            "description": "Read file content. Pass 'marker' to read only ±20 lines around a MARKER_ tag (saves tokens for large files).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
                         "description": "Path to the file to read (relative to project root)"
+                    },
+                    "marker": {
+                        "type": "string",
+                        "description": "Optional MARKER_ tag (e.g., 'MARKER_108_3'). Returns only ±20 lines around it."
                     }
                 },
                 "required": ["file_path"]

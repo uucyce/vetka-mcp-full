@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T02:06:39.062550+00:00",
+  "last_updated": "2026-02-09T02:21:06.517920+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 124,
-    "subphase": "6",
-    "name": "Improved search filters + E2E Dragon Silver validated",
+    "subphase": "7",
+    "name": "VetkaSearchCodeTool + Scout pre-fetch via ripgrep",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 124.6 DONE! Improved search filters + E2E Dragon Silver validated",
+    "headline": "Phase 124.7 DONE! VetkaSearchCodeTool + Scout pre-fetch via ripgrep",
     "key_achievements": [
+      "[0653771e] Phase 124.7: Phase 124.7: VetkaSearchCodeTool + Scout pre-fetch via ripgr",
       "[cf5d07b5] Phase 124.6: Phase 124.6: Improved search filters + E2E Dragon Silver val",
       "[6b47d668] Phase 124.5: Phase 124.5: Hybrid search + FC max_turns increase",
       "[5e09a050] Phase 124.4: Phase 124.4: Pipeline quality \u2014 SearchFiles REST API, FC rec",
@@ -21,8 +22,7 @@
       "[0c443055] Phase 125: Phase 125: United Coordination \u2014 Research docs\n\nCr...",
       "[91847160] Phase 124.3: Phase 124.3: Fix glow timing \u2014 emit AFTER node_added",
       "[06ae5438] Phase 124.2: Phase 124.2B: Fix crane \u2014 subtle Y+5, no tilt (was Y+15)",
-      "[57dfcccb] Phase 124.2: Phase 124.2: Interactive task intake + heartbeat board routi",
-      "[b84b6935] Phase 124.2: Phase 124.2B: Crane up \u2014 camera higher, object in lower thir"
+      "[57dfcccb] Phase 124.2: Phase 124.2: Interactive task intake + heartbeat board routi"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "cf5d07b5",
+    "commit": "0653771e",
     "dirty": true
   }
 }

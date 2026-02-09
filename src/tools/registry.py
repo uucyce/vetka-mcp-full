@@ -460,7 +460,13 @@ class VetkaReadFileTool(BaseTool):
     """
     Read file content from VETKA project.
     Wraps MCP ReadFileTool for internal ToolRegistry.
+
+    MARKER_124.8B: Added 'marker' parameter — reads only ±20 lines around
+    a specific MARKER_ tag instead of the full file. Saves tokens for large files.
     """
+
+    _PROJECT_ROOT = "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03"
+    _MARKER_CONTEXT_LINES = 20  # Lines above and below marker to include
 
     def __init__(self):
         try:
@@ -473,13 +479,21 @@ class VetkaReadFileTool(BaseTool):
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="vetka_read_file",
-            description="Read file content from VETKA project. Returns full file content with line numbers.",
+            description=(
+                "Read file content from VETKA project. "
+                "Optionally pass 'marker' to read only the code block around a specific MARKER_ tag "
+                "(saves tokens for large files)."
+            ),
             parameters={
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
                         "description": "Path to the file to read (relative to project root)"
+                    },
+                    "marker": {
+                        "type": "string",
+                        "description": "Optional MARKER_ tag to focus on (e.g., 'MARKER_108_3'). Returns only ±20 lines around it."
                     }
                 },
                 "required": ["file_path"]
@@ -488,12 +502,16 @@ class VetkaReadFileTool(BaseTool):
             needs_user_approval=False
         )
 
-    async def execute(self, file_path: str = "", **kwargs) -> ToolResult:
+    async def execute(self, file_path: str = "", marker: str = "", **kwargs) -> ToolResult:
         try:
             if not self._tool:
                 return ToolResult(success=False, result=None, error="ReadFileTool not available")
 
-            # Map FC loop's "file_path" to MCP tool's "path"
+            # MARKER_124.8B: If marker specified, do focused read
+            if marker:
+                return await self._read_marker_focused(file_path, marker)
+
+            # Normal full-file read
             arguments = {"path": file_path, "max_lines": 500}
 
             error = self._tool.validate_arguments(arguments)
@@ -517,6 +535,74 @@ class VetkaReadFileTool(BaseTool):
             if truncated:
                 formatted += ", truncated"
             formatted += f")\n\n{content}"
+
+            return ToolResult(success=True, result=formatted)
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+
+    async def _read_marker_focused(self, file_path: str, marker: str) -> ToolResult:
+        """Read only the code block around a specific MARKER_ tag.
+
+        MARKER_124.8B: Instead of reading 500+ lines, reads ±20 lines
+        around the marker. Massive token savings for large files.
+        """
+        from pathlib import Path
+
+        # Resolve path
+        p = Path(file_path)
+        if not p.is_absolute():
+            p = Path(self._PROJECT_ROOT) / p
+
+        if not p.exists():
+            return ToolResult(success=False, result=None, error=f"File not found: {file_path}")
+
+        try:
+            lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+            total = len(lines)
+
+            # Find marker line(s)
+            marker_lines = []
+            for i, line in enumerate(lines):
+                if marker in line:
+                    marker_lines.append(i)
+
+            if not marker_lines:
+                return ToolResult(
+                    success=False, result=None,
+                    error=f"Marker '{marker}' not found in {file_path} ({total} lines)"
+                )
+
+            # Check for _START/_END block
+            start_line = marker_lines[0]
+            end_line = start_line
+            end_marker = marker.replace("_START", "_END")
+            if "_START" in marker:
+                for i, line in enumerate(lines[start_line:], start_line):
+                    if end_marker in line:
+                        end_line = i
+                        break
+
+            # If no block markers, use context window
+            if start_line == end_line:
+                ctx = self._MARKER_CONTEXT_LINES
+                from_line = max(0, start_line - ctx)
+                to_line = min(total, start_line + ctx + 1)
+            else:
+                # Block markers: include some context before/after
+                from_line = max(0, start_line - 3)
+                to_line = min(total, end_line + 4)
+
+            # Format with line numbers
+            snippet_lines = []
+            for i in range(from_line, to_line):
+                prefix = ">>>" if marker in lines[i] else "   "
+                snippet_lines.append(f"{prefix} {i+1:4d} | {lines[i]}")
+
+            snippet = "\n".join(snippet_lines)
+            formatted = (
+                f"File: {file_path} (focused on {marker}, lines {from_line+1}-{to_line}, "
+                f"total {total} lines)\n\n{snippet}"
+            )
 
             return ToolResult(success=True, result=formatted)
         except Exception as e:
@@ -747,10 +833,14 @@ class VetkaSearchCodeTool(BaseTool):
             for r in top:
                 rel_path = r["path"].replace(self._PROJECT_ROOT + "/", "")
                 match_info = r.get("match", "")
+                context = r.get("context", "")
                 if match_info:
                     formatted += f"\n  {rel_path} — {match_info}"
                 else:
                     formatted += f"\n  {rel_path}"
+                # MARKER_124.8A: Include code context for marker searches
+                if context:
+                    formatted += f"\n    ---\n    {context}\n    ---"
 
             return ToolResult(success=True, result=formatted)
         except Exception as e:
@@ -799,12 +889,22 @@ class VetkaSearchCodeTool(BaseTool):
         return results
 
     async def _search_by_ripgrep(self, query: str, file_type: str, limit: int) -> list:
-        """Search file contents using ripgrep subprocess."""
+        """Search file contents using ripgrep subprocess.
+
+        MARKER_124.8A: If query looks like a MARKER_, use context mode (-C 5)
+        to return surrounding code lines for precise location.
+        """
         import asyncio
 
+        is_marker_query = query.startswith("MARKER_")
         results = []
         try:
-            cmd = ["rg", "--files-with-matches", "--max-count", "1", "-l"]
+            if is_marker_query:
+                # Marker search: return file:line + context
+                cmd = ["rg", "-n", "-C", "5", "--max-count", "1"]
+            else:
+                # Normal search: just file paths
+                cmd = ["rg", "--files-with-matches", "--max-count", "1", "-l"]
 
             # Add file type filter
             if file_type:
@@ -826,20 +926,74 @@ class VetkaSearchCodeTool(BaseTool):
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
 
             if stdout:
-                lines = stdout.decode().strip().split("\n")
-                for line in lines[:limit]:
-                    path = line.strip()
-                    if not path:
-                        continue
-                    name = path.split("/")[-1]
-                    results.append({
-                        "path": path,
-                        "name": name,
-                        "match": f"content: '{query}'",
-                    })
+                output = stdout.decode().strip()
+                if is_marker_query:
+                    # Parse rg context output: group by file
+                    results = self._parse_marker_context(output, query, limit)
+                else:
+                    lines = output.split("\n")
+                    for line in lines[:limit]:
+                        path = line.strip()
+                        if not path:
+                            continue
+                        name = path.split("/")[-1]
+                        results.append({
+                            "path": path,
+                            "name": name,
+                            "match": f"content: '{query}'",
+                        })
         except Exception:
             pass
         return results
+
+    @staticmethod
+    def _parse_marker_context(output: str, query: str, limit: int) -> list:
+        """Parse ripgrep context output for marker searches.
+
+        MARKER_124.8A: Groups ripgrep -C output by file, extracts
+        file path + line number + surrounding code context.
+        """
+        results = []
+        current_file = None
+        context_lines = []
+
+        for line in output.split("\n"):
+            # rg context format: /path/to/file.ts-42-  code line
+            # or: /path/to/file.ts:42:  matched line
+            if ":" in line or "-" in line:
+                # Extract file path from rg output
+                for sep in [":", "-"]:
+                    parts = line.split(sep, 2)
+                    if len(parts) >= 3 and "/" in parts[0]:
+                        filepath = parts[0]
+                        if filepath != current_file:
+                            # Save previous file's context
+                            if current_file and context_lines:
+                                name = current_file.split("/")[-1]
+                                context = "\n".join(context_lines[-15:])  # Max 15 lines
+                                results.append({
+                                    "path": current_file,
+                                    "name": name,
+                                    "match": f"marker: {query}",
+                                    "context": context,
+                                })
+                            current_file = filepath
+                            context_lines = []
+                        context_lines.append(line)
+                        break
+
+        # Save last file
+        if current_file and context_lines:
+            name = current_file.split("/")[-1]
+            context = "\n".join(context_lines[-15:])
+            results.append({
+                "path": current_file,
+                "name": name,
+                "match": f"marker: {query}",
+                "context": context,
+            })
+
+        return results[:limit]
 
 # MARKER_124.7_END
 
