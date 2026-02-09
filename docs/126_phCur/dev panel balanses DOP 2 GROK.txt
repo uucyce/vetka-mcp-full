@@ -1,0 +1,126 @@
+**Отличный и очень правильный вопрос.**
+
+Да, **токены мы можем отслеживать почти у всех провайдеров**, даже если у них нет публичного REST API для проверки баланса.
+
+### Что мы можем и чего не можем:
+
+| Провайдер       | Можно точно считать токены? | Можно получить реальный баланс? | Комментарий |
+|-----------------|-----------------------------|----------------------------------|-----------|
+| **xAI (Grok)**  | Да                          | Частично (через usage)           | Возвращает usage |
+| **OpenAI**      | Да                          | Да (через /v1/dashboard/billing) | Отлично |
+| **Anthropic**   | Да                          | Нет (только usage)               | Только usage |
+| **POLZA AI**    | Да                          | Возможно (зависит от их API)     | Нужно проверить |
+| **POE**         | Да                          | Нет                              | Только usage |
+| **nanoGPT**     | Да                          | Нет                              | Только usage |
+| **Gemini**      | Да                          | Нет                              | Только usage |
+| **DeepSeek**    | Да                          | Нет                              | Только usage |
+| **Qwen / GLM**  | Да                          | Нет                              | Только usage |
+
+**Вывод:**  
+**Токены** — можно считать у **всех** провайдеров.  
+**Реальный денежный баланс** — только у некоторых (OpenAI, частично xAI/OpenRouter).
+
+### Лучшее решение: Двухуровневый трекинг
+
+1. **Точный расход токенов** — из ответа модели (самое надёжное)
+2. **Примерная стоимость** — считаем по известным ценам провайдера
+3. **Реальный баланс** — где возможно (OpenAI, OpenRouter и т.д.)
+
+---
+
+### Готовый код (обновление BalanceTracker)
+
+Обнови файл `src/orchestration/balance_tracker.py`:
+
+```python
+# Добавь в начало файла (после импортов)
+PRICE_PER_MILLION = {
+    "xai": {"input": 5.0, "output": 15.0},      # примерные цены xAI Grok-4.1
+    "openai": {"input": 2.5, "output": 10.0},
+    "anthropic": {"input": 3.0, "output": 15.0},
+    "openrouter": {"input": 0.0, "output": 0.0}, # считаем по модели
+    "polza": {"input": 1.5, "output": 6.0},     # пример
+    "poe": {"input": 2.0, "output": 8.0},
+    "nanogpt": {"input": 0.5, "output": 2.0},
+    "gemini": {"input": 0.35, "output": 1.05},
+    "deepseek": {"input": 0.14, "output": 0.28},
+    "qwen": {"input": 0.0, "output": 0.0},      # локальный / дешёвый
+}
+
+class BalanceTracker:
+    # ... существующий код ...
+
+    def record_usage(self, provider: str, key_name: str, model: str, 
+                     tokens_in: int = 0, tokens_out: int = 0, 
+                     cost_usd: float = None):
+        """Основной метод — вызывать после каждого LLM вызова"""
+        key = f"{provider}_{key_name}"
+        
+        if key not in self.balances:
+            self.balances[key] = ProviderBalance(
+                provider=provider, 
+                key_name=key_name, 
+                model=model
+            )
+
+        b = self.balances[key]
+        b.tokens_in += tokens_in
+        b.tokens_out += tokens_out
+        b.last_updated = time.time()
+
+        # Если стоимость не передана — считаем сами
+        if cost_usd is None:
+            p = PRICE_PER_MILLION.get(provider.lower(), {"input": 5.0, "output": 15.0})
+            cost_usd = (tokens_in * p["input"] + tokens_out * p["output"]) / 1_000_000
+
+        b.cost_usd += cost_usd
+
+        self._save()
+        logger.debug(f"[Balance] {provider}/{model} → +{tokens_in}in +{tokens_out}out = ${cost_usd:.5f}")
+```
+
+---
+
+### Где вызывать `record_usage`?
+
+**Лучшее место** — в `provider_registry.py`, в методе `call()` каждого провайдера (после получения ответа).
+
+Пример для `XaiProvider`:
+
+```python
+# В конце метода call() класса XaiProvider
+result = {
+    "message": {...},
+    "model": model,
+    "provider": "xai",
+    "usage": data.get("usage")   # ← здесь обычно есть prompt_tokens + completion_tokens
+}
+
+# Добавь эту строку:
+from src.orchestration.balance_tracker import get_balance_tracker
+tracker = get_balance_tracker()
+tracker.record_usage(
+    provider="xai",
+    key_name="main",                    # или маскированный ключ
+    model=model,
+    tokens_in=data.get("usage", {}).get("prompt_tokens", 0),
+    tokens_out=data.get("usage", {}).get("completion_tokens", 0)
+)
+
+return result
+```
+
+Сделай то же самое в `OpenAIProvider`, `AnthropicProvider`, `OpenRouterProvider` и т.д.
+
+---
+
+### Что дальше?
+
+Хочешь, я сейчас напишу:
+1. Полный патч для `provider_registry.py` (где именно вставлять в каждый провайдер)
+2. Улучшенную версию `BalancesPanel.tsx` под твой тёмный стиль
+3. Автоматический расчёт стоимости для тех провайдеров, у которых нет usage
+
+Скажи, что хочешь в первую очередь.
+
+Мы можем сделать очень точный и красивый мониторинг расхода даже без баланса API у всех провайдеров.

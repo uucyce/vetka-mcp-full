@@ -14,6 +14,7 @@ import { useStore } from '../../store/useStore';
 import { TaskCard, TaskData } from './TaskCard';
 import { PipelineStats } from './PipelineStats';
 import { LeagueTester } from './LeagueTester';
+import { BalancesPanel } from './BalancesPanel';  // MARKER_126.7
 
 interface DevPanelProps {
   isOpen: boolean;
@@ -22,12 +23,13 @@ interface DevPanelProps {
 
 const API_BASE = 'http://localhost:5001/api/debug';
 
-type Tab = 'board' | 'stats' | 'test';
+type Tab = 'board' | 'stats' | 'test' | 'balance';  // MARKER_126.7
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'board', label: 'Board' },
   { id: 'stats', label: 'Stats' },
   { id: 'test', label: 'Test' },
+  { id: 'balance', label: 'Balance' },  // MARKER_126.7
 ];
 
 // MARKER_126.0C: Tabbed DevPanel
@@ -118,6 +120,20 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
       fetchTasks();
     } catch (err) {
       console.error('[TaskBoard] Remove failed:', err);
+    }
+  }, [fetchTasks]);
+
+  // MARKER_126.5G: Cancel running task
+  const handleCancelTask = useCallback(async (taskId: string) => {
+    try {
+      await fetch(`${API_BASE}/task-board/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: taskId }),
+      });
+      fetchTasks();
+    } catch (err) {
+      console.error('[TaskBoard] Cancel failed:', err);
     }
   }, [fetchTasks]);
 
@@ -295,6 +311,7 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
                   onPriorityChange={handlePriorityChange}
                   onRemove={handleRemove}
                   onDispatch={handleDispatchTask}
+                  onCancel={handleCancelTask}
                 />
               ))}
             </div>
@@ -364,6 +381,9 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
 
         {/* ═══ TEST TAB ═══ */}
         {activeTab === 'test' && <LeagueTester onTestComplete={fetchTasks} />}
+
+        {/* ═══ BALANCE TAB ═══ MARKER_126.7 */}
+        {activeTab === 'balance' && <BalancesPanel />}
       </div>
     </FloatingWindow>
   );

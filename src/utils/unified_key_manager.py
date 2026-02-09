@@ -453,7 +453,45 @@ class UnifiedKeyManager:
     # BALANCE CHECKING (Phase 117)
     # ============================================================
 
-    # MARKER_117_BALANCE: Async balance fetcher
+    # MARKER_126.3A: OpenRouter balance parser with free-tier detection
+    def _parse_openrouter_balance(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Parse OpenRouter /api/v1/auth/key response correctly.
+
+        Free-tier keys have:
+          - limit: null (no spending limit)
+          - limit_remaining: 9999.xx (max credit, NOT real money)
+          - is_free_tier: true
+
+        Paid keys have:
+          - limit: 50.0 (actual spending cap)
+          - limit_remaining: 35.42 (remaining within cap)
+        """
+        d = data.get('data', {})
+
+        limit = d.get('limit')
+        limit_remaining = d.get('limit_remaining', 0)
+        usage = d.get('usage', 0)
+        is_free_tier = d.get('is_free_tier', limit is None)
+
+        if is_free_tier:
+            return {
+                'balance': 0.0,
+                'limit': 0.0,
+                'used': usage,
+                'is_free_tier': True,
+                'exhausted': usage > 0
+            }
+        else:
+            return {
+                'balance': limit_remaining,
+                'limit': limit or 0,
+                'used': usage,
+                'is_free_tier': False,
+                'exhausted': limit_remaining <= 0
+            }
+
+    # MARKER_117_BALANCE + MARKER_126.3B: Async balance fetcher with free-tier fix
     async def fetch_provider_balance(self, provider: str) -> Optional[Dict[str, Any]]:
         """Fetch balance from provider API. Returns {balance, limit, used} or None."""
         import httpx
@@ -462,19 +500,17 @@ class UnifiedKeyManager:
             'openrouter': {
                 'url': 'https://openrouter.ai/api/v1/auth/key',
                 'auth': 'Bearer',
-                'parse': lambda data: {
-                    'balance': data.get('data', {}).get('limit_remaining'),
-                    'limit': data.get('data', {}).get('limit'),
-                    'used': data.get('data', {}).get('usage')
-                }
+                'parse': self._parse_openrouter_balance  # MARKER_126.3B: Use fixed parser
             },
             'polza': {
                 'url': 'https://api.polza.ai/api/v1/account/balance',
                 'auth': 'Bearer',
                 'parse': lambda data: {
-                    'balance': data.get('balance'),
-                    'limit': data.get('limit'),
-                    'used': data.get('used')
+                    'balance': data.get('balance', 0),
+                    'limit': data.get('limit', 0),
+                    'used': data.get('used', 0),
+                    'is_free_tier': False,
+                    'exhausted': data.get('balance', 0) <= 0
                 }
             }
         }
@@ -503,6 +539,23 @@ class UnifiedKeyManager:
                             record.balance_limit = parsed.get('limit')
                             record.balance_updated_at = datetime.now()
                             break
+
+                    # MARKER_126.3C: Update BalanceTracker with remote balance
+                    try:
+                        from src.services.balance_tracker import get_balance_tracker
+                        tracker = get_balance_tracker()
+                        key_masked = f"{key[:4]}****{key[-4:]}" if len(key) > 8 else "****"
+                        tracker.update_balance(
+                            provider=provider,
+                            key_masked=key_masked,
+                            balance=parsed.get('balance', 0),
+                            limit=parsed.get('limit'),
+                            is_free_tier=parsed.get('is_free_tier', False),
+                            exhausted=parsed.get('exhausted', False)
+                        )
+                    except Exception as e:
+                        logger.debug(f"[MARKER_126.3C] Tracker update failed: {e}")
+
                     return parsed
                 elif resp.status_code in (401, 403):
                     return {'error': 'unauthorized', 'status': resp.status_code}

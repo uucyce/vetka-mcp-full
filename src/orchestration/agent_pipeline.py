@@ -29,6 +29,13 @@ from dataclasses import dataclass, asdict
 
 logger = logging.getLogger(__name__)
 
+
+# MARKER_126.5A: Custom exception for pipeline cancellation
+class PipelineCancelled(Exception):
+    """Raised when pipeline is cancelled via stop button or API."""
+    pass
+
+
 # MARKER_123.1_IMPORT: FC loop for coder function calling
 try:
     from src.tools.fc_loop import execute_fc_loop, get_coder_tool_schemas, MAX_FC_TURNS_CODER
@@ -145,6 +152,10 @@ class AgentPipeline:
                  provider: Optional[str] = None, preset: Optional[str] = None,
                  sio=None, sid: Optional[str] = None):
         self.llm_tool = None  # Lazy load
+        # MARKER_126.5A: Cancellation support — asyncio Event for stop-button
+        import asyncio as _asyncio
+        self._cancelled = _asyncio.Event()
+        self._cancel_reason: str = ""
         # MARKER_117_PROVIDER: Provider override for all pipeline LLM calls
         # If set, all agents use this provider via model_source routing
         self.provider_override = provider
@@ -794,6 +805,18 @@ Respond with implementation plan or code."""
                 logger.warning("LLMCallTool not available, using fallback")
                 self.llm_tool = None
         return self.llm_tool
+
+    # MARKER_126.5A: Cancel pipeline from outside (TaskBoard, UI stop button)
+    def cancel(self, reason: str = "Cancelled by user"):
+        """Signal pipeline to stop after current step."""
+        self._cancelled.set()
+        self._cancel_reason = reason
+        logger.info(f"[Pipeline] Cancel requested: {reason}")
+
+    def _check_cancelled(self):
+        """Check if pipeline was cancelled, raise if so."""
+        if self._cancelled.is_set():
+            raise PipelineCancelled(self._cancel_reason or "Pipeline cancelled")
 
     # MARKER_126.0A: Track LLM call for stats
     def _track_llm_call(self, result: dict):
@@ -1686,6 +1709,34 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             return asdict(pipeline_task)
 
+        except PipelineCancelled as e:
+            # MARKER_126.5C: Graceful cancellation — save progress, emit message
+            logger.info(f"[Pipeline] Cancelled: {e}")
+            completed_count = len([s for s in pipeline_task.subtasks if s.status == "done"])
+            pipeline_task.status = "cancelled"
+            pipeline_task.results = {
+                "error": f"Cancelled: {e}",
+                "subtasks_completed": completed_count,
+                "subtasks_total": len(pipeline_task.subtasks),
+            }
+            self._update_task(pipeline_task)
+            self._log_stm_summary()
+            self._bridge_to_global_stm(task_id, phase_type)
+
+            # Update TaskBoard if board-dispatched
+            if hasattr(self, '_board_task_id') and self._board_task_id:
+                try:
+                    from src.orchestration.task_board import get_task_board
+                    from datetime import datetime as _dt
+                    board = get_task_board()
+                    board.update_task(self._board_task_id, status="cancelled",
+                                     completed_at=_dt.now().isoformat())
+                except Exception:
+                    pass
+
+            await self._emit_progress("@mycelium", f"⏹ Pipeline cancelled ({completed_count}/{len(pipeline_task.subtasks)} done): {str(e)[:40]}")
+            return asdict(pipeline_task)
+
         except Exception as e:
             logger.error(f"[Pipeline] Failed: {e}")
             pipeline_task.status = "failed"
@@ -1715,6 +1766,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         stream_level = pipeline_task.stream_level
 
         for i, subtask in enumerate(pipeline_task.subtasks):
+            # MARKER_126.5B: Check cancellation before each subtask
+            self._check_cancelled()
             logger.info(f"[Pipeline] Subtask {i+1}/{total_subtasks}: {subtask.description[:40]}...")
 
             # MARKER_104_STREAM_VISIBILITY: Check subtask visibility

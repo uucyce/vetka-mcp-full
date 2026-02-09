@@ -1,0 +1,72 @@
+ такая экосистема:
+
+VETKA — платформа / UI / визуализация
+VETKA Pulse — orchestration runtime (агенты, задачи)
+Mycelium — agent pipeline (tool)
+ELISYA — synchronization layer
+Elision — compression/context engine
+Dragon — budget team
+Titans — premium team
+Doctor — support bot
+
+👉 звучит ultra-tech
+👉 идеально для MCP/agents
+👉 близко к VETKA
+👉 никто не займет
+
+честно — это гениально подходит
+
+вариант 2 — VETA
+Virtual Execution & Task Automation
+
+коротко, CLI-стайл
+
+vetka + veta
+
+очень органично
+
+вариант 3 — VETK.AI (или VETKA-X)
+
+типа internal runtime
+
+вариант 4 — VEKTR
+Vector Task Runtime
+
+очень dev-friendly, как Docker/Helm
+
+Show less
+
+
+Стоп. Давай я не буду опять "быстро бежать менять" — ты правильно заметил что я разогнался 😄
+
+Давай спокойно подумаю.
+
+Моё мнение по неймингу
+Из предложенных вариантов GPT мне больше всего нравится вариант 1 — экосистемный подход:
+
+VETKA           — платформа / UI / 3D визуализация
+VETKA Pulse     — orchestration (heartbeat, task board, dispatch)  
+Mycelium        — agent pipeline engine (tool/library)
+
+Почему:
+
+1) "VETKA Pulse" для оркестрации — идеально. Pulse = пульс, сердцебиение. У нас уже есть heartbeat_tick(), heartbeat_status() — это буквально пульс системы. Метафора уже в коде! TaskBoard + dispatch + heartbeat = Pulse.
+
+2) Mycelium остаётся как имя пайплайна. Грибница → фрактальное разложение задач → споры (subtasks) → рост. Метафора работает. А конфликтов с mycelium.ai (логистика) нет — разные ниши.
+
+3) Двухслойная архитектура чётко делит ответственность:
+
+Pulse = ЧТО делать (TaskBoard, приоритеты, dispatch, stop/cancel, stats)
+Mycelium = КАК делать (Architect→Scout→Researcher→Coder→Verifier)
+НО — я бы не стал сейчас переименовывать файлы и классы. Это огромный рефактор ради косметики. Вместо этого:
+
+Практичный план (без рефактора)
+Popup @mention — уже сделано: @mycelium (pipeline как alias)
+Добавить @pulse — alias для TaskBoard/Heartbeat операций. @pulse status, @pulse dispatch, @pulse stop
+Документация и UI — использовать "VETKA Pulse" и "Mycelium" в интерфейсе
+Код — оставить как есть (heartbeat.py, agent_pipeline.py, task_board.py). Имена файлов — внутренняя кухня
+Так мы получаем красивый нейминг без риска всё сломать. Согласен?
+
+А по стоп-крану — это как раз идеально ложится в Pulse: @pulse stop tb_xxx вместо абстрактного @board cancel. Pulse контролирует жизненный цикл задач.
+
+Давай я лучше сейчас займусь тем что реально нужно — стоп-краном? Это функциональность, а не косметика. А нейминг можно применить когда будет время на аккуратный рефактор.

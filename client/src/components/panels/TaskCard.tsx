@@ -45,6 +45,7 @@ interface TaskCardProps {
   onPriorityChange?: (taskId: string, priority: number) => void;
   onRemove?: (taskId: string) => void;
   onDispatch?: (taskId: string) => void;
+  onCancel?: (taskId: string) => void;  // MARKER_126.5G: Stop button
 }
 
 // Priority: monochrome gradient, P1=brightest, P5=dimmest
@@ -185,7 +186,7 @@ function injectKeyframes() {
 }
 
 // ── TaskCard ──
-export function TaskCard({ task, onPriorityChange, onRemove, onDispatch }: TaskCardProps) {
+export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCancel }: TaskCardProps) {
   injectKeyframes();
   const [expanded, setExpanded] = useState(false);
   const [hover, setHover] = useState(false);
@@ -354,6 +355,31 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch }: TaskC
                 }}
               >
                 run
+              </button>
+            )}
+
+            {/* MARKER_126.5G: Stop button for running tasks */}
+            {onCancel && task.status === 'running' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCancel(task.id);
+                }}
+                style={{
+                  background: 'rgba(160,80,80,0.15)',
+                  color: '#c88',
+                  border: '1px solid rgba(160,80,80,0.3)',
+                  borderRadius: 3,
+                  fontSize: 10,
+                  fontFamily: 'monospace',
+                  padding: '3px 10px',
+                  cursor: 'pointer',
+                  letterSpacing: 0.5,
+                  textTransform: 'uppercase',
+                  transition: 'all 0.15s',
+                }}
+              >
+                stop
               </button>
             )}
 

@@ -124,6 +124,7 @@ class BaseProvider(ABC):
     ) -> bool:
         """
         Phase 111.10: Unified error handling with key rotation.
+        MARKER_126.4C: Added BalanceTracker integration.
 
         Handles 401/402/403/429 errors by reporting failure and rotating keys.
         Returns True if retry should be attempted (key rotated).
@@ -145,6 +146,18 @@ class BaseProvider(ABC):
             mark_cooldown = status_code in (402, 429)
             km.report_failure(api_key, mark_cooldown=mark_cooldown, auto_rotate=True)
             logger.info(f"[{provider_name}] Key rotated after {status_code} error")
+
+            # MARKER_126.4C: Zero balance on 402/403
+            if status_code in (402, 403):
+                try:
+                    from src.services.balance_tracker import get_balance_tracker
+                    tracker = get_balance_tracker()
+                    key_masked = f"{api_key[:4]}****{api_key[-4:]}" if len(api_key) >= 8 else "****"
+                    tracker.mark_exhausted(provider_name.lower(), key_masked)
+                    logger.info(f"[{provider_name}] Key marked exhausted in BalanceTracker")
+                except Exception as e:
+                    logger.warning(f"[{provider_name}] BalanceTracker update failed: {e}")
+
             return True
         return False
 
@@ -1102,12 +1115,29 @@ class OpenAICompatibleProvider(BaseProvider):
         # get_key now uses get_key_with_rotation internally
         return km.get_key(self.provider_name)
 
-    def _report_key_failure(self, key: str, mark_cooldown: bool = True):
-        """Report key failure and auto-rotate to next key if available."""
+    def _report_key_failure(self, key: str, mark_cooldown: bool = True, status_code: int = 0):
+        """
+        Report key failure and auto-rotate to next key if available.
+
+        MARKER_126.4: On 402/403, also zero balance in BalanceTracker.
+        - 402 = Payment Required (no credits)
+        - 403 = Forbidden (key exhausted or banned)
+        """
         from src.utils.unified_key_manager import get_key_manager
 
         km = get_key_manager()
         km.report_failure(key, mark_cooldown=mark_cooldown, auto_rotate=True)
+
+        # MARKER_126.4A: Zero balance on payment/exhausted errors
+        if status_code in (402, 403):
+            try:
+                from src.services.balance_tracker import get_balance_tracker
+                tracker = get_balance_tracker()
+                key_masked = f"{key[:4]}****{key[-4:]}" if len(key) >= 8 else "****"
+                tracker.mark_exhausted(self.provider_name, key_masked)
+                logger.info(f"[{self.provider_name.upper()}] MARKER_126.4: Key marked exhausted ({status_code})")
+            except Exception as e:
+                logger.warning(f"[{self.provider_name.upper()}] BalanceTracker update failed: {e}")
 
     def _get_base_url(self) -> Optional[str]:
         """Get base URL from api_key_detector patterns."""
@@ -1210,12 +1240,13 @@ class OpenAICompatibleProvider(BaseProvider):
                     )
 
                     # Phase 111.9: Rate limit / auth errors - rotate key
-                    if response.status_code in (401, 402, 429):
+                    # MARKER_126.4B: Pass status_code for balance zeroing
+                    if response.status_code in (401, 402, 403, 429):
                         mark_cooldown = response.status_code in (
                             402,
                             429,
                         )  # Only cooldown for payment/rate errors
-                        self._report_key_failure(key, mark_cooldown=mark_cooldown)
+                        self._report_key_failure(key, mark_cooldown=mark_cooldown, status_code=response.status_code)
                         logger.info(
                             f"[{self.provider_name.upper()}] Key rotated after {response.status_code}, retrying..."
                         )

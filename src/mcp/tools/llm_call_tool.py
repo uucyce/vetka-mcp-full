@@ -343,6 +343,57 @@ class LLMCallTool(BaseMCPTool):
         self._emit_to_chat(f'@{model}', response_content, 'response')
     # MARKER_90.4.0_END
 
+    # MARKER_126.2: Track usage in BalanceTracker
+    def _track_usage_for_balance(self, provider: str, model: str, usage: Optional[Dict] = None):
+        """Record usage to BalanceTracker after successful LLM call."""
+        if not usage:
+            return
+
+        try:
+            from src.services.balance_tracker import get_balance_tracker
+            tracker = get_balance_tracker()
+
+            # Normalize token field names (different providers use different names)
+            tokens_in = (
+                usage.get('prompt_tokens') or
+                usage.get('input_tokens') or
+                usage.get('promptTokenCount') or
+                usage.get('prompt_eval_count') or
+                0
+            )
+            tokens_out = (
+                usage.get('completion_tokens') or
+                usage.get('output_tokens') or
+                usage.get('candidatesTokenCount') or
+                usage.get('eval_count') or
+                0
+            )
+
+            # Get masked key
+            key_masked = self._get_current_key_masked(provider)
+
+            tracker.record_usage(
+                provider=provider or "unknown",
+                key_masked=key_masked,
+                model=model,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out
+            )
+        except Exception as e:
+            logger.debug(f"[MARKER_126.2] Usage tracking failed: {e}")
+
+    def _get_current_key_masked(self, provider: str) -> str:
+        """Get masked version of current active key for provider."""
+        try:
+            from src.utils.unified_key_manager import get_key_manager
+            km = get_key_manager()
+            key = km.get_key(provider) if provider else None
+            if key and len(key) > 8:
+                return f"{key[:4]}****{key[-4:]}"
+            return "****"
+        except Exception:
+            return "****"
+
     # MARKER_55.2_START: Context injection for MCP
     async def _gather_inject_context(self, inject_config: Dict[str, Any]) -> str:
         """
@@ -872,6 +923,9 @@ class LLMCallTool(BaseMCPTool):
             # MARKER_90.4.0_START: Emit response to VETKA chat
             self._emit_response_to_chat(model, content, result.get('usage'))
             # MARKER_90.4.0_END
+
+            # MARKER_126.2: Track usage in BalanceTracker
+            self._track_usage_for_balance(provider_name, model, result.get('usage'))
 
             return {
                 'success': True,

@@ -1797,6 +1797,28 @@ async def dispatch_next_task_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
     return result
 
 
+# MARKER_126.5F: Cancel task endpoint for stop button
+@router.post("/task-board/cancel")
+async def cancel_task_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Cancel a running or pending task.
+
+    Body params:
+    - task_id: str (required)
+    - reason: str (optional, default "Cancelled by user")
+    """
+    from src.orchestration.task_board import get_task_board
+
+    body = body or {}
+    task_id = body.get("task_id")
+    if not task_id:
+        return {"success": False, "error": "task_id is required"}
+
+    reason = body.get("reason", "Cancelled by user")
+    board = get_task_board()
+    ok = board.cancel_task(task_id, reason)
+    return {"success": ok, "task_id": task_id}
+
+
 # MARKER_126.0E: League test endpoint for DevPanel
 @router.post("/task-board/test-league")
 async def test_league_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -1858,3 +1880,57 @@ async def notify_task_board_update(request: Request, body: Dict[str, Any] = None
         })
         return {"success": True}
     return {"success": False, "error": "No SocketIO instance"}
+
+
+# ============================================================
+# MARKER_126.5: BALANCE TRACKER ENDPOINTS
+# ============================================================
+
+@router.get("/usage/balances")
+async def get_usage_balances() -> Dict[str, Any]:
+    """
+    MARKER_126.5A: Get unified usage and balance data.
+    MARKER_126.3E: Sync all keys from KeyManager before returning.
+
+    Returns:
+        - records: Per-key usage (tokens, cost, balance where available)
+        - totals: Aggregated by provider
+        - providers_with_balance: Which providers have remote balance API
+    """
+    from src.services.balance_tracker import get_balance_tracker
+
+    tracker = get_balance_tracker()
+
+    # MARKER_126.3E: Sync ALL keys from KeyManager (not just used ones)
+    synced_count = tracker.sync_from_key_manager()
+
+    # Optionally refresh remote balances for providers that support it
+    try:
+        from src.utils.unified_key_manager import get_key_manager
+        km = get_key_manager()
+        for provider in ['openrouter', 'polza']:
+            try:
+                await km.fetch_provider_balance(provider)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "records": tracker.get_all(),
+        "totals": tracker.get_totals(),
+        "providers_with_balance": ["openrouter", "polza"],
+        "synced_keys": synced_count,
+        "timestamp": time.time()
+    }
+
+
+@router.post("/usage/reset")
+async def reset_usage() -> Dict[str, Any]:
+    """MARKER_126.5B: Reset daily usage counters."""
+    from src.services.balance_tracker import get_balance_tracker
+
+    tracker = get_balance_tracker()
+    tracker.reset_daily()
+    return {"success": True, "message": "Usage counters reset"}

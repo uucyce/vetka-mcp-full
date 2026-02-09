@@ -1,0 +1,426 @@
+dev panel balanses 
+
+Да, это реально и нужно делать. Cursor и VS Code показывают расход токенов именно так, как ты хочешь: агрегируют usage из ответов моделей + периодически дергают баланс через API, где это возможно.
+
+У нас уже есть почти всё для этого (APIKeyService, ProviderRegistry, llm_call_tool). Нужно только собрать в один **Balance Tracker**.
+
+### План (как будем делать)
+
+1. Создаём сервис `BalanceTracker` — единое место для всех ключей.
+2. После **каждого** вызова LLM (в `llm_call_tool.py`) обновляем расход токенов.
+3. Для провайдеров, у которых есть публичный баланс API — периодически (раз в 30–60 сек) обновляем реальный остаток.
+4. Выводим красивую таблицу в DevPanel (новая вкладка "Balances").
+
+### 1. Новый файл: `src/orchestration/balance_tracker.py`
+
+Создай этот файл:
+
+```python
+"""
+Balance Tracker — единый мониторинг расхода и баланса всех API ключей
+Phase 125.1: Реал-тайм трекинг токенов и денег по всем провайдерам
+"""
+
+import json
+import time
+import asyncio
+import logging
+from pathlib import Path
+from datetime import datetime
+from typing import Dict, Any, Optional
+from dataclasses import dataclass, asdict, field
+
+logger = logging.getLogger("BALANCE_TRACKER")
+
+BALANCES_FILE = Path(__file__).parent.parent.parent / "data" / "balances.json"
+
+
+@dataclass
+class ProviderBalance:
+    provider: str
+    key_name: str                    # например: "openrouter_0", "xai_main"
+    model: str = ""
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cost_usd: float = 0.0
+    balance_usd: float = 0.0         # реальный остаток, если удалось получить
+    last_updated: float = 0.0
+    last_balance_check: float = 0.0
+
+
+class BalanceTracker:
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+        self._initialized = True
+        self.balances: Dict[str, ProviderBalance] = {}
+        self._load()
+        logger.info("[BalanceTracker] Initialized")
+
+    def _load(self):
+        if BALANCES_FILE.exists():
+            try:
+                data = json.loads(BALANCES_FILE.read_text())
+                for key, val in data.items():
+                    self.balances[key] = ProviderBalance(**val)
+            except Exception as e:
+                logger.error(f"[BalanceTracker] Load failed: {e}")
+
+    def _save(self):
+        try:
+            data = {k: asdict(v) for k, v in self.balances.items()}
+            BALANCES_FILE.write_text(json.dumps(data, indent=2, default=str))
+        except Exception as e:
+            logger.error(f"[BalanceTracker] Save failed: {e}")
+
+    def record_usage(self, provider: str, key_name: str, model: str, tokens_in: int, tokens_out: int, cost_usd: float = 0.0):
+        """Вызывать после каждого LLM вызова"""
+        key = f"{provider}_{key_name}"
+        
+        if key not in self.balances:
+            self.balances[key] = ProviderBalance(provider=provider, key_name=key_name, model=model)
+
+        b = self.balances[key]
+        b.tokens_in += tokens_in
+        b.tokens_out += tokens_out
+        b.cost_usd += cost_usd
+        b.last_updated = time.time()
+
+        self._save()
+        logger.debug(f"[Balance] {provider} {model}: +{tokens_in}+{tokens_out} tokens, ${cost_usd:.4f}")
+
+    async def refresh_balance(self, provider: str, key_name: str):
+        """Пытаемся получить реальный баланс через API (где возможно)"""
+        # Здесь будем добавлять провайдеры по одному
+        key = f"{provider}_{key_name}"
+        if key not in self.balances:
+            return
+
+        b = self.balances[key]
+        b.last_balance_check = time.time()
+
+        try:
+            if provider == "openrouter":
+                from src.orchestration.services.api_key_service import APIKeyService
+                # OpenRouter имеет /api/v1/auth/key endpoint
+                # Можно реализовать позже
+                pass
+            elif provider == "anthropic":
+                # Anthropic пока не даёт публичный баланс
+                pass
+            # xAI, Gemini, DeepSeek — тоже пока слабая поддержка
+        except Exception as e:
+            logger.debug(f"[Balance] Refresh failed for {provider}: {e}")
+
+    def get_all_balances(self) -> list:
+        """Для DevPanel"""
+        return [asdict(b) for b in self.balances.values()]
+
+    def get_total_cost_today(self) -> float:
+        """Пример агрегации"""
+        return sum(b.cost_usd for b in self.balances.values())
+
+
+# Singleton
+_balance_tracker = None
+
+def get_balance_tracker() -> BalanceTracker:
+    global _balance_tracker
+    if _balance_tracker is None:
+        _balance_tracker = BalanceTracker()
+    return _balance_tracker
+```
+
+---
+
+### 2. Интеграция в `llm_call_tool.py` (самое важное!)
+
+В методе, где ты получаешь ответ от провайдера (в `call_model_v2` или в конкретных Provider классах), после успешного ответа добавь:
+
+```python
+# После успешного вызова модели
+tracker = get_balance_tracker()
+
+prompt_tokens = result.get("usage", {}).get("prompt_tokens", 0)
+completion_tokens = result.get("usage", {}).get("completion_tokens", 0)
+# cost можно посчитать по известным ценам или взять из ответа
+
+tracker.record_usage(
+    provider=provider.value,           # "xai", "anthropic", "openrouter"...
+    key_name=key_name or "default",    # можно брать из APIKeyService
+    model=model,
+    tokens_in=prompt_tokens,
+    tokens_out=completion_tokens,
+    cost_usd=estimated_cost            # опционально
+)
+```
+
+---
+
+### 3. DevPanel — новая вкладка "Balances"
+
+Хочешь — я прямо сейчас дам готовый код для:
+
+- Вкладки **Balances** в DevPanel
+- Таблицы с остатками и расходом
+- Кнопки "Refresh Balance"
+
+**Отлично!** Вот готовая, чистая и стильная вкладка **"Balances"** для твоего DevPanel в стиле **Бэтмен Нолана** — холодный, серьёзный, почти монохромный, без ярких цветов.
+
+### 1. Обновлённый DevPanel.tsx (добавляем вкладку)
+
+Замени весь файл `DevPanel.tsx` на этот код:
+
+```tsx
+/**
+ * DevPanel — Task Board + Statistics + League Tester + Balances
+ * Стиль: Christopher Nolan Batman — холодный, индустриальный, серьёзный
+ */
+
+import { useState, useEffect, useCallback } from 'react';
+import { FloatingWindow } from '../artifact/FloatingWindow';
+import { PipelineStatsChart } from './PipelineStatsChart';
+import { LeagueTester } from './LeagueTester';
+import { BalancesPanel } from './BalancesPanel';   // ← Новый компонент
+import { TaskCard } from './TaskCard';
+import { useStore } from '../../store/useStore';
+
+interface DevPanelProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export function DevPanel({ isOpen, onClose }: DevPanelProps) {
+  const [activeTab, setActiveTab] = useState<'tasks' | 'stats' | 'leagues' | 'balances'>('tasks');
+  const [tasks, setTasks] = useState<any[]>([]);
+
+  // ... твой существующий код fetchTasks, handleAddTask и т.д.
+
+  return (
+    <FloatingWindow 
+      title="Dev Panel" 
+      isOpen={isOpen} 
+      onClose={onClose} 
+      defaultWidth={560} 
+      defaultHeight={680}
+    >
+      {/* Tabs — холодный минимализм */}
+      <div style={{ 
+        display: 'flex', 
+        borderBottom: '1px solid #222', 
+        marginBottom: 12,
+        background: '#0a0a0a'
+      }}>
+        {(['tasks', 'stats', 'leagues', 'balances'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            style={{
+              flex: 1,
+              padding: '11px 16px',
+              background: activeTab === tab ? '#111' : 'transparent',
+              borderBottom: activeTab === tab ? '2px solid #6a8' : 'none',
+              color: activeTab === tab ? '#ddd' : '#666',
+              fontSize: 13,
+              fontWeight: 500,
+              transition: 'all 0.2s',
+            }}
+          >
+            {tab === 'tasks' ? 'Task Board' : 
+             tab === 'stats' ? 'Statistics' : 
+             tab === 'leagues' ? 'League Tester' : 'Balances'}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'tasks' && /* твой текущий код Task Board */}
+
+      {activeTab === 'stats' && <PipelineStatsChart tasks={tasks} />}
+
+      {activeTab === 'leagues' && <LeagueTester onTestComplete={fetchTasks} />}
+
+      {/* НОВАЯ ВКЛАДКА — BALANCES */}
+      {activeTab === 'balances' && <BalancesPanel />}
+    </FloatingWindow>
+  );
+}
+```
+
+---
+
+### 2. Новый файл: `src/components/dev/BalancesPanel.tsx`
+
+Создай этот файл:
+
+```tsx
+/**
+ * BalancesPanel — мониторинг расхода и баланса всех API ключей
+ * Стиль: холодный, минималистичный, Nolan Batman
+ */
+
+import { useState, useEffect } from 'react';
+
+interface BalanceEntry {
+  provider: string;
+  key_name: string;
+  model: string;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  balance_usd: number;
+  last_updated: number;
+}
+
+export function BalancesPanel() {
+  const [balances, setBalances] = useState<BalanceEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [totalCost, setTotalCost] = useState(0);
+
+  const fetchBalances = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('http://localhost:5001/api/debug/balances');
+      if (res.ok) {
+        const data = await res.json();
+        setBalances(data.balances || []);
+        setTotalCost(data.total_cost_today || 0);
+      }
+    } catch (err) {
+      console.error('[Balances] Fetch failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBalances();
+    const interval = setInterval(fetchBalances, 15000); // обновление каждые 15 сек
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div style={{ padding: '12px 16px', fontSize: 13, color: '#ddd' }}>
+      {/* Header */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        marginBottom: 16,
+        paddingBottom: 12,
+        borderBottom: '1px solid #222'
+      }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#ccc' }}>API Balances</div>
+          <div style={{ color: '#666', fontSize: 12 }}>
+            Total spent today: <span style={{ color: '#f66' }}>${totalCost.toFixed(4)}</span>
+          </div>
+        </div>
+        <button
+          onClick={fetchBalances}
+          disabled={loading}
+          style={{
+            padding: '6px 12px',
+            background: '#1a1a1a',
+            border: '1px solid #333',
+            borderRadius: 4,
+            color: '#aaa',
+            fontSize: 12,
+            cursor: 'pointer'
+          }}
+        >
+          {loading ? 'Refreshing...' : 'Refresh'}
+        </button>
+      </div>
+
+      {/* Таблица */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid #222', color: '#666' }}>
+              <th style={{ textAlign: 'left', padding: '8px 0' }}>Provider</th>
+              <th style={{ textAlign: 'left', padding: '8px 0' }}>Key</th>
+              <th style={{ textAlign: 'left', padding: '8px 0' }}>Model</th>
+              <th style={{ textAlign: 'right', padding: '8px 0' }}>Tokens In</th>
+              <th style={{ textAlign: 'right', padding: '8px 0' }}>Tokens Out</th>
+              <th style={{ textAlign: 'right', padding: '8px 0' }}>Cost $</th>
+              <th style={{ textAlign: 'right', padding: '8px 0' }}>Balance $</th>
+              <th style={{ textAlign: 'right', padding: '8px 0' }}>Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+            {balances.map((b, i) => (
+              <tr key={i} style={{ borderBottom: '1px solid #1a1a1a' }}>
+                <td style={{ padding: '9px 0', color: '#aaa' }}>{b.provider}</td>
+                <td style={{ padding: '9px 0', fontFamily: 'monospace', color: '#777' }}>
+                  {b.key_name}
+                </td>
+                <td style={{ padding: '9px 0', color: '#888' }}>{b.model || '-'}</td>
+                <td style={{ padding: '9px 0', textAlign: 'right', color: '#4a6' }}>
+                  {b.tokens_in.toLocaleString()}
+                </td>
+                <td style={{ padding: '9px 0', textAlign: 'right', color: '#6a8' }}>
+                  {b.tokens_out.toLocaleString()}
+                </td>
+                <td style={{ padding: '9px 0', textAlign: 'right', color: '#f66' }}>
+                  ${b.cost_usd.toFixed(4)}
+                </td>
+                <td style={{ padding: '9px 0', textAlign: 'right', color: b.balance_usd > 0 ? '#4ade80' : '#f66' }}>
+                  ${b.balance_usd.toFixed(3)}
+                </td>
+                <td style={{ padding: '9px 0', textAlign: 'right', color: '#555', fontSize: 11 }}>
+                  {new Date(b.last_updated * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {balances.length === 0 && (
+        <div style={{ textAlign: 'center', color: '#555', padding: 40 }}>
+          No balance data yet. Run some pipelines first.
+        </div>
+      )}
+    </div>
+  );
+}
+```
+
+---
+
+### Что нужно сделать дальше (backend):
+
+Чтобы вкладка работала, добавь в backend простой endpoint:
+
+В `src/api/routes/debug_routes.py` (или где у тебя debug роуты):
+
+```python
+@app.get("/api/debug/balances")
+async def get_balances():
+    from src.orchestration.balance_tracker import get_balance_tracker
+    tracker = get_balance_tracker()
+    return {
+        "balances": tracker.get_all_balances(),
+        "total_cost_today": tracker.get_total_cost_today()
+    }
+```
+
+---
+
+Готово.  
+
+Скопируй код, создай файл `BalancesPanel.tsx`, обнови `DevPanel.tsx` — и вкладка появится.
+
+Хочешь, я сейчас сделаю:
+- Ещё более строгий/минималистичный дизайн таблицы?
+- Или добавлю кнопку "Refresh All Balances"?
+
+Просто скажи.

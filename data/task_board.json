@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0",
     "phase": "121",
-    "updated": "2026-02-09T02:31:14.898836"
+    "updated": "2026-02-09T18:01:50.080017"
   },
   "tasks": {
     "tb_1770577538_1": {
@@ -37,7 +37,7 @@
       "phase_type": "build",
       "preset": null,
       "assigned_tier": null,
-      "status": "pending",
+      "status": "running",
       "source": "dragon_todo",
       "tags": [
         "frontend",
@@ -46,7 +46,7 @@
       ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157435",
-      "started_at": null,
+      "started_at": "2026-02-09T18:01:50.080009",
       "completed_at": null,
       "pipeline_task_id": null,
       "result_summary": null
@@ -151,8 +151,8 @@
       "complexity": "high",
       "phase_type": "fix",
       "preset": null,
-      "assigned_tier": null,
-      "status": "pending",
+      "assigned_tier": "dragon_silver",
+      "status": "done",
       "source": "dragon_todo",
       "tags": [
         "chat",
@@ -161,10 +161,24 @@
       ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.158041",
-      "started_at": null,
-      "completed_at": null,
-      "pipeline_task_id": null,
-      "result_summary": null
+      "started_at": "2026-02-09T17:54:35.829910",
+      "completed_at": "2026-02-09T18:01:50.075811",
+      "pipeline_task_id": "task_1770648875",
+      "result_summary": "{'plan': {'subtasks': [{'description': 'Investigate root cause of group chat dual naming bug, specifically the files-folder naming conflict that causes tragic renames and new chat creation', 'needs_research': True, 'marker': 'MARKER_102.1'}, {'description': 'Implement server-side central storage for group chat names with explicit conflict resolution to prevent duplicate creation', 'needs_research': False, 'marker': 'MARKER_102.2'}, {'description': \"Update client-side sync logic to broadcast name",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "fix",
+        "subtasks_total": 5,
+        "subtasks_completed": 5,
+        "success": true,
+        "llm_calls": 12,
+        "tokens_in": 11907,
+        "tokens_out": 11019,
+        "verifier_avg_confidence": 0,
+        "completed_at": 1770649310.0766232,
+        "duration_s": 434.2
+      }
     },
     "tb_1770577538_8": {
       "id": "tb_1770577538_8",
@@ -280,6 +294,50 @@
       "completed_at": null,
       "pipeline_task_id": null,
       "result_summary": null
+    },
+    "tb_1770648875_1": {
+      "id": "tb_1770648875_1",
+      "title": "broken button",
+      "description": "broken button",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "heartbeat_fix",
+      "tags": [
+        "fix"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T17:54:35.829597",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null
+    },
+    "tb_1770649310_2": {
+      "id": "tb_1770649310_2",
+      "title": "broken button",
+      "description": "broken button",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "heartbeat_fix",
+      "tags": [
+        "fix"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T18:01:50.079661",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null
     }
   },
   "settings": {

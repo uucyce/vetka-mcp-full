@@ -371,6 +371,58 @@ class TaskBoard:
         return True
 
     # ==========================================
+    # CANCEL (MARKER_126.5D)
+    # ==========================================
+
+    # MARKER_126.5D: Global registry of running pipelines for cancellation
+    _running_pipelines: dict = {}  # task_id -> AgentPipeline instance
+
+    @classmethod
+    def register_pipeline(cls, task_id: str, pipeline) -> None:
+        """Register a running pipeline for future cancellation."""
+        cls._running_pipelines[task_id] = pipeline
+        logger.debug(f"[TaskBoard] Pipeline registered: {task_id}")
+
+    @classmethod
+    def unregister_pipeline(cls, task_id: str) -> None:
+        """Unregister pipeline after completion."""
+        cls._running_pipelines.pop(task_id, None)
+
+    def cancel_task(self, task_id: str, reason: str = "Cancelled by user") -> bool:
+        """Cancel a running or pending task.
+
+        MARKER_126.5D: If task is running and pipeline is registered,
+        signals cancellation via asyncio.Event.
+
+        Returns:
+            True if task was found and cancel was initiated
+        """
+        task = self.tasks.get(task_id)
+        if not task:
+            logger.warning(f"[TaskBoard] Task {task_id} not found for cancel")
+            return False
+
+        old_status = task["status"]
+
+        if old_status in ("done", "cancelled", "failed"):
+            logger.info(f"[TaskBoard] Task {task_id} already {old_status}, skip cancel")
+            return False
+
+        # If running — signal pipeline to stop
+        if old_status == "running" and task_id in self._running_pipelines:
+            pipeline = self._running_pipelines[task_id]
+            pipeline.cancel(reason)
+            logger.info(f"[TaskBoard] Pipeline {task_id} cancel signal sent")
+            # Status will be set to "cancelled" by pipeline's except handler
+            return True
+
+        # For pending/queued/hold — just set status directly
+        task["status"] = "cancelled"
+        self._save(action="cancelled")
+        logger.info(f"[TaskBoard] Task {task_id} cancelled (was {old_status})")
+        return True
+
+    # ==========================================
     # DISPATCH
     # ==========================================
 
@@ -430,13 +482,20 @@ class TaskBoard:
             # MARKER_121.2: Tag pipeline with board task ID for callback
             pipeline._board_task_id = task_id
 
+            # MARKER_126.5E: Register pipeline for cancellation support
+            TaskBoard.register_pipeline(task_id, pipeline)
+
             # Build task description from title + description
             task_text = task["title"]
             if task.get("description") and task["description"] != task["title"]:
                 task_text += f"\n\n{task['description']}"
 
-            # Execute pipeline
-            result = await pipeline.execute(task_text, task["phase_type"])
+            try:
+                # Execute pipeline
+                result = await pipeline.execute(task_text, task["phase_type"])
+            finally:
+                # Always unregister after completion
+                TaskBoard.unregister_pipeline(task_id)
 
             # Update task with results
             pipeline_status = result.get("status", "unknown")
