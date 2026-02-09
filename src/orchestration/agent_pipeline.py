@@ -591,10 +591,28 @@ Respond with implementation plan or code."""
             model = prompt.get("model", "anthropic/claude-sonnet-4")
             temperature = prompt.get("temperature", 0.1)
 
+            # MARKER_125.0A: Increased context limit 3000→6000 chars for better verification
+            # Also inject original file context if available from Scout report
+            coder_output = str(coder_result)[:6000]
+            original_context = ""
+            if subtask.context and subtask.context.get("scout_report"):
+                scout = subtask.context["scout_report"]
+                files = scout.get("relevant_files", [])[:3]
+                if files:
+                    original_context = f"\n\nOriginal target files: {', '.join(files)}"
+                marker_map = scout.get("marker_map", [])
+                if marker_map and isinstance(marker_map, list):
+                    markers = "; ".join(
+                        f"{m.get('marker_id', '?')}={m.get('file', '?')}:{m.get('line', '?')} [{m.get('action', '?')}]"
+                        for m in marker_map[:3] if isinstance(m, dict)
+                    )
+                    original_context += f"\nMarker rails: {markers}"
+
             user_content = (
                 f"Phase type: {phase_type}\n\n"
                 f"Subtask: {subtask.description}\n\n"
-                f"Coder output:\n{str(coder_result)[:3000]}"
+                f"Coder output:\n{coder_output}"
+                f"{original_context}"
             )
 
             call_args = {
@@ -624,6 +642,20 @@ Respond with implementation plan or code."""
                 issues = verification.get("issues", [])
                 confidence = verification.get("confidence", 0.5)
                 verification["severity"] = "minor" if len(issues) <= 2 and confidence >= 0.6 else "major"
+
+            # MARKER_125.0B: Confidence gate — auto-fail if confidence below threshold
+            # even when model says passed=true (low-confidence passes are unreliable)
+            confidence = verification.get("confidence", 0.5)
+            if verification.get("passed", False) and confidence < VERIFIER_PASS_THRESHOLD:
+                logger.info(
+                    f"[Pipeline] Verifier confidence {confidence:.2f} < threshold {VERIFIER_PASS_THRESHOLD} — "
+                    f"auto-failing despite passed=true"
+                )
+                verification["passed"] = False
+                verification["issues"].append(
+                    f"Low confidence ({confidence:.2f} < {VERIFIER_PASS_THRESHOLD}) — needs closer review"
+                )
+                verification["severity"] = "minor"  # Don't escalate, just retry
 
             return verification
 
