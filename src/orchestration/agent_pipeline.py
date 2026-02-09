@@ -114,7 +114,8 @@ class Subtask:
     stream_result: bool = True  # Stream completion to chat
     # MARKER_122: Feedback loop fields
     retry_count: int = 0
-    verifier_feedback: Optional[str] = None
+    # MARKER_127.1A: Changed to Dict to store full verifier result (confidence, passed, issues)
+    verifier_feedback: Optional[Dict] = None
     escalated: bool = False
 
 
@@ -698,7 +699,8 @@ Respond with implementation plan or code."""
         feedback += f"Previous output was rejected. Fix the issues above."
 
         subtask.context["verifier_feedback"] = feedback
-        subtask.verifier_feedback = feedback
+        # MARKER_127.1A: Store full verifier dict for stats collection
+        subtask.verifier_feedback = verifier_result
 
         await self._emit_progress(
             "@verifier",
@@ -751,7 +753,8 @@ Respond with implementation plan or code."""
         failure_lines = []
         for s in failed_subtasks:
             desc = s.description if hasattr(s, 'description') else str(s)[:100]
-            fb = s.verifier_feedback if hasattr(s, 'verifier_feedback') and s.verifier_feedback else "No feedback"
+            fb_raw = s.verifier_feedback if hasattr(s, 'verifier_feedback') and s.verifier_feedback else "No feedback"
+            fb = str(fb_raw.get("issues", fb_raw)) if isinstance(fb_raw, dict) else str(fb_raw)
             failure_lines.append(f"- {desc[:80]}: {fb[:200]}")
 
         replan_context = (
@@ -1872,6 +1875,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         result = await self._execute_subtask(subtask, phase_type)
                         verification = await self._verify_subtask(subtask, result, phase_type)
 
+                # MARKER_127.1A: Store verification dict for stats (confidence collection)
+                subtask.verifier_feedback = verification
+
                 if subtask.visible:
                     v_icon = "✅" if verification.get("passed", True) else "⚠️"
                     await self._emit_progress("@verifier", f"{v_icon} Verified: confidence={verification.get('confidence', 'N/A')}", i+1, total_subtasks, model=self._last_used_model)
@@ -2039,6 +2045,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                             break
                         result = await self._retry_coder(subtask, verification, phase_type)
                         verification = await self._verify_subtask(subtask, result, phase_type)
+                    # MARKER_127.1A: Store verification dict for stats (parallel path)
+                    subtask.verifier_feedback = verification
                 # MARKER_122.3_END
 
                 subtask.result = result

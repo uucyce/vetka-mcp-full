@@ -77,57 +77,39 @@ class TestResearcherPrompt:
 class TestVerifierPrompt:
     """Tests for Phase 125.0: Verifier prompt upgrade with 10-point checklist."""
 
-    def test_verifier_has_checklist(self):
-        """Verifier prompt should have CHECKLIST section."""
+    # MARKER_127.1: Verifier prompt v2 — simplified for small models (GLM, Mimo)
+    def test_verifier_checks_has_code(self):
+        """Verifier prompt should check for code presence."""
         prompts = _load_prompts()
         verifier = prompts["verifier"]["system"]
-        assert "CHECKLIST" in verifier
+        assert "HAS CODE" in verifier or "code" in verifier.lower()
 
-    def test_verifier_checks_code_present(self):
-        """Checklist item 1: CODE PRESENT."""
+    def test_verifier_checks_correct(self):
+        """Verifier prompt should check code correctness."""
         prompts = _load_prompts()
         verifier = prompts["verifier"]["system"]
-        assert "CODE PRESENT" in verifier
+        assert "CORRECT" in verifier or "implements" in verifier.lower()
 
-    def test_verifier_checks_minimum_length(self):
-        """Checklist item 3: MINIMUM LENGTH."""
+    def test_verifier_checks_complete(self):
+        """Verifier prompt should check for completeness (no placeholders)."""
         prompts = _load_prompts()
         verifier = prompts["verifier"]["system"]
-        assert "MINIMUM LENGTH" in verifier or "10 lines" in verifier
-
-    def test_verifier_checks_imports(self):
-        """Checklist item 5: IMPORTS."""
-        prompts = _load_prompts()
-        verifier = prompts["verifier"]["system"]
-        assert "IMPORTS" in verifier
-
-    def test_verifier_checks_no_placeholders(self):
-        """Checklist item 10: NO PLACEHOLDERS."""
-        prompts = _load_prompts()
-        verifier = prompts["verifier"]["system"]
-        assert "NO PLACEHOLDERS" in verifier or "TODO" in verifier
+        assert "COMPLETE" in verifier or "TODO" in verifier
 
     def test_verifier_severity_guide(self):
-        """Verifier should define severity guide (minor vs major)."""
+        """Verifier should define severity (minor vs major)."""
         prompts = _load_prompts()
         verifier = prompts["verifier"]["system"]
         assert "minor" in verifier
         assert "major" in verifier
-        assert "Severity" in verifier or "severity" in verifier
 
-    def test_verifier_pass_rules(self):
-        """Verifier pass rule: items 1, 3, 5, 8, 10 must all pass."""
+    def test_verifier_json_output(self):
+        """Verifier should require JSON output with passed/confidence."""
         prompts = _load_prompts()
         verifier = prompts["verifier"]["system"]
-        # Should mention which items are required for pass
-        assert "passed" in verifier.lower()
-        assert "FAIL" in verifier
-
-    def test_verifier_receives_original_context(self):
-        """Verifier prompt should mention original file context."""
-        prompts = _load_prompts()
-        verifier = prompts["verifier"]["system"]
-        assert "original file context" in verifier.lower() or "original" in verifier.lower()
+        assert "passed" in verifier
+        assert "confidence" in verifier
+        assert "JSON" in verifier
 
 
 # ── Verifier Context Enrichment Tests (MARKER_125.0A) ──

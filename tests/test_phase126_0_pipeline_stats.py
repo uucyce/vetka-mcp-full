@@ -178,14 +178,17 @@ class TestRegressionPrevious:
         source = _read_source("client/src/components/panels/TaskCard.tsx")
         assert "hold" in source
 
-    def test_verifier_checklist(self):
-        """Verifier prompt should still have checklist (125.0)."""
+    def test_verifier_checks(self):
+        """Verifier prompt should have 3 core checks (127.1 simplified)."""
         prompts_path = os.path.join(
             os.path.dirname(__file__), "..", "data", "templates", "pipeline_prompts.json"
         )
         with open(prompts_path) as f:
             prompts = json.load(f)
-        assert "CHECKLIST" in prompts["verifier"]["system"]
+        verifier = prompts["verifier"]["system"]
+        assert "HAS CODE" in verifier or "code" in verifier.lower()
+        assert "passed" in verifier
+        assert "confidence" in verifier
 
     def test_all_pipeline_roles(self):
         """All pipeline roles should be in prompts."""

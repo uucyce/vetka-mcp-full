@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T15:44:29.651605+00:00",
+  "last_updated": "2026-02-09T16:07:43.221624+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 126,
-    "subphase": "11",
-    "name": "Multi-Agent Task Board Analysis + Markers",
+    "subphase": "9",
+    "name": "Key Selection \u2192 Pipeline Dispatch",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 126.11 DONE! Multi-Agent Task Board Analysis + Markers",
+    "headline": "Phase 126.9 DONE! Key Selection \u2192 Pipeline Dispatch",
     "key_achievements": [
+      "[4266c722] Phase 126.9: Phase 126.9: Key Selection \u2192 Pipeline Dispatch",
       "[50deab71] Phase 126.11: Phase 126.11: Multi-Agent Task Board Analysis + Ma...",
       "[4d2d2149] Phase 126.5: Phase 126.5: Pipeline stop/cancel tests + Task Board multi-a",
       "[f4f5564e] Phase 126.10: Phase 126.10: Fix DELETE /keys/{provider}/{key_id}...",
@@ -21,8 +22,7 @@
       "[cad1dfcc] Phase 126.0: Phase 126.0: Pipeline Stats + DevPanel League Tester \u2014 Nolan",
       "[d5910265] Phase 125.1: Phase 125.1: Doctor Intelligence \u2014 triage + hold + approve f",
       "[9af5b810] Phase 125.0: Phase 125.0: Role Clarity + Verifier Fixes \u2014 Researcher=web(",
-      "[108d0ec0] Phase 124.9: Phase 124.9: Scout Places Markers \u2014 virtual marker_map as GP",
-      "[829c8281] Phase 124.8: Phase 124.8: Marker-aware search + focused reading \u2014 Scout\u2192A"
+      "[108d0ec0] Phase 124.9: Phase 124.9: Scout Places Markers \u2014 virtual marker_map as GP"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "50deab71",
+    "commit": "4266c722",
     "dirty": true
   }
 }
