@@ -1,11 +1,12 @@
 /**
  * MARKER_126.0C: DevPanel — Task Board + Stats + League Tester
  * MARKER_126.2B: Style upgrade — Nolan glassmorphism, monospace, no emoji
- * Phase 126.2: "Batman Nolan, not Burton" — dark, serious, minimal.
+ * MARKER_127.2B: Activity tab — real-time pipeline progress
+ * Phase 127.2: "Batman Nolan, not Burton" — dark, serious, minimal.
  *
  * @status active
- * @phase 126.2
- * @depends FloatingWindow, TaskCard, PipelineStats, LeagueTester, useStore
+ * @phase 127.2
+ * @depends FloatingWindow, TaskCard, PipelineStats, LeagueTester, BalancesPanel, ActivityLog
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -15,6 +16,7 @@ import { TaskCard, TaskData } from './TaskCard';
 import { PipelineStats } from './PipelineStats';
 import { LeagueTester } from './LeagueTester';
 import { BalancesPanel } from './BalancesPanel';  // MARKER_126.7
+import { ActivityLog } from './ActivityLog';  // MARKER_127.2B
 
 interface DevPanelProps {
   isOpen: boolean;
@@ -23,13 +25,14 @@ interface DevPanelProps {
 
 const API_BASE = 'http://localhost:5001/api/debug';
 
-type Tab = 'board' | 'stats' | 'test' | 'balance';  // MARKER_126.7
+type Tab = 'board' | 'stats' | 'test' | 'balance' | 'activity';  // MARKER_127.2B
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'board', label: 'Board' },
   { id: 'stats', label: 'Stats' },
   { id: 'test', label: 'Test' },
-  { id: 'balance', label: 'Balance' },  // MARKER_126.7
+  { id: 'balance', label: 'Balance' },
+  { id: 'activity', label: 'Activity' },  // MARKER_127.2B
 ];
 
 // MARKER_126.0C: Tabbed DevPanel
@@ -399,6 +402,9 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
 
         {/* ═══ BALANCE TAB ═══ MARKER_126.7 */}
         {activeTab === 'balance' && <BalancesPanel />}
+
+        {/* ═══ ACTIVITY TAB ═══ MARKER_127.2B */}
+        {activeTab === 'activity' && <ActivityLog />}
       </div>
     </FloatingWindow>
   );

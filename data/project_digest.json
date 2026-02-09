@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T16:40:53.692358+00:00",
+  "last_updated": "2026-02-09T16:50:41.323464+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 126,
-    "subphase": "12",
-    "name": "Stats Monitor \u2014 Live Refresh + Running Tasks",
+    "number": 127,
+    "subphase": "2",
+    "name": "Pipeline activity broadcast for DevPanel stream routing",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 126.12 DONE! Stats Monitor \u2014 Live Refresh + Running Tasks",
+    "headline": "Phase 127.2 DONE! Pipeline activity broadcast for DevPanel stream routing",
     "key_achievements": [
+      "[442487c2] Phase 127.2: Phase 127.2: Pipeline activity broadcast for DevPanel stream",
       "[5a52e47d] Phase 126.12: Phase 126.12: Stats Monitor \u2014 Live Refresh + Running Tasks",
       "[d1045cff] Phase 127.0: Phase 127.0: Pipeline Results Viewer + Nolan color fix",
       "[a386a7a1] Phase 127.1: Phase 127.1: Verifier hardening \u2014 fix confidence stats, simp",
@@ -21,8 +22,7 @@
       "[4d2d2149] Phase 126.5: Phase 126.5: Pipeline stop/cancel tests + Task Board multi-a",
       "[f4f5564e] Phase 126.10: Phase 126.10: Fix DELETE /keys/{provider}/{key_id}...",
       "[5c17de8a] Phase 126.3: Phase 126.3: Key sync + Balance scroll\n\nMARKER_126...",
-      "[1fdab83e] Phase 126.2: Phase 126.2: Nolan style upgrade \u2014 no emoji, glassmorphism, ",
-      "[cad1dfcc] Phase 126.0: Phase 126.0: Pipeline Stats + DevPanel League Tester \u2014 Nolan"
+      "[1fdab83e] Phase 126.2: Phase 126.2: Nolan style upgrade \u2014 no emoji, glassmorphism, "
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -40,9 +40,9 @@
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "running",
+      "status": "error: HTTPConnectionPool(host='127.0.0.1', port=5001): R",
       "port": 5001,
-      "tools_count": 15
+      "tools_count": 0
     },
     "api_keys": {
       "total": 30,
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "5a52e47d",
+    "commit": "442487c2",
     "dirty": true
   }
 }

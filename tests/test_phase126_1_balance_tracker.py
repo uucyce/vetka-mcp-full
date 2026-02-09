@@ -455,3 +455,50 @@ class TestPhase126_12_StatsMonitor:
         assert "totalTokensIn" in source
         assert "totalTokensOut" in source
         assert "successRate" in source
+
+
+# ── Phase 127.2: Activity Log Tab ──
+
+class TestPhase127_2_ActivityLog:
+    """Tests for MARKER_127.2: Activity Log component and DevPanel integration."""
+
+    def test_marker_127_2a_activity_log_component(self):
+        """MARKER_127.2A: ActivityLog component should exist."""
+        source = _read_source("client/src/components/panels/ActivityLog.tsx")
+        assert "MARKER_127.2A" in source
+        assert "pipeline-activity" in source
+        assert "LogEntry" in source
+
+    def test_activity_log_ring_buffer(self):
+        """ActivityLog should use ring buffer (max 100 entries)."""
+        source = _read_source("client/src/components/panels/ActivityLog.tsx")
+        assert "MAX_ENTRIES" in source
+        assert "100" in source
+        assert ".slice(0, MAX_ENTRIES)" in source
+
+    def test_activity_log_follow_tail(self):
+        """ActivityLog should have follow tail toggle."""
+        source = _read_source("client/src/components/panels/ActivityLog.tsx")
+        assert "followTail" in source
+        assert "setFollowTail" in source
+
+    def test_marker_127_2b_devpanel_integration(self):
+        """MARKER_127.2B: DevPanel should have Activity tab."""
+        source = _read_source("client/src/components/panels/DevPanel.tsx")
+        assert "MARKER_127.2B" in source
+        assert "'activity'" in source
+        assert "ActivityLog" in source
+        assert "import { ActivityLog }" in source
+
+
+# ── Phase 127.3: API Key Refresh Fix ──
+
+class TestPhase127_3_KeyRefreshFix:
+    """Tests for MARKER_127.3: Fix new API keys not showing after refresh."""
+
+    def test_marker_127_3_reload_on_fetch(self):
+        """MARKER_127.3: /usage/balances should reload keys from config."""
+        source = _read_source("src/api/routes/debug_routes.py")
+        assert "MARKER_127.3" in source
+        assert "km.load_keys()" in source
+        assert "keys_loaded" in source

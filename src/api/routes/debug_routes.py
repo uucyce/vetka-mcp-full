@@ -1971,6 +1971,7 @@ async def get_usage_balances() -> Dict[str, Any]:
     """
     MARKER_126.5A: Get unified usage and balance data.
     MARKER_126.3E: Sync all keys from KeyManager before returning.
+    MARKER_127.3: Reload keys from config on every request (fixes new key visibility bug).
 
     Returns:
         - records: Per-key usage (tokens, cost, balance where available)
@@ -1978,6 +1979,11 @@ async def get_usage_balances() -> Dict[str, Any]:
         - providers_with_balance: Which providers have remote balance API
     """
     from src.services.balance_tracker import get_balance_tracker
+    from src.utils.unified_key_manager import get_key_manager
+
+    # MARKER_127.3: Reload keys from config (picks up newly added keys)
+    km = get_key_manager()
+    keys_loaded = km.load_keys()
 
     tracker = get_balance_tracker()
 
@@ -1986,8 +1992,6 @@ async def get_usage_balances() -> Dict[str, Any]:
 
     # Optionally refresh remote balances for providers that support it
     try:
-        from src.utils.unified_key_manager import get_key_manager
-        km = get_key_manager()
         for provider in ['openrouter', 'polza']:
             try:
                 await km.fetch_provider_balance(provider)
@@ -2001,6 +2005,7 @@ async def get_usage_balances() -> Dict[str, Any]:
         "records": tracker.get_all(),
         "totals": tracker.get_totals(),
         "providers_with_balance": ["openrouter", "polza"],
+        "keys_loaded": keys_loaded,
         "synced_keys": synced_count,
         "timestamp": time.time()
     }

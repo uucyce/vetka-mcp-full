@@ -7,7 +7,7 @@
  * @depends TaskData
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { TaskData, PipelineStatsData } from './TaskCard';
 
 interface PipelineStatsProps {
