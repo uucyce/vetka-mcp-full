@@ -256,6 +256,23 @@ class TestPhase126_2_OpenRouterFix:
         assert "MARKER_126.4C" in source
 
 
+# ── Phase 126.10: DELETE Endpoint Fix ──
+
+class TestPhase126_10_DeleteEndpoint:
+    """Tests for MARKER_126.10: DELETE /keys/{provider}/{key_id} fix."""
+
+    def test_marker_126_10_exists(self):
+        """MARKER_126.10: New delete endpoint should exist."""
+        source = _read_source("src/api/routes/model_routes.py")
+        assert "MARKER_126.10" in source
+        assert "remove_specific_key" in source
+
+    def test_delete_endpoint_has_key_id_param(self):
+        """Endpoint should accept key_id parameter."""
+        source = _read_source("src/api/routes/model_routes.py")
+        assert "/keys/{provider}/{key_id}" in source
+
+
 # ── Regression Tests ──
 
 class TestRegressionPhase126_0:

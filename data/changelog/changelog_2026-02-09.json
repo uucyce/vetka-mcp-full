@@ -7247,5 +7247,27 @@
       "qdrant": true,
       "changelog": false
     }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/model_status_cache.json",
+    "file_id": "ab877320-46ab-5171-88b2-44ac24e0cb6a",
+    "timestamp": "2026-02-09T18:05:11.015591",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/model_status_cache.json",
+    "file_id": "ab877320-46ab-5171-88b2-44ac24e0cb6a",
+    "timestamp": "2026-02-09T18:05:29.868007",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
   }
 ]

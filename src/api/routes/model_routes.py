@@ -123,11 +123,41 @@ async def add_api_key(body: AddKeyRequest):
 
 @router.delete("/keys/{provider}")
 async def remove_api_key(provider: str):
-    """Remove API key for provider."""
+    """Remove API key for provider (all keys)."""
     registry = get_model_registry()
     if registry.remove_api_key(provider):
         return {'success': True}
     raise HTTPException(status_code=404, detail="Key not found")
+
+
+# MARKER_126.10: Fix DELETE endpoint mismatch — frontend sends key_id (masked)
+@router.delete("/keys/{provider}/{key_id}")
+async def remove_specific_key(provider: str, key_id: str):
+    """
+    Remove specific API key by masked ID.
+
+    Frontend sends: /api/keys/openrouter/sk-o****b296
+    key_id is the masked key (first4 + **** + last4)
+    """
+    from src.utils.unified_key_manager import get_key_manager, ProviderType
+
+    km = get_key_manager()
+
+    # Convert provider string to ProviderType if possible
+    try:
+        provider_key = ProviderType(provider.lower())
+    except ValueError:
+        provider_key = provider.lower()
+
+    # Find key by masked ID
+    keys_list = km.keys.get(provider_key, [])
+    for idx, record in enumerate(keys_list):
+        if record.mask() == key_id:
+            if km.remove_key_by_index(provider_key, idx):
+                return {'success': True, 'removed': key_id}
+            break
+
+    raise HTTPException(status_code=404, detail=f"Key {key_id} not found for {provider}")
 
 
 @router.get("/select")

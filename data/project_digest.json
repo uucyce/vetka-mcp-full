@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T15:04:52.777752+00:00",
+  "last_updated": "2026-02-09T15:06:05.128656+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 126,
-    "subphase": "2",
-    "name": "Nolan style upgrade \u2014 no emoji, glassmorphism, monospace",
+    "subphase": "3",
+    "name": "Key sync + Balance scroll",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 126.2 DONE! Nolan style upgrade \u2014 no emoji, glassmorphism, monospace",
+    "headline": "Phase 126.3 DONE! Key sync + Balance scroll",
     "key_achievements": [
+      "[5c17de8a] Phase 126.3: Phase 126.3: Key sync + Balance scroll\n\nMARKER_126...",
       "[1fdab83e] Phase 126.2: Phase 126.2: Nolan style upgrade \u2014 no emoji, glassmorphism, ",
       "[cad1dfcc] Phase 126.0: Phase 126.0: Pipeline Stats + DevPanel League Tester \u2014 Nolan",
       "[d5910265] Phase 125.1: Phase 125.1: Doctor Intelligence \u2014 triage + hold + approve f",
@@ -21,8 +22,7 @@
       "[829c8281] Phase 124.8: Phase 124.8: Marker-aware search + focused reading \u2014 Scout\u2192A",
       "[0653771e] Phase 124.7: Phase 124.7: VetkaSearchCodeTool + Scout pre-fetch via ripgr",
       "[cf5d07b5] Phase 124.6: Phase 124.6: Improved search filters + E2E Dragon Silver val",
-      "[6b47d668] Phase 124.5: Phase 124.5: Hybrid search + FC max_turns increase",
-      "[5e09a050] Phase 124.4: Phase 124.4: Pipeline quality \u2014 SearchFiles REST API, FC rec"
+      "[6b47d668] Phase 124.5: Phase 124.5: Hybrid search + FC max_turns increase"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "4701d6b6",
+    "commit": "5c17de8a",
     "dirty": true
   }
 }
