@@ -61,48 +61,119 @@ class VetkaSearchSemanticTool(BaseTool):
             needs_user_approval=False
         )
 
+    # MARKER_124.5A: Hybrid search — semantic + code-only filtered search
+    _CODE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".go", ".java", ".css", ".scss"]
+    _SKIP_NAMES = {"__init__.py"}
+
     async def execute(self, query: str = "", limit: int = 10, **kwargs) -> ToolResult:
-        """Search via REST API — same path as MCP bridge for consistent results."""
+        """Hybrid search: semantic results + Qdrant code-only filtered search.
+
+        MARKER_124.5A: Embedding models rank docs (.md, .txt) above code files.
+        Fix: run TWO searches — general semantic + code-only filtered via Qdrant.
+        Merge results, dedup by path, code files first.
+        """
         try:
             if not query or len(query) < 2:
                 return ToolResult(success=False, result=None, error="Query too short (min 2 chars)")
 
             import httpx
+
+            # Search 1: General semantic search via REST API
+            general_results = []
             async with httpx.AsyncClient(base_url="http://localhost:5001", timeout=10.0) as client:
-                response = await client.get(
+                resp = await client.get(
                     "/api/search/semantic",
                     params={"q": query, "limit": limit}
                 )
-                if response.status_code != 200:
-                    return ToolResult(success=False, result=None, error=f"Search API error: {response.status_code}")
+                if resp.status_code == 200:
+                    general_results = resp.json().get("files", [])
 
-                data = response.json()
+            # Search 2: Code-only via Qdrant direct (filtered by extension)
+            code_results = await self._search_code_only(query, limit)
 
-            # FIX_101.2: REST API returns "files" not "results"
-            results = data.get("files", data.get("results", []))
+            # Merge: code results first (they're what coders need), then general
+            seen_paths = set()
+            merged = []
 
-            # Format for coder readability
-            formatted_results = []
-            for f in results[:limit]:
-                formatted_results.append({
-                    "file_path": f.get("path", f.get("file_path", "")),
-                    "name": f.get("name", ""),
-                    "score": round(f.get("score", f.get("relevance", 0)), 3),
-                    "snippet": (f.get("content", f.get("preview", ""))[:200] + "...") if f.get("content") or f.get("preview") else ""
-                })
+            for f in code_results:
+                path = f.get("path", "")
+                name = f.get("name", "")
+                if path in seen_paths or name in self._SKIP_NAMES:
+                    continue
+                seen_paths.add(path)
+                merged.append({"file_path": path, "name": name, "score": round(f.get("score", 0), 3)})
 
-            formatted_text = f"Search: '{query}' — {len(formatted_results)} results\n"
-            for r in formatted_results:
+            for f in general_results:
+                path = f.get("path", f.get("file_path", ""))
+                name = f.get("name", "")
+                if path in seen_paths or name in self._SKIP_NAMES:
+                    continue
+                seen_paths.add(path)
+                merged.append({"file_path": path, "name": name, "score": round(f.get("score", 0), 3)})
+
+            top = merged[:limit]
+            formatted_text = f"Search: '{query}' — {len(top)} results\n"
+            for r in top:
                 formatted_text += f"\n  {r['file_path']} (score: {r['score']})"
-                if r.get("snippet"):
-                    formatted_text += f"\n    {r['snippet'][:100]}"
 
-            return ToolResult(
-                success=True,
-                result=formatted_text
-            )
+            return ToolResult(success=True, result=formatted_text)
         except Exception as e:
             return ToolResult(success=False, result=None, error=str(e))
+
+    async def _search_code_only(self, query: str, limit: int) -> list:
+        """Search Qdrant with code-extension filter (MARKER_124.5A helper)."""
+        try:
+            import httpx
+            # Get query embedding from Ollama (same model as indexer)
+            embedding = await self._get_query_embedding(query)
+            if not embedding:
+                return []
+
+            body = {
+                "vector": embedding,
+                "filter": {
+                    "should": [{"key": "extension", "match": {"value": ext}} for ext in self._CODE_EXTENSIONS]
+                },
+                "limit": limit,
+                "with_payload": ["name", "path", "extension"],
+            }
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "http://localhost:6333/collections/vetka_elisya/points/search",
+                    json=body,
+                )
+                if resp.status_code == 200:
+                    return [
+                        {
+                            "name": p["payload"].get("name", ""),
+                            "path": p["payload"].get("path", ""),
+                            "score": p.get("score", 0),
+                        }
+                        for p in resp.json().get("result", [])
+                    ]
+        except Exception:
+            pass
+        return []
+
+    @staticmethod
+    async def _get_query_embedding(query: str) -> list:
+        """Get embedding vector for query via Ollama."""
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "http://localhost:11434/api/embed",
+                    json={"model": "embeddinggemma:300m", "input": query}
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    embeddings = data.get("embeddings", data.get("embedding", []))
+                    if embeddings and isinstance(embeddings[0], list):
+                        return embeddings[0]
+                    return embeddings
+        except Exception:
+            pass
+        return []
 
 
 class VetkaCameraFocusTool(BaseTool):
@@ -426,40 +497,17 @@ class VetkaSearchFilesTool(BaseTool):
         )
 
     async def execute(self, query: str = "", search_type: str = "content", limit: int = 10, **kwargs) -> ToolResult:
-        """Search via REST API — same path as MCP bridge (MARKER_124.4A)."""
-        try:
-            if not query or len(query) < 2:
-                return ToolResult(success=False, result=None, error="Query too short (min 2 chars)")
-
-            # MARKER_124.4A: Use REST API instead of broken direct Qdrant
-            # Same fix as VetkaSearchSemanticTool (MARKER_124.3E)
-            import httpx
-            async with httpx.AsyncClient(base_url="http://localhost:5001", timeout=10.0) as client:
-                response = await client.get(
-                    "/api/search/semantic",
-                    params={"q": query, "limit": limit}
-                )
-                if response.status_code != 200:
-                    return ToolResult(success=False, result=None, error=f"Search API error: {response.status_code}")
-                data = response.json()
-
-            results = data.get("files", data.get("results", []))
-
-            formatted_results = []
-            for f in results[:limit]:
-                formatted_results.append({
-                    "file_path": f.get("path", f.get("file_path", "")),
-                    "name": f.get("name", ""),
-                    "score": round(f.get("score", f.get("relevance", 0)), 3),
-                })
-
-            formatted = f"Search files: '{query}' — {len(formatted_results)} results\n"
-            for r in formatted_results:
-                formatted += f"\n  {r['file_path']} (score: {r['score']})"
-
-            return ToolResult(success=True, result=formatted)
-        except Exception as e:
-            return ToolResult(success=False, result=None, error=f"Search failed: {str(e)}")
+        """Delegates to VetkaSearchSemanticTool hybrid search (MARKER_124.5A)."""
+        # Both tools now use the same hybrid search (semantic + code-only)
+        semantic_tool = VetkaSearchSemanticTool()
+        result = await semantic_tool.execute(query=query, limit=limit)
+        # Rebrand output
+        if result.success and result.result:
+            result = ToolResult(
+                success=True,
+                result=result.result.replace("Search:", "Search files:", 1)
+            )
+        return result
 
 
 class VetkaListFilesTool(BaseTool):

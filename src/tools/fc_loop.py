@@ -46,7 +46,8 @@ PIPELINE_CODER_TOOLS = [
     "vetka_list_files",
 ]
 
-MAX_FC_TURNS_CODER = 3
+# MARKER_124.5B: Increased from 3→4 to allow search+read+write+recovery
+MAX_FC_TURNS_CODER = 4
 MAX_FC_TURNS_DEFAULT = 5
 MAX_AUTO_READ_CHARS = 6000  # Max chars for auto-injected file content
 

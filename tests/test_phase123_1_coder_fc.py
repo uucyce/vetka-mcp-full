@@ -365,7 +365,7 @@ class TestCoderFCIntegration:
         mock_fc.assert_called_once()
         # Verify FC was called with correct params
         fc_kwargs = mock_fc.call_args
-        assert fc_kwargs.kwargs["max_turns"] == 3  # MAX_FC_TURNS_CODER
+        assert fc_kwargs.kwargs["max_turns"] == 4  # MAX_FC_TURNS_CODER (124.5B: 3→4)
 
     @pytest.mark.asyncio
     async def test_coder_uses_fc_for_fix(self):

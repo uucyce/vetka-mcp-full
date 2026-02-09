@@ -40,11 +40,10 @@ class TestSearchFilesToolRESTAPI:
         assert "SemanticTagger" not in class_source, \
             "VetkaSearchFilesTool should not use SemanticTagger (broken direct Qdrant)"
 
-    def test_uses_rest_api(self):
-        """Tool should use httpx REST API like VetkaSearchSemanticTool."""
+    def test_delegates_to_semantic(self):
+        """Tool should delegate to VetkaSearchSemanticTool (hybrid search)."""
         class_source = self._get_class_source("VetkaSearchFilesTool")
-        assert "httpx" in class_source, "Should use httpx for REST API"
-        assert "/api/search/semantic" in class_source, "Should call /api/search/semantic"
+        assert "VetkaSearchSemanticTool" in class_source, "Should delegate to VetkaSearchSemanticTool"
 
     def test_definition_unchanged(self):
         """Tool definition should still be vetka_search_files."""
@@ -265,3 +264,67 @@ class TestRegressionPreviousFixes:
         result = _clean_text_tool_calls(content)
         assert "<tool_call>" not in result
         assert "some code here" in result
+
+
+# ── Phase 124.5 Tests: Hybrid Search + Max Turns ──
+
+class TestHybridSearch:
+    """Tests for MARKER_124.5A: hybrid search (semantic + code-only)."""
+
+    def test_semantic_tool_has_code_extensions(self):
+        """VetkaSearchSemanticTool should define code extensions."""
+        from src.tools.registry import VetkaSearchSemanticTool
+        tool = VetkaSearchSemanticTool()
+        assert hasattr(tool, '_CODE_EXTENSIONS')
+        assert ".ts" in tool._CODE_EXTENSIONS
+        assert ".tsx" in tool._CODE_EXTENSIONS
+        assert ".py" in tool._CODE_EXTENSIONS
+
+    def test_semantic_tool_has_skip_names(self):
+        """Should skip __init__.py."""
+        from src.tools.registry import VetkaSearchSemanticTool
+        tool = VetkaSearchSemanticTool()
+        assert "__init__.py" in tool._SKIP_NAMES
+
+    def test_search_code_only_method_exists(self):
+        """_search_code_only helper should exist."""
+        from src.tools.registry import VetkaSearchSemanticTool
+        tool = VetkaSearchSemanticTool()
+        assert hasattr(tool, '_search_code_only')
+        assert asyncio.iscoroutinefunction(tool._search_code_only)
+
+    def test_get_query_embedding_method_exists(self):
+        """_get_query_embedding helper should exist."""
+        from src.tools.registry import VetkaSearchSemanticTool
+        assert hasattr(VetkaSearchSemanticTool, '_get_query_embedding')
+
+    def test_hybrid_search_marker_in_code(self):
+        """MARKER_124.5A should exist in registry.py."""
+        import os
+        filepath = os.path.join(os.path.dirname(__file__), "..", "src", "tools", "registry.py")
+        source = open(filepath).read()
+        assert "MARKER_124.5A" in source
+
+    def test_search_files_delegates(self):
+        """VetkaSearchFilesTool should delegate to VetkaSearchSemanticTool."""
+        import os
+        filepath = os.path.join(os.path.dirname(__file__), "..", "src", "tools", "registry.py")
+        source = open(filepath).read()
+        start = source.find("class VetkaSearchFilesTool")
+        end = source.find("\nclass ", start + 1)
+        class_source = source[start:end]
+        assert "VetkaSearchSemanticTool" in class_source
+
+
+class TestMaxTurnsUpdate:
+    """Test MARKER_124.5B: max_turns increased from 3 to 4."""
+
+    def test_max_fc_turns_is_4(self):
+        """MAX_FC_TURNS_CODER should be 4 (was 3)."""
+        from src.tools.fc_loop import MAX_FC_TURNS_CODER
+        assert MAX_FC_TURNS_CODER == 4, f"Expected 4, got {MAX_FC_TURNS_CODER}"
+
+    def test_max_fc_turns_default_unchanged(self):
+        """MAX_FC_TURNS_DEFAULT should still be 5."""
+        from src.tools.fc_loop import MAX_FC_TURNS_DEFAULT
+        assert MAX_FC_TURNS_DEFAULT == 5
