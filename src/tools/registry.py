@@ -18,23 +18,23 @@ Tools registered:
 from typing import Any, Dict
 from src.tools.base_tool import BaseTool, ToolDefinition, ToolResult, PermissionLevel, registry
 from src.bridge.shared_tools import (
-    SemanticSearchTool,
     SharedCameraFocusTool,
     TreeStructureTool
 )
+# Note: SemanticSearchTool removed — VetkaSearchSemanticTool now uses REST API (MARKER_124.3E)
 
 
 class VetkaSearchSemanticTool(BaseTool):
     """
     Semantic search in VETKA knowledge base using Qdrant.
-    
+
     Searches for concepts, ideas, or topics across all indexed documents
     using vector similarity search. Returns relevant content with similarity scores.
+
+    MARKER_124.3E: Fixed to use REST API (same as MCP bridge) instead of broken
+    shared_tools.SemanticSearchTool which returned 0 results.
     """
-    
-    def __init__(self):
-        self._tool = SemanticSearchTool()
-    
+
     @property
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
@@ -60,29 +60,46 @@ class VetkaSearchSemanticTool(BaseTool):
             permission_level=PermissionLevel.READ,
             needs_user_approval=False
         )
-    
-    async def execute(self, query: str, limit: int = 10) -> ToolResult:
+
+    async def execute(self, query: str = "", limit: int = 10, **kwargs) -> ToolResult:
+        """Search via REST API — same path as MCP bridge for consistent results."""
         try:
-            arguments = {"query": query, "limit": limit}
-            
-            # Validate arguments
-            error = self._tool.validate_arguments(arguments)
-            if error:
-                return ToolResult(success=False, result=None, error=error)
-            
-            # Execute the search
-            result = await self._tool.execute(arguments)
-            
-            if result.get("error"):
-                return ToolResult(success=False, result=None, error=result["error"])
-            
+            if not query or len(query) < 2:
+                return ToolResult(success=False, result=None, error="Query too short (min 2 chars)")
+
+            import httpx
+            async with httpx.AsyncClient(base_url="http://localhost:5001", timeout=10.0) as client:
+                response = await client.get(
+                    "/api/search/semantic",
+                    params={"q": query, "limit": limit}
+                )
+                if response.status_code != 200:
+                    return ToolResult(success=False, result=None, error=f"Search API error: {response.status_code}")
+
+                data = response.json()
+
+            # FIX_101.2: REST API returns "files" not "results"
+            results = data.get("files", data.get("results", []))
+
+            # Format for coder readability
+            formatted_results = []
+            for f in results[:limit]:
+                formatted_results.append({
+                    "file_path": f.get("path", f.get("file_path", "")),
+                    "name": f.get("name", ""),
+                    "score": round(f.get("score", f.get("relevance", 0)), 3),
+                    "snippet": (f.get("content", f.get("preview", ""))[:200] + "...") if f.get("content") or f.get("preview") else ""
+                })
+
+            formatted_text = f"Search: '{query}' — {len(formatted_results)} results\n"
+            for r in formatted_results:
+                formatted_text += f"\n  {r['file_path']} (score: {r['score']})"
+                if r.get("snippet"):
+                    formatted_text += f"\n    {r['snippet'][:100]}"
+
             return ToolResult(
                 success=True,
-                result={
-                    "results": result.get("results", []),
-                    "query": result.get("query", query),
-                    "total": result.get("total", 0)
-                }
+                result=formatted_text
             )
         except Exception as e:
             return ToolResult(success=False, result=None, error=str(e))

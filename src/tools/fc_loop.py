@@ -266,16 +266,23 @@ def _clean_text_tool_calls(content: str) -> str:
 # append its content to the tool result. Coder sees paths + actual code in one turn.
 
 _FILE_PATH_PATTERNS = [
+    # Relative paths: src/main.py, client/src/store/useStore.ts
     re.compile(r'(?:^|["\s,])([a-zA-Z_][\w/\-]*\.(?:tsx?|jsx?|py|rs|toml|json|css|html|md))(?:["\s,]|$)', re.MULTILINE),
+    # Absolute paths: /Users/.../file.py (common in VETKA search results)
+    re.compile(r'(/[\w\-./]+\.(?:tsx?|jsx?|py|rs|toml|json|css|html|md))(?:["\s,]|$)', re.MULTILINE),
 ]
 
 def _extract_file_paths(result_text: str) -> List[str]:
-    """Extract file paths from search result text."""
+    """Extract file paths from search result text.
+
+    Handles both relative and absolute paths. For absolute paths,
+    converts to relative if they contain a known project root marker.
+    """
     paths = []
     for pat in _FILE_PATH_PATTERNS:
         for m in pat.finditer(result_text):
             p = m.group(1).strip()
-            if p and len(p) > 3 and '/' in p:  # Only paths with directories
+            if p and len(p) > 3 and '/' in p:
                 paths.append(p)
     # Also parse JSON result format: {"file_path": "...", "path": "..."}
     try:
@@ -292,10 +299,20 @@ def _extract_file_paths(result_text: str) -> List[str]:
                             elif isinstance(val, dict) and "file_path" in val:
                                 paths.append(val["file_path"])
             elif isinstance(r, str):
-                # Result might contain paths as text
                 pass
     except (json.JSONDecodeError, TypeError):
         pass
+
+    # MARKER_124.3E: Also extract paths from formatted text lines
+    # Pattern: "  /path/to/file.py (score: 0.9)"
+    for line in result_text.split('\n'):
+        line = line.strip()
+        if line.startswith('/') or line.startswith('client/') or line.startswith('src/'):
+            # Extract path before any parenthetical (score: ...)
+            path_part = line.split('(')[0].strip()
+            if '.' in path_part and '/' in path_part:
+                paths.append(path_part)
+
     # Deduplicate while preserving order
     seen = set()
     unique = []
@@ -304,6 +321,30 @@ def _extract_file_paths(result_text: str) -> List[str]:
             seen.add(p)
             unique.append(p)
     return unique
+
+
+def _normalize_path(fpath: str) -> str:
+    """Convert absolute paths to relative (VetkaReadFileTool expects relative)."""
+    # Look for project root markers in absolute path
+    for marker in ("vetka_live_03/", "VETKA_Project/vetka_live_03/"):
+        idx = fpath.find(marker)
+        if idx >= 0:
+            return fpath[idx + len(marker):]
+    # If starts with /, try stripping common prefixes
+    if fpath.startswith("/"):
+        # Last resort: return as-is, ReadFileTool will handle
+        return fpath
+    return fpath
+
+
+def _is_useful_file(fpath: str) -> bool:
+    """Skip files that are not useful for coder context (init, tests, docs)."""
+    name = fpath.split("/")[-1] if "/" in fpath else fpath
+    if name == "__init__.py":
+        return False
+    if name.startswith("test_"):
+        return False
+    return True
 
 
 async def _auto_read_top_file(
@@ -315,7 +356,12 @@ async def _auto_read_top_file(
     Auto-read the first valid file from search results.
     Returns file content string or None.
     """
-    for fpath in file_paths[:2]:  # Try top 2 paths
+    # Filter to useful files and normalize paths
+    candidates = [_normalize_path(p) for p in file_paths if _is_useful_file(p)]
+    if not candidates:
+        candidates = [_normalize_path(p) for p in file_paths[:2]]  # Fallback: try first 2
+
+    for fpath in candidates[:3]:  # Try top 3 candidates
         try:
             call = ToolCall(
                 tool_name="vetka_read_file",
