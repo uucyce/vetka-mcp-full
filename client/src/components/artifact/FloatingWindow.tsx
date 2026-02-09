@@ -9,7 +9,7 @@
  */
 
 import { Rnd } from 'react-rnd';
-import { X, Minus, Maximize2 } from 'lucide-react';
+import { X, Maximize2 } from 'lucide-react';
 import { useState, useCallback } from 'react';
 
 interface Props {
@@ -29,7 +29,6 @@ export function FloatingWindow({
   defaultWidth = 600,
   defaultHeight = 500,
 }: Props) {
-  const [isMinimized, setIsMinimized] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [size, setSize] = useState({ width: defaultWidth, height: defaultHeight });
   const [position, setPosition] = useState({ x: 100, y: 100 });
@@ -109,20 +108,6 @@ export function FloatingWindow({
 
           <div style={{ display: 'flex', gap: 4 }}>
             <button
-              onClick={() => setIsMinimized(!isMinimized)}
-              style={{
-                padding: 4,
-                background: 'transparent',
-                border: 'none',
-                borderRadius: 4,
-                color: '#666',
-                cursor: 'pointer',
-              }}
-              title="Minimize"
-            >
-              <Minus size={14} />
-            </button>
-            <button
               onClick={toggleMaximize}
               style={{
                 padding: 4,
@@ -157,7 +142,6 @@ export function FloatingWindow({
         <div style={{
           flex: 1,
           overflow: 'hidden',
-          display: isMinimized ? 'none' : 'block',
         }}>
           {children}
         </div>

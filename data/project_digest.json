@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T16:50:41.323464+00:00",
+  "last_updated": "2026-02-09T16:56:58.562617+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 127,
     "subphase": "2",
-    "name": "Pipeline activity broadcast for DevPanel stream routing",
+    "name": "127.3: Activity Log + Key Refresh Fix",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 127.2 DONE! Pipeline activity broadcast for DevPanel stream routing",
+    "headline": "Phase 127.2 DONE! 127.3: Activity Log + Key Refresh Fix",
     "key_achievements": [
+      "[d61626bb] Phase 127.2: Phase 127.2-127.3: Activity Log + Key Refresh Fix",
       "[442487c2] Phase 127.2: Phase 127.2: Pipeline activity broadcast for DevPanel stream",
       "[5a52e47d] Phase 126.12: Phase 126.12: Stats Monitor \u2014 Live Refresh + Running Tasks",
       "[d1045cff] Phase 127.0: Phase 127.0: Pipeline Results Viewer + Nolan color fix",
@@ -21,8 +22,7 @@
       "[50deab71] Phase 126.11: Phase 126.11: Multi-Agent Task Board Analysis + Ma...",
       "[4d2d2149] Phase 126.5: Phase 126.5: Pipeline stop/cancel tests + Task Board multi-a",
       "[f4f5564e] Phase 126.10: Phase 126.10: Fix DELETE /keys/{provider}/{key_id}...",
-      "[5c17de8a] Phase 126.3: Phase 126.3: Key sync + Balance scroll\n\nMARKER_126...",
-      "[1fdab83e] Phase 126.2: Phase 126.2: Nolan style upgrade \u2014 no emoji, glassmorphism, "
+      "[5c17de8a] Phase 126.3: Phase 126.3: Key sync + Balance scroll\n\nMARKER_126..."
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -40,9 +40,9 @@
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "error: HTTPConnectionPool(host='127.0.0.1', port=5001): R",
+      "status": "running",
       "port": 5001,
-      "tools_count": 0
+      "tools_count": 15
     },
     "api_keys": {
       "total": 30,
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "442487c2",
+    "commit": "d61626bb",
     "dirty": true
   }
 }
