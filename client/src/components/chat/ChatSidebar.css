@@ -243,6 +243,93 @@
   padding: 4px;
 }
 
+/* MARKER_129.2B: Skeleton loading animation */
+.chat-sidebar-skeleton {
+  padding: 8px;
+}
+
+.chat-skeleton-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px 8px;
+  border-bottom: 1px solid #1a1a1a;
+}
+
+.chat-skeleton-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  flex-shrink: 0;
+}
+
+.chat-skeleton-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-skeleton-title {
+  width: 70%;
+  height: 12px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.chat-skeleton-meta {
+  width: 40%;
+  height: 10px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  animation-delay: 0.2s;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* MARKER_129.2C: Infinite scroll trigger */
+.chat-sidebar-load-trigger {
+  padding: 12px;
+  min-height: 40px;
+}
+
+.chat-sidebar-loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #666;
+  font-size: 11px;
+}
+
+.chat-loading-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #333;
+  border-top-color: #666;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Scrollbar styling */
 .chat-sidebar-list::-webkit-scrollbar {
   width: 6px;

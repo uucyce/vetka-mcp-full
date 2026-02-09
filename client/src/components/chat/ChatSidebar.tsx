@@ -1,21 +1,25 @@
 /**
- * Chat Sidebar Component - Phase 50
+ * Chat Sidebar Component - Phase 50 + 129.2
  * Displays chat history and allows switching between conversations.
  *
  * @file ChatSidebar.tsx
  * @status ACTIVE
  * @phase Phase 50 - Chat History + Sidebar UI
- * @lastUpdate 2026-01-06
+ * @lastUpdate 2026-02-10
  *
  * Features:
- * - Load and display all chats
+ * - Load and display all chats with pagination
  * - Search/filter chats by file name
  * - Select chat to load message history
  * - Show message count and last updated timestamp
  * - Delete chat (optional)
+ *
+ * MARKER_129.2A: Pagination with offset/limit (already implemented)
+ * MARKER_129.2B: Loading skeleton animation
+ * MARKER_129.2C: Scroll-to-load-more with IntersectionObserver
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './ChatSidebar.css';
 
 interface Chat {
@@ -40,6 +44,23 @@ interface ChatSidebarProps {
   onClose?: () => void;
 }
 
+/**
+ * MARKER_129.2B: Loading skeleton for chat items
+ */
+const ChatSkeleton = () => (
+  <div className="chat-sidebar-skeleton">
+    {[1, 2, 3, 4, 5].map((i) => (
+      <div key={i} className="chat-skeleton-item">
+        <div className="chat-skeleton-icon" />
+        <div className="chat-skeleton-content">
+          <div className="chat-skeleton-title" />
+          <div className="chat-skeleton-meta" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
 export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   isOpen,
   onSelectChat,
@@ -54,6 +75,10 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const LIMIT = 50;
+
+  // MARKER_129.2C: IntersectionObserver for infinite scroll
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   // Load chats on component mount (auto-load on app startup)
   useEffect(() => {
@@ -128,11 +153,30 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
   };
 
-  const loadMoreChats = () => {
+  // MARKER_129.2C: Wrapped in useCallback for IntersectionObserver
+  const loadMoreChats = useCallback(() => {
     if (!loadingMore && hasMore) {
       loadChats(false);
     }
-  };
+  }, [loadingMore, hasMore]);
+
+  // MARKER_129.2C: IntersectionObserver for scroll-to-load-more
+  useEffect(() => {
+    if (!loadMoreRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry.isIntersecting && hasMore && !loadingMore && !loading) {
+          loadMoreChats();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, loadMoreChats]);
 
   const filteredChats = chats.filter(chat =>
     chat.file_name.toLowerCase().includes(search.toLowerCase())
@@ -246,10 +290,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       </div>
 
       {/* Chats List */}
-      <div className="chat-sidebar-list">
-        {loading && (
-          <div className="chat-sidebar-loading">Loading chats...</div>
-        )}
+      <div className="chat-sidebar-list" ref={listRef}>
+        {/* MARKER_129.2B: Skeleton loading */}
+        {loading && <ChatSkeleton />}
 
         {!loading && filteredChats.length === 0 && (
           <div className="chat-sidebar-empty">
@@ -332,6 +375,18 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             </div>
           </div>
         ))}
+
+        {/* MARKER_129.2C: Scroll trigger for infinite load */}
+        {hasMore && !loading && (
+          <div ref={loadMoreRef} className="chat-sidebar-load-trigger">
+            {loadingMore && (
+              <div className="chat-sidebar-loading-more">
+                <span className="chat-loading-spinner" />
+                Loading more...
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Footer with Refresh and Load More */}
