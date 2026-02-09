@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T16:09:13.109343+00:00",
+  "last_updated": "2026-02-09T16:12:15.260274+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 127,
-    "subphase": "1",
-    "name": "Verifier hardening \u2014 fix confidence stats, simplify prompt for small models",
+    "subphase": "0",
+    "name": "Pipeline Results Viewer + Nolan color fix",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 127.1 DONE! Verifier hardening \u2014 fix confidence stats, simplify prompt for small models",
+    "headline": "Phase 127.0 DONE! Pipeline Results Viewer + Nolan color fix",
     "key_achievements": [
+      "[d1045cff] Phase 127.0: Phase 127.0: Pipeline Results Viewer + Nolan color fix",
       "[a386a7a1] Phase 127.1: Phase 127.1: Verifier hardening \u2014 fix confidence stats, simp",
       "[4266c722] Phase 126.9: Phase 126.9: Key Selection \u2192 Pipeline Dispatch",
       "[50deab71] Phase 126.11: Phase 126.11: Multi-Agent Task Board Analysis + Ma...",
@@ -21,8 +22,7 @@
       "[5c17de8a] Phase 126.3: Phase 126.3: Key sync + Balance scroll\n\nMARKER_126...",
       "[1fdab83e] Phase 126.2: Phase 126.2: Nolan style upgrade \u2014 no emoji, glassmorphism, ",
       "[cad1dfcc] Phase 126.0: Phase 126.0: Pipeline Stats + DevPanel League Tester \u2014 Nolan",
-      "[d5910265] Phase 125.1: Phase 125.1: Doctor Intelligence \u2014 triage + hold + approve f",
-      "[9af5b810] Phase 125.0: Phase 125.0: Role Clarity + Verifier Fixes \u2014 Researcher=web("
+      "[d5910265] Phase 125.1: Phase 125.1: Doctor Intelligence \u2014 triage + hold + approve f"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "a386a7a1",
+    "commit": "d1045cff",
     "dirty": true
   }
 }

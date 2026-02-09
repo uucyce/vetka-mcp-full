@@ -427,3 +427,31 @@ class TestPhase127_0_ResultsViewer:
         assert "subtasks" in source
         assert "expandedSubtask" in source
         assert "copy" in source  # Copy button
+
+
+# ── Phase 126.12: Stats Monitor Live Refresh ──
+
+class TestPhase126_12_StatsMonitor:
+    """Tests for MARKER_126.12: PipelineStats live refresh."""
+
+    def test_marker_126_12a_live_refresh(self):
+        """MARKER_126.12A: PipelineStats should have live refresh."""
+        source = _read_source("client/src/components/panels/PipelineStats.tsx")
+        assert "MARKER_126.12" in source
+        assert "task-board-updated" in source
+        assert "onRefresh" in source
+
+    def test_marker_126_12b_running_tasks(self):
+        """MARKER_126.12B: PipelineStats should show running tasks."""
+        source = _read_source("client/src/components/panels/PipelineStats.tsx")
+        assert "MARKER_126.12B" in source
+        assert "runningTasks" in source
+        assert "formatElapsed" in source
+
+    def test_marker_126_12c_summary_improvements(self):
+        """MARKER_126.12C: PipelineStats should show improved summary."""
+        source = _read_source("client/src/components/panels/PipelineStats.tsx")
+        assert "MARKER_126.12C" in source
+        assert "totalTokensIn" in source
+        assert "totalTokensOut" in source
+        assert "successRate" in source
