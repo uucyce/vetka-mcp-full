@@ -1,10 +1,9 @@
 /**
  * MARKER_126.6: BalancesPanel — unified usage and balance monitoring.
  * MARKER_126.8: Scroll support (unified pattern from DevPanel/ChatPanel)
+ * MARKER_126.9A: Key row click → select key for next pipeline dispatch
  * Style: Nolan monochrome. Palette: #111, #222, #333, #e0e0e0, #888, #666.
  * Color accents ONLY for status (muted red/green).
- *
- * TODO MARKER_126.9: Click on key row → use that key for next pipeline
  *
  * @status active
  * @phase 126.3
@@ -12,6 +11,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useStore } from '../../store/useStore';
 
 interface UsageRecord {
   provider: string;
@@ -67,6 +67,19 @@ export function BalancesPanel() {
   const [totals, setTotals] = useState<Totals | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // MARKER_126.9A: Selected API key for next pipeline dispatch
+  const selectedKey = useStore((s) => s.selectedKey);
+  const setSelectedKey = useStore((s) => s.setSelectedKey);
+
+  const handleKeyClick = useCallback((provider: string, key_masked: string) => {
+    // Toggle selection: click same key to deselect
+    if (selectedKey?.provider === provider && selectedKey?.key_masked === key_masked) {
+      setSelectedKey(null);
+    } else {
+      setSelectedKey({ provider, key_masked });
+    }
+  }, [selectedKey, setSelectedKey]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -149,6 +162,20 @@ export function BalancesPanel() {
               </span>
             </div>
           )}
+          {/* MARKER_126.9A: Selected key indicator */}
+          {selectedKey && (
+            <div style={{
+              color: COLORS.text,
+              marginTop: 4,
+              fontSize: 9,
+              padding: '3px 6px',
+              background: 'rgba(255,255,255,0.05)',
+              borderRadius: 2,
+              display: 'inline-block'
+            }}>
+              next: {selectedKey.provider}/{selectedKey.key_masked.slice(0, 8)}...
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <button
@@ -220,16 +247,27 @@ export function BalancesPanel() {
             </tr>
           </thead>
           <tbody>
-            {records.map((r, i) => (
+            {records.map((r, i) => {
+              // MARKER_126.9A: Check if this row is selected
+              const isSelected = selectedKey?.provider === r.provider && selectedKey?.key_masked === r.key_masked;
+              return (
               <tr
                 key={i}
+                onClick={() => handleKeyClick(r.provider, r.key_masked)}
                 style={{
                   borderBottom: `1px solid ${COLORS.bgLight}`,
-                  opacity: r.exhausted ? 0.4 : 1
+                  opacity: r.exhausted ? 0.4 : 1,
+                  cursor: 'pointer',
+                  // MARKER_126.9A: Visual highlight for selected key
+                  borderLeft: isSelected ? `2px solid ${COLORS.text}` : '2px solid transparent',
+                  background: isSelected ? 'rgba(255,255,255,0.03)' : 'transparent',
+                  transition: 'all 0.15s',
                 }}
               >
-                <td style={{ padding: '7px 0', color: COLORS.textMuted }}>{r.provider}</td>
-                <td style={{ padding: '7px 0', color: COLORS.textDim }}>{r.key_masked}</td>
+                <td style={{ padding: '7px 0 7px 6px', color: isSelected ? COLORS.text : COLORS.textMuted }}>
+                  {isSelected ? '▸ ' : ''}{r.provider}
+                </td>
+                <td style={{ padding: '7px 0', color: isSelected ? COLORS.textMuted : COLORS.textDim }}>{r.key_masked}</td>
                 <td style={{ padding: '7px 0', textAlign: 'right', color: COLORS.textMuted }}>
                   {formatTokens(r.tokens_in)}
                 </td>
@@ -256,7 +294,8 @@ export function BalancesPanel() {
                   {formatTime(r.last_used)}
                 </td>
               </tr>
-            ))}
+            );
+            })}
           </tbody>
         </table>
       </div>

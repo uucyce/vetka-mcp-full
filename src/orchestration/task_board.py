@@ -448,11 +448,16 @@ class TaskBoard:
     # DISPATCH
     # ==========================================
 
-    async def dispatch_next(self, chat_id: Optional[str] = None) -> Dict[str, Any]:
+    async def dispatch_next(
+        self,
+        chat_id: Optional[str] = None,
+        selected_key: Optional[Dict[str, str]] = None  # MARKER_126.9E
+    ) -> Dict[str, Any]:
         """Pick highest-priority task and dispatch to pipeline.
 
         Args:
             chat_id: Optional chat ID for progress streaming
+            selected_key: Optional {provider, key_masked} for specific API key
 
         Returns:
             Dispatch result dict
@@ -461,12 +466,13 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": "No pending tasks with satisfied dependencies"}
 
-        return await self.dispatch_task(task["id"], chat_id=chat_id)
+        return await self.dispatch_task(task["id"], chat_id=chat_id, selected_key=selected_key)
 
     async def dispatch_task(
         self,
         task_id: str,
-        chat_id: Optional[str] = None
+        chat_id: Optional[str] = None,
+        selected_key: Optional[Dict[str, str]] = None  # MARKER_126.9E
     ) -> Dict[str, Any]:
         """Dispatch a specific task to the Mycelium pipeline.
 
@@ -476,6 +482,7 @@ class TaskBoard:
         Args:
             task_id: Task to dispatch
             chat_id: Optional chat ID for progress streaming
+            selected_key: Optional {provider, key_masked} for specific API key
 
         Returns:
             Dict with success status, pipeline_task_id, and result
@@ -503,6 +510,10 @@ class TaskBoard:
             )
             # MARKER_121.2: Tag pipeline with board task ID for callback
             pipeline._board_task_id = task_id
+
+            # MARKER_126.9E: Pass selected key to pipeline for preferred key routing
+            if selected_key:
+                pipeline.selected_key = selected_key
 
             # MARKER_126.5E: Register pipeline for cancellation support
             TaskBoard.register_pipeline(task_id, pipeline)

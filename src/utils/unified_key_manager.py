@@ -221,6 +221,10 @@ class UnifiedKeyManager:
         self._learned_patterns: Dict[str, Dict] = {}
         self._load_learned_patterns()
 
+        # MARKER_126.9F: Preferred key for specific provider (one-shot use)
+        # Dict[provider_name, key_masked] -> temporary preference from UI
+        self._preferred_keys: Dict[str, str] = {}
+
         # Load keys from config
         self._load_from_config()
 
@@ -235,6 +239,8 @@ class UnifiedKeyManager:
         Works with: OpenRouter, Poe, Polza, Mistral, XAI, etc.
         If provider has multiple keys, rotates between them on failure.
 
+        MARKER_126.9F: Now checks for preferred key first (from UI selection).
+
         Args:
             provider: Provider enum or string
             rotate: If True, rotate to next key BEFORE returning
@@ -242,6 +248,11 @@ class UnifiedKeyManager:
         Returns:
             API key string or None if no keys available
         """
+        # MARKER_126.9F: Check for UI-selected preferred key first
+        preferred = self.get_preferred_key(provider)
+        if preferred:
+            return preferred
+
         self._ensure_provider_initialized(provider)
         provider_keys = self.keys.get(provider, [])
 
@@ -301,6 +312,68 @@ class UnifiedKeyManager:
         self._ensure_provider_initialized(provider)
         provider_keys = self.keys.get(provider, [])
         return len([r for r in provider_keys if r.is_available()])
+
+    # ============================================================
+    # MARKER_126.9F: PREFERRED KEY SELECTION (from UI)
+    # ============================================================
+
+    def set_preferred_key(self, provider: str, key_masked: str) -> bool:
+        """
+        MARKER_126.9F: Set a preferred key for the next LLM call.
+
+        When set, get_key_with_rotation() will return this specific key
+        instead of the normal rotation. Preference is cleared after use.
+
+        Args:
+            provider: Provider name (e.g., "polza", "openrouter")
+            key_masked: Masked key ID (e.g., "sk-or-****abcd")
+
+        Returns:
+            True if key found and preference set
+        """
+        provider_lower = provider.lower()
+        self._preferred_keys[provider_lower] = key_masked
+        logger.info(f"[UnifiedKeyManager] Preferred key set: {provider_lower}/{key_masked[:12]}...")
+        return True
+
+    def clear_preferred_key(self, provider: Optional[str] = None) -> None:
+        """
+        MARKER_126.9F: Clear preferred key preference.
+
+        Args:
+            provider: If given, clear only for that provider. Otherwise clear all.
+        """
+        if provider:
+            self._preferred_keys.pop(provider.lower(), None)
+        else:
+            self._preferred_keys.clear()
+
+    def get_preferred_key(self, provider: ProviderKey) -> Optional[str]:
+        """
+        MARKER_126.9F: Get preferred key if set, clear after use.
+
+        Returns the actual API key if preference is set and key exists.
+        Clears the preference after returning (one-shot use).
+        """
+        provider_name = self._get_provider_name(provider).lower()
+
+        preferred_masked = self._preferred_keys.get(provider_name)
+        if not preferred_masked:
+            return None
+
+        # Find the actual key by masked ID
+        provider_keys = self.keys.get(provider, [])
+        for record in provider_keys:
+            if record.mask() == preferred_masked and record.is_available():
+                # Clear preference (one-shot)
+                self._preferred_keys.pop(provider_name, None)
+                logger.info(f"[UnifiedKeyManager] Using preferred key: {provider_name}/{preferred_masked[:12]}...")
+                return record.key
+
+        # Key not found or not available - clear anyway
+        self._preferred_keys.pop(provider_name, None)
+        logger.warning(f"[UnifiedKeyManager] Preferred key not found/available: {provider_name}/{preferred_masked}")
+        return None
 
     # ============================================================
     # OPENROUTER ROTATION (backwards compatibility)

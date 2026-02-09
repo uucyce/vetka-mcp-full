@@ -1488,6 +1488,16 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         logger.info(f"[Pipeline] Starting {phase_type} pipeline for: {task[:50]}...")
 
+        # MARKER_126.9E: Apply selected key preference if set from UI
+        if hasattr(self, 'selected_key') and self.selected_key:
+            from src.utils.unified_key_manager import get_key_manager
+            km = get_key_manager()
+            provider = self.selected_key.get('provider', '')
+            key_masked = self.selected_key.get('key_masked', '')
+            if provider and key_masked:
+                km.set_preferred_key(provider, key_masked)
+                logger.info(f"[Pipeline] Using selected key: {provider}/{key_masked[:12]}...")
+
         # MARKER_102.28_START: Progress emission during execution
         # MARKER_117.6C: Show team composition at pipeline start
         team_info = f"🐉 {self.preset_name or 'default'}"

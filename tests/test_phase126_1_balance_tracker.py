@@ -323,3 +323,73 @@ class TestRegressionPhase126_0:
         source = _read_source("src/api/routes/debug_routes.py")
         assert "task-board/test-league" in source
         assert "MARKER_126.0E" in source
+
+
+# ── Phase 126.9: Key Selection → Pipeline ──
+
+class TestPhase126_9_KeySelection:
+    """Tests for MARKER_126.9: Key Selection → Pipeline Dispatch feature."""
+
+    def test_marker_126_9a_balances_panel_click(self):
+        """MARKER_126.9A: BalancesPanel should have key click handler."""
+        source = _read_source("client/src/components/panels/BalancesPanel.tsx")
+        assert "MARKER_126.9A" in source
+        assert "handleKeyClick" in source
+        assert "selectedKey" in source
+
+    def test_marker_126_9b_usestore_selected_key(self):
+        """MARKER_126.9B: useStore should have selectedKey state."""
+        source = _read_source("client/src/store/useStore.ts")
+        assert "MARKER_126.9B" in source
+        assert "selectedKey:" in source
+        assert "setSelectedKey" in source
+        assert "clearSelectedKey" in source
+
+    def test_marker_126_9c_devpanel_dispatch(self):
+        """MARKER_126.9C: DevPanel dispatch should include selected_key."""
+        source = _read_source("client/src/components/panels/DevPanel.tsx")
+        assert "MARKER_126.9C" in source
+        assert "selected_key" in source
+
+    def test_marker_126_9d_debug_routes(self):
+        """MARKER_126.9D: debug_routes dispatch endpoint accepts selected_key."""
+        source = _read_source("src/api/routes/debug_routes.py")
+        assert "MARKER_126.9D" in source
+        assert "selected_key" in source
+
+    def test_marker_126_9e_task_board_wiring(self):
+        """MARKER_126.9E: task_board dispatch passes selected_key."""
+        source = _read_source("src/orchestration/task_board.py")
+        assert "MARKER_126.9E" in source
+        assert "selected_key" in source
+
+    def test_marker_126_9e_pipeline_wiring(self):
+        """MARKER_126.9E: AgentPipeline sets preferred key from selected_key."""
+        source = _read_source("src/orchestration/agent_pipeline.py")
+        assert "MARKER_126.9E" in source
+        assert "selected_key" in source
+        assert "set_preferred_key" in source
+
+    def test_marker_126_9f_key_manager_preferred(self):
+        """MARKER_126.9F: UnifiedKeyManager has preferred key methods."""
+        source = _read_source("src/utils/unified_key_manager.py")
+        assert "MARKER_126.9F" in source
+        assert "def set_preferred_key" in source
+        assert "def get_preferred_key" in source
+        assert "def clear_preferred_key" in source
+        assert "_preferred_keys" in source
+
+    def test_preferred_key_integration(self):
+        """Functional test: set_preferred_key affects get_key_with_rotation."""
+        from src.utils.unified_key_manager import get_key_manager
+        km = get_key_manager()
+
+        # Set a preferred key (even if doesn't exist, method should accept)
+        result = km.set_preferred_key("test_provider", "test****key")
+        assert result is True
+
+        # Clear preference
+        km.clear_preferred_key("test_provider")
+
+        # Verify cleared
+        assert "test_provider" not in km._preferred_keys

@@ -137,33 +137,48 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
     }
   }, [fetchTasks]);
 
+  // MARKER_126.9C: Get selected key for dispatch
+  const selectedKey = useStore((s) => s.selectedKey);
+  const clearSelectedKey = useStore((s) => s.clearSelectedKey);
+
   // Dispatch specific task
   const handleDispatchTask = useCallback(async (taskId: string) => {
     try {
+      // MARKER_126.9C: Include selected_key in dispatch request
       await fetch(`${API_BASE}/task-board/dispatch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task_id: taskId }),
+        body: JSON.stringify({
+          task_id: taskId,
+          selected_key: selectedKey,
+        }),
       });
+      // Clear key selection after dispatch (one-shot use)
+      if (selectedKey) clearSelectedKey();
       fetchTasks();
     } catch (err) {
       console.error('[TaskBoard] Dispatch failed:', err);
     }
-  }, [fetchTasks]);
+  }, [fetchTasks, selectedKey, clearSelectedKey]);
 
   // Dispatch next (highest priority)
   const handleDispatchNext = useCallback(async () => {
     try {
+      // MARKER_126.9C: Include selected_key in dispatch request
       await fetch(`${API_BASE}/task-board/dispatch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          selected_key: selectedKey,
+        }),
       });
+      // Clear key selection after dispatch (one-shot use)
+      if (selectedKey) clearSelectedKey();
       fetchTasks();
     } catch (err) {
       console.error('[TaskBoard] Dispatch next failed:', err);
     }
-  }, [fetchTasks]);
+  }, [fetchTasks, selectedKey, clearSelectedKey]);
 
   if (!isOpen) return null;
 

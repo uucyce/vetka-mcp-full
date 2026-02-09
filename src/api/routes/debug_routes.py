@@ -1781,6 +1781,7 @@ async def dispatch_next_task_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
     Body params:
     - chat_id: str (optional, for progress streaming)
     - task_id: str (optional, dispatch specific task instead of next)
+    - selected_key: {provider, key_masked} (optional, MARKER_126.9D)
     """
     from src.orchestration.task_board import get_task_board
 
@@ -1788,11 +1789,13 @@ async def dispatch_next_task_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
     board = get_task_board()
     chat_id = body.get("chat_id")
     task_id = body.get("task_id")
+    # MARKER_126.9D: Selected key for pipeline dispatch
+    selected_key = body.get("selected_key")
 
     if task_id:
-        result = await board.dispatch_task(task_id, chat_id=chat_id)
+        result = await board.dispatch_task(task_id, chat_id=chat_id, selected_key=selected_key)
     else:
-        result = await board.dispatch_next(chat_id=chat_id)
+        result = await board.dispatch_next(chat_id=chat_id, selected_key=selected_key)
 
     return result
 

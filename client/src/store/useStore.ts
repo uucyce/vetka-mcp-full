@@ -182,6 +182,11 @@ interface TreeState {
 
   // MARKER_123.2B: Phase 123 - Activity heat score for glow effect
   setNodeHeatScore: (nodeId: string, intensity: number) => void;
+
+  // MARKER_126.9B: Selected API key for pipeline dispatch
+  selectedKey: { provider: string; key_masked: string } | null;
+  setSelectedKey: (key: { provider: string; key_masked: string } | null) => void;
+  clearSelectedKey: () => void;
 }
 
 // Phase 113.1: Persistent Spatial Memory
@@ -224,6 +229,11 @@ export const useStore = create<TreeState>((set, get) => ({
   // Phase 113.4: Label Championship
   selectedLabelIds: [],
   persistPositions: false,  // OFF by default (Phase 113.3 lesson: persistence = risky without toggle)
+
+  // MARKER_126.9B: Selected API key for pipeline dispatch
+  selectedKey: null,
+  setSelectedKey: (key) => set({ selectedKey: key }),
+  clearSelectedKey: () => set({ selectedKey: null }),
 
   setNodes: (nodesList) => set({
     nodes: Object.fromEntries(nodesList.map(n => [n.id, n])),
