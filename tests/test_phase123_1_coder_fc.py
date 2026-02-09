@@ -507,8 +507,8 @@ class TestCoderPrompt:
 
         coder_prompt = prompts["coder"]["system"]
         assert "read" in coder_prompt.lower()
-        # Phase 124.1: prompt uses "CRITICAL WORKFLOW" with step-by-step + few-shot example
-        assert "CRITICAL WORKFLOW" in coder_prompt or "BEFORE" in coder_prompt
+        # Phase 124.4: prompt uses "WORKFLOW" section with auto-read awareness
+        assert "WORKFLOW" in coder_prompt
         assert "NEVER ask questions" in coder_prompt
 
 

@@ -627,6 +627,54 @@ async def execute_fc_loop(
     # Some models output <tool_call>...</tool_call> as plain text even on last turn
     content = _clean_text_tool_calls(content)
 
+    # MARKER_124.4B: Recovery when cleanup leaves empty content
+    # If model returned tool_calls as text (Qwen behavior) and cleanup stripped everything,
+    # make one more LLM call with all collected context summarized.
+    if not content.strip() and all_tool_executions:
+        logger.warning(f"[FC Loop] Empty content after cleanup — attempting recovery call")
+        try:
+            # Build summary of everything coder learned from tools
+            tool_context = _build_tool_context_summary(all_tool_executions)
+            recovery_messages = [
+                messages[0],  # Keep original system prompt
+                {
+                    "role": "user",
+                    "content": (
+                        f"{messages[1]['content']}\n\n"
+                        f"Here is what you found from reading the codebase:\n{tool_context}\n\n"
+                        "Based on this context, write the complete code implementation. "
+                        "Output ONLY the code wrapped in ```language ... ``` blocks. "
+                        "Do NOT call tools. Do NOT ask questions."
+                    ),
+                },
+            ]
+            if progress_callback:
+                await progress_callback("@coder", "🔄 Recovery: generating code from collected context")
+
+            recovery_response = await call_model_v2(
+                messages=recovery_messages,
+                model=model,
+                provider=provider_enum,
+                source=provider_source,
+                tools=None,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            if isinstance(recovery_response, dict):
+                msg = recovery_response.get("message", {})
+                if isinstance(msg, dict):
+                    content = msg.get("content", "")
+                elif hasattr(msg, "content"):
+                    content = msg.content or ""
+                content = _clean_text_tool_calls(content)
+                if content.strip():
+                    logger.info(f"[FC Loop] Recovery succeeded: {len(content)} chars")
+                else:
+                    logger.warning("[FC Loop] Recovery also returned empty content")
+        except Exception as e:
+            logger.warning(f"[FC Loop] Recovery call failed: {e}")
+    # MARKER_124.4B_END
+
     logger.info(f"[FC Loop] Completed: {len(all_tool_executions)} tool calls, content length={len(content)}")
 
     return {
@@ -635,4 +683,30 @@ async def execute_fc_loop(
         "turns_used": fc_turns_completed,
         "model": response_model,
     }
+
+
+def _build_tool_context_summary(tool_executions: List[Dict]) -> str:
+    """Build a concise summary of tool execution results for recovery prompt.
+
+    MARKER_124.4B helper: When FC loop's last turn is empty (Qwen text tool_calls),
+    we need to feed the collected context back to the model in a new call.
+    """
+    parts = []
+    for te in tool_executions:
+        name = te.get("name", "")
+        args = te.get("args", {})
+        result = te.get("result", {})
+
+        if name == "vetka_read_file" and result.get("success"):
+            file_path = args.get("file_path", "unknown")
+            content = str(result.get("result", ""))
+            # Truncate long file contents
+            if len(content) > 3000:
+                content = content[:3000] + "\n... (truncated)"
+            parts.append(f"--- File: {file_path} ---\n{content}")
+        elif name in ("vetka_search_semantic", "vetka_search_files") and result.get("success"):
+            parts.append(f"--- Search results ---\n{str(result.get('result', ''))[:1000]}")
+
+    return "\n\n".join(parts) if parts else "No relevant context collected from tools."
+
 # MARKER_123.1_FC_LOOP_END

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T00:49:55.888234+00:00",
+  "last_updated": "2026-02-09T01:04:36.099172+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 124,
@@ -13,6 +13,7 @@
   "summary": {
     "headline": "Phase 124.3 DONE! Fix test mocks \u2014 all 19 tests passing",
     "key_achievements": [
+      "[99df4496] Phase 124.3: Phase 124.3E: Fix VetkaSearchSemanticTool \u2014 REST API + path ",
       "[b7e3685b] Phase 124.3: Phase 124.3: Fix test mocks \u2014 all 19 tests passing",
       "[0c443055] Phase 125: Phase 125: United Coordination \u2014 Research docs\n\nCr...",
       "[91847160] Phase 124.3: Phase 124.3: Fix glow timing \u2014 emit AFTER node_added",
@@ -21,8 +22,7 @@
       "[b84b6935] Phase 124.2: Phase 124.2B: Crane up \u2014 camera higher, object in lower thir",
       "[76a6a716] Phase 124.2: Phase 124.2: Even wider camera zoom (medium: 70, far: 100)",
       "[d823c4f9] Phase 124.2: Phase 124.2: Camera zoom distances for better overview",
-      "[8a374b08] Phase 124.1: Phase 124.1: E2E fixes \u2014 coder prompt, replan threshold, tex",
-      "[214cb6ec] Phase 124.0: Phase 124.0a+124.1: FC tool wrappers + E2E validation fixes"
+      "[8a374b08] Phase 124.1: Phase 124.1: E2E fixes \u2014 coder prompt, replan threshold, tex"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "b7e3685b",
+    "commit": "99df4496",
     "dirty": true
   }
 }

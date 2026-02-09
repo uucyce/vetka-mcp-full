@@ -395,11 +395,8 @@ class VetkaReadFileTool(BaseTool):
 class VetkaSearchFilesTool(BaseTool):
     """
     Search for files by name or content pattern.
-    Wraps MCP search endpoint for internal ToolRegistry.
+    Uses REST API for consistent results (MARKER_124.4A).
     """
-
-    def __init__(self):
-        self._memory_manager = None
 
     @property
     def definition(self) -> ToolDefinition:
@@ -429,36 +426,36 @@ class VetkaSearchFilesTool(BaseTool):
         )
 
     async def execute(self, query: str = "", search_type: str = "content", limit: int = 10, **kwargs) -> ToolResult:
+        """Search via REST API — same path as MCP bridge (MARKER_124.4A)."""
         try:
             if not query or len(query) < 2:
                 return ToolResult(success=False, result=None, error="Query too short (min 2 chars)")
 
-            # Use Qdrant semantic search (same as MCP bridge implementation)
-            from src.initialization.singletons import get_memory_manager
-            memory = get_memory_manager()
+            # MARKER_124.4A: Use REST API instead of broken direct Qdrant
+            # Same fix as VetkaSearchSemanticTool (MARKER_124.3E)
+            import httpx
+            async with httpx.AsyncClient(base_url="http://localhost:5001", timeout=10.0) as client:
+                response = await client.get(
+                    "/api/search/semantic",
+                    params={"q": query, "limit": limit}
+                )
+                if response.status_code != 200:
+                    return ToolResult(success=False, result=None, error=f"Search API error: {response.status_code}")
+                data = response.json()
 
-            if not memory or not memory.qdrant:
-                return ToolResult(success=False, result=None, error="Qdrant not connected")
+            results = data.get("files", data.get("results", []))
 
-            from src.knowledge_graph.semantic_tagger import SemanticTagger
-            tagger = SemanticTagger(qdrant_client=memory.qdrant, collection='vetka_elisya')
-
-            files = tagger.find_files_by_semantic_tag(tag=query, limit=limit, min_score=0.3)
-
-            results = []
-            for f in files:
-                results.append({
-                    "name": f.get("name", "unknown"),
-                    "path": f.get("path", ""),
-                    "score": round(f.get("score", 0), 3),
-                    "snippet": (f.get("content", "")[:200] + "...") if f.get("content") else ""
+            formatted_results = []
+            for f in results[:limit]:
+                formatted_results.append({
+                    "file_path": f.get("path", f.get("file_path", "")),
+                    "name": f.get("name", ""),
+                    "score": round(f.get("score", f.get("relevance", 0)), 3),
                 })
 
-            formatted = f"Search: '{query}' — {len(results)} results\n"
-            for r in results:
-                formatted += f"\n  {r['path']} (score: {r['score']})"
-                if r.get("snippet"):
-                    formatted += f"\n    {r['snippet'][:100]}"
+            formatted = f"Search files: '{query}' — {len(formatted_results)} results\n"
+            for r in formatted_results:
+                formatted += f"\n  {r['file_path']} (score: {r['score']})"
 
             return ToolResult(success=True, result=formatted)
         except Exception as e:
