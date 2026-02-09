@@ -98,7 +98,7 @@ class TaskBoard:
                     logger.warning(f"[TaskBoard] Failed to load from {path}: {e}")
         logger.info("[TaskBoard] No existing board found, starting fresh")
 
-    def _save(self):
+    def _save(self, action: str = "update"):
         """Save task board to disk with sandbox fallback."""
         data = {
             "_meta": {
@@ -116,11 +116,42 @@ class TaskBoard:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(content)
                 logger.debug(f"[TaskBoard] Saved {len(self.tasks)} tasks to {path}")
+                # MARKER_124.3D: Emit SocketIO event for live UI updates
+                self._notify_board_update(action)
                 return
             except (PermissionError, OSError) as e:
                 logger.warning(f"[TaskBoard] Cannot write to {path}: {e}")
 
         logger.error("[TaskBoard] Failed to save task board to any location")
+
+    def _notify_board_update(self, action: str = "update"):
+        """MARKER_124.3D: Emit SocketIO event for live Task Board UI updates.
+
+        Uses fire-and-forget HTTP POST to our own REST endpoint which has sio access.
+        Falls back silently if server isn't running.
+        """
+        try:
+            import asyncio
+            summary = self.get_board_summary()
+
+            async def _emit():
+                try:
+                    import httpx
+                    async with httpx.AsyncClient(timeout=2.0) as client:
+                        await client.post(
+                            "http://localhost:5001/api/debug/task-board/notify",
+                            json={"action": action, "summary": summary}
+                        )
+                except Exception:
+                    pass
+
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(_emit())
+            except RuntimeError:
+                pass  # No event loop (sync context)
+        except Exception:
+            pass  # Never block save on notification failure
 
     # ==========================================
     # CRUD OPERATIONS
@@ -177,7 +208,7 @@ class TaskBoard:
             "result_summary": None
         }
 
-        self._save()
+        self._save(action="added")
         logger.info(f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})")
         return task_id
 
@@ -217,7 +248,7 @@ class TaskBoard:
             if key in task:
                 task[key] = value
 
-        self._save()
+        self._save(action="updated")
         logger.debug(f"[TaskBoard] Updated {task_id}: {list(updates.keys())}")
         return True
 
@@ -232,7 +263,7 @@ class TaskBoard:
         """
         if task_id in self.tasks:
             del self.tasks[task_id]
-            self._save()
+            self._save(action="removed")
             logger.info(f"[TaskBoard] Removed task {task_id}")
             return True
         return False

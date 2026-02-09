@@ -54,12 +54,20 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
     }
   }, [isOpen]);
 
-  // Fetch on open and poll every 10s
+  // Fetch on open, poll every 30s, and listen for SocketIO updates
+  // MARKER_124.3D: Live updates via task-board-updated CustomEvent
   useEffect(() => {
     if (!isOpen) return;
     fetchTasks();
-    const interval = setInterval(fetchTasks, 10000);
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchTasks, 30000); // Reduced polling (SocketIO handles real-time)
+
+    const handleBoardUpdate = () => { fetchTasks(); };
+    window.addEventListener('task-board-updated', handleBoardUpdate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('task-board-updated', handleBoardUpdate);
+    };
   }, [isOpen, fetchTasks]);
 
   // Add task

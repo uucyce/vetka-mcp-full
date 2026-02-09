@@ -48,6 +48,7 @@ PIPELINE_CODER_TOOLS = [
 
 MAX_FC_TURNS_CODER = 3
 MAX_FC_TURNS_DEFAULT = 5
+MAX_AUTO_READ_CHARS = 6000  # Max chars for auto-injected file content
 
 # MARKER_123.1_SCHEMAS: Hardcoded OpenAI-format tool schemas for pipeline coder.
 # Using hardcoded schemas avoids circular imports with MCP bridge and is more reliable.
@@ -259,6 +260,88 @@ def _clean_text_tool_calls(content: str) -> str:
 # MARKER_124.1B_END
 
 
+# MARKER_124.3A: Auto-read file content after search tool calls
+# Problem: Coder calls vetka_search_semantic/files 3 times but never vetka_read_file.
+# Fix: After search returns file paths, auto-read the most relevant file and
+# append its content to the tool result. Coder sees paths + actual code in one turn.
+
+_FILE_PATH_PATTERNS = [
+    re.compile(r'(?:^|["\s,])([a-zA-Z_][\w/\-]*\.(?:tsx?|jsx?|py|rs|toml|json|css|html|md))(?:["\s,]|$)', re.MULTILINE),
+]
+
+def _extract_file_paths(result_text: str) -> List[str]:
+    """Extract file paths from search result text."""
+    paths = []
+    for pat in _FILE_PATH_PATTERNS:
+        for m in pat.finditer(result_text):
+            p = m.group(1).strip()
+            if p and len(p) > 3 and '/' in p:  # Only paths with directories
+                paths.append(p)
+    # Also parse JSON result format: {"file_path": "...", "path": "..."}
+    try:
+        data = json.loads(result_text) if isinstance(result_text, str) else result_text
+        if isinstance(data, dict):
+            r = data.get("result", data)
+            if isinstance(r, list):
+                for item in r:
+                    if isinstance(item, dict):
+                        for key in ("file_path", "path", "payload"):
+                            val = item.get(key)
+                            if isinstance(val, str) and '/' in val:
+                                paths.append(val)
+                            elif isinstance(val, dict) and "file_path" in val:
+                                paths.append(val["file_path"])
+            elif isinstance(r, str):
+                # Result might contain paths as text
+                pass
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # Deduplicate while preserving order
+    seen = set()
+    unique = []
+    for p in paths:
+        if p not in seen:
+            seen.add(p)
+            unique.append(p)
+    return unique
+
+
+async def _auto_read_top_file(
+    executor: SafeToolExecutor,
+    file_paths: List[str],
+    progress_callback: Optional[Callable] = None,
+) -> Optional[str]:
+    """
+    Auto-read the first valid file from search results.
+    Returns file content string or None.
+    """
+    for fpath in file_paths[:2]:  # Try top 2 paths
+        try:
+            call = ToolCall(
+                tool_name="vetka_read_file",
+                arguments={"file_path": fpath},
+                agent_type="Dev",
+                call_id="auto_read",
+            )
+            result = await executor.execute(call)
+            if result.success and result.result:
+                content = result.result if isinstance(result.result, str) else str(result.result)
+                if len(content) > MAX_AUTO_READ_CHARS:
+                    content = content[:MAX_AUTO_READ_CHARS] + f"\n... (truncated, {len(content)} total chars)"
+                if progress_callback:
+                    try:
+                        await progress_callback("@coder", f"📖 Auto-read: {fpath}")
+                    except Exception:
+                        pass
+                logger.info(f"[FC Loop] Auto-read {fpath}: {len(content)} chars")
+                return f"\n\n--- AUTO-READ: {fpath} ---\n{content}"
+        except Exception as e:
+            logger.debug(f"[FC Loop] Auto-read failed for {fpath}: {e}")
+            continue
+    return None
+# MARKER_124.3A_END
+
+
 def get_coder_tool_schemas() -> List[Dict]:
     """
     Get OpenAI-format tool schemas for pipeline coder.
@@ -402,6 +485,25 @@ async def execute_fc_loop(
                     result_str = json.dumps(result_content)
                     if len(result_str) > 8000:
                         result_content = result_str[:8000] + "\n... (truncated)"
+
+                # MARKER_124.3B: Auto-read file after search tool
+                # If search returned file paths, auto-read top file and append content
+                if func_name in ("vetka_search_semantic", "vetka_search_files"):
+                    result_str = json.dumps(result_content) if not isinstance(result_content, str) else result_content
+                    found_paths = _extract_file_paths(result_str)
+                    if found_paths:
+                        auto_content = await _auto_read_top_file(executor, found_paths, progress_callback)
+                        if auto_content:
+                            if isinstance(result_content, str):
+                                result_content = result_content + auto_content
+                            else:
+                                result_content = json.dumps(result_content) + auto_content
+                            all_tool_executions.append({
+                                "name": "vetka_read_file",
+                                "args": {"file_path": found_paths[0]},
+                                "result": {"success": True, "result": "(auto-injected)", "error": None},
+                            })
+                # MARKER_124.3B_END
 
                 tool_results.append({
                     "role": "tool",

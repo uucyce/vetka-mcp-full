@@ -1795,3 +1795,30 @@ async def dispatch_next_task_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
         result = await board.dispatch_next(chat_id=chat_id)
 
     return result
+
+
+# MARKER_124.3D: Internal notify endpoint for Task Board SocketIO emission
+@router.post("/task-board/notify")
+async def notify_task_board_update(request: Request, body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Internal endpoint: emit task_board_updated SocketIO event.
+
+    Called by TaskBoard._notify_board_update() after save.
+    """
+    body = body or {}
+    sio = getattr(request.app.state, 'socketio', None)
+    if not sio:
+        try:
+            from src.mcp.mcp_server import get_mcp_server
+            mcp = get_mcp_server()
+            if mcp:
+                sio = mcp.socketio
+        except Exception:
+            pass
+
+    if sio:
+        await sio.emit("task_board_updated", {
+            "action": body.get("action", "update"),
+            "summary": body.get("summary", {}),
+        })
+        return {"success": True}
+    return {"success": False, "error": "No SocketIO instance"}

@@ -425,6 +425,15 @@ async def handle_intake_reply(chat_id: str, reply_text: str) -> bool:
         except Exception:
             pass
 
+        # MARKER_124.3C: Auto-dispatch queued task if board has capacity
+        try:
+            dispatched = await board.dispatch_next(chat_id=chat_id)
+            if dispatched:
+                logger.info(f"[INTAKE] Auto-dispatched task {dispatched.get('task_id', '?')} from queue")
+        except Exception as e:
+            logger.debug(f"[INTAKE] Auto-dispatch skipped: {e}")
+        # MARKER_124.3C_END
+
     return True
 
 

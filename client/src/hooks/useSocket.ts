@@ -370,6 +370,12 @@ interface ServerToClientEvents {
     color: string;
     timestamp: string;
   }) => void;
+  // MARKER_124.3D: Task Board live updates
+  task_board_updated: (data: {
+    action: string;
+    task_id?: string;
+    summary: { total: number; by_status: Record<string, number> };
+  }) => void;
 }
 
 // Phase 61: Pinned file type
@@ -1321,6 +1327,15 @@ export function useSocket() {
       // Update heatScore in store
       const { setNodeHeatScore } = useStore.getState();
       setNodeHeatScore(data.node_id, data.intensity);
+    });
+
+    // MARKER_124.3D: Task Board live updates
+    socket.on('task_board_updated', (data) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('task-board-updated', { detail: data })
+        );
+      }
     });
 
     // MARKER_104_FRONTEND
