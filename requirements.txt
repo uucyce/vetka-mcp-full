@@ -55,6 +55,9 @@ colorama>=0.4.6
 click>=8.1.0
 tqdm>=4.65.0
 
+# ============ WEBSOCKET ============
+websockets>=12.0              # Phase 129: MYCELIUM DevPanel WebSocket
+
 # ============ TESTING ============
 pytest>=8.0.0
 

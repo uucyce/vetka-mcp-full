@@ -151,8 +151,13 @@ class AgentPipeline:
 
     def __init__(self, chat_id: Optional[str] = None, auto_write: bool = True,
                  provider: Optional[str] = None, preset: Optional[str] = None,
-                 sio=None, sid: Optional[str] = None):
+                 sio=None, sid: Optional[str] = None,
+                 async_mode: bool = False, http_client=None, ws_broadcaster=None):
         self.llm_tool = None  # Lazy load
+        # MARKER_129.4: Async mode for MYCELIUM (native async LLM calls)
+        self.async_mode = async_mode
+        self._http_client = http_client      # MyceliumHTTPClient for chat relay
+        self._ws_broadcaster = ws_broadcaster  # MyceliumWSBroadcaster for DevPanel
         # MARKER_126.5A: Cancellation support — asyncio Event for stop-button
         import asyncio as _asyncio
         self._cancelled = _asyncio.Event()
@@ -359,7 +364,11 @@ Respond with implementation plan or code."""
         if self.provider_override:
             call_args["model_source"] = self.provider_override
 
-        result = tool.execute(call_args)
+        # MARKER_129.4: Dual-mode LLM call (async in MYCELIUM, sync in VETKA)
+        if getattr(self, 'async_mode', False):
+            result = await tool.execute(call_args)
+        else:
+            result = tool.execute(call_args)
         self._track_llm_call(result)
         self._last_used_model = result.get("result", {}).get("model", model)
 
@@ -705,7 +714,11 @@ Respond with implementation plan or code."""
             if self.provider_override:
                 call_args["model_source"] = self.provider_override
 
-            result = tool.execute(call_args)
+            # MARKER_129.4: Dual-mode LLM call
+            if getattr(self, 'async_mode', False):
+                result = await tool.execute(call_args)
+            else:
+                result = tool.execute(call_args)
             self._track_llm_call(result)
             self._last_used_model = result.get("result", {}).get("model", model)
 
@@ -874,8 +887,13 @@ Respond with implementation plan or code."""
         """Lazy load LLM tool to avoid circular imports"""
         if self.llm_tool is None:
             try:
-                from src.mcp.tools.llm_call_tool import LLMCallTool
-                self.llm_tool = LLMCallTool()
+                if getattr(self, 'async_mode', False):
+                    # MARKER_129.4: Use async LLM tool in MYCELIUM
+                    from src.mcp.tools.llm_call_tool_async import LLMCallToolAsync
+                    self.llm_tool = LLMCallToolAsync()
+                else:
+                    from src.mcp.tools.llm_call_tool import LLMCallTool
+                    self.llm_tool = LLMCallTool()
             except ImportError:
                 logger.warning("LLMCallTool not available, using fallback")
                 self.llm_tool = None
@@ -997,6 +1015,34 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # Format progress message
             progress = f"[{subtask_idx}/{total}] " if total > 0 else ""
             full_message = f"{role}{model_tag}: {progress}{message}"
+
+            # MARKER_129.4A: Broadcast to DevPanel via MYCELIUM WebSocket (direct, no relay)
+            if getattr(self, '_ws_broadcaster', None):
+                try:
+                    await self._ws_broadcaster.broadcast({
+                        "type": "pipeline_activity",
+                        "role": role,
+                        "message": message,
+                        "model": model or "system",
+                        "subtask_idx": subtask_idx,
+                        "total": total,
+                        "task_id": getattr(self, '_board_task_id', None),
+                        "preset": self.preset_name,
+                        "timestamp": time.time(),
+                    })
+                except Exception:
+                    pass  # Never fail pipeline on WS broadcast
+
+            # MARKER_129.4B: Chat relay via MYCELIUM HTTP client (→ VETKA ChatPanel)
+            if getattr(self, '_http_client', None) and self.chat_id:
+                try:
+                    await self._http_client.emit_pipeline_progress(
+                        self.chat_id, role, full_message, model=model or "system",
+                        subtask_idx=subtask_idx, total=total
+                    )
+                except Exception:
+                    pass
+                return  # MYCELIUM path done — skip VETKA SocketIO below
 
             # MARKER_127.2: Broadcast pipeline_activity to ALL connected clients (for DevPanel)
             # This runs BEFORE chat routing so early returns don't skip it
@@ -2268,7 +2314,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         }
         if self.provider_override:
             call_args["model_source"] = self.provider_override
-        result = tool.execute(call_args)
+        # MARKER_129.4: Dual-mode LLM call
+        if getattr(self, 'async_mode', False):
+            result = await tool.execute(call_args)
+        else:
+            result = tool.execute(call_args)
         self._track_llm_call(result)
         # MARKER_117.6C: Track architect model for attribution
         self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
@@ -2372,7 +2422,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         }
         if self.provider_override:
             call_args["model_source"] = self.provider_override
-        result = tool.execute(call_args)
+        # MARKER_129.4: Dual-mode LLM call
+        if getattr(self, 'async_mode', False):
+            result = await tool.execute(call_args)
+        else:
+            result = tool.execute(call_args)
         self._track_llm_call(result)
         # MARKER_117.6C: Track researcher model for attribution
         self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
@@ -2573,7 +2627,11 @@ Execute this subtask. Provide clear, actionable output."""}
         # MARKER_123.1A_END
 
         # Original one-shot path (fallback if FC unavailable/failed)
-        result = tool.execute(call_args)
+        # MARKER_129.4: Dual-mode LLM call
+        if getattr(self, 'async_mode', False):
+            result = await tool.execute(call_args)
+        else:
+            result = tool.execute(call_args)
         self._track_llm_call(result)
         # MARKER_117.6C: Track coder model for attribution
         self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))

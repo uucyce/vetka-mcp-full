@@ -7,6 +7,15 @@
         "VETKA_API_URL": "http://localhost:5001",
         "PYTHONPATH": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03"
       }
+    },
+    "mycelium": {
+      "command": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.venv/bin/python",
+      "args": ["/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/mcp/mycelium_mcp_server.py"],
+      "env": {
+        "VETKA_API_URL": "http://localhost:5001",
+        "PYTHONPATH": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03",
+        "MYCELIUM_WS_PORT": "8082"
+      }
     }
   }
 }
