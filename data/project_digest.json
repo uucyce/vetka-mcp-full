@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T00:09:53.083936+00:00",
+  "last_updated": "2026-02-09T00:12:56.756737+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 124,
@@ -13,6 +13,7 @@
   "summary": {
     "headline": "Phase 124.3 DONE! Fix glow timing \u2014 emit AFTER node_added",
     "key_achievements": [
+      "[0c443055] Phase 125: Phase 125: United Coordination \u2014 Research docs\n\nCr...",
       "[91847160] Phase 124.3: Phase 124.3: Fix glow timing \u2014 emit AFTER node_added",
       "[06ae5438] Phase 124.2: Phase 124.2B: Fix crane \u2014 subtle Y+5, no tilt (was Y+15)",
       "[57dfcccb] Phase 124.2: Phase 124.2: Interactive task intake + heartbeat board routi",
@@ -21,8 +22,7 @@
       "[d823c4f9] Phase 124.2: Phase 124.2: Camera zoom distances for better overview",
       "[8a374b08] Phase 124.1: Phase 124.1: E2E fixes \u2014 coder prompt, replan threshold, tex",
       "[214cb6ec] Phase 124.0: Phase 124.0a+124.1: FC tool wrappers + E2E validation fixes",
-      "[ff8d5e67] Phase 123.8: Phase 123.8.2: Balance glow intensity (halfway back)",
-      "[5a62c29d] Phase 123.8: Phase 123.8.1: Reduce glow intensity"
+      "[ff8d5e67] Phase 123.8: Phase 123.8.2: Balance glow intensity (halfway back)"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "91847160",
+    "commit": "0c443055",
     "dirty": true
   }
 }

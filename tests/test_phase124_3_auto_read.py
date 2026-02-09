@@ -182,7 +182,7 @@ class TestFCLoopAutoInjection:
     @pytest.mark.asyncio
     async def test_search_tool_triggers_auto_read(self):
         """When search tool returns paths, auto-read is triggered."""
-        from src.tools.fc_loop import execute_fc_loop
+        import src.tools.fc_loop as fc_mod
 
         search_result = json.dumps({
             "success": True,
@@ -191,66 +191,67 @@ class TestFCLoopAutoInjection:
             ]
         })
 
-        # Mock call_model_v2: first call returns tool_call, second returns text
-        with patch("src.tools.fc_loop.call_model_v2") as mock_call, \
-             patch("src.tools.fc_loop.Provider"), \
-             patch("src.tools.fc_loop.SafeToolExecutor") as MockExec:
+        search_exec_result = MagicMock()
+        search_exec_result.success = True
+        search_exec_result.result = search_result
+        search_exec_result.error = None
 
-            # Setup executor
-            exec_instance = MockExec.return_value
-            search_exec_result = MagicMock()
-            search_exec_result.success = True
-            search_exec_result.result = search_result
-            search_exec_result.error = None
+        read_exec_result = MagicMock()
+        read_exec_result.success = True
+        read_exec_result.result = "// useStore.ts content\nexport const useStore = create(...);"
+        read_exec_result.error = None
 
-            read_exec_result = MagicMock()
-            read_exec_result.success = True
-            read_exec_result.result = "// useStore.ts content\nexport const useStore = create(...);"
-            read_exec_result.error = None
+        mock_executor = AsyncMock()
+        mock_executor.execute = AsyncMock(side_effect=[search_exec_result, read_exec_result])
 
-            exec_instance.execute = AsyncMock(side_effect=[search_exec_result, read_exec_result])
+        # Mock call_model_v2
+        mock_call = AsyncMock(side_effect=[
+            # Turn 0: tool call for vetka_search_semantic
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "function": {
+                            "name": "vetka_search_semantic",
+                            "arguments": json.dumps({"query": "chatStore"})
+                        }
+                    }]
+                }
+            },
+            # Turn 1 (last turn): final code response
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "export function toggleBookmark(id: string) { ... }"
+                }
+            },
+        ])
 
-            # First LLM call returns tool call for search
-            mock_call.side_effect = [
-                # Turn 0: tool call for vetka_search_semantic
-                {
-                    "message": {
-                        "role": "assistant",
-                        "content": "",
-                        "tool_calls": [{
-                            "id": "call_1",
-                            "function": {
-                                "name": "vetka_search_semantic",
-                                "arguments": json.dumps({"query": "chatStore"})
-                            }
-                        }]
-                    }
-                },
-                # Turn 1 (last turn): final code response
-                {
-                    "message": {
-                        "role": "assistant",
-                        "content": "export function toggleBookmark(id: string) { ... }"
-                    }
-                },
-            ]
+        # Patch at module level
+        original_call = fc_mod.call_model_v2
+        original_provider = fc_mod.Provider
+        fc_mod.call_model_v2 = mock_call
+        fc_mod.Provider = MagicMock()
 
-            # Ensure imports are "loaded"
-            import src.tools.fc_loop as fc
-            fc.call_model_v2 = mock_call
-
-            result = await execute_fc_loop(
-                model="test-model",
-                messages=[{"role": "user", "content": "Add toggleBookmark"}],
-                tool_schemas=[],
-                max_turns=2,
-            )
+        try:
+            with patch.object(fc_mod, "SafeToolExecutor", return_value=mock_executor):
+                result = await fc_mod.execute_fc_loop(
+                    model="test-model",
+                    messages=[{"role": "user", "content": "Add toggleBookmark"}],
+                    tool_schemas=[],
+                    max_turns=2,
+                )
 
             # Should have executed search + auto-read
-            assert exec_instance.execute.call_count == 2
+            assert mock_executor.execute.call_count == 2
             # Auto-read should be in tool_executions
             auto_read_execs = [e for e in result["tool_executions"] if e["name"] == "vetka_read_file"]
             assert len(auto_read_execs) > 0
+        finally:
+            fc_mod.call_model_v2 = original_call
+            fc_mod.Provider = original_provider
 
 
 # ============================================================================
@@ -331,22 +332,20 @@ class TestIntakeAutoDispatch:
             "created_at": time.time(),
         }
 
-        with patch("src.api.handlers.group_message_handler.httpx") as mock_httpx, \
-             patch("src.orchestration.task_board.get_task_board") as mock_board_fn:
+        # httpx is imported inside handle_intake_reply, mock at builtins level
+        mock_board = MagicMock()
+        mock_board.add_task.return_value = "tb_123"
+        mock_board.dispatch_next = AsyncMock(return_value={"success": True, "task_id": "tb_123"})
 
+        with patch("httpx.AsyncClient") as mock_httpx_cls:
             mock_client = AsyncMock()
-            mock_httpx.AsyncClient.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_httpx.AsyncClient.return_value.__aexit__ = AsyncMock(return_value=False)
+            mock_httpx_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_httpx_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-            mock_board = MagicMock()
-            mock_board.add_task.return_value = "tb_123"
-            mock_board.dispatch_next = AsyncMock(return_value={"success": True, "task_id": "tb_123"})
-            mock_board_fn.return_value = mock_board
-
-            result = await handle_intake_reply(chat_id, "2d")
+            with patch("src.orchestration.task_board.get_task_board", return_value=mock_board):
+                result = await handle_intake_reply(chat_id, "2d")
 
             assert result is True
-            # Board should have add_task called
             mock_board.add_task.assert_called_once()
             # dispatch_next should have been called (MARKER_124.3C)
             mock_board.dispatch_next.assert_called_once()
