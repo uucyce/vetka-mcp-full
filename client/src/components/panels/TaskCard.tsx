@@ -1,11 +1,13 @@
 /**
  * MARKER_126.2A: TaskCard — Nolan dark style, no emoji.
  * MARKER_127.0B: Results Viewer — expand to see pipeline results/code
+ * MARKER_128.2C: Apply button — write code to disk
+ * MARKER_128.3B/C: Result lifecycle badges + action buttons
  * CSS-only status indicators, monochrome priority, glassmorphism accents.
- * Phase 126.2: Style upgrade — "Batman Nolan, not Burton"
+ * Phase 128.3: Style upgrade — "Batman Nolan, not Burton"
  *
  * @status active
- * @phase 127.0
+ * @phase 128.3
  * @depends react
  * @used_by DevPanel
  */
@@ -40,6 +42,10 @@ export interface TaskData {
   created_at?: string;
   stats?: PipelineStatsData;
   pipeline_task_id?: string;  // MARKER_127.0B: Link to pipeline_tasks.json
+  // MARKER_128.3: Result lifecycle fields
+  result_status?: 'applied' | 'rejected' | 'rework' | null;
+  result_reviewed_at?: string;
+  result_review_reason?: string;
 }
 
 // MARKER_127.0B: Pipeline results data structure
@@ -105,6 +111,13 @@ const PHASE_SYMBOL: Record<string, string> = {
   build: '▸',
   fix: '×',
   research: '◎',
+};
+
+// MARKER_128.3B: Result lifecycle status colors (Nolan muted)
+const RESULT_STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
+  applied: { bg: '#2d5a2d', color: '#8a8', label: '✓ applied' },
+  rejected: { bg: '#5a2d2d', color: '#a88', label: '✕ rejected' },
+  rework: { bg: '#5a4a2d', color: '#aa8', label: '↺ rework' },
 };
 
 // ── CSS Status Indicator ──
@@ -222,6 +235,13 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
   const [resultsError, setResultsError] = useState<string | null>(null);
   const [expandedSubtask, setExpandedSubtask] = useState<number | null>(null);
 
+  // MARKER_128.2C: Apply state
+  const [applyingSubtask, setApplyingSubtask] = useState<number | null>(null);
+  const [applyResult, setApplyResult] = useState<{ idx: number; success: boolean; message: string } | null>(null);
+
+  // MARKER_128.3B: Local result status (synced from props)
+  const [localResultStatus, setLocalResultStatus] = useState(task.result_status);
+
   const fetchResults = useCallback(async () => {
     if (results) {
       setShowResults(!showResults);
@@ -244,6 +264,46 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
       setResultsLoading(false);
     }
   }, [task.id, results, showResults]);
+
+  // MARKER_128.2C: Apply subtask code to disk
+  const applySubtask = useCallback(async (subtaskIdx: number) => {
+    setApplyingSubtask(subtaskIdx);
+    setApplyResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/pipeline-results/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_id: task.id, subtask_idx: subtaskIdx }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setApplyResult({ idx: subtaskIdx, success: true, message: `Applied: ${data.files_written.join(', ')}` });
+      } else {
+        setApplyResult({ idx: subtaskIdx, success: false, message: data.error || 'Apply failed' });
+      }
+    } catch (err) {
+      setApplyResult({ idx: subtaskIdx, success: false, message: err instanceof Error ? err.message : 'Network error' });
+    } finally {
+      setApplyingSubtask(null);
+    }
+  }, [task.id]);
+
+  // MARKER_128.3C: Update result status (applied/rejected/rework)
+  const updateResultStatus = useCallback(async (status: 'applied' | 'rejected' | 'rework', reason?: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/pipeline-results/${task.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, reason }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLocalResultStatus(status);
+      }
+    } catch (err) {
+      console.error('Failed to update result status:', err);
+    }
+  }, [task.id]);
 
   const hasPipelineResults = task.status === 'done' || task.status === 'failed';
 
@@ -317,6 +377,21 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
 
         {/* Status indicator — CSS, no emoji */}
         <StatusIndicator status={task.status} />
+
+        {/* MARKER_128.3B: Result lifecycle badge */}
+        {localResultStatus && RESULT_STATUS_STYLE[localResultStatus] && (
+          <span style={{
+            background: RESULT_STATUS_STYLE[localResultStatus].bg,
+            color: RESULT_STATUS_STYLE[localResultStatus].color,
+            fontSize: 8,
+            padding: '1px 4px',
+            borderRadius: 2,
+            fontFamily: 'monospace',
+            marginLeft: 4,
+          }}>
+            {RESULT_STATUS_STYLE[localResultStatus].label}
+          </span>
+        )}
       </div>
 
       {/* Expanded view */}
@@ -545,27 +620,64 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
                       {/* Subtask result — code block */}
                       {expandedSubtask === idx && st.result && (
                         <div style={{ marginTop: 4, position: 'relative' }}>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigator.clipboard.writeText(st.result || '');
-                            }}
-                            style={{
+                          {/* MARKER_128.2C: Copy + Apply buttons */}
+                          <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 4, zIndex: 1 }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(st.result || '');
+                              }}
+                              style={{
+                                background: '#333',
+                                color: '#888',
+                                border: '1px solid #444',
+                                borderRadius: 2,
+                                fontSize: 9,
+                                padding: '2px 6px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              copy
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                applySubtask(idx);
+                              }}
+                              disabled={applyingSubtask === idx}
+                              style={{
+                                background: '#2d5a2d',
+                                color: '#8a8',
+                                border: '1px solid #3a6a3a',
+                                borderRadius: 2,
+                                fontSize: 9,
+                                padding: '2px 6px',
+                                cursor: applyingSubtask === idx ? 'wait' : 'pointer',
+                              }}
+                            >
+                              {applyingSubtask === idx ? '...' : 'apply'}
+                            </button>
+                          </div>
+                          {/* Apply result message */}
+                          {applyResult && applyResult.idx === idx && (
+                            <div style={{
                               position: 'absolute',
-                              top: 4,
+                              top: 26,
                               right: 4,
-                              background: '#333',
-                              color: '#888',
-                              border: '1px solid #444',
-                              borderRadius: 2,
-                              fontSize: 9,
+                              background: applyResult.success ? '#2d5a2d' : '#5a2d2d',
+                              color: applyResult.success ? '#8a8' : '#a88',
+                              fontSize: 8,
                               padding: '2px 6px',
-                              cursor: 'pointer',
+                              borderRadius: 2,
+                              maxWidth: 200,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
                               zIndex: 1,
-                            }}
-                          >
-                            copy
-                          </button>
+                            }}>
+                              {applyResult.message}
+                            </div>
+                          )}
                           <pre style={{
                             background: '#181818',
                             color: '#d0d0d0',
@@ -596,6 +708,66 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
                   {(results.results_summary as Record<string, number>).subtasks_total || 0}
                 </div>
               )}
+
+              {/* MARKER_128.3C: Result lifecycle action buttons */}
+              <div style={{
+                marginTop: 10,
+                paddingTop: 8,
+                borderTop: '1px solid rgba(255,255,255,0.06)',
+                display: 'flex',
+                gap: 6,
+                alignItems: 'center',
+              }}>
+                <span style={{ fontSize: 9, color: '#555', marginRight: 4 }}>mark as:</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); updateResultStatus('applied'); }}
+                  disabled={localResultStatus === 'applied'}
+                  style={{
+                    background: localResultStatus === 'applied' ? '#2d5a2d' : 'transparent',
+                    color: localResultStatus === 'applied' ? '#8a8' : '#686',
+                    border: '1px solid #3a5a3a',
+                    borderRadius: 2,
+                    fontSize: 9,
+                    padding: '2px 8px',
+                    cursor: localResultStatus === 'applied' ? 'default' : 'pointer',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  applied
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); updateResultStatus('rejected'); }}
+                  disabled={localResultStatus === 'rejected'}
+                  style={{
+                    background: localResultStatus === 'rejected' ? '#5a2d2d' : 'transparent',
+                    color: localResultStatus === 'rejected' ? '#a88' : '#866',
+                    border: '1px solid #5a3a3a',
+                    borderRadius: 2,
+                    fontSize: 9,
+                    padding: '2px 8px',
+                    cursor: localResultStatus === 'rejected' ? 'default' : 'pointer',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  rejected
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); updateResultStatus('rework'); }}
+                  disabled={localResultStatus === 'rework'}
+                  style={{
+                    background: localResultStatus === 'rework' ? '#5a4a2d' : 'transparent',
+                    color: localResultStatus === 'rework' ? '#aa8' : '#886',
+                    border: '1px solid #5a4a3a',
+                    borderRadius: 2,
+                    fontSize: 9,
+                    padding: '2px 8px',
+                    cursor: localResultStatus === 'rework' ? 'default' : 'pointer',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  rework
+                </button>
+              </div>
             </div>
           )}
         </div>

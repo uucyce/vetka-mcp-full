@@ -1791,6 +1791,158 @@ async def get_pipeline_results(task_id: str) -> Dict[str, Any]:
     }
 
 
+# MARKER_128.2B: Apply pipeline result — write code to disk
+@router.post("/pipeline-results/apply")
+async def apply_pipeline_result(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply a subtask result — extract code blocks and write to disk.
+
+    Parses file path from code comment (// file: path/to/file.ext or # file: path)
+    and writes the code to that file.
+
+    Args:
+        data: {"task_id": "tb_xxx", "subtask_idx": 0}
+
+    Returns:
+        {"success": True, "files_written": ["path/to/file.ext"]}
+    """
+    import json
+    import re
+    from pathlib import Path
+
+    task_id = data.get("task_id")
+    subtask_idx = data.get("subtask_idx", 0)
+
+    if not task_id:
+        return {"success": False, "error": "task_id required"}
+
+    # Get pipeline results
+    from src.orchestration.task_board import get_task_board
+    board = get_task_board()
+    task = board.tasks.get(task_id)
+
+    if not task:
+        return {"success": False, "error": f"Task {task_id} not found"}
+
+    pipeline_task_id = task.get("pipeline_task_id")
+    if not pipeline_task_id:
+        return {"success": False, "error": "No pipeline results for this task"}
+
+    # Read pipeline_tasks.json
+    pipeline_file = Path(__file__).parent.parent.parent.parent / "data" / "pipeline_tasks.json"
+    if not pipeline_file.exists():
+        return {"success": False, "error": "pipeline_tasks.json not found"}
+
+    try:
+        pipeline_data = json.loads(pipeline_file.read_text())
+    except json.JSONDecodeError as e:
+        return {"success": False, "error": f"Invalid JSON: {e}"}
+
+    pipeline_task = pipeline_data.get(pipeline_task_id)
+    if not pipeline_task:
+        return {"success": False, "error": f"Pipeline task {pipeline_task_id} not found"}
+
+    subtasks = pipeline_task.get("subtasks", [])
+    if subtask_idx >= len(subtasks):
+        return {"success": False, "error": f"Subtask {subtask_idx} not found (total: {len(subtasks)})"}
+
+    subtask = subtasks[subtask_idx]
+    result = subtask.get("result", "")
+
+    if not result:
+        return {"success": False, "error": "No result code in this subtask"}
+
+    # Extract code blocks and file paths
+    files_written = []
+    project_root = Path(__file__).parent.parent.parent.parent
+
+    # Pattern: ```language\n// file: path/to/file\ncode\n```
+    # or ```language\n# file: path/to/file\ncode\n```
+    code_blocks = re.findall(r'```\w*\n(.*?)```', result, re.DOTALL)
+
+    for block in code_blocks:
+        # Find file path comment at start of block
+        file_match = re.match(r'^(?://|#)\s*file:\s*([^\n]+)\n', block)
+        if file_match:
+            file_path = file_match.group(1).strip()
+            code = block[file_match.end():]  # Code after the file comment
+
+            # Resolve path relative to project root
+            if not file_path.startswith('/'):
+                full_path = project_root / file_path
+            else:
+                full_path = Path(file_path)
+
+            # Create parent directories if needed
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Write file
+            full_path.write_text(code)
+            files_written.append(str(file_path))
+            logger.info(f"[APPLY] Wrote {len(code)} bytes to {file_path}")
+
+    if not files_written:
+        return {
+            "success": False,
+            "error": "No file paths found in code blocks. Expected '// file: path' or '# file: path' comment."
+        }
+
+    return {
+        "success": True,
+        "files_written": files_written,
+        "task_id": task_id,
+        "subtask_idx": subtask_idx,
+    }
+
+
+# MARKER_128.3A: Update pipeline result status (applied/rejected/rework)
+@router.patch("/pipeline-results/{task_id}/status")
+async def update_result_status(task_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Mark pipeline result as applied/rejected/rework.
+
+    Args:
+        task_id: Task Board task ID
+        data: {"status": "applied|rejected|rework", "reason": "optional reason"}
+
+    Returns:
+        {"success": True}
+    """
+    from datetime import datetime
+    from src.orchestration.task_board import get_task_board
+
+    status = data.get("status")
+    reason = data.get("reason", "")
+
+    if status not in ("applied", "rejected", "rework"):
+        return {"success": False, "error": f"Invalid status: {status}. Use: applied/rejected/rework"}
+
+    board = get_task_board()
+    task = board.tasks.get(task_id)
+
+    if not task:
+        return {"success": False, "error": f"Task {task_id} not found"}
+
+    # Update task with result lifecycle fields
+    board.update_task(
+        task_id,
+        result_status=status,
+        result_reviewed_at=datetime.now().isoformat(),
+        result_review_reason=reason
+    )
+
+    # If rework, re-dispatch the task
+    if status == "rework":
+        board.update_task(task_id, status="pending")
+        logger.info(f"[RESULT_STATUS] Task {task_id} marked for rework, status reset to pending")
+
+    logger.info(f"[RESULT_STATUS] Task {task_id} marked as {status}" + (f": {reason}" if reason else ""))
+
+    return {
+        "success": True,
+        "task_id": task_id,
+        "result_status": status,
+    }
+
+
 @router.post("/task-board/add")
 async def add_task_api(body: Dict[str, Any]) -> Dict[str, Any]:
     """Add a new task to the board.
