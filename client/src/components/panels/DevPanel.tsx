@@ -5,11 +5,12 @@
  * MARKER_128.5B: Quick-add with dispatch ("Add & Run")
  * MARKER_128.7A: Toast notifications on pipeline completion
  * MARKER_128.9A: Keyboard navigation (j/k/Enter/r/a)
- * Phase 128.7: "Batman Nolan, not Burton" — dark, serious, minimal.
+ * MARKER_129.C14B: MYCELIUM WebSocket connection indicator
+ * Phase 129.C14: "Batman Nolan, not Burton" — dark, serious, minimal.
  *
  * @status active
- * @phase 128.7
- * @depends FloatingWindow, TaskCard, PipelineStats, LeagueTester, BalancesPanel, ActivityLog
+ * @phase 129.C14
+ * @depends FloatingWindow, TaskCard, PipelineStats, LeagueTester, BalancesPanel, ActivityLog, useMyceliumSocket
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -21,6 +22,7 @@ import { LeagueTester } from './LeagueTester';
 import { BalancesPanel } from './BalancesPanel';  // MARKER_126.7
 import { ActivityLog } from './ActivityLog';  // MARKER_127.2B
 import { WatcherStats } from './WatcherStats';  // MARKER_129.1B
+import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';  // MARKER_129.C14B
 
 interface DevPanelProps {
   isOpen: boolean;
@@ -64,6 +66,9 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
   // MARKER_128.9A: Keyboard navigation state
   const [selectedTaskIdx, setSelectedTaskIdx] = useState<number>(-1);
   const boardRef = useRef<HTMLDivElement>(null);
+
+  // MARKER_129.C14B: MYCELIUM WebSocket connection
+  const { connected: myceliumConnected } = useMyceliumSocket();
 
   // MARKER_126.9C: Get selected key for dispatch (moved before handlers that use it)
   const selectedKey = useStore((s) => s.selectedKey);
@@ -344,6 +349,31 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
             {tab.label}
           </button>
         ))}
+
+        {/* MARKER_129.C14B: MYCELIUM connection indicator */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '0 8px',
+            fontSize: 9,
+            color: myceliumConnected ? '#4a4' : '#444',
+            fontFamily: 'monospace',
+            letterSpacing: 0.5,
+          }}
+          title={myceliumConnected ? 'MYCELIUM connected' : 'MYCELIUM disconnected'}
+        >
+          <span
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: '50%',
+              background: myceliumConnected ? '#4a4' : '#333',
+            }}
+          />
+          MYC
+        </div>
       </div>
 
       <div style={{
