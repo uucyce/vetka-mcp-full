@@ -926,6 +926,23 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             progress = f"[{subtask_idx}/{total}] " if total > 0 else ""
             full_message = f"{role}{model_tag}: {progress}{message}"
 
+            # MARKER_127.2: Broadcast pipeline_activity to ALL connected clients (for DevPanel)
+            # This runs BEFORE chat routing so early returns don't skip it
+            try:
+                if self.sio:
+                    await self.sio.emit("pipeline_activity", {
+                        "role": role,
+                        "message": message,
+                        "model": model or "system",
+                        "subtask_idx": subtask_idx,
+                        "total": total,
+                        "task_id": getattr(self, '_board_task_id', None),
+                        "preset": self.preset,
+                        "timestamp": time.time(),
+                    })
+            except Exception:
+                pass  # Never fail pipeline on broadcast
+
             # MARKER_118.6: Route 1 — emit "chat_response" so ChatPanel sees it
             # (Was "agent_message" → wrote to legacy messages[], invisible in ChatPanel)
             if self.sio and self.sid:

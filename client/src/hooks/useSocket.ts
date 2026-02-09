@@ -376,6 +376,17 @@ interface ServerToClientEvents {
     task_id?: string;
     summary: { total: number; by_status: Record<string, number> };
   }) => void;
+  // MARKER_127.2: Pipeline activity broadcast for DevPanel
+  pipeline_activity: (data: {
+    role: string;
+    message: string;
+    model: string;
+    subtask_idx: number;
+    total: number;
+    task_id?: string;
+    preset?: string;
+    timestamp: number;
+  }) => void;
 }
 
 // Phase 61: Pinned file type
@@ -1334,6 +1345,15 @@ export function useSocket() {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('task-board-updated', { detail: data })
+        );
+      }
+    });
+
+    // MARKER_127.2: Pipeline activity broadcast for DevPanel ActivityLog
+    socket.on('pipeline_activity', (data) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('pipeline-activity', { detail: data })
         );
       }
     });

@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T16:12:15.260274+00:00",
+  "last_updated": "2026-02-09T16:40:53.692358+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 127,
-    "subphase": "0",
-    "name": "Pipeline Results Viewer + Nolan color fix",
+    "number": 126,
+    "subphase": "12",
+    "name": "Stats Monitor \u2014 Live Refresh + Running Tasks",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 127.0 DONE! Pipeline Results Viewer + Nolan color fix",
+    "headline": "Phase 126.12 DONE! Stats Monitor \u2014 Live Refresh + Running Tasks",
     "key_achievements": [
+      "[5a52e47d] Phase 126.12: Phase 126.12: Stats Monitor \u2014 Live Refresh + Running Tasks",
       "[d1045cff] Phase 127.0: Phase 127.0: Pipeline Results Viewer + Nolan color fix",
       "[a386a7a1] Phase 127.1: Phase 127.1: Verifier hardening \u2014 fix confidence stats, simp",
       "[4266c722] Phase 126.9: Phase 126.9: Key Selection \u2192 Pipeline Dispatch",
@@ -21,8 +22,7 @@
       "[f4f5564e] Phase 126.10: Phase 126.10: Fix DELETE /keys/{provider}/{key_id}...",
       "[5c17de8a] Phase 126.3: Phase 126.3: Key sync + Balance scroll\n\nMARKER_126...",
       "[1fdab83e] Phase 126.2: Phase 126.2: Nolan style upgrade \u2014 no emoji, glassmorphism, ",
-      "[cad1dfcc] Phase 126.0: Phase 126.0: Pipeline Stats + DevPanel League Tester \u2014 Nolan",
-      "[d5910265] Phase 125.1: Phase 125.1: Doctor Intelligence \u2014 triage + hold + approve f"
+      "[cad1dfcc] Phase 126.0: Phase 126.0: Pipeline Stats + DevPanel League Tester \u2014 Nolan"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -40,9 +40,9 @@
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "error: HTTPConnectionPool(host='127.0.0.1', port=5001): R",
+      "status": "running",
       "port": 5001,
-      "tools_count": 0
+      "tools_count": 15
     },
     "api_keys": {
       "total": 30,
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "d1045cff",
+    "commit": "5a52e47d",
     "dirty": true
   }
 }
