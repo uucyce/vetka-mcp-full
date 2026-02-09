@@ -40,7 +40,8 @@ PRIORITY_LOW = 4
 PRIORITY_SOMEDAY = 5
 
 # Valid statuses
-VALID_STATUSES = {"pending", "queued", "running", "done", "failed", "cancelled"}
+# MARKER_125.1B: Added "hold" — Doctor triage puts abstract tasks on hold for human approval
+VALID_STATUSES = {"pending", "queued", "running", "done", "failed", "cancelled", "hold"}
 
 # Counter for generating IDs
 _task_counter = 0

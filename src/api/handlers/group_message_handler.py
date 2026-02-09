@@ -29,6 +29,7 @@ Phase 80.13: MCP Agent @mention routing:
 """
 
 import asyncio
+import os
 import uuid
 import time
 import logging
@@ -296,6 +297,190 @@ _PENDING_INTAKES: dict = {}  # chat_id → {"agent_id", "task_text", "sender_id"
 _INTAKE_TIMEOUT_SEC = 60  # Auto-queue after 60s with no reply
 
 
+# MARKER_125.1C: Doctor triage — analyze task abstraction before dispatch
+async def _doctor_triage(chat_id: str, task_text: str, sender_id: str):
+    """Doctor analyzes task abstraction/complexity, routes accordingly.
+
+    Concrete tasks → reformulate + dispatch (skip intake prompt)
+    Abstract tasks → reformulate + hold in TaskBoard for human approval
+    """
+    import json as _json
+
+    try:
+        # Load Doctor prompt
+        prompts_path = os.path.join(
+            os.path.dirname(__file__), "..", "..", "..", "data", "templates", "pipeline_prompts.json"
+        )
+        with open(prompts_path) as f:
+            prompts = _json.load(f)
+
+        doctor_prompt = prompts.get("doctor", {})
+        if not doctor_prompt:
+            logger.warning("[DOCTOR] No doctor prompt found, falling back to intake")
+            await _send_intake_prompt(chat_id, "doctor", task_text, sender_id)
+            return
+
+        # Quick LLM call for triage (cheap model — Haiku)
+        from src.tools.llm_call_tool import LLMCallTool
+        llm = LLMCallTool()
+        result = llm.call(
+            model=doctor_prompt.get("model", "anthropic/claude-haiku-4.5"),
+            system=doctor_prompt["system"],
+            user=f"Task to analyze:\n{task_text}",
+            temperature=doctor_prompt.get("temperature", 0.2),
+        )
+
+        response_text = result.get("result", {}).get("content", "{}")
+
+        # Parse JSON from response
+        import re as _re
+        json_match = _re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            triage = _json.loads(json_match.group())
+        else:
+            triage = {"abstraction": "moderate", "routing": "dispatch"}
+
+    except Exception as e:
+        logger.error(f"[DOCTOR] Triage failed: {e}, falling back to intake")
+        await _send_intake_prompt(chat_id, "doctor", task_text, sender_id)
+        return
+
+    abstraction = triage.get("abstraction", "moderate")
+    routing = triage.get("routing", "dispatch")
+    reformulated = triage.get("reformulated_task", task_text)
+    complexity = triage.get("complexity", "moderate")
+    suggested_phase = triage.get("suggested_phase", "build")
+    suggested_team = triage.get("suggested_team", "dragon_silver")
+    tags = triage.get("tags", ["doctor"])
+    reasoning = triage.get("reasoning", "")
+
+    import httpx
+
+    if routing == "hold" or abstraction == "abstract":
+        # ABSTRACT → TaskBoard with hold status, wait for human approve
+        from src.orchestration.task_board import get_task_board
+        board = get_task_board()
+        task_id = board.add_task(
+            title=reformulated[:100],
+            description=f"Original: {task_text}\n\nReformulated: {reformulated}",
+            priority=3,
+            phase_type=suggested_phase,
+            preset=suggested_team,
+            source=f"doctor_triage",
+            tags=tags + ["hold", "needs-approve"],
+        )
+        # Set hold status
+        board.update_task(task_id, status="hold")
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
+                    json={
+                        "agent_id": "doctor",
+                        "content": (
+                            f"🩺 **Doctor Triage** — задача абстрактна\n\n"
+                            f"📝 Оригинал: _{task_text[:150]}_\n"
+                            f"🎯 Переформулировка: **{reformulated[:200]}**\n"
+                            f"📊 Сложность: `{complexity}` | Команда: `{suggested_team}`\n"
+                            f"💡 {reasoning[:150]}\n\n"
+                            f"⏸️ Задача `{task_id}` на **hold** — ждёт approve.\n"
+                            f"Ответьте `approve {task_id}` чтобы запустить."
+                        ),
+                        "message_type": "system",
+                    }
+                )
+        except Exception:
+            pass
+
+    else:
+        # CONCRETE/MODERATE → reformulate + dispatch directly
+        from src.orchestration.task_board import get_task_board
+        board = get_task_board()
+        task_id = board.add_task(
+            title=reformulated[:100],
+            description=f"Original: {task_text}\n\nReformulated: {reformulated}",
+            priority=3,
+            phase_type=suggested_phase,
+            preset=suggested_team,
+            source=f"doctor_triage",
+            tags=tags + ["auto-dispatched"],
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
+                    json={
+                        "agent_id": "doctor",
+                        "content": (
+                            f"🩺 **Doctor Triage** — задача конкретна\n\n"
+                            f"🎯 Задача: **{reformulated[:200]}**\n"
+                            f"📊 Сложность: `{complexity}` | Команда: `{suggested_team}` | Фаза: `{suggested_phase}`\n"
+                            f"🚀 Диспатчу `{task_id}` сейчас..."
+                        ),
+                        "message_type": "system",
+                    }
+                )
+        except Exception:
+            pass
+
+        # Auto-dispatch
+        try:
+            dispatched = await board.dispatch_next(chat_id=chat_id)
+            if dispatched:
+                logger.info(f"[DOCTOR] Auto-dispatched concrete task {task_id}")
+        except Exception as e:
+            logger.error(f"[DOCTOR] Auto-dispatch failed: {e}")
+# MARKER_125.1C_END
+
+
+async def _handle_approve_hold(chat_id: str, task_id: str) -> bool:
+    """Approve a hold task and dispatch it.
+
+    MARKER_125.1C: When user types 'approve tb_xxx', move task from hold → pending → dispatch.
+    """
+    from src.orchestration.task_board import get_task_board
+    board = get_task_board()
+    task = board.tasks.get(task_id)
+
+    if not task:
+        return False
+
+    if task.get("status") != "hold":
+        return False
+
+    # Move from hold → pending (dispatchable)
+    board.update_task(task_id, status="pending")
+
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
+                json={
+                    "agent_id": "doctor",
+                    "content": (
+                        f"✅ Задача `{task_id}` одобрена!\n"
+                        f"🚀 Диспатчу: **{task.get('title', '?')[:150]}**\n"
+                        f"Команда: `{task.get('preset', 'dragon_silver')}` | Фаза: `{task.get('phase_type', 'build')}`"
+                    ),
+                    "message_type": "system",
+                }
+            )
+    except Exception:
+        pass
+
+    # Dispatch the approved task
+    try:
+        result = await board.dispatch_task(task_id, chat_id=chat_id)
+        logger.info(f"[DOCTOR] Approved and dispatched hold task {task_id}: {result.get('success')}")
+    except Exception as e:
+        logger.error(f"[DOCTOR] Dispatch after approve failed: {e}")
+
+    return True
+
+
 async def _send_intake_prompt(chat_id: str, agent_id: str, task_text: str, sender_id: str):
     """Send interactive urgency/team prompt to chat instead of immediate dispatch."""
     import httpx
@@ -490,6 +675,11 @@ async def _dispatch_system_command(
         f"  Chat: {chat_id[:12]}...\n"
         f"  Sender: {sender_id}"
     )
+
+    # MARKER_125.1C: Doctor gets triage instead of standard intake
+    if agent_id in ("doctor", "doc", "help", "support"):
+        await _doctor_triage(chat_id, task_text, sender_id)
+        return
 
     await _send_intake_prompt(chat_id, agent_id, task_text, sender_id)
     return  # Wait for user reply via handle_intake_reply()
@@ -982,6 +1172,14 @@ def register_group_message_handler(sio, app=None):
             print(
                 f"[GROUP_DEBUG] Phase 80.28: User message, decay now {group_object.last_responder_decay}"
             )
+
+        # MARKER_125.1C: Handle "approve tb_xxx" for Doctor hold tasks
+        if sender_id == "user" and content.strip().lower().startswith("approve "):
+            approve_task_id = content.strip().split(maxsplit=1)[1].strip()
+            if approve_task_id.startswith("tb_"):
+                handled = await _handle_approve_hold(group_id, approve_task_id)
+                if handled:
+                    return  # Don't process as normal message
 
         # MARKER_124.2A: Check for pending intake reply before normal routing
         if sender_id == "user" and has_pending_intake(group_id):
