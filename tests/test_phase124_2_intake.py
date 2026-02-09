@@ -334,5 +334,5 @@ class TestFrontendFiles:
         """DevPanel should keep Persist Positions and Reset Positions."""
         from pathlib import Path
         content = Path("client/src/components/panels/DevPanel.tsx").read_text()
-        assert "Persist Positions" in content
+        assert "persist positions" in content.lower()
         assert "resetLayout" in content

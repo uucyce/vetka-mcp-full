@@ -1,8 +1,9 @@
 /**
  * MARKER_126.0D: League Tester — run pipeline tests with different presets.
- * Nolan style: dark grid, monochrome buttons, minimal accents.
+ * MARKER_126.2C: Style upgrade — glassmorphism buttons, monospace.
+ * Nolan: dark grid, no emoji, serious.
  *
- * @phase 126.0
+ * @phase 126.2
  */
 
 import { useState } from 'react';
@@ -59,8 +60,8 @@ export function LeagueTester({ onTestComplete }: LeagueTesterProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ color: '#666', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
-        Select a league to benchmark
+      <div style={{ color: '#444', fontSize: 9, textTransform: 'uppercase', letterSpacing: 2, fontFamily: 'monospace' }}>
+        league benchmark
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
@@ -74,20 +75,23 @@ export function LeagueTester({ onTestComplete }: LeagueTesterProps) {
               disabled={running !== null}
               style={{
                 padding: '10px 8px',
-                background: isRunning ? '#1a1a1a' : isDone
-                  ? (lastResult?.success ? '#0a1a0a' : '#1a0a0a')
-                  : '#111',
-                border: `1px solid ${isRunning ? '#444' : isDone
-                  ? (lastResult?.success ? '#2a3a2a' : '#3a2a2a')
-                  : '#222'}`,
-                borderRadius: 4,
-                color: isRunning ? '#666' : '#ccc',
+                background: isRunning
+                  ? 'rgba(255,255,255,0.03)'
+                  : isDone
+                    ? (lastResult?.success ? 'rgba(120,160,120,0.06)' : 'rgba(160,120,120,0.06)')
+                    : 'rgba(255,255,255,0.02)',
+                border: `1px solid ${isRunning ? 'rgba(255,255,255,0.12)' : isDone
+                  ? (lastResult?.success ? 'rgba(120,160,120,0.15)' : 'rgba(160,120,120,0.15)')
+                  : 'rgba(255,255,255,0.06)'}`,
+                borderRadius: 3,
+                color: isRunning ? '#555' : '#bbb',
                 cursor: running ? 'not-allowed' : 'pointer',
-                fontSize: 11,
+                fontSize: 10,
                 fontFamily: 'monospace',
-                transition: 'all 0.15s',
+                transition: 'all 0.2s',
                 textAlign: 'center',
                 lineHeight: 1.4,
+                backdropFilter: 'blur(2px)',
               }}
             >
               <div style={{ fontWeight: 600 }}>{league.name.split(' ')[0]}</div>
@@ -102,15 +106,15 @@ export function LeagueTester({ onTestComplete }: LeagueTesterProps) {
       {/* Last result */}
       {lastResult && (
         <div style={{
-          background: '#0d0d0d',
-          border: '1px solid #222',
-          borderRadius: 4,
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: 3,
           padding: 10,
-          fontSize: 11,
+          fontSize: 10,
           fontFamily: 'monospace',
         }}>
-          <div style={{ color: lastResult.success ? '#ccc' : '#888', marginBottom: 4 }}>
-            {lastResult.preset}: {lastResult.success ? 'PASS' : 'FAIL'}
+          <div style={{ color: lastResult.success ? '#aaa' : '#777', marginBottom: 4, letterSpacing: 0.5 }}>
+            {lastResult.preset} {lastResult.success ? '— pass' : '— fail'}
           </div>
           {lastResult.stats && (
             <div style={{ color: '#666', lineHeight: 1.6 }}>

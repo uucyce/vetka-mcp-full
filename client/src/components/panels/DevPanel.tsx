@@ -1,10 +1,10 @@
 /**
  * MARKER_126.0C: DevPanel — Task Board + Stats + League Tester
- * Phase 126.0: Added tabs, pipeline statistics, league testing.
- * Nolan style: monochrome, dark, no unnecessary color.
+ * MARKER_126.2B: Style upgrade — Nolan glassmorphism, monospace, no emoji
+ * Phase 126.2: "Batman Nolan, not Burton" — dark, serious, minimal.
  *
  * @status active
- * @phase 126.0
+ * @phase 126.2
  * @depends FloatingWindow, TaskCard, PipelineStats, LeagueTester, useStore
  */
 
@@ -163,11 +163,12 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
       defaultWidth={420}
       defaultHeight={600}
     >
-      {/* Tab bar — Nolan style: minimal, monochrome */}
+      {/* Tab bar — Nolan monochrome, monospace */}
       <div style={{
         display: 'flex',
-        borderBottom: '1px solid #222',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
         padding: '0 12px',
+        background: 'rgba(0,0,0,0.2)',
       }}>
         {TABS.map(tab => (
           <button
@@ -175,17 +176,18 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
             onClick={() => setActiveTab(tab.id)}
             style={{
               flex: 1,
-              padding: '8px 0',
+              padding: '10px 0',
               background: 'none',
               border: 'none',
-              borderBottom: activeTab === tab.id ? '2px solid #e0e0e0' : '2px solid transparent',
-              color: activeTab === tab.id ? '#e0e0e0' : '#555',
-              fontSize: 11,
+              borderBottom: activeTab === tab.id ? '1px solid #e0e0e0' : '1px solid transparent',
+              color: activeTab === tab.id ? '#e0e0e0' : '#444',
+              fontSize: 10,
+              fontFamily: 'monospace',
               fontWeight: activeTab === tab.id ? 600 : 400,
-              letterSpacing: 0.5,
+              letterSpacing: 1.5,
               textTransform: 'uppercase',
               cursor: 'pointer',
-              transition: 'all 0.15s',
+              transition: 'all 0.2s',
             }}
           >
             {tab.label}
@@ -204,46 +206,50 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
         {/* ═══ BOARD TAB ═══ */}
         {activeTab === 'board' && (
           <>
-            {/* Header summary */}
-            <div style={{ color: '#666', fontSize: 10, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
-              <span>Cmd+Shift+D</span>
+            {/* Header summary — monospace counters */}
+            <div style={{ color: '#444', fontSize: 9, marginBottom: 8, display: 'flex', justifyContent: 'space-between', fontFamily: 'monospace', letterSpacing: 0.5 }}>
+              <span>cmd+shift+d</span>
               <span>
-                {summary?.total || 0} tasks
-                {pendingCount > 0 && ` \u00B7 ${pendingCount} pending`}
-                {runningCount > 0 && ` \u00B7 ${runningCount} running`}
-                {holdCount > 0 && ` \u00B7 ${holdCount} hold`}
+                {summary?.total || 0}
+                {pendingCount > 0 && ` · ${pendingCount}p`}
+                {runningCount > 0 && ` · ${runningCount}r`}
+                {holdCount > 0 && ` · ${holdCount}h`}
               </span>
             </div>
 
-            {/* Quick Add */}
-            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {/* Quick Add — monospace, dark glass */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
               <input
                 type="text"
-                placeholder="New task..."
+                placeholder="new task..."
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
                 style={{
                   flex: 1,
-                  background: '#111',
-                  border: '1px solid #222',
-                  borderRadius: 4,
-                  color: '#e0e0e0',
-                  padding: '6px 10px',
-                  fontSize: 12,
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: 3,
+                  color: '#ccc',
+                  padding: '7px 10px',
+                  fontSize: 11,
+                  fontFamily: 'monospace',
                   outline: 'none',
+                  transition: 'border-color 0.15s',
                 }}
               />
               <select
                 value={newTaskTeam}
                 onChange={(e) => setNewTaskTeam(e.target.value as 'dragon' | 'titan')}
                 style={{
-                  background: '#111',
-                  border: '1px solid #222',
-                  borderRadius: 4,
-                  color: '#888',
-                  fontSize: 11,
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: 3,
+                  color: '#666',
+                  fontSize: 10,
+                  fontFamily: 'monospace',
                   padding: '4px',
+                  outline: 'none',
                 }}
               >
                 <option value="dragon">DRG</option>
@@ -253,14 +259,16 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
                 onClick={handleAddTask}
                 disabled={!newTaskTitle.trim()}
                 style={{
-                  background: newTaskTitle.trim() ? '#333' : '#1a1a1a',
-                  color: newTaskTitle.trim() ? '#e0e0e0' : '#444',
-                  border: '1px solid #333',
-                  borderRadius: 4,
+                  background: newTaskTitle.trim() ? 'rgba(255,255,255,0.08)' : 'transparent',
+                  color: newTaskTitle.trim() ? '#ccc' : '#333',
+                  border: `1px solid ${newTaskTitle.trim() ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)'}`,
+                  borderRadius: 3,
                   padding: '6px 12px',
-                  fontSize: 13,
+                  fontSize: 12,
+                  fontFamily: 'monospace',
                   cursor: newTaskTitle.trim() ? 'pointer' : 'not-allowed',
                   fontWeight: 600,
+                  transition: 'all 0.15s',
                 }}
               >
                 +
@@ -291,54 +299,60 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
               ))}
             </div>
 
-            {/* Footer */}
-            <div style={{ borderTop: '1px solid #222', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Footer — serious dispatch bar */}
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <button
                 onClick={handleDispatchNext}
                 disabled={pendingCount === 0}
                 style={{
                   width: '100%',
-                  padding: '8px 16px',
-                  background: pendingCount > 0 ? '#222' : '#111',
-                  color: pendingCount > 0 ? '#e0e0e0' : '#444',
-                  border: `1px solid ${pendingCount > 0 ? '#444' : '#222'}`,
-                  borderRadius: 4,
-                  fontSize: 12,
-                  fontWeight: 500,
+                  padding: '10px 16px',
+                  background: pendingCount > 0
+                    ? 'rgba(255,255,255,0.06)'
+                    : 'rgba(255,255,255,0.02)',
+                  color: pendingCount > 0 ? '#e0e0e0' : '#333',
+                  border: `1px solid ${pendingCount > 0 ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)'}`,
+                  borderRadius: 3,
+                  fontSize: 10,
+                  fontFamily: 'monospace',
+                  fontWeight: 600,
                   cursor: pendingCount > 0 ? 'pointer' : 'not-allowed',
-                  letterSpacing: 0.5,
+                  letterSpacing: 2,
                   textTransform: 'uppercase',
+                  transition: 'all 0.2s',
+                  backdropFilter: pendingCount > 0 ? 'blur(4px)' : 'none',
                 }}
               >
-                Dispatch Next {pendingCount > 0 && `(${pendingCount})`}
+                dispatch next {pendingCount > 0 && `(${pendingCount})`}
               </button>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 9 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }}>
                   <input
                     type="checkbox"
                     checked={useStore.getState().persistPositions}
                     onChange={(e) => useStore.getState().setPersistPositions(e.target.checked)}
-                    style={{ accentColor: '#888' }}
+                    style={{ accentColor: '#555' }}
                   />
-                  <span style={{ color: '#666' }}>Persist Positions</span>
+                  <span style={{ color: '#444', fontFamily: 'monospace' }}>persist positions</span>
                 </label>
                 <button
                   onClick={() => {
                     useStore.getState().resetLayout();
-                    alert('Position cache cleared.');
                   }}
                   style={{
                     padding: '3px 8px',
-                    background: '#1a1a1a',
-                    border: '1px solid #333',
-                    borderRadius: 3,
-                    color: '#888',
+                    background: 'transparent',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: 2,
+                    color: '#555',
                     cursor: 'pointer',
                     fontSize: 9,
+                    fontFamily: 'monospace',
+                    transition: 'all 0.15s',
                   }}
                 >
-                  Reset
+                  reset
                 </button>
               </div>
             </div>
