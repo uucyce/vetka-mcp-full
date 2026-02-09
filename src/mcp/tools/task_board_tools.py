@@ -6,6 +6,11 @@ Three MCP tools for managing the Task Board:
 2. vetka_task_dispatch — dispatch tasks to pipeline
 3. vetka_task_import — import from todo files
 
+TODO MARKER_126.11C: Add fourth tool:
+4. vetka_task_claim — claim/release tasks for external agents
+   - action: "claim" | "release" | "my_tasks"
+   - Enables Claude Code, Grok, etc. to claim tasks without Mycelium
+
 @status: active
 @phase: 121
 @depends: src/orchestration/task_board.py

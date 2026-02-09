@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T15:06:05.128656+00:00",
+  "last_updated": "2026-02-09T15:15:34.755179+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 126,
-    "subphase": "3",
-    "name": "Key sync + Balance scroll",
+    "subphase": "10",
+    "name": "Fix DELETE /keys/{provider}/{key_id} endpoint mismatch",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 126.3 DONE! Key sync + Balance scroll",
+    "headline": "Phase 126.10 DONE! Fix DELETE /keys/{provider}/{key_id} endpoint mismatch",
     "key_achievements": [
+      "[f4f5564e] Phase 126.10: Phase 126.10: Fix DELETE /keys/{provider}/{key_id}...",
       "[5c17de8a] Phase 126.3: Phase 126.3: Key sync + Balance scroll\n\nMARKER_126...",
       "[1fdab83e] Phase 126.2: Phase 126.2: Nolan style upgrade \u2014 no emoji, glassmorphism, ",
       "[cad1dfcc] Phase 126.0: Phase 126.0: Pipeline Stats + DevPanel League Tester \u2014 Nolan",
@@ -21,8 +22,7 @@
       "[108d0ec0] Phase 124.9: Phase 124.9: Scout Places Markers \u2014 virtual marker_map as GP",
       "[829c8281] Phase 124.8: Phase 124.8: Marker-aware search + focused reading \u2014 Scout\u2192A",
       "[0653771e] Phase 124.7: Phase 124.7: VetkaSearchCodeTool + Scout pre-fetch via ripgr",
-      "[cf5d07b5] Phase 124.6: Phase 124.6: Improved search filters + E2E Dragon Silver val",
-      "[6b47d668] Phase 124.5: Phase 124.5: Hybrid search + FC max_turns increase"
+      "[cf5d07b5] Phase 124.6: Phase 124.6: Improved search filters + E2E Dragon Silver val"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -40,9 +40,9 @@
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "running",
+      "status": "error: HTTPConnectionPool(host='127.0.0.1', port=5001): R",
       "port": 5001,
-      "tools_count": 15
+      "tools_count": 0
     },
     "api_keys": {
       "total": 30,
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "5c17de8a",
+    "commit": "f4f5564e",
     "dirty": true
   }
 }

@@ -41,6 +41,8 @@ PRIORITY_SOMEDAY = 5
 
 # Valid statuses
 # MARKER_125.1B: Added "hold" — Doctor triage puts abstract tasks on hold for human approval
+# TODO MARKER_126.11A: Add "claimed" status for multi-agent support
+# When implemented: external agents (Claude Code, Grok) can claim tasks without Mycelium
 VALID_STATUSES = {"pending", "queued", "running", "done", "failed", "cancelled", "hold"}
 
 # Counter for generating IDs
@@ -207,7 +209,12 @@ class TaskBoard:
             "completed_at": None,
             "pipeline_task_id": None,
             "result_summary": None,
-            "stats": None
+            "stats": None,
+            # TODO MARKER_126.11A: Multi-agent claim fields (add when implementing)
+            # "claimed_by": None,      # Agent ID who claimed
+            # "claimed_at": None,      # Timestamp
+            # "claim_expires": None,   # Auto-release time
+            # "agent_type": None,      # "mycelium" | "mcp" | "chat"
         }
 
         self._save(action="added")
@@ -351,6 +358,21 @@ class TaskBoard:
                 "phase_type": next_task["phase_type"]
             } if next_task else None
         }
+
+    # ==========================================
+    # TODO MARKER_126.11B: MULTI-AGENT CLAIM SUPPORT
+    # ==========================================
+    # def claim_task(self, task_id: str, agent_id: str, agent_type: str = "mcp") -> bool:
+    #     """External agent claims a task. Sets status='claimed', records agent info."""
+    #     pass
+    #
+    # def release_task(self, task_id: str, agent_id: str, new_status: str = "done") -> bool:
+    #     """Agent releases task after completion."""
+    #     pass
+    #
+    # def get_claimable_tasks(self, limit: int = 5) -> List[Dict]:
+    #     """Returns pending tasks ready for claiming. For session_init."""
+    #     pass
 
     # ==========================================
     # STATISTICS (MARKER_126.0B)
