@@ -500,5 +500,5 @@ class TestPhase127_3_KeyRefreshFix:
         """MARKER_127.3: /usage/balances should reload keys from config."""
         source = _read_source("src/api/routes/debug_routes.py")
         assert "MARKER_127.3" in source
-        assert "km.load_keys()" in source
+        assert "km.load_from_config()" in source
         assert "keys_loaded" in source

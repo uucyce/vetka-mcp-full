@@ -1983,7 +1983,7 @@ async def get_usage_balances() -> Dict[str, Any]:
 
     # MARKER_127.3: Reload keys from config (picks up newly added keys)
     km = get_key_manager()
-    keys_loaded = km.load_keys()
+    keys_loaded = km.load_from_config()
 
     tracker = get_balance_tracker()
 
