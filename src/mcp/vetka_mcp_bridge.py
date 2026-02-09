@@ -872,155 +872,42 @@ async def list_tools() -> list[Tool]:
                 "required": ["context"]
             }
         ),
-        # MARKER_102.9_START: Mycelium Pipeline tool
-        # MARKER_103.5: Added auto_write parameter
+        # ═══════════════════════════════════════════════════════════════════════
+        # DEPRECATED PIPELINE TOOLS — Phase 129.C13
+        # These tools are now in MCP MYCELIUM (mycelium_* namespace)
+        # Stubs kept for backwards compatibility, return deprecation warning
+        # ═══════════════════════════════════════════════════════════════════════
         Tool(
             name="vetka_mycelium_pipeline",
-            description=(
-                "Mycelium agent pipeline for fractal task execution. "
-                "Auto-triggers Grok researcher on unclear parts (?). "
-                "Phases: research (explore), fix (debug), build (implement). "
-                "Progress streams to chat in real-time! "
-                "Use auto_write=false for staging mode (safe review before file creation)."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "task": {
-                        "type": "string",
-                        "description": "Task description to execute through pipeline"
-                    },
-                    "phase_type": {
-                        "type": "string",
-                        "enum": ["research", "fix", "build"],
-                        "description": "Pipeline type: research (explore), fix (debug), build (implement)",
-                        "default": "research"
-                    },
-                    "chat_id": {
-                        "type": "string",
-                        "description": "Optional chat ID for progress streaming (default: Lightning chat)"
-                    },
-                    "auto_write": {
-                        "type": "boolean",
-                        "description": "If true (default), write files immediately. If false, save to JSON for later review with retro_apply_spawn.py",
-                        "default": True
-                    },
-                    # MARKER_117_PROVIDER: Provider override and preset support
-                    "provider": {
-                        "type": "string",
-                        "description": "LLM provider override for all pipeline agents (e.g., 'polza', 'openrouter', 'xai'). If set, all agents use this provider."
-                    },
-                    "preset": {
-                        "type": "string",
-                        "description": "Team preset from model_presets.json (e.g., 'polza_research', 'budget', 'quality'). Overrides individual agent models."
-                    }
-                },
-                "required": ["task"]
-            }
+            description="[DEPRECATED] Use mycelium_pipeline instead. Pipeline tools moved to MCP MYCELIUM.",
+            inputSchema={"type": "object", "properties": {"task": {"type": "string"}}, "required": ["task"]}
         ),
-        # MARKER_102.9_END
-        # MARKER_117_2C_HEARTBEAT: Heartbeat Engine tools (Phase 117.2c)
         Tool(
             name="vetka_heartbeat_tick",
-            description=(
-                "Execute one heartbeat tick: read new messages from group chat, "
-                "parse task triggers (@dragon, /task, /fix, /build, /research), "
-                "and dispatch Mycelium pipeline for each task. "
-                "Use dry_run=true to preview tasks without executing. "
-                "The heartbeat monitors MCP Dev group chat for autonomous task execution."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "group_id": {
-                        "type": "string",
-                        "description": "Group chat ID to monitor (default: MCP Dev group)"
-                    },
-                    "dry_run": {
-                        "type": "boolean",
-                        "description": "If true, parse tasks but don't execute them (preview mode)",
-                        "default": False
-                    }
-                },
-                "required": []
-            }
+            description="[DEPRECATED] Use mycelium_heartbeat_tick instead. Moved to MCP MYCELIUM.",
+            inputSchema={"type": "object", "properties": {}}
         ),
         Tool(
             name="vetka_heartbeat_status",
-            description=(
-                "Get current Heartbeat Engine status: last tick time, total ticks, "
-                "tasks dispatched/completed/failed, recent run history. "
-                "Use to check if heartbeat is running and what it has processed."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
+            description="[DEPRECATED] Use mycelium_heartbeat_status instead. Moved to MCP MYCELIUM.",
+            inputSchema={"type": "object", "properties": {}}
         ),
-        # MARKER_117_2C_END
-        # MARKER_121_TASK_BOARD: Task Board tools (Phase 121)
         Tool(
             name="vetka_task_board",
-            description=(
-                "Manage Task Board: add/list/get/update/remove/summary. "
-                "Task Board is a priority queue for Mycelium pipeline dispatch. "
-                "Use action='summary' to see board overview, action='list' to see tasks."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["add", "list", "get", "update", "remove", "summary"],
-                        "description": "Operation to perform"
-                    },
-                    "title": {"type": "string", "description": "Task title (for add)"},
-                    "description": {"type": "string", "description": "Task description (for add)"},
-                    "priority": {"type": "number", "description": "1=critical to 5=someday (for add/update)"},
-                    "phase_type": {"type": "string", "description": "build/fix/research (for add)"},
-                    "complexity": {"type": "string", "description": "low/medium/high (for add)"},
-                    "preset": {"type": "string", "description": "Pipeline preset override (for add)"},
-                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags (for add)"},
-                    "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Dependency task IDs"},
-                    "task_id": {"type": "string", "description": "Task ID (for get/update/remove)"},
-                    "status": {"type": "string", "description": "New status (for update)"},
-                    "filter_status": {"type": "string", "description": "Filter by status (for list)"}
-                },
-                "required": ["action"]
-            }
+            description="[DEPRECATED] Use mycelium_task_board instead. Moved to MCP MYCELIUM.",
+            inputSchema={"type": "object", "properties": {"action": {"type": "string"}}, "required": ["action"]}
         ),
         Tool(
             name="vetka_task_dispatch",
-            description=(
-                "Dispatch tasks from Task Board to Mycelium pipeline. "
-                "If task_id given, dispatches that task. Otherwise picks highest-priority pending task. "
-                "Tasks run in staging mode (auto_write=False) for safety."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "task_id": {"type": "string", "description": "Task ID to dispatch (optional, picks top if omitted)"},
-                    "chat_id": {"type": "string", "description": "Chat ID for progress streaming (optional)"}
-                }
-            }
+            description="[DEPRECATED] Use mycelium_task_dispatch instead. Moved to MCP MYCELIUM.",
+            inputSchema={"type": "object", "properties": {}}
         ),
         Tool(
             name="vetka_task_import",
-            description=(
-                "Import tasks from a todo text file into the Task Board. "
-                "Auto-detects priority and phase_type from content."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "file_path": {"type": "string", "description": "Path to todo file"},
-                    "source_tag": {"type": "string", "description": "Source tag (e.g., 'dragon_todo', 'titan_todo')"}
-                },
-                "required": ["file_path"]
-            }
+            description="[DEPRECATED] Use mycelium_task_import instead. Moved to MCP MYCELIUM.",
+            inputSchema={"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}
         ),
-        # MARKER_121_TASK_BOARD_END
+        # ═══════════════════════════════════════════════════════════════════════
         # MARKER_108_4_MCP_REGISTER: Artifact management tools (Phase 108.4)
         Tool(
             name="vetka_edit_artifact",
@@ -1781,304 +1668,60 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             except Exception as e:
                 return [TextContent(type="text", text=f"❌ Error in review: {e}")]
 
+        # ═══════════════════════════════════════════════════════════════════════
+        # DEPRECATED PIPELINE HANDLERS — Phase 129.C13
+        # These tools are now in MCP MYCELIUM. Return deprecation message.
+        # ═══════════════════════════════════════════════════════════════════════
         elif name == "vetka_execute_workflow":
-            # Execute a workflow
-            # MARKER_116_AUDIT_EXTENSION: Audit log before execution
-            await _audit_log_tool_call(name, arguments, approved=True, result_status="attempted")
-
-            try:
-                from src.mcp.tools.workflow_tools import vetka_execute_workflow
-                result = await vetka_execute_workflow(**arguments)
-                duration_ms = (time.time() - start_time) * 1000
-                await log_mcp_response(name, result, request_id, duration_ms)
-
-                # MARKER_116_AUDIT_EXTENSION: Audit log after successful execution
-                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
-
-                return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
-            except Exception as e:
-                return [TextContent(type="text", text=f"❌ Error in execute_workflow: {e}")]
+            return [TextContent(type="text", text=(
+                "⚠️ DEPRECATED: vetka_execute_workflow moved to MCP MYCELIUM.\n"
+                "Use mycelium_execute_workflow instead for native async execution."
+            ))]
 
         elif name == "vetka_workflow_status":
-            # MARKER_102.21_START: Combined workflow + pipeline status
-            # Get workflow status OR pipeline task status
-            try:
-                workflow_id = arguments.get("workflow_id", "")
+            return [TextContent(type="text", text=(
+                "⚠️ DEPRECATED: vetka_workflow_status moved to MCP MYCELIUM.\n"
+                "Use mycelium_workflow_status instead for pipeline task status."
+            ))]
 
-                # Check if it's a pipeline task (starts with "task_")
-                if workflow_id.startswith("task_"):
-                    from src.orchestration.agent_pipeline import AgentPipeline
-                    pipeline = AgentPipeline()
-                    task_data = pipeline.get_task_status(workflow_id)
-
-                    if task_data:
-                        # Format pipeline task status
-                        subtasks = task_data.get("subtasks", [])
-                        completed = sum(1 for s in subtasks if s.get("status") == "done")
-                        result_text = (
-                            f"📋 Pipeline Task Status\n"
-                            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                            f"ID: {workflow_id}\n"
-                            f"Status: {task_data.get('status', 'unknown')}\n"
-                            f"Phase: {task_data.get('phase_type', 'N/A')}\n"
-                            f"Subtasks: {completed}/{len(subtasks)} completed\n\n"
-                        )
-
-                        for i, st in enumerate(subtasks, 1):
-                            status_icon = "✅" if st.get("status") == "done" else "⏳" if st.get("status") == "executing" else "📋"
-                            result_text += f"{status_icon} {i}. {st.get('description', 'N/A')[:60]}...\n"
-
-                        return [TextContent(type="text", text=result_text)]
-                    else:
-                        return [TextContent(type="text", text=f"❌ Pipeline task not found: {workflow_id}")]
-
-                # If no workflow_id, show recent pipeline tasks
-                if not workflow_id:
-                    from src.orchestration.agent_pipeline import AgentPipeline
-                    pipeline = AgentPipeline()
-                    recent = pipeline.get_recent_tasks(5)
-
-                    if recent:
-                        result_text = "📋 Recent Pipeline Tasks\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                        for task in recent:
-                            status_icon = "✅" if task.get("status") == "done" else "⏳" if task.get("status") == "executing" else "❌"
-                            result_text += f"{status_icon} {task.get('task_id')}: {task.get('task', 'N/A')[:40]}...\n"
-                        return [TextContent(type="text", text=result_text)]
-
-                # Fall back to original workflow status
-                from src.mcp.tools.workflow_tools import vetka_workflow_status
-                result = await vetka_workflow_status(**arguments)
-                duration_ms = (time.time() - start_time) * 1000
-                await log_mcp_response(name, result, request_id, duration_ms)
-                return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
-            except Exception as e:
-                return [TextContent(type="text", text=f"❌ Error in workflow_status: {e}")]
-            # MARKER_102.21_END
-
-        # MARKER_102.10_START: Agent Pipeline handler (fire-and-forget)
+        # Phase 129.C13: Deprecated pipeline handlers — now in MCP MYCELIUM
         elif name == "vetka_mycelium_pipeline":
-            # MARKER_102.19_START: Async fire-and-forget pipeline
-            # Phase 102.2: Don't wait for completion - return task_id immediately
-            # Pipeline runs in background, results saved to pipeline_tasks.json
-            # MARKER_102.29: Added chat_id for progress streaming
-            # MARKER_103.5: Added auto_write flag for staging mode
-            # MARKER_116_AUDIT_EXTENSION: Audit log before execution
-            await _audit_log_tool_call(name, arguments, approved=True, result_status="attempted")
+            return [TextContent(type="text", text=(
+                "⚠️ DEPRECATED: vetka_mycelium_pipeline moved to MCP MYCELIUM.\n"
+                "Use mycelium_pipeline instead for native async, non-blocking execution.\n"
+                "WebSocket updates stream to ws://localhost:8082"
+            ))]
 
-            try:
-                from src.orchestration.agent_pipeline import AgentPipeline
-                import time as time_module
-
-                task = arguments.get("task", "")
-                phase_type = arguments.get("phase_type", "research")
-                chat_id = arguments.get("chat_id", MCP_LOG_GROUP_ID)  # Use MCP log group as default
-                # MARKER_103.5: auto_write flag
-                # True (default): Write files to disk immediately
-                # False: Only save to JSON, use retro_apply_spawn.py later
-                auto_write = arguments.get("auto_write", True)
-                # MARKER_117_PROVIDER: Extract provider override and preset
-                provider = arguments.get("provider")
-                preset = arguments.get("preset")
-
-                # Create pipeline with chat_id for progress streaming
-                pipeline = AgentPipeline(chat_id=chat_id, auto_write=auto_write, provider=provider, preset=preset)
-                task_id = f"task_{int(time_module.time())}"
-
-                # MARKER_117_2A_FIX_B: Fire-and-forget WITH result capture and notification
-                # Old: execute() return value was discarded, no completion notification
-                # New: capture result, send summary to group chat on completion/failure
-                async def run_pipeline_background():
-                    try:
-                        result = await pipeline.execute(task, phase_type)
-                        logger.info(f"[MCP] Pipeline {task_id} completed")
-
-                        # Send completion notification to group chat
-                        try:
-                            import httpx
-                            completed = result.get("results", {}).get("subtasks_completed", "?") if result else "?"
-                            total = result.get("results", {}).get("subtasks_total", "?") if result else "?"
-                            status = result.get("status", "unknown") if result else "unknown"
-
-                            summary = f"✅ Pipeline {task_id} complete: {completed}/{total} subtasks ({status})"
-                            async with httpx.AsyncClient(timeout=5.0) as client:
-                                await client.post(
-                                    f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
-                                    json={
-                                        "agent_id": "pipeline",
-                                        "content": summary,
-                                        "message_type": "system"
-                                    }
-                                )
-                            logger.info(f"[MCP] Pipeline {task_id} completion notified to chat")
-                        except Exception as notify_err:
-                            logger.warning(f"[MCP] Pipeline {task_id} notify failed: {notify_err}")
-
-                    except Exception as e:
-                        logger.error(f"[MCP] Pipeline {task_id} failed: {e}")
-                        # Notify failure to group chat
-                        try:
-                            import httpx
-                            async with httpx.AsyncClient(timeout=5.0) as client:
-                                await client.post(
-                                    f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
-                                    json={
-                                        "agent_id": "pipeline",
-                                        "content": f"❌ Pipeline {task_id} failed: {str(e)[:200]}",
-                                        "message_type": "error"
-                                    }
-                                )
-                        except Exception:
-                            pass  # Best effort
-
-                # Schedule background execution
-                asyncio.create_task(run_pipeline_background())
-
-                # MARKER_116_AUDIT_EXTENSION: Audit log after pipeline started (not waiting for completion)
-                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
-
-                # Return immediately with task_id
-                mode_text = "Auto-write: ON (files created immediately)" if auto_write else "Staging mode: ON (use retro_apply_spawn.py)"
-                response_text = (
-                    f"🚀 Pipeline Started\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"Task ID: {task_id}\n"
-                    f"Phase: {phase_type}\n"
-                    f"Task: {task[:80]}...\n"
-                    f"Streaming to: {chat_id[:8]}...\n"
-                    f"{mode_text}\n\n"
-                    f"Pipeline running in background.\n"
-                    f"Progress will stream to chat in real-time!\n"
-                    f"Check status: vetka_workflow_status or read data/pipeline_tasks.json"
-                )
-
-                return [TextContent(type="text", text=response_text)]
-            except Exception as e:
-                logger.error(f"[MCP] {name} error: {e}")
-                return [TextContent(type="text", text=f"❌ Pipeline error: {e}")]
-            # MARKER_102.19_END
-        # MARKER_102.10_END
-
-        # MARKER_117_2C_HEARTBEAT: Heartbeat tool handlers (Phase 117.2c)
         elif name == "vetka_heartbeat_tick":
-            try:
-                from src.orchestration.mycelium_heartbeat import heartbeat_tick
-
-                group_id = arguments.get("group_id", None)
-                dry_run = arguments.get("dry_run", False)
-
-                kwargs = {"dry_run": dry_run}
-                if group_id:
-                    kwargs["group_id"] = group_id
-
-                result = await heartbeat_tick(**kwargs)
-
-                tick_num = result.get("tick", 0)
-                new_msgs = result.get("new_messages", 0)
-                tasks_found = result.get("tasks_found", 0)
-                tasks_dispatched = result.get("tasks_dispatched", 0)
-                duration = result.get("duration_ms", 0)
-                dr = " (DRY RUN)" if dry_run else ""
-
-                lines = [
-                    f"❤️ Heartbeat Tick #{tick_num}{dr}",
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                    f"New messages: {new_msgs}",
-                    f"Tasks found: {tasks_found}",
-                    f"Tasks dispatched: {tasks_dispatched}",
-                    f"Duration: {duration}ms",
-                ]
-
-                if result.get("results"):
-                    lines.append("\nTask Results:")
-                    for r in result["results"]:
-                        status = "✅" if r.get("success") else ("👀" if r.get("dry_run") else "❌")
-                        lines.append(f"  {status} [{r.get('trigger', '?')}] {r.get('task', '?')[:80]}")
-
-                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
-                return [TextContent(type="text", text="\n".join(lines))]
-
-            except Exception as e:
-                logger.error(f"[MCP] heartbeat_tick error: {e}")
-                return [TextContent(type="text", text=f"❌ Heartbeat error: {e}")]
+            return [TextContent(type="text", text=(
+                "⚠️ DEPRECATED: vetka_heartbeat_tick moved to MCP MYCELIUM.\n"
+                "Use mycelium_heartbeat_tick instead."
+            ))]
 
         elif name == "vetka_heartbeat_status":
-            try:
-                from src.orchestration.mycelium_heartbeat import get_heartbeat_status
+            return [TextContent(type="text", text=(
+                "⚠️ DEPRECATED: vetka_heartbeat_status moved to MCP MYCELIUM.\n"
+                "Use mycelium_heartbeat_status instead."
+            ))]
 
-                status = get_heartbeat_status()
-
-                import time as _time
-                last_tick = status.get("last_tick_time", 0)
-                last_tick_str = _time.strftime("%Y-%m-%d %H:%M:%S", _time.localtime(last_tick)) if last_tick else "never"
-
-                lines = [
-                    "❤️ Heartbeat Engine Status",
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-                    f"Total ticks: {status.get('total_ticks', 0)}",
-                    f"Last tick: {last_tick_str}",
-                    f"Last message ID: {status.get('last_message_id', 'none')[:12] if status.get('last_message_id') else 'none'}...",
-                    f"Tasks dispatched: {status.get('tasks_dispatched', 0)}",
-                    f"Tasks completed: {status.get('tasks_completed', 0)}",
-                    f"Tasks failed: {status.get('tasks_failed', 0)}",
-                ]
-
-                recent = status.get("recent_runs", [])
-                if recent:
-                    lines.append(f"\nRecent runs ({len(recent)}):")
-                    for run in recent[-5:]:
-                        dr = " DRY" if run.get("dry_run") else ""
-                        lines.append(
-                            f"  Tick #{run.get('tick', '?')} @ {run.get('time', '?')} — "
-                            f"{run.get('new_messages', 0)} msgs, "
-                            f"{run.get('tasks_found', 0)} tasks, "
-                            f"{run.get('tasks_dispatched', 0)} dispatched{dr}"
-                        )
-
-                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
-                return [TextContent(type="text", text="\n".join(lines))]
-
-            except Exception as e:
-                logger.error(f"[MCP] heartbeat_status error: {e}")
-                return [TextContent(type="text", text=f"❌ Heartbeat status error: {e}")]
-        # MARKER_117_2C_END
-
-        # MARKER_121_TASK_BOARD_HANDLERS: Task Board tool handlers (Phase 121)
         elif name == "vetka_task_board":
-            try:
-                from src.mcp.tools.task_board_tools import handle_task_board
-
-                result = handle_task_board(arguments)
-                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
-                return [TextContent(type="text", text=json.dumps(result, indent=2, default=str, ensure_ascii=False))]
-
-            except Exception as e:
-                logger.error(f"[MCP] task_board error: {e}")
-                return [TextContent(type="text", text=f"❌ Task Board error: {e}")]
+            return [TextContent(type="text", text=(
+                "⚠️ DEPRECATED: vetka_task_board moved to MCP MYCELIUM.\n"
+                "Use mycelium_task_board instead."
+            ))]
 
         elif name == "vetka_task_dispatch":
-            try:
-                from src.mcp.tools.task_board_tools import handle_task_dispatch
-
-                result = await handle_task_dispatch(arguments)
-                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
-                return [TextContent(type="text", text=json.dumps(result, indent=2, default=str, ensure_ascii=False))]
-
-            except Exception as e:
-                logger.error(f"[MCP] task_dispatch error: {e}")
-                return [TextContent(type="text", text=f"❌ Task Dispatch error: {e}")]
+            return [TextContent(type="text", text=(
+                "⚠️ DEPRECATED: vetka_task_dispatch moved to MCP MYCELIUM.\n"
+                "Use mycelium_task_dispatch instead."
+            ))]
 
         elif name == "vetka_task_import":
-            try:
-                from src.mcp.tools.task_board_tools import handle_task_import
-
-                result = handle_task_import(arguments)
-                await _audit_log_tool_call(name, arguments, approved=True, result_status="completed")
-                return [TextContent(type="text", text=json.dumps(result, indent=2, default=str, ensure_ascii=False))]
-
-            except Exception as e:
-                logger.error(f"[MCP] task_import error: {e}")
-                return [TextContent(type="text", text=f"❌ Task Import error: {e}")]
-        # MARKER_121_TASK_BOARD_HANDLERS_END
+            return [TextContent(type="text", text=(
+                "⚠️ DEPRECATED: vetka_task_import moved to MCP MYCELIUM.\n"
+                "Use mycelium_task_import instead."
+            ))]
+        # End Phase 129.C13 deprecation stubs
 
         # MARKER_108_4_MCP_REGISTER: Artifact tool handlers (Phase 108.4)
         elif name == "vetka_edit_artifact":

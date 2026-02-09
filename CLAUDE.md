@@ -6,9 +6,22 @@ This loads project context, current phase, user preferences, and recent state.
 
 ## Architecture
 - **Stack:** Tauri (Rust) + React (TypeScript) + Python FastAPI backend
-- **MCP Server:** Port 5001, 35+ tools registered
 - **Backend:** FastAPI + SocketIO on port 5001
 - **Frontend:** React + Three.js 3D visualization
+
+### Dual MCP Architecture (Phase 129)
+VETKA uses TWO MCP servers for optimal performance:
+
+| Server | Namespace | Port | Purpose |
+|--------|-----------|------|---------|
+| **MCP VETKA** | `vetka_*` | 5001 | Fast stateless tools: search, read, edit, git, camera |
+| **MCP MYCELIUM** | `mycelium_*` | 8082 WS | Async pipeline tools: pipeline, tasks, heartbeat, LLM calls |
+
+**Why split?** VETKA's event loop was blocked during pipeline execution (60-300s).
+MYCELIUM runs pipelines in a separate process with native async, never blocking.
+
+**DevPanel WebSocket:** `ws://localhost:8082` streams real-time pipeline events.
+Hook: `useMyceliumSocket.ts` auto-connects, dispatches same CustomEvents as SocketIO.
 
 ## Mycelium Pipeline (Fractal Agent System)
 The Mycelium pipeline decomposes tasks into subtasks via a fractal architecture:
@@ -39,15 +52,26 @@ Grok Fast 4.1 = "The Last Samurai" — researcher in ALL tiers.
 - `@help <question>` — Alias for @doctor
 - `@pipeline <task>` — Explicit pipeline invocation
 
-## MCP Tools (key ones)
+## MCP Tools
+
+### MCP VETKA (fast, stateless)
 - `vetka_session_init` — MUST call first! Loads project context
-- `vetka_mycelium_pipeline` — Run agent pipeline with preset/provider
-- `vetka_heartbeat_tick` — Scan chat for @dragon/@doctor tasks
-- `vetka_call_model` — Call any LLM (Grok, GPT, Claude, Gemini, Ollama)
 - `vetka_search_semantic` — Qdrant vector search
 - `vetka_read_file` / `vetka_edit_file` — File operations
 - `vetka_git_commit` — Commit via VETKA (updates project digest)
 - `vetka_run_tests` — Run pytest
+- `vetka_camera_focus` — 3D viewport control
+
+### MCP MYCELIUM (async, pipelines)
+- `mycelium_pipeline` — Run agent pipeline (non-blocking, streams to WS)
+- `mycelium_call_model` — Async LLM call (Grok, GPT, Claude, Gemini, Ollama)
+- `mycelium_task_board` — Manage task queue
+- `mycelium_task_dispatch` — Dispatch tasks to pipeline
+- `mycelium_heartbeat_tick` — Scan chat for @dragon/@doctor tasks
+- `mycelium_heartbeat_status` — Check heartbeat engine status
+
+**Note:** Old `vetka_mycelium_pipeline`, `vetka_heartbeat_*`, `vetka_task_*` are deprecated.
+They return a warning message directing you to use `mycelium_*` equivalents.
 
 ## Architecture Validation (Cursor Research, Feb 2026)
 
@@ -68,9 +92,10 @@ Key insights applied:
 - **Auto context reset** (MARKER_117.5B): STM resets after 10 subtasks to prevent drift
 - **GPT-5.2 option** (MARKER_117.5C): `dragon_gold_gpt` preset for extended autonomous work
 
-## Current Phase: 117.5
+## Current Phase: 129
 See `data/project_digest.json` for latest status.
 Config: `data/templates/model_presets.json` — team presets & tier map.
+MCP config: `.mcp.json` — both VETKA and MYCELIUM servers.
 
 ## Methodology (Opus = Commander)
 You are the architect and commander. When planning ANY non-trivial task, deploy your full army:
