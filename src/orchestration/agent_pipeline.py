@@ -655,6 +655,17 @@ Respond with implementation plan or code."""
             response_text = result.get("result", {}).get("content", "{}")
             verification = self._extract_json(response_text)
 
+            # MARKER_127.3: Normalize parsed result — ensure 'passed' field exists
+            # If verifier returned partial JSON (e.g. {"severity":"major"} without "passed"),
+            # default to False so retry loop catches it
+            if "passed" not in verification:
+                verification["passed"] = False
+                verification.setdefault("issues", []).append("Verifier did not return 'passed' field")
+            if "confidence" not in verification:
+                verification["confidence"] = 0.3
+            if "issues" not in verification:
+                verification["issues"] = []
+
             # Auto-determine severity if not set by model
             if "severity" not in verification:
                 issues = verification.get("issues", [])
@@ -1874,18 +1885,24 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     await self._emit_progress("@verifier", f"🔎 Verifying: {subtask.marker or f'step_{i+1}'}...", i+1, total_subtasks, model=verifier_model)
                 verification = await self._verify_subtask(subtask, result, phase_type)
 
-                while not verification.get("passed", True) and subtask.retry_count < MAX_CODER_RETRIES:
-                    if verification.get("severity") == "major":
+                # MARKER_127.3: Default passed=False (not True) — missing field = not passed
+                # Also: major severity gets ONE retry before escalation (was: instant break)
+                while not verification.get("passed", False) and subtask.retry_count < MAX_CODER_RETRIES:
+                    sev = verification.get("severity", "minor")
+                    if sev == "major" and subtask.retry_count > 0:
+                        # Already retried once for major — now escalate
                         subtask.escalated = True
                         if subtask.visible:
-                            await self._emit_progress("@verifier", f"🚨 Major issue — escalating to architect", i+1, total_subtasks)
+                            await self._emit_progress("@verifier", f"🚨 Major issue after retry — escalating", i+1, total_subtasks)
                         break
-                    # Minor issue — retry coder with feedback
+                    if sev == "major" and subtask.visible:
+                        await self._emit_progress("@verifier", f"⚠️ Major issue — retrying coder once", i+1, total_subtasks)
+                    # Retry coder with feedback
                     result = await self._retry_coder(subtask, verification, phase_type)
                     verification = await self._verify_subtask(subtask, result, phase_type)
 
                 # MARKER_122.4: Tier upgrade as last resort
-                if not verification.get("passed", True) and subtask.retry_count >= MAX_CODER_RETRIES and not subtask.escalated:
+                if not verification.get("passed", False) and subtask.retry_count >= MAX_CODER_RETRIES and not subtask.escalated:
                     if self._upgrade_coder_tier():
                         await self._emit_progress("system", f"⚡ Upgrading coder tier to {self.preset_name}")
                         subtask.retry_count = 0
@@ -2056,8 +2073,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     if subtask.visible:
                         await self._emit_progress("@verifier", f"🔎 [P] Verifying: {subtask.marker or f'step_{idx+1}'}...", idx+1, total_subtasks)
                     verification = await self._verify_subtask(subtask, result, phase_type)
-                    while not verification.get("passed", True) and subtask.retry_count < MAX_CODER_RETRIES:
-                        if verification.get("severity") == "major":
+                    # MARKER_127.3: Default passed=False, major gets one retry (parallel path)
+                    while not verification.get("passed", False) and subtask.retry_count < MAX_CODER_RETRIES:
+                        sev = verification.get("severity", "minor")
+                        if sev == "major" and subtask.retry_count > 0:
                             subtask.escalated = True
                             break
                         result = await self._retry_coder(subtask, verification, phase_type)
