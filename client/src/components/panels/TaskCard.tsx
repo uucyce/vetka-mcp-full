@@ -47,6 +47,7 @@ const STATUS_DISPLAY: Record<string, { icon: string; color: string }> = {
   done: { icon: '✅', color: '#22c55e' },
   failed: { icon: '❌', color: '#ef4444' },
   cancelled: { icon: '⛔', color: '#6b7280' },
+  hold: { icon: '⏸', color: '#d4a017' },
 };
 
 // Phase type icons

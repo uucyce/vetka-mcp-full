@@ -328,6 +328,10 @@ class TestCoderFCIntegration:
         pipeline.llm_tool = MagicMock()
         pipeline._last_used_model = ""
         pipeline._emit_progress = AsyncMock()
+        # MARKER_126.0A stats counters
+        pipeline._llm_calls = 0
+        pipeline._tokens_in = 0
+        pipeline._tokens_out = 0
         return pipeline
 
     def _make_subtask(self, description="implement feature"):

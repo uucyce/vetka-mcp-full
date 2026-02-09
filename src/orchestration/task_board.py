@@ -352,6 +352,24 @@ class TaskBoard:
         }
 
     # ==========================================
+    # STATISTICS (MARKER_126.0B)
+    # ==========================================
+
+    def record_pipeline_stats(self, task_id: str, stats: dict) -> bool:
+        """Record pipeline execution statistics for a task.
+
+        MARKER_126.0B: Called by AgentPipeline at end of execute().
+        Stats include: preset, league, llm_calls, tokens, duration, success.
+        """
+        task = self.tasks.get(task_id)
+        if not task:
+            return False
+        task["stats"] = stats
+        self._save(action="stats_recorded")
+        logger.info(f"[TaskBoard] Stats recorded for {task_id}: {stats.get('preset', '?')}")
+        return True
+
+    # ==========================================
     # DISPATCH
     # ==========================================
 

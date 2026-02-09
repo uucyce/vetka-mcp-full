@@ -153,6 +153,10 @@ class AgentPipeline:
         self.preset_models: Optional[Dict[str, str]] = None
         # MARKER_117.6C: Track last used model for attribution in chat
         self._last_used_model: str = ""
+        # MARKER_126.0A: Pipeline statistics counters
+        self._llm_calls: int = 0
+        self._tokens_in: int = 0
+        self._tokens_out: int = 0
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
         self.stm_limit = PIPELINE_STM_LIMIT
@@ -342,6 +346,7 @@ Respond with implementation plan or code."""
             call_args["model_source"] = self.provider_override
 
         result = tool.execute(call_args)
+        self._track_llm_call(result)
         self._last_used_model = result.get("result", {}).get("model", model)
 
         try:
@@ -628,6 +633,7 @@ Respond with implementation plan or code."""
                 call_args["model_source"] = self.provider_override
 
             result = tool.execute(call_args)
+            self._track_llm_call(result)
             self._last_used_model = result.get("result", {}).get("model", model)
 
             if not result.get("success"):
@@ -788,6 +794,15 @@ Respond with implementation plan or code."""
                 logger.warning("LLMCallTool not available, using fallback")
                 self.llm_tool = None
         return self.llm_tool
+
+    # MARKER_126.0A: Track LLM call for stats
+    def _track_llm_call(self, result: dict):
+        """Increment LLM call counter and extract token usage if available."""
+        self._llm_calls += 1
+        usage = result.get("result", {}).get("usage", {})
+        if usage:
+            self._tokens_in += usage.get("prompt_tokens", 0)
+            self._tokens_out += usage.get("completion_tokens", 0)
 
     # MARKER_104_ELISION_PROMPTS_START: Context compression method
     def _compress_context(self, context: Any, level: int = None) -> tuple:
@@ -1618,6 +1633,47 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             await self._emit_to_chat("@pipeline", "\n".join(report_lines))  # MARKER_120.1: was missing await
             # MARKER_102.28_END
 
+            # MARKER_126.0A: Record pipeline statistics for DevPanel
+            try:
+                completed_subtasks = [s for s in pipeline_task.subtasks if s.status == "done"]
+                verifier_confidences = [
+                    s.verifier_feedback.get("confidence", 0)
+                    for s in pipeline_task.subtasks
+                    if isinstance(getattr(s, "verifier_feedback", None), dict)
+                ]
+                pipeline_stats = {
+                    "preset": self.preset_name or "default",
+                    "league": "dragon" if (self.preset_name or "").startswith("dragon") else "titan",
+                    "phase_type": phase_type,
+                    "subtasks_total": len(pipeline_task.subtasks),
+                    "subtasks_completed": len(completed_subtasks),
+                    "success": pipeline_task.status == "done",
+                    "llm_calls": self._llm_calls,
+                    "tokens_in": self._tokens_in,
+                    "tokens_out": self._tokens_out,
+                    "verifier_avg_confidence": (
+                        sum(verifier_confidences) / len(verifier_confidences)
+                        if verifier_confidences else 0
+                    ),
+                    "completed_at": time.time(),
+                    "duration_s": round(time.time() - pipeline_task.timestamp, 1),
+                }
+                # Save to TaskBoard if task has a board ID
+                if hasattr(self, '_board_task_id') and self._board_task_id:
+                    from src.orchestration.task_board import get_task_board
+                    board = get_task_board()
+                    board.record_pipeline_stats(self._board_task_id, pipeline_stats)
+                # Always store in pipeline_task results
+                if pipeline_task.results:
+                    pipeline_task.results["stats"] = pipeline_stats
+                else:
+                    pipeline_task.results = {"stats": pipeline_stats}
+                self._update_task(pipeline_task)
+                logger.info(f"[Pipeline Stats] {self.preset_name}: {pipeline_stats['subtasks_completed']}/{pipeline_stats['subtasks_total']} done, {pipeline_stats['llm_calls']} LLM calls, {pipeline_stats['duration_s']}s")
+            except Exception as e:
+                logger.debug(f"[Pipeline Stats] Failed to record: {e}")
+            # MARKER_126.0A_END
+
             # MARKER_117.5A: Event-driven wakeup after pipeline completion
             # Cursor insight: "Planners should wake when tasks complete"
             # Auto-check chat for follow-up @dragon tasks
@@ -2045,6 +2101,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if self.provider_override:
             call_args["model_source"] = self.provider_override
         result = tool.execute(call_args)
+        self._track_llm_call(result)
         # MARKER_117.6C: Track architect model for attribution
         self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
 
@@ -2148,6 +2205,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if self.provider_override:
             call_args["model_source"] = self.provider_override
         result = tool.execute(call_args)
+        self._track_llm_call(result)
         # MARKER_117.6C: Track researcher model for attribution
         self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
 
@@ -2343,6 +2401,7 @@ Execute this subtask. Provide clear, actionable output."""}
 
         # Original one-shot path (fallback if FC unavailable/failed)
         result = tool.execute(call_args)
+        self._track_llm_call(result)
         # MARKER_117.6C: Track coder model for attribution
         self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
 

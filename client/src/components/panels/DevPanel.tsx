@@ -1,25 +1,19 @@
 /**
- * MARKER_124.2C: DevPanel → Task Board UI
- * Phase 124.2C: Replaced Y-axis sliders and fallback settings with
- * Task Board management panel. Keeps spatial memory controls.
- *
- * Features:
- * - Task list from backend (GET /api/debug/task-board)
- * - Priority badges, status chips, phase type icons
- * - Quick-add task input
- * - Dispatch next button
- * - Spatial Memory controls (persist positions, reset cache)
+ * MARKER_126.0C: DevPanel — Task Board + Stats + League Tester
+ * Phase 126.0: Added tabs, pipeline statistics, league testing.
+ * Nolan style: monochrome, dark, no unnecessary color.
  *
  * @status active
- * @phase 124.2
- * @depends react, FloatingWindow, TaskCard, useStore
- * @used_by App
+ * @phase 126.0
+ * @depends FloatingWindow, TaskCard, PipelineStats, LeagueTester, useStore
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { FloatingWindow } from '../artifact/FloatingWindow';
 import { useStore } from '../../store/useStore';
 import { TaskCard, TaskData } from './TaskCard';
+import { PipelineStats } from './PipelineStats';
+import { LeagueTester } from './LeagueTester';
 
 interface DevPanelProps {
   isOpen: boolean;
@@ -28,8 +22,17 @@ interface DevPanelProps {
 
 const API_BASE = 'http://localhost:5001/api/debug';
 
-// MARKER_124.2C: Task Board panel component
+type Tab = 'board' | 'stats' | 'test';
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'board', label: 'Board' },
+  { id: 'stats', label: 'Stats' },
+  { id: 'test', label: 'Test' },
+];
+
+// MARKER_126.0C: Tabbed DevPanel
 export function DevPanel({ isOpen, onClose }: DevPanelProps) {
+  const [activeTab, setActiveTab] = useState<Tab>('board');
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [loading, setLoading] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -59,7 +62,7 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
   useEffect(() => {
     if (!isOpen) return;
     fetchTasks();
-    const interval = setInterval(fetchTasks, 30000); // Reduced polling (SocketIO handles real-time)
+    const interval = setInterval(fetchTasks, 30000);
 
     const handleBoardUpdate = () => { fetchTasks(); };
     window.addEventListener('task-board-updated', handleBoardUpdate);
@@ -150,181 +153,203 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
 
   const pendingCount = tasks.filter(t => t.status === 'pending').length;
   const runningCount = tasks.filter(t => t.status === 'running').length;
+  const holdCount = tasks.filter(t => t.status === 'hold').length;
 
   return (
     <FloatingWindow
-      title="Task Board"
+      title="Dev Panel"
       isOpen={isOpen}
       onClose={onClose}
-      defaultWidth={380}
-      defaultHeight={560}
+      defaultWidth={420}
+      defaultHeight={600}
     >
-      {/* Header with shortcut hint and summary */}
-      <div style={{ padding: '4px 12px 0', color: '#666', fontSize: 11, display: 'flex', justifyContent: 'space-between' }}>
-        <span>Cmd+Shift+D to toggle</span>
-        {summary && (
-          <span>
-            {summary.total} tasks
-            {pendingCount > 0 && ` · ${pendingCount} pending`}
-            {runningCount > 0 && ` · ${runningCount} running`}
-          </span>
-        )}
+      {/* Tab bar — Nolan style: minimal, monochrome */}
+      <div style={{
+        display: 'flex',
+        borderBottom: '1px solid #222',
+        padding: '0 12px',
+      }}>
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              flex: 1,
+              padding: '8px 0',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === tab.id ? '2px solid #e0e0e0' : '2px solid transparent',
+              color: activeTab === tab.id ? '#e0e0e0' : '#555',
+              fontSize: 11,
+              fontWeight: activeTab === tab.id ? 600 : 400,
+              letterSpacing: 0.5,
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       <div style={{
         padding: 12,
-        paddingTop: 8,
         display: 'flex',
         flexDirection: 'column',
-        height: 'calc(100% - 24px)',
+        height: 'calc(100% - 36px)',
         color: '#e0e0e0',
         fontSize: 13,
       }}>
-        {/* Quick Add Section */}
-        <div style={{
-          display: 'flex',
-          gap: 6,
-          marginBottom: 10,
-        }}>
-          <input
-            type="text"
-            placeholder="New task..."
-            value={newTaskTitle}
-            onChange={(e) => setNewTaskTitle(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
-            style={{
-              flex: 1,
-              background: '#1e1e1e',
-              border: '1px solid #333',
-              borderRadius: 4,
-              color: '#e0e0e0',
-              padding: '6px 10px',
-              fontSize: 12,
-              outline: 'none',
-            }}
-          />
-          <select
-            value={newTaskTeam}
-            onChange={(e) => setNewTaskTeam(e.target.value as 'dragon' | 'titan')}
-            style={{
-              background: '#1e1e1e',
-              border: '1px solid #333',
-              borderRadius: 4,
-              color: '#ccc',
-              fontSize: 11,
-              padding: '4px',
-            }}
-          >
-            <option value="dragon">🐉</option>
-            <option value="titan">⚡</option>
-          </select>
-          <button
-            onClick={handleAddTask}
-            disabled={!newTaskTitle.trim()}
-            style={{
-              background: newTaskTitle.trim() ? '#2563eb' : '#333',
-              color: newTaskTitle.trim() ? '#fff' : '#666',
-              border: 'none',
-              borderRadius: 4,
-              padding: '6px 12px',
-              fontSize: 13,
-              cursor: newTaskTitle.trim() ? 'pointer' : 'not-allowed',
-              fontWeight: 600,
-            }}
-          >
-            +
-          </button>
-        </div>
-
-        {/* Task List */}
-        <div style={{
-          flex: 1,
-          overflowY: 'auto',
-          marginBottom: 10,
-          minHeight: 0,
-        }}>
-          {loading && tasks.length === 0 && (
-            <div style={{ color: '#666', textAlign: 'center', padding: 20, fontSize: 12 }}>
-              Loading...
+        {/* ═══ BOARD TAB ═══ */}
+        {activeTab === 'board' && (
+          <>
+            {/* Header summary */}
+            <div style={{ color: '#666', fontSize: 10, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+              <span>Cmd+Shift+D</span>
+              <span>
+                {summary?.total || 0} tasks
+                {pendingCount > 0 && ` \u00B7 ${pendingCount} pending`}
+                {runningCount > 0 && ` \u00B7 ${runningCount} running`}
+                {holdCount > 0 && ` \u00B7 ${holdCount} hold`}
+              </span>
             </div>
-          )}
 
-          {!loading && tasks.length === 0 && (
-            <div style={{ color: '#555', textAlign: 'center', padding: 20, fontSize: 12, lineHeight: 1.5 }}>
-              No tasks yet.<br />
-              Use <code style={{ color: '#888' }}>@doctor</code> or <code style={{ color: '#888' }}>@dragon</code> in chat,<br />
-              or add one above.
-            </div>
-          )}
-
-          {tasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              onPriorityChange={handlePriorityChange}
-              onRemove={handleRemove}
-              onDispatch={handleDispatchTask}
-            />
-          ))}
-        </div>
-
-        {/* Footer: Dispatch + Spatial Memory */}
-        <div style={{
-          borderTop: '1px solid #333',
-          paddingTop: 10,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-        }}>
-          {/* Dispatch button */}
-          <button
-            onClick={handleDispatchNext}
-            disabled={pendingCount === 0}
-            style={{
-              width: '100%',
-              padding: '8px 16px',
-              background: pendingCount > 0 ? '#2563eb' : '#333',
-              color: pendingCount > 0 ? '#fff' : '#666',
-              border: 'none',
-              borderRadius: 4,
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: pendingCount > 0 ? 'pointer' : 'not-allowed',
-            }}
-          >
-            ▶ Dispatch Next {pendingCount > 0 && `(${pendingCount} pending)`}
-          </button>
-
-          {/* Spatial Memory — kept from Phase 113.4 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }}>
+            {/* Quick Add */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
               <input
-                type="checkbox"
-                checked={useStore.getState().persistPositions}
-                onChange={(e) => useStore.getState().setPersistPositions(e.target.checked)}
-                style={{ accentColor: '#a855f7' }}
+                type="text"
+                placeholder="New task..."
+                value={newTaskTitle}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
+                style={{
+                  flex: 1,
+                  background: '#111',
+                  border: '1px solid #222',
+                  borderRadius: 4,
+                  color: '#e0e0e0',
+                  padding: '6px 10px',
+                  fontSize: 12,
+                  outline: 'none',
+                }}
               />
-              <span style={{ color: '#888' }}>Persist Positions</span>
-            </label>
-            <button
-              onClick={() => {
-                useStore.getState().resetLayout();
-                alert('Position cache cleared. Reload page for API defaults.');
-              }}
-              style={{
-                padding: '3px 8px',
-                background: '#331111',
-                border: '1px solid #662222',
-                borderRadius: 3,
-                color: '#ff6666',
-                cursor: 'pointer',
-                fontSize: 10,
-              }}
-            >
-              Reset Positions
-            </button>
-          </div>
-        </div>
+              <select
+                value={newTaskTeam}
+                onChange={(e) => setNewTaskTeam(e.target.value as 'dragon' | 'titan')}
+                style={{
+                  background: '#111',
+                  border: '1px solid #222',
+                  borderRadius: 4,
+                  color: '#888',
+                  fontSize: 11,
+                  padding: '4px',
+                }}
+              >
+                <option value="dragon">DRG</option>
+                <option value="titan">TTN</option>
+              </select>
+              <button
+                onClick={handleAddTask}
+                disabled={!newTaskTitle.trim()}
+                style={{
+                  background: newTaskTitle.trim() ? '#333' : '#1a1a1a',
+                  color: newTaskTitle.trim() ? '#e0e0e0' : '#444',
+                  border: '1px solid #333',
+                  borderRadius: 4,
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  cursor: newTaskTitle.trim() ? 'pointer' : 'not-allowed',
+                  fontWeight: 600,
+                }}
+              >
+                +
+              </button>
+            </div>
+
+            {/* Task List */}
+            <div style={{ flex: 1, overflowY: 'auto', marginBottom: 10, minHeight: 0 }}>
+              {loading && tasks.length === 0 && (
+                <div style={{ color: '#555', textAlign: 'center', padding: 20, fontSize: 12 }}>
+                  Loading...
+                </div>
+              )}
+              {!loading && tasks.length === 0 && (
+                <div style={{ color: '#444', textAlign: 'center', padding: 20, fontSize: 12, lineHeight: 1.5 }}>
+                  No tasks yet.<br />
+                  Use <code style={{ color: '#888' }}>@doctor</code> or <code style={{ color: '#888' }}>@dragon</code> in chat.
+                </div>
+              )}
+              {tasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onPriorityChange={handlePriorityChange}
+                  onRemove={handleRemove}
+                  onDispatch={handleDispatchTask}
+                />
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div style={{ borderTop: '1px solid #222', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button
+                onClick={handleDispatchNext}
+                disabled={pendingCount === 0}
+                style={{
+                  width: '100%',
+                  padding: '8px 16px',
+                  background: pendingCount > 0 ? '#222' : '#111',
+                  color: pendingCount > 0 ? '#e0e0e0' : '#444',
+                  border: `1px solid ${pendingCount > 0 ? '#444' : '#222'}`,
+                  borderRadius: 4,
+                  fontSize: 12,
+                  fontWeight: 500,
+                  cursor: pendingCount > 0 ? 'pointer' : 'not-allowed',
+                  letterSpacing: 0.5,
+                  textTransform: 'uppercase',
+                }}
+              >
+                Dispatch Next {pendingCount > 0 && `(${pendingCount})`}
+              </button>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }}>
+                  <input
+                    type="checkbox"
+                    checked={useStore.getState().persistPositions}
+                    onChange={(e) => useStore.getState().setPersistPositions(e.target.checked)}
+                    style={{ accentColor: '#888' }}
+                  />
+                  <span style={{ color: '#666' }}>Persist Positions</span>
+                </label>
+                <button
+                  onClick={() => {
+                    useStore.getState().resetLayout();
+                    alert('Position cache cleared.');
+                  }}
+                  style={{
+                    padding: '3px 8px',
+                    background: '#1a1a1a',
+                    border: '1px solid #333',
+                    borderRadius: 3,
+                    color: '#888',
+                    cursor: 'pointer',
+                    fontSize: 9,
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ═══ STATS TAB ═══ */}
+        {activeTab === 'stats' && <PipelineStats tasks={tasks} />}
+
+        {/* ═══ TEST TAB ═══ */}
+        {activeTab === 'test' && <LeagueTester onTestComplete={fetchTasks} />}
       </div>
     </FloatingWindow>
   );

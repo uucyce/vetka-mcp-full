@@ -1797,6 +1797,42 @@ async def dispatch_next_task_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
     return result
 
 
+# MARKER_126.0E: League test endpoint for DevPanel
+@router.post("/task-board/test-league")
+async def test_league_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Run a pipeline test with specific preset/league.
+
+    Body params:
+    - preset: str (required — dragon_bronze, dragon_silver, dragon_gold, titan_core, etc.)
+    - task: str (optional test task, defaults to standard benchmark)
+    - chat_id: str (optional, for progress streaming)
+    """
+    from src.orchestration.agent_pipeline import AgentPipeline
+
+    body = body or {}
+    preset = body.get("preset")
+    if not preset:
+        return {"success": False, "error": "preset is required"}
+
+    task = body.get("task", "Add toggleBookmark and getBookmarkedChats to useStore.ts using zustand + immer")
+    chat_id = body.get("chat_id")
+
+    try:
+        pipeline = AgentPipeline(chat_id=chat_id, preset=preset, auto_write=False)
+        result = await pipeline.execute(task, phase_type="build")
+
+        stats = result.get("results", {}).get("stats", {})
+        return {
+            "success": True,
+            "preset": preset,
+            "task": task[:100],
+            "stats": stats,
+            "pipeline_task_id": result.get("task_id"),
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e), "preset": preset}
+
+
 # MARKER_124.3D: Internal notify endpoint for Task Board SocketIO emission
 @router.post("/task-board/notify")
 async def notify_task_board_update(request: Request, body: Dict[str, Any] = None) -> Dict[str, Any]:

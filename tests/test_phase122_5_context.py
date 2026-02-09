@@ -41,6 +41,10 @@ def _make_pipeline(**kwargs):
         "verifier": {"system": "test verifier", "model": "test/verifier"}
     }
     p._emit_progress = AsyncMock()
+    # MARKER_126.0A stats counters
+    p._llm_calls = 0
+    p._tokens_in = 0
+    p._tokens_out = 0
     for k, v in kwargs.items():
         setattr(p, k, v)
     return p

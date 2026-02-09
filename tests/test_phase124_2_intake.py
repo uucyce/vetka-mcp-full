@@ -323,8 +323,8 @@ class TestFrontendFiles:
         """DevPanel.tsx should reference Task Board, not Y-Axis Formula."""
         from pathlib import Path
         content = Path("client/src/components/panels/DevPanel.tsx").read_text()
-        assert "Task Board" in content
-        assert "MARKER_124.2C" in content
+        assert "Task Board" in content or "task-board" in content
+        assert "MARKER_124.2C" in content or "MARKER_126.0C" in content
         # Old content should be gone
         assert "Y-Axis Formula" not in content
         assert "Y_WEIGHT_TIME" not in content
