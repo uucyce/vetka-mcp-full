@@ -47,7 +47,8 @@ TASK_PATTERNS = [
     re.compile(r"@titan\s+(.+)", re.IGNORECASE | re.DOTALL),  # MARKER_118.10_TITAN
     re.compile(r"@doctor\s+(.+)", re.IGNORECASE | re.DOTALL),
     re.compile(r"@help\s+(.+)", re.IGNORECASE | re.DOTALL),
-    re.compile(r"@pipeline\s+(.+)", re.IGNORECASE | re.DOTALL),
+    re.compile(r"@mycelium\s+(.+)", re.IGNORECASE | re.DOTALL),
+    re.compile(r"@pipeline\s+(.+)", re.IGNORECASE | re.DOTALL),  # alias for @mycelium
     re.compile(r"/task\s+(.+)", re.IGNORECASE | re.DOTALL),
     re.compile(r"/fix\s+(.+)", re.IGNORECASE | re.DOTALL),
     re.compile(r"/build\s+(.+)", re.IGNORECASE | re.DOTALL),
@@ -61,7 +62,8 @@ PHASE_TYPE_MAP = {
     "titan": "build",  # MARKER_118.10_TITAN
     "doctor": "research",
     "help": "research",
-    "pipeline": "build",
+    "mycelium": "build",
+    "pipeline": "build",  # alias for mycelium
     "task": "build",
     "fix": "fix",
     "build": "build",

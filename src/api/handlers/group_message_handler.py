@@ -108,12 +108,12 @@ MCP_AGENTS = {
         "role": "Diagnostic",
         "aliases": ["doctor", "doc", "help", "support", "mcp/doctor"],
     },
-    "pipeline": {
+    "mycelium": {
         "name": "Mycelium Pipeline",
-        "endpoint": "mcp/pipeline",
+        "endpoint": "mcp/mycelium",
         "icon": "git-branch",
         "role": "Builder",
-        "aliases": ["pipeline", "mycelium", "mcp/pipeline"],
+        "aliases": ["mycelium", "pipeline", "mcp/pipeline", "mcp/mycelium"],
     },
     # MARKER_117_3_RESERVES: Future system commands (registered to prevent Ollama hijack)
     "grok": {
@@ -147,7 +147,7 @@ MCP_AGENTS = {
 }
 
 # MARKER_117_3: Agents that auto-dispatch to Mycelium pipeline on @mention
-HEARTBEAT_AGENTS = {"dragon", "doctor", "pipeline"}
+HEARTBEAT_AGENTS = {"dragon", "doctor", "mycelium", "pipeline"}  # pipeline kept as alias
 
 
 async def notify_mcp_agents(

@@ -134,7 +134,7 @@ def parse_mentions(message: str) -> dict:
 
     # MARKER_117.6A: System command agents that route to Mycelium pipeline
     # These are NOT regular model aliases — they trigger Dragon team dispatch
-    SYSTEM_COMMAND_AGENTS = {"dragon", "doctor", "pipeline", "help"}
+    SYSTEM_COMMAND_AGENTS = {"dragon", "doctor", "mycelium", "pipeline", "help"}
 
     # Phase 57.2: Find all @mentions with full model ID support (including : . and /)
     # This captures both aliases (@deepseek) and direct model IDs (@nvidia/nemotron-3-nano-30b-a3b:free)

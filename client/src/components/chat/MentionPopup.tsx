@@ -47,7 +47,7 @@ const ICONS: Record<string, React.ReactNode> = {
 const SYSTEM_COMMANDS = [
   { alias: '@dragon', label: 'Dragon (Orchestrator)', icon: <Flame size={14} />, searchAliases: ['dragon', 'build', 'fix'] },
   { alias: '@doctor', label: 'Doctor / Help (Diagnostic)', icon: <Stethoscope size={14} />, searchAliases: ['doctor', 'doc', 'help', 'support', 'diagnose'] },
-  { alias: '@pipeline', label: 'Mycelium Pipeline', icon: <GitBranch size={14} />, searchAliases: ['pipeline', 'mycelium'] },
+  { alias: '@mycelium', label: 'Mycelium Pipeline', icon: <GitBranch size={14} />, searchAliases: ['mycelium', 'pipeline', 'spore'] },
 ];
 
 // Shared button style

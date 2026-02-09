@@ -1471,11 +1471,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if self.preset_models:
             team_names = [m.split("/")[-1] for m in self.preset_models.values()]
             team_info += f" ({' → '.join(team_names)})"
-        await self._emit_progress("@pipeline", f"🚀 Starting {phase_type} pipeline | {team_info}")
+        await self._emit_progress("@mycelium", f"🚀 Starting {phase_type} pipeline | {team_info}")
 
         try:
             # MARKER_122.1: Phase 0 — Parallel Recon (Scout + Researcher concurrently)
-            await self._emit_progress("@pipeline", "🔍 Parallel recon: Scout + Researcher...")
+            await self._emit_progress("@mycelium", "🔍 Parallel recon: Scout + Researcher...")
             scout_context, initial_research = await self._parallel_recon(task, phase_type)
             # MARKER_122.5C: Store scout context for subtask injection
             self._scout_context = scout_context
@@ -1630,7 +1630,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     preview = str(subtask.result)[:200].replace('\n', ' ')
                     report_lines.append(f"   └ {preview}")
             report_lines.append(f"\n🎉 Pipeline complete!")
-            await self._emit_to_chat("@pipeline", "\n".join(report_lines))  # MARKER_120.1: was missing await
+            await self._emit_to_chat("@mycelium", "\n".join(report_lines))  # MARKER_120.1: was missing await
             # MARKER_102.28_END
 
             # MARKER_126.0A: Record pipeline statistics for DevPanel
@@ -1697,7 +1697,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_119.2: Report even failed pipeline to global STMBuffer
             self._bridge_to_global_stm(task_id, phase_type)
 
-            await self._emit_progress("@pipeline", f"❌ Pipeline failed: {str(e)[:50]}")
+            await self._emit_progress("@mycelium", f"❌ Pipeline failed: {str(e)[:50]}")
             return asdict(pipeline_task)
     # MARKER_102.4_END
 
@@ -1911,7 +1911,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         stream_level = pipeline_task.stream_level
 
         await self._emit_progress(
-            "@pipeline",
+            "@mycelium",
             f"⚡ Parallel execution mode (max {MAX_PARALLEL_PIPELINES} concurrent)"
         )
         logger.info(f"[Pipeline] Parallel execution with semaphore limit={MAX_PARALLEL_PIPELINES}")
