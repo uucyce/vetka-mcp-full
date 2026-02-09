@@ -447,7 +447,7 @@ class TestCoderToolSchemas:
         from src.tools.fc_loop import get_coder_tool_schemas
         schemas = get_coder_tool_schemas()
         assert isinstance(schemas, list)
-        assert len(schemas) == 4  # 4 coder tools
+        assert len(schemas) == 5  # 5 coder tools (added vetka_search_code in 124.7)
 
     def test_schemas_are_read_only(self):
         """No write tools (vetka_edit_file, vetka_git_commit) in schemas."""
@@ -493,7 +493,7 @@ class TestCoderPrompt:
         coder_prompt = prompts["coder"]["system"]
         assert "vetka_read_file" in coder_prompt
         assert "vetka_search_semantic" in coder_prompt
-        assert "vetka_search_files" in coder_prompt
+        assert "vetka_search_code" in coder_prompt  # 124.7: primary search tool
         assert "vetka_list_files" in coder_prompt
 
     def test_prompt_mentions_workflow(self):

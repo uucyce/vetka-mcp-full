@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T01:51:17.717254+00:00",
+  "last_updated": "2026-02-09T02:06:39.062550+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 124,
-    "subphase": "5",
-    "name": "Hybrid search + FC max_turns increase",
+    "subphase": "6",
+    "name": "Improved search filters + E2E Dragon Silver validated",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 124.5 DONE! Hybrid search + FC max_turns increase",
+    "headline": "Phase 124.6 DONE! Improved search filters + E2E Dragon Silver validated",
     "key_achievements": [
+      "[cf5d07b5] Phase 124.6: Phase 124.6: Improved search filters + E2E Dragon Silver val",
       "[6b47d668] Phase 124.5: Phase 124.5: Hybrid search + FC max_turns increase",
       "[5e09a050] Phase 124.4: Phase 124.4: Pipeline quality \u2014 SearchFiles REST API, FC rec",
       "[99df4496] Phase 124.3: Phase 124.3E: Fix VetkaSearchSemanticTool \u2014 REST API + path ",
@@ -21,8 +22,7 @@
       "[91847160] Phase 124.3: Phase 124.3: Fix glow timing \u2014 emit AFTER node_added",
       "[06ae5438] Phase 124.2: Phase 124.2B: Fix crane \u2014 subtle Y+5, no tilt (was Y+15)",
       "[57dfcccb] Phase 124.2: Phase 124.2: Interactive task intake + heartbeat board routi",
-      "[b84b6935] Phase 124.2: Phase 124.2B: Crane up \u2014 camera higher, object in lower thir",
-      "[76a6a716] Phase 124.2: Phase 124.2: Even wider camera zoom (medium: 70, far: 100)"
+      "[b84b6935] Phase 124.2: Phase 124.2B: Crane up \u2014 camera higher, object in lower thir"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "6b47d668",
+    "commit": "cf5d07b5",
     "dirty": true
   }
 }

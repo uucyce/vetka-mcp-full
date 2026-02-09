@@ -645,6 +645,206 @@ class VetkaListFilesTool(BaseTool):
 
 
 # ============================================================================
+# MARKER_124.7: Contextual Code Search — ripgrep + Qdrant name filter
+# Fast, exact search for coder agents. Replaces semantic-only VetkaSearchFilesTool.
+# ============================================================================
+
+class VetkaSearchCodeTool(BaseTool):
+    """
+    Fast code search: ripgrep for content + Qdrant name filter for filenames.
+
+    MARKER_124.7: Designed for pipeline coder agents who need to find
+    SPECIFIC files by name or content pattern, not semantic similarity.
+
+    Strategy:
+    1. Filename match: Qdrant scroll with name filter (instant)
+    2. ripgrep content search: subprocess rg for exact text (fast)
+    3. Fallback: semantic search if both empty (for conceptual queries)
+    """
+
+    _PROJECT_ROOT = "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03"
+    _SKIP_DIRS = ["node_modules", "__pycache__", ".git", "dist", "build", ".venv", "venv"]
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="vetka_search_code",
+            description=(
+                "Fast code search by filename or content pattern. "
+                "Use this to find specific files (e.g., 'useStore.ts') or "
+                "search for code patterns (e.g., 'toggleBookmark', 'interface Chat'). "
+                "Much faster and more precise than semantic search for exact matches."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query: filename (e.g., 'useStore.ts') or code pattern (e.g., 'toggleBookmark')"
+                    },
+                    "file_type": {
+                        "type": "string",
+                        "description": "Filter by file type: 'ts', 'tsx', 'py', 'rs', or empty for all",
+                        "default": ""
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results (default: 10)",
+                        "default": 10
+                    }
+                },
+                "required": ["query"]
+            },
+            permission_level=PermissionLevel.READ,
+            needs_user_approval=False
+        )
+
+    async def execute(self, query: str = "", file_type: str = "", limit: int = 10, **kwargs) -> ToolResult:
+        """Multi-strategy code search: name → ripgrep → semantic fallback."""
+        if not query or len(query) < 2:
+            return ToolResult(success=False, result=None, error="Query too short (min 2 chars)")
+
+        try:
+            results = []
+            seen_paths = set()
+            strategies_used = []
+
+            # Strategy 1: Qdrant filename match (for queries like "useStore.ts", "ChatPanel")
+            name_results = await self._search_by_name(query, limit)
+            if name_results:
+                strategies_used.append("name")
+                for r in name_results:
+                    path = r.get("path", "")
+                    if path not in seen_paths:
+                        seen_paths.add(path)
+                        results.append(r)
+
+            # Strategy 2: ripgrep content search (for code patterns like "toggleBookmark", "interface Chat")
+            rg_results = await self._search_by_ripgrep(query, file_type, limit)
+            if rg_results:
+                strategies_used.append("ripgrep")
+                for r in rg_results:
+                    path = r.get("path", "")
+                    if path not in seen_paths:
+                        seen_paths.add(path)
+                        results.append(r)
+
+            # Strategy 3: Semantic fallback only if both empty
+            if not results:
+                strategies_used.append("semantic")
+                semantic_tool = VetkaSearchSemanticTool()
+                sem_result = await semantic_tool.execute(query=query, limit=limit)
+                if sem_result.success and sem_result.result:
+                    return ToolResult(
+                        success=True,
+                        result=f"Code search (semantic fallback): {sem_result.result}"
+                    )
+
+            # Format output
+            top = results[:limit]
+            strat_str = "+".join(strategies_used)
+            formatted = f"Code search: '{query}' — {len(top)} results ({strat_str})\n"
+            for r in top:
+                rel_path = r["path"].replace(self._PROJECT_ROOT + "/", "")
+                match_info = r.get("match", "")
+                if match_info:
+                    formatted += f"\n  {rel_path} — {match_info}"
+                else:
+                    formatted += f"\n  {rel_path}"
+
+            return ToolResult(success=True, result=formatted)
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+
+    async def _search_by_name(self, query: str, limit: int) -> list:
+        """Search Qdrant by filename (substring match via scroll + filter)."""
+        import httpx
+
+        results = []
+        try:
+            # Extract likely filename from query (e.g., "useStore.ts" or "useStore")
+            # Use Qdrant scroll with name substring — Qdrant text match
+            query_clean = query.strip().split("/")[-1]  # Take last path component
+
+            body = {
+                "filter": {
+                    "must": [
+                        {"key": "name", "match": {"text": query_clean}}
+                    ]
+                },
+                "limit": limit,
+                "with_payload": ["name", "path", "extension"],
+            }
+
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.post(
+                    "http://localhost:6333/collections/vetka_elisya/points/scroll",
+                    json=body,
+                )
+                if resp.status_code == 200:
+                    points = resp.json().get("result", {}).get("points", [])
+                    for p in points:
+                        path = p["payload"].get("path", "")
+                        name = p["payload"].get("name", "")
+                        # Skip junk paths
+                        if any(skip in path for skip in self._SKIP_DIRS):
+                            continue
+                        results.append({
+                            "path": path,
+                            "name": name,
+                            "match": f"filename: {name}",
+                        })
+        except Exception:
+            pass
+        return results
+
+    async def _search_by_ripgrep(self, query: str, file_type: str, limit: int) -> list:
+        """Search file contents using ripgrep subprocess."""
+        import asyncio
+
+        results = []
+        try:
+            cmd = ["rg", "--files-with-matches", "--max-count", "1", "-l"]
+
+            # Add file type filter
+            if file_type:
+                cmd.extend(["--type", file_type])
+
+            # Skip directories
+            for skip in self._SKIP_DIRS:
+                cmd.extend(["--glob", f"!{skip}"])
+
+            # Add query and path
+            cmd.append(query)
+            cmd.append(self._PROJECT_ROOT)
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+
+            if stdout:
+                lines = stdout.decode().strip().split("\n")
+                for line in lines[:limit]:
+                    path = line.strip()
+                    if not path:
+                        continue
+                    name = path.split("/")[-1]
+                    results.append({
+                        "path": path,
+                        "name": name,
+                        "match": f"content: '{query}'",
+                    })
+        except Exception:
+            pass
+        return results
+
+# MARKER_124.7_END
+
+
+# ============================================================================
 # REGISTER MCP TOOLS
 # ============================================================================
 
@@ -657,6 +857,7 @@ registry.register(VetkaEditArtifactTool())  # MARKER_114.3: Artifact tool for Ar
 registry.register(VetkaReadFileTool())
 registry.register(VetkaSearchFilesTool())
 registry.register(VetkaListFilesTool())
+registry.register(VetkaSearchCodeTool())  # MARKER_124.7: Fast code search for coder FC loop
 
 # Export for direct access
 __all__ = [
@@ -667,4 +868,5 @@ __all__ = [
     "VetkaReadFileTool",
     "VetkaSearchFilesTool",
     "VetkaListFilesTool",
+    "VetkaSearchCodeTool",
 ]

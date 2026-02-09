@@ -192,13 +192,13 @@ class TestFCRecoveryCall:
 class TestCoderPromptUpdate:
     """Verify coder prompt mentions auto-read and code output format."""
 
-    def test_prompt_mentions_auto_read(self):
-        """Coder prompt should tell coder about auto-read feature."""
+    def test_prompt_mentions_search_code(self):
+        """Coder prompt should mention vetka_search_code as primary tool (124.7)."""
         with open("data/templates/pipeline_prompts.json") as f:
             prompts = json.load(f)
         coder_system = prompts["coder"]["system"]
-        assert "auto-read" in coder_system.lower() or "Auto-reads" in coder_system, \
-            "Coder should know about auto-read feature"
+        assert "vetka_search_code" in coder_system, \
+            "Coder should know about vetka_search_code (MARKER_124.7)"
 
     def test_prompt_requires_code_blocks(self):
         """Coder prompt should require ``` code blocks in output."""

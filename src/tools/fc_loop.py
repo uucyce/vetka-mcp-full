@@ -43,6 +43,7 @@ PIPELINE_CODER_TOOLS = [
     "vetka_read_file",
     "vetka_search_semantic",
     "vetka_search_files",
+    "vetka_search_code",   # MARKER_124.7: Fast ripgrep + name search
     "vetka_list_files",
 ]
 
@@ -139,6 +140,32 @@ CODER_TOOL_SCHEMAS = [
                         "description": "Search recursively in subdirectories"
                     }
                 }
+            }
+        }
+    },
+    # MARKER_124.7: Fast code search via ripgrep + Qdrant name filter
+    {
+        "type": "function",
+        "function": {
+            "name": "vetka_search_code",
+            "description": "Fast code search by filename or content pattern using ripgrep. Use this FIRST to find specific files by name (e.g., 'useStore.ts') or code patterns (e.g., 'toggleBookmark'). Much faster and more precise than semantic search.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Filename (e.g., 'useStore.ts') or code pattern (e.g., 'toggleBookmark')"
+                    },
+                    "file_type": {
+                        "type": "string",
+                        "description": "Filter by type: 'ts', 'tsx', 'py', or empty for all"
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Max results (default: 10)"
+                    }
+                },
+                "required": ["query"]
             }
         }
     },

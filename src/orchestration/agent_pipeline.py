@@ -291,14 +291,16 @@ Respond with implementation plan or code."""
     # MARKER_117_PRESETS_END
 
     # MARKER_119.4: Scout role — codebase scan before Architect
+    # MARKER_124.7B: Pre-fetch via VetkaSearchCodeTool (ripgrep) before Scout LLM call
     async def _scout_scan(self, task: str, phase_type: str) -> Optional[Dict[str, Any]]:
         """Run scout to gather codebase context before architect planning.
 
-        Scout uses inject_context (semantic search + chat history) to scan
-        relevant code. Returns structured JSON with context_summary,
-        relevant_files, patterns_found, risks, recommendations.
+        MARKER_124.7B: Two-step scout:
+        1. Pre-fetch: VetkaSearchCodeTool (ripgrep + name filter) → real file list
+        2. LLM call: Scout model receives pre-fetched files → produces structured JSON
 
-        Returns None if scout prompt not configured or LLM call fails.
+        Returns structured JSON with context_summary, relevant_files,
+        patterns_found, risks, recommendations.
         """
         if "scout" not in self.prompts:
             logger.debug("[Pipeline] Scout role not configured, skipping")
@@ -312,11 +314,18 @@ Respond with implementation plan or code."""
         model = prompt.get("model", "anthropic/claude-haiku-4.5")
         temperature = prompt.get("temperature", 0.1)
 
+        # MARKER_124.7B: Pre-fetch real files via ripgrep before Scout LLM call
+        prefetch_context = await self._scout_prefetch(task)
+
+        user_content = f"Phase type: {phase_type}\n\nTask to scout:\n{task}"
+        if prefetch_context:
+            user_content += f"\n\n--- Code search results (from ripgrep) ---\n{prefetch_context}"
+
         call_args = {
             "model": model,
             "messages": [
                 {"role": "system", "content": prompt["system"]},
-                {"role": "user", "content": f"Phase type: {phase_type}\n\nTask to scout:\n{task}"}
+                {"role": "user", "content": user_content}
             ],
             "temperature": temperature,
             "max_tokens": 1000,
@@ -349,6 +358,79 @@ Respond with implementation plan or code."""
         except Exception as e:
             logger.warning(f"[Pipeline] Scout parse failed (non-fatal): {e}")
             return None
+
+    async def _scout_prefetch(self, task: str) -> Optional[str]:
+        """Pre-fetch relevant files via VetkaSearchCodeTool (ripgrep + Qdrant name).
+
+        MARKER_124.7B: Extracts keywords from task, runs fast code search,
+        returns formatted file list for Scout LLM context injection.
+        """
+        try:
+            from src.tools.registry import VetkaSearchCodeTool
+            code_tool = VetkaSearchCodeTool()
+
+            # Extract search terms: filenames, identifiers, keywords
+            keywords = self._extract_search_keywords(task)
+            if not keywords:
+                return None
+
+            all_paths = set()
+            results_text = []
+
+            for kw in keywords[:3]:  # Max 3 searches to keep fast
+                result = await code_tool.execute(query=kw, limit=5)
+                if result.success and result.result:
+                    # Extract file paths from result text
+                    for line in str(result.result).split("\n"):
+                        line = line.strip()
+                        if line and ("/" in line) and not line.startswith("Code search"):
+                            path = line.split(" — ")[0].strip()
+                            if path and path not in all_paths:
+                                all_paths.add(path)
+                                results_text.append(line)
+
+            if not results_text:
+                return None
+
+            logger.info(f"[Pipeline] Scout pre-fetch: {len(results_text)} files via ripgrep ({keywords})")
+            return "\n".join(results_text[:10])
+        except Exception as e:
+            logger.debug(f"[Pipeline] Scout pre-fetch failed (non-fatal): {e}")
+            return None
+
+    @staticmethod
+    def _extract_search_keywords(task: str) -> list:
+        """Extract filenames and code identifiers from task description.
+
+        MARKER_124.7B: Looks for:
+        - Explicit filenames (useStore.ts, ChatPanel.tsx)
+        - camelCase/PascalCase identifiers (toggleBookmark, ChatPanel)
+        - Quoted terms ('bookmarked', "zustand")
+        """
+        import re
+        keywords = []
+
+        # 1. Explicit file paths/names (e.g., client/src/store/useStore.ts)
+        file_patterns = re.findall(r'[\w/.-]+\.(?:ts|tsx|js|jsx|py|rs|css|scss)\b', task)
+        for fp in file_patterns:
+            name = fp.split("/")[-1]  # Just filename
+            if name not in keywords:
+                keywords.append(name)
+
+        # 2. CamelCase/PascalCase identifiers (e.g., toggleBookmark, ChatPanel)
+        identifiers = re.findall(r'\b[a-z]+(?:[A-Z][a-z]+)+\b', task)  # camelCase
+        identifiers += re.findall(r'\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b', task)  # PascalCase
+        for ident in identifiers:
+            if ident not in keywords and len(ident) > 3:
+                keywords.append(ident)
+
+        # 3. Quoted terms
+        quoted = re.findall(r'[\'"]([^"\']{2,30})[\'"]', task)
+        for q in quoted:
+            if q not in keywords:
+                keywords.append(q)
+
+        return keywords[:5]
     # MARKER_119.4_END
 
     # MARKER_117.4C: Auto-tier resolution
