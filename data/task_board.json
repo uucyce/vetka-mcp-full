@@ -1,8 +1,8 @@
 {
   "_meta": {
     "version": "1.0",
-    "phase": "126.5",
-    "updated": "2026-02-10T00:00:00.000000"
+    "phase": "121",
+    "updated": "2026-02-09T22:34:06.754366"
   },
   "tasks": {
     "tb_1770577538_6": {
@@ -14,12 +14,16 @@
       "phase_type": "build",
       "preset": null,
       "assigned_tier": null,
-      "status": "pending",
+      "status": "running",
       "source": "dragon_todo",
-      "tags": ["chat", "pipeline", "ui"],
+      "tags": [
+        "chat",
+        "pipeline",
+        "ui"
+      ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157815",
-      "started_at": null,
+      "started_at": "2026-02-09T22:34:06.754362",
       "completed_at": null,
       "pipeline_task_id": null,
       "result_summary": null,
@@ -33,17 +37,34 @@
       "complexity": "medium",
       "phase_type": "build",
       "preset": null,
-      "assigned_tier": null,
-      "status": "pending",
+      "assigned_tier": "dragon_silver",
+      "status": "done",
       "source": "dragon_todo",
-      "tags": ["frontend", "chat", "feature"],
+      "tags": [
+        "frontend",
+        "chat",
+        "feature"
+      ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157570",
-      "started_at": null,
-      "completed_at": null,
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null
+      "started_at": "2026-02-09T19:49:35.797911",
+      "completed_at": "2026-02-09T19:54:55.538334",
+      "pipeline_task_id": "task_1770655775",
+      "result_summary": "{'plan': {'subtasks': [{'description': \"Add 'is_favorited' boolean field to chat history entry schema in chat_manager.py\", 'needs_research': False, 'marker': 'MARKER_102.1'}, {'description': 'Implement toggleFavorite(chat_id) method in ChatManager to read/write favorite status to chat_history.json', 'needs_research': False, 'marker': 'MARKER_102.2'}, {'description': 'Add star icon toggle button (☆/★) to chat list item UI component', 'needs_research': False, 'marker': 'MARKER_102.3'}, {'descripti",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "build",
+        "subtasks_total": 4,
+        "subtasks_completed": 4,
+        "success": true,
+        "llm_calls": 9,
+        "tokens_in": 4900,
+        "tokens_out": 5878,
+        "verifier_avg_confidence": 0.5625,
+        "completed_at": 1770656085.526765,
+        "duration_s": 309.7
+      }
     },
     "tb_1770577538_4": {
       "id": "tb_1770577538_4",
@@ -53,17 +74,34 @@
       "complexity": "medium",
       "phase_type": "fix",
       "preset": null,
-      "assigned_tier": null,
-      "status": "pending",
+      "assigned_tier": "dragon_silver",
+      "status": "done",
       "source": "dragon_todo",
-      "tags": ["chat", "models", "bug"],
+      "tags": [
+        "chat",
+        "models",
+        "bug"
+      ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157650",
-      "started_at": null,
-      "completed_at": null,
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null
+      "started_at": "2026-02-09T19:59:31.927976",
+      "completed_at": "2026-02-09T20:08:57.102499",
+      "pipeline_task_id": "task_1770656371",
+      "result_summary": "{'plan': {'subtasks': [{'description': 'Investigate solo chat provider storage mechanism - check localStorage/sessionStorage and state management for how model provider API key name is currently saved', 'needs_research': False, 'marker': 'MARKER_102.1'}, {'description': 'Locate solo chat re-entry initialization code that causes provider fallback to openrouter, identify where state reset occurs', 'needs_research': False, 'marker': 'MARKER_102.2'}, {'description': 'Fix persistence logic to retain ",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "fix",
+        "subtasks_total": 4,
+        "subtasks_completed": 4,
+        "success": true,
+        "llm_calls": 11,
+        "tokens_in": 6890,
+        "tokens_out": 8568,
+        "verifier_avg_confidence": 0.9,
+        "completed_at": 1770656927.091423,
+        "duration_s": 555.2
+      }
     },
     "tb_1770577538_2": {
       "id": "tb_1770577538_2",
@@ -73,17 +111,34 @@
       "complexity": "low",
       "phase_type": "build",
       "preset": null,
-      "assigned_tier": null,
-      "status": "pending",
+      "assigned_tier": "dragon_silver",
+      "status": "done",
       "source": "dragon_todo",
-      "tags": ["frontend", "cam", "artifacts"],
+      "tags": [
+        "frontend",
+        "cam",
+        "artifacts"
+      ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157435",
-      "started_at": null,
-      "completed_at": null,
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null
+      "started_at": "2026-02-09T19:08:00.992603",
+      "completed_at": "2026-02-09T19:21:39.184657",
+      "pipeline_task_id": "task_1770653280",
+      "result_summary": "{'plan': {'subtasks': [{'description': 'Locate highlight_artifacts data structures and CAM surprise metrics definitions in backend codebase', 'needs_research': False, 'marker': 'MARKER_102.1'}, {'description': 'Implement or extend API endpoint to expose highlight_artifacts including CAM metrics and Engram data', 'needs_research': False, 'marker': 'MARKER_102.2'}, {'description': 'Define TypeScript interfaces and create frontend API client to fetch highlight_artifacts', 'needs_research': False, '",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "build",
+        "subtasks_total": 4,
+        "subtasks_completed": 4,
+        "success": true,
+        "llm_calls": 10,
+        "tokens_in": 6869,
+        "tokens_out": 8698,
+        "verifier_avg_confidence": 0.675,
+        "completed_at": 1770654089.1705558,
+        "duration_s": 808.2
+      }
     },
     "tb_1770577538_11": {
       "id": "tb_1770577538_11",
@@ -96,7 +151,11 @@
       "assigned_tier": null,
       "status": "pending",
       "source": "titan_todo",
-      "tags": ["search", "jarvis", "architecture"],
+      "tags": [
+        "search",
+        "jarvis",
+        "architecture"
+      ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.158579",
       "started_at": null,
@@ -116,7 +175,11 @@
       "assigned_tier": null,
       "status": "pending",
       "source": "dragon_todo",
-      "tags": ["frontend", "folders", "feature"],
+      "tags": [
+        "frontend",
+        "folders",
+        "feature"
+      ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.158189",
       "started_at": null,
@@ -136,7 +199,11 @@
       "assigned_tier": null,
       "status": "pending",
       "source": "titan_todo",
-      "tags": ["models", "search", "embedding"],
+      "tags": [
+        "models",
+        "search",
+        "embedding"
+      ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.158336",
       "started_at": null,
@@ -156,7 +223,11 @@
       "assigned_tier": null,
       "status": "pending",
       "source": "titan_todo",
-      "tags": ["folders", "auto-detection", "ux"],
+      "tags": [
+        "folders",
+        "auto-detection",
+        "ux"
+      ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.158451",
       "started_at": null,
@@ -176,7 +247,11 @@
       "assigned_tier": null,
       "status": "pending",
       "source": "dragon_todo",
-      "tags": ["models", "fallback", "resilience"],
+      "tags": [
+        "models",
+        "fallback",
+        "resilience"
+      ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.158830",
       "started_at": null,
@@ -196,7 +271,12 @@
       "assigned_tier": null,
       "status": "pending",
       "source": "dragon_todo",
-      "tags": ["frontend", "canvas", "bug", "later"],
+      "tags": [
+        "frontend",
+        "canvas",
+        "bug",
+        "later"
+      ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157112",
       "started_at": null,
@@ -216,7 +296,12 @@
       "assigned_tier": null,
       "status": "pending",
       "source": "dragon_todo",
-      "tags": ["frontend", "import", "bug", "later"],
+      "tags": [
+        "frontend",
+        "import",
+        "bug",
+        "later"
+      ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157742",
       "started_at": null,
@@ -236,9 +321,36 @@
       "assigned_tier": null,
       "status": "pending",
       "source": "dragon_todo",
-      "tags": ["chat", "bug", "naming", "later"],
+      "tags": [
+        "chat",
+        "bug",
+        "naming",
+        "later"
+      ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.158041",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null
+    },
+    "tb_1770665646_1": {
+      "id": "tb_1770665646_1",
+      "title": "broken button",
+      "description": "broken button",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "heartbeat_fix",
+      "tags": [
+        "fix"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T22:34:06.754042",
       "started_at": null,
       "completed_at": null,
       "pipeline_task_id": null,

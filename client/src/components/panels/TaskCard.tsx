@@ -13,6 +13,7 @@
  */
 
 import { useState, useCallback } from 'react';
+import { DiffViewer } from './DiffViewer';  // MARKER_128.4B
 
 export interface PipelineStatsData {
   preset?: string;
@@ -55,6 +56,8 @@ interface SubtaskResult {
   result?: string;
   marker?: string;
   needs_research?: boolean;
+  diff_patch?: string;  // MARKER_128.4B: Unified diff from backend
+  original_file?: string;  // MARKER_128.4B: Original file path
 }
 
 interface PipelineResults {
@@ -72,7 +75,7 @@ interface TaskCardProps {
   task: TaskData;
   onPriorityChange?: (taskId: string, priority: number) => void;
   onRemove?: (taskId: string) => void;
-  onDispatch?: (taskId: string) => void;
+  onDispatch?: (taskId: string, preset?: string) => void;  // MARKER_128.5A: Added preset param
   onCancel?: (taskId: string) => void;  // MARKER_126.5G: Stop button
 }
 
@@ -241,6 +244,12 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
 
   // MARKER_128.3B: Local result status (synced from props)
   const [localResultStatus, setLocalResultStatus] = useState(task.result_status);
+
+  // MARKER_128.5C: Preset selector state (default from task or silver)
+  const [selectedPreset, setSelectedPreset] = useState(task.preset || 'dragon_silver');
+
+  // MARKER_128.4B: View mode for subtask results (code vs diff)
+  const [subtaskViewMode, setSubtaskViewMode] = useState<Record<number, 'code' | 'diff'>>({});
 
   const fetchResults = useCallback(async () => {
     if (results) {
@@ -464,29 +473,54 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
               </select>
             )}
 
-            {/* Dispatch button — Nolan minimal */}
+            {/* MARKER_128.5A: Run button with preset selector */}
             {onDispatch && isDispatchable && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDispatch(task.id);
-                }}
-                style={{
-                  background: '#222',
-                  color: '#e0e0e0',
-                  border: '1px solid #444',
-                  borderRadius: 3,
-                  fontSize: 10,
-                  fontFamily: 'monospace',
-                  padding: '3px 10px',
-                  cursor: 'pointer',
-                  letterSpacing: 0.5,
-                  textTransform: 'uppercase',
-                  transition: 'all 0.15s',
-                }}
-              >
-                run
-              </button>
+              <>
+                {/* MARKER_128.5C: Preset selector dropdown */}
+                <select
+                  value={selectedPreset}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setSelectedPreset(e.target.value);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    background: '#1a1a1a',
+                    color: '#666',
+                    border: '1px solid #333',
+                    borderRadius: 3,
+                    fontSize: 9,
+                    fontFamily: 'monospace',
+                    padding: '2px 4px',
+                    outline: 'none',
+                  }}
+                >
+                  <option value="dragon_bronze">bronze</option>
+                  <option value="dragon_silver">silver</option>
+                  <option value="dragon_gold">gold</option>
+                </select>
+                {/* Run button — Nolan blue-gray accent */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDispatch(task.id, selectedPreset);
+                  }}
+                  style={{
+                    background: '#2d3d5a',
+                    color: '#8af',
+                    border: '1px solid #3d4d6a',
+                    borderRadius: 3,
+                    fontSize: 10,
+                    fontFamily: 'monospace',
+                    padding: '3px 10px',
+                    cursor: 'pointer',
+                    letterSpacing: 0.5,
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  ▶ run
+                </button>
+              </>
             )}
 
             {/* MARKER_126.5G: Stop button for running tasks */}
@@ -617,11 +651,55 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
                         )}
                       </div>
 
-                      {/* Subtask result — code block */}
+                      {/* Subtask result — code block or diff */}
                       {expandedSubtask === idx && st.result && (
                         <div style={{ marginTop: 4, position: 'relative' }}>
-                          {/* MARKER_128.2C: Copy + Apply buttons */}
-                          <div style={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 4, zIndex: 1 }}>
+                          {/* MARKER_128.4B: View mode tabs */}
+                          <div style={{
+                            display: 'flex',
+                            gap: 2,
+                            marginBottom: 4,
+                          }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSubtaskViewMode(prev => ({ ...prev, [idx]: 'code' }));
+                              }}
+                              style={{
+                                background: (subtaskViewMode[idx] || 'code') === 'code' ? '#333' : '#1a1a1a',
+                                color: (subtaskViewMode[idx] || 'code') === 'code' ? '#ccc' : '#555',
+                                border: '1px solid #333',
+                                borderRadius: '2px 2px 0 0',
+                                fontSize: 9,
+                                padding: '2px 8px',
+                                cursor: 'pointer',
+                                fontFamily: 'monospace',
+                              }}
+                            >
+                              code
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSubtaskViewMode(prev => ({ ...prev, [idx]: 'diff' }));
+                              }}
+                              disabled={!st.diff_patch}
+                              style={{
+                                background: subtaskViewMode[idx] === 'diff' ? '#333' : '#1a1a1a',
+                                color: !st.diff_patch ? '#333' : subtaskViewMode[idx] === 'diff' ? '#ccc' : '#555',
+                                border: '1px solid #333',
+                                borderRadius: '2px 2px 0 0',
+                                fontSize: 9,
+                                padding: '2px 8px',
+                                cursor: st.diff_patch ? 'pointer' : 'not-allowed',
+                                fontFamily: 'monospace',
+                              }}
+                              title={!st.diff_patch ? 'No diff available' : 'View diff'}
+                            >
+                              diff
+                            </button>
+                            <div style={{ flex: 1 }} />
+                            {/* MARKER_128.2C: Copy + Apply buttons */}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -661,40 +739,37 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
                           {/* Apply result message */}
                           {applyResult && applyResult.idx === idx && (
                             <div style={{
-                              position: 'absolute',
-                              top: 26,
-                              right: 4,
                               background: applyResult.success ? '#2d5a2d' : '#5a2d2d',
                               color: applyResult.success ? '#8a8' : '#a88',
                               fontSize: 8,
                               padding: '2px 6px',
                               borderRadius: 2,
-                              maxWidth: 200,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              zIndex: 1,
+                              marginBottom: 4,
                             }}>
                               {applyResult.message}
                             </div>
                           )}
-                          <pre style={{
-                            background: '#181818',
-                            color: '#d0d0d0',
-                            padding: '8px 10px',
-                            paddingTop: 24,
-                            borderRadius: 3,
-                            fontSize: 10,
-                            fontFamily: 'monospace',
-                            overflow: 'auto',
-                            maxHeight: 300,
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                            margin: 0,
-                            border: '1px solid #222',
-                          }}>
-                            {st.result}
-                          </pre>
+                          {/* MARKER_128.4B: Conditional render — diff or code */}
+                          {subtaskViewMode[idx] === 'diff' && st.diff_patch ? (
+                            <DiffViewer diff={st.diff_patch} maxHeight={300} />
+                          ) : (
+                            <pre style={{
+                              background: '#181818',
+                              color: '#d0d0d0',
+                              padding: '8px 10px',
+                              borderRadius: 3,
+                              fontSize: 10,
+                              fontFamily: 'monospace',
+                              overflow: 'auto',
+                              maxHeight: 300,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              margin: 0,
+                              border: '1px solid #222',
+                            }}>
+                              {st.result}
+                            </pre>
+                          )}
                         </div>
                       )}
                     </div>

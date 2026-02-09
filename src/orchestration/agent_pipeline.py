@@ -332,6 +332,8 @@ Respond with implementation plan or code."""
 
         # MARKER_124.7B: Pre-fetch real files via ripgrep before Scout LLM call
         prefetch_context = await self._scout_prefetch(task)
+        # MARKER_128.1A: Store prefetch for project context extraction
+        self._last_prefetch_context = prefetch_context
 
         user_content = f"Phase type: {phase_type}\n\nTask to scout:\n{task}"
         if prefetch_context:
@@ -367,6 +369,15 @@ Respond with implementation plan or code."""
                 return None
             response_text = result.get("result", {}).get("content", "{}")
             scout_data = self._extract_json(response_text)
+            # MARKER_128.1A: Inject detected project context into scout_data
+            # so coder sees "Detected imports: zustand, react, three" in context
+            if hasattr(self, '_last_prefetch_context') and self._last_prefetch_context:
+                # Extract "--- Project context ---" section if present
+                pctx = self._last_prefetch_context
+                if "--- Project context ---" in pctx:
+                    ctx_line = pctx.split("--- Project context ---\n")[-1].split("\n---")[0].strip()
+                    if ctx_line:
+                        scout_data["project_context"] = ctx_line
             logger.info(
                 f"[Pipeline] Scout found {len(scout_data.get('relevant_files', []))} files, "
                 f"{len(scout_data.get('patterns_found', []))} patterns"
@@ -423,7 +434,12 @@ Respond with implementation plan or code."""
             # MARKER_124.9A: Read file snippets with line numbers for marker placement
             snippet_section = self._read_file_snippets(code_file_paths[:3], max_lines=60)
 
+            # MARKER_128.1A: Detect project context (imports, frameworks) from found files
+            project_ctx = self._detect_project_context(code_file_paths)
+
             output = "\n".join(results_text[:10])
+            if project_ctx:
+                output += f"\n\n--- Project context ---\n{project_ctx}"
             if marker_section:
                 output += f"\n\n--- Existing markers in these files ---\n{marker_section}"
             if snippet_section:
@@ -501,6 +517,51 @@ Respond with implementation plan or code."""
                 continue
 
         return "\n\n".join(snippets) if snippets else ""
+
+    # MARKER_128.1A: Detect project stack from import statements in found files
+    @staticmethod
+    def _detect_project_context(file_paths: list) -> str:
+        """Detect project stack (imports, frameworks) from code files.
+
+        MARKER_128.1A: Reads import statements from found files to tell
+        the coder what frameworks/libraries the project actually uses.
+        This prevents the coder from guessing wrong imports (e.g. MobX vs Zustand).
+        """
+        from pathlib import Path
+        import re
+
+        imports_found = set()
+        for fpath in file_paths[:5]:
+            p = Path(fpath)
+            if not p.exists():
+                continue
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+                lines = text.splitlines()[:100]  # First 100 lines enough for imports
+                for line in lines:
+                    # TypeScript/JavaScript: import ... from '...'
+                    m = re.search(r"from\s+['\"]([^'\"]+)['\"]", line)
+                    if m:
+                        pkg = m.group(1)
+                        # Only external packages (not relative ./  ../)
+                        if not pkg.startswith(".") and not pkg.startswith("/"):
+                            imports_found.add(pkg.split("/")[0])
+                    # Python: from ... import ... / import ...
+                    m = re.search(r"^(?:from|import)\s+([\w.]+)", line)
+                    if m:
+                        pkg = m.group(1).split(".")[0]
+                        if pkg not in ("src", "os", "sys", "json", "re", "typing", "pathlib", "logging",
+                                       "dataclasses", "datetime", "time", "asyncio", "collections"):
+                            imports_found.add(pkg)
+            except Exception:
+                continue
+
+        if not imports_found:
+            return ""
+
+        # Format as concise context line
+        return f"Detected imports in project files: {', '.join(sorted(imports_found)[:15])}"
+    # MARKER_128.1A_END
 
     @staticmethod
     def _extract_search_keywords(task: str) -> list:
@@ -2377,7 +2438,12 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 scout = subtask.context["scout_report"]
                 files = ", ".join(scout.get("relevant_files", [])[:5])
                 patterns = "; ".join(scout.get("patterns_found", [])[:3])
-                scout_str = f"Project files: {files}"
+                # MARKER_128.1B: Inject detected project imports into coder context
+                project_ctx = scout.get("project_context", "")
+                scout_str = ""
+                if project_ctx:
+                    scout_str = f"{project_ctx}\n"
+                scout_str += f"Project files: {files}"
                 if patterns:
                     scout_str += f"\nPatterns to follow: {patterns}"
                 # MARKER_124.9B: Format marker_map as rails for coder

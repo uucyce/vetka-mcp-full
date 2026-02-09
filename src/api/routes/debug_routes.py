@@ -1769,15 +1769,59 @@ async def get_pipeline_results(task_id: str) -> Dict[str, Any]:
             "message": f"Pipeline task {pipeline_task_id} not found in pipeline_tasks.json"
         }
 
+    # MARKER_128.4C: Generate diff for each subtask result
+    import difflib
+    import re
+
+    def extract_file_path_and_code(result: str) -> tuple:
+        """Extract file path and code from markdown code block."""
+        if not result:
+            return None, None
+        # Match ```<lang> path/to/file or # file: path/to/file
+        match = re.search(r'```\w*\s*(?:#\s*file:\s*)?([^\n`]+\.(?:py|ts|tsx|js|jsx|rs|go|json|yaml|yml|md))', result)
+        if match:
+            file_path = match.group(1).strip()
+            # Extract code between ``` markers
+            code_match = re.search(r'```\w*[^\n]*\n(.*?)```', result, re.DOTALL)
+            if code_match:
+                return file_path, code_match.group(1)
+        return None, None
+
+    def generate_diff(file_path: str, new_code: str) -> str:
+        """Generate unified diff between original file and new code."""
+        if not file_path or not new_code:
+            return None
+        original_file = Path(__file__).parent.parent.parent.parent / file_path
+        if not original_file.exists():
+            return None
+        try:
+            original_lines = original_file.read_text().splitlines(keepends=True)
+            new_lines = new_code.splitlines(keepends=True)
+            diff = difflib.unified_diff(
+                original_lines, new_lines,
+                fromfile=f"a/{file_path}",
+                tofile=f"b/{file_path}",
+                lineterm=""
+            )
+            return "".join(diff)
+        except Exception:
+            return None
+
     # Extract subtasks with results
     subtasks = []
     for s in pipeline_task.get("subtasks", []):
+        result = s.get("result")
+        file_path, new_code = extract_file_path_and_code(result)
+        diff_patch = generate_diff(file_path, new_code) if file_path else None
+
         subtasks.append({
             "description": s.get("description", "")[:200],
             "status": s.get("status", "unknown"),
-            "result": s.get("result"),  # May contain code blocks
+            "result": result,  # May contain code blocks
             "marker": s.get("marker"),
             "needs_research": s.get("needs_research", False),
+            "diff_patch": diff_patch,  # MARKER_128.4C
+            "original_file": file_path,  # MARKER_128.4C
         })
 
     return {

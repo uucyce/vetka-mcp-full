@@ -2,10 +2,11 @@
  * MARKER_126.0C: DevPanel — Task Board + Stats + League Tester
  * MARKER_126.2B: Style upgrade — Nolan glassmorphism, monospace, no emoji
  * MARKER_127.2B: Activity tab — real-time pipeline progress
- * Phase 127.2: "Batman Nolan, not Burton" — dark, serious, minimal.
+ * MARKER_128.5B: Quick-add with dispatch ("Add & Run")
+ * Phase 128.5: "Batman Nolan, not Burton" — dark, serious, minimal.
  *
  * @status active
- * @phase 127.2
+ * @phase 128.5
  * @depends FloatingWindow, TaskCard, PipelineStats, LeagueTester, BalancesPanel, ActivityLog
  */
 
@@ -42,7 +43,12 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
   const [loading, setLoading] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskTeam, setNewTaskTeam] = useState<'dragon' | 'titan'>('dragon');
+  const [newTaskPreset, setNewTaskPreset] = useState<string>('dragon_silver');  // MARKER_128.5B
   const [summary, setSummary] = useState<{ total: number; by_status: Record<string, number> } | null>(null);
+
+  // MARKER_126.9C: Get selected key for dispatch (moved before handlers that use it)
+  const selectedKey = useStore((s) => s.selectedKey);
+  const clearSelectedKey = useStore((s) => s.clearSelectedKey);
 
   // Fetch tasks from backend
   const fetchTasks = useCallback(async () => {
@@ -79,28 +85,47 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
   }, [isOpen, fetchTasks]);
 
   // Add task
-  const handleAddTask = useCallback(async () => {
+  const handleAddTask = useCallback(async (andRun: boolean = false) => {
     if (!newTaskTitle.trim()) return;
 
     try {
+      // MARKER_128.5B: Use selected preset
+      const preset = newTaskTeam === 'titan' ? 'titan_core' : newTaskPreset;
+
       const res = await fetch(`${API_BASE}/task-board/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: newTaskTitle.trim(),
           phase_type: newTaskTeam === 'titan' ? 'research' : 'build',
-          preset: newTaskTeam === 'titan' ? 'titan_core' : 'dragon_silver',
+          preset: preset,
           tags: [newTaskTeam],
         }),
       });
       if (res.ok) {
+        const data = await res.json();
         setNewTaskTitle('');
+
+        // MARKER_128.5B: If "Add & Run", dispatch immediately
+        if (andRun && data.task_id) {
+          await fetch(`${API_BASE}/task-board/dispatch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              task_id: data.task_id,
+              preset: preset,
+              selected_key: selectedKey,
+            }),
+          });
+          if (selectedKey) clearSelectedKey();
+        }
+
         fetchTasks();
       }
     } catch (err) {
       console.error('[TaskBoard] Add failed:', err);
     }
-  }, [newTaskTitle, newTaskTeam, fetchTasks]);
+  }, [newTaskTitle, newTaskTeam, newTaskPreset, fetchTasks, selectedKey, clearSelectedKey]);
 
   // Update task priority
   const handlePriorityChange = useCallback(async (taskId: string, priority: number) => {
@@ -140,20 +165,18 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
     }
   }, [fetchTasks]);
 
-  // MARKER_126.9C: Get selected key for dispatch
-  const selectedKey = useStore((s) => s.selectedKey);
-  const clearSelectedKey = useStore((s) => s.clearSelectedKey);
-
-  // Dispatch specific task
-  const handleDispatchTask = useCallback(async (taskId: string) => {
+  // MARKER_128.5A: Dispatch specific task with optional preset override
+  const handleDispatchTask = useCallback(async (taskId: string, preset?: string) => {
     try {
       // MARKER_126.9C: Include selected_key in dispatch request
+      // MARKER_128.5A: Include preset if provided
       await fetch(`${API_BASE}/task-board/dispatch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           task_id: taskId,
           selected_key: selectedKey,
+          ...(preset && { preset }),
         }),
       });
       // Clear key selection after dispatch (one-shot use)
@@ -251,14 +274,14 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
               </span>
             </div>
 
-            {/* Quick Add — monospace, dark glass */}
+            {/* MARKER_128.5B: Quick Add — with preset selector and Add & Run */}
             <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
               <input
                 type="text"
                 placeholder="new task..."
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddTask()}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddTask(false)}
                 style={{
                   flex: 1,
                   background: 'rgba(255,255,255,0.03)',
@@ -272,6 +295,7 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
                   transition: 'border-color 0.15s',
                 }}
               />
+              {/* Team selector */}
               <select
                 value={newTaskTeam}
                 onChange={(e) => setNewTaskTeam(e.target.value as 'dragon' | 'titan')}
@@ -289,23 +313,66 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
                 <option value="dragon">DRG</option>
                 <option value="titan">TTN</option>
               </select>
+              {/* MARKER_128.5C: Preset selector (only for dragon) */}
+              {newTaskTeam === 'dragon' && (
+                <select
+                  value={newTaskPreset}
+                  onChange={(e) => setNewTaskPreset(e.target.value)}
+                  style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                    borderRadius: 3,
+                    color: '#555',
+                    fontSize: 9,
+                    fontFamily: 'monospace',
+                    padding: '2px',
+                    outline: 'none',
+                  }}
+                >
+                  <option value="dragon_bronze">bronze</option>
+                  <option value="dragon_silver">silver</option>
+                  <option value="dragon_gold">gold</option>
+                </select>
+              )}
+              {/* Add button (queue only) */}
               <button
-                onClick={handleAddTask}
+                onClick={() => handleAddTask(false)}
                 disabled={!newTaskTitle.trim()}
                 style={{
                   background: newTaskTitle.trim() ? 'rgba(255,255,255,0.08)' : 'transparent',
                   color: newTaskTitle.trim() ? '#ccc' : '#333',
                   border: `1px solid ${newTaskTitle.trim() ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)'}`,
                   borderRadius: 3,
-                  padding: '6px 12px',
+                  padding: '6px 8px',
                   fontSize: 12,
                   fontFamily: 'monospace',
                   cursor: newTaskTitle.trim() ? 'pointer' : 'not-allowed',
                   fontWeight: 600,
                   transition: 'all 0.15s',
                 }}
+                title="Add to queue"
               >
                 +
+              </button>
+              {/* MARKER_128.5B: Add & Run button */}
+              <button
+                onClick={() => handleAddTask(true)}
+                disabled={!newTaskTitle.trim()}
+                style={{
+                  background: newTaskTitle.trim() ? '#2d3d5a' : 'transparent',
+                  color: newTaskTitle.trim() ? '#8af' : '#333',
+                  border: `1px solid ${newTaskTitle.trim() ? '#3d4d6a' : 'rgba(255,255,255,0.04)'}`,
+                  borderRadius: 3,
+                  padding: '6px 8px',
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                  cursor: newTaskTitle.trim() ? 'pointer' : 'not-allowed',
+                  fontWeight: 600,
+                  transition: 'all 0.15s',
+                }}
+                title="Add & Run immediately"
+              >
+                ▶
               </button>
             </div>
 

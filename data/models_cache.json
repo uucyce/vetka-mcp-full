@@ -1,5 +1,5 @@
 {
-  "cached_at": "2026-02-09T15:37:54.674646",
+  "cached_at": "2026-02-09T19:39:14.343502",
   "source": "mixed",
   "count": 1588,
   "models": [
@@ -9626,7 +9626,7 @@
       },
       "top_provider": {
         "context_length": 163840,
-        "max_completion_tokens": null,
+        "max_completion_tokens": 163840,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -9634,10 +9634,14 @@
         "frequency_penalty",
         "include_reasoning",
         "max_tokens",
+        "min_p",
         "presence_penalty",
         "reasoning",
         "repetition_penalty",
-        "temperature"
+        "stop",
+        "temperature",
+        "top_k",
+        "top_p"
       ],
       "default_parameters": {
         "temperature": null,

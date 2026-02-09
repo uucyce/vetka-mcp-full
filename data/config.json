@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-02-04T10:21:27.089357",
+  "updated_at": "2026-02-09T19:39:48.313373",
   "api_keys": {
     "openrouter": {
       "paid": "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",
@@ -16,7 +16,8 @@
         "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",
         "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",
         "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",
-        "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"
+        "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",
+        "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"
       ]
     },
     "gemini": [
