@@ -298,13 +298,33 @@ _INTAKE_TIMEOUT_SEC = 60  # Auto-queue after 60s with no reply
 
 
 # MARKER_125.1C: Doctor triage — analyze task abstraction before dispatch
+# MARKER_127.4A: Show triage progress step-by-step in chat
+# MARKER_127.4C: Quick-action buttons after triage
 async def _doctor_triage(chat_id: str, task_text: str, sender_id: str):
     """Doctor analyzes task abstraction/complexity, routes accordingly.
 
-    Concrete tasks → reformulate + dispatch (skip intake prompt)
-    Abstract tasks → reformulate + hold in TaskBoard for human approval
+    MARKER_127.4A: Shows step-by-step progress in chat before dispatch.
+    MARKER_127.4C: Offers quick-action buttons for user choice.
+
+    Concrete tasks → show analysis → offer dispatch or queue
+    Abstract tasks → show analysis → hold for human approval
     """
     import json as _json
+    import httpx
+
+    # MARKER_127.4A: Helper to emit doctor messages
+    async def _emit_doctor_msg(content: str, msg_type: str = "system"):
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
+                    json={"agent_id": "doctor", "content": content, "message_type": msg_type}
+                )
+        except Exception:
+            pass
+
+    # Step 1: Show "analyzing" message
+    await _emit_doctor_msg("Analyzing task...")
 
     try:
         # Load Doctor prompt
@@ -342,9 +362,11 @@ async def _doctor_triage(chat_id: str, task_text: str, sender_id: str):
 
     except Exception as e:
         logger.error(f"[DOCTOR] Triage failed: {e}, falling back to intake")
+        await _emit_doctor_msg(f"Triage failed: {e}. Falling back to intake.")
         await _send_intake_prompt(chat_id, "doctor", task_text, sender_id)
         return
 
+    # Extract triage results
     abstraction = triage.get("abstraction", "moderate")
     routing = triage.get("routing", "dispatch")
     reformulated = triage.get("reformulated_task", task_text)
@@ -353,86 +375,144 @@ async def _doctor_triage(chat_id: str, task_text: str, sender_id: str):
     suggested_team = triage.get("suggested_team", "dragon_silver")
     tags = triage.get("tags", ["doctor"])
     reasoning = triage.get("reasoning", "")
+    estimated_subtasks = triage.get("estimated_subtasks", 3)
+    key_files = triage.get("key_files", [])
 
-    import httpx
+    # MARKER_127.4A: Step 2 — Show analysis results
+    analysis_msg = (
+        f"Abstraction: **{abstraction}**\n"
+        f"Reformulated: _{reformulated[:150]}_\n"
+        f"Suggested: `{suggested_team}` ({suggested_phase})"
+    )
+    if estimated_subtasks:
+        analysis_msg += f" | ~{estimated_subtasks} subtasks"
+    if key_files:
+        analysis_msg += f"\nKey files: `{', '.join(key_files[:3])}`"
+    await _emit_doctor_msg(analysis_msg)
+
+    from src.orchestration.task_board import get_task_board
+    board = get_task_board()
 
     if routing == "hold" or abstraction == "abstract":
         # ABSTRACT → TaskBoard with hold status, wait for human approve
-        from src.orchestration.task_board import get_task_board
-        board = get_task_board()
         task_id = board.add_task(
             title=reformulated[:100],
-            description=f"Original: {task_text}\n\nReformulated: {reformulated}",
+            description=f"Original: {task_text}\n\nReformulated: {reformulated}\n\nKey files: {key_files}",
             priority=3,
             phase_type=suggested_phase,
             preset=suggested_team,
-            source=f"doctor_triage",
+            source="doctor_triage",
             tags=tags + ["hold", "needs-approve"],
         )
-        # Set hold status
         board.update_task(task_id, status="hold")
 
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(
-                    f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
-                    json={
-                        "agent_id": "doctor",
-                        "content": (
-                            f"🩺 **Doctor Triage** — задача абстрактна\n\n"
-                            f"📝 Оригинал: _{task_text[:150]}_\n"
-                            f"🎯 Переформулировка: **{reformulated[:200]}**\n"
-                            f"📊 Сложность: `{complexity}` | Команда: `{suggested_team}`\n"
-                            f"💡 {reasoning[:150]}\n\n"
-                            f"⏸️ Задача `{task_id}` на **hold** — ждёт approve.\n"
-                            f"Ответьте `approve {task_id}` чтобы запустить."
-                        ),
-                        "message_type": "system",
-                    }
-                )
-        except Exception:
-            pass
+        # MARKER_127.4A: Show hold message with approve instructions
+        await _emit_doctor_msg(
+            f"Task is **abstract** — needs clarification.\n"
+            f"Added `{task_id}` to hold.\n\n"
+            f"Reply `approve {task_id}` to dispatch."
+        )
 
     else:
-        # CONCRETE/MODERATE → reformulate + dispatch directly
-        from src.orchestration.task_board import get_task_board
-        board = get_task_board()
+        # CONCRETE/MODERATE → add to board, show quick-actions
         task_id = board.add_task(
             title=reformulated[:100],
-            description=f"Original: {task_text}\n\nReformulated: {reformulated}",
+            description=f"Original: {task_text}\n\nReformulated: {reformulated}\n\nKey files: {key_files}",
             priority=3,
             phase_type=suggested_phase,
             preset=suggested_team,
-            source=f"doctor_triage",
-            tags=tags + ["auto-dispatched"],
+            source="doctor_triage",
+            tags=tags + ["triage-pending"],
         )
 
+        # Store pending task for quick-action handling
+        _DOCTOR_PENDING_TASKS[chat_id] = {
+            "task_id": task_id,
+            "team": suggested_team,
+            "phase": suggested_phase,
+            "timestamp": time.time()
+        }
+
+        # MARKER_127.4C: Show quick-action prompt
+        await _emit_doctor_msg(
+            f"Task `{task_id}` ready.\n\n"
+            f"**Quick actions:**\n"
+            f"`1d` — Run now ({suggested_team})\n"
+            f"`2d` — Queue (priority 2)\n"
+            f"`h` — Hold for review"
+        )
+# MARKER_125.1C_END
+
+
+# MARKER_127.4C: Pending tasks awaiting quick-action
+_DOCTOR_PENDING_TASKS: dict = {}
+
+
+async def _handle_doctor_quick_action(chat_id: str, action: str) -> bool:
+    """Handle doctor quick-action commands (1d, 2d, h).
+
+    MARKER_127.4C: Quick dispatch/queue/hold after triage.
+
+    Returns True if handled, False if not a quick-action.
+    """
+    import httpx
+
+    pending = _DOCTOR_PENDING_TASKS.get(chat_id)
+    if not pending:
+        return False
+
+    # Check if pending task is stale (>5 min)
+    if time.time() - pending.get("timestamp", 0) > 300:
+        del _DOCTOR_PENDING_TASKS[chat_id]
+        return False
+
+    action = action.strip().lower()
+    task_id = pending["task_id"]
+
+    from src.orchestration.task_board import get_task_board
+    board = get_task_board()
+
+    async def _emit_msg(content: str):
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(
                     f"http://localhost:5001/api/debug/mcp/groups/{chat_id}/send",
-                    json={
-                        "agent_id": "doctor",
-                        "content": (
-                            f"🩺 **Doctor Triage** — задача конкретна\n\n"
-                            f"🎯 Задача: **{reformulated[:200]}**\n"
-                            f"📊 Сложность: `{complexity}` | Команда: `{suggested_team}` | Фаза: `{suggested_phase}`\n"
-                            f"🚀 Диспатчу `{task_id}` сейчас..."
-                        ),
-                        "message_type": "system",
-                    }
+                    json={"agent_id": "doctor", "content": content, "message_type": "system"}
                 )
         except Exception:
             pass
 
-        # Auto-dispatch
+    if action == "1d":
+        # Run now — dispatch immediately
+        board.update_task(task_id, status="pending")
+        del _DOCTOR_PENDING_TASKS[chat_id]
+
+        await _emit_msg(f"Dispatching `{task_id}` now...")
+
         try:
             dispatched = await board.dispatch_next(chat_id=chat_id)
             if dispatched:
-                logger.info(f"[DOCTOR] Auto-dispatched concrete task {task_id}")
+                logger.info(f"[DOCTOR] Quick-dispatched task {task_id}")
         except Exception as e:
-            logger.error(f"[DOCTOR] Auto-dispatch failed: {e}")
-# MARKER_125.1C_END
+            logger.error(f"[DOCTOR] Quick-dispatch failed: {e}")
+        return True
+
+    elif action == "2d":
+        # Queue — set priority 2, don't dispatch
+        board.update_task(task_id, status="pending", priority=2)
+        del _DOCTOR_PENDING_TASKS[chat_id]
+        await _emit_msg(f"Queued `{task_id}` with priority 2.")
+        return True
+
+    elif action == "h":
+        # Hold — set hold status
+        board.update_task(task_id, status="hold")
+        board.update_task(task_id, tags=["hold", "needs-approve"])
+        del _DOCTOR_PENDING_TASKS[chat_id]
+        await _emit_msg(f"Holding `{task_id}`. Reply `approve {task_id}` when ready.")
+        return True
+
+    return False
 
 
 async def _handle_approve_hold(chat_id: str, task_id: str) -> bool:
@@ -1180,6 +1260,12 @@ def register_group_message_handler(sio, app=None):
                 handled = await _handle_approve_hold(group_id, approve_task_id)
                 if handled:
                     return  # Don't process as normal message
+
+        # MARKER_127.4C: Handle doctor quick-action commands (1d, 2d, h)
+        if sender_id == "user" and content.strip().lower() in ("1d", "2d", "h"):
+            handled = await _handle_doctor_quick_action(group_id, content)
+            if handled:
+                return  # Don't process as normal message
 
         # MARKER_124.2A: Check for pending intake reply before normal routing
         if sender_id == "user" and has_pending_intake(group_id):
