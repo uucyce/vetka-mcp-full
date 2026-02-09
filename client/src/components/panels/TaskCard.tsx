@@ -1,15 +1,16 @@
 /**
  * MARKER_126.2A: TaskCard — Nolan dark style, no emoji.
+ * MARKER_127.0B: Results Viewer — expand to see pipeline results/code
  * CSS-only status indicators, monochrome priority, glassmorphism accents.
  * Phase 126.2: Style upgrade — "Batman Nolan, not Burton"
  *
  * @status active
- * @phase 126.2
+ * @phase 127.0
  * @depends react
  * @used_by DevPanel
  */
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 
 export interface PipelineStatsData {
   preset?: string;
@@ -38,6 +39,27 @@ export interface TaskData {
   source?: string;
   created_at?: string;
   stats?: PipelineStatsData;
+  pipeline_task_id?: string;  // MARKER_127.0B: Link to pipeline_tasks.json
+}
+
+// MARKER_127.0B: Pipeline results data structure
+interface SubtaskResult {
+  description: string;
+  status: string;
+  result?: string;
+  marker?: string;
+  needs_research?: boolean;
+}
+
+interface PipelineResults {
+  success: boolean;
+  task_id: string;
+  pipeline_task_id?: string;
+  status?: string;
+  phase_type?: string;
+  subtasks: SubtaskResult[];
+  results_summary?: Record<string, unknown>;
+  message?: string;
 }
 
 interface TaskCardProps {
@@ -185,11 +207,45 @@ function injectKeyframes() {
   _injected = true;
 }
 
+const API_BASE = 'http://localhost:5001/api/debug';
+
 // ── TaskCard ──
 export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCancel }: TaskCardProps) {
   injectKeyframes();
   const [expanded, setExpanded] = useState(false);
   const [hover, setHover] = useState(false);
+
+  // MARKER_127.0B: Results viewing state
+  const [showResults, setShowResults] = useState(false);
+  const [results, setResults] = useState<PipelineResults | null>(null);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [resultsError, setResultsError] = useState<string | null>(null);
+  const [expandedSubtask, setExpandedSubtask] = useState<number | null>(null);
+
+  const fetchResults = useCallback(async () => {
+    if (results) {
+      setShowResults(!showResults);
+      return;
+    }
+    setResultsLoading(true);
+    setResultsError(null);
+    try {
+      const res = await fetch(`${API_BASE}/pipeline-results/${task.id}`);
+      const data = await res.json();
+      if (data.success) {
+        setResults(data);
+        setShowResults(true);
+      } else {
+        setResultsError(data.error || data.message || 'Failed to load results');
+      }
+    } catch (err) {
+      setResultsError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setResultsLoading(false);
+    }
+  }, [task.id, results, showResults]);
+
+  const hasPipelineResults = task.status === 'done' || task.status === 'failed';
 
   const prio = PRIORITY_STYLE[task.priority] || PRIORITY_STYLE[5];
   const phaseSymbol = PHASE_SYMBOL[task.phase_type] || '·';
@@ -383,6 +439,31 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
               </button>
             )}
 
+            {/* MARKER_127.0B: View Results button for done/failed tasks */}
+            {hasPipelineResults && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fetchResults();
+                }}
+                disabled={resultsLoading}
+                style={{
+                  background: showResults ? '#2a2a2a' : '#1a1a1a',
+                  color: showResults ? '#e0e0e0' : '#888',
+                  border: `1px solid ${showResults ? '#444' : '#333'}`,
+                  borderRadius: 3,
+                  fontSize: 10,
+                  fontFamily: 'monospace',
+                  padding: '3px 10px',
+                  cursor: resultsLoading ? 'wait' : 'pointer',
+                  letterSpacing: 0.5,
+                  transition: 'all 0.15s',
+                }}
+              >
+                {resultsLoading ? '...' : showResults ? 'hide' : 'results'}
+              </button>
+            )}
+
             {/* Remove button — subtle */}
             {onRemove && (
               <button
@@ -406,6 +487,117 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
               </button>
             )}
           </div>
+
+          {/* MARKER_127.0B: Pipeline Results Display */}
+          {showResults && results && (
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              {resultsError && (
+                <div style={{ color: '#a66', fontSize: 10, marginBottom: 6 }}>{resultsError}</div>
+              )}
+
+              {results.message && (
+                <div style={{ color: '#666', fontSize: 10, marginBottom: 6, fontStyle: 'italic' }}>
+                  {results.message}
+                </div>
+              )}
+
+              {results.subtasks.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 9, color: '#555', marginBottom: 6, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                    subtasks ({results.subtasks.length})
+                  </div>
+                  {results.subtasks.map((st, idx) => (
+                    <div key={idx} style={{ marginBottom: 6 }}>
+                      {/* Subtask header — clickable to expand */}
+                      <div
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedSubtask(expandedSubtask === idx ? null : idx);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '4px 6px',
+                          background: 'rgba(255,255,255,0.02)',
+                          borderRadius: 2,
+                          cursor: st.result ? 'pointer' : 'default',
+                        }}
+                      >
+                        <span style={{ color: st.status === 'done' ? '#8a8' : '#a66', fontSize: 10 }}>
+                          {st.status === 'done' ? '✓' : '✕'}
+                        </span>
+                        <span style={{ flex: 1, color: '#888', fontSize: 10 }}>
+                          {st.description}
+                        </span>
+                        {st.marker && (
+                          <span style={{ color: '#444', fontSize: 9, fontFamily: 'monospace' }}>
+                            {st.marker}
+                          </span>
+                        )}
+                        {st.result && (
+                          <span style={{ color: '#555', fontSize: 9 }}>
+                            {expandedSubtask === idx ? '▼' : '▸'}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Subtask result — code block */}
+                      {expandedSubtask === idx && st.result && (
+                        <div style={{ marginTop: 4, position: 'relative' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigator.clipboard.writeText(st.result || '');
+                            }}
+                            style={{
+                              position: 'absolute',
+                              top: 4,
+                              right: 4,
+                              background: '#333',
+                              color: '#888',
+                              border: '1px solid #444',
+                              borderRadius: 2,
+                              fontSize: 9,
+                              padding: '2px 6px',
+                              cursor: 'pointer',
+                              zIndex: 1,
+                            }}
+                          >
+                            copy
+                          </button>
+                          <pre style={{
+                            background: '#181818',
+                            color: '#d0d0d0',
+                            padding: '8px 10px',
+                            paddingTop: 24,
+                            borderRadius: 3,
+                            fontSize: 10,
+                            fontFamily: 'monospace',
+                            overflow: 'auto',
+                            maxHeight: 300,
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            margin: 0,
+                            border: '1px solid #222',
+                          }}>
+                            {st.result}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {results.results_summary && Object.keys(results.results_summary).length > 0 && (
+                <div style={{ marginTop: 8, fontSize: 9, color: '#555', fontFamily: 'monospace' }}>
+                  completed: {(results.results_summary as Record<string, number>).subtasks_completed || 0}/
+                  {(results.results_summary as Record<string, number>).subtasks_total || 0}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -157,7 +157,7 @@ export function BalancesPanel() {
           {totals && (
             <div style={{ color: COLORS.textDim, marginTop: 4, fontSize: 9 }}>
               {formatTokens(totals.total_tokens_in)} in, {formatTokens(totals.total_tokens_out)} out, {totals.total_calls} calls
-              <span style={{ color: COLORS.errorText, marginLeft: 8 }}>
+              <span style={{ color: COLORS.textMuted, marginLeft: 8 }}>
                 ${totals.total_cost_usd.toFixed(4)}
               </span>
             </div>
@@ -274,7 +274,7 @@ export function BalancesPanel() {
                 <td style={{ padding: '7px 0', textAlign: 'right', color: COLORS.text }}>
                   {formatTokens(r.tokens_out)}
                 </td>
-                <td style={{ padding: '7px 0', textAlign: 'right', color: COLORS.errorText }}>
+                <td style={{ padding: '7px 0', textAlign: 'right', color: COLORS.textMuted }}>
                   ${r.cost_usd.toFixed(4)}
                 </td>
                 <td style={{ padding: '7px 0', textAlign: 'right' }}>
@@ -324,7 +324,7 @@ export function BalancesPanel() {
                 <div style={{ color: COLORS.textMuted, fontWeight: 500, fontSize: 10 }}>{provider}</div>
                 <div style={{ color: COLORS.textDim, fontSize: 9, marginTop: 2 }}>
                   {formatTokens(data.tokens_in + data.tokens_out)} tok, {data.calls} calls
-                  <span style={{ color: COLORS.errorText, marginLeft: 6 }}>
+                  <span style={{ color: COLORS.textMuted, marginLeft: 6 }}>
                     ${data.cost_usd.toFixed(4)}
                   </span>
                 </div>

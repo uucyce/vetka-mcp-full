@@ -1714,6 +1714,83 @@ async def get_task_board_api() -> Dict[str, Any]:
     }
 
 
+# MARKER_127.0A: Pipeline results endpoint for Results Viewer
+@router.get("/pipeline-results/{task_id}")
+async def get_pipeline_results(task_id: str) -> Dict[str, Any]:
+    """Get pipeline results for a completed task.
+
+    First looks up pipeline_task_id from task_board, then reads pipeline_tasks.json.
+
+    Args:
+        task_id: Task Board task ID (e.g., "tb_1234_5")
+
+    Returns:
+        Pipeline subtasks with their results for display in TaskCard expand view.
+    """
+    import json
+    from pathlib import Path
+    from src.orchestration.task_board import get_task_board
+
+    board = get_task_board()
+    task = board.tasks.get(task_id)
+
+    if not task:
+        return {"success": False, "error": f"Task {task_id} not found"}
+
+    pipeline_task_id = task.get("pipeline_task_id")
+    if not pipeline_task_id:
+        return {
+            "success": True,
+            "task_id": task_id,
+            "pipeline_task_id": None,
+            "status": task.get("status"),
+            "subtasks": [],
+            "message": "No pipeline results (task not dispatched or still pending)"
+        }
+
+    # Read pipeline_tasks.json
+    pipeline_file = Path(__file__).parent.parent.parent.parent / "data" / "pipeline_tasks.json"
+    if not pipeline_file.exists():
+        return {"success": False, "error": "pipeline_tasks.json not found"}
+
+    try:
+        pipeline_data = json.loads(pipeline_file.read_text())
+    except json.JSONDecodeError as e:
+        return {"success": False, "error": f"Invalid JSON: {e}"}
+
+    pipeline_task = pipeline_data.get(pipeline_task_id)
+    if not pipeline_task:
+        return {
+            "success": True,
+            "task_id": task_id,
+            "pipeline_task_id": pipeline_task_id,
+            "status": task.get("status"),
+            "subtasks": [],
+            "message": f"Pipeline task {pipeline_task_id} not found in pipeline_tasks.json"
+        }
+
+    # Extract subtasks with results
+    subtasks = []
+    for s in pipeline_task.get("subtasks", []):
+        subtasks.append({
+            "description": s.get("description", "")[:200],
+            "status": s.get("status", "unknown"),
+            "result": s.get("result"),  # May contain code blocks
+            "marker": s.get("marker"),
+            "needs_research": s.get("needs_research", False),
+        })
+
+    return {
+        "success": True,
+        "task_id": task_id,
+        "pipeline_task_id": pipeline_task_id,
+        "status": pipeline_task.get("status"),
+        "phase_type": pipeline_task.get("phase_type"),
+        "subtasks": subtasks,
+        "results_summary": pipeline_task.get("results", {}),
+    }
+
+
 @router.post("/task-board/add")
 async def add_task_api(body: Dict[str, Any]) -> Dict[str, Any]:
     """Add a new task to the board.

@@ -393,3 +393,37 @@ class TestPhase126_9_KeySelection:
 
         # Verify cleared
         assert "test_provider" not in km._preferred_keys
+
+
+# ── Phase 127.0: Pipeline Results Viewer ──
+
+class TestPhase127_0_ResultsViewer:
+    """Tests for MARKER_127.0: Pipeline Results Viewer feature."""
+
+    def test_marker_127_0a_backend_endpoint(self):
+        """MARKER_127.0A: debug_routes should have pipeline-results endpoint."""
+        source = _read_source("src/api/routes/debug_routes.py")
+        assert "MARKER_127.0A" in source
+        assert "/pipeline-results/{task_id}" in source
+        assert "async def get_pipeline_results" in source
+
+    def test_marker_127_0b_taskcard_results(self):
+        """MARKER_127.0B: TaskCard should have results viewing."""
+        source = _read_source("client/src/components/panels/TaskCard.tsx")
+        assert "MARKER_127.0B" in source
+        assert "showResults" in source
+        assert "fetchResults" in source
+        assert "PipelineResults" in source
+
+    def test_taskcard_has_results_button(self):
+        """TaskCard should have results button for done tasks."""
+        source = _read_source("client/src/components/panels/TaskCard.tsx")
+        assert "hasPipelineResults" in source
+        assert "'results'" in source  # Button text
+
+    def test_taskcard_has_subtask_display(self):
+        """TaskCard should display subtasks with results."""
+        source = _read_source("client/src/components/panels/TaskCard.tsx")
+        assert "subtasks" in source
+        assert "expandedSubtask" in source
+        assert "copy" in source  # Copy button
