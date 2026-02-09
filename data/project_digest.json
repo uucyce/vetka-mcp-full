@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-09T19:41:10.027184+00:00",
+  "last_updated": "2026-02-09T20:09:02.812634+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 128,
-    "subphase": "2",
-    "name": "128.3: Results Apply + Lifecycle",
+    "subphase": "5",
+    "name": "6: Wave 2 \u2014 Pipeline Trigger, Diff Viewer, Activity Enrichment",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 128.2 DONE! 128.3: Results Apply + Lifecycle",
+    "headline": "Phase 128.5 DONE! 6: Wave 2 \u2014 Pipeline Trigger, Diff Viewer, Activity Enrichment",
     "key_achievements": [
+      "[d135a06d] Phase 128.5: Phase 128.5-6: Wave 2 \u2014 Pipeline Trigger, Diff Viewer, Activ",
       "[32aca6f0] Phase 128.2: Phase 128.2-128.3: Results Apply + Lifecycle",
       "[600e52e1] Phase 127.4: Phase 127.4: Doctor Triage Flow Fix",
       "[c5543aa0] Phase 127.3: Phase 127.3: Retry loop hardening \u2014 fix silent pass-through ",
@@ -21,8 +22,7 @@
       "[5a52e47d] Phase 126.12: Phase 126.12: Stats Monitor \u2014 Live Refresh + Running Tasks",
       "[d1045cff] Phase 127.0: Phase 127.0: Pipeline Results Viewer + Nolan color fix",
       "[a386a7a1] Phase 127.1: Phase 127.1: Verifier hardening \u2014 fix confidence stats, simp",
-      "[4266c722] Phase 126.9: Phase 126.9: Key Selection \u2192 Pipeline Dispatch",
-      "[50deab71] Phase 126.11: Phase 126.11: Multi-Agent Task Board Analysis + Ma..."
+      "[4266c722] Phase 126.9: Phase 126.9: Key Selection \u2192 Pipeline Dispatch"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -40,9 +40,9 @@
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "running",
+      "status": "error: HTTPConnectionPool(host='127.0.0.1', port=5001): R",
       "port": 5001,
-      "tools_count": 15
+      "tools_count": 0
     },
     "api_keys": {
       "total": 30,
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "32aca6f0",
+    "commit": "d135a06d",
     "dirty": true
   }
 }

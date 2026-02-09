@@ -3,14 +3,16 @@
  * MARKER_126.2B: Style upgrade — Nolan glassmorphism, monospace, no emoji
  * MARKER_127.2B: Activity tab — real-time pipeline progress
  * MARKER_128.5B: Quick-add with dispatch ("Add & Run")
- * Phase 128.5: "Batman Nolan, not Burton" — dark, serious, minimal.
+ * MARKER_128.7A: Toast notifications on pipeline completion
+ * MARKER_128.9A: Keyboard navigation (j/k/Enter/r/a)
+ * Phase 128.7: "Batman Nolan, not Burton" — dark, serious, minimal.
  *
  * @status active
- * @phase 128.5
+ * @phase 128.7
  * @depends FloatingWindow, TaskCard, PipelineStats, LeagueTester, BalancesPanel, ActivityLog
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { FloatingWindow } from '../artifact/FloatingWindow';
 import { useStore } from '../../store/useStore';
 import { TaskCard, TaskData } from './TaskCard';
@@ -36,6 +38,14 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'activity', label: 'Activity' },  // MARKER_127.2B
 ];
 
+// MARKER_128.7A: Toast notification interface
+interface ToastData {
+  id: string;
+  message: string;
+  type: 'success' | 'error';
+  taskId?: string;
+}
+
 // MARKER_126.0C: Tabbed DevPanel
 export function DevPanel({ isOpen, onClose }: DevPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>('board');
@@ -45,6 +55,13 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
   const [newTaskTeam, setNewTaskTeam] = useState<'dragon' | 'titan'>('dragon');
   const [newTaskPreset, setNewTaskPreset] = useState<string>('dragon_silver');  // MARKER_128.5B
   const [summary, setSummary] = useState<{ total: number; by_status: Record<string, number> } | null>(null);
+
+  // MARKER_128.7A: Toast state
+  const [toasts, setToasts] = useState<ToastData[]>([]);
+
+  // MARKER_128.9A: Keyboard navigation state
+  const [selectedTaskIdx, setSelectedTaskIdx] = useState<number>(-1);
+  const boardRef = useRef<HTMLDivElement>(null);
 
   // MARKER_126.9C: Get selected key for dispatch (moved before handlers that use it)
   const selectedKey = useStore((s) => s.selectedKey);
@@ -68,21 +85,44 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
     }
   }, [isOpen]);
 
+  // MARKER_128.7B: Show toast for completed task
+  const showToast = useCallback((message: string, type: 'success' | 'error', taskId?: string) => {
+    const id = `toast_${Date.now()}`;
+    setToasts(prev => [...prev, { id, message, type, taskId }]);
+    // Auto-dismiss after 5s
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 5000);
+  }, []);
+
   // Fetch on open, poll every 30s, and listen for SocketIO updates
   // MARKER_124.3D: Live updates via task-board-updated CustomEvent
+  // MARKER_128.7B: Toast on pipeline completion
   useEffect(() => {
     if (!isOpen) return;
     fetchTasks();
     const interval = setInterval(fetchTasks, 30000);
 
-    const handleBoardUpdate = () => { fetchTasks(); };
+    const handleBoardUpdate = async (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      // Check if a task just completed
+      if (detail?.task_id && (detail?.status === 'done' || detail?.status === 'failed')) {
+        const taskTitle = detail.title || detail.task_id.slice(0, 15);
+        const confidence = detail.stats?.verifier_avg_confidence;
+        const message = detail.status === 'done'
+          ? `Pipeline done: ${taskTitle}${confidence ? ` — ${Math.round(confidence * 100)}%` : ''}`
+          : `Pipeline failed: ${taskTitle}`;
+        showToast(message, detail.status === 'done' ? 'success' : 'error', detail.task_id);
+      }
+      fetchTasks();
+    };
     window.addEventListener('task-board-updated', handleBoardUpdate);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener('task-board-updated', handleBoardUpdate);
     };
-  }, [isOpen, fetchTasks]);
+  }, [isOpen, fetchTasks, showToast]);
 
   // Add task
   const handleAddTask = useCallback(async (andRun: boolean = false) => {
@@ -205,6 +245,58 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
       console.error('[TaskBoard] Dispatch next failed:', err);
     }
   }, [fetchTasks, selectedKey, clearSelectedKey]);
+
+  // MARKER_128.9A: Keyboard navigation for Board tab
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'board') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle if board is focused (not typing in input)
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      switch (e.key) {
+        case 'j': // Move down
+          e.preventDefault();
+          setSelectedTaskIdx(prev => Math.min(prev + 1, tasks.length - 1));
+          break;
+        case 'k': // Move up
+          e.preventDefault();
+          setSelectedTaskIdx(prev => Math.max(prev - 1, 0));
+          break;
+        case 'Enter': // Expand selected (handled in TaskCard via selectedTaskIdx)
+          if (selectedTaskIdx >= 0 && selectedTaskIdx < tasks.length) {
+            e.preventDefault();
+            // Dispatch custom event to expand task
+            window.dispatchEvent(new CustomEvent('task-expand', { detail: { taskId: tasks[selectedTaskIdx].id } }));
+          }
+          break;
+        case 'r': // Run selected task
+          if (selectedTaskIdx >= 0 && selectedTaskIdx < tasks.length) {
+            const task = tasks[selectedTaskIdx];
+            if (task.status === 'pending' || task.status === 'queued') {
+              e.preventDefault();
+              handleDispatchTask(task.id);
+            }
+          }
+          break;
+        case 'a': // Apply all results
+          if (selectedTaskIdx >= 0 && selectedTaskIdx < tasks.length) {
+            const task = tasks[selectedTaskIdx];
+            if (task.status === 'done' || task.status === 'failed') {
+              e.preventDefault();
+              window.dispatchEvent(new CustomEvent('task-apply-all', { detail: { taskId: task.id } }));
+            }
+          }
+          break;
+        case 'Escape':
+          setSelectedTaskIdx(-1);
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, activeTab, tasks, selectedTaskIdx, handleDispatchTask]);
 
   if (!isOpen) return null;
 
@@ -389,10 +481,11 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
                   Use <code style={{ color: '#888' }}>@doctor</code> or <code style={{ color: '#888' }}>@dragon</code> in chat.
                 </div>
               )}
-              {tasks.map((task) => (
+              {tasks.map((task, idx) => (
                 <TaskCard
                   key={task.id}
                   task={task}
+                  isSelected={idx === selectedTaskIdx}
                   onPriorityChange={handlePriorityChange}
                   onRemove={handleRemove}
                   onDispatch={handleDispatchTask}
@@ -473,6 +566,58 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
         {/* ═══ ACTIVITY TAB ═══ MARKER_127.2B */}
         {activeTab === 'activity' && <ActivityLog />}
       </div>
+
+      {/* MARKER_128.7A: Toast notifications */}
+      {toasts.length > 0 && (
+        <div style={{
+          position: 'fixed',
+          bottom: 20,
+          right: 20,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          zIndex: 10000,
+        }}>
+          {toasts.map(toast => (
+            <div
+              key={toast.id}
+              onClick={() => {
+                // Click to switch to Board tab and expand task
+                if (toast.taskId) {
+                  setActiveTab('board');
+                  const idx = tasks.findIndex(t => t.id === toast.taskId);
+                  if (idx >= 0) setSelectedTaskIdx(idx);
+                  window.dispatchEvent(new CustomEvent('task-expand', { detail: { taskId: toast.taskId } }));
+                }
+                setToasts(prev => prev.filter(t => t.id !== toast.id));
+              }}
+              style={{
+                background: '#1a1a1a',
+                borderLeft: `3px solid ${toast.type === 'success' ? '#2d5a3d' : '#5a2d2d'}`,
+                padding: '10px 14px',
+                borderRadius: 3,
+                color: '#ccc',
+                fontSize: 11,
+                fontFamily: 'monospace',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                animation: 'slideUp 0.2s ease-out',
+                maxWidth: 300,
+              }}
+            >
+              {toast.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* MARKER_128.7A: Toast animation keyframes */}
+      <style>{`
+        @keyframes slideUp {
+          from { transform: translateY(20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
     </FloatingWindow>
   );
 }

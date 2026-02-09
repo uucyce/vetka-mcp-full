@@ -435,18 +435,18 @@
     "polza:pza_****9PUM": {
       "provider": "polza",
       "key_masked": "pza_****9PUM",
-      "model": "z-ai/glm-4.7-flash",
-      "tokens_in": 80718,
-      "tokens_out": 85951,
-      "cost_usd": 0.4793890000000002,
+      "model": "xiaomi/mimo-v2-flash",
+      "tokens_in": 100272,
+      "tokens_out": 110081,
+      "cost_usd": 0.659782,
       "balance_usd": null,
       "balance_limit": null,
       "is_free_tier": false,
       "exhausted": false,
-      "last_used": 1770665892.00468,
+      "last_used": 1770667717.7012548,
       "last_balance_check": 0.0,
       "created_at": 1770648789.31645,
-      "call_count": 89
+      "call_count": 120
     },
     "poe:kwod****uLqo": {
       "provider": "poe",
@@ -625,5 +625,5 @@
       "call_count": 0
     }
   },
-  "updated_at": 1770665892.0048609
+  "updated_at": 1770667717.701348
 }

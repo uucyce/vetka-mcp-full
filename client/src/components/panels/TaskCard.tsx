@@ -12,7 +12,7 @@
  * @used_by DevPanel
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { DiffViewer } from './DiffViewer';  // MARKER_128.4B
 
 export interface PipelineStatsData {
@@ -73,6 +73,7 @@ interface PipelineResults {
 
 interface TaskCardProps {
   task: TaskData;
+  isSelected?: boolean;  // MARKER_128.9A: Keyboard navigation highlight
   onPriorityChange?: (taskId: string, priority: number) => void;
   onRemove?: (taskId: string) => void;
   onDispatch?: (taskId: string, preset?: string) => void;  // MARKER_128.5A: Added preset param
@@ -226,7 +227,7 @@ function injectKeyframes() {
 const API_BASE = 'http://localhost:5001/api/debug';
 
 // ── TaskCard ──
-export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCancel }: TaskCardProps) {
+export function TaskCard({ task, isSelected, onPriorityChange, onRemove, onDispatch, onCancel }: TaskCardProps) {
   injectKeyframes();
   const [expanded, setExpanded] = useState(false);
   const [hover, setHover] = useState(false);
@@ -242,6 +243,10 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
   const [applyingSubtask, setApplyingSubtask] = useState<number | null>(null);
   const [applyResult, setApplyResult] = useState<{ idx: number; success: boolean; message: string } | null>(null);
 
+  // MARKER_128.8A: Apply All state
+  const [applyingAll, setApplyingAll] = useState(false);
+  const [applyAllProgress, setApplyAllProgress] = useState<{ current: number; total: number } | null>(null);
+
   // MARKER_128.3B: Local result status (synced from props)
   const [localResultStatus, setLocalResultStatus] = useState(task.result_status);
 
@@ -250,6 +255,54 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
 
   // MARKER_128.4B: View mode for subtask results (code vs diff)
   const [subtaskViewMode, setSubtaskViewMode] = useState<Record<number, 'code' | 'diff'>>({});
+
+  // MARKER_128.9A: Keyboard event handlers
+  useEffect(() => {
+    const handleExpand = (e: CustomEvent) => {
+      if (e.detail?.taskId === task.id) {
+        setExpanded(true);
+        if (!showResults && (task.status === 'done' || task.status === 'failed')) {
+          // Also load results
+          fetchResultsInternal();
+        }
+      }
+    };
+    const handleApplyAll = (e: CustomEvent) => {
+      if (e.detail?.taskId === task.id && results) {
+        applyAllResults();
+      }
+    };
+    window.addEventListener('task-expand', handleExpand as EventListener);
+    window.addEventListener('task-apply-all', handleApplyAll as EventListener);
+    return () => {
+      window.removeEventListener('task-expand', handleExpand as EventListener);
+      window.removeEventListener('task-apply-all', handleApplyAll as EventListener);
+    };
+  }, [task.id, task.status, showResults, results]);
+
+  // Internal fetch results (for keyboard trigger)
+  const fetchResultsInternal = useCallback(async () => {
+    if (results) {
+      setShowResults(true);
+      return;
+    }
+    setResultsLoading(true);
+    setResultsError(null);
+    try {
+      const res = await fetch(`${API_BASE}/pipeline-results/${task.id}`);
+      const data = await res.json();
+      if (data.success) {
+        setResults(data);
+        setShowResults(true);
+      } else {
+        setResultsError(data.error || data.message || 'Failed to load results');
+      }
+    } catch (err) {
+      setResultsError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setResultsLoading(false);
+    }
+  }, [task.id, results]);
 
   const fetchResults = useCallback(async () => {
     if (results) {
@@ -314,6 +367,45 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
     }
   }, [task.id]);
 
+  // MARKER_128.8B: Apply All — sequential apply with progress
+  const applyAllResults = useCallback(async () => {
+    if (!results?.subtasks || applyingAll) return;
+
+    const subtasksWithCode = results.subtasks
+      .map((st, idx) => ({ st, idx }))
+      .filter(({ st }) => st.result && st.status === 'done');
+
+    if (subtasksWithCode.length === 0) return;
+
+    setApplyingAll(true);
+    setApplyAllProgress({ current: 0, total: subtasksWithCode.length });
+
+    let successCount = 0;
+    for (let i = 0; i < subtasksWithCode.length; i++) {
+      const { idx } = subtasksWithCode[i];
+      setApplyAllProgress({ current: i + 1, total: subtasksWithCode.length });
+      try {
+        const res = await fetch(`${API_BASE}/pipeline-results/apply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ task_id: task.id, subtask_idx: idx }),
+        });
+        const data = await res.json();
+        if (data.success) successCount++;
+      } catch {
+        // Continue even if one fails
+      }
+    }
+
+    setApplyingAll(false);
+    setApplyAllProgress(null);
+
+    // Mark as applied if all succeeded
+    if (successCount === subtasksWithCode.length) {
+      updateResultStatus('applied');
+    }
+  }, [results, task.id, applyingAll, updateResultStatus]);
+
   const hasPipelineResults = task.status === 'done' || task.status === 'failed';
 
   const prio = PRIORITY_STYLE[task.priority] || PRIORITY_STYLE[5];
@@ -327,16 +419,19 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
       style={{
         padding: '8px 10px',
         marginBottom: 4,
-        background: hover
-          ? 'rgba(255,255,255,0.04)'
-          : expanded
-            ? 'rgba(255,255,255,0.03)'
-            : 'rgba(255,255,255,0.015)',
+        background: isSelected
+          ? 'rgba(255,255,255,0.06)'
+          : hover
+            ? 'rgba(255,255,255,0.04)'
+            : expanded
+              ? 'rgba(255,255,255,0.03)'
+              : 'rgba(255,255,255,0.015)',
         borderRadius: 4,
-        borderLeft: `2px solid ${prio.bg}`,
+        borderLeft: `2px solid ${isSelected ? '#888' : prio.bg}`,
         cursor: 'pointer',
         transition: 'all 0.15s ease',
-        backdropFilter: hover ? 'blur(2px)' : 'none',
+        backdropFilter: hover || isSelected ? 'blur(2px)' : 'none',
+        outline: isSelected ? '1px solid rgba(255,255,255,0.1)' : 'none',
       }}
       onClick={() => setExpanded(!expanded)}
     >
@@ -612,8 +707,32 @@ export function TaskCard({ task, onPriorityChange, onRemove, onDispatch, onCance
 
               {results.subtasks.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 9, color: '#555', marginBottom: 6, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                    subtasks ({results.subtasks.length})
+                  {/* MARKER_128.8A: Header with Apply All button */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 9, color: '#555', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                      subtasks ({results.subtasks.length})
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        applyAllResults();
+                      }}
+                      disabled={applyingAll || !results.subtasks.some(st => st.result && st.status === 'done')}
+                      style={{
+                        background: applyingAll ? '#333' : '#2d5a2d',
+                        color: applyingAll ? '#888' : '#8a8',
+                        border: '1px solid #3a6a3a',
+                        borderRadius: 2,
+                        fontSize: 9,
+                        padding: '2px 8px',
+                        cursor: applyingAll ? 'wait' : 'pointer',
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      {applyingAll && applyAllProgress
+                        ? `applying ${applyAllProgress.current}/${applyAllProgress.total}...`
+                        : 'apply all'}
+                    </button>
                   </div>
                   {results.subtasks.map((st, idx) => (
                     <div key={idx} style={{ marginBottom: 6 }}>

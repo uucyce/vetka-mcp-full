@@ -82,10 +82,10 @@
   "x-ai/grok-4.1-fast": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770665794.7329578,
+    "last_success": 1770667524.1020532,
     "last_error": 1769776186.1882088,
     "error_code": null,
-    "call_count": 43
+    "call_count": 48
   },
   "arcee-ai/trinity-mini:free": {
     "healthy": true,
@@ -146,10 +146,10 @@
   "z-ai/glm-4.7-flash": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770665764.313111,
+    "last_success": 1770667507.781197,
     "last_error": 1770650980.094848,
     "error_code": null,
-    "call_count": 113
+    "call_count": 124
   },
   "stepfun/step-3.5-flash:free": {
     "healthy": true,
@@ -282,10 +282,10 @@
   "qwen/qwen3-coder-flash": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770643760.21611,
-    "last_error": null,
+    "last_success": 1770667740.8820422,
+    "last_error": 1770667558.867619,
     "error_code": null,
-    "call_count": 78
+    "call_count": 94
   },
   "deepseek/deepseek-v3.2": {
     "healthy": true,
@@ -298,34 +298,34 @@
   "moonshotai/kimi-k2.5": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770665782.750832,
+    "last_success": 1770667535.639596,
     "last_error": 1770656085.521634,
     "error_code": null,
-    "call_count": 46
+    "call_count": 50
   },
   "qwen/qwen3-30b-a3b": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770643629.210451,
+    "last_success": 1770667684.6935198,
     "last_error": null,
     "error_code": null,
-    "call_count": 7
+    "call_count": 9
   },
   "qwen/qwen3-coder": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770665917.141767,
+    "last_success": 1770666293.0061939,
     "last_error": 1770656632.0955431,
     "error_code": null,
-    "call_count": 290
+    "call_count": 334
   },
   "xiaomi/mimo-v2-flash": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770643763.793031,
+    "last_success": 1770667717.700185,
     "last_error": null,
     "error_code": null,
-    "call_count": 21
+    "call_count": 31
   },
   "anthropic/claude-opus-4.6": {
     "healthy": true,

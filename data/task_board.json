@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0",
     "phase": "121",
-    "updated": "2026-02-09T22:34:06.754366"
+    "updated": "2026-02-09T23:04:07.714791"
   },
   "tasks": {
     "tb_1770577538_6": {
@@ -13,8 +13,8 @@
       "complexity": "low",
       "phase_type": "build",
       "preset": null,
-      "assigned_tier": null,
-      "status": "running",
+      "assigned_tier": "dragon_silver",
+      "status": "done",
       "source": "dragon_todo",
       "tags": [
         "chat",
@@ -24,10 +24,23 @@
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157815",
       "started_at": "2026-02-09T22:34:06.754362",
-      "completed_at": null,
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null
+      "completed_at": "2026-02-09T22:45:13.601195",
+      "pipeline_task_id": "task_1770665646",
+      "result_summary": "{'plan': {'subtasks': [{'description': \"Add @titan command to SYSTEM_COMMANDS array in MentionPopup.tsx at MARKER_SCOUT_1 (client/src/components/chat/MentionPopup.tsx:51). Include alias: 'titan', label: 'Titan Core', appropriate icon from ICONS mapping, searchAliases for 'titan_core', and metadata referencing the titan_core preset.\", 'needs_research': False, 'marker': 'MARKER_102.1'}, {'description': 'Verify and add titan_core preset configuration to roleStore.ts (client/src/store/roleStore.ts) ",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "build",
+        "subtasks_total": 7,
+        "subtasks_completed": 7,
+        "success": true,
+        "llm_calls": 14,
+        "tokens_in": 13219,
+        "tokens_out": 12902,
+        "verifier_avg_confidence": 0.4428571428571429,
+        "completed_at": 1770666313.602069,
+        "duration_s": 666.8
+      }
     },
     "tb_1770577538_3": {
       "id": "tb_1770577538_3",
@@ -148,8 +161,8 @@
       "complexity": "high",
       "phase_type": "research",
       "preset": null,
-      "assigned_tier": null,
-      "status": "pending",
+      "assigned_tier": "dragon_silver",
+      "status": "done",
       "source": "titan_todo",
       "tags": [
         "search",
@@ -158,11 +171,24 @@
       ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.158579",
-      "started_at": null,
-      "completed_at": null,
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null
+      "started_at": "2026-02-09T22:45:13.607423",
+      "completed_at": "2026-02-09T23:04:07.707727",
+      "pipeline_task_id": "task_1770666313",
+      "result_summary": "{'plan': {'subtasks': [{'description': 'Analyze existing UnifiedSearchBar implementation in client/src/components/search/ against federated search requirements for Jarvis integration', 'needs_research': False, 'marker': 'MARKER_102.1'}, {'description': 'Design backend router architecture for dispatching queries to file/www/soc/Jarvis APIs with result aggregation strategies', 'needs_research': False, 'marker': 'MARKER_102.2'}, {'description': 'Design SuperAgent integration with user memory (Redis",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "research",
+        "subtasks_total": 4,
+        "subtasks_completed": 4,
+        "success": true,
+        "llm_calls": 7,
+        "tokens_in": 5140,
+        "tokens_out": 10137,
+        "verifier_avg_confidence": 0,
+        "completed_at": 1770667447.708616,
+        "duration_s": 1134.1
+      }
     },
     "tb_1770577538_8": {
       "id": "tb_1770577538_8",
@@ -344,13 +370,57 @@
       "phase_type": "fix",
       "preset": null,
       "assigned_tier": null,
-      "status": "pending",
+      "status": "running",
       "source": "heartbeat_fix",
       "tags": [
         "fix"
       ],
       "dependencies": [],
       "created_at": "2026-02-09T22:34:06.754042",
+      "started_at": "2026-02-09T23:04:07.714787",
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null
+    },
+    "tb_1770666313_2": {
+      "id": "tb_1770666313_2",
+      "title": "broken button",
+      "description": "broken button",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "heartbeat_fix",
+      "tags": [
+        "fix"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T22:45:13.607021",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null
+    },
+    "tb_1770667447_3": {
+      "id": "tb_1770667447_3",
+      "title": "broken button",
+      "description": "broken button",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "heartbeat_fix",
+      "tags": [
+        "fix"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-09T23:04:07.714311",
       "started_at": null,
       "completed_at": null,
       "pipeline_task_id": null,
