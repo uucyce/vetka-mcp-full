@@ -1518,6 +1518,53 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
     # MARKER_119.2_END
     # MARKER_102.3_END
 
+    # MARKER_130.C19D: Language validation — prevent writing JS to .py or Python to .tsx
+    def _validate_code_language(self, code: str, filepath: str) -> tuple[bool, str]:
+        """
+        Validate that code language matches file extension.
+
+        Returns:
+            (is_valid, error_message)
+        """
+        ext = Path(filepath).suffix.lower()
+
+        # Python indicators
+        py_indicators = [
+            'def ', 'class ', 'import ', 'from ', 'async def ',
+            'if __name__', '"""', "'''", 'self.', 'None', 'True', 'False',
+            '@property', '@staticmethod', '@classmethod', 'raise ',
+        ]
+
+        # JavaScript/TypeScript indicators
+        js_indicators = [
+            'const ', 'let ', 'var ', 'function ', '=>', 'export ',
+            'import {', 'from "', "from '", 'interface ', 'type ',
+            'async function', 'await ', 'null', 'undefined', 'true', 'false',
+            'React', 'useState', 'useEffect', '// ', '/* ',
+        ]
+
+        # Count indicators
+        py_score = sum(1 for ind in py_indicators if ind in code)
+        js_score = sum(1 for ind in js_indicators if ind in code)
+
+        # Determine detected language
+        if py_score > js_score + 2:
+            detected = 'python'
+        elif js_score > py_score + 2:
+            detected = 'javascript'
+        else:
+            detected = 'ambiguous'
+
+        # Validate against extension
+        if ext in ('.py',):
+            if detected == 'javascript':
+                return False, f"BLOCKED: JS/TS code detected but target is {ext}"
+        elif ext in ('.ts', '.tsx', '.js', '.jsx'):
+            if detected == 'python':
+                return False, f"BLOCKED: Python code detected but target is {ext}"
+
+        return True, ""
+
     # MARKER_103.4_START: Extract code blocks and write files to disk
     def _extract_and_write_files(self, content: str, subtask: Subtask) -> List[str]:
         """
@@ -1573,6 +1620,30 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # Ensure directory exists and write file
             try:
                 path_obj = Path(filepath)
+
+                # MARKER_130.C19D: Validate code language matches file extension
+                is_valid, error_msg = self._validate_code_language(code, filepath)
+                if not is_valid:
+                    logger.error(f"[Pipeline] {error_msg} for {filepath}")
+                    # Save to staging instead of overwriting
+                    staging_dir = Path("data/vetka_staging/blocked")
+                    staging_dir.mkdir(parents=True, exist_ok=True)
+                    staging_path = staging_dir / f"{path_obj.stem}_BLOCKED{path_obj.suffix}"
+                    staging_path.write_text(code, encoding='utf-8')
+                    logger.warning(f"[Pipeline] Blocked code saved to: {staging_path}")
+                    continue  # Skip this file, don't overwrite
+
+                # MARKER_130.C19D: Extra safety — only overwrite files in safe directories
+                safe_dirs = ('src/vetka_out', 'data/vetka_staging', 'data/artifacts')
+                if path_obj.exists() and not any(str(filepath).startswith(d) for d in safe_dirs):
+                    logger.error(f"[Pipeline] BLOCKED: Cannot overwrite existing file {filepath}")
+                    staging_dir = Path("data/vetka_staging/blocked")
+                    staging_dir.mkdir(parents=True, exist_ok=True)
+                    staging_path = staging_dir / f"{path_obj.stem}_WOULD_OVERWRITE{path_obj.suffix}"
+                    staging_path.write_text(code, encoding='utf-8')
+                    logger.warning(f"[Pipeline] Would-overwrite code saved to: {staging_path}")
+                    continue
+
                 path_obj.parent.mkdir(parents=True, exist_ok=True)
                 path_obj.write_text(code, encoding='utf-8')
                 files_created.append(filepath)

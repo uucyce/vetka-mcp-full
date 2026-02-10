@@ -201,7 +201,8 @@ class HybridSearchService:
                     "timestamp": time.time(),
                 }
 
-                logger.info(
+                # MARKER_130.C19C: Lowered to debug
+                logger.debug(
                     f"[HYBRID] Filename search '{query}' → {len(filename_results)} results "
                     f"({elapsed_ms:.0f}ms)"
                 )
@@ -307,7 +308,8 @@ class HybridSearchService:
                     f"[HYBRID] Cache cleanup: removed {len(oldest)} old entries"
                 )
 
-            logger.info(
+            # MARKER_130.C19C: Lowered to debug
+            logger.debug(
                 f"[HYBRID] Search '{query}' → {len(fused)} results "
                 f"({actual_mode}, {elapsed_ms:.0f}ms, sources={sources_used})"
             )
@@ -434,7 +436,8 @@ class HybridSearchService:
                     "source": "weaviate",
                 })
 
-            logger.info(f"[KEYWORD] Found {len(normalized)} results")
+            # MARKER_130.C19C: Lowered to debug
+            logger.debug(f"[KEYWORD] Found {len(normalized)} results")
             return normalized
 
         except Exception as e:

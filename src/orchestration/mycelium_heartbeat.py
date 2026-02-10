@@ -381,9 +381,33 @@ async def heartbeat_tick(
                 })
                 continue
 
+            # MARKER_130.C19A: Deduplication — skip if task with same title exists or was recently processed
+            task_title = task.task[:100]
+            existing_tasks = board.get_queue()
+
+            # Check active tasks (pending, queued, running, claimed)
+            is_active_duplicate = any(
+                t.get("title") == task_title and t.get("status") in ("pending", "queued", "running", "claimed")
+                for t in existing_tasks
+            )
+
+            # Check recently completed tasks (done/failed within 1 hour)
+            from datetime import datetime, timedelta
+            one_hour_ago = (datetime.now() - timedelta(hours=1)).isoformat()
+            is_recent_duplicate = any(
+                t.get("title") == task_title
+                and t.get("status") in ("done", "failed")
+                and (t.get("completed_at") or "") > one_hour_ago
+                for t in existing_tasks
+            )
+
+            if is_active_duplicate or is_recent_duplicate:
+                logger.debug(f"[Heartbeat] Skipping duplicate task: {task_title[:50]}...")
+                continue
+
             # Add to board for priority-ordered dispatch
             task_id = board.add_task(
-                title=task.task[:100],
+                title=task_title,
                 description=task.task,
                 priority=2 if task.trigger in ("dragon", "titan") else 3,
                 phase_type=task.phase_type,
