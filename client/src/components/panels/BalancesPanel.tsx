@@ -306,31 +306,25 @@ export function BalancesPanel() {
         </div>
       )}
 
-      {/* Provider Summary */}
-      {totals && Object.keys(totals.by_provider).length > 0 && (
-        <div style={{ marginTop: 16, paddingTop: 12, borderTop: `1px solid ${COLORS.border}` }}>
-          <div style={{ fontSize: 9, color: COLORS.textDim, marginBottom: 8, letterSpacing: 0.5 }}>BY PROVIDER</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {Object.entries(totals.by_provider).map(([provider, data]) => (
-              <div
-                key={provider}
-                style={{
-                  padding: '6px 10px',
-                  background: COLORS.bgLight,
-                  borderRadius: 2,
-                  border: `1px solid ${COLORS.border}`
-                }}
-              >
-                <div style={{ color: COLORS.textMuted, fontWeight: 500, fontSize: 10 }}>{provider}</div>
-                <div style={{ color: COLORS.textDim, fontSize: 9, marginTop: 2 }}>
-                  {formatTokens(data.tokens_in + data.tokens_out)} tok, {data.calls} calls
-                  <span style={{ color: COLORS.textMuted, marginLeft: 6 }}>
-                    ${data.cost_usd.toFixed(4)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* Provider Summary — simplified footer stats */}
+      {totals && Object.keys(totals.by_provider).length > 1 && (
+        <div style={{
+          marginTop: 12,
+          paddingTop: 10,
+          borderTop: `1px solid ${COLORS.border}`,
+          display: 'flex',
+          gap: 16,
+          flexWrap: 'wrap',
+          fontSize: 10,
+          color: COLORS.textDim,
+        }}>
+          {Object.entries(totals.by_provider).map(([provider, data]) => (
+            <span key={provider} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ color: COLORS.textMuted }}>{provider}:</span>
+              <span style={{ color: COLORS.text }}>${data.cost_usd.toFixed(3)}</span>
+              <span style={{ color: COLORS.textDimmer }}>({data.calls})</span>
+            </span>
+          ))}
         </div>
       )}
     </div>

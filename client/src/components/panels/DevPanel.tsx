@@ -43,6 +43,15 @@ interface HeartbeatSettings {
   tasks_dispatched: number;
 }
 
+// MARKER_131.C22: Format interval for display
+function formatInterval(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d`;
+  return `${Math.floor(seconds / 604800)}w`;
+}
+
 const TABS: { id: Tab; label: string }[] = [
   { id: 'board', label: 'Board' },
   { id: 'stats', label: 'Stats' },
@@ -658,111 +667,185 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
                 dispatch next {pendingCount > 0 && `(${pendingCount})`}
               </button>
 
-              {/* MARKER_131.C22: Heartbeat controls */}
+              {/* MARKER_131.C22: Heartbeat controls — unified style */}
               <div
                 onClick={() => setHeartbeatExpanded(!heartbeatExpanded)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 8px',
-                  background: 'rgba(255,255,255,0.02)',
+                  gap: 8,
+                  padding: '8px 10px',
+                  background: 'rgba(255,255,255,0.03)',
                   borderRadius: 3,
                   cursor: 'pointer',
-                  fontSize: 9,
+                  fontSize: 11,
                   fontFamily: 'monospace',
                 }}
               >
                 <span style={{
-                  width: 6,
-                  height: 6,
+                  width: 8,
+                  height: 8,
                   borderRadius: '50%',
-                  background: heartbeat?.enabled ? '#4a4' : '#444',
-                  animation: heartbeat?.enabled ? 'pulse 2s infinite' : 'none',
+                  background: heartbeat?.enabled ? '#6a6' : '#444',
+                  boxShadow: heartbeat?.enabled ? '0 0 6px rgba(100,160,100,0.4)' : 'none',
                 }} />
-                <span style={{ color: '#666' }}>heartbeat</span>
-                <span style={{ color: '#444' }}>
-                  {heartbeat ? `${heartbeat.interval}s` : '-'}
+                <span style={{ color: '#aaa', fontWeight: 500 }}>Heartbeat</span>
+                <span style={{
+                  color: heartbeat?.enabled ? '#8a8' : '#666',
+                  padding: '2px 6px',
+                  background: heartbeat?.enabled ? 'rgba(100,160,100,0.1)' : 'rgba(255,255,255,0.03)',
+                  borderRadius: 2,
+                  fontSize: 10,
+                }}>
+                  {heartbeat?.enabled ? 'ON' : 'OFF'}
                 </span>
                 <span style={{ flex: 1 }} />
-                <span style={{ color: '#444' }}>{heartbeatExpanded ? '▾' : '▸'}</span>
+                <span style={{ color: '#666' }}>
+                  {heartbeat ? formatInterval(heartbeat.interval) : '-'}
+                </span>
+                <span style={{ color: '#555' }}>{heartbeatExpanded ? '▾' : '▸'}</span>
               </div>
 
               {heartbeatExpanded && heartbeat && (
                 <div style={{
-                  padding: '8px 10px',
+                  padding: '10px 12px',
                   background: 'rgba(255,255,255,0.02)',
                   borderRadius: 3,
-                  fontSize: 9,
+                  fontSize: 11,
                   fontFamily: 'monospace',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={heartbeat.enabled}
-                        onChange={(e) => updateHeartbeat({ enabled: e.target.checked })}
-                        style={{ accentColor: '#555' }}
-                      />
-                      <span style={{ color: '#888' }}>enabled</span>
-                    </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                    {/* ON/OFF toggle buttons */}
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); updateHeartbeat({ enabled: true }); }}
+                        style={{
+                          padding: '4px 12px',
+                          background: heartbeat.enabled ? '#2a3a2a' : 'transparent',
+                          border: `1px solid ${heartbeat.enabled ? '#3a4a3a' : '#333'}`,
+                          borderRadius: '3px 0 0 3px',
+                          color: heartbeat.enabled ? '#8a8' : '#555',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        ON
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); updateHeartbeat({ enabled: false }); }}
+                        style={{
+                          padding: '4px 12px',
+                          background: !heartbeat.enabled ? '#3a2a2a' : 'transparent',
+                          border: `1px solid ${!heartbeat.enabled ? '#4a3a3a' : '#333'}`,
+                          borderRadius: '0 3px 3px 0',
+                          color: !heartbeat.enabled ? '#a88' : '#555',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        OFF
+                      </button>
+                    </div>
                     <span style={{ flex: 1 }} />
-                    <span style={{ color: '#555' }}>interval:</span>
+                    <span style={{ color: '#888' }}>interval:</span>
                     <select
                       value={heartbeat.interval}
-                      onChange={(e) => updateHeartbeat({ interval: parseInt(e.target.value) })}
+                      onChange={(e) => { e.stopPropagation(); updateHeartbeat({ interval: parseInt(e.target.value) }); }}
+                      onClick={(e) => e.stopPropagation()}
                       style={{
                         background: '#1a1a1a',
                         border: '1px solid #333',
-                        borderRadius: 2,
-                        color: '#888',
-                        fontSize: 9,
-                        padding: '2px 4px',
+                        borderRadius: 3,
+                        color: '#ccc',
+                        fontSize: 11,
+                        padding: '4px 8px',
                       }}
                     >
-                      <option value="30">30s</option>
-                      <option value="60">60s</option>
-                      <option value="120">2m</option>
-                      <option value="300">5m</option>
+                      <option value="30">30 sec</option>
+                      <option value="60">1 min</option>
+                      <option value="120">2 min</option>
+                      <option value="300">5 min</option>
+                      <option value="900">15 min</option>
+                      <option value="1800">30 min</option>
+                      <option value="3600">1 hour</option>
+                      <option value="21600">6 hours</option>
+                      <option value="43200">12 hours</option>
+                      <option value="86400">1 day</option>
+                      <option value="604800">1 week</option>
                     </select>
                   </div>
-                  <div style={{ display: 'flex', gap: 12, color: '#555' }}>
-                    <span>ticks: {heartbeat.total_ticks}</span>
-                    <span>dispatched: {heartbeat.tasks_dispatched}</span>
+                  <div style={{ display: 'flex', gap: 16, color: '#777', fontSize: 10 }}>
+                    <span>ticks: <span style={{ color: '#aaa' }}>{heartbeat.total_ticks}</span></span>
+                    <span>dispatched: <span style={{ color: '#aaa' }}>{heartbeat.tasks_dispatched}</span></span>
                     {heartbeat.last_tick > 0 && (
-                      <span>last: {new Date(heartbeat.last_tick * 1000).toLocaleTimeString()}</span>
+                      <span>last: <span style={{ color: '#aaa' }}>{new Date(heartbeat.last_tick * 1000).toLocaleTimeString()}</span></span>
                     )}
                   </div>
                 </div>
               )}
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 9 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }}>
-                  <input
-                    type="checkbox"
-                    checked={useStore.getState().persistPositions}
-                    onChange={(e) => useStore.getState().setPersistPositions(e.target.checked)}
-                    style={{ accentColor: '#555' }}
-                  />
-                  <span style={{ color: '#444', fontFamily: 'monospace' }}>persist positions</span>
-                </label>
+              {/* Save positions — unified style */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '8px 10px',
+                background: 'rgba(255,255,255,0.02)',
+                borderRadius: 3,
+                fontSize: 11,
+                fontFamily: 'monospace',
+              }}>
+                <span style={{ color: '#888' }}>Save Positions</span>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button
+                    onClick={() => useStore.getState().setPersistPositions(true)}
+                    style={{
+                      padding: '4px 10px',
+                      background: useStore.getState().persistPositions ? '#2a3a2a' : 'transparent',
+                      border: `1px solid ${useStore.getState().persistPositions ? '#3a4a3a' : '#333'}`,
+                      borderRadius: '3px 0 0 3px',
+                      color: useStore.getState().persistPositions ? '#8a8' : '#555',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ON
+                  </button>
+                  <button
+                    onClick={() => useStore.getState().setPersistPositions(false)}
+                    style={{
+                      padding: '4px 10px',
+                      background: !useStore.getState().persistPositions ? '#3a2a2a' : 'transparent',
+                      border: `1px solid ${!useStore.getState().persistPositions ? '#4a3a3a' : '#333'}`,
+                      borderRadius: '0 3px 3px 0',
+                      color: !useStore.getState().persistPositions ? '#a88' : '#555',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    OFF
+                  </button>
+                </div>
+                <span style={{ flex: 1 }} />
                 <button
-                  onClick={() => {
-                    useStore.getState().resetLayout();
-                  }}
+                  onClick={() => useStore.getState().resetLayout()}
                   style={{
-                    padding: '3px 8px',
+                    padding: '4px 12px',
                     background: 'transparent',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                    borderRadius: 2,
-                    color: '#555',
+                    border: '1px solid #333',
+                    borderRadius: 3,
+                    color: '#666',
                     cursor: 'pointer',
-                    fontSize: 9,
+                    fontSize: 10,
                     fontFamily: 'monospace',
                     transition: 'all 0.15s',
                   }}
                 >
-                  reset
+                  Reset Layout
                 </button>
               </div>
             </div>
