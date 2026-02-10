@@ -34,6 +34,15 @@ const API_BASE = 'http://localhost:5001/api/debug';
 
 type Tab = 'board' | 'stats' | 'test' | 'balance' | 'activity' | 'watcher';  // MARKER_129.1B
 
+// MARKER_131.C22: Heartbeat settings interface
+interface HeartbeatSettings {
+  enabled: boolean;
+  interval: number;
+  last_tick: number;
+  total_ticks: number;
+  tasks_dispatched: number;
+}
+
 const TABS: { id: Tab; label: string }[] = [
   { id: 'board', label: 'Board' },
   { id: 'stats', label: 'Stats' },
@@ -77,6 +86,10 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
   // MARKER_130.C18A: Active agents state
   const [activeAgents, setActiveAgents] = useState<AgentStatus[]>([]);
 
+  // MARKER_131.C22: Heartbeat settings state
+  const [heartbeat, setHeartbeat] = useState<HeartbeatSettings | null>(null);
+  const [heartbeatExpanded, setHeartbeatExpanded] = useState(false);
+
   // MARKER_128.9A: Keyboard navigation state
   const [selectedTaskIdx, setSelectedTaskIdx] = useState<number>(-1);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -106,12 +119,40 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
         const agentsData = await agentsRes.json();
         setActiveAgents(agentsData.agents || []);
       }
+
+      // MARKER_131.C22: Fetch heartbeat settings
+      const hbRes = await fetch(`${API_BASE}/heartbeat/settings`);
+      if (hbRes.ok) {
+        const hbData = await hbRes.json();
+        if (hbData.success) {
+          setHeartbeat(hbData);
+        }
+      }
     } catch (err) {
       console.error('[TaskBoard] Fetch failed:', err);
     } finally {
       setLoading(false);
     }
   }, [isOpen]);
+
+  // MARKER_131.C22: Update heartbeat settings
+  const updateHeartbeat = useCallback(async (updates: Partial<HeartbeatSettings>) => {
+    try {
+      const res = await fetch(`${API_BASE}/heartbeat/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setHeartbeat(prev => prev ? { ...prev, ...updates } : null);
+        }
+      }
+    } catch (err) {
+      console.error('[Heartbeat] Update failed:', err);
+    }
+  }, []);
 
   // MARKER_128.7B: Show toast for completed task
   const showToast = useCallback((message: string, type: 'success' | 'error', taskId?: string) => {
@@ -616,6 +657,84 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
               >
                 dispatch next {pendingCount > 0 && `(${pendingCount})`}
               </button>
+
+              {/* MARKER_131.C22: Heartbeat controls */}
+              <div
+                onClick={() => setHeartbeatExpanded(!heartbeatExpanded)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 8px',
+                  background: 'rgba(255,255,255,0.02)',
+                  borderRadius: 3,
+                  cursor: 'pointer',
+                  fontSize: 9,
+                  fontFamily: 'monospace',
+                }}
+              >
+                <span style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: heartbeat?.enabled ? '#4a4' : '#444',
+                  animation: heartbeat?.enabled ? 'pulse 2s infinite' : 'none',
+                }} />
+                <span style={{ color: '#666' }}>heartbeat</span>
+                <span style={{ color: '#444' }}>
+                  {heartbeat ? `${heartbeat.interval}s` : '-'}
+                </span>
+                <span style={{ flex: 1 }} />
+                <span style={{ color: '#444' }}>{heartbeatExpanded ? '▾' : '▸'}</span>
+              </div>
+
+              {heartbeatExpanded && heartbeat && (
+                <div style={{
+                  padding: '8px 10px',
+                  background: 'rgba(255,255,255,0.02)',
+                  borderRadius: 3,
+                  fontSize: 9,
+                  fontFamily: 'monospace',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={heartbeat.enabled}
+                        onChange={(e) => updateHeartbeat({ enabled: e.target.checked })}
+                        style={{ accentColor: '#555' }}
+                      />
+                      <span style={{ color: '#888' }}>enabled</span>
+                    </label>
+                    <span style={{ flex: 1 }} />
+                    <span style={{ color: '#555' }}>interval:</span>
+                    <select
+                      value={heartbeat.interval}
+                      onChange={(e) => updateHeartbeat({ interval: parseInt(e.target.value) })}
+                      style={{
+                        background: '#1a1a1a',
+                        border: '1px solid #333',
+                        borderRadius: 2,
+                        color: '#888',
+                        fontSize: 9,
+                        padding: '2px 4px',
+                      }}
+                    >
+                      <option value="30">30s</option>
+                      <option value="60">60s</option>
+                      <option value="120">2m</option>
+                      <option value="300">5m</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: 12, color: '#555' }}>
+                    <span>ticks: {heartbeat.total_ticks}</span>
+                    <span>dispatched: {heartbeat.tasks_dispatched}</span>
+                    {heartbeat.last_tick > 0 && (
+                      <span>last: {new Date(heartbeat.last_tick * 1000).toLocaleTimeString()}</span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 9 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', flex: 1 }}>

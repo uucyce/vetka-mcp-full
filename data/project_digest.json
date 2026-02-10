@@ -1,18 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-10T11:38:29.858642+00:00",
+  "last_updated": "2026-02-10T11:46:24.307290+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 130,
-    "subphase": "5",
-    "name": "Pipeline Safety + Heartbeat Dedup",
+    "number": 131,
+    "subphase": "1",
+    "name": "131.2: BMAD Pipeline Integration + EvalAgent Retry",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 130.5 DONE! Pipeline Safety + Heartbeat Dedup",
+    "headline": "Phase 131.1 DONE! 131.2: BMAD Pipeline Integration + EvalAgent Retry",
     "key_achievements": [
+      "[23945347] Phase 131.1: Phase 131.1-131.2: BMAD Pipeline Integration + EvalAgent Ret",
       "[04613efe] Phase 130.6: Phase 130.6: Verify-before-write + Pipeline Safety Hardening",
       "[fc784887] Phase 130.5: Phase 130.5: Pipeline Safety + Heartbeat Dedup",
       "[73aa04f2] Phase 129.2: Phase 129.2: Chat Sidebar \u2014 Skeleton + Infinite Scroll",
@@ -21,8 +22,7 @@
       "[d135a06d] Phase 128.5: Phase 128.5-6: Wave 2 \u2014 Pipeline Trigger, Diff Viewer, Activ",
       "[32aca6f0] Phase 128.2: Phase 128.2-128.3: Results Apply + Lifecycle",
       "[600e52e1] Phase 127.4: Phase 127.4: Doctor Triage Flow Fix",
-      "[c5543aa0] Phase 127.3: Phase 127.3: Retry loop hardening \u2014 fix silent pass-through ",
-      "[d61626bb] Phase 127.2: Phase 127.2-127.3: Activity Log + Key Refresh Fix"
+      "[c5543aa0] Phase 127.3: Phase 127.3: Retry loop hardening \u2014 fix silent pass-through "
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -30,7 +30,7 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2234,
+      "points": 2235,
       "vectors": "none",
       "hnsw_status": "active"
     },
@@ -40,9 +40,9 @@
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "running",
+      "status": "error: HTTPConnectionPool(host='127.0.0.1', port=5001): R",
       "port": 5001,
-      "tools_count": 15
+      "tools_count": 0
     },
     "api_keys": {
       "total": 30,
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "df5df507",
+    "commit": "feb1d491",
     "dirty": true
   }
 }

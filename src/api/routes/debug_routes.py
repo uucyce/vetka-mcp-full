@@ -2409,3 +2409,77 @@ async def get_watcher_stats() -> Dict[str, Any]:
         "recent_events": recent_events,
         "timestamp": time.time(),
     }
+
+
+# ============================================================
+# MARKER_131.C22: HEARTBEAT SETTINGS
+# ============================================================
+
+@router.get("/heartbeat/settings")
+async def get_heartbeat_settings() -> Dict[str, Any]:
+    """Get current heartbeat daemon settings.
+
+    Returns:
+        enabled: bool - whether heartbeat is enabled
+        interval: int - interval in seconds
+        status: str - running/stopped
+        last_tick: float - timestamp of last tick
+    """
+    import json
+    from pathlib import Path
+
+    enabled = os.getenv("VETKA_HEARTBEAT_ENABLED", "true").lower() == "true"
+    interval = int(os.getenv("VETKA_HEARTBEAT_INTERVAL", "60"))
+
+    # Read last tick from heartbeat_state.json
+    state_file = Path(__file__).parent.parent.parent.parent / "data" / "heartbeat_state.json"
+    last_tick = 0
+    total_ticks = 0
+    tasks_dispatched = 0
+    if state_file.exists():
+        try:
+            state = json.loads(state_file.read_text())
+            last_tick = state.get("last_tick", 0)
+            total_ticks = state.get("total_ticks", 0)
+            tasks_dispatched = state.get("tasks_dispatched", 0)
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "enabled": enabled,
+        "interval": interval,
+        "last_tick": last_tick,
+        "total_ticks": total_ticks,
+        "tasks_dispatched": tasks_dispatched,
+        "env_vars": {
+            "VETKA_HEARTBEAT_ENABLED": os.getenv("VETKA_HEARTBEAT_ENABLED", "true"),
+            "VETKA_HEARTBEAT_INTERVAL": os.getenv("VETKA_HEARTBEAT_INTERVAL", "60"),
+        }
+    }
+
+
+@router.post("/heartbeat/settings")
+async def update_heartbeat_settings(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Update heartbeat daemon settings (runtime only, not persisted to env).
+
+    Body params:
+    - enabled: bool
+    - interval: int (seconds)
+
+    Note: Changes are applied via environment variables for the next tick.
+    Restart server for permanent changes.
+    """
+    if "enabled" in body:
+        os.environ["VETKA_HEARTBEAT_ENABLED"] = "true" if body["enabled"] else "false"
+
+    if "interval" in body:
+        interval = max(10, min(body["interval"], 3600))  # 10s to 1h
+        os.environ["VETKA_HEARTBEAT_INTERVAL"] = str(interval)
+
+    return {
+        "success": True,
+        "enabled": os.getenv("VETKA_HEARTBEAT_ENABLED", "true").lower() == "true",
+        "interval": int(os.getenv("VETKA_HEARTBEAT_INTERVAL", "60")),
+        "message": "Settings updated. Changes take effect on next tick."
+    }
