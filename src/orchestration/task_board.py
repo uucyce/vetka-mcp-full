@@ -744,13 +744,24 @@ class TaskBoard:
             pipeline_status = result.get("status", "unknown")
             completed = pipeline_status == "done"
 
+            # MARKER_C21A: Expanded result storage (2KB limit)
+            pipeline_results = {
+                "subtasks_completed": result.get("results", {}).get("subtasks_completed", 0),
+                "subtasks_total": result.get("results", {}).get("subtasks_total", 0),
+                "files_created": result.get("results", {}).get("files_created", [])[:20],  # Limit to 20 files
+                "stats": result.get("results", {}).get("stats", {}),
+                "approval_status": result.get("results", {}).get("approval_status", "unknown"),
+                "success": result.get("results", {}).get("success", completed),
+            }
+            result_summary = json.dumps(pipeline_results)[:2000]  # 2KB limit
+
             self.update_task(
                 task_id,
                 status="done" if completed else "failed",
                 completed_at=datetime.now().isoformat(),
                 pipeline_task_id=result.get("task_id"),
                 assigned_tier=pipeline.preset_name,
-                result_summary=str(result.get("results", {}))[:500]
+                result_summary=result_summary
             )
 
             logger.info(f"[TaskBoard] Task {task_id} dispatched → {'done' if completed else 'failed'}")

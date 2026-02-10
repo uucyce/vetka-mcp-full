@@ -737,12 +737,35 @@ async def health_check(request: Request):
             "elisya": request.app.state.ELISYA_ENABLED,
         }
 
+    # MARKER_C21B: Enhanced health status
+    import os
+    heartbeat_status = {
+        "running": heartbeat_task is not None and not heartbeat_task.done() if 'heartbeat_task' in dir() else False,
+        "interval": int(os.getenv("VETKA_HEARTBEAT_INTERVAL", "60")),
+        "enabled": os.getenv("VETKA_HEARTBEAT_ENABLED", "true").lower() == "true",
+    }
+
+    bmad_status = {
+        "approval_mode": "mycelium",
+        "l2_scout": "active",
+        "auto_write": os.getenv("VETKA_AUTO_WRITE", "false").lower() == "true",
+    }
+
+    pipeline_safety = {
+        "verify_before_write": True,  # MARKER_130.6
+        "language_validation": True,  # MARKER_130.C19D
+        "safe_directories": ["src/vetka_out", "data/vetka_staging", "data/artifacts"],
+    }
+
     return {
         "status": "healthy",
         "version": "2.0.0",
         "framework": "FastAPI",
-        "phase": "39.8",
+        "phase": "131",
         "components": components_status,
+        "heartbeat_daemon": heartbeat_status,
+        "bmad": bmad_status,
+        "pipeline_safety": pipeline_safety,
     }
 
 
