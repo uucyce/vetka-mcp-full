@@ -1,18 +1,20 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-10T00:06:16.217609+00:00",
+  "last_updated": "2026-02-10T11:23:16.246425+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 129,
-    "subphase": "2",
-    "name": "Chat Sidebar \u2014 Skeleton + Infinite Scroll",
+    "number": 130,
+    "subphase": "5",
+    "name": "Pipeline Safety + Heartbeat Dedup",
     "status": "COMPLETED",
     "started": "2026-02-08",
     "completed": "2026-02-08"
   },
   "summary": {
-    "headline": "Phase 129.2 DONE! Chat Sidebar \u2014 Skeleton + Infinite Scroll",
+    "headline": "Phase 130.5 DONE! Pipeline Safety + Heartbeat Dedup",
     "key_achievements": [
+      "[04613efe] Phase 130.6: Phase 130.6: Verify-before-write + Pipeline Safety Hardening",
+      "[fc784887] Phase 130.5: Phase 130.5: Pipeline Safety + Heartbeat Dedup",
       "[73aa04f2] Phase 129.2: Phase 129.2: Chat Sidebar \u2014 Skeleton + Infinite Scroll",
       "[318bed66] Phase 129.1: Phase 129.1+3: Watcher Stats + Performance Guard",
       "[30928660] Phase 128.7: Phase 128.7-9: Wave 3 \u2014 Toast, Apply All, Keyboard Shortcuts",
@@ -20,9 +22,7 @@
       "[32aca6f0] Phase 128.2: Phase 128.2-128.3: Results Apply + Lifecycle",
       "[600e52e1] Phase 127.4: Phase 127.4: Doctor Triage Flow Fix",
       "[c5543aa0] Phase 127.3: Phase 127.3: Retry loop hardening \u2014 fix silent pass-through ",
-      "[d61626bb] Phase 127.2: Phase 127.2-127.3: Activity Log + Key Refresh Fix",
-      "[442487c2] Phase 127.2: Phase 127.2: Pipeline activity broadcast for DevPanel stream",
-      "[5a52e47d] Phase 126.12: Phase 126.12: Stats Monitor \u2014 Live Refresh + Running Tasks"
+      "[d61626bb] Phase 127.2: Phase 127.2-127.3: Activity Log + Key Refresh Fix"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -30,12 +30,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2164,
+      "points": 2232,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2156,
+      "points": 2223,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -142,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "1757f8a0",
+    "commit": "fc784887",
     "dirty": true
   }
 }

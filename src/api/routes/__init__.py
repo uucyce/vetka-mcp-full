@@ -50,6 +50,9 @@ from .cam_routes import router as cam_router
 # MARKER_108_5_ACTIVITY_FEED - Phase 108.4 Step 5: Unified Activity Feed
 from .activity_routes import router as activity_router
 
+# MARKER_131.C20C: Universal Task API
+from .task_routes import router as task_router
+
 
 def get_all_routers() -> List[APIRouter]:
     """
@@ -80,6 +83,7 @@ def get_all_routers() -> List[APIRouter]:
         debug_router,  # /api/debug/* (Phase 80 - Browser Agent Bridge)
         cam_router,  # /api/cam/* (Phase 98 - CAM-Emoji Link)
         activity_router,  # /api/activity/* (Phase 108.4 Step 5 - Activity Feed)
+        task_router,  # /api/tasks/* (Phase 131.C20C - Universal Task API)
     ]
 
 
@@ -148,4 +152,5 @@ __all__ = [
     "debug_router",
     "cam_router",
     "activity_router",
+    "task_router",
 ]

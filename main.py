@@ -100,7 +100,45 @@ async def lifespan(app: FastAPI):
                 logger.error(f"[Cleanup] Failed: {e}")
                 await asyncio.sleep(3600)  # Continue after error
 
+    # === MARKER_131.C20A: Heartbeat daemon (60s loop) ===
+    async def heartbeat_daemon():
+        """Run heartbeat tick every 60 seconds to process @dragon/@doctor tasks."""
+        from src.orchestration.mycelium_heartbeat import heartbeat_tick
+
+        HEARTBEAT_INTERVAL = int(os.getenv("VETKA_HEARTBEAT_INTERVAL", "60"))
+        MCP_DEV_GROUP_ID = "609c0d9a-b5bc-426b-b134-d693023bdac8"
+
+        # Wait for server to be fully ready
+        await asyncio.sleep(10)
+        logger.info(f"[Heartbeat] Daemon started (interval={HEARTBEAT_INTERVAL}s)")
+
+        while True:
+            try:
+                await asyncio.sleep(HEARTBEAT_INTERVAL)
+
+                # Check if heartbeat is enabled
+                enabled = os.getenv("VETKA_HEARTBEAT_ENABLED", "true").lower() == "true"
+                if not enabled:
+                    logger.debug("[Heartbeat] Daemon disabled via env")
+                    continue
+
+                # Run heartbeat tick
+                result = await heartbeat_tick(group_id=MCP_DEV_GROUP_ID, dry_run=False)
+                tasks_found = len(result.get("results", []))
+                if tasks_found > 0:
+                    logger.info(f"[Heartbeat] Tick completed: {tasks_found} tasks processed")
+                else:
+                    logger.debug("[Heartbeat] Tick completed: no tasks")
+
+            except asyncio.CancelledError:
+                logger.info("[Heartbeat] Daemon cancelled")
+                break
+            except Exception as e:
+                logger.error(f"[Heartbeat] Daemon error: {e}")
+                await asyncio.sleep(HEARTBEAT_INTERVAL)  # Continue after error
+
     cleanup_task = None
+    heartbeat_task = None  # MARKER_131.C20A
 
     # Create a mock Flask-like app object for compatibility
     # (components_init expects Flask app for app.config access)
@@ -192,6 +230,26 @@ async def lifespan(app: FastAPI):
     # Start periodic cleanup task
     cleanup_task = asyncio.create_task(periodic_approval_cleanup())
     logger.info("[Startup] Periodic cleanup task started")
+
+    # MARKER_131.C20B: Auto-resume orphaned tasks on server restart
+    try:
+        from src.orchestration.task_board import TaskBoard
+        board = TaskBoard()
+        queue = board.get_queue()
+        orphaned = [t for t in queue if t.get("status") in ("running", "claimed")]
+        if orphaned:
+            for task in orphaned:
+                task_id = task.get("id")
+                # Reset to pending so heartbeat can re-dispatch
+                board.update_task(task_id, status="pending", result_summary="Server restart - task reset")
+                logger.info(f"[Startup] Reset orphaned task {task_id} from {task.get('status')} to pending")
+            logger.info(f"[Startup] Reset {len(orphaned)} orphaned tasks")
+    except Exception as e:
+        logger.warning(f"[Startup] Auto-resume check failed: {e}")
+
+    # MARKER_131.C20A: Start heartbeat daemon (60s loop for @dragon/@doctor tasks)
+    heartbeat_task = asyncio.create_task(heartbeat_daemon())
+    logger.info("[Startup] Heartbeat daemon started (60s interval)")
 
     # === PHASE 56: Start model health checks ===
     # === PHASE 60.4: Auto-discover Ollama models ===
@@ -325,6 +383,15 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
         logger.info("[Shutdown] Cleanup task cancelled")
+
+    # MARKER_131.C20A: Cancel heartbeat daemon
+    if heartbeat_task:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("[Shutdown] Heartbeat daemon cancelled")
 
     # === PHASE 56: Stop model health checks and group chat cleanup ===
     if hasattr(app.state, "model_registry") and app.state.model_registry:

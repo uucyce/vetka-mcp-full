@@ -1836,8 +1836,9 @@ async def get_pipeline_results(task_id: str) -> Dict[str, Any]:
 
 
 # MARKER_128.2B: Apply pipeline result — write code to disk
+# MARKER_131.C20E: Camera fly-to on approve
 @router.post("/pipeline-results/apply")
-async def apply_pipeline_result(data: Dict[str, Any]) -> Dict[str, Any]:
+async def apply_pipeline_result(request: Request, data: Dict[str, Any]) -> Dict[str, Any]:
     """Apply a subtask result — extract code blocks and write to disk.
 
     Parses file path from code comment (// file: path/to/file.ext or # file: path)
@@ -1930,6 +1931,24 @@ async def apply_pipeline_result(data: Dict[str, Any]) -> Dict[str, Any]:
             "error": "No file paths found in code blocks. Expected '// file: path' or '# file: path' comment."
         }
 
+    # MARKER_131.C20E: Camera fly-to the first written file
+    if files_written:
+        socketio = getattr(request.app.state, 'socketio', None)
+        if socketio:
+            try:
+                first_file = files_written[0]
+                await socketio.emit('camera_control', {
+                    'action': 'focus',
+                    'target': first_file,
+                    'zoom': 'close',
+                    'highlight': True,
+                    'animate': True,
+                    'source': 'pipeline_apply'
+                }, namespace='/')
+                logger.info(f"[APPLY] Camera fly-to: {first_file}")
+            except Exception as e:
+                logger.warning(f"[APPLY] Camera fly-to failed: {e}")
+
     return {
         "success": True,
         "files_written": files_written,
@@ -1939,8 +1958,9 @@ async def apply_pipeline_result(data: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # MARKER_128.3A: Update pipeline result status (applied/rejected/rework)
+# MARKER_131.C20E: Camera fly-to on approve
 @router.patch("/pipeline-results/{task_id}/status")
-async def update_result_status(task_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+async def update_result_status(request: Request, task_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Mark pipeline result as applied/rejected/rework.
 
     Args:
@@ -1979,6 +1999,43 @@ async def update_result_status(task_id: str, data: Dict[str, Any]) -> Dict[str, 
         logger.info(f"[RESULT_STATUS] Task {task_id} marked for rework, status reset to pending")
 
     logger.info(f"[RESULT_STATUS] Task {task_id} marked as {status}" + (f": {reason}" if reason else ""))
+
+    # MARKER_131.C20E: Camera fly-to on "applied" status
+    if status == "applied":
+        socketio = getattr(request.app.state, 'socketio', None)
+        if socketio:
+            try:
+                # Try to get a target file from pipeline results
+                pipeline_task_id = task.get("pipeline_task_id")
+                target_file = None
+                if pipeline_task_id:
+                    import json
+                    from pathlib import Path
+                    pipeline_file = Path(__file__).parent.parent.parent.parent / "data" / "pipeline_tasks.json"
+                    if pipeline_file.exists():
+                        pipeline_data = json.loads(pipeline_file.read_text())
+                        pt = pipeline_data.get(pipeline_task_id, {})
+                        for s in pt.get("subtasks", []):
+                            result = s.get("result", "")
+                            # Extract first file path from result
+                            import re
+                            match = re.search(r'(?://|#)\s*file:\s*([^\n]+)', result)
+                            if match:
+                                target_file = match.group(1).strip()
+                                break
+
+                if target_file:
+                    await socketio.emit('camera_control', {
+                        'action': 'focus',
+                        'target': target_file,
+                        'zoom': 'medium',
+                        'highlight': True,
+                        'animate': True,
+                        'source': 'result_applied'
+                    }, namespace='/')
+                    logger.info(f"[RESULT_STATUS] Camera fly-to: {target_file}")
+            except Exception as e:
+                logger.warning(f"[RESULT_STATUS] Camera fly-to failed: {e}")
 
     return {
         "success": True,
