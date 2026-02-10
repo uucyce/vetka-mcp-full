@@ -22,7 +22,7 @@ interface ProposalNodeProps {
 
 function ProposalNodeComponent({ data, selected }: ProposalNodeProps) {
   const borderColor = getStatusBorderColor(data.status);
-  const confidenceColor = data.confidence ? getConfidenceColor(data.confidence) : NOLAN_PALETTE.borderNormal;
+  const confidenceColor = data.confidence ? getConfidenceColor(data.confidence) : NOLAN_PALETTE.borderLight;
   const isReady = data.status === 'done' && data.confidence;
 
   return (
@@ -37,7 +37,7 @@ function ProposalNodeComponent({ data, selected }: ProposalNodeProps) {
         type="target"
         position={Position.Top}
         style={{
-          background: NOLAN_PALETTE.borderNormal,
+          background: NOLAN_PALETTE.borderLight,
           width: 6,
           height: 6,
           top: 0,
@@ -55,11 +55,11 @@ function ProposalNodeComponent({ data, selected }: ProposalNodeProps) {
           width: 80,
           height: 50,
           transform: 'translate(-50%, -50%) rotate(45deg)',
-          background: NOLAN_PALETTE.bgNode,
+          background: NOLAN_PALETTE.bgLight,
           border: `2px solid ${borderColor}`,
           borderRadius: 4,
           boxShadow: selected
-            ? `0 0 0 2px ${NOLAN_PALETTE.borderAccent}`
+            ? `0 0 0 2px ${NOLAN_PALETTE.text}`
             : isReady
               ? `0 0 12px ${confidenceColor}60`
               : 'none',

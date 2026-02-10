@@ -26,6 +26,7 @@ import { WatcherStats } from './WatcherStats';  // MARKER_129.1B
 import { ArtifactViewer } from './ArtifactViewer';  // MARKER_C23C
 import { AgentStatusBar } from './AgentStatusBar';  // MARKER_C23D
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';  // MARKER_129.C14B
+import { MyceliumCommandCenter } from '../mcc/MyceliumCommandCenter';  // MARKER_135.4B: DAG tab
 
 interface DevPanelProps {
   isOpen?: boolean;
@@ -35,7 +36,7 @@ interface DevPanelProps {
 
 const API_BASE = 'http://localhost:5001/api/debug';
 
-type Tab = 'board' | 'stats' | 'test' | 'balance' | 'activity' | 'watcher' | 'artifacts';  // MARKER_129.1B + MARKER_C23C
+type Tab = 'dag' | 'board' | 'stats' | 'test' | 'balance' | 'activity' | 'watcher' | 'artifacts';  // MARKER_135.4B: +dag
 
 // MARKER_131.C22: Heartbeat settings interface
 interface HeartbeatSettings {
@@ -56,6 +57,7 @@ function formatInterval(seconds: number): string {
 }
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'dag', label: 'DAG' },  // MARKER_135.4B: First tab
   { id: 'board', label: 'Board' },
   { id: 'stats', label: 'Stats' },
   { id: 'test', label: 'Test' },
@@ -86,7 +88,7 @@ interface AgentStatus {
 // MARKER_126.0C: Tabbed DevPanel
 // MARKER_134.C34C: Added standalone mode for MCC window
 export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPanelProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('board');
+  const [activeTab, setActiveTab] = useState<Tab>('dag');  // MARKER_135.4B: DAG default
   // MARKER_134.C34J: Task status filter
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'running' | 'done'>('all');
   const [tasks, setTasks] = useState<TaskData[]>([]);
@@ -457,6 +459,14 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
         color: '#e0e0e0',
         fontSize: 13,
       }}>
+        {/* ═══ DAG TAB ═══ */}
+        {/* MARKER_135.4B: DAG visualization tab */}
+        {activeTab === 'dag' && (
+          <div style={{ flex: 1, minHeight: 0, margin: -12, marginTop: -12 }}>
+            <MyceliumCommandCenter />
+          </div>
+        )}
+
         {/* ═══ BOARD TAB ═══ */}
         {activeTab === 'board' && (
           <>

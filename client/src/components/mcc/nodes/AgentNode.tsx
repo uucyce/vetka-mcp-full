@@ -22,31 +22,31 @@ interface AgentNodeProps {
   selected?: boolean;
 }
 
-// Role colors (subtle, within Nolan palette)
+// Role colors (subtle, muted — strictly Nolan palette tones)
 const ROLE_COLORS: Record<AgentRole, string> = {
-  scout: '#5a6a5a',
-  architect: '#6a6a5a',
-  researcher: '#5a5a6a',
-  coder: '#5a6a6a',
-  verifier: '#6a5a6a',
+  scout: '#4a5a4a',
+  architect: '#5a5a4a',
+  researcher: '#4a4a5a',
+  coder: '#4a5a5a',
+  verifier: '#5a4a5a',
 };
 
 function AgentNodeComponent({ data, selected }: AgentNodeProps) {
   const borderColor = getStatusBorderColor(data.status);
   const isRunning = data.status === 'running';
-  const roleColor = data.role ? ROLE_COLORS[data.role] : NOLAN_PALETTE.borderNormal;
+  const roleColor = data.role ? ROLE_COLORS[data.role] : NOLAN_PALETTE.borderLight;
 
   return (
     <div
       style={{
-        background: NOLAN_PALETTE.bgNode,
+        background: NOLAN_PALETTE.bgLight,
         border: `1.5px solid ${borderColor}`,
         borderRadius: 8,
         padding: '8px 12px',
         minWidth: 100,
         fontFamily: 'monospace',
         boxShadow: selected
-          ? `0 0 0 2px ${NOLAN_PALETTE.borderAccent}`
+          ? `0 0 0 2px ${NOLAN_PALETTE.text}`
           : isRunning
             ? `0 0 6px ${NOLAN_PALETTE.statusRunning}30`
             : 'none',
@@ -56,7 +56,7 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
       <Handle
         type="target"
         position={Position.Top}
-        style={{ background: NOLAN_PALETTE.borderNormal, width: 6, height: 6 }}
+        style={{ background: NOLAN_PALETTE.borderLight, width: 6, height: 6 }}
       />
 
       {/* Role badge */}
@@ -77,7 +77,7 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
         />
         <span
           style={{
-            color: NOLAN_PALETTE.textBright,
+            color: NOLAN_PALETTE.text,
             fontSize: 11,
             fontWeight: 500,
           }}
@@ -105,7 +105,7 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
       <Handle
         type="source"
         position={Position.Bottom}
-        style={{ background: NOLAN_PALETTE.borderNormal, width: 6, height: 6 }}
+        style={{ background: NOLAN_PALETTE.borderLight, width: 6, height: 6 }}
       />
     </div>
   );

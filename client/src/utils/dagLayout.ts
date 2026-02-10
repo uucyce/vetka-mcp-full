@@ -19,40 +19,48 @@ const NODE_DIMENSIONS: Record<DAGNodeType, { width: number; height: number }> = 
   proposal: { width: 140, height: 55 },
 };
 
-// Nolan monochrome palette
+// MARKER_135.4A: Strict Nolan monochrome palette (from BalancesPanel)
+// NO bright colors allowed — only these muted tones
 export const NOLAN_PALETTE = {
   // Backgrounds
-  bg: '#0a0a0a',
-  bgNode: '#111111',
-  bgPanel: '#0d0d0d',
+  bg: '#111',           // Main background
+  bgLight: '#1a1a1a',   // Cards, hover states
+  bgDim: '#0d0d0d',     // Darker areas, panels
 
-  // Borders & Lines
-  borderDim: '#333333',
-  borderNormal: '#555555',
-  borderBright: '#888888',
-  borderAccent: '#e0e0e0',
+  // Borders
+  border: '#222',       // Default border
+  borderDim: '#222',    // Alias for consistency
+  borderLight: '#333',  // Accent/active border
 
-  // Text
-  textDim: '#555555',
-  textNormal: '#888888',
-  textBright: '#cccccc',
-  textAccent: '#e0e0e0',
+  // Text hierarchy
+  text: '#e0e0e0',      // Primary text
+  textMuted: '#888',    // Secondary text
+  textNormal: '#888',   // Alias
+  textDim: '#666',      // Tertiary text
+  textDimmer: '#444',   // Disabled/placeholder
+  textAccent: '#e0e0e0', // Alias for headers
 
-  // Status (subtle, not saturated)
-  statusPending: '#444444',
-  statusRunning: '#e0e0e0',
-  statusDone: '#6a8a6a',
-  statusFailed: '#8a6a6a',
+  // Status (MUTED — no saturated colors!)
+  statusPending: '#444',
+  statusRunning: '#6a6a8a',   // Muted blue-gray
+  statusDone: '#6a8a6a',      // Muted green
+  statusFailed: '#8a6a6a',    // Muted red
+
+  // Status backgrounds (for subtle highlights)
+  statusPendingBg: '#1a1a1a',
+  statusRunningBg: '#1a1a2a',
+  statusDoneBg: '#1a2a1a',
+  statusFailedBg: '#2a1a1a',
 
   // Confidence (for proposals)
   confHigh: '#6a8a6a',
-  confMid: '#8a8a6a',
+  confMid: '#7a7a6a',
   confLow: '#8a6a6a',
 
-  // Edges
-  edgeStructural: '#4a5a4a',
-  edgeDataflow: '#5a6a7a',
-  edgeTemporal: '#6a5a4a',
+  // Edges (subtle, not prominent)
+  edgeStructural: '#333',
+  edgeDataflow: '#3a3a4a',
+  edgeTemporal: '#4a3a3a',
 };
 
 /**

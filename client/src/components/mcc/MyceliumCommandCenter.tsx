@@ -174,6 +174,31 @@ export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCen
     ? dagNodes.find(n => n.id === selectedNode) || null
     : null;
 
+  // MARKER_135.4D: Handle node actions (approve, reject, retry)
+  const handleNodeAction = useCallback(async (action: string) => {
+    if (!selectedNode) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/dag/node/${selectedNode}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Action failed: HTTP ${res.status}`);
+      }
+
+      const result = await res.json();
+      console.log('[DAG] Action result:', result);
+
+      // Refresh DAG after action
+      fetchDAG();
+    } catch (err) {
+      console.error('[DAG] Action error:', err);
+    }
+  }, [selectedNode, fetchDAG]);
+
   return (
     <div
       style={{
@@ -323,10 +348,7 @@ export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCen
             <DetailPanel
               node={selectedNodeData}
               stats={stats}
-              onAction={(action) => {
-                console.log('Node action:', action, selectedNode);
-                // TODO: Implement actions (approve, reject, retry)
-              }}
+              onAction={handleNodeAction}
             />
           </div>
         )}

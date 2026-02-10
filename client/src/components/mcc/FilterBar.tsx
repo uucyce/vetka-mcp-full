@@ -25,8 +25,8 @@ export function FilterBar({ filters, onChange }: FilterBarProps) {
         alignItems: 'center',
         gap: 16,
         padding: '6px 12px',
-        borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
-        background: NOLAN_PALETTE.bgPanel,
+        borderBottom: `1px solid ${NOLAN_PALETTE.border}`,
+        background: NOLAN_PALETTE.bgDim,
       }}
     >
       {/* Status filter */}
@@ -105,9 +105,9 @@ function FilterButton({
       style={{
         padding: '3px 8px',
         background: active ? 'rgba(255,255,255,0.1)' : 'transparent',
-        border: `1px solid ${active ? NOLAN_PALETTE.borderNormal : NOLAN_PALETTE.borderDim}`,
+        border: `1px solid ${active ? NOLAN_PALETTE.borderLight : NOLAN_PALETTE.border}`,
         borderRadius: 3,
-        color: active ? NOLAN_PALETTE.textBright : NOLAN_PALETTE.textNormal,
+        color: active ? NOLAN_PALETTE.text : NOLAN_PALETTE.textMuted,
         fontSize: 9,
         cursor: 'pointer',
         transition: 'all 0.15s',

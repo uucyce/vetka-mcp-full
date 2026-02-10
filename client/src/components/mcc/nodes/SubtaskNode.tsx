@@ -28,14 +28,14 @@ function SubtaskNodeComponent({ data, selected }: SubtaskNodeProps) {
   return (
     <div
       style={{
-        background: NOLAN_PALETTE.bgNode,
+        background: NOLAN_PALETTE.bgLight,
         border: `1px solid ${borderColor}`,
         borderRadius: 3,
         padding: '6px 10px',
         minWidth: 120,
         fontFamily: 'monospace',
         boxShadow: selected
-          ? `0 0 0 2px ${NOLAN_PALETTE.borderAccent}`
+          ? `0 0 0 2px ${NOLAN_PALETTE.text}`
           : isRunning
             ? `0 0 4px ${NOLAN_PALETTE.statusRunning}20`
             : 'none',
@@ -45,13 +45,13 @@ function SubtaskNodeComponent({ data, selected }: SubtaskNodeProps) {
       <Handle
         type="target"
         position={Position.Top}
-        style={{ background: NOLAN_PALETTE.borderDim, width: 5, height: 5 }}
+        style={{ background: NOLAN_PALETTE.border, width: 5, height: 5 }}
       />
 
       {/* Subtask label */}
       <div
         style={{
-          color: NOLAN_PALETTE.textBright,
+          color: NOLAN_PALETTE.text,
           fontSize: 10,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
@@ -85,7 +85,7 @@ function SubtaskNodeComponent({ data, selected }: SubtaskNodeProps) {
       <Handle
         type="source"
         position={Position.Bottom}
-        style={{ background: NOLAN_PALETTE.borderDim, width: 5, height: 5 }}
+        style={{ background: NOLAN_PALETTE.border, width: 5, height: 5 }}
       />
     </div>
   );

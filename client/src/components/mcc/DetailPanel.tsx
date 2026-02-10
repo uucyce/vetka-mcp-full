@@ -23,7 +23,7 @@ export function DetailPanel({ node, stats, onAction }: DetailPanelProps) {
         flexDirection: 'column',
         height: '100%',
         padding: 12,
-        background: NOLAN_PALETTE.bgPanel,
+        background: NOLAN_PALETTE.bgDim,
         overflow: 'auto',
       }}
     >
@@ -47,8 +47,8 @@ export function DetailPanel({ node, stats, onAction }: DetailPanelProps) {
             style={{
               display: 'inline-block',
               padding: '2px 6px',
-              background: NOLAN_PALETTE.bgNode,
-              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              background: NOLAN_PALETTE.bgLight,
+              border: `1px solid ${NOLAN_PALETTE.border}`,
               borderRadius: 3,
               fontSize: 9,
               color: NOLAN_PALETTE.textNormal,
@@ -151,7 +151,7 @@ function MetaItem({ label, value }: { label: string; value: string | number }) {
       <div style={{ fontSize: 8, color: NOLAN_PALETTE.textDim, textTransform: 'uppercase' }}>
         {label}
       </div>
-      <div style={{ fontSize: 11, color: NOLAN_PALETTE.textBright }}>
+      <div style={{ fontSize: 11, color: NOLAN_PALETTE.text }}>
         {value}
       </div>
     </div>
@@ -162,7 +162,7 @@ function StatRow({ label, value, color }: { label: string; value: string | numbe
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
       <span style={{ color: NOLAN_PALETTE.textNormal }}>{label}</span>
-      <span style={{ color: color || NOLAN_PALETTE.textBright }}>{value}</span>
+      <span style={{ color: color || NOLAN_PALETTE.text }}>{value}</span>
     </div>
   );
 }

@@ -27,14 +27,14 @@ function TaskNodeComponent({ data, selected }: TaskNodeProps) {
   return (
     <div
       style={{
-        background: NOLAN_PALETTE.bgNode,
+        background: NOLAN_PALETTE.bgLight,
         border: `2px solid ${borderColor}`,
         borderRadius: 4,
         padding: '10px 14px',
         minWidth: 140,
         fontFamily: 'monospace',
         boxShadow: selected
-          ? `0 0 0 2px ${NOLAN_PALETTE.borderAccent}`
+          ? `0 0 0 2px ${NOLAN_PALETTE.text}`
           : isRunning
             ? `0 0 8px ${NOLAN_PALETTE.statusRunning}40`
             : 'none',
@@ -45,7 +45,7 @@ function TaskNodeComponent({ data, selected }: TaskNodeProps) {
       <Handle
         type="target"
         position={Position.Top}
-        style={{ background: NOLAN_PALETTE.borderNormal, width: 8, height: 8 }}
+        style={{ background: NOLAN_PALETTE.borderLight, width: 8, height: 8 }}
       />
 
       {/* Task label */}
@@ -96,7 +96,7 @@ function TaskNodeComponent({ data, selected }: TaskNodeProps) {
       <Handle
         type="source"
         position={Position.Bottom}
-        style={{ background: NOLAN_PALETTE.borderNormal, width: 8, height: 8 }}
+        style={{ background: NOLAN_PALETTE.borderLight, width: 8, height: 8 }}
       />
     </div>
   );
