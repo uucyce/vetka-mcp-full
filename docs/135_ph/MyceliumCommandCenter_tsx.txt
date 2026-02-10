@@ -1,0 +1,355 @@
+**Отлично!** Вот **полный, готовый к копированию код** для вкладки **Overview** в `MyceliumCommandCenter.tsx`, включая два ключевых компонента:
+
+- **EfficiencyKPI** — главный индекс эффективности (RadialBar + breakdown)
+- **LeagueRadar** — радар-сравнение пресетов/агентов (League-style)
+
+Всё в **Nolan Batman** стиле: глубокий чёрный, холодные teal-gray акценты, monospace, sharp edges, минимализм.
+
+### 1. Создай новые файлы в `client/src/components/dev/charts/`
+
+#### `EfficiencyKPI.tsx`
+
+```tsx
+/**
+ * EfficiencyKPI — Главный индекс эффективности Mycelium
+ * MARKER_134.C34K: Overview KPI with composite efficiency score
+ * Style: Nolan monochrome — cold industrial
+ */
+
+import { useMemo } from 'react';
+import { ResponsiveContainer, RadialBarChart, RadialBar, PolarAngleAxis, Tooltip } from 'recharts';
+
+const COLORS = {
+  bg: '#0a0a0a',
+  panel: '#111111',
+  border: '#222222',
+  text: '#e0e0e0',
+  textMuted: '#aaaaaa',
+  accent: '#4a6b8a',
+  success: '#6a8a6a',
+  warning: '#aa8a6a',
+  error: '#8a6a6a',
+};
+
+interface EfficiencyKPIProps {
+  successRate: number;        // 0–100
+  avgDurationSec: number;     // секунды на задачу
+  tokensPerSubtask: number;   // токены на субтаск
+  knowledgeLevel: number;     // 0–1 (средний KL)
+}
+
+export default function EfficiencyKPI({
+  successRate,
+  avgDurationSec,
+  tokensPerSubtask,
+  knowledgeLevel,
+}: EfficiencyKPIProps) {
+  const efficiencyScore = useMemo(() => {
+    // Speed: <60s = 100, >300s → падает
+    const speedScore = Math.max(0, 100 - (avgDurationSec / 60) * 20);
+    // Tokens: <800 = 100, >2000 → падает
+    const tokenScore = Math.max(0, 100 - (tokensPerSubtask / 800) * 60);
+    // Knowledge Level contribution
+    const klScore = knowledgeLevel * 100;
+    // Weighted composite
+    return Math.round(
+      successRate * 0.45 +
+      speedScore * 0.25 +
+      tokenScore * 0.20 +
+      klScore * 0.10
+    );
+  }, [successRate, avgDurationSec, tokensPerSubtask, knowledgeLevel]);
+
+  const data = [
+    {
+      name: 'Efficiency',
+      value: efficiencyScore,
+      fill: efficiencyScore > 85 ? COLORS.success : efficiencyScore > 65 ? COLORS.accent : COLORS.warning,
+    },
+  ];
+
+  return (
+    <div
+      style={{
+        background: COLORS.panel,
+        padding: '16px',
+        borderRadius: '4px',
+        border: `1px solid ${COLORS.border}`,
+        textAlign: 'center',
+      }}
+    >
+      <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 12, letterSpacing: 1 }}>
+        MYCELIUM EFFICIENCY INDEX
+      </div>
+
+      <ResponsiveContainer width="100%" height={180}>
+        <RadialBarChart
+          cx="50%"
+          cy="50%"
+          innerRadius="70%"
+          outerRadius="90%"
+          data={data}
+          startAngle={180}
+          endAngle={-180}
+        >
+          <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+          <RadialBar
+            minAngle={15}
+            dataKey="value"
+            cornerRadius={6}
+            background={{ fill: '#1a1a1a' }}
+          />
+          <text
+            x="50%"
+            y="50%"
+            textAnchor="middle"
+            dominantBaseline="middle"
+            style={{
+              fontSize: 42,
+              fontWeight: 700,
+              fill: data[0].fill,
+              fontFamily: 'monospace',
+            }}
+          >
+            {efficiencyScore}
+          </text>
+        </RadialBarChart>
+      </ResponsiveContainer>
+
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-around',
+          marginTop: 12,
+          fontSize: 11,
+          color: COLORS.textMuted,
+        }}
+      >
+        <div>
+          <div style={{ color: COLORS.text }}>Success</div>
+          <div style={{ fontWeight: 600 }}>{successRate}%</div>
+        </div>
+        <div>
+          <div style={{ color: COLORS.text }}>Speed</div>
+          <div style={{ fontWeight: 600 }}>{Math.round(100 - (avgDurationSec / 60) * 20)}%</div>
+        </div>
+        <div>
+          <div style={{ color: COLORS.text }}>Tokens</div>
+          <div style={{ fontWeight: 600 }}>{Math.round(100 - (tokensPerSubtask / 800) * 60)}%</div>
+        </div>
+        <div>
+          <div style={{ color: COLORS.text }}>KL</div>
+          <div style={{ fontWeight: 600 }}>{Math.round(knowledgeLevel * 100)}%</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+#### `LeagueRadar.tsx`
+
+```tsx
+/**
+ * LeagueRadar — Сравнение пресетов/лиги агентов
+ * MARKER_134.C34L: Radar chart for preset efficiency comparison
+ */
+
+import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend, ResponsiveContainer, Tooltip } from 'recharts';
+
+const COLORS = {
+  success: '#6a8a6a',
+  accent: '#4a6b8a',
+  warning: '#aa8a6a',
+  knowledge: '#8aa0b0',
+};
+
+interface LeagueData {
+  preset: string;
+  success: number;
+  speed: number;
+  tokens: number;
+  knowledge: number;
+  overall: number;
+}
+
+const DEFAULT_DATA: LeagueData[] = [
+  { preset: 'Bronze', success: 82, speed: 91, tokens: 88, knowledge: 65, overall: 81 },
+  { preset: 'Silver', success: 91, speed: 78, tokens: 72, knowledge: 84, overall: 86 },
+  { preset: 'Gold', success: 96, speed: 65, tokens: 58, knowledge: 93, overall: 88 },
+  { preset: 'Titan', success: 98, speed: 55, tokens: 45, knowledge: 97, overall: 90 },
+  // Реальные данные будут приходить из API
+];
+
+interface LeagueRadarProps {
+  data?: LeagueData[];
+}
+
+export default function LeagueRadar({ data = DEFAULT_DATA }: LeagueRadarProps) {
+  return (
+    <div
+      style={{
+        background: '#111111',
+        padding: '16px',
+        borderRadius: '4px',
+        border: '1px solid #222222',
+      }}
+    >
+      <div style={{ fontSize: 11, color: '#aaaaaa', marginBottom: 12, letterSpacing: 1 }}>
+        PRESET LEAGUE COMPARISON
+      </div>
+
+      <ResponsiveContainer width="100%" height={340}>
+        <RadarChart outerRadius="80%" data={data}>
+          <PolarGrid stroke="#222222" />
+          <PolarAngleAxis dataKey="preset" stroke="#666666" fontSize={11} />
+          <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} />
+          <Radar
+            name="Success"
+            dataKey="success"
+            stroke={COLORS.success}
+            fill={COLORS.success}
+            fillOpacity={0.2}
+          />
+          <Radar
+            name="Speed"
+            dataKey="speed"
+            stroke={COLORS.accent}
+            fill={COLORS.accent}
+            fillOpacity={0.2}
+          />
+          <Radar
+            name="Tokens"
+            dataKey="tokens"
+            stroke={COLORS.warning}
+            fill={COLORS.warning}
+            fillOpacity={0.2}
+          />
+          <Radar
+            name="Knowledge"
+            dataKey="knowledge"
+            stroke={COLORS.knowledge}
+            fill={COLORS.knowledge}
+            fillOpacity={0.2}
+          />
+          <Legend wrapperStyle={{ fontSize: 11, color: '#aaaaaa' }} />
+          <Tooltip
+            contentStyle={{
+              background: '#1a1a1a',
+              border: '1px solid #222222',
+              color: '#e0e0e0',
+              fontSize: 11,
+            }}
+          />
+        </RadarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+```
+
+### 2. Интеграция в `MyceliumCommandCenter.tsx`
+
+Добавь состояния и fetch в компонент:
+
+```tsx
+// В начале компонента MyceliumCommandCenter
+const [efficiency, setEfficiency] = useState({
+  successRate: 0,
+  avgDurationSec: 0,
+  tokensPerSubtask: 0,
+  knowledgeLevel: 0,
+});
+const [leagueData, setLeagueData] = useState<any[]>([]);
+
+// В fetchOverview (добавь параллельный fetch)
+const fetchOverview = useCallback(async () => {
+  try {
+    // ... существующие fetch (pipelines и т.д.)
+
+    // Новый эндпоинт (должен быть в debug_routes.py или pipeline_history.py)
+    const effRes = await fetch('http://localhost:5001/api/pipeline/efficiency');
+    if (effRes.ok) {
+      const eff = await effRes.json();
+      setEfficiency({
+        successRate: eff.summary?.success_rate || 0,
+        avgDurationSec: eff.summary?.avg_duration_s || 0,
+        tokensPerSubtask: eff.summary?.tokens_per_subtask || 0,
+        knowledgeLevel: eff.summary?.avg_knowledge_level || 0,
+      });
+    }
+
+    // League / presets data
+    const leagueRes = await fetch('http://localhost:5001/api/pipeline/league');
+    if (leagueRes.ok) {
+      const data = await leagueRes.json();
+      setLeagueData(data.presets || []);
+    }
+  } catch (err) {
+    console.error('Overview fetch error:', err);
+  }
+}, []);
+
+// В return — в Overview tab
+{activeTab === 'overview' && (
+  <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+    {/* KPI */}
+    <EfficiencyKPI
+      successRate={efficiency.successRate}
+      avgDurationSec={efficiency.avgDurationSec}
+      tokensPerSubtask={efficiency.tokensPerSubtask}
+      knowledgeLevel={efficiency.knowledgeLevel}
+    />
+
+    {/* League Radar */}
+    <LeagueRadar data={leagueData.length > 0 ? leagueData : undefined} />
+
+    {/* Можно добавить ещё: Token Burn Timeline, Active Pipelines count и т.д. */}
+  </div>
+)}
+```
+
+### 3. Что нужно добавить на бэкенде (если ещё нет)
+
+В `pipeline_history.py` или `debug_routes.py`:
+
+```python
+@router.get("/pipeline/efficiency")
+async def get_pipeline_efficiency():
+    history = _load_history()
+    if not history:
+        return {"summary": {"success_rate": 0, "avg_duration_s": 0, "tokens_per_subtask": 0, "avg_knowledge_level": 0}}
+
+    total = len(history)
+    success = sum(1 for r in history if r["status"] == "done")
+    avg_duration = sum(r["total_duration_s"] for r in history) / total
+    total_tokens = sum(r["tokens_in"] + r["tokens_out"] for r in history)
+    total_subtasks = sum(r["subtasks_total"] for r in history) or 1
+    # Предполагаем, что knowledge_level приходит из другого источника или 0.75 default
+    avg_kl = 0.75  # Замени на реальный расчёт
+
+    return {
+        "summary": {
+            "success_rate": round(success / total * 100, 1),
+            "avg_duration_s": round(avg_duration, 1),
+            "tokens_per_subtask": round(total_tokens / total_subtasks, 0),
+            "avg_knowledge_level": avg_kl,
+        }
+    }
+
+@router.get("/pipeline/league")
+async def get_league_stats():
+    # Группировка по preset → success, speed, tokens, knowledge
+    # Возвращает массив [{preset: "Gold", success: 96, ...}]
+    ...
+```
+
+Готово! Теперь Overview выглядит мощно и профессионально.
+
+Хочешь дальше:
+- **«Давай Token Burn Timeline + AreaChart»**
+- **«Добавь Pipeline Gantt с RALF retries»**
+- **«Сделаем Agent Heatmap»**
+- Или **«Всё сразу в Overview»**?
+
+Скажи, куда двигаемся! 🔥

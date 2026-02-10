@@ -1,0 +1,403 @@
+Отлично, давайте продолжим с визуализацией.
+
+Сейчас сделаем **два варианта**, которые очень хорошо дополняют друг друга:
+
+1. **Token Burn Timeline** — график расхода токенов во времени (area + line)
+2. **Pipeline Gantt** — горизонтальная временная шкала выполнения пайплайнов с отметками RALF-retries
+
+Оба компонента в стиле Nolan (холодный монохром, teal-gray акценты, минимализм).
+
+### 1. Token Burn Timeline
+
+Создайте файл:  
+`client/src/components/dev/charts/TokenBurnTimeline.tsx`
+
+```tsx
+/**
+ * TokenBurnTimeline — График расхода токенов во времени
+ * MARKER_134.C34N: Real-time token usage visualization
+ * Показывает daily / hourly burn + cumulative
+ */
+
+import { useMemo } from 'react';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Line,
+  Legend,
+} from 'recharts';
+
+const COLORS = {
+  bg: '#0a0a0a',
+  panel: '#111111',
+  border: '#222222',
+  text: '#e0e0e0',
+  textMuted: '#aaaaaa',
+  burnLine: '#aa8a6a',        // warning orange-gray
+  burnArea: '#aa8a6a33',      // полупрозрачный
+  cumulative: '#4a6b8a',
+};
+
+interface TokenBurnData {
+  time: string;           // "2026-02-10 14:00" или "14:00"
+  tokens_burned: number;  // за интервал
+  cumulative: number;     // нарастающий итог
+  pipelines_active?: number;
+}
+
+interface TokenBurnTimelineProps {
+  data: TokenBurnData[];
+  height?: number;
+}
+
+export default function TokenBurnTimeline({
+  data,
+  height = 340,
+}: TokenBurnTimelineProps) {
+  const formattedData = useMemo(() => {
+    if (!data.length) return [];
+
+    let cum = 0;
+    return data.map(item => {
+      cum += item.tokens_burned;
+      return {
+        ...item,
+        cumulative: cum,
+      };
+    });
+  }, [data]);
+
+  const totalBurned = useMemo(
+    () => formattedData.reduce((sum, d) => sum + d.tokens_burned, 0),
+    [formattedData]
+  );
+
+  if (!formattedData.length) {
+    return (
+      <div style={{
+        height,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: COLORS.textMuted,
+        fontSize: 13,
+      }}>
+        Нет данных по расходу токенов
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        background: COLORS.panel,
+        padding: '16px',
+        borderRadius: '4px',
+        border: `1px solid ${COLORS.border}`,
+      }}
+    >
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'baseline',
+        marginBottom: 12,
+      }}>
+        <div style={{
+          fontSize: 11,
+          color: COLORS.textMuted,
+          letterSpacing: 1,
+        }}>
+          TOKEN BURN TIMELINE
+        </div>
+        <div style={{
+          fontSize: 13,
+          color: COLORS.burnLine,
+          fontWeight: 500,
+        }}>
+          Total burned: {totalBurned.toLocaleString()}
+        </div>
+      </div>
+
+      <ResponsiveContainer width="100%" height={height}>
+        <AreaChart
+          data={formattedData}
+          margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#222222" />
+          <XAxis
+            dataKey="time"
+            stroke={COLORS.textMuted}
+            fontSize={11}
+            tickLine={false}
+            axisLine={{ stroke: '#222222' }}
+          />
+          <YAxis
+            yAxisId="left"
+            stroke={COLORS.burnLine}
+            fontSize={11}
+            tickLine={false}
+            axisLine={{ stroke: '#222222' }}
+            tickFormatter={(value) => `${value.toLocaleString()}`}
+          />
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            stroke={COLORS.cumulative}
+            fontSize={11}
+            tickLine={false}
+            axisLine={{ stroke: '#222222' }}
+            tickFormatter={(value) => `${value.toLocaleString()}`}
+          />
+          <Tooltip
+            contentStyle={{
+              background: '#1a1a1a',
+              border: '1px solid #333',
+              color: COLORS.text,
+              fontSize: 12,
+            }}
+            labelStyle={{ color: COLORS.textMuted }}
+          />
+          <Legend wrapperStyle={{ fontSize: 11, color: COLORS.textMuted }} />
+
+          <Area
+            yAxisId="left"
+            type="monotone"
+            dataKey="tokens_burned"
+            name="Burned / interval"
+            stroke={COLORS.burnLine}
+            fill={COLORS.burnArea}
+            strokeWidth={2}
+          />
+          <Line
+            yAxisId="right"
+            type="monotone"
+            dataKey="cumulative"
+            name="Cumulative"
+            stroke={COLORS.cumulative}
+            strokeWidth={2}
+            dot={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+```
+
+### 2. Pipeline Gantt (с отметками RALF retries)
+
+Создайте файл:  
+`client/src/components/dev/charts/PipelineGantt.tsx`
+
+```tsx
+/**
+ * PipelineGantt — Горизонтальная временная шкала пайплайнов
+ * Показывает длительность, статус и RALF retries
+ */
+
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+
+const COLORS = {
+  panel: '#111111',
+  border: '#222222',
+  textMuted: '#aaaaaa',
+  done: '#6a8a6a',
+  failed: '#8a6a6a',
+  running: '#4a6b8a',
+  ralf: '#aa8a6a',
+};
+
+interface PipelineRun {
+  task_title: string;
+  total_duration_s: number;
+  status: 'done' | 'failed' | 'running';
+  ralf_retries: number;
+  start_time?: string;
+  end_time?: string;
+}
+
+interface PipelineGanttProps {
+  runs: PipelineRun[];
+  height?: number;
+}
+
+export default function PipelineGantt({
+  runs,
+  height = 380,
+}: PipelineGanttProps) {
+  // Сортируем по длительности (самые долгие сверху)
+  const sortedRuns = [...runs].sort((a, b) => b.total_duration_s - a.total_duration_s);
+
+  const getBarColor = (status: string) => {
+    if (status === 'done') return COLORS.done;
+    if (status === 'failed') return COLORS.failed;
+    return COLORS.running;
+  };
+
+  return (
+    <div
+      style={{
+        background: COLORS.panel,
+        padding: '16px',
+        borderRadius: '4px',
+        border: `1px solid ${COLORS.border}`,
+      }}
+    >
+      <div style={{
+        fontSize: 11,
+        color: COLORS.textMuted,
+        marginBottom: 12,
+        letterSpacing: 1,
+      }}>
+        PIPELINE DURATION GANTT (с RALF retries)
+      </div>
+
+      <ResponsiveContainer width="100%" height={height}>
+        <BarChart
+          data={sortedRuns}
+          layout="vertical"
+          margin={{ top: 5, right: 30, left: 140, bottom: 5 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#222222" />
+          <XAxis
+            type="number"
+            stroke={COLORS.textMuted}
+            fontSize={11}
+            tickFormatter={(v) => `${v}s`}
+          />
+          <YAxis
+            type="category"
+            dataKey="task_title"
+            stroke={COLORS.textMuted}
+            fontSize={11}
+            width={130}
+            tick={{ width: 130, textAnchor: 'end' }}
+          />
+          <Tooltip
+            contentStyle={{
+              background: '#1a1a1a',
+              border: '1px solid #333',
+              color: COLORS.text,
+            }}
+            labelStyle={{ color: COLORS.textMuted }}
+            formatter={(value: number) => [`${value.toFixed(1)} сек`, 'Длительность']}
+          />
+
+          <Bar
+            dataKey="total_duration_s"
+            name="Duration"
+            fill="#444444"
+            radius={[0, 4, 4, 0]}
+            minPointSize={2}
+          >
+            {sortedRuns.map((entry, index) => (
+              <Bar
+                key={`bar-${index}`}
+                dataKey="total_duration_s"
+                fill={getBarColor(entry.status)}
+                radius={[0, 4, 4, 0]}
+              />
+            ))}
+          </Bar>
+
+          {/* Отметки RALF retries */}
+          {sortedRuns.map((entry, index) =>
+            entry.ralf_retries > 0 ? (
+              <ReferenceLine
+                key={`ralf-${index}`}
+                x={entry.total_duration_s}
+                stroke={COLORS.ralf}
+                strokeDasharray="4 4"
+                label={{
+                  value: `×${entry.ralf_retries}`,
+                  position: 'top',
+                  fill: COLORS.ralf,
+                  fontSize: 10,
+                }}
+              />
+            ) : null
+          )}
+        </BarChart>
+      </ResponsiveContainer>
+
+      <div style={{
+        marginTop: 12,
+        fontSize: 11,
+        color: COLORS.textMuted,
+        display: 'flex',
+        gap: 16,
+        justifyContent: 'center',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 12, height: 12, background: COLORS.done }} /> Done
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 12, height: 12, background: COLORS.running }} /> Running
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 12, height: 12, background: COLORS.failed }} /> Failed
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ color: COLORS.ralf }}>---- × retries</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+### Как подключить
+
+В `MyceliumCommandCenter.tsx` добавьте:
+
+```tsx
+// состояния
+const [tokenBurnData, setTokenBurnData] = useState<TokenBurnData[]>([]);
+const [pipelineRuns, setPipelineRuns] = useState<PipelineRun[]>([]);
+
+// загрузка (можно объединить в один fetch или отдельные)
+useEffect(() => {
+  const loadData = async () => {
+    // Token burn
+    const burnRes = await fetch('http://localhost:5001/api/pipeline/token-burn-timeline');
+    if (burnRes.ok) {
+      const d = await burnRes.json();
+      setTokenBurnData(d.timeline || []);
+    }
+
+    // Pipeline runs для Gantt
+    const runsRes = await fetch('http://localhost:5001/api/pipeline/history?limit=40');
+    if (runsRes.ok) {
+      const d = await runsRes.json();
+      setPipelineRuns(d.runs || []);
+    }
+  };
+
+  loadData();
+  // можно добавить интервал или websocket-триггер
+}, []);
+```
+
+И во вкладке (например `pipelines` или новая `metrics`):
+
+```tsx
+{activeTab === 'pipelines' && (
+  <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: 28 }}>
+    <TokenBurnTimeline data={tokenBurnData} />
+    <PipelineGantt runs={pipelineRuns} />
+  </div>
+)}
+```
+
+### Что дальше?
+
+- Хотите **доработать** один из этих двух графиков (фильтры, zoom, разные интервалы)?
+- Добавить **живые обновления** через `useMyceliumSocket`?
+- Перейти к чему-то ещё (например, **Knowledge Level distribution**, **Agent leaderboard**, **heatmap памяти**)?
+
+Скажите, куда идём.

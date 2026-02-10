@@ -1,0 +1,244 @@
+**Отлично, понял приоритет.**  
+
+Ты хочешь **2D DAG в стиле Sugiyama**, но **кверх ногами** (корень внизу, ветвление вверх), с чёткими слоями (layers), глубиной (Z/depth) и параллаксом связей — это идеальная подготовка пользователей к основному **VETKA** (3D Knowledge Graph).  
+
+Это будет красиво, профессионально и сразу даст ощущение "командного центра" в Mycelium Command Center.
+
+### Лучшее решение на React в 2026 году
+
+**Рекомендация №1 (самая сильная сейчас):**  
+**xyflow** (новая версия react-flow) + **dagre** (или **elkjs** для более сложных случаев).
+
+Почему именно это:
+- xyflow — лидер для интерактивных DAG/графов в React (2025–2026).
+- dagre — классический Sugiyama layout (layered, минимизация пересечений, ранжирование).
+- Легко инвертировать (root внизу).
+- Отличная производительность, встроенная виртуализация, пан/зум, кастомные узлы/рёбра.
+- Поддержка multi-layer (разные типы связей: structural, semantic, temporal).
+
+Альтернативы (хуже для твоего случая):
+- Чистый d3-dag → тяжелее интегрировать в React.
+- @antv/g6 → мощный, но менее React-native.
+- visx (от Airbnb) → низкоуровневый, больше работы.
+
+### Установка
+
+```bash
+cd client
+npm install xyflow dagre
+# или для более мощного layout:
+# npm install elkjs
+```
+
+### Готовый компонент: `SugiyamaDAG.tsx`
+
+Создай файл:  
+`client/src/components/dev/charts/SugiyamaDAG.tsx`
+
+```tsx
+/**
+ * SugiyamaDAG — Ацикличный DAG в стиле Sugiyama (root внизу)
+ * MARKER_134.C34P: 2D Knowledge Graph preview for VETKA
+ * Features: layered layout, inverted (root bottom), Z-depth simulation, multi-layer edges
+ */
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import ReactFlow, {
+  Node,
+  Edge,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  Position,
+  MarkerType,
+} from 'xyflow';
+import dagre from 'dagre';
+import 'xyflow/dist/style.css';
+
+const COLORS = {
+  bg: '#0a0a0a',
+  node: '#111111',
+  border: '#222222',
+  text: '#e0e0e0',
+  accent: '#4a6b8a',
+  structural: '#6a8a6a',   // structural edges
+  semantic: '#8aa0b0',     // semantic edges
+  temporal: '#aa8a6a',     // temporal edges
+};
+
+const dagreGraph = new dagre.graphlib.Graph();
+dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+interface KnowledgeNode {
+  id: string;
+  label: string;
+  type: 'concept' | 'file' | 'folder';
+  knowledgeLevel: number; // 0–1
+  layer: number;          // для Sugiyama
+  depth: number;          // Z-depth
+}
+
+interface KnowledgeEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: 'structural' | 'semantic' | 'temporal';
+  strength: number;
+}
+
+interface SugiyamaDAGProps {
+  nodes: KnowledgeNode[];
+  edges: KnowledgeEdge[];
+  width?: number;
+  height?: number;
+}
+
+export default function SugiyamaDAG({
+  nodes: rawNodes,
+  edges: rawEdges,
+  width = 920,
+  height = 620,
+}: SugiyamaDAGProps) {
+  const [rfNodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [rfEdges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  // Конвертируем в формат xyflow + применяем Sugiyama (inverted)
+  const layoutGraph = useCallback((nodes: KnowledgeNode[], edges: KnowledgeEdge[]) => {
+    dagreGraph.setGraph({ rankdir: 'TB', ranksep: 80, nodesep: 50 }); // TB = Top→Bottom, потом инвертируем
+
+    nodes.forEach((node) => {
+      dagreGraph.setNode(node.id, { width: 140, height: 60 });
+    });
+
+    edges.forEach((edge) => {
+      dagreGraph.setEdge(edge.source, edge.target);
+    });
+
+    dagre.layout(dagreGraph);
+
+    const layoutedNodes: Node[] = nodes.map((node) => {
+      const dagreNode = dagreGraph.node(node.id);
+      return {
+        id: node.id,
+        type: 'default',
+        position: {
+          x: dagreNode.x - 70,
+          y: dagreNode.y - 30,
+        },
+        data: {
+          label: node.label,
+          knowledgeLevel: node.knowledgeLevel,
+          depth: node.depth,
+        },
+        style: {
+          background: COLORS.node,
+          border: `2px solid ${node.knowledgeLevel > 0.7 ? COLORS.accent : '#555'}`,
+          color: COLORS.text,
+          borderRadius: 4,
+          padding: 10,
+          fontSize: 12,
+          fontFamily: 'monospace',
+          width: 140,
+        },
+      };
+    });
+
+    // Инвертируем Y (root внизу)
+    const maxY = Math.max(...layoutedNodes.map(n => n.position.y));
+    const invertedNodes = layoutedNodes.map(node => ({
+      ...node,
+      position: {
+        ...node.position,
+        y: maxY - node.position.y + 100, // +100 отступ снизу
+      },
+    }));
+
+    const layoutedEdges: Edge[] = edges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      type: 'smoothstep',
+      animated: edge.type === 'temporal',
+      style: {
+        stroke: edge.type === 'structural' ? COLORS.structural :
+                edge.type === 'semantic' ? COLORS.semantic : COLORS.temporal,
+        strokeWidth: 1.5 + edge.strength * 2,
+        opacity: 0.85 + edge.strength * 0.15,
+      },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: edge.type === 'structural' ? COLORS.structural : '#666',
+      },
+    }));
+
+    return { nodes: invertedNodes, edges: layoutedEdges };
+  }, []);
+
+  // Применяем layout при изменении данных
+  useEffect(() => {
+    if (rawNodes.length === 0) return;
+
+    const { nodes, edges } = layoutGraph(rawNodes, rawEdges);
+    setNodes(nodes);
+    setEdges(edges);
+  }, [rawNodes, rawEdges, layoutGraph, setNodes, setEdges]);
+
+  return (
+    <div style={{ width, height, background: COLORS.bg, borderRadius: 4, overflow: 'hidden' }}>
+      <ReactFlow
+        nodes={rfNodes}
+        edges={rfEdges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        fitView
+        minZoom={0.3}
+        maxZoom={2.5}
+        nodesDraggable={true}
+        nodesConnectable={false}
+        elementsSelectable={true}
+      >
+        <Background color="#222" gap={24} />
+        <Controls position="bottom-right" />
+        <MiniMap
+          nodeColor={(n) => (n.data?.knowledgeLevel > 0.7 ? COLORS.accent : '#555')}
+          maskColor="rgba(10,10,10,0.8)"
+        />
+      </ReactFlow>
+    </div>
+  );
+}
+```
+
+### Как использовать в MyceliumCommandCenter
+
+Добавь новую вкладку **"Knowledge DAG"** (или в "knowledge"):
+
+```tsx
+{activeTab === 'knowledge' && (
+  <div style={{ padding: 16, height: '100%' }}>
+    <SugiyamaDAG
+      nodes={knowledgeNodes}   // из API
+      edges={knowledgeEdges}
+      width={900}
+      height={620}
+    />
+  </div>
+)}
+```
+
+### Что дальше (рекомендую по порядку)
+
+1. **Сейчас** — создай компонент выше, подключи тестовые данные (hardcode 10–15 узлов).
+2. **Backend** — добавь эндпоинт `/api/debug/knowledge-dag` (nodes + edges с типами связей).
+3. **Z/parallax** — добавим glow + stroke-width по depth + лёгкий parallax при зуме.
+4. **Multi-layer** — переключатель Structural / Semantic / All layers.
+
+Хочешь:
+- **Полный код с тестовыми данными** (Variables → Functions → Classes пример)?
+- **Как добавить Z-depth / parallax** в 2D?
+- **Как сделать переключение слоёв** (structural vs semantic)?
+- Или сразу **интеграцию с backend**?
+
+Скажи — продолжим быстро. Это будет очень сильная подготовка к VETKA. 🔥

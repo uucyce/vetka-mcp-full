@@ -1,0 +1,332 @@
+Вот следующий логичный кусок — **полноценный пример с тестовыми данными** + **интеграция с живыми обновлениями** через `useMyceliumSocket` + **detail panel** справа от графа (классический split-view: 70% граф + 30% детали выбранного узла).
+
+Это уже можно вставить в проект и увидеть работающий прототип DAG в стиле Sugiyama (root bottom) с анимациями и живыми обновлениями.
+
+### 1. Тестовые данные (для быстрого старта)
+
+Создай временный файл или просто вставь в компонент:
+
+```tsx
+// Пример структуры: task → agents → subtasks → proposal
+const INITIAL_NODES: PipelineNode[] = [
+  {
+    id: 'task-1',
+    type: 'task',
+    data: { label: 'Implement caching layer', status: 'done', type: 'task' },
+    position: { x: 0, y: 0 },
+  },
+  {
+    id: 'agent-scout',
+    type: 'agent',
+    data: { label: 'Scout', role: 'scout', status: 'done', type: 'agent' },
+    position: { x: 0, y: 0 },
+  },
+  {
+    id: 'agent-architect',
+    type: 'agent',
+    data: { label: 'Architect', role: 'architect', status: 'done', type: 'agent' },
+    position: { x: 0, y: 0 },
+  },
+  {
+    id: 'agent-coder',
+    type: 'agent',
+    data: { label: 'Coder', role: 'coder', status: 'running', type: 'agent' },
+    position: { x: 0, y: 0 },
+  },
+  {
+    id: 'subtask-1',
+    type: 'subtask',
+    data: { label: 'Add redis client', status: 'done', type: 'subtask' },
+    position: { x: 0, y: 0 },
+  },
+  {
+    id: 'subtask-2',
+    type: 'subtask',
+    data: { label: 'Implement cache decorator', status: 'running', type: 'subtask' },
+    position: { x: 0, y: 0 },
+  },
+  {
+    id: 'subtask-3',
+    type: 'subtask',
+    data: { label: 'Add tests', status: 'pending', type: 'subtask' },
+    position: { x: 0, y: 0 },
+  },
+  {
+    id: 'proposal-1',
+    type: 'proposal',
+    data: { label: 'Redis + LRU hybrid', confidence: 0.92, status: 'pending', type: 'proposal' },
+    position: { x: 0, y: 0 },
+  },
+];
+
+const INITIAL_EDGES: PipelineEdge[] = [
+  { id: 'e1', source: 'task-1', target: 'agent-scout', animated: false, type: 'smoothstep' },
+  { id: 'e2', source: 'task-1', target: 'agent-architect', animated: false, type: 'smoothstep' },
+  { id: 'e3', source: 'task-1', target: 'agent-coder', animated: false, type: 'smoothstep' },
+  { id: 'e4', source: 'agent-scout', target: 'subtask-1', animated: true, type: 'smoothstep' },
+  { id: 'e5', source: 'agent-architect', target: 'subtask-2', animated: true, type: 'smoothstep' },
+  { id: 'e6', source: 'agent-coder', target: 'subtask-3', animated: true, type: 'smoothstep' },
+  { id: 'e7', source: 'subtask-1', target: 'proposal-1', animated: false, type: 'smoothstep' },
+  { id: 'e8', source: 'subtask-2', target: 'proposal-1', animated: false, type: 'smoothstep' },
+];
+```
+
+### 2. Полный компонент с Detail Panel и live-обновлениями
+
+```tsx
+import { useState, useEffect, useCallback } from 'react';
+import ReactFlow, {
+  Node,
+  Edge,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  Position,
+  MarkerType,
+  Handle,
+  Panel,
+} from '@xyflow/react';
+import dagre from 'dagre';
+import '@xyflow/react/dist/style.css';
+import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
+
+// ... (COLORS и кастомные ноды TaskNode, AgentNode, SubtaskNode, ProposalNode — как в предыдущем сообщении)
+
+export default function MyceliumDAGView() {
+  const { connected } = useMyceliumSocket();
+
+  const [nodes, setNodes, onNodesChange] = useNodesState<PipelineNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<PipelineEdge>([]);
+  const [selectedNode, setSelectedNode] = useState<PipelineNode | null>(null);
+
+  // Начальные данные (для демо)
+  useEffect(() => {
+    const { nodes: layoutedNodes, edges: layoutedEdges } = applyLayout(INITIAL_NODES, INITIAL_EDGES);
+    setNodes(layoutedNodes);
+    setEdges(layoutedEdges);
+  }, []);
+
+  // Live updates
+  useEffect(() => {
+    const handleDagUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<{ nodes: any[]; edges: any[] }>;
+      const { nodes: newNodes, edges: newEdges } = customEvent.detail;
+
+      // Полный перерасчёт layout при значительных изменениях
+      const { nodes: updatedNodes, edges: updatedEdges } = applyLayout(newNodes, newEdges);
+      setNodes(updatedNodes);
+      setEdges(updatedEdges);
+
+      // Если был выбран узел — пытаемся сохранить выбор
+      if (selectedNode) {
+        const stillExists = updatedNodes.find(n => n.id === selectedNode.id);
+        setSelectedNode(stillExists || null);
+      }
+    };
+
+    window.addEventListener('dag-update', handleDagUpdate);
+    return () => window.removeEventListener('dag-update', handleDagUpdate);
+  }, [selectedNode]);
+
+  // Функция layout (как раньше, но с BT)
+  const applyLayout = useCallback((nds: any[], eds: any[]) => {
+    dagreGraph.setGraph({ rankdir: 'BT', nodesep: 60, ranksep: 100 });
+
+    nds.forEach(node => {
+      dagreGraph.setNode(node.id, {
+        width: node.type === 'proposal' ? 110 : 180,
+        height: node.type === 'proposal' ? 110 : 70,
+      });
+    });
+
+    eds.forEach(edge => {
+      dagreGraph.setEdge(edge.source, edge.target);
+    });
+
+    dagre.layout(dagreGraph);
+
+    const maxY = Math.max(...nds.map(n => dagreGraph.node(n.id).y || 0));
+
+    const layoutedNodes = nds.map(node => {
+      const { x, y } = dagreGraph.node(node.id);
+      return {
+        ...node,
+        position: { x: x - (node.type === 'proposal' ? 55 : 90), y: maxY - y + 120 },
+      };
+    });
+
+    return { nodes: layoutedNodes, edges: eds };
+  }, []);
+
+  // Обработчик выбора узла
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setSelectedNode(node as PipelineNode);
+  }, []);
+
+  return (
+    <div style={{ width: '100%', height: '100%', display: 'flex', background: '#0a0a0a' }}>
+      {/* Граф — 70% */}
+      <div style={{ flex: '7 1 0%', position: 'relative' }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={onNodeClick}
+          nodeTypes={nodeTypes}
+          fitView
+          minZoom={0.2}
+          maxZoom={3}
+          nodesDraggable
+          nodesConnectable={false}
+          attributionPosition="bottom-left"
+        >
+          <Background color="#1a1a1a" gap={28} size={1.5} />
+          <Controls position="bottom-left" />
+          <MiniMap
+            nodeColor={n => {
+              const d = n.data as PipelineNodeData;
+              return d.status === 'done' ? COLORS.done :
+                     d.status === 'running' ? COLORS.running :
+                     d.status === 'failed' ? COLORS.failed : '#444';
+            }}
+            maskColor="rgba(10,10,10,0.92)"
+          />
+          <Panel position="top-left" style={{ background: 'rgba(0,0,0,0.6)', padding: '6px 12px', borderRadius: 4 }}>
+            <span style={{ color: connected ? '#6a8a6a' : '#8a6a6a', fontSize: 12 }}>
+              {connected ? '● LIVE' : '○ DISCONNECTED'}
+            </span>
+          </Panel>
+        </ReactFlow>
+      </div>
+
+      {/* Detail Panel — 30% */}
+      <div style={{
+        flex: '3 1 0%',
+        background: '#0d0d0d',
+        borderLeft: '1px solid #222',
+        padding: 20,
+        overflowY: 'auto',
+        color: '#ccc',
+        fontFamily: 'monospace',
+        fontSize: 13,
+      }}>
+        {selectedNode ? (
+          <>
+            <h3 style={{ margin: '0 0 16px', color: '#e0e0e0' }}>
+              {selectedNode.data.label}
+            </h3>
+            <div style={{ marginBottom: 12 }}>
+              <strong>Type:</strong> {selectedNode.data.type}
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <strong>Status:</strong>{' '}
+              <span style={{
+                color: selectedNode.data.status === 'done' ? '#6a8a6a' :
+                       selectedNode.data.status === 'running' ? '#4a6b8a' :
+                       selectedNode.data.status === 'failed' ? '#8a6a6a' : '#888'
+              }}>
+                {selectedNode.data.status.toUpperCase()}
+              </span>
+            </div>
+
+            {selectedNode.data.confidence !== undefined && (
+              <div style={{ marginBottom: 12 }}>
+                <strong>Confidence:</strong> {(selectedNode.data.confidence * 100).toFixed(0)}%
+              </div>
+            )}
+
+            {selectedNode.data.role && (
+              <div style={{ marginBottom: 12 }}>
+                <strong>Role:</strong> {selectedNode.data.role}
+              </div>
+            )}
+
+            {selectedNode.data.tokens && (
+              <div style={{ marginBottom: 12 }}>
+                <strong>Tokens used:</strong> {selectedNode.data.tokens.toLocaleString()}
+              </div>
+            )}
+
+            {/* Actions */}
+            {selectedNode.data.type === 'proposal' && (
+              <div style={{ marginTop: 24 }}>
+                <button
+                  style={{
+                    background: '#1a1a1a',
+                    border: '1px solid #6a8a6a',
+                    color: '#6a8a6a',
+                    padding: '8px 16px',
+                    marginRight: 12,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Approve
+                </button>
+                <button
+                  style={{
+                    background: '#1a1a1a',
+                    border: '1px solid #8a6a6a',
+                    color: '#8a6a6a',
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Reject
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ color: '#666', textAlign: 'center', paddingTop: 80 }}>
+            Выберите узел для просмотра деталей
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+### Как подключить в MCC
+
+В `MyceliumCommandCenter.tsx` или в `MyceliumStandalone.tsx`:
+
+```tsx
+{activeTab === 'dag' && <MyceliumDAGView />}
+```
+
+Или как toggle-режим:
+
+```tsx
+const [viewMode, setViewMode] = useState<'dag' | 'classic'>('dag');
+
+return (
+  <>
+    <button onClick={() => setViewMode(v => v === 'dag' ? 'classic' : 'dag')}>
+      {viewMode === 'dag' ? 'Switch to Classic' : 'Switch to DAG'}
+    </button>
+
+    {viewMode === 'dag' ? <MyceliumDAGView /> : /* старые табы */}
+  </>
+);
+```
+
+Готово — это уже рабочий прототип с:
+
+- корнем внизу
+- кастомными нодами
+- статус-анимациями
+- detail-панелью справа
+- индикатором live-соединения
+- базовой поддержкой live-обновлений
+
+Что делаем дальше?  
+- backend-часть для генерации `dag-update`  
+- фильтры по статусу/типу  
+- incremental layout (чтобы не пересчитывать всё каждый раз)  
+- больше анимаций (появление новых узлов, fade-in)  
+
+Назови следующий шаг :)

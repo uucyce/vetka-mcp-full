@@ -1,0 +1,313 @@
+**Отлично, давай сделаем Agent Heatmap** — визуализацию эффективности и активности агентов в стиле Mycelium Command Center.
+
+Цель:  
+- Показать всех активных агентов (или всех, кто когда-либо работал)  
+- По ключевым метрикам: success rate, среднее потребление токенов, скорость (задачи в час или средняя длительность), уровень знаний (knowledge level), количество выполненных задач  
+- Цветовая интенсивность отражает «здоровье» / эффективность агента  
+- Легко читается даже при 20–50 агентах  
+- Поддерживает реал-тайм обновление через websocket
+
+### Предлагаемая структура и подход
+
+Самый практичный и производительный вариант на текущий момент (с учётом того, что у вас уже есть Recharts и react-window):
+
+- **Основной контейнер** — сетка (CSS Grid или flex с wrap)  
+- **Каждый агент** — карточка фиксированного размера  
+- **Цвет фона/рамки/цифры** — зависит от общей эффективности (composite score)  
+- **Размер шрифта и интенсивность** — визуально выделяют лидеров  
+- **Подсказка (tooltip)** — при наведении показывает детальную статистику
+
+### 1. Новый компонент: `AgentEfficiencyHeatmap.tsx`
+
+Создайте файл:
+
+`client/src/components/dev/charts/AgentEfficiencyHeatmap.tsx`
+
+```tsx
+/**
+ * AgentEfficiencyHeatmap — Тепловая карта эффективности агентов
+ * MARKER_134.C34M: Agents tab visualization
+ * Показывает success rate, токены, скорость, knowledge level
+ * Цвет и размер шрифта отражают общую эффективность
+ */
+
+import { useMemo } from 'react';
+import { Tooltip } from 'recharts'; // можно использовать для детального тултипа, но здесь проще кастомный
+
+const COLORS = {
+  bg: '#0a0a0a',
+  panel: '#111111',
+  border: '#222222',
+  text: '#e0e0e0',
+  textMuted: '#aaaaaa',
+  accent: '#4a6b8a',
+  success: '#6a8a6a',
+  good: '#8aa06a',
+  warning: '#aa8a6a',
+  danger: '#8a6a6a',
+  veryLow: '#555555',
+};
+
+interface AgentData {
+  agent_name: string;
+  success_rate: number;       // 0–100
+  avg_tokens_per_task: number;
+  tasks_completed: number;
+  avg_duration_sec: number;   // средняя длительность задачи
+  knowledge_level: number;    // 0–1
+  active: boolean;            // сейчас работает?
+  last_active?: string;       // timestamp
+}
+
+interface AgentEfficiencyHeatmapProps {
+  agents: AgentData[];
+  minTasksToShow?: number;    // по умолчанию 1, можно поднять до 3–5
+}
+
+export default function AgentEfficiencyHeatmap({
+  agents,
+  minTasksToShow = 1,
+}: AgentEfficiencyHeatmapProps) {
+  // Фильтруем агентов с малым количеством задач (опционально)
+  const visibleAgents = useMemo(
+    () => agents.filter(a => a.tasks_completed >= minTasksToShow),
+    [agents, minTasksToShow]
+  );
+
+  const getEfficiencyScore = (agent: AgentData) => {
+    const success = agent.success_rate;
+    const speed = Math.max(0, 100 - (agent.avg_duration_sec / 60) * 15); // <60s → высоко
+    const tokens = Math.max(0, 100 - (agent.avg_tokens_per_task / 1200) * 70);
+    const kl = agent.knowledge_level * 100;
+    return Math.round(success * 0.45 + speed * 0.20 + tokens * 0.20 + kl * 0.15);
+  };
+
+  const getColorByScore = (score: number) => {
+    if (score >= 90) return COLORS.success;
+    if (score >= 80) return COLORS.good;
+    if (score >= 65) return COLORS.accent;
+    if (score >= 45) return COLORS.warning;
+    return COLORS.danger;
+  };
+
+  const getBgOpacity = (score: number) => {
+    if (score >= 90) return 0.35;
+    if (score >= 80) return 0.28;
+    if (score >= 65) return 0.22;
+    if (score >= 45) return 0.18;
+    return 0.12;
+  };
+
+  if (visibleAgents.length === 0) {
+    return (
+      <div style={{
+        padding: 40,
+        textAlign: 'center',
+        color: COLORS.textMuted,
+        fontSize: 13,
+      }}>
+        Нет агентов с достаточным количеством задач
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+        gap: 12,
+        padding: '8px 0',
+      }}
+    >
+      {visibleAgents.map(agent => {
+        const score = getEfficiencyScore(agent);
+        const color = getColorByScore(score);
+        const bgOpacity = getBgOpacity(score);
+
+        return (
+          <div
+            key={agent.agent_name}
+            title={`Score: ${score}\nSuccess: ${agent.success_rate}%\nTokens/task: ${agent.avg_tokens_per_task}\nDuration: ${agent.avg_duration_sec}s\nKL: ${(agent.knowledge_level * 100).toFixed(0)}%\nTasks: ${agent.tasks_completed}`}
+            style={{
+              background: `${color}${Math.round(bgOpacity * 255).toString(16).padStart(2, '0')}`,
+              border: `1px solid ${color}`,
+              borderRadius: 4,
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: 110,
+              position: 'relative',
+              transition: 'all 0.18s ease',
+              cursor: 'default',
+            }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.transform = 'scale(1.04)';
+              (e.currentTarget as HTMLElement).style.zIndex = '2';
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
+              (e.currentTarget as HTMLElement).style.zIndex = '1';
+            }}
+          >
+            {/* Имя агента */}
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 500,
+                color: COLORS.text,
+                marginBottom: 8,
+                textAlign: 'center',
+              }}
+            >
+              {agent.agent_name}
+            </div>
+
+            {/* Главный score */}
+            <div
+              style={{
+                fontSize: score >= 90 ? 38 : score >= 75 ? 34 : 30,
+                fontWeight: 700,
+                color,
+                lineHeight: 1,
+                marginBottom: 4,
+              }}
+            >
+              {score}
+            </div>
+
+            <div style={{ fontSize: 10, color: COLORS.textMuted, marginBottom: 6 }}>
+              efficiency
+            </div>
+
+            {/* Краткие метрики */}
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                width: '100%',
+                fontSize: 10,
+                color: COLORS.textMuted,
+              }}
+            >
+              <div>S: {agent.success_rate}%</div>
+              <div>T: {agent.avg_tokens_per_task}</div>
+            </div>
+
+            {/* Индикатор активности */}
+            {agent.active && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  width: 10,
+                  height: 10,
+                  background: COLORS.success,
+                  borderRadius: '50%',
+                  boxShadow: '0 0 8px #6a8a6a',
+                  animation: 'pulse 2s infinite',
+                }}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Добавить в глобальные стили (или в компонент)
+const styleTag = document.createElement('style');
+styleTag.innerHTML = `
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+`;
+document.head.appendChild(styleTag);
+```
+
+### 2. Как подключить в `MyceliumCommandCenter.tsx`
+
+Добавьте состояние и загрузку данных:
+
+```tsx
+// В начале компонента
+const [agents, setAgents] = useState<AgentData[]>([]);
+
+// В fetchOverview или отдельном useEffect
+useEffect(() => {
+  const loadAgents = async () => {
+    try {
+      const res = await fetch('http://localhost:5001/api/debug/agents/stats');
+      if (res.ok) {
+        const data = await res.json();
+        setAgents(data.agents || []);
+      }
+    } catch (err) {
+      console.error('Cannot load agents stats', err);
+    }
+  };
+
+  loadAgents();
+
+  // Если есть websocket событие agent-updated → обновлять
+  // window.addEventListener('agent-stats-updated', loadAgents);
+  // return () => window.removeEventListener(...);
+}, []);
+
+// Вкладка agents
+{activeTab === 'agents' && (
+  <div style={{ padding: '16px' }}>
+    <div style={{
+      fontSize: 11,
+      color: '#aaaaaa',
+      marginBottom: 16,
+      letterSpacing: 1,
+    }}>
+      AGENT EFFICIENCY HEATMAP
+    </div>
+
+    <AgentEfficiencyHeatmap agents={agents} minTasksToShow={2} />
+  </div>
+)}
+```
+
+### 3. Что нужно на бэкенде (примерный эндпоинт)
+
+В `debug_routes.py` или новом файле:
+
+```python
+@router.get("/agents/stats")
+async def get_agents_stats():
+    # Здесь ваша логика агрегации
+    # Можно брать из task_tracker, pipeline_history, agent-specific логов
+    agents = [
+        {
+            "agent_name": "dragon_gold",
+            "success_rate": 94,
+            "avg_tokens_per_task": 920,
+            "tasks_completed": 47,
+            "avg_duration_sec": 84,
+            "knowledge_level": 0.92,
+            "active": True,
+            "last_active": "2026-02-10T14:28:11"
+        },
+        # ... другие агенты
+    ]
+    return {"success": True, "agents": agents}
+```
+
+### Что дальше?
+
+Хотите:
+
+- Добавить **сортировку** (по score, по кол-ву задач, по активности)?
+- Добавить **фильтры** (только активные / только > определённого score)?
+- Сделать **вариант с react-window** (виртуализация для 100+ агентов)?
+- Перейти к **Token Burn Timeline** или **Pipeline Gantt**?
+
+Скажите направление — продолжим.

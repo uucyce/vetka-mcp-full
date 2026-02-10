@@ -1,0 +1,290 @@
+**Отлично, теперь фокус именно на этом.**
+
+Мы делаем **2D DAG в стиле Sugiyama, корень внизу** (Bottom-to-Top layout) — это идеальная подготовка пользователей к VETKA 3D.  
+Используем `@xyflow/react` (v12–13, 2026) + `dagre` (лучше elkjs для 50–150 нод по скорости и простоте).
+
+### Краткое исследование (по твоему GROK RESEARCH PROMPT)
+
+1. **@xyflow/react v12–13 (2026)**  
+   - Пакет теперь `@xyflow/react` (не `react-flow`).  
+   - Custom nodes: используй `<Handle type="source/target" position={Position.Left/Right/Top/Bottom} />` внутри node-компонента.  
+   - Performance при 200+ нодах: memoize node-компоненты (`React.memo`), используй `useNodesState` + `useEdgesState`, избегай лишних ре-рендеров. Для очень больших графов — кластеризация или lazy rendering.  
+   - Breaking changes: новые `measured` свойства, улучшенный SSR, batch updates.
+
+2. **dagre vs elkjs**  
+   - **dagre** — победитель для твоего случая: быстрее на 50–150 нодах, отлично поддерживает `rankdir: 'BT'` (root внизу), легко задавать ranks вручную.  
+   - **elkjs** — мощнее (больше опций, лучше для сложных constraints), но тяжелее и медленнее на средних графах.  
+   - Вывод: используем **dagre** + `rankdir: 'BT'`.
+
+3. **Анимации**  
+   - Status transitions (pending → running → done): CSS `transition` на `background`, `border-color`, `box-shadow`.  
+   - Pulse glow для running: `@keyframes pulse` + `animation: pulse 2s infinite`.  
+   - Перемещение нод: `useAnimatedNodes` из xyflow (плавный tween позиций).  
+   - Не используй heavy re-renders — обновляй только `style` проп.
+
+4. **Incremental layout**  
+   - dagre не поддерживает частичный layout хорошо. При добавлении нового subtask — делаем **full re-layout** (для 100 нод это < 30 мс).  
+   - Альтернатива: elkjs с incremental mode, но сложнее.
+
+5. **Nolan palette**  
+   - Твои цвета (#0a0a0a bg, #111 nodes, #6a8a6a done, #8a6a6a failed) отлично работают.  
+   - Переопределяй `style` в custom nodes — конфликтов со встроенными стилями xyflow нет.
+
+### Полный код: SugiyamaDAG (root внизу)
+
+Создай файл:  
+`client/src/components/dev/charts/SugiyamaDAG.tsx`
+
+```tsx
+/**
+ * SugiyamaDAG — 2D DAG в стиле Sugiyama (root внизу)
+ * MARKER_135.1B: Inverted BT layout for MCC → VETKA preview
+ * Layers: 0=tasks (bottom) → 1=agents → 2-3=subtasks → 4=proposals (top)
+ */
+
+import { useCallback, useEffect, useMemo } from 'react';
+import ReactFlow, {
+  Node,
+  Edge,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  Position,
+  MarkerType,
+  Handle,
+} from '@xyflow/react';
+import dagre from 'dagre';
+import '@xyflow/react/dist/style.css';
+
+const COLORS = {
+  bg: '#0a0a0a',
+  node: '#111111',
+  border: '#222222',
+  text: '#e0e0e0',
+  accent: '#4a6b8a',
+  done: '#6a8a6a',
+  failed: '#8a6a6a',
+  running: '#4a6b8a',
+  structural: '#6a8a6a',
+  semantic: '#8aa0b0',
+  temporal: '#aa8a6a',
+};
+
+const dagreGraph = new dagre.graphlib.Graph();
+dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+interface PipelineNodeData {
+  label: string;
+  status: 'pending' | 'running' | 'done' | 'failed';
+  type: 'task' | 'agent' | 'subtask' | 'proposal';
+  confidence?: number;     // для proposals
+  role?: string;           // scout, architect, coder...
+  duration?: number;
+  tokens?: number;
+}
+
+type PipelineNode = Node<PipelineNodeData>;
+type PipelineEdge = Edge;
+
+interface SugiyamaDAGProps {
+  nodes: PipelineNode[];
+  edges: PipelineEdge[];
+  width?: number;
+  height?: number;
+}
+
+// Custom Nodes
+function TaskNode({ data }: { data: PipelineNodeData }) {
+  return (
+    <div style={{
+      background: COLORS.node,
+      border: `2px solid ${data.status === 'done' ? COLORS.done : data.status === 'running' ? COLORS.running : COLORS.border}`,
+      borderRadius: 6,
+      padding: '10px 14px',
+      minWidth: 160,
+      fontFamily: 'monospace',
+      fontSize: 12,
+      color: COLORS.text,
+      boxShadow: data.status === 'running' ? '0 0 12px #4a6b8a' : 'none',
+      animation: data.status === 'running' ? 'pulse 2s infinite' : 'none',
+    }}>
+      <Handle type="target" position={Position.Top} style={{ background: '#333' }} />
+      <div style={{ fontWeight: 600 }}>{data.label}</div>
+      <div style={{ fontSize: 10, color: '#666', marginTop: 4 }}>
+        {data.status.toUpperCase()}
+      </div>
+      <Handle type="source" position={Position.Bottom} style={{ background: '#333' }} />
+    </div>
+  );
+}
+
+function AgentNode({ data }: { data: PipelineNodeData }) {
+  return (
+    <div style={{
+      background: COLORS.node,
+      border: `2px solid ${COLORS.accent}`,
+      borderRadius: 4,
+      padding: '8px 12px',
+      fontFamily: 'monospace',
+      fontSize: 11,
+      color: COLORS.text,
+    }}>
+      <Handle type="target" position={Position.Top} />
+      <div>@{data.role || data.label}</div>
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+
+function SubtaskNode({ data }: { data: PipelineNodeData }) {
+  return (
+    <div style={{
+      background: COLORS.node,
+      border: `1px solid ${data.status === 'done' ? COLORS.done : '#555'}`,
+      borderRadius: 3,
+      padding: '6px 10px',
+      fontSize: 11,
+      color: COLORS.text,
+      minWidth: 120,
+    }}>
+      <Handle type="target" position={Position.Top} />
+      <div>{data.label}</div>
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+
+function ProposalNode({ data }: { data: PipelineNodeData }) {
+  return (
+    <div style={{
+      background: COLORS.node,
+      border: `2px solid ${data.confidence && data.confidence > 0.8 ? COLORS.done : COLORS.warning}`,
+      borderRadius: '50%',
+      width: 90,
+      height: 90,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: 11,
+      color: COLORS.text,
+      boxShadow: data.confidence && data.confidence > 0.85 ? '0 0 15px #6a8a6a' : 'none',
+    }}>
+      <Handle type="target" position={Position.Top} />
+      <div style={{ textAlign: 'center' }}>
+        Proposal<br />
+        <span style={{ fontSize: 18, fontWeight: 700 }}>{(data.confidence || 0) * 100}%</span>
+      </div>
+      <Handle type="source" position={Position.Bottom} />
+    </div>
+  );
+}
+
+const nodeTypes = {
+  task: TaskNode,
+  agent: AgentNode,
+  subtask: SubtaskNode,
+  proposal: ProposalNode,
+};
+
+export default function SugiyamaDAG({ nodes: initialNodes, edges: initialEdges, width = 960, height = 680 }: SugiyamaDAGProps) {
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  // Sugiyama BT layout (root внизу)
+  const applyLayout = useCallback((rawNodes: any[], rawEdges: any[]) => {
+    dagreGraph.setGraph({ rankdir: 'BT', ranksep: 90, nodesep: 60, edgesep: 40 });
+
+    rawNodes.forEach((node) => {
+      dagreGraph.setNode(node.id, { width: node.type === 'proposal' ? 100 : 160, height: node.type === 'proposal' ? 100 : 60 });
+    });
+
+    rawEdges.forEach((edge) => {
+      dagreGraph.setEdge(edge.source, edge.target);
+    });
+
+    dagre.layout(dagreGraph);
+
+    const layoutedNodes = rawNodes.map((node) => {
+      const dagreNode = dagreGraph.node(node.id);
+      return {
+        ...node,
+        position: { x: dagreNode.x - (node.type === 'proposal' ? 50 : 80), y: dagreNode.y - 30 },
+        style: { ...node.style },
+      };
+    });
+
+    return { nodes: layoutedNodes, edges: rawEdges };
+  }, []);
+
+  useEffect(() => {
+    const { nodes: layoutedNodes, edges: layoutedEdges } = applyLayout(initialNodes, initialEdges);
+    setNodes(layoutedNodes);
+    setEdges(layoutedEdges);
+  }, [initialNodes, initialEdges, applyLayout]);
+
+  return (
+    <div style={{ width, height, background: COLORS.bg, borderRadius: 4, overflow: 'hidden' }}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        fitView
+        minZoom={0.3}
+        maxZoom={2.8}
+        nodesDraggable
+        nodesConnectable={false}
+      >
+        <Background color="#1a1a1a" gap={24} />
+        <Controls position="bottom-left" />
+        <MiniMap nodeColor={(n) => n.data?.status === 'done' ? COLORS.done : '#555'} maskColor="rgba(10,10,10,0.85)" />
+      </ReactFlow>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { box-shadow: 0 0 12px #4a6b8a; }
+          50% { box-shadow: 0 0 25px #4a6b8a; }
+        }
+      `}</style>
+    </div>
+  );
+}
+```
+
+### Интеграция с live updates (useMyceliumSocket)
+
+В `MyceliumCommandCenter.tsx`:
+
+```tsx
+const [dagNodes, setDagNodes] = useState<any[]>([]);
+const [dagEdges, setDagEdges] = useState<any[]>([]);
+
+useEffect(() => {
+  const handler = (e: CustomEvent) => {
+    const { nodes, edges } = e.detail; // от бэкенда
+    setDagNodes(nodes);
+    setDagEdges(edges);
+  };
+
+  window.addEventListener('dag-update', handler);
+  return () => window.removeEventListener('dag-update', handler);
+}, []);
+```
+
+### Следующие шаги
+
+1. Установи: `npm install @xyflow/react dagre`
+2. Создай компонент выше.
+3. Добавь тестовые данные (task → agents → subtasks → proposals).
+4. Подключи к `useMyceliumSocket` через `dag-update` событие.
+
+Хочешь:
+- **Полный пример с тестовыми данными** (Variables → Functions → Classes + pipeline)?
+- **Detail Panel** рядом с DAG?
+- **Фильтры** и **actions** (approve/retry)?
+- Или **Z-depth simulation** (параллакс по глубине)?
+
+Скажи — сразу даю следующий кусок. Это будет мощная 2D-версия, которая плавно ведёт пользователей в 3D VETKA. 🔥

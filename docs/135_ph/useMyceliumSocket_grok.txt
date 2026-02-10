@@ -1,0 +1,281 @@
+Вот реализация **живых обновлений** для графиков и панелей в `MyceliumCommandCenter` через существующий хук `useMyceliumSocket`.
+
+### Кратко о том, как это будет работать
+
+- Хук `useMyceliumSocket` уже возвращает `{ connected: boolean }` и диспатчит события через события DOM (`dispatchEvent`).
+- В документах упоминаются события, которые он диспатчит:
+  - `pipeline-activity`
+  - `task-board-updated`
+  - `pipeline-stats`
+  - `pipeline-complete`
+  - `pipeline-failed`
+
+Мы будем слушать эти события (и возможно добавить новые, если бэкенд их шлёт) и обновлять состояние компонента.
+
+### Шаг 1 — улучшаем `useMyceliumSocket` (если нужно)
+
+Если текущий хук не передаёт данные событий, его стоит немного расширить, чтобы он возвращал не только `connected`, но и функцию для подписки или сами данные.
+
+Но для начала предположим, что он уже диспатчит **CustomEvent** с данными в `detail`.  
+Пример типичного кода в `useMyceliumSocket.ts`:
+
+```ts
+// пример того, как это может выглядеть внутри хука
+socket.on('pipeline-stats', (data) => {
+  window.dispatchEvent(new CustomEvent('pipeline-stats', { detail: data }));
+});
+
+socket.on('pipeline-complete', (data) => {
+  window.dispatchEvent(new CustomEvent('pipeline-complete', { detail: data }));
+});
+```
+
+Если у вас такого нет — нужно добавить в хук или в место, где обрабатывается socket.
+
+### Шаг 2 — Подключаем живые обновления в `MyceliumCommandCenter`
+
+Вот обновлённая версия компонента с акцентом на **живые обновления**:
+
+```tsx
+// client/src/components/dev/MyceliumCommandCenter.tsx
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+// ... остальные импорты (Recharts, lazy и т.д.)
+
+// Предполагаемые типы (можно уточнить по вашим данным)
+interface PipelineEvent {
+  task_id: string;
+  status: string;
+  subtasks_completed: number;
+  subtasks_total: number;
+  preset?: string;
+  verifier_avg_confidence?: number;
+  timestamp: number;
+  tokens_used?: number;
+  duration_sec?: number;
+  ralf_retries?: number;
+}
+
+interface TokenBurnPoint {
+  time: string;
+  tokens_burned: number;
+  cumulative: number;
+}
+
+export default function MyceliumCommandCenter() {
+  const [activeTab, setActiveTab] = useState<'overview' | 'pipelines' | 'agents' | 'knowledge' | 'resources' | 'league' | 'artifacts'>('overview');
+
+  // Основные состояния
+  const [pipelines, setPipelines] = useState<PipelineEvent[]>([]);
+  const [tokenBurnData, setTokenBurnData] = useState<TokenBurnPoint[]>([]);
+  const [agents, setAgents] = useState<any[]>([]); // или ваш тип AgentData
+  const [efficiency, setEfficiency] = useState({
+    successRate: 0,
+    avgDurationSec: 0,
+    tokensPerSubtask: 0,
+    knowledgeLevel: 0,
+  });
+
+  const { connected: myceliumConnected } = useMyceliumSocket();
+
+  // Для предотвращения race conditions и лишних рендеров
+  const isMounted = useRef(true);
+
+  // Начальная загрузка данных
+  const fetchInitialData = useCallback(async () => {
+    if (!isMounted.current) return;
+
+    try {
+      // 1. Pipeline history / active pipelines
+      const pipeRes = await fetch('http://localhost:5001/api/pipeline/history?limit=40');
+      if (pipeRes.ok) {
+        const data = await pipeRes.json();
+        setPipelines(data.runs || []);
+      }
+
+      // 2. Token burn timeline
+      const burnRes = await fetch('http://localhost:5001/api/pipeline/token-burn-timeline');
+      if (burnRes.ok) {
+        const data = await burnRes.json();
+        setTokenBurnData(data.timeline || []);
+      }
+
+      // 3. Efficiency summary (если есть отдельный эндпоинт)
+      const effRes = await fetch('http://localhost:5001/api/pipeline/efficiency');
+      if (effRes.ok) {
+        const eff = await effRes.json();
+        setEfficiency({
+          successRate: eff.summary?.success_rate || 0,
+          avgDurationSec: eff.summary?.avg_duration_s || 0,
+          tokensPerSubtask: eff.summary?.tokens_per_subtask || 0,
+          knowledgeLevel: eff.summary?.avg_knowledge_level || 0,
+        });
+      }
+
+      // 4. Agents (если есть)
+      const agentsRes = await fetch('http://localhost:5001/api/debug/agents/stats');
+      if (agentsRes.ok) {
+        const data = await agentsRes.json();
+        setAgents(data.agents || []);
+      }
+    } catch (err) {
+      console.error('Initial data fetch failed:', err);
+    }
+  }, []);
+
+  // Живые обновления через события
+  useEffect(() => {
+    isMounted.current = true;
+
+    const handlePipelineActivity = (e: Event) => {
+      const customEvent = e as CustomEvent<PipelineEvent>;
+      const newEvent = customEvent.detail;
+
+      setPipelines(prev => {
+        // Добавляем новое событие или обновляем существующее
+        const exists = prev.some(p => p.task_id === newEvent.task_id);
+        if (exists) {
+          return prev.map(p =>
+            p.task_id === newEvent.task_id ? { ...p, ...newEvent } : p
+          );
+        }
+        return [...prev, newEvent].slice(-50); // храним последние 50
+      });
+
+      // Также можно обновить token burn и efficiency
+      // (если бэкенд не шлёт отдельные события)
+      updateTokenBurnFromEvent(newEvent);
+    };
+
+    const handlePipelineComplete = (e: Event) => {
+      const customEvent = e as CustomEvent<PipelineEvent>;
+      const completed = customEvent.detail;
+
+      setPipelines(prev =>
+        prev.map(p =>
+          p.task_id === completed.task_id ? { ...p, ...completed, status: 'done' } : p
+        )
+      );
+
+      // Пересчитываем efficiency и добавляем точку в timeline
+      fetchInitialData(); // или более лёгкое обновление
+    };
+
+    const handlePipelineStats = (e: Event) => {
+      const customEvent = e as CustomEvent<any>;
+      const stats = customEvent.detail;
+
+      if (stats?.summary) {
+        setEfficiency({
+          successRate: stats.summary.success_rate || efficiency.successRate,
+          avgDurationSec: stats.summary.avg_duration_s || efficiency.avgDurationSec,
+          tokensPerSubtask: stats.summary.tokens_per_subtask || efficiency.tokensPerSubtask,
+          knowledgeLevel: stats.summary.avg_knowledge_level || efficiency.knowledgeLevel,
+        });
+      }
+    };
+
+    window.addEventListener('pipeline-activity', handlePipelineActivity);
+    window.addEventListener('pipeline-complete', handlePipelineComplete);
+    window.addEventListener('pipeline-stats', handlePipelineStats);
+    // Добавьте другие события по необходимости: task-board-updated, pipeline-failed и т.д.
+
+    return () => {
+      isMounted.current = false;
+      window.removeEventListener('pipeline-activity', handlePipelineActivity);
+      window.removeEventListener('pipeline-complete', handlePipelineComplete);
+      window.removeEventListener('pipeline-stats', handlePipelineStats);
+    };
+  }, [fetchInitialData, efficiency]);
+
+  // Запускаем начальную загрузку один раз при монтировании
+  useEffect(() => {
+    fetchInitialData();
+  }, [fetchInitialData]);
+
+  // Вспомогательная функция — обновление timeline при новых событиях
+  const updateTokenBurnFromEvent = (event: PipelineEvent) => {
+    if (!event.tokens_used || !event.timestamp) return;
+
+    const timeStr = new Date(event.timestamp * 1000).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    setTokenBurnData(prev => {
+      const last = prev[prev.length - 1];
+      const newPoint: TokenBurnPoint = {
+        time: timeStr,
+        tokens_burned: event.tokens_used || 0,
+        cumulative: (last?.cumulative || 0) + (event.tokens_used || 0),
+      };
+
+      // Можно агрегировать по минутам/часам, если слишком много точек
+      return [...prev, newPoint].slice(-120); // последние 120 точек
+    });
+  };
+
+  // Рендер (фрагмент для вкладки pipelines)
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* ... табы, header и т.д. */}
+
+      {activeTab === 'pipelines' && (
+        <div style={{ padding: '16px', flex: 1, overflowY: 'auto' }}>
+          <div style={{ marginBottom: 24 }}>
+            <TokenBurnTimeline data={tokenBurnData} height={340} />
+          </div>
+
+          <PipelineGantt runs={pipelines} height={420} />
+
+          {/* Дополнительно: список активных пайплайнов */}
+          <div style={{ marginTop: 32 }}>
+            <h3 style={{ fontSize: 14, color: '#aaa', marginBottom: 12 }}>
+              Active / Recent Pipelines ({pipelines.length})
+            </h3>
+            {/* можно вывести таблицу или карточки */}
+          </div>
+        </div>
+      )}
+
+      {/* ... другие вкладки */}
+    </div>
+  );
+}
+```
+
+### Что важно учесть
+
+1. **Производительность**  
+   - Не храните тысячи событий в состоянии — используйте `.slice(-N)`  
+   - Можно агрегировать данные по минутам/5 минутам на бэкенде или на фронте
+
+2. **Новые события**  
+   Если бэкенд может отправлять:
+   - `token-burn-update`
+   - `agent-updated`
+   - `efficiency-updated`
+
+   Тогда добавьте соответствующие слушатели.
+
+3. **Оптимизация**  
+   Можно использовать `useReducer` вместо множества `setState`, если состояний станет много.
+
+4. **Индикатор связи**  
+   Добавьте визуальный индикатор:
+
+```tsx
+<div style={{
+  position: 'absolute',
+  top: 12,
+  right: 16,
+  fontSize: 11,
+  color: myceliumConnected ? '#6a8a6a' : '#8a6a6a',
+}}>
+  {myceliumConnected ? '● Live' : '○ Disconnected'}
+</div>
+```
+
+Если нужно — могу показать, как сделать агрегацию точек по времени или как добавить фильтр по пресету/агенту в timeline.
+
+Что делаем дальше?

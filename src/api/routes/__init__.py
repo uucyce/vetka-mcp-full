@@ -9,7 +9,7 @@ VETKA API Routes - FastAPI Router Aggregator
 Aggregates all FastAPI routers for registration with the main app.
 ALL REST ROUTES MIGRATED!
 
-Total: 22 routers, 70+ endpoints (Phase 133: +1 task tracker router)
+Total: 23 routers, 75+ endpoints (Phase 135: +1 DAG router)
 """
 
 from fastapi import APIRouter, FastAPI
@@ -59,6 +59,9 @@ from .task_tracker_routes import router as tracker_router
 # MARKER_134.FEEDBACK: Pipeline feedback and self-improvement
 from .feedback_routes import router as feedback_router
 
+# MARKER_135.2B: DAG visualization routes
+from .dag_routes import router as dag_router
+
 
 def get_all_routers() -> List[APIRouter]:
     """
@@ -92,6 +95,7 @@ def get_all_routers() -> List[APIRouter]:
         task_router,  # /api/tasks/* (Phase 131.C20C - Universal Task API)
         tracker_router,  # /api/tracker/* (Phase 133 - Task lifecycle tracking)
         feedback_router,  # /api/feedback/* (Phase 134 - Pipeline self-improvement)
+        dag_router,  # /api/dag/* (Phase 135 - DAG visualization)
     ]
 
 
@@ -163,4 +167,5 @@ __all__ = [
     "task_router",
     "tracker_router",
     "feedback_router",
+    "dag_router",
 ]
