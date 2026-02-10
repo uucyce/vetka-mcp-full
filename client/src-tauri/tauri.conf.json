@@ -13,6 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "VETKA - 3D Knowledge Graph",
         "width": 1400,
         "height": 900,
@@ -22,6 +23,20 @@
         "fullscreen": false,
         "decorations": true,
         "transparent": false,
+        "center": true
+      },
+      {
+        "label": "mycelium",
+        "title": "Mycelium Command Center",
+        "url": "/mycelium",
+        "width": 960,
+        "height": 680,
+        "minWidth": 400,
+        "minHeight": 500,
+        "resizable": true,
+        "decorations": true,
+        "alwaysOnTop": false,
+        "visible": false,
         "center": true
       }
     ],

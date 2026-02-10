@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { TaskData, PipelineStatsData } from './TaskCard';
 
 interface PipelineStatsProps {
@@ -195,6 +196,55 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
             </span>
           </div>
         </>
+      )}
+
+      {/* MARKER_134.C34H: Recharts visualization */}
+      {presets.length > 0 && (
+        <div style={{
+          height: 120,
+          marginBottom: 8,
+          background: '#0d0d0d',
+          borderRadius: 4,
+          padding: '8px 0',
+        }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={presets.map(p => ({
+                name: p.preset.replace('dragon_', '').replace('titan_', ''),
+                success: p.total > 0 ? Math.round((p.success / p.total) * 100) : 0,
+                calls: p.llmCalls,
+              }))}
+              margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
+            >
+              <XAxis
+                dataKey="name"
+                tick={{ fill: '#666', fontSize: 9 }}
+                axisLine={{ stroke: '#333' }}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fill: '#555', fontSize: 8 }}
+                axisLine={false}
+                tickLine={false}
+                width={25}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: '#1a1a1a',
+                  border: '1px solid #333',
+                  borderRadius: 3,
+                  fontSize: 10,
+                }}
+                labelStyle={{ color: '#888' }}
+              />
+              <Bar dataKey="success" name="Success %" radius={[2, 2, 0, 0]}>
+                {presets.map((_, i) => (
+                  <Cell key={i} fill={i % 2 === 0 ? '#e0e0e0' : '#888'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       )}
 
       {/* Per-preset bars */}

@@ -101,25 +101,34 @@ async def lifespan(app: FastAPI):
                 await asyncio.sleep(3600)  # Continue after error
 
     # === MARKER_131.C20A: Heartbeat daemon (60s loop) ===
+    # MARKER_133.C33E: Load config from disk
     async def heartbeat_daemon():
-        """Run heartbeat tick every 60 seconds to process @dragon/@doctor tasks."""
+        """Run heartbeat tick every N seconds to process @dragon/@doctor tasks."""
         from src.orchestration.mycelium_heartbeat import heartbeat_tick
+        from src.api.routes.debug_routes import _load_heartbeat_config
 
-        HEARTBEAT_INTERVAL = int(os.getenv("VETKA_HEARTBEAT_INTERVAL", "60"))
         MCP_DEV_GROUP_ID = "609c0d9a-b5bc-426b-b134-d693023bdac8"
+
+        # MARKER_133.C33E: Load persisted config on startup
+        config = _load_heartbeat_config()
+        os.environ["VETKA_HEARTBEAT_ENABLED"] = "true" if config.get("enabled", False) else "false"
+        os.environ["VETKA_HEARTBEAT_INTERVAL"] = str(config.get("interval", 60))
 
         # Wait for server to be fully ready
         await asyncio.sleep(10)
-        logger.info(f"[Heartbeat] Daemon started (interval={HEARTBEAT_INTERVAL}s)")
+        logger.info(f"[Heartbeat] Daemon started (enabled={config.get('enabled')}, interval={config.get('interval')}s)")
 
         while True:
             try:
-                await asyncio.sleep(HEARTBEAT_INTERVAL)
+                # MARKER_133.C33E: Re-read config each tick (allows runtime changes)
+                config = _load_heartbeat_config()
+                interval = config.get("interval", 60)
+                enabled = config.get("enabled", False)
 
-                # Check if heartbeat is enabled
-                enabled = os.getenv("VETKA_HEARTBEAT_ENABLED", "true").lower() == "true"
+                await asyncio.sleep(interval)
+
                 if not enabled:
-                    logger.debug("[Heartbeat] Daemon disabled via env")
+                    logger.debug("[Heartbeat] Daemon disabled via config")
                     continue
 
                 # Run heartbeat tick
@@ -742,7 +751,7 @@ async def health_check(request: Request):
     heartbeat_status = {
         "running": heartbeat_task is not None and not heartbeat_task.done() if 'heartbeat_task' in dir() else False,
         "interval": int(os.getenv("VETKA_HEARTBEAT_INTERVAL", "60")),
-        "enabled": os.getenv("VETKA_HEARTBEAT_ENABLED", "true").lower() == "true",
+        "enabled": os.getenv("VETKA_HEARTBEAT_ENABLED", "false").lower() == "true",
     }
 
     bmad_status = {
@@ -822,6 +831,18 @@ app.include_router(approval_router)
 from src.api.routes.mcp_console_routes import router as mcp_console_router
 
 app.include_router(mcp_console_router)
+
+# === PHASE 133: HEARTBEAT HEALTH & CONFIG PERSISTENCE ===
+from src.api.routes.heartbeat_health import router as heartbeat_health_router
+app.include_router(heartbeat_health_router)
+
+# === PHASE 133: PIPELINE RUN HISTORY ===
+from src.api.routes.pipeline_history import router as pipeline_history_router
+app.include_router(pipeline_history_router)
+
+# === PHASE 133: TASK TRACKER ===
+from src.api.routes.task_tracker_routes import router as task_tracker_router
+app.include_router(task_tracker_router)
 
 # === PHASE 57: API KEYS MANAGEMENT ===
 from fastapi import Request

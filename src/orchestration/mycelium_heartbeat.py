@@ -414,6 +414,7 @@ async def heartbeat_tick(
                 preset="titan_core" if task.trigger == "titan" else None,
                 source=f"heartbeat_{task.trigger}",
                 tags=[task.trigger],
+                created_by=f"heartbeat:{task.trigger}",  # MARKER_133.C33D
             )
             logger.info(f"[Heartbeat] Task queued in board: {task_id}")
 

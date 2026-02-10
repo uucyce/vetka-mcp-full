@@ -1,6 +1,7 @@
 // VETKA Desktop App - Tauri Backend
 // Phase 100.1: Foundation
 // Phase 100.2: Native FS + Drag & Drop
+// Phase 134: Multi-window MCC support
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -8,7 +9,38 @@ mod commands;
 mod file_system;
 mod heartbeat;
 
-use tauri::{Manager, Emitter};
+use tauri::{Manager, Emitter, WebviewUrl, WebviewWindowBuilder};
+
+// MARKER_134.C34B: Mycelium Command Center window commands
+#[tauri::command]
+async fn open_mycelium(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("mycelium") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    } else {
+        // Window not in config or was closed — recreate
+        WebviewWindowBuilder::new(
+            &app,
+            "mycelium",
+            WebviewUrl::App("/mycelium".into()),
+        )
+        .title("Mycelium Command Center")
+        .inner_size(960.0, 680.0)
+        .resizable(true)
+        .always_on_top(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn close_mycelium(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("mycelium") {
+        window.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
 
 fn main() {
     env_logger::init();
@@ -30,6 +62,9 @@ fn main() {
             file_system::list_directory,
             file_system::watch_directory,
             file_system::handle_drop_paths,
+            // MARKER_134.C34B: Mycelium window commands
+            open_mycelium,
+            close_mycelium,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

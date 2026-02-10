@@ -23,7 +23,7 @@ Endpoints:
 - GET /api/tasks/{task_id}/results - Get pipeline results for task
 """
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from typing import Dict, Any, Optional, List
 import time
 import logging
@@ -84,7 +84,7 @@ async def get_task(task_id: str) -> Dict[str, Any]:
 # ============================================================
 
 @router.post("")
-async def create_task(body: Dict[str, Any]) -> Dict[str, Any]:
+async def create_task(body: Dict[str, Any], request: Request) -> Dict[str, Any]:
     """Create a new task.
 
     Body params:
@@ -94,12 +94,18 @@ async def create_task(body: Dict[str, Any]) -> Dict[str, Any]:
     - phase_type: str (build/fix/research)
     - preset: str (dragon_silver, titan_core, etc.)
     - tags: list[str]
+
+    Headers:
+    - X-Agent-ID: Client identifier (claude-code, cursor, opencode, etc.)
     """
     from src.orchestration.task_board import get_task_board
 
     title = body.get("title")
     if not title:
         return {"success": False, "error": "Title is required"}
+
+    # MARKER_133.C33D: Read client attribution from header
+    created_by = request.headers.get("X-Agent-ID", "unknown")
 
     board = get_task_board()
     task_id = board.add_task(
@@ -110,9 +116,10 @@ async def create_task(body: Dict[str, Any]) -> Dict[str, Any]:
         preset=body.get("preset"),
         tags=body.get("tags", []),
         source=body.get("source", "api"),
+        created_by=created_by,  # MARKER_133.C33D
     )
 
-    logger.info(f"[TaskAPI] Created task {task_id}: {title[:50]}")
+    logger.info(f"[TaskAPI] Created task {task_id}: {title[:50]} (by {created_by})")
     return {"success": True, "task_id": task_id}
 
 
@@ -317,6 +324,43 @@ async def get_active_agents() -> Dict[str, Any]:
     board = get_task_board()
     agents = board.get_active_agents()
     return {"success": True, "agents": agents, "count": len(agents)}
+
+
+# MARKER_133.C33C: Concurrent dispatch info endpoint
+@router.get("/concurrent")
+async def get_concurrent_info() -> Dict[str, Any]:
+    """Get current pipeline concurrency info.
+
+    Returns:
+        max: Maximum concurrent pipelines allowed
+        available: Semaphore slots available
+        running: Number of tasks currently running
+    """
+    from src.orchestration.task_board import get_task_board, TaskBoard
+
+    board = get_task_board()
+    info = TaskBoard.get_concurrent_info(board)
+    return {"success": True, **info}
+
+
+# MARKER_133.C33F: Stale task cleanup endpoint
+@router.post("/cleanup")
+async def cleanup_stale_tasks(body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Clean up stale running/claimed tasks.
+
+    Body params (optional):
+    - running_timeout_min: int (default 10) — max minutes for running tasks
+    - claimed_timeout_min: int (default 5) — max minutes for claimed tasks
+    """
+    from src.orchestration.task_board import get_task_board
+
+    body = body or {}
+    board = get_task_board()
+    cleaned = board.cleanup_stale(
+        running_timeout_min=body.get("running_timeout_min", 10),
+        claimed_timeout_min=body.get("claimed_timeout_min", 5),
+    )
+    return {"success": True, "cleaned": cleaned}
 
 
 # ============================================================

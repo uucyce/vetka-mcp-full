@@ -21,10 +21,100 @@ MARKER_129.2: Phase 129 — MYCELIUM async LLM tool
 
 from typing import Any, Dict, List, Optional
 import logging
+import asyncio
+import random
 
 from .base_async_tool import BaseAsyncMCPTool
 
 logger = logging.getLogger(__name__)
+
+# MARKER_133.C33A: Provider Resilience — retry + fallback chain
+RESILIENCE_MAX_RETRIES = 5
+RESILIENCE_FALLBACK_CHAIN = ["polza", "openrouter", "ollama"]
+RETRYABLE_ERRORS = ["429", "502", "503", "504", "timeout", "Timeout", "rate limit", "RateLimitError"]
+
+
+async def resilient_llm_call(
+    call_func,
+    messages: List[Dict],
+    model: str,
+    provider_enum,
+    source: Optional[str],
+    tools: Optional[List],
+    temperature: float,
+    max_tokens: int,
+    fallback_chain: Optional[List[str]] = None,
+    max_retries: int = RESILIENCE_MAX_RETRIES,
+) -> Dict[str, Any]:
+    """MARKER_133.C33A: Exponential backoff + jitter + provider fallback.
+
+    Wraps LLM calls with:
+    1. Retry with exponential backoff (1s → 16s) + jitter (±20%)
+    2. Max 5 retries per provider on 429/502/504/timeout
+    3. Fallback chain: polza → openrouter → ollama
+    4. Logging of each retry and provider switch
+    """
+    from src.elisya.provider_registry import Provider
+
+    providers_to_try = fallback_chain or RESILIENCE_FALLBACK_CHAIN
+    last_exc = None
+    original_source = source
+
+    for provider_name in providers_to_try:
+        # Skip if we're already using a specific source and it's not this provider
+        if original_source and original_source != provider_name:
+            continue
+
+        for attempt in range(max_retries):
+            try:
+                # Update provider enum for this attempt
+                try:
+                    current_provider = Provider(provider_name)
+                except ValueError:
+                    current_provider = provider_enum
+
+                response = await call_func(
+                    messages=messages,
+                    model=model,
+                    provider=current_provider,
+                    source=provider_name,
+                    tools=tools,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                return response
+
+            except Exception as e:
+                last_exc = e
+                err_str = str(e)
+
+                # Check if error is retryable
+                is_retryable = any(code in err_str for code in RETRYABLE_ERRORS)
+
+                if is_retryable:
+                    # Exponential backoff with jitter
+                    base_wait = min(2 ** attempt, 16)
+                    jitter = base_wait * random.uniform(-0.2, 0.2)
+                    wait_time = base_wait + jitter
+
+                    logger.warning(
+                        f"[Resilience] {provider_name} attempt {attempt + 1}/{max_retries}: "
+                        f"{err_str[:80]}. Retry in {wait_time:.1f}s"
+                    )
+                    await asyncio.sleep(wait_time)
+                else:
+                    # Non-retryable error — break inner loop, try next provider
+                    logger.error(f"[Resilience] {provider_name} non-retryable: {err_str[:120]}")
+                    break
+
+        # Provider exhausted
+        logger.warning(f"[Resilience] Provider {provider_name} exhausted after {max_retries} retries, trying next")
+
+        # After first provider fails, allow fallback to other providers
+        if original_source:
+            original_source = None
+
+    raise last_exc or RuntimeError("All providers failed")
 
 # MARKER_129.2_START: Security allowlists (same as llm_call_tool.py)
 SAFE_FUNCTION_CALLING_TOOLS = {
@@ -455,11 +545,12 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
             source_info = f" (source: {model_source})" if model_source else ""
             logger.info(f"[MYCELIUM LLM] Calling {model} via {provider_name}{source_info}")
 
-            # Direct await — no ThreadPoolExecutor, no asyncio.run()
-            response = await call_model_v2(
+            # MARKER_133.C33A: Use resilient wrapper with retry + fallback
+            response = await resilient_llm_call(
+                call_func=call_model_v2,
                 messages=messages,
                 model=model,
-                provider=provider_enum,
+                provider_enum=provider_enum,
                 source=model_source,
                 tools=tools,
                 temperature=temperature,

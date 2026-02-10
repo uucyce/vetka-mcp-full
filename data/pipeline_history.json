@@ -1,0 +1,23 @@
+[
+  {
+    "run_id": "run_1770744205_70744173",
+    "task_id": "task_1770744173",
+    "task_title": "Create a Python function hello_world() that returns Hello",
+    "preset": "dragon_bronze",
+    "phase_type": "build",
+    "phases_completed": [
+      "MARKER_102.1"
+    ],
+    "subtasks_completed": 1,
+    "subtasks_total": 1,
+    "total_duration_s": 31.6,
+    "eval_score": 0.9,
+    "status": "done",
+    "llm_calls": 4,
+    "tokens_in": 2415,
+    "tokens_out": 1867,
+    "files_created": [],
+    "timestamp": 1770744205.173228,
+    "timestamp_human": "2026-02-10 20:23:25"
+  }
+]

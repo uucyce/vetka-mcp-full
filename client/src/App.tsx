@@ -15,7 +15,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { MessageSquare } from 'lucide-react';
+import { MessageSquare, TerminalSquare } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { FileCard } from './components/canvas/FileCard';
 import { TreeEdges } from './components/canvas/TreeEdges';
 import { CameraController } from './components/canvas/CameraController';
@@ -655,6 +656,37 @@ export default function App() {
               title={selectedNode ? 'View artifact' : 'Select a file first'}
             >
               <ChestIcon isOpen={isArtifactOpen} />
+            </button>
+
+            {/* MARKER_134.C34D: Mycelium Command Center button */}
+            <button
+              onClick={() => invoke('open_mycelium').catch(console.error)}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                background: '#1a1a1a',
+                border: '1px solid #333',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s',
+                color: '#888',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#252525';
+                e.currentTarget.style.color = '#fff';
+                e.currentTarget.style.borderColor = '#444';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#1a1a1a';
+                e.currentTarget.style.color = '#888';
+                e.currentTarget.style.borderColor = '#333';
+              }}
+              title="Mycelium Command Center"
+            >
+              <TerminalSquare size={16} />
             </button>
           </div>
         </div>

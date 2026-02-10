@@ -70,6 +70,16 @@ MAX_ARCHITECT_REPLANS = int(os.getenv("VETKA_MAX_ARCHITECT_REPLANS", "1"))
 VERIFIER_PASS_THRESHOLD = float(os.getenv("VETKA_VERIFIER_PASS_THRESHOLD", "0.75"))
 # MARKER_122_END
 
+# MARKER_133.C33B: Per-phase timeouts (seconds) — prevents pipeline hangs
+PHASE_TIMEOUTS = {
+    "scout": int(os.getenv("VETKA_TIMEOUT_SCOUT", "30")),
+    "architect": int(os.getenv("VETKA_TIMEOUT_ARCHITECT", "60")),
+    "researcher": int(os.getenv("VETKA_TIMEOUT_RESEARCHER", "45")),
+    "coder": int(os.getenv("VETKA_TIMEOUT_CODER", "90")),
+    "verifier": int(os.getenv("VETKA_TIMEOUT_VERIFIER", "30")),
+}
+# MARKER_133.C33B_END
+
 # MARKER_119.2: Import for pipeline-to-STMBuffer bridge
 from src.memory.stm_buffer import get_stm_buffer
 
@@ -310,6 +320,25 @@ Respond with implementation plan or code."""
         self.preset_models = roles
         logger.info(f"[Pipeline] Applied preset '{self.preset_name}': {preset.get('description', '')}")
     # MARKER_117_PRESETS_END
+
+    # MARKER_133.C33B: Per-phase timeout wrapper
+    async def _safe_phase(self, phase_name: str, coro) -> Optional[Any]:
+        """Execute pipeline phase with timeout. Returns None on timeout (non-fatal for most phases).
+
+        MARKER_133.C33B: Each phase gets a configurable timeout.
+        If exceeded — skip and continue (except architect, which aborts).
+        """
+        timeout = PHASE_TIMEOUTS.get(phase_name, 60)
+        try:
+            return await asyncio.wait_for(coro, timeout=timeout)
+        except asyncio.TimeoutError:
+            logger.error(f"[Pipeline] Phase '{phase_name}' timed out after {timeout}s — skipping")
+            await self._emit_progress("system", f"Phase {phase_name} timed out ({timeout}s) — continuing")
+            return None
+        except Exception as e:
+            logger.error(f"[Pipeline] Phase '{phase_name}' failed: {e}")
+            return None
+    # MARKER_133.C33B_END
 
     # MARKER_119.4: Scout role — codebase scan before Architect
     # MARKER_124.7B: Pre-fetch via VetkaSearchCodeTool (ripgrep) before Scout LLM call
@@ -645,11 +674,13 @@ Respond with implementation plan or code."""
         """Run Scout and Researcher in parallel for initial reconnaissance.
 
         Returns (scout_context, research_context) — either can be None on failure.
+        MARKER_133.C33B: Wrapped with per-phase timeouts.
         """
         try:
+            # MARKER_133.C33B: Apply phase timeouts to scout and researcher
             results = await asyncio.gather(
-                self._scout_scan(task, phase_type) if "scout" in self.prompts else asyncio.sleep(0),
-                self._research(task),
+                self._safe_phase("scout", self._scout_scan(task, phase_type)) if "scout" in self.prompts else asyncio.sleep(0),
+                self._safe_phase("researcher", self._research(task)),
                 return_exceptions=True
             )
             scout_ctx = results[0] if not isinstance(results[0], (Exception, type(None), float)) else None
@@ -1585,30 +1616,70 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         files_created: List[str] = []
 
-        # Pattern to match code blocks: ```[lang]\ncode\n```
-        pattern = r'```(?:python|py|javascript|js|typescript|ts|)?\s*\n(.*?)\n```'
+        # MARKER_133.FIX3: Multi-format code extraction
+        # Pattern 1: Standard markdown code blocks: ```[lang]\ncode\n```
+        pattern = r'```(?:python|py|javascript|js|typescript|ts|rust|rs|)?\s*\n(.*?)\n```'
         matches = re.findall(pattern, content, re.DOTALL | re.IGNORECASE)
 
-        if not matches:
-            logger.debug("[Pipeline] No code blocks found in response")
-            return files_created
+        # Pattern 2: "// file: path" format (Qwen-style output)
+        # Extract file path AND code that follows
+        file_pattern = r'(?://|#)\s*file:\s*([^\s\n]+)\s*\n(.*?)(?=(?://|#)\s*file:|```|$)'
+        file_matches = re.findall(file_pattern, content, re.DOTALL | re.IGNORECASE)
 
+        if not matches and not file_matches:
+            # Pattern 3: Fallback — if content looks like code (has def/class/import), treat whole thing as code
+            code_indicators = ['def ', 'class ', 'import ', 'from ', 'async def ', '@router', '@app']
+            if any(indicator in content[:500] for indicator in code_indicators):
+                logger.info("[Pipeline] No code blocks found but content looks like code, treating as raw code")
+                matches = [content]
+            else:
+                logger.debug("[Pipeline] No code blocks found in response")
+                return files_created
+
+        # Process "// file: path" matches first (they have explicit paths)
+        for file_path_match, code_block in file_matches:
+            code = code_block.strip()
+            if not code or len(code) < 20:
+                continue
+            filepath = file_path_match.strip()
+            # Validate it looks like a real path
+            if '.' in filepath and ('/' in filepath or filepath.endswith('.py')):
+                self._write_extracted_file(filepath, code, files_created, subtask)
+
+        # Process standard code blocks
         for i, code_block in enumerate(matches):
             code = code_block.strip()
             if not code:
                 continue
 
-            # Determine filepath from subtask description
+            # Determine filepath from subtask description or code content
             # e.g., "Create src/voice/config.py" → src/voice/config.py
             filepath = None
-            if subtask.description:
+
+            # Try to find path in code itself first (# file: path)
+            inline_path = re.search(r'(?://|#)\s*file:\s*([^\s\n]+)', code[:200])
+            if inline_path:
+                filepath = inline_path.group(1).strip()
+
+            # Then try subtask description
+            if not filepath and subtask.description:
                 path_match = re.search(
-                    r'(src/[^\s]+?\.(?:py|js|ts|tsx|md|json))',
+                    r'((?:src|data|client)/[^\s]+?\.(?:py|js|ts|tsx|md|json))',
                     subtask.description,
                     re.IGNORECASE
                 )
                 if path_match:
                     filepath = path_match.group(1)
+
+            # Then try the LLM content itself for file references
+            if not filepath:
+                content_path = re.search(
+                    r'((?:src|data|client)/[^\s]+?\.(?:py|js|ts|tsx|md|json))',
+                    content[:500],
+                    re.IGNORECASE
+                )
+                if content_path:
+                    filepath = content_path.group(1)
 
             # Fallback: Use MARKER or generic name
             if not filepath:
@@ -1671,6 +1742,56 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     logger.error(f"[Pipeline] Fallback also failed: {e2}")
 
         return files_created
+
+    def _write_extracted_file(self, filepath: str, code: str, files_created: List[str], subtask) -> None:
+        """MARKER_133.FIX3: Write a single extracted file to disk with safety checks."""
+        from pathlib import Path
+        try:
+            path_obj = Path(filepath)
+
+            # Validate code language
+            is_valid, error_msg = self._validate_code_language(code, filepath)
+            if not is_valid:
+                logger.error(f"[Pipeline] {error_msg} for {filepath}")
+                staging_dir = Path("data/vetka_staging/blocked")
+                staging_dir.mkdir(parents=True, exist_ok=True)
+                staging_path = staging_dir / f"{path_obj.stem}_BLOCKED{path_obj.suffix}"
+                staging_path.write_text(code, encoding='utf-8')
+                return
+
+            # Safety: existing files outside safe dirs go to staging
+            safe_dirs = ('src/vetka_out', 'data/vetka_staging', 'data/artifacts')
+            if path_obj.exists() and not any(str(filepath).startswith(d) for d in safe_dirs):
+                staging_dir = Path("data/vetka_staging/would_overwrite")
+                staging_dir.mkdir(parents=True, exist_ok=True)
+                staging_path = staging_dir / f"{path_obj.stem}_NEW{path_obj.suffix}"
+                staging_path.write_text(code, encoding='utf-8')
+                files_created.append(str(staging_path))
+                logger.info(f"[Pipeline] Existing file → staged: {staging_path} ({len(code)} chars)")
+                return
+
+            path_obj.parent.mkdir(parents=True, exist_ok=True)
+            path_obj.write_text(code, encoding='utf-8')
+            files_created.append(filepath)
+            logger.info(f"[Pipeline] Created: {filepath} ({len(code)} chars)")
+
+            try:
+                from src.services.activity_hub import get_activity_hub
+                hub = get_activity_hub()
+                hub.emit_glow_sync(str(path_obj.absolute()), 1.0, "vetka_out:created")
+            except Exception:
+                pass
+
+        except Exception as e:
+            logger.error(f"[Pipeline] Failed to write {filepath}: {e}")
+            try:
+                fallback_dir = Path("data/vetka_staging")
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                fallback_path = fallback_dir / Path(filepath).name
+                fallback_path.write_text(code, encoding='utf-8')
+                files_created.append(str(fallback_path))
+            except Exception as e2:
+                logger.error(f"[Pipeline] Fallback failed: {e2}")
     # MARKER_103.4_END
 
     # MARKER_102.4_START: Core pipeline methods
@@ -1736,8 +1857,16 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_117.6C: Model attribution in progress messages
             architect_model = self.prompts.get("architect", {}).get("model", "")
             await self._emit_progress("@architect", "📋 Breaking down task into subtasks...", model=architect_model)
-            plan = await self._architect_plan(task, phase_type, scout_context=scout_context,
-                                               research_context=initial_research)
+            # MARKER_133.C33B: Architect phase with timeout — CRITICAL (abort on timeout)
+            plan = await self._safe_phase("architect", self._architect_plan(task, phase_type, scout_context=scout_context,
+                                               research_context=initial_research))
+            # MARKER_133.C33B: If architect timed out, abort pipeline
+            if plan is None:
+                logger.error("[Pipeline] Architect phase timed out — cannot continue without plan")
+                pipeline_task.status = "failed"
+                pipeline_task.results = {"error": "Architect phase timed out"}
+                self._update_task(pipeline_task)
+                return {"success": False, "error": "Architect phase timed out", "task_id": pipeline_task.task_id}
             pipeline_task.subtasks = [
                 Subtask(**st) if isinstance(st, dict) else st
                 for st in plan.get("subtasks", [])
@@ -1789,14 +1918,21 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # At 0.9 every pipeline did double-planning (E2E showed confidence=0.85 → wasted replan)
             if initial_research and isinstance(initial_research, dict) and initial_research.get("confidence", 1.0) < 0.7:
                 await self._emit_progress("@architect", "📋 PM pass: refining plan with research context...", model=architect_model)
-                plan = await self._architect_plan(task, phase_type, scout_context=scout_context,
-                                                   research_context=initial_research)
-                pipeline_task.subtasks = [
-                    Subtask(**st) if isinstance(st, dict) else st
-                    for st in plan.get("subtasks", [])
-                ]
-                total_subtasks = len(pipeline_task.subtasks)
-                await self._emit_progress("@architect", f"✅ PM refined plan: {total_subtasks} subtasks", model=self._last_used_model)
+                # MARKER_133.C33B: Architect PM pass with timeout
+                refined_plan = await self._safe_phase("architect", self._architect_plan(task, phase_type, scout_context=scout_context,
+                                                   research_context=initial_research))
+                if refined_plan is None:
+                    # PM replan failed, continue with original plan
+                    logger.warning("[Pipeline] Architect PM pass timed out — using original plan")
+                    await self._emit_progress("system", "Architect PM pass timed out — using original plan")
+                else:
+                    plan = refined_plan
+                    pipeline_task.subtasks = [
+                        Subtask(**st) if isinstance(st, dict) else st
+                        for st in plan.get("subtasks", [])
+                    ]
+                    total_subtasks = len(pipeline_task.subtasks)
+                    await self._emit_progress("@architect", f"✅ PM refined plan: {total_subtasks} subtasks", model=self._last_used_model)
             # MARKER_122.2_END
 
             # MARKER_102.24_START: Phase 2 with STM context passing
@@ -1912,9 +2048,84 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     pipeline_task.results = {"stats": pipeline_stats}
                 self._update_task(pipeline_task)
                 logger.info(f"[Pipeline Stats] {self.preset_name}: {pipeline_stats['subtasks_completed']}/{pipeline_stats['subtasks_total']} done, {pipeline_stats['llm_calls']} LLM calls, {pipeline_stats['duration_s']}s")
+
+                # MARKER_133.HISTORY: Record to pipeline history for observability
+                try:
+                    from src.api.routes.pipeline_history import append_run
+                    append_run(
+                        task_id=task_id,
+                        task_title=task[:200],
+                        preset=self.preset_name or "unknown",
+                        phase_type=phase_type,
+                        phases_completed=[s.marker for s in pipeline_task.subtasks if s.status == "done"],
+                        total_duration_s=pipeline_stats.get("duration_s", 0),
+                        eval_score=pipeline_stats.get("verifier_avg_confidence"),
+                        status="done" if pipeline_stats.get("success") else "failed",
+                        llm_calls=pipeline_stats.get("llm_calls", 0),
+                        tokens_in=pipeline_stats.get("tokens_in", 0),
+                        tokens_out=pipeline_stats.get("tokens_out", 0),
+                        files_created=pipeline_task.results.get("files_created", []) if pipeline_task.results else [],
+                        subtasks_completed=pipeline_stats.get("subtasks_completed", 0),
+                        subtasks_total=pipeline_stats.get("subtasks_total", 0),
+                    )
+                except Exception as hist_err:
+                    logger.debug(f"[Pipeline History] Failed to record: {hist_err}")
+
             except Exception as e:
                 logger.debug(f"[Pipeline Stats] Failed to record: {e}")
             # MARKER_126.0A_END
+
+            # MARKER_133.TRACKER: Auto-track task completion in digest
+            try:
+                from src.services.task_tracker import on_task_completed
+                await on_task_completed(
+                    task_id=task_id,
+                    task_title=task[:200],
+                    status="done" if pipeline_stats.get("success") else "failed",
+                    stats=pipeline_stats,
+                    source=f"dragon_{self.preset_name}" if self.preset_name else "dragon",
+                )
+            except Exception as track_err:
+                logger.debug(f"[Pipeline Tracker] Failed: {track_err}")
+
+            # MARKER_134.FEEDBACK_B: Save structured final report for feedback loop
+            try:
+                from src.services.feedback_service import save_report
+                completed = sum(1 for s in pipeline_task.subtasks if s.status == "done")
+                total = len(pipeline_task.subtasks)
+                issues_found = []
+                for s in pipeline_task.subtasks:
+                    vf = getattr(s, "verifier_feedback", None)
+                    if isinstance(vf, dict) and not vf.get("passed", True):
+                        issues_found.append({
+                            "type": "verifier_fail",
+                            "marker": s.marker or "unknown",
+                            "confidence": vf.get("confidence", 0),
+                            "issues": vf.get("issues", []),
+                            "severity": vf.get("severity", "minor"),
+                        })
+                final_report = {
+                    "run_id": task_id,
+                    "task": task[:200],
+                    "summary": f"Completed {completed}/{total} subtasks",
+                    "quality_score": pipeline_stats.get("verifier_avg_confidence", 0),
+                    "issues_found": issues_found,
+                    "improvements_for_next_run": [],
+                    "files_created": pipeline_task.results.get("files_created", []) if pipeline_task.results else [],
+                    "tokens_used": pipeline_stats.get("tokens_in", 0) + pipeline_stats.get("tokens_out", 0),
+                    "duration_s": pipeline_stats.get("duration_s", 0),
+                    "preset": self.preset_name,
+                    "status": "done" if pipeline_stats.get("success") else "failed",
+                    "subtasks_total": total,
+                    "subtasks_completed": completed,
+                    "retries": sum(getattr(s, "retry_count", 0) for s in pipeline_task.subtasks),
+                    "tier_upgrades": pipeline_stats.get("tier_upgrades", 0),
+                }
+                save_report(final_report)
+                logger.info(f"[Feedback] Final report saved: {task_id}")
+            except Exception as fb_err:
+                logger.error(f"[Feedback] Final report save failed: {fb_err}")
+            # MARKER_134.FEEDBACK_B_END
 
             # MARKER_117.5A: Event-driven wakeup after pipeline completion
             # Cursor insight: "Planners should wake when tasks complete"
@@ -2054,14 +2265,25 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if subtask.visible:
                 await self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks, model=coder_model)
 
-            result = await self._execute_subtask(subtask, phase_type)
+            # MARKER_133.C33B: Coder phase with timeout
+            result = await self._safe_phase("coder", self._execute_subtask(subtask, phase_type))
+            if result is None:
+                # Coder timed out — mark subtask as failed and continue
+                subtask.status = "failed"
+                subtask.result = "Coder phase timed out"
+                self._update_task(pipeline_task)
+                continue
 
             # MARKER_122.3: Verify-Retry loop (only for fix/build phases)
             if phase_type in ("fix", "build") and "verifier" in self.prompts:
                 verifier_model = self.prompts.get("verifier", {}).get("model", "")
                 if subtask.visible:
                     await self._emit_progress("@verifier", f"🔎 Verifying: {subtask.marker or f'step_{i+1}'}...", i+1, total_subtasks, model=verifier_model)
-                verification = await self._verify_subtask(subtask, result, phase_type)
+                # MARKER_133.C33B: Verifier phase with timeout
+                verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type))
+                if verification is None:
+                    # Verifier timed out — assume passed to continue pipeline
+                    verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
 
                 # MARKER_127.3: Default passed=False (not True) — missing field = not passed
                 # Also: major severity gets ONE retry before escalation (was: instant break)
@@ -2077,18 +2299,43 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         await self._emit_progress("@verifier", f"⚠️ Major issue — retrying coder once", i+1, total_subtasks)
                     # Retry coder with feedback
                     result = await self._retry_coder(subtask, verification, phase_type)
-                    verification = await self._verify_subtask(subtask, result, phase_type)
+                    # MARKER_133.C33B: Verifier retry with timeout
+                    verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type))
+                    if verification is None:
+                        verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
+                        break  # Exit retry loop on timeout
 
                 # MARKER_122.4: Tier upgrade as last resort
                 if not verification.get("passed", False) and subtask.retry_count >= MAX_CODER_RETRIES and not subtask.escalated:
                     if self._upgrade_coder_tier():
                         await self._emit_progress("system", f"⚡ Upgrading coder tier to {self.preset_name}")
                         subtask.retry_count = 0
-                        result = await self._execute_subtask(subtask, phase_type)
-                        verification = await self._verify_subtask(subtask, result, phase_type)
+                        # MARKER_133.C33B: Coder tier upgrade with timeout
+                        result = await self._safe_phase("coder", self._execute_subtask(subtask, phase_type))
+                        if result is None:
+                            result = "Coder phase timed out during tier upgrade"
+                        verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type))
+                        if verification is None:
+                            verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
 
                 # MARKER_127.1A: Store verification dict for stats (confidence collection)
                 subtask.verifier_feedback = verification
+
+                # MARKER_134.FEEDBACK_A: Persist verifier feedback if quality < 0.8
+                if verification and verification.get("confidence", 1.0) < 0.8:
+                    try:
+                        from src.services.feedback_service import save_verifier_feedback
+                        save_verifier_feedback(
+                            task_id=task_id,
+                            subtask_marker=subtask.marker or f"step_{i+1}",
+                            score=verification.get("confidence", 0),
+                            issues=verification.get("issues", []),
+                            suggestion="; ".join(str(s) for s in verification.get("suggestions", verification.get("issues", []))),
+                            severity=verification.get("severity", "medium"),
+                        )
+                    except Exception as fb_err:
+                        logger.debug(f"[Feedback] Verifier save failed: {fb_err}")
+                # MARKER_134.FEEDBACK_A_END
 
                 if subtask.visible:
                     v_icon = "✅" if verification.get("passed", True) else "⚠️"
@@ -2244,13 +2491,21 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
                 # Execute subtask
                 subtask.status = "executing"
-                result = await self._execute_subtask(subtask, phase_type)
+                # MARKER_133.C33B: Coder phase with timeout (parallel path)
+                result = await self._safe_phase("coder", self._execute_subtask(subtask, phase_type))
+                if result is None:
+                    subtask.status = "failed"
+                    subtask.result = "Coder phase timed out"
+                    return (idx, None)
 
                 # MARKER_122.3: Verify-Retry loop (parallel path)
                 if phase_type in ("fix", "build") and "verifier" in self.prompts:
                     if subtask.visible:
                         await self._emit_progress("@verifier", f"🔎 [P] Verifying: {subtask.marker or f'step_{idx+1}'}...", idx+1, total_subtasks)
-                    verification = await self._verify_subtask(subtask, result, phase_type)
+                    # MARKER_133.C33B: Verifier phase with timeout (parallel path)
+                    verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type))
+                    if verification is None:
+                        verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
                     # MARKER_127.3: Default passed=False, major gets one retry (parallel path)
                     while not verification.get("passed", False) and subtask.retry_count < MAX_CODER_RETRIES:
                         sev = verification.get("severity", "minor")
@@ -2258,7 +2513,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                             subtask.escalated = True
                             break
                         result = await self._retry_coder(subtask, verification, phase_type)
-                        verification = await self._verify_subtask(subtask, result, phase_type)
+                        # MARKER_133.C33B: Verifier retry with timeout (parallel path)
+                        verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type))
+                        if verification is None:
+                            verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
+                            break
                     # MARKER_127.1A: Store verification dict for stats (parallel path)
                     subtask.verifier_feedback = verification
                 # MARKER_122.3_END

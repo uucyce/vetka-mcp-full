@@ -23,16 +23,19 @@ import { LeagueTester } from './LeagueTester';
 import { BalancesPanel } from './BalancesPanel';  // MARKER_126.7
 import { ActivityLog } from './ActivityLog';  // MARKER_127.2B
 import { WatcherStats } from './WatcherStats';  // MARKER_129.1B
+import { ArtifactViewer } from './ArtifactViewer';  // MARKER_C23C
+import { AgentStatusBar } from './AgentStatusBar';  // MARKER_C23D
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';  // MARKER_129.C14B
 
 interface DevPanelProps {
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
+  standalone?: boolean;  // MARKER_134.C34C: Standalone mode for MCC window
 }
 
 const API_BASE = 'http://localhost:5001/api/debug';
 
-type Tab = 'board' | 'stats' | 'test' | 'balance' | 'activity' | 'watcher';  // MARKER_129.1B
+type Tab = 'board' | 'stats' | 'test' | 'balance' | 'activity' | 'watcher' | 'artifacts';  // MARKER_129.1B + MARKER_C23C
 
 // MARKER_131.C22: Heartbeat settings interface
 interface HeartbeatSettings {
@@ -59,6 +62,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'balance', label: 'Balance' },
   { id: 'activity', label: 'Activity' },
   { id: 'watcher', label: 'Watcher' },  // MARKER_129.1B
+  { id: 'artifacts', label: 'Artifacts' },  // MARKER_C23C
 ];
 
 // MARKER_128.7A: Toast notification interface
@@ -80,8 +84,11 @@ interface AgentStatus {
 }
 
 // MARKER_126.0C: Tabbed DevPanel
-export function DevPanel({ isOpen, onClose }: DevPanelProps) {
+// MARKER_134.C34C: Added standalone mode for MCC window
+export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>('board');
+  // MARKER_134.C34J: Task status filter
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'running' | 'done'>('all');
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [loading, setLoading] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -382,14 +389,9 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
   const runningCount = tasks.filter(t => t.status === 'running').length;
   const holdCount = tasks.filter(t => t.status === 'hold').length;
 
-  return (
-    <FloatingWindow
-      title="Dev Panel"
-      isOpen={isOpen}
-      onClose={onClose}
-      defaultWidth={420}
-      defaultHeight={600}
-    >
+  // MARKER_134.C34E: Standalone mode renders without FloatingWindow wrapper
+  const content = (
+    <>
       {/* Tab bar — Nolan monochrome, monospace */}
       <div style={{
         display: 'flex',
@@ -614,6 +616,33 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
               </button>
             </div>
 
+            {/* MARKER_134.C34J: Status Filter */}
+            <div style={{
+              display: 'flex',
+              gap: 4,
+              marginBottom: 8,
+              fontSize: 9,
+              fontFamily: 'monospace',
+            }}>
+              {(['all', 'pending', 'running', 'done'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setStatusFilter(f)}
+                  style={{
+                    padding: '3px 8px',
+                    background: statusFilter === f ? 'rgba(255,255,255,0.08)' : 'transparent',
+                    border: `1px solid ${statusFilter === f ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)'}`,
+                    borderRadius: 2,
+                    color: statusFilter === f ? '#ccc' : '#555',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
             {/* Task List */}
             <div style={{ flex: 1, overflowY: 'auto', marginBottom: 10, minHeight: 0 }}>
               {loading && tasks.length === 0 && (
@@ -627,11 +656,13 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
                   Use <code style={{ color: '#888' }}>@doctor</code> or <code style={{ color: '#888' }}>@dragon</code> in chat.
                 </div>
               )}
-              {tasks.map((task, idx) => (
+              {tasks
+                .filter(t => statusFilter === 'all' || t.status === statusFilter || (statusFilter === 'done' && t.status === 'failed'))
+                .map((task, idx) => (
                 <TaskCard
                   key={task.id}
                   task={task}
-                  isSelected={idx === selectedTaskIdx}
+                  isSelected={tasks.indexOf(task) === selectedTaskIdx}
                   onPriorityChange={handlePriorityChange}
                   onRemove={handleRemove}
                   onDispatch={handleDispatchTask}
@@ -714,9 +745,38 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
                   fontSize: 11,
                   fontFamily: 'monospace',
                 }}>
+                  {/* MARKER_133.C33G: Controls right-aligned */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                    {/* ON/OFF toggle buttons */}
-                    <div style={{ display: 'flex', gap: 4 }}>
+                    <span style={{ color: '#888' }}>Heartbeat Controls</span>
+                    <span style={{ flex: 1 }} />
+                    <span style={{ color: '#666' }}>interval:</span>
+                    <select
+                      value={heartbeat.interval}
+                      onChange={(e) => { e.stopPropagation(); updateHeartbeat({ interval: parseInt(e.target.value) }); }}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        background: '#1a1a1a',
+                        border: '1px solid #333',
+                        borderRadius: 3,
+                        color: '#ccc',
+                        fontSize: 11,
+                        padding: '4px 8px',
+                      }}
+                    >
+                      <option value="30">30 sec</option>
+                      <option value="60">1 min</option>
+                      <option value="120">2 min</option>
+                      <option value="300">5 min</option>
+                      <option value="900">15 min</option>
+                      <option value="1800">30 min</option>
+                      <option value="3600">1 hour</option>
+                      <option value="21600">6 hours</option>
+                      <option value="43200">12 hours</option>
+                      <option value="86400">1 day</option>
+                      <option value="604800">1 week</option>
+                    </select>
+                    {/* ON/OFF toggle buttons — now on right */}
+                    <div style={{ display: 'flex', gap: 0 }}>
                       <button
                         onClick={(e) => { e.stopPropagation(); updateHeartbeat({ enabled: true }); }}
                         style={{
@@ -748,33 +808,6 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
                         OFF
                       </button>
                     </div>
-                    <span style={{ flex: 1 }} />
-                    <span style={{ color: '#888' }}>interval:</span>
-                    <select
-                      value={heartbeat.interval}
-                      onChange={(e) => { e.stopPropagation(); updateHeartbeat({ interval: parseInt(e.target.value) }); }}
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        background: '#1a1a1a',
-                        border: '1px solid #333',
-                        borderRadius: 3,
-                        color: '#ccc',
-                        fontSize: 11,
-                        padding: '4px 8px',
-                      }}
-                    >
-                      <option value="30">30 sec</option>
-                      <option value="60">1 min</option>
-                      <option value="120">2 min</option>
-                      <option value="300">5 min</option>
-                      <option value="900">15 min</option>
-                      <option value="1800">30 min</option>
-                      <option value="3600">1 hour</option>
-                      <option value="21600">6 hours</option>
-                      <option value="43200">12 hours</option>
-                      <option value="86400">1 day</option>
-                      <option value="604800">1 week</option>
-                    </select>
                   </div>
                   <div style={{ display: 'flex', gap: 16, color: '#777', fontSize: 10 }}>
                     <span>ticks: <span style={{ color: '#aaa' }}>{heartbeat.total_ticks}</span></span>
@@ -866,7 +899,13 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
 
         {/* ═══ WATCHER TAB ═══ MARKER_129.1B */}
         {activeTab === 'watcher' && <WatcherStats />}
+
+        {/* ═══ ARTIFACTS TAB ═══ MARKER_C23C */}
+        {activeTab === 'artifacts' && <ArtifactViewer />}
       </div>
+
+      {/* MARKER_C23D: Multi-Agent Status Bar */}
+      <AgentStatusBar />
 
       {/* MARKER_128.7A: Toast notifications */}
       {toasts.length > 0 && (
@@ -923,6 +962,35 @@ export function DevPanel({ isOpen, onClose }: DevPanelProps) {
           50% { opacity: 0.4; }
         }
       `}</style>
+    </>
+  );
+
+  // MARKER_134.C34E: Standalone mode - direct render without window chrome
+  if (standalone) {
+    return (
+      <div style={{
+        width: '100%',
+        height: '100%',
+        background: '#0d0d0d',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}>
+        {content}
+      </div>
+    );
+  }
+
+  // Normal floating window mode
+  return (
+    <FloatingWindow
+      title="Dev Panel"
+      isOpen={isOpen}
+      onClose={onClose}
+      defaultWidth={420}
+      defaultHeight={600}
+    >
+      {content}
     </FloatingWindow>
   );
 }

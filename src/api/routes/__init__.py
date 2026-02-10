@@ -9,7 +9,7 @@ VETKA API Routes - FastAPI Router Aggregator
 Aggregates all FastAPI routers for registration with the main app.
 ALL REST ROUTES MIGRATED!
 
-Total: 21 routers, 70+ endpoints (Phase 108.4: +1 activity feed router)
+Total: 22 routers, 70+ endpoints (Phase 133: +1 task tracker router)
 """
 
 from fastapi import APIRouter, FastAPI
@@ -53,6 +53,12 @@ from .activity_routes import router as activity_router
 # MARKER_131.C20C: Universal Task API
 from .task_routes import router as task_router
 
+# MARKER_133.TRACKER: Task lifecycle tracking
+from .task_tracker_routes import router as tracker_router
+
+# MARKER_134.FEEDBACK: Pipeline feedback and self-improvement
+from .feedback_routes import router as feedback_router
+
 
 def get_all_routers() -> List[APIRouter]:
     """
@@ -84,6 +90,8 @@ def get_all_routers() -> List[APIRouter]:
         cam_router,  # /api/cam/* (Phase 98 - CAM-Emoji Link)
         activity_router,  # /api/activity/* (Phase 108.4 Step 5 - Activity Feed)
         task_router,  # /api/tasks/* (Phase 131.C20C - Universal Task API)
+        tracker_router,  # /api/tracker/* (Phase 133 - Task lifecycle tracking)
+        feedback_router,  # /api/feedback/* (Phase 134 - Pipeline self-improvement)
     ]
 
 
@@ -153,4 +161,6 @@ __all__ = [
     "cam_router",
     "activity_router",
     "task_router",
+    "tracker_router",
+    "feedback_router",
 ]

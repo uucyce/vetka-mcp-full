@@ -22,6 +22,7 @@ import time
 import logging
 import os
 import re
+import asyncio
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -69,6 +70,39 @@ class TaskBoard:
         task_id = board.add_task("Fix bug", "Fix file positioning", priority=2)
         await board.dispatch_next(chat_id="some-chat-id")
     """
+
+    # MARKER_133.C33C: Class-level semaphore for concurrent dispatch limiting
+    _dispatch_semaphore: Optional[asyncio.Semaphore] = None
+    _dispatch_semaphore_size: int = 2  # Default max concurrent
+
+    @classmethod
+    def _get_dispatch_semaphore(cls, max_concurrent: int = 2) -> asyncio.Semaphore:
+        """Get or create the dispatch semaphore.
+
+        MARKER_133.C33C: Enforces max_concurrent pipelines running.
+        """
+        # Create new semaphore if size changed or doesn't exist
+        if cls._dispatch_semaphore is None or cls._dispatch_semaphore_size != max_concurrent:
+            cls._dispatch_semaphore = asyncio.Semaphore(max_concurrent)
+            cls._dispatch_semaphore_size = max_concurrent
+            logger.info(f"[TaskBoard] Created dispatch semaphore with max_concurrent={max_concurrent}")
+        return cls._dispatch_semaphore
+
+    @classmethod
+    def get_concurrent_info(cls, board: 'TaskBoard') -> Dict[str, Any]:
+        """Get current concurrency info for monitoring.
+
+        MARKER_133.C33C: Returns max, available slots, and running count.
+        """
+        max_c = board.settings.get("max_concurrent", 2)
+        sem = cls._get_dispatch_semaphore(max_c)
+        running = len([t for t in board.tasks.values() if t.get("status") == "running"])
+        return {
+            "max": max_c,
+            "available": sem._value if hasattr(sem, '_value') else max_c,
+            "running": running,
+        }
+    # MARKER_133.C33C_END
 
     def __init__(self, board_file: Optional[Path] = None):
         """Initialize TaskBoard with storage file.
@@ -185,6 +219,7 @@ class TaskBoard:
         source: str = "manual",
         assigned_to: Optional[str] = None,  # MARKER_130.C16A
         agent_type: Optional[str] = None,   # MARKER_130.C16A
+        created_by: str = "unknown",        # MARKER_133.C33D: Client attribution
     ) -> str:
         """Add a new task to the board.
 
@@ -200,6 +235,7 @@ class TaskBoard:
             source: Origin of task ("manual", "dragon_todo", "titan_todo", etc.)
             assigned_to: Agent name who should work on this ("opus", "cursor", "dragon")
             agent_type: Agent type ("claude_code", "cursor", "mycelium", "grok", "human")
+            created_by: Client that created task ("claude-code", "cursor", "opencode", "heartbeat")
 
         Returns:
             Generated task ID
@@ -232,6 +268,8 @@ class TaskBoard:
             "agent_type": agent_type,         # "claude_code", "cursor", "mycelium", "grok", "human"
             "commit_hash": None,              # Git commit that completed this task
             "commit_message": None,           # First line of commit message
+            # MARKER_133.C33D: Client attribution
+            "created_by": created_by,         # "claude-code", "cursor", "opencode", "heartbeat"
         }
 
         self._save(action="added")
@@ -293,6 +331,63 @@ class TaskBoard:
             logger.info(f"[TaskBoard] Removed task {task_id}")
             return True
         return False
+
+    # ==========================================
+    # MARKER_133.C33F: STALE TASK CLEANUP
+    # ==========================================
+
+    def cleanup_stale(
+        self,
+        running_timeout_min: int = 10,
+        claimed_timeout_min: int = 5,
+    ) -> int:
+        """Mark stale running tasks as failed, release stale claimed tasks.
+
+        Args:
+            running_timeout_min: Max minutes a task can be "running" before marked failed
+            claimed_timeout_min: Max minutes a task can be "claimed" before reset to pending
+
+        Returns:
+            Number of tasks cleaned up
+        """
+        now = datetime.now()
+        cleaned = 0
+
+        for task in self.tasks.values():
+            status = task.get("status")
+
+            if status == "running":
+                started_at = task.get("started_at")
+                if started_at:
+                    try:
+                        started = datetime.fromisoformat(started_at.replace("Z", "+00:00").replace("+00:00", ""))
+                        if (now - started).total_seconds() > running_timeout_min * 60:
+                            task["status"] = "failed"
+                            task["result_summary"] = f"Timeout: running > {running_timeout_min}min"
+                            cleaned += 1
+                            logger.info(f"[TaskBoard] Cleaned stale running task {task.get('id')}")
+                    except Exception:
+                        pass
+
+            elif status == "claimed":
+                assigned_at = task.get("assigned_at")
+                if assigned_at:
+                    try:
+                        claimed = datetime.fromisoformat(assigned_at.replace("Z", "+00:00").replace("+00:00", ""))
+                        if (now - claimed).total_seconds() > claimed_timeout_min * 60:
+                            task["status"] = "pending"
+                            task["assigned_to"] = None
+                            task["assigned_at"] = None
+                            cleaned += 1
+                            logger.info(f"[TaskBoard] Released stale claimed task {task.get('id')}")
+                    except Exception:
+                        pass
+
+        if cleaned:
+            self._save(action="cleanup")
+            logger.info(f"[TaskBoard] Cleaned {cleaned} stale tasks")
+
+        return cleaned
 
     # ==========================================
     # MARKER_130.C16A: AGENT COORDINATION
@@ -689,6 +784,8 @@ class TaskBoard:
         Creates an AgentPipeline with appropriate preset based on task
         complexity and phase_type. Updates task status through lifecycle.
 
+        MARKER_133.C33C: Enforces max_concurrent via semaphore.
+
         Args:
             task_id: Task to dispatch
             chat_id: Optional chat ID for progress streaming
@@ -704,87 +801,102 @@ class TaskBoard:
         if task["status"] not in ("pending", "queued"):
             return {"success": False, "error": f"Task {task_id} is {task['status']}, not dispatchable"}
 
-        # Mark as running
-        self.update_task(task_id, status="running", started_at=datetime.now().isoformat())
+        # MARKER_133.C33C: Check concurrent limit before dispatching
+        max_concurrent = self.settings.get("max_concurrent", 2)
+        sem = TaskBoard._get_dispatch_semaphore(max_concurrent)
 
-        try:
-            from src.orchestration.agent_pipeline import AgentPipeline
+        # Non-blocking check: if semaphore locked, return queued status
+        if sem.locked():
+            running_count = len([t for t in self.tasks.values() if t.get("status") == "running"])
+            logger.warning(f"[TaskBoard] Max concurrent ({max_concurrent}) reached, queuing {task_id}. Running: {running_count}")
+            self.update_task(task_id, status="queued")
+            return {"success": False, "error": f"max_concurrent ({max_concurrent}) reached", "queued": True, "task_id": task_id}
 
-            # Determine preset: task-specific > phase-based > default
-            preset = task.get("preset") or self.settings.get("default_preset")
-
-            pipeline = AgentPipeline(
-                chat_id=chat_id,
-                auto_write=False,  # Staging mode for safety
-                preset=preset
-            )
-            # MARKER_121.2: Tag pipeline with board task ID for callback
-            pipeline._board_task_id = task_id
-
-            # MARKER_126.9E: Pass selected key to pipeline for preferred key routing
-            if selected_key:
-                pipeline.selected_key = selected_key
-
-            # MARKER_126.5E: Register pipeline for cancellation support
-            TaskBoard.register_pipeline(task_id, pipeline)
-
-            # Build task description from title + description
-            task_text = task["title"]
-            if task.get("description") and task["description"] != task["title"]:
-                task_text += f"\n\n{task['description']}"
+        # Acquire semaphore and dispatch
+        # MARKER_133.C33C: Pipeline execution inside semaphore context
+        async with sem:
+            # Mark as running (inside semaphore to ensure accurate count)
+            self.update_task(task_id, status="running", started_at=datetime.now().isoformat())
 
             try:
-                # Execute pipeline
-                result = await pipeline.execute(task_text, task["phase_type"])
-            finally:
-                # Always unregister after completion
-                TaskBoard.unregister_pipeline(task_id)
+                from src.orchestration.agent_pipeline import AgentPipeline
 
-            # Update task with results
-            pipeline_status = result.get("status", "unknown")
-            completed = pipeline_status == "done"
+                # Determine preset: task-specific > phase-based > default
+                preset = task.get("preset") or self.settings.get("default_preset")
 
-            # MARKER_C21A: Expanded result storage (2KB limit)
-            pipeline_results = {
-                "subtasks_completed": result.get("results", {}).get("subtasks_completed", 0),
-                "subtasks_total": result.get("results", {}).get("subtasks_total", 0),
-                "files_created": result.get("results", {}).get("files_created", [])[:20],  # Limit to 20 files
-                "stats": result.get("results", {}).get("stats", {}),
-                "approval_status": result.get("results", {}).get("approval_status", "unknown"),
-                "success": result.get("results", {}).get("success", completed),
-            }
-            result_summary = json.dumps(pipeline_results)[:2000]  # 2KB limit
+                # MARKER_133.FIX1: auto_write=True — Dragon writes real code to disk
+                pipeline = AgentPipeline(
+                    chat_id=chat_id,
+                    auto_write=True,
+                    preset=preset
+                )
+                # MARKER_121.2: Tag pipeline with board task ID for callback
+                pipeline._board_task_id = task_id
 
-            self.update_task(
-                task_id,
-                status="done" if completed else "failed",
-                completed_at=datetime.now().isoformat(),
-                pipeline_task_id=result.get("task_id"),
-                assigned_tier=pipeline.preset_name,
-                result_summary=result_summary
-            )
+                # MARKER_126.9E: Pass selected key to pipeline for preferred key routing
+                if selected_key:
+                    pipeline.selected_key = selected_key
 
-            logger.info(f"[TaskBoard] Task {task_id} dispatched → {'done' if completed else 'failed'}")
+                # MARKER_126.5E: Register pipeline for cancellation support
+                TaskBoard.register_pipeline(task_id, pipeline)
 
-            return {
-                "success": completed,
-                "task_id": task_id,
-                "pipeline_task_id": result.get("task_id"),
-                "status": "done" if completed else "failed",
-                "tier_used": pipeline.preset_name,
-                "subtasks_completed": result.get("results", {}).get("subtasks_completed", 0),
-                "subtasks_total": result.get("results", {}).get("subtasks_total", 0)
-            }
+                # Build task description from title + description
+                task_text = task["title"]
+                if task.get("description") and task["description"] != task["title"]:
+                    task_text += f"\n\n{task['description']}"
 
-        except Exception as e:
-            logger.error(f"[TaskBoard] Dispatch failed for {task_id}: {e}")
-            self.update_task(
-                task_id,
-                status="failed",
-                completed_at=datetime.now().isoformat(),
-                result_summary=f"Dispatch error: {str(e)[:200]}"
-            )
-            return {"success": False, "task_id": task_id, "error": str(e)}
+                try:
+                    # Execute pipeline
+                    result = await pipeline.execute(task_text, task["phase_type"])
+                finally:
+                    # Always unregister after completion
+                    TaskBoard.unregister_pipeline(task_id)
+
+                # Update task with results
+                pipeline_status = result.get("status", "unknown")
+                completed = pipeline_status == "done"
+
+                # MARKER_C21A: Expanded result storage (2KB limit)
+                pipeline_results = {
+                    "subtasks_completed": result.get("results", {}).get("subtasks_completed", 0),
+                    "subtasks_total": result.get("results", {}).get("subtasks_total", 0),
+                    "files_created": result.get("results", {}).get("files_created", [])[:20],  # Limit to 20 files
+                    "stats": result.get("results", {}).get("stats", {}),
+                    "approval_status": result.get("results", {}).get("approval_status", "unknown"),
+                    "success": result.get("results", {}).get("success", completed),
+                }
+                result_summary = json.dumps(pipeline_results)[:2000]  # 2KB limit
+
+                self.update_task(
+                    task_id,
+                    status="done" if completed else "failed",
+                    completed_at=datetime.now().isoformat(),
+                    pipeline_task_id=result.get("task_id"),
+                    assigned_tier=pipeline.preset_name,
+                    result_summary=result_summary
+                )
+
+                logger.info(f"[TaskBoard] Task {task_id} dispatched → {'done' if completed else 'failed'}")
+
+                return {
+                    "success": completed,
+                    "task_id": task_id,
+                    "pipeline_task_id": result.get("task_id"),
+                    "status": "done" if completed else "failed",
+                    "tier_used": pipeline.preset_name,
+                    "subtasks_completed": result.get("results", {}).get("subtasks_completed", 0),
+                    "subtasks_total": result.get("results", {}).get("subtasks_total", 0)
+                }
+
+            except Exception as e:
+                logger.error(f"[TaskBoard] Dispatch failed for {task_id}: {e}")
+                self.update_task(
+                    task_id,
+                    status="failed",
+                    completed_at=datetime.now().isoformat(),
+                    result_summary=f"Dispatch error: {str(e)[:200]}"
+                )
+                return {"success": False, "task_id": task_id, "error": str(e)}
 
     # ==========================================
     # BULK IMPORT

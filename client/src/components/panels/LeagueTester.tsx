@@ -8,6 +8,15 @@
 
 import { useState } from 'react';
 
+// MARKER_134.C34G: Quick model test models
+const QUICK_MODELS = [
+  { id: 'grok-3-fast', label: 'Grok Fast' },
+  { id: 'qwen3-coder-flash', label: 'Qwen Flash' },
+  { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+  { id: 'claude-3-5-haiku-20241022', label: 'Haiku' },
+  { id: 'gemini-2.0-flash', label: 'Gemini Flash' },
+] as const;
+
 const LEAGUES = [
   { name: 'Dragon Bronze', preset: 'dragon_bronze', tier: 'economy' },
   { name: 'Dragon Silver', preset: 'dragon_silver', tier: 'standard' },
@@ -33,6 +42,12 @@ interface TestResult {
 export function LeagueTester({ onTestComplete }: LeagueTesterProps) {
   const [running, setRunning] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<TestResult | null>(null);
+
+  // MARKER_134.C34G: Quick model test state
+  const [quickPrompt, setQuickPrompt] = useState('');
+  const [quickModel, setQuickModel] = useState<string>(QUICK_MODELS[0].id);
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickResponse, setQuickResponse] = useState<string | null>(null);
 
   const runTest = async (preset: string) => {
     setRunning(preset);
@@ -119,8 +134,8 @@ export function LeagueTester({ onTestComplete }: LeagueTesterProps) {
           {lastResult.stats && (
             <div style={{ color: '#666', lineHeight: 1.6 }}>
               subtasks: {lastResult.stats.subtasks_completed}/{lastResult.stats.subtasks_total}
-              {lastResult.stats.llm_calls > 0 && ` \u00B7 ${lastResult.stats.llm_calls} LLM calls`}
-              {lastResult.stats.duration_s > 0 && ` \u00B7 ${lastResult.stats.duration_s}s`}
+              {lastResult.stats.llm_calls > 0 && ` · ${lastResult.stats.llm_calls} LLM calls`}
+              {lastResult.stats.duration_s > 0 && ` · ${lastResult.stats.duration_s}s`}
             </div>
           )}
           {lastResult.error && (
@@ -130,6 +145,114 @@ export function LeagueTester({ onTestComplete }: LeagueTesterProps) {
           )}
         </div>
       )}
+
+      {/* MARKER_134.C34G: Quick Model Test */}
+      <div style={{
+        marginTop: 16,
+        paddingTop: 16,
+        borderTop: '1px solid rgba(255,255,255,0.06)',
+      }}>
+        <div style={{ color: '#444', fontSize: 9, textTransform: 'uppercase', letterSpacing: 2, fontFamily: 'monospace', marginBottom: 10 }}>
+          quick model test
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          <select
+            value={quickModel}
+            onChange={(e) => setQuickModel(e.target.value)}
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 3,
+              color: '#999',
+              fontSize: 10,
+              fontFamily: 'monospace',
+              padding: '6px 8px',
+              outline: 'none',
+            }}
+          >
+            {QUICK_MODELS.map(m => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={async () => {
+              if (!quickPrompt.trim()) return;
+              setQuickLoading(true);
+              setQuickResponse(null);
+              try {
+                const res = await fetch('http://localhost:5001/api/chat', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    text: quickPrompt,
+                    model: quickModel,
+                    node_path: 'playground_test',
+                    node_id: 'test',
+                  }),
+                });
+                const data = await res.json();
+                setQuickResponse(data.reply || data.error || 'No response');
+              } catch (e: any) {
+                setQuickResponse(`Error: ${e.message}`);
+              } finally {
+                setQuickLoading(false);
+              }
+            }}
+            disabled={quickLoading || !quickPrompt.trim()}
+            style={{
+              padding: '6px 12px',
+              background: quickLoading ? 'transparent' : 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 3,
+              color: quickLoading ? '#555' : '#aaa',
+              fontSize: 10,
+              fontFamily: 'monospace',
+              cursor: quickLoading ? 'wait' : 'pointer',
+            }}
+          >
+            {quickLoading ? '...' : 'send'}
+          </button>
+        </div>
+
+        <textarea
+          value={quickPrompt}
+          onChange={(e) => setQuickPrompt(e.target.value)}
+          placeholder="Enter test prompt..."
+          style={{
+            width: '100%',
+            height: 60,
+            background: 'rgba(255,255,255,0.02)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 3,
+            color: '#ccc',
+            fontSize: 11,
+            fontFamily: 'monospace',
+            padding: 8,
+            resize: 'none',
+            outline: 'none',
+          }}
+        />
+
+        {quickResponse && (
+          <div style={{
+            marginTop: 8,
+            padding: 10,
+            background: 'rgba(255,255,255,0.02)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 3,
+            fontSize: 11,
+            fontFamily: 'monospace',
+            color: '#aaa',
+            maxHeight: 150,
+            overflow: 'auto',
+            whiteSpace: 'pre-wrap',
+            lineHeight: 1.5,
+          }}>
+            {quickResponse}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

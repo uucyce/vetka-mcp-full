@@ -1,0 +1,79 @@
+{
+  "completed": [
+    {
+      "task_id": "C34A-D",
+      "title": "Tauri multi-window with pathname routing",
+      "status": "done",
+      "source": "cursor",
+      "completed_at": "2026-02-10T19:40:50",
+      "files_changed": []
+    },
+    {
+      "task_id": "C34E",
+      "title": "MCC standalone mode - removed inner panel frame",
+      "status": "done",
+      "source": "cursor",
+      "completed_at": "2026-02-10T19:48:37",
+      "files_changed": []
+    },
+    {
+      "task_id": "C34H",
+      "title": "Stats tab - added recharts BarChart visualization",
+      "status": "done",
+      "source": "cursor",
+      "completed_at": "2026-02-10T20:04:23",
+      "files_changed": []
+    },
+    {
+      "task_id": "C34G",
+      "title": "Quick Model Test playground in Test tab",
+      "status": "done",
+      "source": "cursor",
+      "completed_at": "2026-02-10T20:10:31",
+      "files_changed": []
+    },
+    {
+      "task_id": "C34I",
+      "title": "Watcher tab - sparkline + click-to-focus on events",
+      "status": "done",
+      "source": "cursor",
+      "completed_at": "2026-02-10T20:18:12",
+      "files_changed": []
+    },
+    {
+      "task_id": "C34J",
+      "title": "Board tab - status filter buttons (all/pending/running/done)",
+      "status": "done",
+      "source": "cursor",
+      "completed_at": "2026-02-10T20:21:05",
+      "files_changed": []
+    },
+    {
+      "task_id": "task_1770744173",
+      "title": "Create a Python function hello_world() that returns Hello",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-10T20:23:25",
+      "stats": {
+        "duration_s": 31.6,
+        "llm_calls": 4,
+        "preset": "dragon_bronze"
+      }
+    }
+  ],
+  "in_progress": [
+    {
+      "task_id": "C34E",
+      "title": "MCC standalone mode - remove inner panel frame",
+      "source": "opus",
+      "started_at": "2026-02-10T19:45:35"
+    },
+    {
+      "task_id": "C34F-J",
+      "title": "MCC tabs development (Keys, Playground, Stats, Balance, Settings)",
+      "source": "opus",
+      "started_at": "2026-02-10T20:01:34"
+    }
+  ],
+  "phase": 133
+}

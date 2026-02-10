@@ -25,6 +25,7 @@ Endpoints (ACTIONS):
 
 from fastapi import APIRouter, Request, Query
 from typing import Dict, Any, Optional, List
+from pathlib import Path
 import time
 import os
 
@@ -1808,11 +1809,25 @@ async def get_pipeline_results(task_id: str) -> Dict[str, Any]:
             return None
 
     # Extract subtasks with results
+    # MARKER_C23A: Include verifier_feedback for RALF loop display
     subtasks = []
     for s in pipeline_task.get("subtasks", []):
         result = s.get("result")
         file_path, new_code = extract_file_path_and_code(result)
         diff_patch = generate_diff(file_path, new_code) if file_path else None
+
+        # MARKER_C23A: Extract verifier feedback for RALF metrics
+        verifier = s.get("verifier_feedback") or s.get("verifier") or {}
+        verifier_feedback = None
+        if verifier:
+            verifier_feedback = {
+                "passed": verifier.get("passed", s.get("status") == "done"),
+                "confidence": verifier.get("confidence", verifier.get("score", 0.0)),
+                "retry_count": verifier.get("retry_count", s.get("retries", 0)),
+                "max_retries": verifier.get("max_retries", 3),
+                "escalated": verifier.get("escalated", False),
+                "feedback": verifier.get("feedback", verifier.get("reason", "")),
+            }
 
         subtasks.append({
             "description": s.get("description", "")[:200],
@@ -1822,6 +1837,7 @@ async def get_pipeline_results(task_id: str) -> Dict[str, Any]:
             "needs_research": s.get("needs_research", False),
             "diff_patch": diff_patch,  # MARKER_128.4C
             "original_file": file_path,  # MARKER_128.4C
+            "verifier_feedback": verifier_feedback,  # MARKER_C23A
         })
 
     return {
@@ -2413,7 +2429,38 @@ async def get_watcher_stats() -> Dict[str, Any]:
 
 # ============================================================
 # MARKER_131.C22: HEARTBEAT SETTINGS
+# MARKER_133.C33E: Persist to disk
 # ============================================================
+
+# MARKER_133.C33E: Heartbeat config persistence
+HEARTBEAT_CONFIG_FILE = Path(__file__).parent.parent.parent.parent / "data" / "heartbeat_config.json"
+
+
+def _load_heartbeat_config() -> Dict[str, Any]:
+    """Load heartbeat config from disk, with env var fallback."""
+    if HEARTBEAT_CONFIG_FILE.exists():
+        try:
+            return json.loads(HEARTBEAT_CONFIG_FILE.read_text())
+        except Exception:
+            pass
+    # Default: OFF to prevent token burn
+    return {"enabled": False, "interval": 60}
+
+
+def _save_heartbeat_config(enabled: bool, interval: int):
+    """Persist heartbeat config to disk."""
+    from datetime import datetime
+    config = {
+        "enabled": enabled,
+        "interval": interval,
+        "updated_at": datetime.utcnow().isoformat()
+    }
+    HEARTBEAT_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    HEARTBEAT_CONFIG_FILE.write_text(json.dumps(config, indent=2))
+    # Also sync to env for current session
+    os.environ["VETKA_HEARTBEAT_ENABLED"] = "true" if enabled else "false"
+    os.environ["VETKA_HEARTBEAT_INTERVAL"] = str(interval)
+
 
 @router.get("/heartbeat/settings")
 async def get_heartbeat_settings() -> Dict[str, Any]:
@@ -2425,11 +2472,12 @@ async def get_heartbeat_settings() -> Dict[str, Any]:
         status: str - running/stopped
         last_tick: float - timestamp of last tick
     """
-    import json
     from pathlib import Path
 
-    enabled = os.getenv("VETKA_HEARTBEAT_ENABLED", "true").lower() == "true"
-    interval = int(os.getenv("VETKA_HEARTBEAT_INTERVAL", "60"))
+    # MARKER_133.C33E: Load from disk config first, fallback to env
+    config = _load_heartbeat_config()
+    enabled = config.get("enabled", False)
+    interval = config.get("interval", 60)
 
     # Read last tick from heartbeat_state.json
     state_file = Path(__file__).parent.parent.parent.parent / "data" / "heartbeat_state.json"
@@ -2453,7 +2501,7 @@ async def get_heartbeat_settings() -> Dict[str, Any]:
         "total_ticks": total_ticks,
         "tasks_dispatched": tasks_dispatched,
         "env_vars": {
-            "VETKA_HEARTBEAT_ENABLED": os.getenv("VETKA_HEARTBEAT_ENABLED", "true"),
+            "VETKA_HEARTBEAT_ENABLED": os.getenv("VETKA_HEARTBEAT_ENABLED", "false"),
             "VETKA_HEARTBEAT_INTERVAL": os.getenv("VETKA_HEARTBEAT_INTERVAL", "60"),
         }
     }
@@ -2461,25 +2509,59 @@ async def get_heartbeat_settings() -> Dict[str, Any]:
 
 @router.post("/heartbeat/settings")
 async def update_heartbeat_settings(body: Dict[str, Any]) -> Dict[str, Any]:
-    """Update heartbeat daemon settings (runtime only, not persisted to env).
+    """Update heartbeat daemon settings — PERSISTED TO DISK.
 
     Body params:
     - enabled: bool
-    - interval: int (seconds)
+    - interval: int (seconds, 10-3600)
 
-    Note: Changes are applied via environment variables for the next tick.
-    Restart server for permanent changes.
+    MARKER_133.C33E: Settings now persist across server restarts.
     """
+    # Load current config
+    config = _load_heartbeat_config()
+    enabled = config.get("enabled", False)
+    interval = config.get("interval", 60)
+
+    # Apply updates
     if "enabled" in body:
-        os.environ["VETKA_HEARTBEAT_ENABLED"] = "true" if body["enabled"] else "false"
+        enabled = bool(body["enabled"])
 
     if "interval" in body:
         interval = max(10, min(body["interval"], 3600))  # 10s to 1h
-        os.environ["VETKA_HEARTBEAT_INTERVAL"] = str(interval)
+
+    # Persist to disk + sync to env
+    _save_heartbeat_config(enabled, interval)
 
     return {
         "success": True,
-        "enabled": os.getenv("VETKA_HEARTBEAT_ENABLED", "true").lower() == "true",
-        "interval": int(os.getenv("VETKA_HEARTBEAT_INTERVAL", "60")),
-        "message": "Settings updated. Changes take effect on next tick."
+        "enabled": enabled,
+        "interval": interval,
+        "message": "Settings saved to disk. Persists across restarts.",
+        "config_file": str(HEARTBEAT_CONFIG_FILE),
     }
+
+
+# ============================================================
+# MARKER_133.C33H: LAYOUT POSITIONS PERSISTENCE
+# ============================================================
+
+LAYOUT_POSITIONS_FILE = Path(__file__).parent.parent.parent.parent / "data" / "layout_positions.json"
+
+
+@router.get("/layout/positions")
+async def get_layout_positions() -> Dict[str, Any]:
+    """Get saved layout positions for 3D scene objects."""
+    if LAYOUT_POSITIONS_FILE.exists():
+        try:
+            return json.loads(LAYOUT_POSITIONS_FILE.read_text())
+        except Exception:
+            pass
+    return {"positions": {}}
+
+
+@router.post("/layout/positions")
+async def save_layout_positions(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Save layout positions for 3D scene objects."""
+    LAYOUT_POSITIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    LAYOUT_POSITIONS_FILE.write_text(json.dumps(body, indent=2))
+    return {"success": True, "saved": len(body.get("positions", {}))}

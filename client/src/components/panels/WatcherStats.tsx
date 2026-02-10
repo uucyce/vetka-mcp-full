@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 
 interface WatcherEvent {
   path: string;
@@ -34,6 +35,8 @@ export function WatcherStats() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showPatterns, setShowPatterns] = useState(false);
+  // MARKER_134.C34I: Activity history for sparkline
+  const [activityHistory, setActivityHistory] = useState<{time: number; events: number}[]>([]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -43,6 +46,11 @@ export function WatcherStats() {
         if (data.success) {
           setStats(data);
           setError(null);
+          // MARKER_134.C34I: Track activity for sparkline
+          setActivityHistory(prev => {
+            const next = [...prev, { time: Date.now(), events: data.events_last_5min || 0 }];
+            return next.slice(-20); // Keep last 20 samples
+          });
         } else {
           setError(data.error || 'Failed to load stats');
         }
@@ -180,6 +188,28 @@ export function WatcherStats() {
         </div>
       </div>
 
+      {/* MARKER_134.C34I: Activity Sparkline */}
+      {activityHistory.length > 1 && (
+        <div style={{
+          height: 40,
+          background: 'rgba(255,255,255,0.02)',
+          borderRadius: 3,
+          padding: '4px 0',
+        }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={activityHistory} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+              <Area
+                type="monotone"
+                dataKey="events"
+                stroke="#555"
+                fill="rgba(224,224,224,0.1)"
+                strokeWidth={1}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
       {/* Skip Patterns List (collapsible) */}
       {showPatterns && (
         <div style={{
@@ -225,6 +255,14 @@ export function WatcherStats() {
             stats.recent_events.map((evt, idx) => (
               <div
                 key={idx}
+                onClick={() => {
+                  // MARKER_134.C34I: Click to focus camera on file
+                  fetch('http://localhost:5001/api/debug/camera-focus', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target: evt.path, zoom: 'medium', highlight: true }),
+                  }).catch(() => {});
+                }}
                 style={{
                   display: 'flex',
                   gap: 8,
@@ -232,7 +270,11 @@ export function WatcherStats() {
                   borderBottom: '1px solid rgba(255,255,255,0.03)',
                   fontSize: 10,
                   fontFamily: 'monospace',
+                  cursor: 'pointer',
+                  transition: 'background 0.15s',
                 }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 <span style={{
                   color: evt.type === 'modified' ? '#888'

@@ -213,6 +213,40 @@ MYCELIUM_TOOLS = [
                     "tasks dispatched/completed/failed.",
         inputSchema={"type": "object", "properties": {}},
     ),
+    # --- Task Tracker ---
+    Tool(
+        name="mycelium_track_done",
+        description="Mark a task as completed. Updates project digest + tracker. "
+                    "Use for any agent: dragon, cursor, opus, titan.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "marker": {"type": "string", "description": "Task marker (e.g. C33E, MARKER_133.FIX1)"},
+                "description": {"type": "string", "description": "What was done"},
+                "source": {"type": "string", "description": "Who did it: cursor, dragon, opus, titan"},
+                "files_changed": {"type": "array", "description": "List of changed file paths"},
+            },
+            "required": ["marker", "description"],
+        },
+    ),
+    Tool(
+        name="mycelium_track_started",
+        description="Mark a task as started. Any agent can call this.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "string", "description": "Task ID or marker"},
+                "title": {"type": "string", "description": "Task title"},
+                "source": {"type": "string", "description": "Who started: cursor, dragon, opus"},
+            },
+            "required": ["task_id", "title"],
+        },
+    ),
+    Tool(
+        name="mycelium_tracker_status",
+        description="Get task tracker status: in-progress tasks, completed count, last completed, digest headline.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
     # --- Workflow ---
     Tool(
         name="mycelium_execute_workflow",
@@ -344,7 +378,8 @@ async def _handle_pipeline(arguments: Dict[str, Any]) -> str:
     preset = arguments.get("preset", "dragon_silver")
     phase_type = arguments.get("phase_type", "build")
     provider = arguments.get("provider")
-    auto_write = arguments.get("auto_write", False)
+    # MARKER_133.FIX2: Default auto_write=True — Dragon writes real code
+    auto_write = arguments.get("auto_write", True)
 
     task_id = f"myc_{uuid.uuid4().hex[:8]}"
 
@@ -581,9 +616,56 @@ async def _handle_devpanel_stream(arguments: Dict[str, Any]) -> str:
 
 
 # ============================================================
+# MARKER_133.TRACKER_MCP: Task tracker handlers
+# ============================================================
+
+async def _handle_track_done(arguments: Dict[str, Any]) -> str:
+    """Mark task as completed — any agent can call."""
+    from src.services.task_tracker import on_cursor_task_completed, on_task_completed
+    marker = arguments.get("marker", "unknown")
+    description = arguments.get("description", "")
+    source = arguments.get("source", "mcp")
+    files_changed = arguments.get("files_changed", [])
+
+    if source == "cursor":
+        await on_cursor_task_completed(marker, description, files_changed)
+    else:
+        await on_task_completed(
+            task_id=marker,
+            task_title=description,
+            status="done",
+            source=source,
+        )
+    return json.dumps({"success": True, "marker": marker, "source": source, "tracked": True})
+
+
+async def _handle_track_started(arguments: Dict[str, Any]) -> str:
+    """Mark task as started."""
+    from src.services.task_tracker import on_task_started
+    on_task_started(
+        task_id=arguments.get("task_id", "unknown"),
+        task_title=arguments.get("title", ""),
+        source=arguments.get("source", "unknown"),
+    )
+    return json.dumps({"success": True, "started": True})
+
+
+async def _handle_tracker_status(arguments: Dict[str, Any]) -> str:
+    """Get tracker status for DevPanel."""
+    from src.services.task_tracker import get_tracker_status
+    status = get_tracker_status()
+    return json.dumps({"success": True, **status}, default=str)
+
+
+# ============================================================
 # Tool dispatch table
 # ============================================================
 _TOOL_DISPATCH = {
+    # --- Task Tracker handlers (MARKER_133.TRACKER_MCP) ---
+    "mycelium_track_done": _handle_track_done,
+    "mycelium_track_started": _handle_track_started,
+    "mycelium_tracker_status": _handle_tracker_status,
+    # --- Pipeline ---
     "mycelium_pipeline": _handle_pipeline,
     "mycelium_call_model": _handle_call_model,
     "mycelium_task_board": _handle_task_board,

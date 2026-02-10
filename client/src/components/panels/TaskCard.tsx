@@ -57,6 +57,16 @@ export interface TaskData {
 }
 
 // MARKER_127.0B: Pipeline results data structure
+// MARKER_C23A: Added verifier_feedback for RALF loop display
+interface VerifierFeedback {
+  passed: boolean;
+  confidence: number;
+  retry_count?: number;
+  max_retries?: number;
+  escalated?: boolean;
+  feedback?: string;
+}
+
 interface SubtaskResult {
   description: string;
   status: string;
@@ -65,6 +75,8 @@ interface SubtaskResult {
   needs_research?: boolean;
   diff_patch?: string;  // MARKER_128.4B: Unified diff from backend
   original_file?: string;  // MARKER_128.4B: Original file path
+  // MARKER_C23A: RALF loop verifier feedback
+  verifier_feedback?: VerifierFeedback;
 }
 
 interface PipelineResults {
@@ -771,6 +783,7 @@ export const TaskCard = memo(function TaskCard({ task, isSelected, onPriorityCha
                   {results.subtasks.map((st, idx) => (
                     <div key={idx} style={{ marginBottom: 6 }}>
                       {/* Subtask header — clickable to expand */}
+                      {/* MARKER_C23A: Enhanced with RALF loop metrics */}
                       <div
                         onClick={(e) => {
                           e.stopPropagation();
@@ -786,12 +799,67 @@ export const TaskCard = memo(function TaskCard({ task, isSelected, onPriorityCha
                           cursor: st.result ? 'pointer' : 'default',
                         }}
                       >
-                        <span style={{ color: st.status === 'done' ? '#8a8' : '#a66', fontSize: 10 }}>
-                          {st.status === 'done' ? '✓' : '✕'}
+                        {/* MARKER_C23A: Status icon with RALF awareness */}
+                        <span style={{
+                          color: st.verifier_feedback?.escalated
+                            ? '#a66'  // Escalated = red
+                            : st.status === 'done'
+                              ? '#8a8'  // Done = green
+                              : '#a66', // Failed = red
+                          fontSize: 10
+                        }}>
+                          {st.verifier_feedback?.escalated ? '🚫' : st.status === 'done' ? '✓' : '✕'}
                         </span>
+
                         <span style={{ flex: 1, color: '#888', fontSize: 10 }}>
                           {st.description}
                         </span>
+
+                        {/* MARKER_C23A: RALF score display */}
+                        {st.verifier_feedback && (
+                          <span style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            fontSize: 9,
+                            fontFamily: 'monospace',
+                          }}>
+                            {/* Confidence score */}
+                            <span style={{
+                              color: st.verifier_feedback.confidence >= 0.7
+                                ? '#8a8'  // Good = green
+                                : st.verifier_feedback.confidence >= 0.5
+                                  ? '#aa8'  // Warning = yellow
+                                  : '#a66',  // Bad = red
+                              padding: '0 4px',
+                              background: 'rgba(255,255,255,0.03)',
+                              borderRadius: 2,
+                            }}>
+                              {(st.verifier_feedback.confidence * 100).toFixed(0)}%
+                            </span>
+
+                            {/* Retry count if > 1 */}
+                            {(st.verifier_feedback.retry_count || 0) > 0 && (
+                              <span style={{ color: '#666' }}>
+                                ({st.verifier_feedback.retry_count}/{st.verifier_feedback.max_retries || 3})
+                              </span>
+                            )}
+
+                            {/* Escalated badge */}
+                            {st.verifier_feedback.escalated && (
+                              <span style={{
+                                color: '#a66',
+                                background: 'rgba(160,80,80,0.15)',
+                                padding: '0 4px',
+                                borderRadius: 2,
+                                fontSize: 8,
+                              }}>
+                                escalated
+                              </span>
+                            )}
+                          </span>
+                        )}
+
                         {st.marker && (
                           <span style={{ color: '#444', fontSize: 9, fontFamily: 'monospace' }}>
                             {st.marker}
