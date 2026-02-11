@@ -20,7 +20,7 @@ const JarvisWave: React.FC<JarvisWaveProps> = ({
   height = 40,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
   const phaseRef = useRef<number>(0);
   const pulseRef = useRef<number>(0);
 

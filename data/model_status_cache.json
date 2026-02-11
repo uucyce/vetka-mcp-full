@@ -82,10 +82,10 @@
   "x-ai/grok-4.1-fast": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770807929.861033,
-    "last_error": 1770723444.891476,
+    "last_success": 1770820208.7734652,
+    "last_error": 1770820132.732424,
     "error_code": null,
-    "call_count": 123
+    "call_count": 132
   },
   "arcee-ai/trinity-mini:free": {
     "healthy": true,
@@ -146,10 +146,10 @@
   "z-ai/glm-4.7-flash": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770808393.1731882,
+    "last_success": 1770820358.423025,
     "last_error": 1770684807.364314,
     "error_code": null,
-    "call_count": 290
+    "call_count": 293
   },
   "stepfun/step-3.5-flash:free": {
     "healthy": true,
@@ -298,10 +298,10 @@
   "moonshotai/kimi-k2.5": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770808042.073107,
+    "last_success": 1770820327.588651,
     "last_error": 1770690696.3681972,
     "error_code": null,
-    "call_count": 104
+    "call_count": 112
   },
   "qwen/qwen3-30b-a3b": {
     "healthy": true,
@@ -314,10 +314,10 @@
   "qwen/qwen3-coder": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770808410.7639732,
-    "last_error": 1770684889.936741,
+    "last_success": 1770820352.185815,
+    "last_error": 1770820345.7268312,
     "error_code": null,
-    "call_count": 1073
+    "call_count": 1083
   },
   "xiaomi/mimo-v2-flash": {
     "healthy": true,

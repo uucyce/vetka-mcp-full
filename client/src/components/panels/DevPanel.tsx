@@ -843,10 +843,10 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
                         onClick={(e) => { e.stopPropagation(); updateHeartbeat({ enabled: false }); }}
                         style={{
                           padding: '4px 12px',
-                          background: !heartbeat.enabled ? '#3a2a2a' : 'transparent',
-                          border: `1px solid ${!heartbeat.enabled ? '#4a3a3a' : '#333'}`,
+                          background: !heartbeat.enabled ? '#2a2a2a' : 'transparent',
+                          border: `1px solid ${!heartbeat.enabled ? '#444' : '#333'}`,
                           borderRadius: '0 3px 3px 0',
-                          color: !heartbeat.enabled ? '#a88' : '#555',
+                          color: !heartbeat.enabled ? '#888' : '#555',
                           fontSize: 10,
                           fontWeight: 600,
                           cursor: 'pointer',
@@ -857,6 +857,7 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
                     </div>
                   </div>
                   {/* MARKER_136.W1B: Stats row (countdown removed - shown in header) */}
+                  {/* MARKER_137.S2_FIX: Stats row only, TICK NOW removed */}
                   <div style={{ display: 'flex', gap: 16, color: '#777', fontSize: 10 }}>
                     <span>ticks: <span style={{ color: '#aaa' }}>{heartbeat.total_ticks}</span></span>
                     <span>dispatched: <span style={{ color: '#aaa' }}>{heartbeat.tasks_dispatched}</span></span>
@@ -899,10 +900,10 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
                     onClick={() => useStore.getState().setPersistPositions(false)}
                     style={{
                       padding: '4px 10px',
-                      background: !useStore.getState().persistPositions ? '#3a2a2a' : 'transparent',
-                      border: `1px solid ${!useStore.getState().persistPositions ? '#4a3a3a' : '#333'}`,
+                      background: !useStore.getState().persistPositions ? '#2a2a2a' : 'transparent',
+                      border: `1px solid ${!useStore.getState().persistPositions ? '#444' : '#333'}`,
                       borderRadius: '0 3px 3px 0',
-                      color: !useStore.getState().persistPositions ? '#a88' : '#555',
+                      color: !useStore.getState().persistPositions ? '#888' : '#555',
                       fontSize: 10,
                       fontWeight: 600,
                       cursor: 'pointer',

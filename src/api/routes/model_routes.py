@@ -10,13 +10,129 @@ Provides endpoints for listing, selecting, and managing AI models.
 @used_by: main.py router registration
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from src.services.model_registry import get_model_registry
 
 router = APIRouter(prefix="/api/models", tags=["models"])
+
+
+# MARKER_138.S2_5_MODEL_AUTODETECT
+async def _detect_qwen_tts_server() -> Dict[str, Any]:
+    """MARKER_138.S2_5_QWEN_TTS_DETECT: Detect local Qwen TTS service."""
+    import httpx
+
+    url = "http://127.0.0.1:5003/health"
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(url)
+        if resp.status_code == 200:
+            payload = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+            return {
+                "running": True,
+                "url": url,
+                "details": payload,
+            }
+    except Exception:
+        pass
+    return {"running": False, "url": url}
+
+
+def _infer_provider_badge(model: Dict[str, Any]) -> str:
+    source = (model.get("source") or "").lower()
+    provider = (model.get("provider") or "").lower()
+    if source == "polza" or provider == "polza":
+        return "Polza"
+    if source == "poe" or provider == "poe":
+        return "Poe"
+    if source == "openrouter" or provider == "openrouter":
+        return "OpenRouter"
+    if provider in {"ollama", "local", "browser"}:
+        return "Local"
+    if source:
+        return source.title()
+    if provider:
+        return provider.title()
+    return "Unknown"
+
+
+def _categorize_models(models: List[Dict[str, Any]]) -> Dict[str, int]:
+    result = {"text": 0, "voice": 0, "image": 0, "embedding": 0}
+    for m in models:
+        m_type = (m.get("type") or "").lower()
+        caps = [str(c).lower() for c in (m.get("capabilities") or [])]
+
+        if m_type == "voice" or "tts" in caps or "stt" in caps:
+            result["voice"] += 1
+        elif "embeddings" in caps or "embedding" in caps:
+            result["embedding"] += 1
+        elif "vision" in caps or "image_gen" in caps or "video_gen" in caps:
+            result["image"] += 1
+        else:
+            result["text"] += 1
+    return result
+
+
+async def _build_autodetect_payload(force_refresh: bool = False) -> Dict[str, Any]:
+    """MARKER_138.S2_5_MODEL_AUTODETECT: Unified dynamic model inventory."""
+    from src.elisya.model_fetcher import get_all_models, classify_model_type
+
+    registry = get_model_registry()
+
+    # Keep discovery dynamic: no hardcoded provider list here.
+    await registry.discover_ollama_models()
+    await registry.discover_voice_models()
+
+    cloud_models = await get_all_models(force_refresh=force_refresh)
+    for model in cloud_models:
+        classify_model_type(model)
+        model.setdefault("provider", model.get("provider") or "openrouter")
+        model.setdefault("source", model.get("source") or "openrouter")
+        model.setdefault("source_display", _infer_provider_badge(model))
+
+    local_models = [m.to_dict() for m in registry.get_local()]
+    mcp_agents = [m.to_dict() for m in registry.get_mcp_agents()]
+
+    qwen_tts = await _detect_qwen_tts_server()
+    if qwen_tts.get("running"):
+        local_models.append(
+            {
+                "id": "qwen3-tts/local",
+                "name": "Qwen3 TTS (Local)",
+                "provider": "local",
+                "type": "voice",
+                "capabilities": ["tts"],
+                "context_window": 0,
+                "pricing": {"prompt": "0", "completion": "0"},
+                "available": True,
+                "source": "local",
+                "source_display": "Local",
+            }
+        )
+
+    combined = []
+    combined.extend(cloud_models)
+    combined.extend(local_models)
+    combined.extend(mcp_agents)
+
+    return {
+        "success": True,
+        "models": combined,
+        "cloud_models": cloud_models,
+        "local_models": local_models,
+        "mcp_agents": mcp_agents,
+        "qwen_tts": qwen_tts,
+        "categories": _categorize_models(combined),
+        "count": len(combined),
+        "force_refresh": force_refresh,
+    }
+
+
+@router.get("/autodetect")
+async def autodetect_models(force_refresh: bool = Query(False)):
+    return await _build_autodetect_payload(force_refresh=force_refresh)
 
 
 class AddKeyRequest(BaseModel):
@@ -242,15 +358,15 @@ async def refresh_model_cache(provider: Optional[str] = None):
         count: number of models after refresh
         new_count: number of newly discovered models
     """
-    from src.elisya.model_fetcher import get_all_models, load_cache
+    from src.elisya.model_fetcher import load_cache
 
     # Get old count for comparison
     old_cache = load_cache()
     old_count = len(old_cache.get('models', [])) if old_cache else 0
     old_ids = {m['id'] for m in old_cache.get('models', [])} if old_cache else set()
 
-    # Force refresh from all providers
-    models = await get_all_models(force_refresh=True)
+    payload = await _build_autodetect_payload(force_refresh=True)
+    models = payload.get("models", [])
 
     # Calculate new models
     new_ids = {m['id'] for m in models}
@@ -262,6 +378,8 @@ async def refresh_model_cache(provider: Optional[str] = None):
         "count": len(models),
         "previous_count": old_count,
         "new_count": new_count,
+        "categories": payload.get("categories", {}),
+        "qwen_tts": payload.get("qwen_tts", {}),
         "new_models": list(new_model_ids)[:10] if new_count > 0 else [],  # First 10 new model IDs
         "message": f"Refreshed: {len(models)} models ({'+' if new_count > 0 else ''}{new_count} new)"
     }

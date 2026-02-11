@@ -28,6 +28,8 @@ from typing import Dict, Any, Optional, List
 from pathlib import Path
 import asyncio
 import logging
+import json  # MARKER_137.S2_FIX: Required for heartbeat config save
+import os    # MARKER_137.S2_FIX: Required for env sync
 import time
 import os
 
@@ -2664,9 +2666,10 @@ async def update_heartbeat_settings(body: Dict[str, Any]) -> Dict[str, Any]:
 
     Body params:
     - enabled: bool
-    - interval: int (seconds, 10-3600)
+    - interval: int (seconds, 10-604800)
 
     MARKER_133.C33E: Settings now persist across server restarts.
+    MARKER_137.S2: Extended interval cap from 1h to 1 week.
     """
     # Load current config
     config = _load_heartbeat_config()
@@ -2678,7 +2681,8 @@ async def update_heartbeat_settings(body: Dict[str, Any]) -> Dict[str, Any]:
         enabled = bool(body["enabled"])
 
     if "interval" in body:
-        interval = max(10, min(body["interval"], 3600))  # 10s to 1h
+        # MARKER_137.S2: 10s to 1 week (frontend has 6h/12h/1d/1w options)
+        interval = max(10, min(body["interval"], 604800))
 
     # Persist to disk + sync to env
     _save_heartbeat_config(enabled, interval)
@@ -2690,6 +2694,36 @@ async def update_heartbeat_settings(body: Dict[str, Any]) -> Dict[str, Any]:
         "message": "Settings saved to disk. Persists across restarts.",
         "config_file": str(HEARTBEAT_CONFIG_FILE),
     }
+
+
+# MARKER_137.TICK_NOW: Manual heartbeat tick endpoint
+@router.post("/heartbeat/tick")
+async def trigger_heartbeat_tick(body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """
+    MARKER_137.TICK_NOW: Manually trigger one heartbeat tick.
+
+    Scans group chat for @dragon/@titan/@doctor tasks and dispatches them.
+
+    Body params (optional):
+    - group_id: str (default: MCP Dev group)
+    - dry_run: bool (default: false) — parse only, don't execute
+    """
+    body = body or {}
+    group_id = body.get("group_id")  # None = use default
+    dry_run = body.get("dry_run", False)
+
+    try:
+        from src.orchestration.mycelium_heartbeat import heartbeat_tick
+        result = await heartbeat_tick(group_id=group_id, dry_run=dry_run) if group_id else await heartbeat_tick(dry_run=dry_run)
+        return {
+            "success": True,
+            **result
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 
 # ============================================================

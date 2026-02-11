@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0",
     "phase": "121",
-    "updated": "2026-02-11T15:41:40.390649"
+    "updated": "2026-02-11T17:28:52.781731"
   },
   "tasks": {
     "tb_1770577538_6": {
@@ -1403,6 +1403,287 @@
       ],
       "dependencies": [],
       "created_at": "2026-02-11T14:27:59.398252",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1770815857_1": {
+      "id": "tb_1770815857_1",
+      "title": "S2.0 MCC Deep Fix: heartbeat dual panels, artifacts not working, full QA pass",
+      "description": "CRITICAL Cursor task. MCC DevPanel has multiple broken features:\\n1. Heartbeat: TWO interval panels still showing, cannot set interval properly, cannot enable/disable reliably\\n2. Artifacts panel: shows empty even though disk_artifact_service exists\\n3. Full QA: test every MCC tab (DAG, BOARD, STATS, ARCHITECT, ARTIFACTS, BALANCE, WATCHER) — report what works and what doesn't\\n4. Fix all broken functionality found\\n\\nFiles: client/src/components/devpanel/DevPanel.tsx and all sub-components",
+      "priority": 1,
+      "complexity": "high",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": "dragon_silver",
+      "status": "failed",
+      "source": "mcp",
+      "tags": [
+        "sprint2",
+        "cursor",
+        "mcc",
+        "critical"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-11T16:17:37.399746",
+      "started_at": "2026-02-11T17:25:46.514822",
+      "completed_at": "2026-02-11T17:28:52.743236",
+      "pipeline_task_id": "task_1770819946",
+      "result_summary": "{\"subtasks_completed\": 0, \"subtasks_total\": 0, \"files_created\": [], \"stats\": {}, \"approval_status\": \"unknown\", \"success\": false}",
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1770815857_2": {
+      "id": "tb_1770815857_2",
+      "title": "S2.1 UI Layout: center search bar, icons horizontal right, remove top-right labels",
+      "description": "Redesign top UI layout:\\n1. Search bar (UnifiedSearchBar): move to CENTER (position: fixed, top: 16px, left: 50%, transform: translateX(-50%), width: 50vw min 400px)\\n2. Three icon buttons (Chat, Artifact, MCC): move to horizontal row TOP-RIGHT (flex-direction: row, gap: 8px)\\n3. Remove small text labels in top-right corner (Nodes count etc — move to MCC STATS)\\n4. Ensure chat panel doesn't overlap icons when open\\n5. Add mic icon in search bar when input is empty (voice activation ready)\\n\\nFiles: client/src/App.tsx (lines 568-708), UnifiedSearchBar.tsx",
+      "priority": 1,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "queued",
+      "source": "mcp",
+      "tags": [
+        "sprint2",
+        "cursor",
+        "ui",
+        "layout"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-11T16:17:37.435326",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1770815857_3": {
+      "id": "tb_1770815857_3",
+      "title": "S2.2 Jarvis MCP: dedicated non-blocking MCP server with Engram + workflow router",
+      "description": "Create MCP JARVIS — third MCP server for voice superagent.\\nArchitecture: Engram user memory + workflow router (per-request workflow selection) + tool access to VETKA.\\nJarvis is a superagent: multiple models work together per request.\\nMust NOT block during pipeline execution.\\nIntegrate with existing src/voice/ subsystem.\\n\\nNew files: src/mcp/jarvis_mcp_server.py, src/jarvis/workflow_router.py, src/jarvis/engram_bridge.py",
+      "priority": 1,
+      "complexity": "high",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "done",
+      "source": "mcp",
+      "tags": [
+        "sprint2",
+        "codex",
+        "jarvis",
+        "mcp"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-11T16:17:37.445138",
+      "started_at": null,
+      "completed_at": "2026-02-11T17:25:07.858600",
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1770815857_4": {
+      "id": "tb_1770815857_4",
+      "title": "S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction",
+      "description": "Build low-latency voice pipeline for Jarvis:\\n1. Layer 1: Pre-generated filler audio bank (hmm, let me think, searching...) — instant playback <100ms\\n2. Layer 2: T9 prediction — generate first sentence from viewport context + first words WHILE user speaks\\n3. Layer 3: Full response — complete LLM answer → TTS, appended after Layer 2\\n4. Crossfade between layers for seamless audio\\n5. Use existing src/voice/tts_engine.py (Qwen TTS) + streaming_pipeline.py\\n\\nFiles: src/voice/jarvis_voice_pipeline.py, src/voice/filler_bank.py, data/voice/fillers/",
+      "priority": 1,
+      "complexity": "high",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": "dragon_silver",
+      "status": "done",
+      "source": "mcp",
+      "tags": [
+        "sprint2",
+        "dragon_gold",
+        "jarvis",
+        "voice"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-11T16:17:37.456192",
+      "started_at": "2026-02-11T16:18:37.616972",
+      "completed_at": "2026-02-11T16:25:08.001437",
+      "pipeline_task_id": "task_1770815917",
+      "result_summary": "{\"subtasks_completed\": 3, \"subtasks_total\": 3, \"files_created\": [], \"stats\": {\"preset\": \"dragon_silver\", \"league\": \"dragon\", \"phase_type\": \"build\", \"subtasks_total\": 3, \"subtasks_completed\": 3, \"success\": true, \"llm_calls\": 10, \"tokens_in\": 18534, \"tokens_out\": 13806, \"verifier_avg_confidence\": 0.3, \"completed_at\": 1770816307.484492, \"duration_s\": 389.8}, \"approval_status\": \"unknown\", \"success\": true}",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "build",
+        "subtasks_total": 3,
+        "subtasks_completed": 3,
+        "success": true,
+        "llm_calls": 10,
+        "tokens_in": 18534,
+        "tokens_out": 13806,
+        "verifier_avg_confidence": 0.3,
+        "completed_at": 1770816307.484492,
+        "duration_s": 389.8
+      },
+      "result": {
+        "agents": {
+          "scout": {
+            "status": "done",
+            "model": "z-ai/glm-4.7-flash"
+          },
+          "architect": {
+            "status": "done",
+            "model": "moonshotai/kimi-k2.5"
+          },
+          "researcher": {
+            "status": "done",
+            "model": "x-ai/grok-4.1-fast"
+          },
+          "coder": {
+            "status": "done",
+            "model": "qwen/qwen3-coder"
+          },
+          "verifier": {
+            "status": "done",
+            "model": "z-ai/glm-4.7-flash",
+            "confidence": 0.3
+          }
+        },
+        "subtasks": [
+          {
+            "description": "S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction\n\nBuild low-latency voi",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.3
+          },
+          {
+            "description": "S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction\n\nBuild low-latency voi",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.3
+          },
+          {
+            "description": "S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction\n\nBuild low-latency voi",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.3
+          }
+        ]
+      },
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1770815857_5": {
+      "id": "tb_1770815857_5",
+      "title": "S2.5 Model Directory: auto-detect ALL models (Polza voice, local Qwen TTS, Ollama)",
+      "description": "Fix Model Directory showing 'No models found':\\n1. Scan Polza API for ALL available models including voice/TTS/STT\\n2. Scan local Ollama for installed models\\n3. Detect local Qwen TTS server if running\\n4. Auto-categorize: text, voice, image, embedding\\n5. Remove hardcoded model lists — dynamic auto-detection\\n6. Show provider badges (Polza, Poe, OpenRouter, Local)\\n\\nFiles: client/src/components/ModelDirectory.tsx, src/api/routes/model_routes.py (or create)",
+      "priority": 1,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "done",
+      "source": "mcp",
+      "tags": [
+        "sprint2",
+        "codex",
+        "models",
+        "critical"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-11T16:17:37.467447",
+      "started_at": null,
+      "completed_at": "2026-02-11T17:25:07.903880",
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1770815857_6": {
+      "id": "tb_1770815857_6",
+      "title": "S2.6 Agent Voice IDs: permanent voice per agent + voice messages in chat",
+      "description": "Each agent gets persistent voice identity:\\n1. Config: data/agent_voice_config.json — voice_id, provider, speed per agent\\n2. Voice messages in chat: waveform bars like Telegram (agent avatar + wave + duration)\\n3. Auto-play in voice conversation mode\\n4. Emotional tone from LLM response sentiment → TTS parameters\\n5. Trigger rule: voice input → voice output, text input → text output\\n\\nFiles: src/voice/agent_voices.py, client/src/components/chat/VoiceMessage.tsx, data/agent_voice_config.json",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "mcp",
+      "tags": [
+        "sprint2",
+        "dragon_silver",
+        "jarvis",
+        "voice"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-11T16:17:37.476633",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1770819946_1": {
+      "id": "tb_1770819946_1",
+      "title": "MCC STATS: normalize bar scale + switch to horizontal area charts",
+      "description": "STATS tab bars go to ceiling because Y-axis not normalized. Fix:\\n1. Normalize bar heights to max value in dataset (not 100%)\\n2. Consider switching token breakdown from vertical bars to horizontal area charts (smoother, better for timeline data)\\n3. BY PRESET section: make bars proportional to each other, not fixed width\\n4. Add hover tooltips with exact numbers\\n\\nFiles: client/src/components/panels/DevPanel.tsx (StatsPanel section)\\nMARKER_138.MCC_STATS_NORMALIZE",
+      "priority": 1,
+      "complexity": "medium",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "mcp",
+      "tags": [
+        "sprint2",
+        "codex",
+        "mcc",
+        "frontend"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-11T17:25:46.504612",
       "started_at": null,
       "completed_at": null,
       "pipeline_task_id": null,

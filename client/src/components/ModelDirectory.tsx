@@ -189,41 +189,35 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
       setLoading(true);
       setError(null);
 
-      // Fetch cloud, local, and MCP models in parallel
-      Promise.all([
-        fetch('/api/models').then(r => r.json()).catch(() => ({ models: [] })),
-        fetch('/api/models/local').then(r => r.json()).catch(() => ({ models: [] })),
-        fetch('/api/models/mcp-agents').then(r => r.json()).catch(() => ({ agents: [] })) // Phase 80.3
-      ])
-        .then(([cloudData, localData, mcpData]) => {
-          // Cloud models
-          const cloudModels = (cloudData.models || []).map((m: Model) => ({
+      // MARKER_138.S2_5_MODELDIR_AUTODETECT: Unified dynamic inventory endpoint
+      fetch('/api/models/autodetect')
+        .then(r => r.json())
+        .then((data) => {
+          const cloudModels = (data.cloud_models || []).map((m: Model) => ({
             ...m,
             isLocal: false
           }));
 
-          // Local models - format for display
-          const local = (localData.models || []).map((m: any) => ({
+          const local = (data.local_models || []).map((m: any) => ({
             id: m.id || m.name,
             name: m.name || m.id,
-            provider: 'ollama',
-            context_length: m.context_length || 4096,
-            pricing: { prompt: '0', completion: '0' },
+            provider: m.provider || 'local',
+            context_length: m.context_length || 0,
+            pricing: m.pricing || { prompt: '0', completion: '0' },
+            type: m.type,
+            capabilities: m.capabilities || [],
+            source: m.source,
+            source_display: m.source_display || 'Local',
             isLocal: true
           }));
 
-          // Phase 80.3: MCP Agents - format for display
-          const mcp = (mcpData.agents || []).map((m: any) => ({
-            id: m.id,
-            name: m.name,
-            provider: 'mcp',
-            context_length: m.context_window || 200000,
-            pricing: { prompt: '0', completion: '0' },
-            type: 'mcp_agent',
-            description: m.description,
-            capabilities: m.capabilities,
-            icon: m.icon,
-            role: m.role
+          const mcp = (data.mcp_agents || []).map((m: any) => ({
+            ...m,
+            provider: m.provider || 'mcp',
+            context_length: m.context_window || m.context_length || 200000,
+            pricing: m.pricing || { prompt: '0', completion: '0' },
+            type: m.type || 'mcp_agent',
+            isLocal: false
           }));
 
           setModels(cloudModels);
@@ -263,14 +257,22 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
       const res = await fetch('/api/models/refresh', { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        // Reload models list
-        const cloudRes = await fetch('/api/models');
-        const cloudData = await cloudRes.json();
-        const cloudModels = (cloudData.models || []).map((m: Model) => ({
+        // MARKER_138.S2_5_MODELDIR_AUTODETECT: Refresh also rehydrates from autodetect inventory
+        // Reload from unified autodetect endpoint
+        const resAll = await fetch('/api/models/autodetect?force_refresh=true');
+        const allData = await resAll.json();
+        setModels((allData.cloud_models || []).map((m: Model) => ({ ...m, isLocal: false })));
+        setLocalModels((allData.local_models || []).map((m: any) => ({
           ...m,
-          isLocal: false
-        }));
-        setModels(cloudModels);
+          provider: m.provider || 'local',
+          pricing: m.pricing || { prompt: '0', completion: '0' },
+          isLocal: true
+        })));
+        setMcpAgents((allData.mcp_agents || []).map((m: any) => ({
+          ...m,
+          type: m.type || 'mcp_agent',
+          pricing: m.pricing || { prompt: '0', completion: '0' }
+        })));
 
         // Show toast with new count
         setToastMessage(data.message || `Refreshed: ${data.count} models`);

@@ -1,7 +1,7 @@
 {
-  "cached_at": "2026-02-10T19:40:22.627361",
+  "cached_at": "2026-02-11T16:01:31.425994",
   "source": "mixed",
-  "count": 1590,
+  "count": 1586,
   "models": [
     {
       "id": "qwen/qwen3-max-thinking",
@@ -388,6 +388,56 @@
       "source": "openrouter",
       "provider": "stepfun",
       "_compound_key": "stepfun/step-3.5-flash:free@openrouter"
+    },
+    {
+      "id": "stepfun/step-3.5-flash",
+      "canonical_slug": "stepfun/step-3.5-flash",
+      "hugging_face_id": "stepfun-ai/Step-3.5-Flash",
+      "name": "StepFun: Step 3.5 Flash",
+      "created": 1769728337,
+      "description": "Step 3.5 Flash is StepFun's most capable open-source foundation model. Built on a sparse Mixture of Experts (MoE) architecture, it selectively activates only 11B of its 196B parameters per token. It is a reasoning model that is incredibly speed efficient even at long contexts.",
+      "context_length": 256000,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.0000001",
+        "completion": "0.0000003",
+        "input_cache_read": "0.00000002"
+      },
+      "top_provider": {
+        "context_length": 256000,
+        "max_completion_tokens": 256000,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "frequency_penalty",
+        "include_reasoning",
+        "max_tokens",
+        "reasoning",
+        "stop",
+        "temperature",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": null,
+        "top_p": null,
+        "frequency_penalty": null
+      },
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "stepfun",
+      "_compound_key": "stepfun/step-3.5-flash@openrouter"
     },
     {
       "id": "arcee-ai/trinity-large-preview:free",
@@ -10749,7 +10799,7 @@
       "name": "Qwen: Qwen3 235B A22B",
       "created": 1745875757,
       "description": "Qwen3-235B-A22B is a 235B parameter mixture-of-experts (MoE) model developed by Qwen, activating 22B parameters per forward pass. It supports seamless switching between a \"thinking\" mode for complex reasoning, math, and code tasks, and a \"non-thinking\" mode for general conversational efficiency. The model demonstrates strong reasoning ability, multilingual support (100+ languages and dialects), advanced instruction-following, and agent tool-calling capabilities. It natively handles a 32K token context window and extends up to 131K tokens using YaRN-based scaling.",
-      "context_length": 40960,
+      "context_length": 131072,
       "architecture": {
         "modality": "text->text",
         "input_modalities": [
@@ -10762,11 +10812,12 @@
         "instruct_type": "qwen3"
       },
       "pricing": {
-        "prompt": "0.0000002",
-        "completion": "0.0000006"
+        "prompt": "0.00000022",
+        "completion": "0.00000088",
+        "input_cache_read": "0.00000011"
       },
       "top_provider": {
-        "context_length": 40960,
+        "context_length": 131072,
         "max_completion_tokens": null,
         "is_moderated": false
       },
@@ -10777,7 +10828,6 @@
         "logit_bias",
         "logprobs",
         "max_tokens",
-        "min_p",
         "presence_penalty",
         "reasoning",
         "repetition_penalty",
@@ -17587,7 +17637,7 @@
       "hugging_face_id": null,
       "name": "Auto Router",
       "created": 1699401600,
-      "description": "Your prompt will be processed by a meta-model and routed to one of dozens of models (see below), optimizing for the best possible output.\n\nTo see which model was used, visit [Activity](/activity), or read the `model` attribute of the response. Your response will be priced at the same rate as the routed model.\n\nLearn more, including how to customize the models for routing, in our [docs](/docs/guides/routing/routers/auto-router).\n\nRequests will be routed to the following models:\n- [anthropic/claude-3-haiku](/anthropic/claude-3-haiku)\n- [anthropic/claude-3.5-haiku](/anthropic/claude-3.5-haiku)\n- [anthropic/claude-3.7-sonnet](/anthropic/claude-3.7-sonnet)\n- [anthropic/claude-haiku-4.5](/anthropic/claude-haiku-4.5)\n- [anthropic/claude-opus-4](/anthropic/claude-opus-4)\n- [anthropic/claude-opus-4.1](/anthropic/claude-opus-4.1)\n- [anthropic/claude-opus-4.5](/anthropic/claude-opus-4.5)\n- [anthropic/claude-opus-4.6](/anthropic/claude-opus-4.6)\n- [anthropic/claude-sonnet-4](/anthropic/claude-sonnet-4)\n- [anthropic/claude-sonnet-4.5](/anthropic/claude-sonnet-4.5)\n- [cohere/command-r-08-2024](/cohere/command-r-08-2024)\n- [cohere/command-r-plus-08-2024](/cohere/command-r-plus-08-2024)\n- [deepseek/deepseek-r1](/deepseek/deepseek-r1)\n- [google/gemini-2.0-flash-001](/google/gemini-2.0-flash-001)\n- [google/gemini-2.5-flash](/google/gemini-2.5-flash)\n- [google/gemini-2.5-flash-lite](/google/gemini-2.5-flash-lite)\n- [google/gemini-2.5-pro](/google/gemini-2.5-pro)\n- [google/gemini-3-flash-preview](/google/gemini-3-flash-preview)\n- [google/gemini-3-pro-preview](/google/gemini-3-pro-preview)\n- [meta-llama/llama-3-70b-instruct](/meta-llama/llama-3-70b-instruct)\n- [meta-llama/llama-3-8b-instruct](/meta-llama/llama-3-8b-instruct)\n- [meta-llama/llama-3.1-405b-instruct](/meta-llama/llama-3.1-405b-instruct)\n- [meta-llama/llama-3.1-70b-instruct](/meta-llama/llama-3.1-70b-instruct)\n- [meta-llama/llama-3.1-8b-instruct](/meta-llama/llama-3.1-8b-instruct)\n- [meta-llama/llama-3.3-70b-instruct](/meta-llama/llama-3.3-70b-instruct)\n- [mistralai/codestral-2508](/mistralai/codestral-2508)\n- [mistralai/mistral-7b-instruct](/mistralai/mistral-7b-instruct)\n- [mistralai/mistral-large](/mistralai/mistral-large)\n- [mistralai/mistral-large-2407](/mistralai/mistral-large-2407)\n- [mistralai/mistral-large-2411](/mistralai/mistral-large-2411)\n- [mistralai/mistral-medium-3.1](/mistralai/mistral-medium-3.1)\n- [mistralai/mistral-nemo](/mistralai/mistral-nemo)\n- [mistralai/mistral-small-3.2-24b-instruct-2506](/mistralai/mistral-small-3.2-24b-instruct-2506)\n- [mistralai/mixtral-8x22b-instruct](/mistralai/mixtral-8x22b-instruct)\n- [mistralai/mixtral-8x7b-instruct](/mistralai/mixtral-8x7b-instruct)\n- [moonshotai/kimi-k2-thinking](/moonshotai/kimi-k2-thinking)\n- [moonshotai/kimi-k2.5](/moonshotai/kimi-k2.5)\n- [openai/chatgpt-4o-latest](/openai/chatgpt-4o-latest)\n- [openai/gpt-3.5-turbo](/openai/gpt-3.5-turbo)\n- [openai/gpt-4](/openai/gpt-4)\n- [openai/gpt-4-1106-preview](/openai/gpt-4-1106-preview)\n- [openai/gpt-4-turbo](/openai/gpt-4-turbo)\n- [openai/gpt-4-turbo-preview](/openai/gpt-4-turbo-preview)\n- [openai/gpt-4.1](/openai/gpt-4.1)\n- [openai/gpt-4.1-mini](/openai/gpt-4.1-mini)\n- [openai/gpt-4.1-nano](/openai/gpt-4.1-nano)\n- [openai/gpt-4o](/openai/gpt-4o)\n- [openai/gpt-4o-2024-05-13](/openai/gpt-4o-2024-05-13)\n- [openai/gpt-4o-2024-08-06](/openai/gpt-4o-2024-08-06)\n- [openai/gpt-4o-2024-11-20](/openai/gpt-4o-2024-11-20)\n- [openai/gpt-4o-mini](/openai/gpt-4o-mini)\n- [openai/gpt-4o-mini-2024-07-18](/openai/gpt-4o-mini-2024-07-18)\n- [openai/gpt-5](/openai/gpt-5)\n- [openai/gpt-5-mini](/openai/gpt-5-mini)\n- [openai/gpt-5-nano](/openai/gpt-5-nano)\n- [openai/gpt-5.1](/openai/gpt-5.1)\n- [openai/gpt-5.2](/openai/gpt-5.2)\n- [openai/gpt-5.2-pro](/openai/gpt-5.2-pro)\n- [openai/gpt-oss-120b](/openai/gpt-oss-120b)\n- [perplexity/sonar](/perplexity/sonar)\n- [qwen/qwen3-14b](/qwen/qwen3-14b)\n- [qwen/qwen3-235b-a22b](/qwen/qwen3-235b-a22b)\n- [qwen/qwen3-32b](/qwen/qwen3-32b)\n- [x-ai/grok-3](/x-ai/grok-3)\n- [x-ai/grok-3-mini](/x-ai/grok-3-mini)\n- [x-ai/grok-4](/x-ai/grok-4)",
+      "description": "Your prompt will be processed by a meta-model and routed to one of dozens of models (see below), optimizing for the best possible output.\n\nTo see which model was used, visit [Activity](/activity), or read the `model` attribute of the response. Your response will be priced at the same rate as the routed model.\n\nLearn more, including how to customize the models for routing, in our [docs](/docs/guides/routing/routers/auto-router).\n\nRequests will be routed to the following models:\n- [anthropic/claude-haiku-4.5](/anthropic/claude-haiku-4.5)\n- [anthropic/claude-opus-4.6](/anthropic/claude-opus-4.6)\n- [anthropic/claude-sonnet-4.5](/anthropic/claude-sonnet-4.5)\n- [deepseek/deepseek-r1](/deepseek/deepseek-r1)\n- [google/gemini-2.5-flash-lite](/google/gemini-2.5-flash-lite)\n- [google/gemini-3-flash-preview](/google/gemini-3-flash-preview)\n- [google/gemini-3-pro-preview](/google/gemini-3-pro-preview)\n- [meta-llama/llama-3.3-70b-instruct](/meta-llama/llama-3.3-70b-instruct)\n- [mistralai/codestral-2508](/mistralai/codestral-2508)\n- [mistralai/mistral-large](/mistralai/mistral-large)\n- [mistralai/mistral-medium-3.1](/mistralai/mistral-medium-3.1)\n- [mistralai/mistral-small-3.2-24b-instruct-2506](/mistralai/mistral-small-3.2-24b-instruct-2506)\n- [moonshotai/kimi-k2-thinking](/moonshotai/kimi-k2-thinking)\n- [moonshotai/kimi-k2.5](/moonshotai/kimi-k2.5)\n- [openai/gpt-5](/openai/gpt-5)\n- [openai/gpt-5-mini](/openai/gpt-5-mini)\n- [openai/gpt-5-nano](/openai/gpt-5-nano)\n- [openai/gpt-5.1](/openai/gpt-5.1)\n- [openai/gpt-5.2](/openai/gpt-5.2)\n- [openai/gpt-5.2-pro](/openai/gpt-5.2-pro)\n- [openai/gpt-oss-120b](/openai/gpt-oss-120b)\n- [perplexity/sonar](/perplexity/sonar)\n- [qwen/qwen3-235b-a22b](/qwen/qwen3-235b-a22b)\n- [x-ai/grok-3](/x-ai/grok-3)\n- [x-ai/grok-3-mini](/x-ai/grok-3-mini)\n- [x-ai/grok-4](/x-ai/grok-4)",
       "context_length": 2000000,
       "architecture": {
         "modality": "text+image+file+audio+video->text+image",
@@ -18175,6 +18225,19 @@
       "provider": "google",
       "source": "gemini_direct",
       "_compound_key": "google/gemini-2.0-flash@gemini_direct"
+    },
+    {
+      "id": "google/gemini-2.0-flash-exp-image-generation",
+      "name": "Gemini 2.0 Flash (Image Generation) Experimental",
+      "description": "Gemini 2.0 Flash (Image Generation) Experimental",
+      "context_length": 1048576,
+      "pricing": {
+        "prompt": "0.00015",
+        "completion": "0.0006"
+      },
+      "provider": "google",
+      "source": "gemini_direct",
+      "_compound_key": "google/gemini-2.0-flash-exp-image-generation@gemini_direct"
     },
     {
       "id": "google/gemini-2.0-flash-lite",
@@ -23569,7 +23632,7 @@
       "id": "assistant",
       "name": "assistant (Poe)",
       "description": "General-purpose assistant. Write, code, ask for real-time information, create images, and more.\n\nQueries are automatically routed based on the task and subscription status.\n\nFor subscribers:\n- General queries: @GPT-5.2-Instant\n- Web searches: @Web-Search\n- Image generation: @Nano-Banana-Pro\n- Video-input tasks: @Gemini-3-Pro\n\nFor non-subscribers:\n- General queries: @GPT-4o-Mini\n- Web searches: @Web-Search\n- Image generation: @FLUX-schnell\n- Video-input tasks: @Gemini-3-Flash\n",
-      "context_length": 12288,
+      "context_length": 128000,
       "pricing": null,
       "provider": "poe",
       "source": "poe",
@@ -24908,25 +24971,6 @@
       "_compound_key": "deepseek-v3.1@poe"
     },
     {
-      "id": "glm-4.6-fw",
-      "name": "glm-4.6-fw (Poe)",
-      "description": "As the latest iteration in the GLM series, GLM-4.6 achieves comprehensive enhancements across multiple domains, including real-world coding, long-context processing, reasoning, searching, writing, and agentic applications.",
-      "context_length": null,
-      "pricing": {
-        "prompt": null,
-        "completion": null,
-        "image": null,
-        "request": "0.0060",
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Fireworks AI",
-      "_compound_key": "glm-4.6-fw@poe"
-    },
-    {
       "id": "pika-v1.5-effects",
       "name": "pika-v1.5-effects (Poe)",
       "description": "Apply surprising, mind blowing effects to your photo with Pika-v1.5 Effects. Attach an image and be amazed by the effects like \"cakeify,\" \"crush\" and \"crumble\", open the parameter controls shelf for a full list of effects.\n\nFull list of effects:\nCake-ify, Crumble, Crush, Decapitate, Deflate, Dissolve, Explode, Eye-pop, Inflate, Levitate, Melt, Peel, Poke, Squish, Ta-da, Tear\n\nOptional parameters:\nUse \"--seed\" for reproducible result. Default value: random\nUse `--negative_prompt` to set the negative prompt.",
@@ -24994,25 +25038,6 @@
       "source_display": "Poe",
       "owned_by": "Novita AI",
       "_compound_key": "deepseek-v3.1-n@poe"
-    },
-    {
-      "id": "qwen3-coder",
-      "name": "qwen3-coder (Poe)",
-      "description": "Qwen3 Coder 480B A35B Instruct is a state-of-the-art 480B-parameter Mixture-of-Experts model (35B active) that achieves top-tier performance across multiple agentic coding benchmarks. Supports 256K native context length and scales to 1M tokens with extrapolation. All data provided will not be used in training, and is sent only to Fireworks AI, a US-based company.",
-      "context_length": null,
-      "pricing": {
-        "prompt": null,
-        "completion": null,
-        "image": null,
-        "request": "0.0090",
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Fireworks AI",
-      "_compound_key": "qwen3-coder@poe"
     },
     {
       "id": "claude-sonnet-4",
@@ -25624,25 +25649,6 @@
       "source_display": "Poe",
       "owned_by": "Together AI",
       "_compound_key": "qwen-3-235b-2507-t@poe"
-    },
-    {
-      "id": "qwen3-235b-2507-fw",
-      "name": "qwen3-235b-2507-fw (Poe)",
-      "description": "State-of-the-art language model with exceptional math, coding, and problem-solving performance. Operates in non-thinking mode, and does not generate <think></think> blocks in its output. Supports 256k tokens of native context length. All data provided will not be used in training, and is sent only to Fireworks AI, a US-based company. Uses the latest July 21st, 2025 snapshot (Qwen3-235B-A22B-Instruct-2507).",
-      "context_length": 100000,
-      "pricing": {
-        "prompt": null,
-        "completion": null,
-        "image": null,
-        "request": "0.0027",
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Fireworks AI",
-      "_compound_key": "qwen3-235b-2507-fw@poe"
     },
     {
       "id": "qwen3-235b-2507-cs",
@@ -27900,25 +27906,6 @@
       "_compound_key": "qwen3-32b-cs@poe"
     },
     {
-      "id": "qwen-2.5-vl-32b",
-      "name": "qwen-2.5-vl-32b (Poe)",
-      "description": "Qwen2.5-VL-32b's mathematical and problem-solving capabilities have been strengthened through reinforcement learning, leading to a significantly improved user experience. The model's response styles have been refined to better align with human preferences, particularly for objective queries involving mathematics, logical reasoning, and knowledge-based Q&A. As a result, responses now feature greater detail, improved clarity, and enhanced formatting.",
-      "context_length": 32768,
-      "pricing": {
-        "prompt": null,
-        "completion": null,
-        "image": null,
-        "request": "0.0066",
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Fireworks AI",
-      "_compound_key": "qwen-2.5-vl-32b@poe"
-    },
-    {
       "id": "qwen3-vl-32b-t",
       "name": "qwen3-vl-32b-t (Poe)",
       "description": "Meet Qwen3-VL \u2014 the most powerful vision-language model in the Qwen series to date.\n\nThis generation delivers comprehensive upgrades across the board: superior text understanding & generation, deeper visual perception & reasoning, extended context length, enhanced spatial and video dynamics comprehension, and stronger agent interaction capabilities.\n\nAvailable in Dense and MoE architectures that scale from edge to cloud, with Instruct and reasoning\u2011enhanced Thinking editions for flexible, on\u2011demand deployment.",
@@ -28426,25 +28413,6 @@
       "_compound_key": "tako@poe"
     },
     {
-      "id": "llama-3.1-405b-fp16",
-      "name": "llama-3.1-405b-fp16 (Poe)",
-      "description": "The Biggest and Best open-source AI model trained by Meta, beating GPT-4o across most benchmarks. This bot is in BF16 and with 128K context length.",
-      "context_length": 131000,
-      "pricing": {
-        "prompt": null,
-        "completion": null,
-        "image": null,
-        "request": "0.062",
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Hyperbolic",
-      "_compound_key": "llama-3.1-405b-fp16@poe"
-    },
-    {
       "id": "llama-3.1-8b-fp16",
       "name": "llama-3.1-8b-fp16 (Poe)",
       "description": "The smallest and fastest member of the Llama 3.1 family, offering exceptional efficiency and rapid response times with 128K context length.",
@@ -28462,25 +28430,6 @@
       "source_display": "Poe",
       "owned_by": "Hyperbolic",
       "_compound_key": "llama-3.1-8b-fp16@poe"
-    },
-    {
-      "id": "llama-3.1-70b-fp16",
-      "name": "llama-3.1-70b-fp16 (Poe)",
-      "description": "The best LLM at its size with faster response times compared to the 405B model with 128K context length.",
-      "context_length": 131000,
-      "pricing": {
-        "prompt": null,
-        "completion": null,
-        "image": null,
-        "request": "0.0060",
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Hyperbolic",
-      "_compound_key": "llama-3.1-70b-fp16@poe"
     },
     {
       "id": "restyler",
@@ -28934,6 +28883,40 @@
       "object": "model",
       "created": 1704067200,
       "_compound_key": "brave@nanogpt"
+    },
+    {
+      "id": "brave-pro",
+      "name": "brave-pro (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1704067200,
+      "_compound_key": "brave-pro@nanogpt"
+    },
+    {
+      "id": "brave-research",
+      "name": "brave-research (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1704067200,
+      "_compound_key": "brave-research@nanogpt"
     },
     {
       "id": "fastgpt",
@@ -33356,23 +33339,6 @@
       "_compound_key": "sonar-reasoning-pro@nanogpt"
     },
     {
-      "id": "sonar-reasoning",
-      "name": "sonar-reasoning (NanoGPT)",
-      "description": "",
-      "context_length": 128000,
-      "pricing": {
-        "prompt": "0.0001",
-        "completion": "0.0003"
-      },
-      "provider": "nanogpt",
-      "source": "nanogpt",
-      "source_display": "NanoGPT",
-      "owned_by": "organization-owner",
-      "object": "model",
-      "created": 1704067200,
-      "_compound_key": "sonar-reasoning@nanogpt"
-    },
-    {
       "id": "google/gemini-flash-1.5",
       "name": "gemini-flash-1.5 (NanoGPT)",
       "description": "",
@@ -35241,23 +35207,6 @@
       "object": "model",
       "created": 1740009600,
       "_compound_key": "deepseek-r1-sambanova@nanogpt"
-    },
-    {
-      "id": "r1-1776",
-      "name": "r1-1776 (NanoGPT)",
-      "description": "",
-      "context_length": 128000,
-      "pricing": {
-        "prompt": "0.0001",
-        "completion": "0.0003"
-      },
-      "provider": "nanogpt",
-      "source": "nanogpt",
-      "source_display": "NanoGPT",
-      "owned_by": "organization-owner",
-      "object": "model",
-      "created": 1739923200,
-      "_compound_key": "r1-1776@nanogpt"
     },
     {
       "id": "LatitudeGames/Wayfarer-Large-70B-Llama-3.3",

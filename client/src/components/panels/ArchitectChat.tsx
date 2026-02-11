@@ -49,6 +49,7 @@ export function ArchitectChat({ onPlanCreated }: ArchitectChatProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // MARKER_137.ARCHITECT_FIX: Improved error handling + timeout
   const handleSend = useCallback(async () => {
     if (!input.trim() || loading) return;
 
@@ -61,6 +62,10 @@ export function ArchitectChat({ onPlanCreated }: ArchitectChatProps) {
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setLoading(true);
+
+    // AbortController for 60s timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
 
     try {
       // Call Architect via LLM endpoint
@@ -99,7 +104,14 @@ Output format:
           max_tokens: 2000,
           temperature: 0.3,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
 
       const data = await res.json();
 
@@ -124,16 +136,28 @@ Output format:
         setMessages(prev => [...prev, architectMessage]);
         onPlanCreated?.(data.response);
       } else {
+        // Show detailed error from backend
+        const errorMsg = data.error || 'Unknown error from LLM';
         setMessages(prev => [...prev, {
           role: 'architect',
-          content: `Error: ${data.error || 'Unknown error'}`,
+          content: `Error: ${errorMsg}\n\nModel: ${model}\nTip: Check if model is available via Polza/provider.`,
           timestamp: Date.now(),
         }]);
       }
     } catch (err) {
+      clearTimeout(timeoutId);
+      // Detailed error messages
+      let errorMsg = 'Failed to connect';
+      if (err instanceof Error) {
+        if (err.name === 'AbortError') {
+          errorMsg = 'Request timeout (60s) — LLM may be unavailable';
+        } else {
+          errorMsg = err.message;
+        }
+      }
       setMessages(prev => [...prev, {
         role: 'architect',
-        content: `Error: ${err instanceof Error ? err.message : 'Failed to connect'}`,
+        content: `Error: ${errorMsg}\n\nModel: ${model}`,
         timestamp: Date.now(),
       }]);
     } finally {

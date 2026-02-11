@@ -195,5 +195,28 @@
     "files_created": [],
     "timestamp": 1770808417.219101,
     "timestamp_human": "2026-02-11 14:13:37"
+  },
+  {
+    "run_id": "run_1770816307_70815917",
+    "task_id": "task_1770815917",
+    "task_title": "S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction\n\nBuild low-latency voice pipeline for Jarvis:\\n1. Layer 1: Pre-generated filler audio bank (hmm, let me think, searching..",
+    "preset": "dragon_silver",
+    "phase_type": "build",
+    "phases_completed": [
+      "MARKER_102.1",
+      "MARKER_102.1",
+      "MARKER_102.1"
+    ],
+    "subtasks_completed": 3,
+    "subtasks_total": 3,
+    "total_duration_s": 389.8,
+    "eval_score": 0.3,
+    "status": "done",
+    "llm_calls": 10,
+    "tokens_in": 18534,
+    "tokens_out": 13806,
+    "files_created": [],
+    "timestamp": 1770816307.989957,
+    "timestamp_human": "2026-02-11 16:25:07"
   }
 ]

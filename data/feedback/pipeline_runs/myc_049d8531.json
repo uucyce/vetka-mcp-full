@@ -1,0 +1,8 @@
+{
+  "task_id": "myc_049d8531",
+  "status": "failed",
+  "task": "Create a Python function in src/utils/string_helpers.py that normalizes search query strings: lowercase, strip whitespace, remove duplicate spaces, collapse unicode to ASCII where possible. Add # file",
+  "preset": "dragon_bronze",
+  "detail": "TypeError: MyceliumWSBroadcaster.broadcast_pipeline_activity() got an unexpected keyword argument 'extra'",
+  "ts": "2026-02-11T14:00:49Z"
+}

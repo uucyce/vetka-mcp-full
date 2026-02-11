@@ -2,10 +2,10 @@
   "patterns": [
     {
       "issue_type": "verifier_fail",
-      "count": 3,
+      "count": 15,
       "is_recurring": true
     }
   ],
-  "total_reports_analyzed": 12,
-  "analyzed_at": "2026-02-11T10:58:19Z"
+  "total_reports_analyzed": 14,
+  "analyzed_at": "2026-02-11T14:31:38Z"
 }

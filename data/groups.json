@@ -108,20 +108,6 @@
       },
       "messages": [
         {
-          "id": "dafa8958-4f6e-4928-b3ed-e854aaa0c4b3",
-          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
-          "sender_id": "@claude_mcp",
-          "content": "🔧 **vetka_search_semantic** `req-b506f4cb`\n```\n{\"query\": \"compound_tools JSON schema required fix\", \"limit\": 5}\n```",
-          "mentions": [],
-          "message_type": "chat",
-          "metadata": {
-            "mcp_agent": "claude_mcp",
-            "icon": "bot",
-            "role": "MCP Agent"
-          },
-          "created_at": "2026-02-02T05:34:45.131079"
-        },
-        {
           "id": "8ffe8115-4ab0-4814-8953-6307685a39a7",
           "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
           "sender_id": "@claude_mcp",
@@ -14251,13 +14237,29 @@
             "role": "MCP Agent"
           },
           "created_at": "2026-02-11T14:30:44.772491"
+        },
+        {
+          "id": "0d4ec92f-cfbe-4c93-a6c9-e3da9fb41e29",
+          "group_id": "5e2198c2-8b1a-45df-807f-5c73c5496aa8",
+          "sender_id": "@claude_mcp",
+          "content": "🔧 **vetka_git_commit** `req-b3586d92`\n```\n{\"message\": \"Phase 137: MCC Final Fixes\\n\\nMARKER_137.ARCHITECT_FIX:\\n- ArchitectChat.tsx: Added 60s timeout with AbortController\\n- ArchitectChat.tsx: Improved error messages (show model, tips)\\n- ArchitectChat.tsx: Check res.ok before parsing JSON\\n\\nMARKER_137.HEARTBEAT_CLEANUP:\\n- Deleted heartbeat_health.py (duplicate, not registered in routes)\\n\\nMARKER_137.S2_FIX:\\n- debug_routes.py: Added missing `import json, os` for heartbeat config\\n- debug_routes.py: Extended interval cap 3600→604800 (1 week)\\n- DevPanel.tsx: Removed TICK NOW button\\n- DevPanel.tsx: OFF buttons now grayscale (not red)\\n\\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\\n\\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\", \"dry_run\": false}\n```",
+          "mentions": [
+            "anthropic.com"
+          ],
+          "message_type": "chat",
+          "metadata": {
+            "mcp_agent": "claude_mcp",
+            "icon": "bot",
+            "role": "MCP Agent"
+          },
+          "created_at": "2026-02-11T17:32:38.454750"
         }
       ],
       "shared_context": {},
       "project_id": null,
       "created_at": "2026-01-23T04:07:54.662090",
-      "last_activity": "2026-02-11T14:30:44.772510"
+      "last_activity": "2026-02-11T17:32:38.454786"
     }
   },
-  "saved_at": "2026-02-11T14:30:44.774690"
+  "saved_at": "2026-02-11T17:32:38.455662"
 }

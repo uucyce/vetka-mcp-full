@@ -2,6 +2,7 @@
  * MARKER_126.0D: Pipeline Statistics — monochrome bars, no chart library.
  * MARKER_126.12: Live refresh + running task progress + improved summary.
  * MARKER_136.W1C: Enhanced stats — confidence, subtasks, model breakdown.
+ * MARKER_138.MCC_STATS_NORMALIZE: normalized scales + horizontal token areas + hover tooltips.
  * Nolan style: dark, serious, minimal color. Itten color only for accents.
  *
  * @phase 136
@@ -108,6 +109,8 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
 
   const maxLlmCalls = Math.max(...presets.map(p => p.llmCalls), 1);
   const maxTokens = Math.max(...presets.map(p => p.tokensOut), 1);
+  const maxSuccess = Math.max(...presets.map(p => (p.total > 0 ? Math.round((p.success / p.total) * 100) : 0)), 1);
+  const normalizedYMax = Math.max(10, Math.ceil(maxSuccess / 10) * 10);
 
   // MARKER_126.12C: Calculate totals
   const totalRuns = presets.reduce((s, p) => s + p.total, 0);
@@ -130,6 +133,12 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
       completedSubtasks += task.stats.subtasks_completed || 0;
     }
   }
+
+  const tokenSeries = [
+    { key: 'in', value: totalTokensIn, color: '#8c8c8c' },
+    { key: 'out', value: totalTokensOut, color: '#d9d9d9' },
+  ];
+  const tokenMax = Math.max(...tokenSeries.map(s => s.value), 1);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -207,24 +216,53 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
             />
           </div>
 
-          {/* MARKER_136.W1C: Token breakdown row */}
+          {/* MARKER_138.MCC_STATS_NORMALIZE: Horizontal token area chart */}
           <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            padding: '6px 8px',
+            padding: '8px 10px',
             background: '#111',
             borderRadius: 3,
             fontSize: 10,
             fontFamily: 'monospace',
           }}>
-            <span style={{ color: '#666' }}>token breakdown</span>
-            <span style={{ color: '#888' }}>
-              <span style={{ color: '#777' }}>in:</span> {totalTokensIn > 1000 ? `${(totalTokensIn / 1000).toFixed(1)}k` : totalTokensIn}
-              {' · '}
-              <span style={{ color: '#777' }}>out:</span> {totalTokensOut > 1000 ? `${(totalTokensOut / 1000).toFixed(1)}k` : totalTokensOut}
-              {' · '}
-              <span style={{ color: '#777' }}>ratio:</span> {totalTokensIn > 0 ? (totalTokensOut / totalTokensIn).toFixed(1) : '-'}x
-            </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ color: '#666' }}>token breakdown</span>
+              <span style={{ color: '#888' }}>
+                <span style={{ color: '#777' }}>ratio:</span> {totalTokensIn > 0 ? (totalTokensOut / totalTokensIn).toFixed(1) : '-'}x
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {tokenSeries.map((series) => {
+                const widthPct = Math.max(2, (series.value / tokenMax) * 100);
+                const formatted = series.value > 1000 ? `${(series.value / 1000).toFixed(1)}k` : String(series.value);
+                return (
+                  <div key={series.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: '#777', width: 28, textTransform: 'uppercase' }}>{series.key}</span>
+                    <div
+                      style={{
+                        flex: 1,
+                        height: 10,
+                        background: '#1a1a1a',
+                        borderRadius: 5,
+                        overflow: 'hidden',
+                        position: 'relative',
+                      }}
+                      title={`${series.key.toUpperCase()}: ${series.value} tokens`}
+                    >
+                      <div
+                        style={{
+                          width: `${widthPct}%`,
+                          height: '100%',
+                          background: `linear-gradient(90deg, ${series.color}66 0%, ${series.color} 100%)`,
+                          borderRadius: 5,
+                          transition: 'width 0.3s ease',
+                        }}
+                      />
+                    </div>
+                    <span style={{ color: '#999', width: 40, textAlign: 'right' }}>{formatted}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </>
       )}
@@ -254,6 +292,7 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
                 tickLine={false}
               />
               <YAxis
+                domain={[0, normalizedYMax]}
                 tick={{ fill: '#555', fontSize: 8 }}
                 axisLine={false}
                 tickLine={false}
@@ -284,12 +323,17 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
           <div style={{ color: '#666', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
             By Preset
           </div>
-          {presets.map(p => (
+          {presets.map(p => {
+          const successPct = p.total > 0 ? Math.round((p.success / p.total) * 100) : 0;
+          const llmWidth = Math.max(2, (p.llmCalls / maxLlmCalls) * 100);
+          const tokenWidth = Math.max(2, (p.tokensOut / maxTokens) * 100);
+          return (
           <div key={p.preset} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
               <span style={{ color: '#ccc', fontFamily: 'monospace' }}>{p.preset}</span>
               <span style={{ color: '#888' }}>
                 {p.success}/{p.total} ok
+                {` · ${successPct}%`}
                 {p.avgConfidence > 0 && ` · ${p.avgConfidence}%`}
                 {p.avgDuration > 0 && ` · ${p.avgDuration}s`}
               </span>
@@ -297,9 +341,12 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
             {/* LLM calls bar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ color: '#666', fontSize: 9, width: 50 }}>LLM</span>
-              <div style={{ flex: 1, height: 6, background: '#1a1a1a', borderRadius: 3 }}>
+              <div
+                style={{ flex: 1, height: 6, background: '#1a1a1a', borderRadius: 3 }}
+                title={`LLM calls: ${p.llmCalls}`}
+              >
                 <div style={{
-                  width: `${(p.llmCalls / maxLlmCalls) * 100}%`,
+                  width: `${llmWidth}%`,
                   height: '100%',
                   background: '#e0e0e0',
                   borderRadius: 3,
@@ -311,9 +358,12 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
             {/* Tokens bar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ color: '#666', fontSize: 9, width: 50 }}>Tokens</span>
-              <div style={{ flex: 1, height: 6, background: '#1a1a1a', borderRadius: 3 }}>
+              <div
+                style={{ flex: 1, height: 6, background: '#1a1a1a', borderRadius: 3 }}
+                title={`Tokens out: ${p.tokensOut}`}
+              >
                 <div style={{
-                  width: `${(p.tokensOut / maxTokens) * 100}%`,
+                  width: `${tokenWidth}%`,
                   height: '100%',
                   background: '#999',
                   borderRadius: 3,
@@ -325,7 +375,8 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
               </span>
             </div>
           </div>
-        ))}
+        );
+        })}
         </div>
       )}
     </div>

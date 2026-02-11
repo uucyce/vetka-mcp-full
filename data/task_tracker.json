@@ -227,6 +227,18 @@
         "llm_calls": 0,
         "preset": "unknown"
       }
+    },
+    {
+      "task_id": "task_1770815917",
+      "title": "S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction\n\nBuild low-latency voice pipeline for Jarvis:\\n1. Layer 1: Pre-generated filler audio bank (hmm, let me think, searching..",
+      "status": "done",
+      "source": "dragon_dragon_silver",
+      "completed_at": "2026-02-11T16:25:07",
+      "stats": {
+        "duration_s": 389.8,
+        "llm_calls": 10,
+        "preset": "dragon_silver"
+      }
     }
   ],
   "in_progress": [
