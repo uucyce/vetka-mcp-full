@@ -2296,6 +2296,111 @@ async def notify_task_board_update(request: Request, body: Dict[str, Any] = None
 
 
 # ============================================================
+# MARKER_136.W2A: DISK ARTIFACTS ENDPOINTS
+# ============================================================
+
+@router.get("/artifacts")
+async def list_disk_artifacts() -> Dict[str, Any]:
+    """
+    MARKER_136.W2A: List disk artifacts from pipeline output.
+
+    Returns list of artifacts saved to artifacts/ directory by pipelines.
+    """
+    from src.services.disk_artifact_service import list_artifacts
+
+    try:
+        artifacts = await list_artifacts()
+        return {
+            "success": True,
+            "artifacts": artifacts,
+            "count": len(artifacts)
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e), "artifacts": []}
+
+
+@router.get("/artifacts/{filename}")
+async def read_disk_artifact(filename: str) -> Dict[str, Any]:
+    """
+    MARKER_136.W2A: Read artifact content by filename.
+    """
+    from pathlib import Path
+    from src.services.disk_artifact_service import ARTIFACTS_DIR
+
+    filepath = ARTIFACTS_DIR / filename
+
+    if not filepath.exists():
+        return {"success": False, "error": "Artifact not found"}
+
+    try:
+        content = filepath.read_text(encoding='utf-8')
+        stat = filepath.stat()
+        return {
+            "success": True,
+            "artifact": {
+                "filename": filename,
+                "content": content,
+                "size": stat.st_size,
+                "extension": filepath.suffix[1:] if filepath.suffix else "txt"
+            }
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ============================================================
+# MARKER_136.W2B: LLM CALL ENDPOINT FOR ARCHITECT CHAT
+# ============================================================
+
+@router.post("/llm-call")
+async def llm_call_endpoint(request: Request) -> Dict[str, Any]:
+    """
+    MARKER_136.W2B: Direct LLM call for ArchitectChat component.
+
+    Expects JSON body:
+    - model: str (model ID like 'kimi-k2.5', 'gpt-4o', etc.)
+    - messages: list of {role, content}
+    - max_tokens: int (optional, default 2000)
+    - temperature: float (optional, default 0.3)
+    """
+    from src.elisya.model_router import get_model_router
+
+    body = await request.json()
+    model = body.get("model", "kimi-k2.5")
+    messages = body.get("messages", [])
+    max_tokens = body.get("max_tokens", 2000)
+    temperature = body.get("temperature", 0.3)
+
+    if not messages:
+        return {"success": False, "error": "No messages provided"}
+
+    try:
+        router = get_model_router()
+        response = await router.chat_completion(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+
+        # Extract content from response
+        if hasattr(response, 'choices') and response.choices:
+            content = response.choices[0].message.content
+        elif isinstance(response, dict):
+            content = response.get("content") or response.get("choices", [{}])[0].get("message", {}).get("content", "")
+        else:
+            content = str(response)
+
+        return {
+            "success": True,
+            "response": content,
+            "model": model,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ============================================================
 # MARKER_126.5: BALANCE TRACKER ENDPOINTS
 # ============================================================
 

@@ -11,7 +11,7 @@
  *
  * @status active
  * @phase 136
- * @depends FloatingWindow, TaskCard, PipelineStats, LeagueTester, BalancesPanel, useMyceliumSocket
+ * @depends FloatingWindow, TaskCard, PipelineStats, ArchitectChat, BalancesPanel, useMyceliumSocket
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -19,7 +19,8 @@ import { FloatingWindow } from '../artifact/FloatingWindow';
 import { useStore } from '../../store/useStore';
 import { TaskCard, TaskData } from './TaskCard';
 import { PipelineStats } from './PipelineStats';
-import { LeagueTester } from './LeagueTester';
+// MARKER_136.W2B: Replaced LeagueTester with ArchitectChat
+import { ArchitectChat } from './ArchitectChat';
 import { BalancesPanel } from './BalancesPanel';  // MARKER_126.7
 // MARKER_136.W1A: ActivityLog removed (Wave 1 cleanup)
 import { WatcherStats } from './WatcherStats';  // MARKER_129.1B
@@ -36,7 +37,7 @@ interface DevPanelProps {
 
 const API_BASE = 'http://localhost:5001/api/debug';
 
-type Tab = 'dag' | 'board' | 'stats' | 'test' | 'balance' | 'watcher' | 'artifacts';  // MARKER_136.W1A: removed activity
+type Tab = 'dag' | 'board' | 'stats' | 'architect' | 'balance' | 'watcher' | 'artifacts';  // MARKER_136.W2B: test→architect
 
 // MARKER_131.C22: Heartbeat settings interface
 interface HeartbeatSettings {
@@ -57,11 +58,12 @@ function formatInterval(seconds: number): string {
 }
 
 // MARKER_136.W1A: Removed Activity tab (Wave 1 cleanup)
+// MARKER_136.W2B: Renamed 'test' → 'architect' (ArchitectChat)
 const TABS: { id: Tab; label: string }[] = [
   { id: 'dag', label: 'DAG' },  // MARKER_135.4B: First tab
   { id: 'board', label: 'Board' },
   { id: 'stats', label: 'Stats' },
-  { id: 'test', label: 'Test' },
+  { id: 'architect', label: 'Architect' },  // MARKER_136.W2B: Was 'Test'
   { id: 'balance', label: 'Balance' },
   { id: 'watcher', label: 'Watcher' },  // MARKER_129.1B
   { id: 'artifacts', label: 'Artifacts' },  // MARKER_C23C
@@ -157,6 +159,7 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
   }, [isOpen]);
 
   // MARKER_131.C22: Update heartbeat settings
+  // MARKER_136.W2D: Fixed to use server response properly
   const updateHeartbeat = useCallback(async (updates: Partial<HeartbeatSettings>) => {
     try {
       const res = await fetch(`${API_BASE}/heartbeat/settings`, {
@@ -167,7 +170,12 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
-          setHeartbeat(prev => prev ? { ...prev, ...updates } : null);
+          // Update with server response values
+          setHeartbeat(prev => prev ? {
+            ...prev,
+            enabled: data.enabled ?? updates.enabled ?? prev.enabled,
+            interval: data.interval ?? updates.interval ?? prev.interval,
+          } : null);
         }
       }
     } catch (err) {
@@ -848,15 +856,12 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
                       </button>
                     </div>
                   </div>
-                  {/* MARKER_136.W1B: Stats row with countdown */}
+                  {/* MARKER_136.W1B: Stats row (countdown removed - shown in header) */}
                   <div style={{ display: 'flex', gap: 16, color: '#777', fontSize: 10 }}>
                     <span>ticks: <span style={{ color: '#aaa' }}>{heartbeat.total_ticks}</span></span>
                     <span>dispatched: <span style={{ color: '#aaa' }}>{heartbeat.tasks_dispatched}</span></span>
                     {heartbeat.last_tick > 0 && (
                       <span>last: <span style={{ color: '#aaa' }}>{new Date(heartbeat.last_tick * 1000).toLocaleTimeString()}</span></span>
-                    )}
-                    {heartbeat.enabled && nextTickIn !== null && (
-                      <span>next: <span style={{ color: nextTickIn <= 10 ? '#8a8' : '#aaa' }}>{formatInterval(nextTickIn)}</span></span>
                     )}
                   </div>
                 </div>
@@ -931,8 +936,8 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
         {/* ═══ STATS TAB ═══ */}
         {activeTab === 'stats' && <PipelineStats tasks={tasks} />}
 
-        {/* ═══ TEST TAB ═══ */}
-        {activeTab === 'test' && <LeagueTester onTestComplete={fetchTasks} />}
+        {/* ═══ ARCHITECT TAB ═══ MARKER_136.W2B */}
+        {activeTab === 'architect' && <ArchitectChat />}
 
         {/* ═══ BALANCE TAB ═══ MARKER_126.7 */}
         {activeTab === 'balance' && <BalancesPanel />}

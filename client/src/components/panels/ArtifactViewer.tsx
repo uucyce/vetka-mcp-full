@@ -1,10 +1,11 @@
 /**
  * MARKER_C23C: ArtifactViewer — Pipeline artifact staging and approval.
+ * MARKER_136.W2A: Added disk artifacts section for completed pipeline outputs.
  * Shows pending artifacts from Dragon pipeline with approve/reject buttons.
  * Style: Nolan monochrome.
  *
  * @status active
- * @phase 131
+ * @phase 136
  * @depends react
  * @used_by DevPanel
  */
@@ -20,6 +21,16 @@ interface Artifact {
   line_count?: number;
 }
 
+// MARKER_136.W2A: Disk artifact interface
+interface DiskArtifact {
+  name: string;
+  filename: string;
+  path: string;
+  size: number;
+  modified: string;
+  extension: string;
+}
+
 interface ApprovalRequest {
   id: string;
   workflow_id: string;
@@ -31,6 +42,7 @@ interface ApprovalRequest {
 }
 
 const API_BASE = 'http://localhost:5001/api/approvals';
+const DEBUG_API = 'http://localhost:5001/api/debug';  // MARKER_136.W2A
 
 // Nolan palette
 const COLORS = {
@@ -54,6 +66,12 @@ export function ArtifactViewer() {
   const [expandedArtifact, setExpandedArtifact] = useState<string | null>(null);
   const [actionPending, setActionPending] = useState<string | null>(null);
 
+  // MARKER_136.W2A: Disk artifacts state
+  const [diskArtifacts, setDiskArtifacts] = useState<DiskArtifact[]>([]);
+  const [expandedDiskArtifact, setExpandedDiskArtifact] = useState<string | null>(null);
+  const [diskArtifactContent, setDiskArtifactContent] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
+
   const fetchPending = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -71,11 +89,44 @@ export function ArtifactViewer() {
     }
   }, []);
 
+  // MARKER_136.W2A: Fetch disk artifacts
+  const fetchDiskArtifacts = useCallback(async () => {
+    try {
+      const res = await fetch(`${DEBUG_API}/artifacts`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.success) {
+        setDiskArtifacts(data.artifacts || []);
+      }
+    } catch (err) {
+      console.error('[ArtifactViewer] Failed to fetch disk artifacts:', err);
+    }
+  }, []);
+
+  // MARKER_136.W2A: Load artifact content on demand
+  const loadDiskArtifactContent = useCallback(async (filename: string) => {
+    if (diskArtifactContent[filename]) return;
+    try {
+      const res = await fetch(`${DEBUG_API}/artifacts/${encodeURIComponent(filename)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success && data.artifact?.content) {
+        setDiskArtifactContent(prev => ({ ...prev, [filename]: data.artifact.content }));
+      }
+    } catch (err) {
+      console.error('[ArtifactViewer] Failed to load artifact content:', err);
+    }
+  }, [diskArtifactContent]);
+
   useEffect(() => {
     fetchPending();
-    const interval = setInterval(fetchPending, 10000);
+    fetchDiskArtifacts();
+    const interval = setInterval(() => {
+      fetchPending();
+      fetchDiskArtifacts();
+    }, 10000);
     return () => clearInterval(interval);
-  }, [fetchPending]);
+  }, [fetchPending, fetchDiskArtifacts]);
 
   const handleApprove = useCallback(async (requestId: string) => {
     setActionPending(requestId);
@@ -138,38 +189,65 @@ export function ArtifactViewer() {
       flexDirection: 'column',
       height: '100%',
     }}>
-      {/* Header */}
+      {/* MARKER_136.W2A: Tabs for pending/completed */}
       <div style={{
         display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
+        gap: 0,
         marginBottom: 12,
-        paddingBottom: 10,
-        borderBottom: `1px solid ${COLORS.border}`
+        borderBottom: `1px solid ${COLORS.border}`,
       }}>
-        <div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: COLORS.text, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-            pending artifacts
-          </div>
-          <div style={{ color: COLORS.textDim, marginTop: 4, fontSize: 9 }}>
-            {pending.length} request{pending.length !== 1 ? 's' : ''} awaiting review
-          </div>
-        </div>
         <button
-          onClick={fetchPending}
+          onClick={() => setActiveTab('pending')}
+          style={{
+            flex: 1,
+            padding: '8px 0',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'pending' ? `1px solid ${COLORS.text}` : '1px solid transparent',
+            color: activeTab === 'pending' ? COLORS.text : COLORS.textDim,
+            fontSize: 10,
+            fontFamily: 'monospace',
+            fontWeight: activeTab === 'pending' ? 600 : 400,
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            cursor: 'pointer',
+          }}
+        >
+          pending ({pending.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('completed')}
+          style={{
+            flex: 1,
+            padding: '8px 0',
+            background: 'none',
+            border: 'none',
+            borderBottom: activeTab === 'completed' ? `1px solid ${COLORS.text}` : '1px solid transparent',
+            color: activeTab === 'completed' ? COLORS.text : COLORS.textDim,
+            fontSize: 10,
+            fontFamily: 'monospace',
+            fontWeight: activeTab === 'completed' ? 600 : 400,
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+            cursor: 'pointer',
+          }}
+        >
+          completed ({diskArtifacts.length})
+        </button>
+        <button
+          onClick={() => { fetchPending(); fetchDiskArtifacts(); }}
           disabled={loading}
           style={{
             padding: '4px 8px',
-            background: loading ? 'transparent' : `rgba(255,255,255,0.03)`,
-            border: `1px solid ${COLORS.border}`,
-            borderRadius: 2,
+            background: 'transparent',
+            border: 'none',
             color: loading ? COLORS.textDim : COLORS.textMuted,
             fontSize: 9,
             fontFamily: 'monospace',
             cursor: loading ? 'wait' : 'pointer',
           }}
         >
-          {loading ? '...' : 'refresh'}
+          {loading ? '...' : '↻'}
         </button>
       </div>
 
@@ -193,13 +271,16 @@ export function ArtifactViewer() {
         overflowX: 'hidden',
         minHeight: 0,
       }}>
-        {pending.length === 0 && !loading && (
-          <div style={{ textAlign: 'center', color: COLORS.textDim, padding: 32, fontSize: 10 }}>
-            no pending artifacts
-          </div>
-        )}
+        {/* MARKER_136.W2A: Pending tab content */}
+        {activeTab === 'pending' && (
+          <>
+            {pending.length === 0 && !loading && (
+              <div style={{ textAlign: 'center', color: COLORS.textDim, padding: 32, fontSize: 10 }}>
+                no pending artifacts
+              </div>
+            )}
 
-        {pending.map((request) => (
+            {pending.map((request) => (
           <div key={request.id} style={{
             marginBottom: 12,
             padding: 10,
@@ -383,6 +464,123 @@ export function ArtifactViewer() {
             </div>
           </div>
         ))}
+          </>
+        )}
+
+        {/* MARKER_136.W2A: Completed tab content — disk artifacts */}
+        {activeTab === 'completed' && (
+          <>
+            {diskArtifacts.length === 0 && (
+              <div style={{ textAlign: 'center', color: COLORS.textDim, padding: 32, fontSize: 10 }}>
+                no completed artifacts<br />
+                <span style={{ fontSize: 9, color: COLORS.textDim }}>pipeline outputs appear here</span>
+              </div>
+            )}
+
+            {diskArtifacts.map((artifact) => {
+              const isExpanded = expandedDiskArtifact === artifact.filename;
+              const content = diskArtifactContent[artifact.filename];
+
+              return (
+                <div key={artifact.filename} style={{
+                  marginBottom: 8,
+                  background: 'rgba(255,255,255,0.02)',
+                  borderRadius: 4,
+                  border: `1px solid ${COLORS.border}`,
+                  overflow: 'hidden',
+                }}>
+                  {/* Artifact header */}
+                  <div
+                    onClick={() => {
+                      if (!isExpanded) {
+                        loadDiskArtifactContent(artifact.filename);
+                      }
+                      setExpandedDiskArtifact(isExpanded ? null : artifact.filename);
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 10px',
+                      cursor: 'pointer',
+                      borderBottom: isExpanded ? `1px solid ${COLORS.border}` : 'none',
+                    }}
+                  >
+                    <span style={{ color: '#555', fontSize: 10 }}>
+                      {isExpanded ? '▼' : '▸'}
+                    </span>
+                    <span style={{ color: COLORS.text, fontSize: 10, flex: 1 }}>
+                      {artifact.filename}
+                    </span>
+                    <span style={{
+                      fontSize: 8,
+                      color: COLORS.textDim,
+                      background: 'rgba(255,255,255,0.04)',
+                      padding: '1px 4px',
+                      borderRadius: 2,
+                    }}>
+                      {artifact.extension}
+                    </span>
+                    <span style={{ fontSize: 8, color: COLORS.textDim }}>
+                      {artifact.size > 1024 ? `${(artifact.size / 1024).toFixed(1)}kb` : `${artifact.size}b`}
+                    </span>
+                  </div>
+
+                  {/* Expanded content */}
+                  {isExpanded && (
+                    <div style={{ padding: 8 }}>
+                      {content ? (
+                        <>
+                          <pre style={{
+                            background: '#181818',
+                            color: '#d0d0d0',
+                            padding: '8px 10px',
+                            borderRadius: 3,
+                            fontSize: 10,
+                            fontFamily: 'monospace',
+                            overflow: 'auto',
+                            maxHeight: 200,
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            margin: 0,
+                            border: '1px solid #222',
+                          }}>
+                            {content.slice(0, 3000)}
+                            {content.length > 3000 && '\n... (truncated)'}
+                          </pre>
+                          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                            <button
+                              onClick={() => navigator.clipboard.writeText(content)}
+                              style={{
+                                background: '#333',
+                                color: COLORS.textMuted,
+                                border: '1px solid #444',
+                                borderRadius: 2,
+                                fontSize: 9,
+                                padding: '2px 8px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              copy
+                            </button>
+                            <span style={{ flex: 1 }} />
+                            <span style={{ fontSize: 8, color: COLORS.textDim }}>
+                              {new Date(artifact.modified).toLocaleString()}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ color: COLORS.textDim, fontSize: 10, textAlign: 'center', padding: 10 }}>
+                          loading...
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
     </div>
   );

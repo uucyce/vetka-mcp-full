@@ -24,6 +24,7 @@ import { ChatPanel } from './components/chat';
 import { ArtifactWindow } from './components/artifact';
 import { UnifiedSearchBar } from './components/search/UnifiedSearchBar';
 import { DevPanel } from './components/panels/DevPanel';
+import { CommandPalette } from './components/search/CommandPalette';  // MARKER_136.W2C
 import { DropZoneRouter, type DropZoneEvent } from './components/DropZoneRouter';
 import JarvisWave from './components/jarvis/JarvisWave';
 import { useJarvis } from './hooks/useJarvis';
@@ -803,6 +804,8 @@ export default function App() {
           </div>
         </div>
       )}
+      {/* MARKER_136.W2C: Command Palette (Cmd+K) */}
+      <CommandPalette />
     </div>
     </DropZoneRouter>
   );
