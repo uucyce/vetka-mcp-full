@@ -59,6 +59,162 @@
         "llm_calls": 4,
         "preset": "dragon_bronze"
       }
+    },
+    {
+      "task_id": "task_1770749534",
+      "title": "Create file src/utils/test_hello.py with function hello_world() that returns Hello World",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-10T21:52:49",
+      "stats": {
+        "duration_s": 34.3,
+        "llm_calls": 5,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1770802509",
+      "title": "Create a Python function is_even(n: int) -> bool in file src/utils/check_even.py that returns True if n is even, False otherwise. Include docstring.",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-11T12:35:55",
+      "stats": {
+        "duration_s": 45.5,
+        "llm_calls": 5,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1770802569",
+      "title": "Create a Python function is_palindrome(s: str) -> bool in file src/utils/palindrome.py that checks if string is palindrome. Include docstring and handle edge cases.",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-11T12:36:53",
+      "stats": {
+        "duration_s": 44.7,
+        "llm_calls": 4,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1770802657",
+      "title": "Create a Python function parse_config(filepath: str) -> dict in file src/utils/config_parser.py. Read a JSON config file, validate required keys (name, version), return parsed dict. Handle FileNotFoun",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-11T12:39:26",
+      "stats": {
+        "duration_s": 109.7,
+        "llm_calls": 7,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1770802914",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-11T12:41:54",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1770802914",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-11T12:41:54",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1770802933",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-11T12:42:13",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1770802933",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-11T12:42:13",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1770803772",
+      "title": "Create file src/utils/math_helpers.py with function add(a: int, b: int) -> int that returns a + b. Include docstring.",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-11T12:56:52",
+      "stats": {
+        "duration_s": 40.9,
+        "llm_calls": 4,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1770803856",
+      "title": "Create file src/utils/math_helpers.py with function add(a: int, b: int) -> int that returns a + b. Include docstring.",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-11T12:59:07",
+      "stats": {
+        "duration_s": 91.6,
+        "llm_calls": 9,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1770803964",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-11T12:59:24",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1770803964",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-11T12:59:24",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1770807350",
+      "title": "MCC STATS: real data visualization instead of fake 100% bars\n\nSTATS tab shows bars hitting ceiling (100% of what?). Fix: 1) Token bars should show relative usage per preset (bronze vs silver ratio, no",
+      "status": "done",
+      "source": "dragon_dragon_gold",
+      "completed_at": "2026-02-11T14:13:37",
+      "stats": {
+        "duration_s": 1066.2,
+        "llm_calls": 18,
+        "preset": "dragon_gold"
+      }
     }
   ],
   "in_progress": [

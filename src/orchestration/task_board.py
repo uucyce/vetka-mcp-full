@@ -527,8 +527,12 @@ class TaskBoard:
         # Normalize commit message for matching
         msg_lower = commit_message.lower()
 
-        # Get tasks that could be auto-completed (claimed or running)
-        eligible = [t for t in self.tasks.values() if t["status"] in ("claimed", "running")]
+        # MARKER_136.AUTO_CLOSE_COMMIT: Allow direct tb_xxx auto-close even for pending/queued tasks.
+        # This enables infra flow: vetka_git_commit("... tb_123_4 ...") -> board.complete_task(...)
+        eligible = [
+            t for t in self.tasks.values()
+            if t["status"] in ("pending", "queued", "claimed", "running")
+        ]
 
         for task in eligible:
             if self._commit_matches_task(task, commit_message, msg_lower):

@@ -25,9 +25,11 @@ interface Props {
   onReply?: (msg: ReplyTarget) => void;
   onOpenArtifact?: (id: string, content: string, agent?: string) => void;  // Phase 48.5.1
   onReaction?: (messageId: string, reaction: string) => void;  // Phase 48.4
+  // MARKER_C23B: Doctor quick-action handler
+  onQuickAction?: (action: string) => void;
 }
 
-export function MessageList({ messages, isTyping, onReply, onOpenArtifact, onReaction }: Props) {
+export function MessageList({ messages, isTyping, onReply, onOpenArtifact, onReaction, onQuickAction }: Props) {
   // Phase 111.17: Helper to look up message by ID for reply quotes
   const getMessageById = (id: string): ChatMessage | undefined => {
     return messages.find(m => m.id === id);
@@ -64,6 +66,7 @@ export function MessageList({ messages, isTyping, onReply, onOpenArtifact, onRea
           onOpenArtifact={onOpenArtifact}
           onReaction={onReaction}
           getMessageById={getMessageById}  // Phase 111.17: Pass lookup helper for replies
+          onQuickAction={onQuickAction}  // MARKER_C23B: Doctor quick-action handler
         />
       ))}
 

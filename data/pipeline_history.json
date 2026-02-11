@@ -19,5 +19,181 @@
     "files_created": [],
     "timestamp": 1770744205.173228,
     "timestamp_human": "2026-02-10 20:23:25"
+  },
+  {
+    "run_id": "run_1770749569_70749534",
+    "task_id": "task_1770749534",
+    "task_title": "Create file src/utils/test_hello.py with function hello_world() that returns Hello World",
+    "preset": "dragon_bronze",
+    "phase_type": "build",
+    "phases_completed": [
+      "MARKER_SCOUT_1"
+    ],
+    "subtasks_completed": 1,
+    "subtasks_total": 1,
+    "total_duration_s": 34.3,
+    "eval_score": 0.9,
+    "status": "done",
+    "llm_calls": 5,
+    "tokens_in": 2132,
+    "tokens_out": 2479,
+    "files_created": [],
+    "timestamp": 1770749569.541482,
+    "timestamp_human": "2026-02-10 21:52:49"
+  },
+  {
+    "run_id": "run_1770802914_70802914",
+    "task_id": "task_1770802914",
+    "task_title": "test task",
+    "preset": "dragon_bronze",
+    "phase_type": "build",
+    "phases_completed": [
+      "M1"
+    ],
+    "subtasks_completed": 1,
+    "subtasks_total": 1,
+    "total_duration_s": 0.0,
+    "eval_score": 0.9,
+    "status": "done",
+    "llm_calls": 0,
+    "tokens_in": 0,
+    "tokens_out": 0,
+    "files_created": [],
+    "timestamp": 1770802914.328737,
+    "timestamp_human": "2026-02-11 12:41:54"
+  },
+  {
+    "run_id": "run_1770802914_70802914",
+    "task_id": "task_1770802914",
+    "task_title": "fix task",
+    "preset": "dragon_bronze",
+    "phase_type": "fix",
+    "phases_completed": [
+      "M1"
+    ],
+    "subtasks_completed": 1,
+    "subtasks_total": 1,
+    "total_duration_s": 0.0,
+    "eval_score": 0.9,
+    "status": "done",
+    "llm_calls": 0,
+    "tokens_in": 0,
+    "tokens_out": 0,
+    "files_created": [],
+    "timestamp": 1770802914.342648,
+    "timestamp_human": "2026-02-11 12:41:54"
+  },
+  {
+    "run_id": "run_1770802933_70802933",
+    "task_id": "task_1770802933",
+    "task_title": "test task",
+    "preset": "dragon_bronze",
+    "phase_type": "build",
+    "phases_completed": [
+      "M1"
+    ],
+    "subtasks_completed": 1,
+    "subtasks_total": 1,
+    "total_duration_s": 0.0,
+    "eval_score": 0.9,
+    "status": "done",
+    "llm_calls": 0,
+    "tokens_in": 0,
+    "tokens_out": 0,
+    "files_created": [],
+    "timestamp": 1770802933.498996,
+    "timestamp_human": "2026-02-11 12:42:13"
+  },
+  {
+    "run_id": "run_1770802933_70802933",
+    "task_id": "task_1770802933",
+    "task_title": "fix task",
+    "preset": "dragon_bronze",
+    "phase_type": "fix",
+    "phases_completed": [
+      "M1"
+    ],
+    "subtasks_completed": 1,
+    "subtasks_total": 1,
+    "total_duration_s": 0.0,
+    "eval_score": 0.9,
+    "status": "done",
+    "llm_calls": 0,
+    "tokens_in": 0,
+    "tokens_out": 0,
+    "files_created": [],
+    "timestamp": 1770802933.543293,
+    "timestamp_human": "2026-02-11 12:42:13"
+  },
+  {
+    "run_id": "run_1770803964_70803964",
+    "task_id": "task_1770803964",
+    "task_title": "test task",
+    "preset": "dragon_bronze",
+    "phase_type": "build",
+    "phases_completed": [
+      "M1"
+    ],
+    "subtasks_completed": 1,
+    "subtasks_total": 1,
+    "total_duration_s": 0.0,
+    "eval_score": 0.9,
+    "status": "done",
+    "llm_calls": 0,
+    "tokens_in": 0,
+    "tokens_out": 0,
+    "files_created": [],
+    "timestamp": 1770803964.327487,
+    "timestamp_human": "2026-02-11 12:59:24"
+  },
+  {
+    "run_id": "run_1770803964_70803964",
+    "task_id": "task_1770803964",
+    "task_title": "fix task",
+    "preset": "dragon_bronze",
+    "phase_type": "fix",
+    "phases_completed": [
+      "M1"
+    ],
+    "subtasks_completed": 1,
+    "subtasks_total": 1,
+    "total_duration_s": 0.0,
+    "eval_score": 0.9,
+    "status": "done",
+    "llm_calls": 0,
+    "tokens_in": 0,
+    "tokens_out": 0,
+    "files_created": [],
+    "timestamp": 1770803964.36976,
+    "timestamp_human": "2026-02-11 12:59:24"
+  },
+  {
+    "run_id": "run_1770808417_70807350",
+    "task_id": "task_1770807350",
+    "task_title": "MCC STATS: real data visualization instead of fake 100% bars\n\nSTATS tab shows bars hitting ceiling (100% of what?). Fix: 1) Token bars should show relative usage per preset (bronze vs silver ratio, no",
+    "preset": "dragon_gold",
+    "phase_type": "fix",
+    "phases_completed": [
+      "MARKER_102.1",
+      "MARKER_102.1",
+      "MARKER_102.2",
+      "MARKER_102.3",
+      "MARKER_102.4",
+      "MARKER_102.1",
+      "MARKER_102.2",
+      "MARKER_102.3",
+      "MARKER_102.4"
+    ],
+    "subtasks_completed": 9,
+    "subtasks_total": 9,
+    "total_duration_s": 1066.2,
+    "eval_score": 0.5666666666666667,
+    "status": "done",
+    "llm_calls": 18,
+    "tokens_in": 15011,
+    "tokens_out": 17211,
+    "files_created": [],
+    "timestamp": 1770808417.219101,
+    "timestamp_human": "2026-02-11 14:13:37"
   }
 ]

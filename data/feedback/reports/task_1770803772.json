@@ -1,0 +1,18 @@
+{
+  "run_id": "task_1770803772",
+  "task": "Create file src/utils/math_helpers.py with function add(a: int, b: int) -> int that returns a + b. Include docstring.",
+  "summary": "Completed 1/1 subtasks",
+  "quality_score": 0.95,
+  "issues_found": [],
+  "improvements_for_next_run": [],
+  "files_created": [],
+  "tokens_used": 4942,
+  "duration_s": 40.9,
+  "preset": "dragon_bronze",
+  "status": "done",
+  "subtasks_total": 1,
+  "subtasks_completed": 1,
+  "retries": 0,
+  "tier_upgrades": 0,
+  "saved_at": "2026-02-11T09:56:52Z"
+}

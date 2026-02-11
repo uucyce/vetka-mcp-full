@@ -1,0 +1,116 @@
+**Отлично. Мы переключаемся и делаем именно то, что ты хочешь.**
+
+Я провёл полное исследование по всем документам, которые ты дал (DevPanel.tsx, BalancesPanel, TaskCard, debug_routes, agent_pipeline, CURSOR_BRIEFs, Tauri multi-window, AgentStatusBar, ArtifactViewer, Mycelium Playground, Engram, HDBSCAN/Sugiyama, Knowledge Level и т.д.).
+
+**Цель:** Создать **совершенный Mycelium DevPanel** — альтернативу Ветке, которая:
+- Полностью мониторит и контролирует агентов, пайплайны, память, токены, артефакты.
+- Не тормозит систему (виртуализация, lazy graphs, WebGL где нужно).
+- Красивая, функциональная, в стиле **Нолан Бэтмен** (холодный, индустриальный, монохромный).
+- Выпускается **раньше основной Ветки**, чтобы подготовить аудиторию (Mycelium как "командный центр" для разработчиков).
+
+### 1. Исследование готовых решений для визуализации агентов
+
+Я проанализировал реальные инструменты (из твоих документов + актуальные 2026 практики):
+
+| Решение                  | Что хорошо подходит нам                          | Что не подходит                          | Можно взять |
+|--------------------------|--------------------------------------------------|------------------------------------------|-------------|
+| **LangGraph Studio**     | Граф пайплайнов, live execution tracing, RALF-подобные retries | Не 3D, нет knowledge level               | **Да** — структура графа пайплайнов |
+| **CrewAI Dashboard**     | Agent status, token usage, task progress graphs  | Слишком "милый" дизайн                   | **Да** — метрики агентов |
+| **AutoGen Studio**       | Multi-agent conversation graph, memory heatmap   | Нет кластеризации                        | **Да** — память (CAM + Engram) |
+| **n8n / Node-RED**       | Visual workflow + live execution                 | 2D, не подходит для knowledge map        | **Частично** — timeline |
+| **Ray Dashboard**        | Distributed agents, resource graphs, latency     | Слишком enterprise                       | **Да** — resource monitoring |
+| **Grafana + Prometheus** | Time-series (tokens, calls, balances)            | Нет агент-графов                         | **Да** — balances & usage |
+| **Three.js + Force Graph**| 3D agent clusters (HDBSCAN + Sugiyama)           | Нужно кастомно                           | **Основное** — наш стиль |
+
+**Вывод исследования:**
+- Лучшая база — **гибрид LangGraph Studio + CrewAI + Ray** + наш **HDBSCAN + Sugiyama + Knowledge Level**.
+- Мы берём: live pipeline graph, agent status, token burn timeline, memory heatmap.
+- Добавляем: 3D Knowledge Map (наш сильный козырь), RALF loop visualization, artifact staging.
+
+**Итог:** Mycelium DevPanel будет **"Command Center"** — как мостик космического корабля, где всё видно и контролируется.
+
+### 2. Новая архитектура Mycelium DevPanel
+
+**Название:** Mycelium Command Center (MCC)
+
+**Тема:** Тёмный, холодный, индустриальный Нолан Бэтмен. Только холодные teal-gray акценты. Monospace. Sharp edges. Минимализм.
+
+**7 вкладок (эволюция существующих):**
+
+1. **Command Center** (новая главная) — обзор + все графики
+2. **Pipeline Arena** — live пайплайны + RALF + артефакты
+3. **Agent Hive** — статус агентов + память (CAM + Engram)
+4. **Knowledge Map** — HDBSCAN кластеры + Knowledge Level
+5. **Resource Monitor** — Balances + токены + watcher
+6. **League Lab** — Tester + сравнение лиг
+7. **Artifact Forge** — Staging + approve/reject
+
+**Ключевые графики (внутри панели, не тормозят):**
+
+- **Knowledge Level Distribution** — вертикальный бар + pie (из моего предыдущего кода).
+- **Pipeline Flow Gantt** — горизонтальная timeline с RALF retries.
+- **Agent Memory Heatmap** — 2D grid (CAM activations + Engram usage).
+- **Token Burn Timeline** — line + area chart (реал-тайм).
+- **Cluster Map** — мини force-directed graph (Recharts) с кликабельными кластерами.
+- **Live Agent Status** — горизонтальная полоса (уже есть AgentStatusBar, улучшаем).
+
+**Технические гарантии производительности:**
+- react-window + virtualized списки.
+- Recharts + WebGL fallback для больших графиков.
+- Polling 5–15 сек с exponential backoff.
+- Lazy loading вкладок (React.lazy).
+- WebSocket только для критических событий.
+
+### 3. План реализации (разбит на задачи)
+
+**Phase 1: Фундамент (1–2 дня)**
+1. Создать `MyceliumCommandCenter.tsx` как новый standalone компонент.
+2. Добавить Tauri floating window (из CURSOR_BRIEF_134).
+3. Перенести существующие вкладки (Board → Command Center, Stats → Resource Monitor и т.д.).
+4. Добавить виртуализацию в TaskCard list, BalancesPanel, ActivityLog.
+
+**Phase 2: Графы (2–3 дня)**
+5. Улучшить `PipelineStatsChart` + добавить live обновления.
+6. Реализовать `KnowledgeLevelChart` (полный код из моего предыдущего сообщения).
+7. Создать `AgentHiveGraph` (force-directed + статусы).
+8. Создать `TokenBurnTimeline` (Recharts line + area).
+9. Создать `PipelineFlowGantt` (custom bar с RALF retries).
+10. Создать `ClusterMapMini` (Recharts force graph, кликабельный).
+
+**Phase 3: Контроль и автономия (2 дня)**
+11. Добавить кнопки claim/complete для агентов.
+12. Live dispatch + cancel pipeline.
+13. Artifact approve/reject прямо в панели (улучшить ArtifactViewer).
+14. Heartbeat + concurrency controls.
+15. Keyboard shortcuts (j/k, r — run, c — cancel).
+
+**Phase 4: Полировка и релиз (1 день)**
+16. Полностью тёмный Нолан стиль (цвета из твоего скриншота).
+17. Toast notifications (Tauri + in-panel).
+18. Standalone режим (без основной Ветки).
+19. Документация + onboarding для аудитории.
+
+**Общий объём:** ~8–10 дней (реалистично, с твоим текущим кодом).
+
+**Файлы для изменения/создания:**
+- `client/src/components/dev/MyceliumCommandCenter.tsx` (новый)
+- `client/src-tauri/tauri.conf.json` (multi-window)
+- `client/src-tauri/src/main.rs` (open_mycelium_command_center)
+- `client/src/App.tsx` (route + toolbar button)
+- Улучшения: `DevPanel.tsx`, `BalancesPanel.tsx`, `TaskCard.tsx`, `PipelineStatsChart.tsx`
+- Новые: `KnowledgeLevelChart.tsx`, `AgentHiveGraph.tsx`, `TokenBurnTimeline.tsx`, `PipelineFlowGantt.tsx`
+
+### 4. Следующий шаг
+
+Я готов сразу дать:
+- Полный код `MyceliumCommandCenter.tsx` (с первой вкладкой Command Center и всеми графиками).
+- Патчи для Tauri multi-window.
+- Конкретные задачи по порядку (с номерами и файлами).
+
+Скажи, с чего начинаем:
+- «Давай полный код Command Center»
+- «Сначала Tauri окно»
+- «Сначала план по пунктам с оценками времени»
+
+Мы делаем **идеальный Mycelium** — красивый, мощный, не тормозящий.  
+Готовы? 🔥

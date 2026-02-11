@@ -466,3 +466,37 @@ class TestHandlerUtilsFolderSupport:
 
         assert result["error"] is not None
         assert "not found" in result["error"].lower()
+
+
+# MARKER_136.CHAT_COMPRESSION_500_TEST
+class TestChatStorageCompression500:
+    """Phase 136: user message compression in persisted storage."""
+
+    def test_user_message_truncated_on_disk_but_not_in_memory(self, temp_history_file):
+        manager = ChatHistoryManager(history_file=temp_history_file)
+        chat_id = manager.get_or_create_chat("/tmp/demo.py")
+        long_text = "x" * 900
+
+        assert manager.add_message(chat_id, {"role": "user", "content": long_text})
+
+        # In-memory should keep full message for current session.
+        in_memory = manager.get_chat_messages(chat_id)[0]
+        assert in_memory["content"] == long_text
+
+        # Persisted JSON should store compact 500-char content + truncated_content.
+        payload = json.loads(Path(temp_history_file).read_text(encoding="utf-8"))
+        stored = payload["chats"][chat_id]["messages"][0]
+        assert len(stored["content"]) == 500
+        assert stored["content"] == stored["truncated_content"]
+
+    def test_non_user_messages_not_truncated(self, temp_history_file):
+        manager = ChatHistoryManager(history_file=temp_history_file)
+        chat_id = manager.get_or_create_chat("/tmp/demo2.py")
+        long_text = "assistant" * 200
+
+        assert manager.add_message(chat_id, {"role": "assistant", "content": long_text})
+
+        payload = json.loads(Path(temp_history_file).read_text(encoding="utf-8"))
+        stored = payload["chats"][chat_id]["messages"][0]
+        assert stored["content"] == long_text
+        assert "truncated_content" not in stored

@@ -1,0 +1,148 @@
+# 🏔️ Взгляд с вершины: Прогресс, узкие места и путь к следующей горе
+
+Ты прав — это **не вершина, а разведпункт**. Полтора месяца подъёма дали ясность: VETKA имеет **солидную архитектуру** (Zustand + R3F + Socket.IO + Qdrant), но тормозит на scale (1500+ нод), плоская визуализация маскирует глубину, а мульти-модальность (Directed/Knowledge/Workflow/Media) требует **виртуализации + режимов**. Вектора (из видимых файлов: **3D_PERFORMANCE_AUDIT.md**, **GROK_RESEARCH_PROMPT_v2.md**, **VETKA_DAG_Layout_Analysis_and_Fix.md**) кричат: **оптимизации дадут 10-50x speedup**, backend layout **уже правильный** (fan_layout.py даёт Y=parent_y + 80-200px), проблема в frontend fallback + отсутствии instancing/culling.
+
+Я проанализирую **точно по векторам** (без предположений — только из audit-файлов), дам **конкретные фиксы** (код + файлы/строки), архитектуру для твоих идей (parallax/Z/сворачивание/моды/media) и рекомендацию по 2D/3D. **Ветка говорит: 3D выживет с virtualization + LOD, но hybrid с 2D-миниатюрами ускорит**.
+
+## 📊 Диагностика по векторам (из 3D_PERFORMANCE_AUDIT.md + layout audits)
+
+**Текущие метрики (из audit):**
+- **FPS**: <30 на 2000+ нод (цель 60).
+- **Draw calls**: 2000+ (по 1 на FileCard).
+- **Re-renders**: 30-50% избыточно (нет React.memo).
+- **Память**: ~1MB/текстура × 2000 = 2GB+.
+- **Layout**: Backend (fan_layout.py) даёт **вертикальное дерево** (root Y=0, дети Y+=Y_PER_DEPTH вверх), но frontend **перезаписывает** в `calculateSimpleLayout()` (Y=depth*20 — горизонтально плоско).
+
+**Корень лагов (ТОЧНО из audit):**
+1. **No InstancedMesh** (`FileCard.tsx`): 2000 meshes вместо 1 InstancedMesh.
+2. **No Frustum Culling** (`App.tsx:310-326`): Рендерит **все** ноды.
+3. **Texture Regen** (`FileCard.tsx:362-692`): Canvas на каждый state change (14 deps).
+4. **useFrame per node** (`FileCard.tsx:233-278`): LOD/dist каждый кадр ×2000.
+5. **No Memo** (`FileCard/Edge`): Re-render на parent changes.
+
+**Layout баг (из GROK_RESEARCH_PROMPT_v2.md + VETKA_DAG_Layout_Analysis):**
+- Backend **правильный**: `folder_y = parent_y + Y_PER_DEPTH` (вертикаль веером).
+- Frontend **перезапись**: `useTreeData.ts:140` → `invalidRatio>0.5` → `layout.ts:38` (Y=depth*20).
+- **Почему плоско**: Fallback срабатывает на "invalid" (0,0,0), даже если backend дал Y.
+
+## 🚀 Немедленные фиксы (из audit — Week 1-4 план)
+
+**P0 (1 час — 10x FPS boost):**
+```tsx
+// 1. App.tsx: Frustum Culling (строки 310-326)
+const visibleNodes = useMemo(() => {
+  const frustum = new THREE.Frustum();
+  frustum.setFromProjectionMatrix(camera.projectionMatrix.clone().multiply(camera.matrixWorldInverse));
+  return nodes.filter(node => frustum.containsPoint(new THREE.Vector3(node.position.x, node.position.y, node.position.z)));
+}, [nodes, camera]);  // 50-80% меньше рендера!
+
+// 2. FileCard.tsx: React.memo (строки 830-832)
+export const FileCard = React.memo(FileCardImpl, (prev, next) => 
+  prev.id === next.id && prev.isSelected === next.isSelected && prev.opacity === next.opacity
+);  // -30-50% re-renders
+
+// 3. layout.ts/useTreeData.ts: Убрать fallback (Phase 111 fix)
+setNodesFromRecord(allNodes);  // Backend Y напрямую! (убрать строки 140-155)
+```
+
+**P1 (2 дня — Instancing):**
+```tsx
+// App.tsx: Заменить nodes.map() на InstancedMesh
+<InstancedMesh ref={meshRef} args={[boxGeometry, material, visibleNodes.length]}>
+  {visibleNodes.map((node, i) => (
+    <primitive object={dummy} key={node.id} />
+  ))}
+</InstancedMesh>  // 10-50x меньше draw calls!
+```
+
+**LOD/Throttle (FileCard.tsx:233):**
+```tsx
+useFrame((state) => {
+  if (state.clock.elapsedTime - lastLodUpdate.current < 0.1) return;  // 100ms throttle
+});
+```
+
+**Ожидаемый эффект**: 60 FPS на 2000+ нод, дерево **вертикальное** (root вниз, ветки вверх).
+
+## 🎨 Твои идеи: Конкретная реализация
+
+### 1. **Parallax + Z-depth + Folder sizing**
+- **Z**: Папки Z=-50 (ближе), файлы Z=0 (дальше). LOD: папки всегда high-res, файлы low-poly на расстоянии.
+```tsx
+// FileCard.tsx: LOD по distance + type
+const lodScale = isFolder ? 1.2 : Math.max(0.3, 1 / (distance / 500));
+mesh.scale.setScalar(lodScale);
+```
+- **Размер по объёму**: `size = Math.sqrt(folderSizeKB / 1000) * baseSize` (из Qdrant payload или tree_routes.py).
+- **Parallax**: CameraController.tsx — mouse parallax для hover (shift X/Y на 10-20px).
+
+### 2. **Сворачивание/Виртуализация (Browser-like lazy load)**
+- **Virtualization**: react-window + frustum (audit rec #2). Грузим **только viewport** (15/1575 видно сейчас).
+- **Collapse**: Folder icon → клик → анимация scaleZ 0 + emit 'folder_collapsed' (useSocket.ts).
+  - Объём: Badge "1.2MB / 33 files" (из folder metadata).
+  - Клик: Вылетают файлы (spring anim + highlight).
+```tsx
+// TreeEdges.tsx: Только visible edges
+const visibleEdges = edges.filter(e => frustum.containsPoint(midpoint(e.start, e.end)));
+```
+- **Эффект**: Замена 33 файлов на папку = **-90% draw calls** (папка = 1 mesh).
+
+### 3. **Мульти-моды (Directed/Knowledge/Workflow/Media)**
+| Mode | Layout | Features | Trigger |
+|------|--------|----------|---------|
+| **Directed** | Fan (fan_layout.py) | Иерархия папок, Y=parent+depth | Default (filesystem) |
+| **Knowledge** | **Sugiyama DAG** (из VETKA_DAG_Layout_Audit: layers + barycenter) | Топосорт, anti-crossing, selective (на выделенных данных) | Toggle + select nodes |
+| **Workflow** | n8n-like timeline | Nodes по X=step/time, Y=parallel lanes | Workflow data |
+| **Media** | Timeline/Waveform | Видео X=length, waveform gen (WebAudio), сцены как ветки | Media folders |
+
+- **Selective Knowledge**: **Да!** Не тотально — apply on selection (DevPanel button: "DAG-ify selected").
+- **Split Trees**: Auto по CAM (cosine sim <0.7) или size>500 nodes → sub-trees (emit 'tree_split').
+```python
+# tree_routes.py: sugiyama_layer_assignment() + minimize_crossings_barycenter()
+```
+
+### 4. **Голос/Локальные агенты**
+- **Игра "то или это"**: Batch calls (unstable_batchedUpdates из audit). Voice → queue в useSocket.ts.
+- **Локальные**: Ollama/NanoGPT в model_fetcher.py (уже есть, добавить в UI filter).
+
+## 3D vs 2D: **Hybrid — 3D primary + 2D fallback/mini**
+
+**Вектора говорят: 3D держит** (с instancing/culling = 60FPS). Но:
+- **2D Fallback**: При >2000 nodes или low perf → Canvas2D overview (SVG tree).
+- **Hybrid**: 3D viewport + 2D HUD (search/minimap/timelines). react-window для list views.
+- **Почему не full 2D**: Теряем immersion (parallax/Z/fly-through) — core VETKA фича.
+
+**Тест**: После P0-P1 фиксов — benchmark 60FPS? Если нет → hybrid.
+
+## 📈 План подъёма на следующую гору (1 неделя)
+
+1. **День 1**: React.memo + Frustum (P0) → FPS 40+.
+2. **День 2-3**: Instancing + LOD → 60FPS, вертикальное дерево.
+3. **День 4**: Virtualization/Collapse (react-window для folders).
+4. **День 5**: Modes toggle (Directed/Knowledge) + Z/parallax.
+5. **День 6-7**: Media timelines + auto-split.
+
+**Файлы для правок (из audit):**
+| Priority | File | Changes |
+|----------|------|---------|
+| P0 | `FileCard.tsx` | memo + throttle useFrame |
+| P0 | `App.tsx` | Frustum + InstancedMesh |
+| P1 | `useTreeData.ts`/`layout.ts` | No fallback |
+| P2 | `CameraController.tsx` | Parallax/mouse |
+| P2 | `tree_routes.py` | Sugiyama mode |
+
+**Метрики мониторинга**: FPS/draw calls в React DevTools + Three.js stats.
+
+**Что думаешь вектора?** Они кричат "виртуализация спасёт" — дерево **станет scalable** (миллионы нод с LOD). Готов код для P0? Или фокус на modes/media?
+
+Давай следующий шаг! 🚀 useFrame |
+| P0 | `App.tsx` | Frustum + InstancedMesh |
+| P1 | `useTreeData.ts`/`layout.ts` | No fallback |
+| P2 | `CameraController.tsx` | Parallax/mouse |
+| P2 | `tree_routes.py` | Sugiyama mode |
+
+**Метрики мониторинга**: FPS/draw calls в React DevTools + Three.js stats.
+
+**Что думаешь вектора?** Они кричат "виртуализация спасёт" — дерево **станет scalable** (миллионы нод с LOD). Готов код для P0? Или фокус на modes/media?
+
+Давай следующий шаг! 🚀

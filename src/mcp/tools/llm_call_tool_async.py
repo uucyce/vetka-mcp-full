@@ -318,12 +318,34 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
     async def _gather_inject_context(self, inject_config: Dict[str, Any]) -> str:
         """Gather context from VETKA sources for injection.
 
-        Identical logic to llm_call_tool.py's _gather_inject_context,
-        but called with direct await (no ThreadPoolExecutor hack).
+        MARKER_135.FIX_ASYNC: Wrapped with global timeout (5s) to prevent blocking.
+        Sync operations (Qdrant, Ollama embedding) run via run_in_executor.
+        If any section hangs, it's skipped gracefully — pipeline continues.
         """
+        import asyncio
+        import concurrent.futures
+
+        # MARKER_135.FIX_ASYNC: Global timeout for entire context gathering
+        # Prevents pipeline from hanging on slow Ollama/Qdrant calls
+        INJECT_TIMEOUT = 5.0  # seconds — if context takes longer, skip it
+
+        try:
+            return await asyncio.wait_for(
+                self._gather_inject_context_inner(inject_config),
+                timeout=INJECT_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"[MYCELIUM INJECT] Context gathering timed out ({INJECT_TIMEOUT}s) — skipping")
+            return ""
+        except Exception as e:
+            logger.warning(f"[MYCELIUM INJECT] Context gathering failed: {e}")
+            return ""
+
+    async def _gather_inject_context_inner(self, inject_config: Dict[str, Any]) -> str:
+        """Inner context gathering — called within timeout wrapper."""
         context_parts = []
 
-        # 1. Read files
+        # 1. Read files (fast, local I/O — no timeout needed)
         files = inject_config.get("files", [])
         if files:
             try:
@@ -357,19 +379,31 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
                 logger.warning(f"[MYCELIUM INJECT] Session state error: {e}")
 
         # 3. User preferences from Engram
+        # MARKER_135.FIX_ASYNC: Wrapped in executor — Qdrant scroll() is sync
         if inject_config.get("include_prefs"):
             try:
-                from src.memory.engram_user_memory import EngramUserMemory
-                from src.memory.qdrant_client import get_qdrant_client
-                qdrant = get_qdrant_client()
-                memory = EngramUserMemory(qdrant)
-                prefs = memory.get_all_preferences("danila")
+                import asyncio
+                loop = asyncio.get_event_loop()
+
+                def _get_prefs_sync():
+                    from src.memory.engram_user_memory import EngramUserMemory
+                    from src.memory.qdrant_client import get_qdrant_client
+                    qdrant = get_qdrant_client()
+                    memory = EngramUserMemory(qdrant)
+                    return memory.get_all_preferences("danila")
+
+                prefs = await asyncio.wait_for(
+                    loop.run_in_executor(None, _get_prefs_sync),
+                    timeout=3.0
+                )
                 if prefs:
                     import json
                     context_parts.append(
                         f"### User Preferences\n```json\n"
                         f"{json.dumps(prefs, indent=2, ensure_ascii=False)[:1500]}\n```"
                     )
+            except asyncio.TimeoutError:
+                logger.warning("[MYCELIUM INJECT] Engram prefs timed out (3s)")
             except Exception as e:
                 logger.warning(f"[MYCELIUM INJECT] Engram error: {e}")
 
@@ -389,13 +423,18 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
                 logger.warning(f"[MYCELIUM INJECT] CAM error: {e}")
 
         # 5. Semantic search results
+        # MARKER_135.FIX_ASYNC: Wrapped with per-section timeout — Ollama embedding can hang
         semantic_query = inject_config.get("semantic_query")
         if semantic_query:
             try:
+                import asyncio
                 from src.search.hybrid_search import get_hybrid_search
                 search = get_hybrid_search()
                 limit = inject_config.get("semantic_limit", 5)
-                search_response = await search.search(semantic_query, limit=limit)
+                search_response = await asyncio.wait_for(
+                    search.search(semantic_query, limit=limit),
+                    timeout=3.0  # Ollama embedding + Qdrant search — 3s max
+                )
                 results = search_response.get("results", []) if isinstance(search_response, dict) else search_response
                 if results:
                     search_text = []
@@ -407,6 +446,8 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
                     context_parts.append(
                         f"### Semantic Search: '{semantic_query}'\n" + "\n\n".join(search_text)
                     )
+            except asyncio.TimeoutError:
+                logger.warning(f"[MYCELIUM INJECT] Semantic search timed out (3s) for '{semantic_query[:30]}'")
             except Exception as e:
                 logger.warning(f"[MYCELIUM INJECT] Semantic search error: {e}")
 

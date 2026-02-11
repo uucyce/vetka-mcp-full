@@ -1,0 +1,193 @@
+**Отлично.**  
+
+Вот **полный, готовый к внедрению код** для Tauri multi-window под **Mycelium Command Center**.
+
+Я сделал его **максимально чистым и стабильным**, с отдельным окном, always-on-top опцией, сохранением позиции и правильной интеграцией с твоим существующим проектом.
+
+---
+
+### 1. Обнови `client/src-tauri/tauri.conf.json`
+
+Добавь второе окно в массив `windows`:
+
+```json
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "build": { ... },
+  "bundle": { ... },
+  "productName": "VETKA",
+  "windows": [
+    {
+      "label": "main",
+      "title": "VETKA — 3D Knowledge Graph",
+      "width": 1280,
+      "height": 800,
+      "resizable": true,
+      "decorations": true
+    },
+    {
+      "label": "mycelium",
+      "title": "Mycelium Command Center",
+      "width": 960,
+      "height": 680,
+      "resizable": true,
+      "decorations": true,
+      "alwaysOnTop": false,
+      "visible": false,
+      "url": "/mycelium"
+    }
+  ],
+  "plugins": {
+    "notification": {
+      "defaultPermission": "granted"
+    }
+  }
+}
+```
+
+---
+
+### 2. Обнови `client/src-tauri/src/main.rs`
+
+Добавь новые команды:
+
+```rust
+// MARKER_134_MYCELIUM_WINDOW: Mycelium Command Center floating window
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+
+#[tauri::command]
+async fn open_mycelium(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("mycelium") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    } else {
+        let _ = WebviewWindowBuilder::new(
+            &app,
+            "mycelium",
+            WebviewUrl::App("/mycelium".into()),
+        )
+        .title("Mycelium Command Center")
+        .inner_size(960.0, 680.0)
+        .resizable(true)
+        .always_on_top(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn close_mycelium(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("mycelium") {
+        let _ = window.hide();
+    }
+    Ok(())
+}
+
+fn main() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            // ... твои существующие команды ...
+            open_mycelium,
+            close_mycelium,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+```
+
+---
+
+### 3. Создай standalone обёртку `client/src/MyceliumStandalone.tsx`
+
+```tsx
+/**
+ * MyceliumStandalone — отдельное окно Command Center
+ * Полностью независимое от основной Ветки
+ */
+
+import MyceliumCommandCenter from './components/dev/MyceliumCommandCenter';
+
+export default function MyceliumStandalone() {
+  return (
+    <div style={{
+      width: '100vw',
+      height: '100vh',
+      background: '#0a0a0a',
+      overflow: 'hidden',
+    }}>
+      <MyceliumCommandCenter />
+    </div>
+  );
+}
+```
+
+---
+
+### 4. Добавь маршрут в `client/src/App.tsx` (или где у тебя роутер)
+
+```tsx
+import MyceliumStandalone from './MyceliumStandalone';
+
+// Внутри <Routes> или твоего роутера:
+<Route path="/mycelium" element={<MyceliumStandalone />} />
+```
+
+---
+
+### 5. Добавь кнопку открытия (в тулбар или DevPanel)
+
+```tsx
+import { invoke } from '@tauri-apps/api/core';
+
+<button
+  onClick={() => invoke('open_mycelium')}
+  style={{
+    padding: '6px 12px',
+    background: '#1a1a1a',
+    border: '1px solid #333',
+    borderRadius: 4,
+    color: '#ccc',
+    fontSize: 12,
+    cursor: 'pointer',
+  }}
+>
+  MYCELIUM
+</button>
+```
+
+---
+
+### 6. Как запустить и протестировать
+
+1. Перезапусти Tauri:
+   ```bash
+   cd client
+   yarn tauri dev
+   ```
+
+2. Нажми кнопку **MYCELIUM** — должно открыться отдельное окно.
+
+3. Проверь:
+   - Окно всегда можно перетаскивать
+   - Можно сделать always-on-top (добавим позже)
+   - Все графики и панели работают
+   - WebSocket подключение к Mycelium работает
+
+---
+
+### Дополнительные улучшения (по желанию)
+
+Хочешь, я сразу дам:
+- Версию с **always-on-top** по умолчанию
+- Сохранение позиции и размера окна
+- Горячие клавиши (Cmd+Shift+M)
+- Уведомления Tauri при новых задачах
+
+Просто скажи «добавь always-on-top» или «давай горячие клавиши».
+
+Теперь у тебя есть **полноценный отдельный Mycelium Command Center** — красивая, мощная панель управления, которая может работать параллельно с основной Веткой.
+
+Готов двигаться дальше?

@@ -38,7 +38,18 @@ interface Props {
   onReaction?: (messageId: string, reaction: string) => void;
   // Phase 111.17: For looking up replied-to message content
   getMessageById?: (id: string) => ChatMessage | undefined;
+  // MARKER_C23B: Doctor quick-action handler
+  onQuickAction?: (action: string) => void;
 }
+
+// MARKER_C23B: Doctor quick-action definitions
+const DOCTOR_ACTIONS: Record<string, { label: string; icon: string; style: 'primary' | 'secondary' | 'muted' }> = {
+  '1d': { label: 'Dragons', icon: '🐉', style: 'primary' },
+  '1t': { label: 'Titans', icon: '🏔️', style: 'primary' },
+  '2d': { label: 'Queue D', icon: '📋', style: 'secondary' },
+  '2t': { label: 'Queue T', icon: '📋', style: 'secondary' },
+  'h': { label: 'Hold', icon: '⏸', style: 'muted' },
+};
 
 const AGENT_ICONS: Record<string, React.ReactNode> = {
   PM: <ClipboardList size={14} />,
@@ -48,9 +59,25 @@ const AGENT_ICONS: Record<string, React.ReactNode> = {
   Hostess: <Sparkles size={14} />,
 };
 
+// MARKER_C23B: Parse backtick-wrapped quick actions from doctor messages
+function parseDoctorActions(content: string): string[] {
+  if (!content) return [];
+  // Match backtick-wrapped action codes like `1d`, `1t`, `2d`, `2t`, `h`
+  const matches = content.match(/`([12][dt]|h)`/g);
+  if (!matches) return [];
+  return matches.map(m => m.replace(/`/g, ''));
+}
+
+// MARKER_C23B: Check if message is from doctor agent
+function isDoctorMessage(message: ChatMessage): boolean {
+  const agent = message.agent?.toLowerCase() || '';
+  const model = message.metadata?.model?.toLowerCase() || '';
+  return agent === 'doctor' || agent.includes('doctor') || model.includes('doctor');
+}
+
 // Phase 111.21: React.memo to prevent unnecessary re-renders
 // Only re-renders when message.id or message.content changes
-function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, getMessageById }: Props) {
+function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, getMessageById, onQuickAction }: Props) {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const isCompound = message.type === 'compound';
@@ -355,7 +382,148 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
       }}>
         {/* Phase 111.17: Reply quote for assistant messages */}
         <ReplyQuote />
-        
+
+        {/* MARKER_C23B: Doctor quick-action buttons */}
+        {isDoctorMessage(message) && onQuickAction && (() => {
+          const actions = parseDoctorActions(message.content || '');
+          if (actions.length === 0) return null;
+
+          // Group actions by style for visual hierarchy
+          const primaryActions = actions.filter(a => DOCTOR_ACTIONS[a]?.style === 'primary');
+          const secondaryActions = actions.filter(a => DOCTOR_ACTIONS[a]?.style === 'secondary');
+          const mutedActions = actions.filter(a => DOCTOR_ACTIONS[a]?.style === 'muted');
+
+          return (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              marginTop: 12,
+              padding: '10px 12px',
+              background: 'rgba(74, 255, 158, 0.03)',
+              borderRadius: 8,
+              border: '1px solid rgba(74, 255, 158, 0.1)',
+            }}>
+              <div style={{
+                fontSize: 10,
+                color: '#666',
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+                marginBottom: 4,
+              }}>
+                Quick Actions
+              </div>
+
+              {/* Primary actions row (Run now) */}
+              {primaryActions.length > 0 && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {primaryActions.map(action => (
+                    <button
+                      key={action}
+                      onClick={() => onQuickAction(action)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '8px 14px',
+                        background: '#1a2a1a',
+                        border: '1px solid #2a4a2a',
+                        borderRadius: 6,
+                        color: '#6a9a6a',
+                        fontSize: 12,
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = '#2a3a2a';
+                        e.currentTarget.style.borderColor = '#3a5a3a';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = '#1a2a1a';
+                        e.currentTarget.style.borderColor = '#2a4a2a';
+                      }}
+                    >
+                      <span>{DOCTOR_ACTIONS[action]?.icon}</span>
+                      <span>{DOCTOR_ACTIONS[action]?.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Secondary actions row (Queue) */}
+              {secondaryActions.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {secondaryActions.map(action => (
+                    <button
+                      key={action}
+                      onClick={() => onQuickAction(action)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '6px 10px',
+                        background: 'transparent',
+                        border: '1px solid #333',
+                        borderRadius: 4,
+                        color: '#888',
+                        fontSize: 11,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = '#222';
+                        e.currentTarget.style.color = '#aaa';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = '#888';
+                      }}
+                    >
+                      <span>{DOCTOR_ACTIONS[action]?.icon}</span>
+                      <span>{DOCTOR_ACTIONS[action]?.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Muted actions (Hold) */}
+              {mutedActions.length > 0 && (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {mutedActions.map(action => (
+                    <button
+                      key={action}
+                      onClick={() => onQuickAction(action)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '4px 8px',
+                        background: 'transparent',
+                        border: '1px solid #222',
+                        borderRadius: 4,
+                        color: '#555',
+                        fontSize: 10,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.color = '#777';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.color = '#555';
+                      }}
+                    >
+                      <span>{DOCTOR_ACTIONS[action]?.icon}</span>
+                      <span>{DOCTOR_ACTIONS[action]?.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Phase 48.3: Show preview for long messages */}
         {/* Phase 74 fix: Guard against null/undefined content */}
         {isLong && !isStreaming ? (

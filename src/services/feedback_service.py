@@ -156,6 +156,69 @@ def get_improvements() -> List[Dict[str, Any]]:
     return []
 
 
+# MARKER_135.FB_LOOP: Feedback summary for Architect injection
+def get_feedback_for_architect(max_reports: int = 5) -> Optional[str]:
+    """
+    Build a concise feedback summary from recent pipeline reports.
+    Returns a string to inject into Architect's prompt, or None if no feedback available.
+
+    This closes the feedback loop: past verifier issues → architect awareness.
+    """
+    _ensure_dirs()
+    files = sorted(REPORTS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not files:
+        return None
+
+    recent_issues = []
+    recent_improvements = []
+    quality_scores = []
+
+    for f in files[:max_reports]:
+        try:
+            data = json.loads(f.read_text())
+            q = data.get("quality_score", 0)
+            if q:
+                quality_scores.append(q)
+            for issue in data.get("issues_found", []):
+                if isinstance(issue, dict):
+                    desc = ", ".join(issue.get("issues", []))[:120]
+                    if desc:
+                        recent_issues.append(desc)
+                elif isinstance(issue, str):
+                    recent_issues.append(issue[:120])
+            for imp in data.get("improvements_for_next_run", []):
+                if isinstance(imp, str) and imp:
+                    recent_improvements.append(imp[:120])
+                elif isinstance(imp, dict):
+                    recent_improvements.append(imp.get("description", "")[:120])
+        except Exception:
+            continue
+
+    if not recent_issues and not recent_improvements:
+        return None
+
+    # Build concise summary
+    parts = ["[FEEDBACK FROM PAST RUNS]"]
+    if quality_scores:
+        avg_q = sum(quality_scores) / len(quality_scores)
+        parts.append(f"Average quality: {avg_q:.1%} ({len(quality_scores)} runs)")
+    if recent_issues:
+        unique_issues = list(dict.fromkeys(recent_issues))[:5]  # dedupe, limit 5
+        parts.append("Recurring issues: " + "; ".join(unique_issues))
+    if recent_improvements:
+        unique_imps = list(dict.fromkeys(recent_improvements))[:3]
+        parts.append("Improvements to apply: " + "; ".join(unique_imps))
+
+    # Patterns
+    patterns = detect_patterns(min_occurrences=2)
+    recurring = [p for p in patterns if p.get("is_recurring")]
+    if recurring:
+        pattern_str = ", ".join(f"{p['issue_type']}(×{p['count']})" for p in recurring[:3])
+        parts.append(f"Known patterns: {pattern_str}")
+
+    return "\n".join(parts)
+
+
 def add_improvement(
     category: str,
     description: str,

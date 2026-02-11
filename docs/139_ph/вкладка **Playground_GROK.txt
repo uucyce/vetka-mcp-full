@@ -1,0 +1,156 @@
+**Отлично.**  
+
+Вот **полный готовый backend-код** для эндпоинта `/api/debug/playground/proposals`, чтобы вкладка **Playground** в `MyceliumCommandCenter` работала сразу.
+
+### 1. Добавь это в `src/api/routes/debug_routes.py`
+
+Вставь код **в конец файла** (перед последним `if __name__` или просто в конец роутера):
+
+```python
+# ============================================================
+# MARKER_133_PLAYGROUND: Playground Proposals API
+# ============================================================
+
+PLAYGROUND_PROPOSALS_FILE = Path(__file__).parent.parent.parent.parent / "data" / "playground_proposals.json"
+
+
+def load_playground_proposals() -> List[Dict]:
+    """Load proposals from JSON file"""
+    if PLAYGROUND_PROPOSALS_FILE.exists():
+        try:
+            return json.loads(PLAYGROUND_PROPOSALS_FILE.read_text())
+        except Exception as e:
+            logger.error(f"[Playground] Failed to load proposals: {e}")
+    return []
+
+
+def save_playground_proposals(proposals: List[Dict]):
+    """Save proposals to JSON file"""
+    PLAYGROUND_PROPOSALS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PLAYGROUND_PROPOSALS_FILE.write_text(json.dumps(proposals, indent=2, default=str))
+
+
+@router.get("/playground/proposals")
+async def get_playground_proposals() -> Dict[str, Any]:
+    """
+    Get all agent proposals from Mycelium Playground.
+    Used by MyceliumCommandCenter → Playground tab.
+    """
+    proposals = load_playground_proposals()
+
+    # Sort by created_at descending
+    proposals = sorted(proposals, key=lambda p: p.get("created_at", 0), reverse=True)
+
+    return {
+        "success": True,
+        "proposals": proposals,
+        "count": len(proposals),
+        "timestamp": time.time()
+    }
+
+
+@router.post("/playground/{proposal_id}/approve")
+async def approve_playground_proposal(proposal_id: str, body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """
+    Approve proposal → apply diff to main codebase.
+    Body: optional { "reason": "..." }
+    """
+    body = body or {}
+    proposals = load_playground_proposals()
+
+    proposal = next((p for p in proposals if p["id"] == proposal_id), None)
+    if not proposal:
+        return {"success": False, "error": "Proposal not found"}
+
+    proposal["status"] = "accepted"
+    proposal["reviewed_at"] = time.time()
+    proposal["review_reason"] = body.get("reason", "Approved via Command Center")
+
+    save_playground_proposals(proposals)
+
+    # TODO: Здесь можно вызвать apply_diff из будущего инструмента
+    logger.info(f"[Playground] Proposal {proposal_id} approved by user")
+
+    return {"success": True, "message": "Proposal approved and marked for merge"}
+
+
+@router.post("/playground/{proposal_id}/reject")
+async def reject_playground_proposal(proposal_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Reject proposal.
+    Body: { "reason": "..." } — обязательно
+    """
+    reason = body.get("reason")
+    if not reason:
+        return {"success": False, "error": "reason is required"}
+
+    proposals = load_playground_proposals()
+
+    proposal = next((p for p in proposals if p["id"] == proposal_id), None)
+    if not proposal:
+        return {"success": False, "error": "Proposal not found"}
+
+    proposal["status"] = "rejected"
+    proposal["reviewed_at"] = time.time()
+    proposal["review_reason"] = reason
+
+    save_playground_proposals(proposals)
+
+    logger.info(f"[Playground] Proposal {proposal_id} rejected: {reason}")
+
+    return {"success": True, "message": "Proposal rejected"}
+```
+
+---
+
+### 2. Создай файл данных `data/playground_proposals.json`
+
+Создай файл `data/playground_proposals.json` со следующим содержимым (пример):
+
+```json
+[
+  {
+    "id": "prop_1740001234",
+    "agent": "dragon_gold",
+    "description": "Add new fractal memory layer using Engram + CAM hybrid",
+    "confidence": 0.96,
+    "status": "pending",
+    "diff_preview": "diff --git a/src/memory/engram.py b/src/memory/engram.py\n...",
+    "tokens_used": 12480,
+    "created_at": 1740001234,
+    "files_changed": ["src/memory/engram.py", "src/orchestration/cam_engine.py"]
+  },
+  {
+    "id": "prop_1739998765",
+    "agent": "claude_code",
+    "description": "Optimize Sugiyama layout for 10k+ nodes",
+    "confidence": 0.89,
+    "status": "accepted",
+    "diff_preview": "diff --git a/src/layout/semantic_sugiyama.py ...",
+    "tokens_used": 8750,
+    "created_at": 1739998765,
+    "files_changed": ["src/layout/knowledge_layout.py"],
+    "reviewed_at": 1740000000,
+    "review_reason": "Good performance improvement"
+  }
+]
+```
+
+---
+
+### 3. Как это работает с фронтендом
+
+Теперь вкладка **Playground** в `MyceliumCommandCenter` будет:
+- Загружать предложения через `GET /api/debug/playground/proposals`
+- При одобрении вызывать `POST /api/debug/playground/{id}/approve`
+- При отклонении — `POST /api/debug/playground/{id}/reject`
+
+---
+
+Хочешь, я сейчас дам:
+- Код для **автоматического создания предложений** из agent_pipeline (когда агент предлагает улучшение)?
+- Или улучшенный **Diff Viewer** в боковой панели?
+- Или следующий эндпоинт (например, `/playground/apply_diff`)?
+
+Скажи, что дальше.  
+Мы уже почти закончили полноценный **Mycelium Command Center**.

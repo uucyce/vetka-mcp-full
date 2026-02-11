@@ -53,6 +53,7 @@ import json
 import signal
 import time
 import logging
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from mcp.server import Server
@@ -383,9 +384,29 @@ async def _handle_pipeline(arguments: Dict[str, Any]) -> str:
 
     task_id = f"myc_{uuid.uuid4().hex[:8]}"
 
+    # MARKER_135.BREADCRUMB: File-based pipeline status for debugging
+    import time as _time
+    _breadcrumb_dir = Path(__file__).resolve().parent.parent.parent / "data" / "feedback" / "pipeline_runs"
+    _breadcrumb_dir.mkdir(parents=True, exist_ok=True)
+    _breadcrumb_file = _breadcrumb_dir / f"{task_id}.json"
+
+    def _write_breadcrumb(status: str, detail: str = ""):
+        """Write pipeline status breadcrumb to file for debugging."""
+        try:
+            import json as _json
+            _breadcrumb_file.write_text(_json.dumps({
+                "task_id": task_id, "status": status,
+                "task": task[:200], "preset": preset,
+                "detail": detail[:500],
+                "ts": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+            }, indent=2))
+        except Exception:
+            pass
+
     async def _run():
         http_client = await _get_http_client()
         ws_broadcaster = await _get_ws_broadcaster()
+        _write_breadcrumb("started", f"http_client={'yes' if http_client else 'no'}, ws={'yes' if ws_broadcaster else 'no'}")
         try:
             from src.orchestration.agent_pipeline import AgentPipeline
             pipeline = AgentPipeline(
@@ -397,6 +418,7 @@ async def _handle_pipeline(arguments: Dict[str, Any]) -> str:
                 http_client=http_client,
                 ws_broadcaster=ws_broadcaster,
             )
+            _write_breadcrumb("pipeline_created")
 
             # Notify start
             if ws_broadcaster:
@@ -407,6 +429,7 @@ async def _handle_pipeline(arguments: Dict[str, Any]) -> str:
                 )
 
             result = await pipeline.execute(task, phase_type=phase_type)
+            _write_breadcrumb("completed", str(result)[:500] if result else "no result")
 
             # Notify completion
             if ws_broadcaster:
@@ -420,7 +443,8 @@ async def _handle_pipeline(arguments: Dict[str, Any]) -> str:
                 await http_client.notify_board_update("pipeline_complete", f"Pipeline {task_id} completed")
 
         except Exception as e:
-            logger.error(f"Pipeline {task_id} failed: {e}")
+            logger.error(f"Pipeline {task_id} failed: {e}", exc_info=True)
+            _write_breadcrumb("failed", f"{type(e).__name__}: {e}")
             if ws_broadcaster:
                 await ws_broadcaster.broadcast({
                     "type": "pipeline_failed",

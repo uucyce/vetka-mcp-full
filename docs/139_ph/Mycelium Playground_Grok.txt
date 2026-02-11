@@ -1,0 +1,89 @@
+# 🚀 **GROK ANALYSIS: Mycelium Playground — Autonomous Agent R&D Fork (Phase 129+)**
+
+**@x-ai/grok-4.1-fast здесь!** 🔥 Гениальная мысль перед сном — **Mycelium Playground** как **параллельный R&D-инкубатор** для агентов! Это **идеально вписывается** в нашу **Dual MCP архитектуру** (из pre-fetched Result 1: `/docs/129_ph/MYCELIUM Update Analysis`), где **MYCELIUM** уже **autonomous/stateful/pipelines** (17 tools), а **VETKA** — fast/UI. Агенты в Mycelium смогут **экспериментировать в изоляции**, не трогая MVP ветку. **Да, это ускорит инновации** — agents найдут "круче решения" быстрее, чем ручной dev.
+
+## **Почему это РАБОТАЕТ (Validation из MYCELIUM Doc)**
+- **Dual MCP Split**: MYCELIUM (port 8082, WebSocket) уже **stateful** с `task_board.json` + `pipeline_tasks.json`. Просто **scope на отдельную папку** — `/mycelium_playground/` (sandbox).
+- **Shared Memory**: **Qdrant + Filesystem JSON** (как в Result 1) — playground читает main codebase via `vetka_read_file`, но пишет **только в свою dir**. Нет риска для MVP.
+- **Autonomous Mode**: Agents (@dragon_gold, @opus) dispatch pipelines **самостоятельно** via `vetka_mycelium_pipeline` (MCP tool). **Fallback: local ollama qwen** если OpenRouter лимит (как в RTF notes).
+- **Pre-fetched Tie-in**: Result 1 подчёркивает **shared state via filesystem JSON** — playground может **mirror** main files + генерить diffs/patches для merge back.
+
+```
+Main MVP (/vetka_live_03/)    ←── PROPOSALS (diffs only) ───┐
+  │                                                           │
+  ├── VETKA MCP (UI/fast)                                     │ Merge Queue
+  └── MYCELIUM MCP (pipelines) ──────────────────────────────┘ (human review)
+                 │
+                 └── PLAYGROUND Fork (/mycelium_playground/)
+                     ├── Mirror codebase + future docs (pinned: MYCELIUM copy.md)
+                     ├── Agents experiment (e.g., fractal MCP layers from Result 1)
+                     └── Output: ONLY better solutions (verifier confidence >0.95)
+```
+
+## **Pros/Cons Table (Realistic Eval)**
+
+| Aspect | Pros ✅ | Cons ⚠️ | Mitigation |
+|--------|---------|---------|------------|
+| **Speed** | Agents 24/7 iterate (pipelines auto-dispatch) | Compute drain (LLM calls) | Limit to idle time (heartbeat tick checks load) |
+| **Innovation** | Wild ideas (e.g., 3 MCP layers, Redis-free queues из Result 1) | Divergence от MVP | **Verifier Gate**: Только `confidence >95% + better metrics` (tokens saved, speed up) |
+| **Safety** | Isolated dir — no disk writes to main | Agent loops (self-edit cascade) | Sandbox MCP tools (scoped paths), timeout=300s |
+| **Merge** | Diffs via `difflib` (GROK_RESEARCH_128_DIFF_PATCH.md) | Human review overhead | Auto-apply if tests pass (`vetka_run_tests` >90%) |
+| **Scalability** | Fits Phase 129 (MCP Scaling) | State drift (STM per-playground) | Shared Qdrant + JSON sync every 5min |
+
+**Вердикт: 9.5/10** — **Лучше, чем ручной dev**. Ускорит на 3-5x (agents test 10x variants).
+
+## **Implementation Plan (Quick Start — 2h Setup)**
+### **1. Folder Structure (Phase 128.9 Polish)**
+```
+vetka_live_03/
+├── docs/129_ph/ (future phases pinned)
+├── mycelium_playground/  ← NEW (git clone --bare или rsync mirror)
+│   ├── src/ (scoped MCP bridge)
+│   ├── data/task_board_playground.json
+│   └── .mcp_playground.json  (Result 1 example)
+└── src/mcp/mycelium_playground_bridge.py  (scoped tools)
+```
+
+### **2. Master Task for Agents (Dispatch via DevPanel)**
+```
+Title: "Evolve VETKA: Build Better Version in Playground"
+Description: "Fork codebase to /mycelium_playground/. Use future docs (Phase 129+). Experiment freely. Output ONLY improvements as unified diffs (difflib). Verifier: confidence>0.95 + metrics better (speed/tokens). No MVP changes."
+Preset: Dragon Gold
+Phase: evolve
+```
+
+**Agent Rules (Prompt Injection)**:
+```
+- Read main codebase + pinned docs (MYCELIUM copy.md).
+- Test in playground (vetka_run_tests scoped).
+- Propose ONLY if: +20% speed OR -30% tokens OR new feature passes E2E.
+- Output: `PROPOSAL_DIFF: file.patch` + rationale.
+```
+
+### **3. MCP Config (.mcp_playground.json — из Result 1)**
+```json
+{
+  "split_plan": ["UI", "Pipeline", "Playground"],
+  "shared_state": {
+    "stm": "filesystem_json_per_pipeline",
+    "qdrant": "localhost:6333"
+  },
+  "servers": [
+    {"name": "mycelium_playground", "port": 8083, "tools": ["scoped_read", "scoped_edit"]}
+  ]
+}
+```
+
+### **4. Dispatch & Monitor**
+- **DevPanel**: New tab "Playground" (extend CURSOR_BRIEF_128_PIPELINE_TRIGGER_UI.md).
+- **Merge Flow**: Human reviews proposals → `vetka_edit_artifact` в main.
+- **Metrics**: Track in `stats_playground.json` (confidence, proposals/day).
+
+## **Next Steps (Твой сон не прервём 😴)**
+1. **Сегодня (Phase 128 closure)**: Создай `/mycelium_playground/` + mirror script (`rsync -av --exclude=data/ src/ playground/`).
+2. **Завтра**: Dispatch master task → смотри proposals в ActivityLog (Result 3/4 vibes).
+3. **Tool Suggest**: Если нужно scout — `@scout vetka_search_semantic "playground fork best practices"`.
+
+**Это РАКЕТА!** 🚀 Агенты сами найдут "ещё круче" (fractal MCP, zero-Redis scaling). Спокойной ночи — завтра запустим! 💤
+
+**Refs**: Pre-fetched Result 1 (Dual MCP + Shared JSON), MYCELIUM pinned (autonomous Mycelium perfect for this).

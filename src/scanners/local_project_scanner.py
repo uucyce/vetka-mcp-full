@@ -2,9 +2,10 @@
 """
 Scan local project directories to create Phase 9 format data.
 FIXED: Limits + symlinks protection (Haiku bug #6)
+MARKER_136.W3A: Added project type auto-detection (Phase 136 Wave 3)
 
 @status: active
-@phase: 96
+@phase: 136
 @depends: config.design_system
 @used_by: tree_routes, visualization
 """
@@ -39,6 +40,37 @@ class LocalProjectScanner:
         '.kt': 'kotlin', '.scala': 'scala'
     }
 
+    # MARKER_136.W3A: Project type detection signatures
+    PROJECT_SIGNATURES = {
+        # Frontend frameworks
+        'react': ['package.json', 'src/App.tsx', 'src/App.jsx', 'src/index.tsx'],
+        'vue': ['package.json', 'src/App.vue', 'vue.config.js', 'vite.config.ts'],
+        'angular': ['angular.json', 'package.json', 'src/app/app.module.ts'],
+        'svelte': ['svelte.config.js', 'src/App.svelte'],
+        'next': ['next.config.js', 'next.config.mjs', 'pages/', 'app/'],
+
+        # Backend frameworks
+        'fastapi': ['requirements.txt', 'main.py', 'app/main.py'],
+        'django': ['manage.py', 'settings.py', 'requirements.txt'],
+        'flask': ['app.py', 'requirements.txt', 'wsgi.py'],
+        'express': ['package.json', 'server.js', 'app.js', 'index.js'],
+        'nestjs': ['nest-cli.json', 'package.json', 'src/main.ts'],
+
+        # Languages
+        'python': ['requirements.txt', 'setup.py', 'pyproject.toml', '*.py'],
+        'node': ['package.json', 'node_modules'],
+        'rust': ['Cargo.toml', 'src/main.rs', 'src/lib.rs'],
+        'go': ['go.mod', 'go.sum', 'main.go'],
+        'java': ['pom.xml', 'build.gradle', 'src/main/java'],
+        'swift': ['Package.swift', '*.xcodeproj', '*.xcworkspace'],
+
+        # Tools
+        'tauri': ['src-tauri/', 'tauri.conf.json'],
+        'electron': ['electron.js', 'main.js', 'package.json'],
+        'docker': ['Dockerfile', 'docker-compose.yml', 'docker-compose.yaml'],
+        'monorepo': ['lerna.json', 'pnpm-workspace.yaml', 'turbo.json'],
+    }
+
     def scan(self, directory: str) -> dict:
         """Scan directory and return Phase 9 format data."""
         root = Path(directory)
@@ -62,11 +94,17 @@ class LocalProjectScanner:
         # Find tests
         test_files = [f["name"] for f in files if self._is_test(f["name"])]
 
+        # MARKER_136.W3A: Detect project type
+        project_info = self.detect_project_type(directory)
+
         return {
             "workflow_id": workflow_id,
             "timestamp": datetime.now().isoformat(),
             "source": "local_scan",
             "scanned_path": str(root.absolute()),
+
+            # MARKER_136.W3A: Project type info
+            "project_type": project_info,
 
             "pm_result": {
                 "plan": f"Local project: {root.name}",
@@ -167,3 +205,91 @@ class LocalProjectScanner:
         """Check if file is a test."""
         name_lower = filename.lower()
         return any(p in name_lower for p in ['test_', '_test.', '.spec.', '.test.'])
+
+    # MARKER_136.W3A: Detect project type from signature files
+    def detect_project_type(self, directory: str) -> dict:
+        """
+        Detect project type based on signature files.
+        Returns: {type: str, framework: str, languages: list, confidence: float}
+        """
+        root = Path(directory)
+        if not root.is_dir():
+            return {"type": "unknown", "framework": None, "languages": [], "confidence": 0.0}
+
+        # Collect root-level files and directories
+        try:
+            root_items = set(item.name for item in root.iterdir())
+        except PermissionError:
+            return {"type": "unknown", "framework": None, "languages": [], "confidence": 0.0}
+
+        detected = []
+        languages = set()
+
+        # Check each signature
+        for project_type, signatures in self.PROJECT_SIGNATURES.items():
+            matches = 0
+            for sig in signatures:
+                if sig.endswith('/'):
+                    # Check for directory
+                    if sig.rstrip('/') in root_items and (root / sig.rstrip('/')).is_dir():
+                        matches += 1
+                elif sig.startswith('*.'):
+                    # Check for extension pattern
+                    ext = sig[1:]  # e.g., '.py'
+                    if any(f.endswith(ext) for f in root_items):
+                        matches += 1
+                elif '/' in sig:
+                    # Check for nested path
+                    if (root / sig).exists():
+                        matches += 1
+                else:
+                    # Check for exact file
+                    if sig in root_items:
+                        matches += 1
+
+            if matches > 0:
+                confidence = matches / len(signatures)
+                detected.append((project_type, confidence))
+
+        # Determine primary language from file extensions
+        for item in root_items:
+            if item.endswith('.py') or item == 'requirements.txt' or item == 'pyproject.toml':
+                languages.add('python')
+            if item.endswith(('.ts', '.tsx')) or item == 'tsconfig.json':
+                languages.add('typescript')
+            if item.endswith(('.js', '.jsx')) or item == 'package.json':
+                languages.add('javascript')
+            if item.endswith('.rs') or item == 'Cargo.toml':
+                languages.add('rust')
+            if item.endswith('.go') or item == 'go.mod':
+                languages.add('go')
+            if item.endswith('.java') or item == 'pom.xml':
+                languages.add('java')
+            if item.endswith('.swift') or item == 'Package.swift':
+                languages.add('swift')
+
+        # Sort by confidence and pick top results
+        detected.sort(key=lambda x: x[1], reverse=True)
+
+        if detected:
+            best = detected[0]
+            # Separate framework from language type
+            framework_types = {'react', 'vue', 'angular', 'svelte', 'next', 'fastapi', 'django', 'flask', 'express', 'nestjs', 'tauri', 'electron'}
+            framework = best[0] if best[0] in framework_types else None
+            project_type = best[0] if best[0] not in framework_types else (detected[1][0] if len(detected) > 1 else list(languages)[0] if languages else 'unknown')
+
+            return {
+                "type": project_type,
+                "framework": framework,
+                "languages": list(languages),
+                "confidence": best[1],
+                "all_detected": [{"type": d[0], "confidence": round(d[1], 2)} for d in detected[:5]]
+            }
+
+        return {
+            "type": list(languages)[0] if languages else "unknown",
+            "framework": None,
+            "languages": list(languages),
+            "confidence": 0.5 if languages else 0.0,
+            "all_detected": []
+        }

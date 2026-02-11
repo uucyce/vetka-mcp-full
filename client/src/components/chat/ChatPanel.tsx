@@ -23,7 +23,7 @@ import { ChatSidebar } from './ChatSidebar';
 import { ScanPanel, type ScannerEvent } from '../scanner/ScanPanel';
 import { UnifiedSearchBar } from '../search/UnifiedSearchBar';
 import type { ChatMessage, SearchResult } from '../../types/chat';
-import { savePinnedFiles } from '../../utils/chatApi';
+import { savePinnedFiles, getChatsForFile } from '../../utils/chatApi';
 import { API_BASE } from '../../config/api.config';
 
 // Phase 48.3: Reply target type
@@ -108,6 +108,13 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     contextType: string;
     isSaved?: boolean;  // FIX_109.3b: true if chat exists in backend (has messages)
   } | null>(null);
+
+  // MARKER_136.W3B: Linked chats for selected file
+  const [linkedChats, setLinkedChats] = useState<Array<{
+    id: string;
+    display_name: string;
+    message_count: number;
+  }>>([]);
 
   // Phase 54.3: Scanner/Chat tab state
   // Phase 56.6: Added 'group' tab
@@ -887,6 +894,23 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     });
   }, []);
 
+  // MARKER_C23B: Handle doctor quick-action button clicks
+  // Sends the action text as a user message to the group chat
+  const handleQuickAction = useCallback((action: string) => {
+    if (!activeGroupId) {
+      console.warn('[Chat] Quick action requires group chat context');
+      return;
+    }
+    if (!isConnected) {
+      console.warn('[Chat] Socket not connected for quick action');
+      return;
+    }
+    // Send the action text directly to the group
+    console.log('[Chat] Quick action:', action, 'to group:', activeGroupId);
+    sendGroupMessage(activeGroupId, 'user', action);
+    setIsTyping(true);
+  }, [activeGroupId, isConnected, sendGroupMessage, setIsTyping]);
+
   // Phase 68: Search handlers
   const handleSearchSelect = useCallback((result: SearchResult) => {
     // Select node in 3D tree
@@ -1159,6 +1183,28 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
     return () => clearTimeout(timeoutId);
   }, [currentChatId, pinnedFileIds]);
+
+  // MARKER_136.W3B: Fetch linked chats when pinned files change
+  useEffect(() => {
+    if (pinnedFileIds.length === 0) {
+      setLinkedChats([]);
+      return;
+    }
+
+    // Get the first pinned file's path
+    const firstPinnedNode = nodes[pinnedFileIds[0]];
+    if (!firstPinnedNode?.path) {
+      setLinkedChats([]);
+      return;
+    }
+
+    // Fetch linked chats for this file
+    getChatsForFile(firstPinnedNode.path).then(chats => {
+      setLinkedChats(chats.filter(c => c.id !== currentChatId)); // Exclude current chat
+    }).catch(() => {
+      setLinkedChats([]);
+    });
+  }, [pinnedFileIds, nodes, currentChatId]);
 
   // Phase I2: REMOVED auto-switch chat on selectedNode change
   // Previously (Phase 52.1-74.2): This useEffect cleared chat and loaded history
@@ -2545,6 +2591,41 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           </div>
         )}
 
+        {/* MARKER_136.W3B: Linked chats indicator */}
+        {linkedChats.length > 0 && (
+          <div style={{
+            padding: '4px 12px',
+            background: 'rgba(255,255,255,0.02)',
+            borderBottom: '1px solid #222',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 10,
+          }}>
+            <span style={{ color: '#555' }}>linked chats:</span>
+            {linkedChats.slice(0, 3).map(chat => (
+              <span
+                key={chat.id}
+                onClick={() => handleSelectChat(chat.id, '', chat.display_name)}
+                style={{
+                  color: '#888',
+                  padding: '2px 6px',
+                  background: '#1a1a1a',
+                  border: '1px solid #333',
+                  borderRadius: 3,
+                  cursor: 'pointer',
+                }}
+                title={`${chat.message_count} messages`}
+              >
+                {chat.display_name}
+              </span>
+            ))}
+            {linkedChats.length > 3 && (
+              <span style={{ color: '#555' }}>+{linkedChats.length - 3}</span>
+            )}
+          </div>
+        )}
+
         {/* Phase 92.4: Unified Scan Panel (replaces ScannerPanel + ScanProgressPanel) */}
         {activeTab === 'scanner' && (
           <ScanPanel
@@ -2620,6 +2701,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
               isTyping={isTyping}
               onReply={handleReply}
               onOpenArtifact={handleOpenArtifact}
+              onQuickAction={handleQuickAction}  // MARKER_C23B: Doctor quick-action handler
             />
             <div ref={messagesEndRef} />
           </div>

@@ -1,0 +1,247 @@
+mirror script GROK
+
+**Вот полный, готовый к использованию mirror-скрипт.**
+
+Сохрани его как `scripts/mirror_to_playground.py` в корне проекта.
+
+```python
+#!/usr/bin/env python3
+"""
+Mirror Script для Mycelium Playground
+
+Создаёт/обновляет изолированную копию codebase в /mycelium_playground/
+для безопасных экспериментов агентов.
+
+Особенности:
+- Инкрементальный rsync (только изменения)
+- Умные исключения (data, node_modules, caches, .git)
+- Создаёт/обновляет .mcp_playground.json
+- Синхронизирует pinned docs (docs/129_ph/)
+- Безопасный: не трогает существующие файлы в playground, если они изменены вручную
+- Логирование + summary
+
+Usage:
+  python scripts/mirror_to_playground.py                  # incremental
+  python scripts/mirror_to_playground.py --full           # full re-mirror
+  python scripts/mirror_to_playground.py --target ./mycelium_playground2
+"""
+
+import shutil
+import subprocess
+import sys
+import json
+from pathlib import Path
+from typing import List, Set
+import argparse
+import time
+from datetime import datetime
+
+
+DEFAULT_EXCLUDES = [
+    "data/",
+    "node_modules/",
+    ".git/",
+    "__pycache__/",
+    "*.pyc",
+    "*.pyo",
+    "*.pyd",
+    ".DS_Store",
+    ".Spotlight-V100",
+    ".Trashes",
+    "Thumbs.db",
+    "dist/",
+    "build/",
+    "*.egg-info/",
+    ".pytest_cache/",
+    ".mypy_cache/",
+    ".ruff_cache/",
+    ".venv/",
+    "venv/",
+    ".env",
+    "*.log",
+    "logs/",
+    "cache/",
+    ".cache/",
+    "tmp/",
+    "temp/",
+    "*.tmp",
+    "Mycelium Playground_Grok.txt",  # Не копируем сам документ
+]
+
+
+def create_mcp_playground_config(target_dir: Path):
+    """Создаёт или обновляет .mcp_playground.json"""
+    config_path = target_dir / ".mcp_playground.json"
+
+    config = {
+        "name": "Mycelium Playground",
+        "description": "Isolated R&D environment for autonomous agent experiments",
+        "main_source": "../",
+        "created_at": datetime.now().isoformat(),
+        "last_mirror": datetime.now().isoformat(),
+        "shared_state": {
+            "qdrant_collection": "vetka_elisya",
+            "task_board_file": "data/task_board_playground.json",
+            "pipeline_tasks_file": "data/pipeline_tasks_playground.json"
+        },
+        "restrictions": {
+            "can_write_main": False,
+            "can_read_main": True,
+            "max_parallel_pipelines": 3,
+            "token_budget_daily": 2000000,
+            "verifier_gate_threshold": 0.95
+        },
+        "tools": {
+            "scoped_read": True,
+            "scoped_edit": True,
+            "scoped_run_tests": True,
+            "generate_diff": True,
+            "web_search": True
+        }
+    }
+
+    if config_path.exists():
+        try:
+            existing = json.loads(config_path.read_text())
+            # Сохраняем историю зеркалирований
+            if "mirror_history" not in existing:
+                existing["mirror_history"] = []
+            existing["mirror_history"].append({
+                "timestamp": datetime.now().isoformat(),
+                "action": "updated"
+            })
+            if len(existing["mirror_history"]) > 20:
+                existing["mirror_history"] = existing["mirror_history"][-20:]
+            config = {**existing, **config}  # Перезаписываем актуальные поля
+        except json.JSONDecodeError:
+            print("Warning: Existing .mcp_playground.json corrupted, creating new")
+
+    config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False))
+    print(f"✓ Created/updated {config_path.relative_to(Path.cwd())}")
+
+
+def mirror(source: Path, target: Path, full: bool = False, extra_excludes: List[str] = None):
+    """Основная функция зеркалирования"""
+    if extra_excludes is None:
+        extra_excludes = []
+
+    all_excludes = DEFAULT_EXCLUDES + extra_excludes
+
+    target.mkdir(parents=True, exist_ok=True)
+
+    print(f"Mirroring {source} → {target}")
+    print(f"Mode: {'FULL' if full else 'incremental'}")
+    print(f"Excludes: {len(all_excludes)} patterns")
+
+    start_time = time.time()
+
+    # rsync flags
+    rsync_flags = ["-av", "--delete"] if full else ["-av"]
+
+    # Build exclude args
+    exclude_args = []
+    for pattern in all_excludes:
+        exclude_args.extend(["--exclude", pattern])
+
+    cmd = ["rsync"] + rsync_flags + exclude_args + [str(source) + "/", str(target) + "/"]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=source.parent  # Run from project root
+        )
+
+        elapsed = time.time() - start_time
+        print(f"✓ Mirror completed in {elapsed:.2f}s")
+
+        # Count files
+        file_count = sum(1 for _ in target.rglob('*') if _.is_file())
+        print(f"   Total files in playground: {file_count}")
+
+    except subprocess.CalledProcessError as e:
+        print(f"✗ Rsync failed:")
+        print(e.stderr)
+        sys.exit(1)
+    except FileNotFoundError:
+        print("✗ rsync not found. Please install rsync.")
+        sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Mirror main codebase to Mycelium Playground")
+    parser.add_argument("--target", default="./mycelium_playground",
+                       help="Target directory for playground")
+    parser.add_argument("--full", action="store_true",
+                       help="Full mirror (delete extra files in target)")
+    parser.add_argument("--exclude", action="append", default=[],
+                       help="Additional exclude patterns (can be used multiple times)")
+    parser.add_argument("--no-config", action="store_true",
+                       help="Skip creating .mcp_playground.json")
+
+    args = parser.parse_args()
+
+    source = Path.cwd()  # Current project root
+    target = Path(args.target).resolve()
+
+    if target == source:
+        print("Error: Target cannot be the same as source")
+        sys.exit(1)
+
+    print(f"🚀 Starting mirror")
+    print(f"Source: {source}")
+    print(f"Target: {target}")
+
+    mirror(source, target, full=args.full, extra_excludes=args.exclude)
+
+    if not args.no_config:
+        create_mcp_playground_config(target)
+
+    print("\n✅ Mirror completed successfully!")
+    print("Next steps:")
+    print("  1. cd mycelium_playground")
+    print("  2. Dispatch master task from DevPanel")
+    print("  3. Monitor proposals in ActivityLog")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+### Как использовать
+
+**1. Сделай скрипт исполняемым (macOS/Linux):**
+```bash
+chmod +x scripts/mirror_to_playground.py
+```
+
+**2. Запуск:**
+```bash
+# Инкрементальное обновление (рекомендуется)
+python scripts/mirror_to_playground.py
+
+# Полное зеркалирование (удаляет лишние файлы в playground)
+python scripts/mirror_to_playground.py --full
+
+# Кастомная цель
+python scripts/mirror_to_playground.py --target ./mycelium_playground_v2
+
+# Дополнительные исключения
+python scripts/mirror_to_playground.py --exclude "temp/" --exclude "*.log"
+```
+
+**3. Что делает скрипт:**
+- Копирует всё, кроме указанных в `DEFAULT_EXCLUDES`
+- Инкрементально (только изменения) — очень быстро на больших проектах
+- Создаёт `.mcp_playground.json` с конфигурацией (если не `--no-config`)
+- Выводит статистику (время, количество файлов)
+- Работает кросс-платформенно (Windows тоже, если rsync установлен)
+
+**4. Рекомендации:**
+- Первый запуск: `--full`
+- Дальше: обычный запуск (инкрементальный)
+- Добавляй свои `--exclude` для больших кэшей (например, `dist/`, `build/`)
+
+Если нужно доработать (добавить gitignore-парсинг, прогресс-бар, dry-run и т.д.) — скажи.

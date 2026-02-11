@@ -1,0 +1,114 @@
+**Отличный вопрос.**  
+
+**Knowledge Level** — это **сердце Knowledge Mode**. Именно он превращает плоский граф в осмысленную иерархию знаний, где внизу базовые концепты, а наверху — производные, сложные, поздние версии.
+
+Давай разберём по полочкам, что у нас уже есть, что нужно улучшить и как это красиво реализовать в твоей архитектуре.
+
+### 1. Что такое Knowledge Level в VETKA
+
+Это **нормированная оценка "продвинутости" узла** в графе знаний (0.0 → 1.0):
+
+- **0.0–0.3** — фундаментальные, базовые, первоисточники (ранние документы, базовые модули)
+- **0.3–0.7** — промежуточные, производные
+- **0.7–1.0** — продвинутые, сложные, поздние версии (высокоуровневые абстракции, финальные артефакты)
+
+**Y-ось в Knowledge Mode = f(время создания, knowledge_level)**  
+Чем выше knowledge_level + чем новее файл → тем выше по Y.
+
+### 2. Текущая реализация (что уже работает)
+
+Из твоих файлов (`semantic_dag_builder.py` и `knowledge_layout.py`):
+
+```python
+# Сейчас считается из DAG depth (BFS)
+def _calculate_knowledge_levels_from_dag(self):
+    # Находим корни (нет входящих prerequisite)
+    roots = [cid for cid in concept_ids if in_degree[cid] == 0]
+    
+    # BFS → считаем глубину
+    depths = ...
+    max_depth = max(depths.values())
+    
+    # Нормализация: глубина 0 → KL=0.1, max_depth → KL=1.0
+    knowledge_level = 0.1 + (depth / max_depth) * 0.9
+```
+
+Это **хорошо**, но **недостаточно универсально** для всех типов данных.
+
+### 3. Улучшенная универсальная формула Knowledge Level (Phase 72+)
+
+Предлагаю **многофакторную формулу**, которая работает для любого типа контента:
+
+```python
+def calculate_knowledge_level(node: Node) -> float:
+    """
+    Универсальный Knowledge Level (0.0 — базовый, 1.0 — продвинутый)
+    """
+    score = 0.0
+    weights = {
+        'temporal': 0.35,      # Время создания (новее = выше)
+        'dependency': 0.30,    # Сколько от него зависит (входящие связи)
+        'complexity': 0.20,    # Сложность (размер, глубина, embedding norm)
+        'rrf': 0.15            # RRF score из гибридного поиска
+    }
+
+    # 1. Temporal (новее = выше)
+    age_score = normalize_time(node.created_at)          # 0.0 = старый, 1.0 = новый
+    score += weights['temporal'] * age_score
+
+    # 2. Dependency (сколько от него зависит)
+    in_degree = len(node.incoming_prerequisites)
+    dep_score = min(1.0, in_degree / 15.0)               # насыщение после 15 зависимостей
+    score += weights['dependency'] * dep_score
+
+    # 3. Complexity (по embedding norm + размеру)
+    complexity = min(1.0, node.embedding_norm / 50.0)    # нормируем
+    if node.type == 'code':
+        complexity += (node.loc / 1000) * 0.3            # строки кода
+    elif node.type == 'doc':
+        complexity += (node.section_count / 20) * 0.4
+    score += weights['complexity'] * min(1.0, complexity)
+
+    # 4. RRF boost (из гибридного поиска)
+    rrf_boost = node.rrf_score * 0.8
+    score += weights['rrf'] * rrf_boost
+
+    # Финальная нормализация + лёгкий sigmoid для плавности
+    final_kl = 0.05 + 0.9 * (1 / (1 + math.exp(-8 * (score - 0.45))))
+    
+    return round(final_kl, 3)
+```
+
+### 4. Как это визуализировать в Knowledge Mode
+
+**Y = время + knowledge_level**
+
+```python
+def compute_final_y(node):
+    time_component = normalize_time(node.created_at) * 0.6
+    kl_component = node.knowledge_level * 0.4
+    return time_component + kl_component
+```
+
+**Визуальные правила:**
+- Узлы с высоким KL → выше по Y (ближе к "вершине знаний")
+- Узлы с низким KL → ниже (фундамент)
+- Цвет узла: от холодного серо-синего (низкий KL) к тёплому светло-серому (высокий KL) — очень тонко, почти монохромно.
+
+### 5. Рекомендация по фазе
+
+**Phase 72.5** — Universal Knowledge Level Engine  
+(после Smart Dependency Extraction)
+
+Что сделать:
+1. Создать `KnowledgeLevelEngine` класс (как выше)
+2. Добавить в `semantic_dag_builder.py` вызов после построения графа
+3. Передать KL в `calculate_knowledge_positions()`
+4. В DevPanel добавить график распределения KL по кластерам (очень красиво выглядит)
+
+Хочешь, я прямо сейчас напишу:
+- Полный код `KnowledgeLevelEngine.py`
+- Патч в `semantic_dag_builder.py`
+- Как красиво показать KL в DevPanel (новая мини-визуализация)
+
+Скажи «давай код» — и я дам всё готовое под твой стиль.

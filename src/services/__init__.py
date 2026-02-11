@@ -61,11 +61,17 @@ from src.services.mycelium_auditor import (
     get_vetka_tools_client,
 )
 # MARKER_123.0A: Phase 123.0 - ActivityHub for glow events
-from src.services.activity_hub import (
-    get_activity_hub,
-    reset_activity_hub,
-    ActivityHub,
-)
+# MARKER_135.FIX_IMPORT: Guard against missing socketio in Mycelium/CLI context
+try:
+    from src.services.activity_hub import (
+        get_activity_hub,
+        reset_activity_hub,
+        ActivityHub,
+    )
+except ImportError:
+    get_activity_hub = None
+    reset_activity_hub = None
+    ActivityHub = None
 
 __all__ = [
     # Approval service (VETKA + MYCELIUM modes)

@@ -1,17 +1,18 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-11T11:02:28.985985+00:00",
+  "last_updated": "2026-02-11T11:30:45.001274+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 135,
-    "subphase": "4",
-    "name": "DAG Tab Integration + Wave 4 Features",
-    "status": "COMPLETED",
+    "subphase": "5",
+    "name": "Phase 135: Active Development",
+    "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 135.4 DONE! DAG Tab Integration + Wave 4 Features",
+    "headline": "Phase 135 active \u2014 dragon_dragon_gold: MCC STATS: real data visualization instead of fake",
     "key_achievements": [
+      "[dragon_dragon_gold] MCC STATS: real data visualization instead of fake 100% bars\n\nSTATS tab shows ba",
       "[33ac8e03] Phase 135.4: Phase 135.4: DAG Tab Integration + Wave 4 Features",
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
@@ -20,8 +21,7 @@
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
       "[dragon_dragon_bronze] fix task",
-      "[dragon_dragon_bronze] test task",
-      "[dragon_dragon_bronze] Create a Python function parse_config(filepath: str) -> dict in file src/utils/c"
+      "[dragon_dragon_bronze] test task"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -29,19 +29,19 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 5294,
+      "points": 5304,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 5279,
+      "points": 5287,
       "vectors": "none",
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "error: HTTPConnectionPool(host='127.0.0.1', port=5001): R",
+      "status": "running",
       "port": 5001,
-      "tools_count": 0
+      "tools_count": 15
     },
     "api_keys": {
       "total": 30,
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "24a90c37",
+    "commit": "5a8f6d17",
     "dirty": true
   }
 }

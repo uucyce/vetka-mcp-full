@@ -97,3 +97,46 @@ export async function loadPinnedFiles(chatId: string): Promise<string[]> {
     return [];
   }
 }
+
+// ============================================================
+// MARKER_136.W3B: Chat-File Links API (Phase 136 Wave 3)
+// ============================================================
+
+/**
+ * Get all chats that are linked to a specific file path.
+ * Returns chats where the file is pinned or mentioned.
+ */
+export interface LinkedChat {
+  id: string;
+  display_name: string;
+  context_type: string;
+  message_count: number;
+  last_activity?: string;
+}
+
+export async function getChatsForFile(filePath: string): Promise<LinkedChat[]> {
+  try {
+    const response = await fetch(`${API_BASE}/files/linked-chats?path=${encodeURIComponent(filePath)}`);
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.chats || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Link a file to a chat (save as pinned file in chat).
+ */
+export async function linkFileToChat(chatId: string, filePath: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE}/chats/${chatId}/link-file`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_path: filePath }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}

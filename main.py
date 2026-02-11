@@ -120,31 +120,30 @@ async def lifespan(app: FastAPI):
 
         while True:
             try:
-                # MARKER_133.C33E: Re-read config each tick (allows runtime changes)
+                # MARKER_136.DAEMON_FIX: Re-read config each tick (allows runtime changes via MCC ON/OFF)
                 config = _load_heartbeat_config()
-                interval = config.get("interval", 60)
+                interval = max(10, config.get("interval", 60))
                 enabled = config.get("enabled", False)
 
-                await asyncio.sleep(interval)
-
                 if not enabled:
-                    logger.debug("[Heartbeat] Daemon disabled via config")
+                    # Check every 5s if user toggled ON — responsive to MCC button
+                    await asyncio.sleep(5)
                     continue
 
-                # Run heartbeat tick
+                # Run heartbeat tick FIRST, then sleep (responsive startup)
                 result = await heartbeat_tick(group_id=MCP_DEV_GROUP_ID, dry_run=False)
                 tasks_found = len(result.get("results", []))
                 if tasks_found > 0:
                     logger.info(f"[Heartbeat] Tick completed: {tasks_found} tasks processed")
-                else:
-                    logger.debug("[Heartbeat] Tick completed: no tasks")
+
+                await asyncio.sleep(interval)
 
             except asyncio.CancelledError:
                 logger.info("[Heartbeat] Daemon cancelled")
                 break
             except Exception as e:
-                logger.error(f"[Heartbeat] Daemon error: {e}")
-                await asyncio.sleep(HEARTBEAT_INTERVAL)  # Continue after error
+                logger.error(f"[Heartbeat] Daemon error: {e}", exc_info=True)
+                await asyncio.sleep(60)  # MARKER_136.DAEMON_FIX: was HEARTBEAT_INTERVAL (undefined)
 
     cleanup_task = None
     heartbeat_task = None  # MARKER_131.C20A

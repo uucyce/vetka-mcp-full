@@ -541,6 +541,32 @@ class OpenInFinderRequest(BaseModel):
     path: str
 
 
+# MARKER_136.FILE_CONNECTIONS_API
+@router.get("/{file_id}/connections")
+async def get_file_connections(
+    file_id: str,
+    path: Optional[str] = Query(None, description="Optional explicit file path override"),
+    max_connections: int = Query(50, ge=1, le=200),
+):
+    """
+    Get local file connections for knowledge mode.
+
+    Route supports:
+    - /api/files/{id}/connections
+    - with optional ?path=/abs/or/relative/file.py
+    """
+    from src.api.handlers.file_connections import build_file_connections
+
+    target_ref = path or file_id
+    real_path, _ = _resolve_path(target_ref)
+    result = build_file_connections(
+        target_file=real_path,
+        project_root=PROJECT_ROOT,
+        max_connections=max_connections,
+    )
+    return {"success": "error" not in result, **result}
+
+
 @router.post("/open-in-finder")
 async def open_in_finder(req: OpenInFinderRequest):
     """

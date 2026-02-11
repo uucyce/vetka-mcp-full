@@ -92,10 +92,37 @@ Key insights applied:
 - **Auto context reset** (MARKER_117.5B): STM resets after 10 subtasks to prevent drift
 - **GPT-5.2 option** (MARKER_117.5C): `dragon_gold_gpt` preset for extended autonomous work
 
-## Current Phase: 129
+## Current Phase: 136
 See `data/project_digest.json` for latest status.
 Config: `data/templates/model_presets.json` — team presets & tier map.
 MCP config: `.mcp.json` — both VETKA and MYCELIUM servers.
+
+## Multi-Agent Sync Protocol (Phase 136)
+
+Three agents work on ONE codebase through ONE TaskBoard:
+
+| Agent | Type | Access | Tasks |
+|-------|------|--------|-------|
+| **Opus** (Claude Code) | claude_code | Full MCP (VETKA + MYCELIUM) | Architecture, pipeline, infra |
+| **Cursor** (Opus 4.5) | cursor | Full MCP (VETKA + MYCELIUM) | Frontend, DAG viz, UI |
+| **Codex** (Claude Code worktree) | claude_code | Full MCP (VETKA + MYCELIUM) | Tests, cleanup, isolated modules |
+
+### Task Lifecycle (ALL agents follow this)
+
+```
+1. GET TASK:    mycelium_task_board action=list filter_status=pending
+2. CLAIM:       mycelium_task_board action=claim task_id=<id> assigned_to=<agent> agent_type=<type>
+3. TRACK START: mycelium_track_started task_id=<id> title=<title> source=<agent>
+4. DO WORK:     Edit files, run tests, commit via vetka_git_commit
+5. TRACK DONE:  mycelium_track_done marker=<id> description=<what_done> source=<agent>
+6. COMPLETE:    mycelium_task_board action=complete task_id=<id>
+```
+
+### Rules
+- Check `assigned_to` field — only take tasks assigned to you or unassigned
+- NEVER modify files assigned to another agent (check OPUS_STATUS.md coordination notes)
+- After completing a task, check if new tasks appeared (board may update)
+- If blocked, update task status to `hold` and note the blocker in description
 
 ## Methodology (Opus = Commander)
 You are the architect and commander. When planning ANY non-trivial task, deploy your full army:

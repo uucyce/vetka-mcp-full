@@ -255,11 +255,22 @@ async def add_watch_directory(req: AddWatchRequest, request: Request):
     else:
         message = f"Failed to watch: {path}"
 
+    # MARKER_136.W3A: Detect project type
+    project_type = None
+    try:
+        from src.scanners.local_project_scanner import LocalProjectScanner
+        scanner = LocalProjectScanner()
+        project_type = scanner.detect_project_type(path)
+    except Exception as e:
+        print(f"[Watcher] Project type detection error: {e}")
+        project_type = {"type": "unknown", "framework": None, "languages": [], "confidence": 0.0}
+
     return {
         'success': success or already_watching,  # True if watching OR rescanned
         'watching': list(watcher.watched_dirs),
         'indexed_count': indexed_count,
-        'message': message
+        'message': message,
+        'project_type': project_type  # MARKER_136.W3A
     }
 
 

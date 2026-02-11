@@ -164,7 +164,7 @@ export function DAGView({
         elementsSelectable={true}
         proOptions={{ hideAttribution: true }}
       >
-        <Background color="#222" gap={24} />
+        <Background color="#111" gap={32} size={1} />
         <Controls
           position="bottom-left"
           style={{
@@ -175,10 +175,10 @@ export function DAGView({
         />
         <MiniMap
           position="bottom-right"
-          nodeColor={getNodeColor}
-          maskColor="rgba(10,10,10,0.85)"
+          nodeColor={() => '#666'}
+          maskColor="rgba(0,0,0,0.9)"
           style={{
-            background: NOLAN_PALETTE.bgDim,
+            background: '#000',
             border: `1px solid ${NOLAN_PALETTE.border}`,
             borderRadius: 4,
           }}

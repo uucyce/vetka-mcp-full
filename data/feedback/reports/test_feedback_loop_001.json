@@ -1,0 +1,42 @@
+{
+  "run_id": "test_feedback_loop_001",
+  "task": "Complex API handler with error handling",
+  "summary": "Completed 3/5 subtasks",
+  "quality_score": 0.65,
+  "issues_found": [
+    {
+      "type": "verifier_fail",
+      "marker": "STEP_3",
+      "confidence": 0.5,
+      "issues": [
+        "Missing error handling for edge cases",
+        "No input validation"
+      ],
+      "severity": "major"
+    },
+    {
+      "type": "verifier_fail",
+      "marker": "STEP_4",
+      "confidence": 0.3,
+      "issues": [
+        "Function not found in output"
+      ],
+      "severity": "critical"
+    }
+  ],
+  "improvements_for_next_run": [
+    "Fix STEP_3: Missing error handling for edge cases; No input validation",
+    "Fix STEP_4: Function not found in output",
+    "High retry count (4): consider breaking task into smaller subtasks",
+    "Low quality score: add more specific instructions in task description"
+  ],
+  "tokens_used": 12000,
+  "duration_s": 95.2,
+  "preset": "dragon_silver",
+  "status": "failed",
+  "subtasks_total": 5,
+  "subtasks_completed": 3,
+  "retries": 4,
+  "tier_upgrades": 1,
+  "saved_at": "2026-02-11T09:37:17Z"
+}

@@ -262,6 +262,14 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
   // Phase 100.2: Native drag & drop state
   const [isDragOver, setIsDragOver] = useState(false);
 
+  // MARKER_136.W3A: Detected project type
+  const [projectType, setProjectType] = useState<{
+    type: string;
+    framework: string | null;
+    languages: string[];
+    confidence: number;
+  } | null>(null);
+
   // Refs for drag resize
   const panelRef = useRef<HTMLDivElement>(null);
   const dragStartY = useRef<number>(0);
@@ -487,6 +495,11 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       if (response.ok) {
         const result = await response.json();
 
+        // MARKER_136.W3A: Store detected project type
+        if (result.project_type) {
+          setProjectType(result.project_type);
+        }
+
         // Refresh watched dirs
         const statusResponse = await fetch(`${API_BASE}/watcher/status`);
         const data = await statusResponse.json();
@@ -545,6 +558,11 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
 
         if (response.ok) {
           const result = await response.json();
+
+          // MARKER_136.W3A: Store detected project type
+          if (result.project_type) {
+            setProjectType(result.project_type);
+          }
 
           // Refresh watched dirs
           const statusResponse = await fetch(`${API_BASE}/watcher/status`);
@@ -806,6 +824,47 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
             className={`scan-progress-fill ${isScanning && progress === 0 ? 'indeterminate' : ''}`}
             style={{ width: `${progress}%` }}
           />
+        </div>
+      )}
+
+      {/* MARKER_136.W3A: Project Type Badge */}
+      {projectType && projectType.type !== 'unknown' && (
+        <div className="project-type-badge" style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '6px 12px',
+          background: 'rgba(255, 255, 255, 0.03)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          fontSize: 11,
+          fontFamily: 'monospace',
+        }}>
+          <span style={{ color: '#888', fontSize: 9, textTransform: 'uppercase', letterSpacing: 1 }}>
+            detected:
+          </span>
+          <span style={{
+            color: '#fff',
+            fontWeight: 500,
+            padding: '2px 8px',
+            background: 'rgba(255, 255, 255, 0.08)',
+            borderRadius: 3,
+          }}>
+            {projectType.framework || projectType.type}
+          </span>
+          {projectType.languages.length > 0 && (
+            <span style={{ color: '#666', fontSize: 10 }}>
+              {projectType.languages.slice(0, 3).join(' · ')}
+            </span>
+          )}
+          {projectType.confidence > 0.7 && (
+            <span style={{
+              color: '#555',
+              fontSize: 9,
+              marginLeft: 'auto',
+            }}>
+              {Math.round(projectType.confidence * 100)}%
+            </span>
+          )}
         </div>
       )}
 

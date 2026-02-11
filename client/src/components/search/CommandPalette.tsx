@@ -9,7 +9,6 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useStore } from '../../store/useStore';
 
 const API_BASE = 'http://localhost:5001/api';
 
@@ -49,9 +48,8 @@ export function CommandPalette() {
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Store actions
-  const setDevPanelOpen = useStore((s) => s.setDevPanelOpen);
-  const devPanelOpen = useStore((s) => s.devPanelOpen);
+  // MARKER_136.W3C: DevPanel toggle via custom event (store doesn't have devPanelOpen)
+  const [devPanelOpen, setDevPanelOpen] = useState(false);
 
   // Handle Cmd+K globally
   useEffect(() => {
@@ -173,11 +171,16 @@ export function CommandPalette() {
   const handleSelect = useCallback((result: SearchResult) => {
     switch (result.id) {
       case 'toggle-devpanel':
+        // MARKER_136.W3C: Use keyboard shortcut event (Cmd+Shift+D) to toggle
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', metaKey: true, shiftKey: true }));
         setDevPanelOpen(!devPanelOpen);
         break;
       case 'new-task':
-        setDevPanelOpen(true);
-        // Could dispatch event to focus task input
+        // Open DevPanel first, then focus task input
+        if (!devPanelOpen) {
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', metaKey: true, shiftKey: true }));
+          setDevPanelOpen(true);
+        }
         break;
       case 'refresh-tree':
         window.dispatchEvent(new CustomEvent('tree-refresh'));
@@ -190,7 +193,7 @@ export function CommandPalette() {
         }
     }
     setIsOpen(false);
-  }, [devPanelOpen, setDevPanelOpen]);
+  }, [devPanelOpen]);
 
   // Keyboard navigation
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

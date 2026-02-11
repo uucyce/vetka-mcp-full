@@ -82,10 +82,10 @@
   "x-ai/grok-4.1-fast": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770670759.466156,
-    "last_error": 1769776186.1882088,
+    "last_success": 1770807929.861033,
+    "last_error": 1770723444.891476,
     "error_code": null,
-    "call_count": 59
+    "call_count": 123
   },
   "arcee-ai/trinity-mini:free": {
     "healthy": true,
@@ -146,10 +146,10 @@
   "z-ai/glm-4.7-flash": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770670742.4537148,
-    "last_error": 1770650980.094848,
+    "last_success": 1770808393.1731882,
+    "last_error": 1770684807.364314,
     "error_code": null,
-    "call_count": 149
+    "call_count": 290
   },
   "stepfun/step-3.5-flash:free": {
     "healthy": true,
@@ -282,10 +282,10 @@
   "qwen/qwen3-coder-flash": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770669702.930497,
+    "last_success": 1770803945.665188,
     "last_error": 1770667558.867619,
     "error_code": null,
-    "call_count": 115
+    "call_count": 247
   },
   "deepseek/deepseek-v3.2": {
     "healthy": true,
@@ -297,35 +297,35 @@
   },
   "moonshotai/kimi-k2.5": {
     "healthy": true,
-    "error_count": 2,
-    "last_success": 1770669539.695154,
-    "last_error": 1770670767.354636,
-    "error_code": 401,
-    "call_count": 61
+    "error_count": 0,
+    "last_success": 1770808042.073107,
+    "last_error": 1770690696.3681972,
+    "error_code": null,
+    "call_count": 104
   },
   "qwen/qwen3-30b-a3b": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770669673.73787,
+    "last_success": 1770803929.925235,
     "last_error": null,
     "error_code": null,
-    "call_count": 11
+    "call_count": 30
   },
   "qwen/qwen3-coder": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770669485.890532,
-    "last_error": 1770668749.186409,
+    "last_success": 1770808410.7639732,
+    "last_error": 1770684889.936741,
     "error_code": null,
-    "call_count": 426
+    "call_count": 1073
   },
   "xiaomi/mimo-v2-flash": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770669711.750103,
+    "last_success": 1770803947.8145542,
     "last_error": null,
     "error_code": null,
-    "call_count": 41
+    "call_count": 93
   },
   "anthropic/claude-opus-4.6": {
     "healthy": true,
@@ -337,10 +337,58 @@
   },
   "test/model": {
     "healthy": false,
-    "error_count": 189,
+    "error_count": 210,
     "last_success": null,
-    "last_error": 1770670773.647428,
+    "last_error": 1770691696.747081,
     "error_code": 400,
-    "call_count": 189
+    "call_count": 210
+  },
+  "google/gemini-3-pro-preview": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770729919.1121018,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 9
+  },
+  "anthropic/claude-sonnet-4.5": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770689372.616292,
+    "last_error": 1770687948.328344,
+    "error_code": null,
+    "call_count": 76
+  },
+  "qwen/qwen3-max": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770689378.305241,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 15
+  },
+  "anthropic/claude-haiku-4.5": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770729960.330229,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
+  },
+  "qwen3-coder": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770749129.164104,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
+  },
+  "qwen/qwen3-235b-a22b": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770808417.186978,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
   }
 }

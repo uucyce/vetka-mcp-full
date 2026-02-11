@@ -1,0 +1,199 @@
+# MARKER_136.UNIFIED_SEARCH_BACKEND
+"""
+Unified search handler for federated backend search.
+
+Task: tb_1770805979_6
+Provides one entrypoint that dispatches query to multiple sources and normalizes output:
+{source, title, snippet, score, url}
+"""
+
+from __future__ import annotations
+
+import os
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+TEXT_EXTENSIONS = {
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".md", ".txt", ".json", ".yaml", ".yml",
+    ".toml", ".ini", ".html", ".css", ".sql", ".go", ".rs", ".java", ".c", ".cpp",
+}
+SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
+SCAN_ROOTS = ("src", "data")
+
+
+def _normalize_item(
+    source: str,
+    title: str,
+    snippet: str,
+    score: float,
+    url: str = "",
+) -> Dict[str, Any]:
+    return {
+        "source": source,
+        "title": (title or "").strip()[:300],
+        "snippet": (snippet or "").strip()[:500],
+        "score": round(float(score or 0.0), 4),
+        "url": (url or "").strip()[:500],
+    }
+
+
+def _file_search(query: str, limit: int) -> List[Dict[str, Any]]:
+    query_l = query.lower().strip()
+    if not query_l:
+        return []
+
+    results: List[Dict[str, Any]] = []
+    project_root = Path.cwd()
+
+    for root_name in SCAN_ROOTS:
+        root = project_root / root_name
+        if not root.exists():
+            continue
+
+        for current_root, dir_names, file_names in os.walk(root):
+            dir_names[:] = [d for d in dir_names if d not in SKIP_DIRS]
+            current_path = Path(current_root)
+
+            for filename in file_names:
+                file_path = current_path / filename
+                if file_path.suffix.lower() not in TEXT_EXTENSIONS:
+                    continue
+
+                rel_path = str(file_path.relative_to(project_root))
+                name_hit = query_l in filename.lower() or query_l in rel_path.lower()
+
+                snippet = ""
+                content_hit = False
+                if not name_hit:
+                    try:
+                        with file_path.open("r", encoding="utf-8", errors="ignore") as f:
+                            for line in f:
+                                if query_l in line.lower():
+                                    snippet = line.strip()
+                                    content_hit = True
+                                    break
+                    except Exception:
+                        continue
+                else:
+                    snippet = rel_path
+
+                if name_hit or content_hit:
+                    score = 0.95 if name_hit else 0.7
+                    results.append(
+                        _normalize_item(
+                            source="file",
+                            title=rel_path,
+                            snippet=snippet,
+                            score=score,
+                            url=f"file://{rel_path}",
+                        )
+                    )
+
+                if len(results) >= limit:
+                    return results
+
+    return results
+
+
+def _semantic_search(query: str, limit: int) -> List[Dict[str, Any]]:
+    try:
+        from src.mcp.tools.search_tool import SearchTool
+
+        payload = SearchTool().execute({"query": query, "limit": limit, "min_score": 0.2})
+        files = payload.get("result", {}).get("files", []) if payload.get("success") else []
+
+        results: List[Dict[str, Any]] = []
+        for item in files[:limit]:
+            path = item.get("path") or item.get("name") or "unknown"
+            snippet = item.get("snippet") or path
+            score = item.get("score", 0.0)
+            results.append(
+                _normalize_item(
+                    source="semantic",
+                    title=path,
+                    snippet=snippet,
+                    score=score,
+                    url=f"file://{path}",
+                )
+            )
+        return results
+    except Exception:
+        return []
+
+
+def _web_search(query: str, limit: int) -> List[Dict[str, Any]]:
+    try:
+        from src.mcp.tools.web_search_tool import WebSearchTool
+
+        payload = WebSearchTool().execute({"query": query, "max_results": min(limit, 10)})
+        rows = payload.get("result", {}).get("results", []) if payload.get("success") else []
+
+        results: List[Dict[str, Any]] = []
+        for item in rows[:limit]:
+            results.append(
+                _normalize_item(
+                    source="web",
+                    title=item.get("title", ""),
+                    snippet=item.get("content", ""),
+                    score=item.get("score", 0.0),
+                    url=item.get("url", ""),
+                )
+            )
+        return results
+    except Exception:
+        return []
+
+
+def _social_search(query: str, limit: int) -> List[Dict[str, Any]]:  # noqa: ARG001
+    # Future source placeholder per task spec.
+    return []
+
+
+def run_unified_search(
+    query: str,
+    limit: int = 20,
+    sources: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    selected_sources = sources or ["file", "semantic", "web", "social"]
+    selected_sources = [s for s in selected_sources if s in {"file", "semantic", "web", "social"}]
+
+    started = time.time()
+    if not query or len(query.strip()) < 2:
+        return {
+            "success": False,
+            "error": "Query too short (min 2 characters)",
+            "query": query,
+            "results": [],
+            "by_source": {},
+            "took_ms": 0,
+        }
+
+    by_source: Dict[str, List[Dict[str, Any]]] = {}
+
+    if "file" in selected_sources:
+        by_source["file"] = _file_search(query, limit)
+    if "semantic" in selected_sources:
+        by_source["semantic"] = _semantic_search(query, limit)
+    if "web" in selected_sources:
+        by_source["web"] = _web_search(query, limit)
+    if "social" in selected_sources:
+        by_source["social"] = _social_search(query, limit)
+
+    merged: List[Dict[str, Any]] = []
+    for source_name in selected_sources:
+        merged.extend(by_source.get(source_name, []))
+
+    merged.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+    merged = merged[:limit]
+
+    return {
+        "success": True,
+        "query": query,
+        "results": merged,
+        "by_source": by_source,
+        "sources": selected_sources,
+        "count": len(merged),
+        "took_ms": int((time.time() - started) * 1000),
+    }

@@ -38,6 +38,7 @@ MARKER_CHAT_STRUCTURE: Chat history data model
 """
 
 import json
+import copy
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
@@ -46,6 +47,9 @@ import logging
 import threading  # MARKER_109_13: Lock for race condition prevention
 
 logger = logging.getLogger(__name__)
+
+# MARKER_136.CHAT_COMPRESSION_500
+CHAT_STORAGE_USER_CONTENT_LIMIT = 500
 
 
 class ChatHistoryManager:
@@ -138,12 +142,29 @@ class ChatHistoryManager:
         self._enforce_retention_policy()
 
         try:
+            # MARKER_136.CHAT_COMPRESSION_500: Persist compact user messages to disk,
+            # while keeping full message content in current in-memory session.
+            storage_history = self._build_storage_snapshot()
             self.history_file.write_text(
-                json.dumps(self.history, indent=2, ensure_ascii=False),
+                json.dumps(storage_history, indent=2, ensure_ascii=False),
                 encoding='utf-8'
             )
         except Exception as e:
             print(f"[ChatHistory] Error saving history: {e}")
+
+    def _build_storage_snapshot(self) -> Dict[str, Any]:
+        """Create a disk snapshot with user content truncated for compact storage."""
+        storage_history = copy.deepcopy(self.history)
+        for chat in storage_history.get("chats", {}).values():
+            for message in chat.get("messages", []):
+                role = message.get("role")
+                content = message.get("content")
+                if role != "user" or not isinstance(content, str):
+                    continue
+                truncated = content[:CHAT_STORAGE_USER_CONTENT_LIMIT]
+                message["truncated_content"] = truncated
+                message["content"] = truncated
+        return storage_history
 
     def get_or_create_chat(
         self,

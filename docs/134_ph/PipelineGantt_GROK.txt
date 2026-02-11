@@ -1,0 +1,195 @@
+**Отлично, понял точно.**  
+
+У вас уже есть **Recharts**, `useMyceliumSocket`, `pipeline_history`, `task_tracker`, knowledge levels, active agents и т.д. — это отличная база.  
+
+Нам не нужны внешние "agent dashboard" библиотеки (AgentPrism и т.п.) — они хуже того, что вы можете собрать сами.  
+
+**Цель:** максимально наглядная индексация эффективности агентов и процессов (success rate, токены/субтаск, длительность, RALF retries, knowledge level → efficiency correlation, league comparison). Всё в холодном Nolan стиле, с виртуализацией, lazy-load и реал-тайм обновлениями.
+
+### 1. Рекомендуемый стек (2026, под вашу архитектуру)
+
+- **Recharts** — основной (уже установлен). Отлично для всех графиков ниже.
+- **react-flow / xyflow** — для **Pipeline Arena** (живой граф пайплайнов с цветом эффективности и RALF-ретри).
+- **react-window** — уже есть, используем для длинных списков агентов/тасков.
+- **Zustand + useMyceliumSocket** — для живых данных (pipeline-activity, task-board-updated).
+- **Нет новых тяжёлых библиотек** — только Recharts + 1 лёгкий (если захотите radar/heatmap посложнее — Nivo, но можно и на Recharts).
+
+**Новые эндпоинты (если ещё нет)** — добавьте в `debug_routes.py` или `pipeline_history.py`:
+
+```python
+@router.get("/pipeline/efficiency")
+async def get_pipeline_efficiency():
+    history = _load_history()
+    # ... агрегация по preset, success_rate, tokens_per_subtask, avg_duration, ralf_retries
+    return {"efficiency": {...}, "per_preset": {...}, "timeline": [...]}
+```
+
+### 2. Готовые компоненты (копируй-вставляй)
+
+Создай папку `client/src/components/dev/charts/` (как в коррекции).
+
+#### A. `EfficiencyKPI.tsx` — главный индекс эффективности (Overview)
+
+```tsx
+import { useMemo } from 'react';
+import { ResponsiveContainer, RadialBarChart, RadialBar, PolarAngleAxis, Tooltip } from 'recharts';
+
+const COLORS = { accent: '#4a6b8a', success: '#6a8a6a', warning: '#aa8a6a' };
+
+interface EfficiencyKPIProps {
+  successRate: number;      // 0-100
+  avgDuration: number;      // секунды
+  tokensPerSubtask: number;
+  knowledgeLevel: number;   // 0-1
+}
+
+export default function EfficiencyKPI({ successRate, avgDuration, tokensPerSubtask, knowledgeLevel }: EfficiencyKPIProps) {
+  const efficiencyScore = useMemo(() => {
+    const speedScore = Math.max(0, 100 - (avgDuration / 60) * 10); // <60s = 100
+    const tokenScore = Math.max(0, 100 - (tokensPerSubtask / 800) * 50);
+    const klScore = knowledgeLevel * 100;
+    return Math.round((successRate * 0.4) + (speedScore * 0.25) + (tokenScore * 0.2) + (klScore * 0.15));
+  }, [successRate, avgDuration, tokensPerSubtask, knowledgeLevel]);
+
+  const data = [{ name: 'Efficiency', value: efficiencyScore, fill: efficiencyScore > 85 ? COLORS.success : COLORS.accent }];
+
+  return (
+    <div style={{ background: '#111', padding: 16, borderRadius: 4, textAlign: 'center' }}>
+      <div style={{ fontSize: 11, color: '#aaa', marginBottom: 8 }}>EFFICIENCY INDEX</div>
+      <ResponsiveContainer width="100%" height={160}>
+        <RadialBarChart cx="50%" cy="50%" innerRadius="70%" outerRadius="90%" data={data} startAngle={180} endAngle={-180}>
+          <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+          <RadialBar dataKey="value" cornerRadius={10} background />
+          <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" style={{ fontSize: 32, fontWeight: 600, fill: '#e0e0e0' }}>
+            {efficiencyScore}
+          </text>
+        </RadialBarChart>
+      </ResponsiveContainer>
+      <div style={{ display: 'flex', justifyContent: 'space-around', fontSize: 10, color: '#888', marginTop: 8 }}>
+        <div>Success {successRate}%</div>
+        <div>Speed {Math.round(100 - (avgDuration / 60) * 10)}%</div>
+        <div>Tokens {Math.round(100 - (tokensPerSubtask / 800) * 50)}%</div>
+      </div>
+    </div>
+  );
+}
+```
+
+#### B. `LeagueRadar.tsx` — сравнение пресетов (Agents / League tab)
+
+Используй `RadarChart` из Recharts.
+
+```tsx
+import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend, ResponsiveContainer } from 'recharts';
+
+const presetData = [
+  { preset: 'Bronze', success: 82, speed: 91, tokens: 88, knowledge: 65, overall: 81 },
+  { preset: 'Silver', success: 91, speed: 78, tokens: 72, knowledge: 84, overall: 86 },
+  { preset: 'Gold', success: 96, speed: 65, tokens: 58, knowledge: 93, overall: 88 },
+  // добавь titan_*
+];
+
+export default function LeagueRadar() {
+  return (
+    <ResponsiveContainer width="100%" height={320}>
+      <RadarChart data={presetData} outerRadius="80%">
+        <PolarGrid stroke="#222" />
+        <PolarAngleAxis dataKey="preset" stroke="#666" fontSize={11} />
+        <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} />
+        <Radar name="Success" dataKey="success" stroke="#6a8a6a" fill="#6a8a6a" fillOpacity={0.2} />
+        <Radar name="Speed" dataKey="speed" stroke="#4a6b8a" fill="#4a6b8a" fillOpacity={0.2} />
+        <Radar name="Tokens" dataKey="tokens" stroke="#aa8a6a" fill="#aa8a6a" fillOpacity={0.2} />
+        <Radar name="Knowledge" dataKey="knowledge" stroke="#8aa0b0" fill="#8aa0b0" fillOpacity={0.2} />
+        <Legend />
+      </RadarChart>
+    </ResponsiveContainer>
+  );
+}
+```
+
+#### C. `PipelineGantt.tsx` — живой Gantt с RALF retries (Pipelines tab)
+
+Recharts не идеален для Gantt, но можно сделать кастомный BarChart (горизонтальный) или добавить `react-flow` (рекомендую для "Arena").
+
+Простой вариант на Recharts (быстро):
+
+```tsx
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+
+export default function PipelineGantt({ runs }: { runs: any[] }) {
+  // runs из /api/pipeline/history
+  return (
+    <ResponsiveContainer width="100%" height={420}>
+      <BarChart data={runs} layout="vertical" margin={{ left: 120 }}>
+        <XAxis type="number" stroke="#444" />
+        <YAxis type="category" dataKey="task_title" stroke="#444" width={110} fontSize={11} />
+        <Bar dataKey="total_duration_s" fill="#4a6b8a" radius={[0, 4, 4, 0]} />
+        {/* RALF retries как маленькие красные сегменты */}
+        {runs.map((run, i) => run.ralf_retries > 0 && (
+          <ReferenceLine key={i} x={run.total_duration_s} stroke="#8a6a6a" strokeDasharray="3 3" label={`RALF x${run.ralf_retries}`} />
+        ))}
+        <Tooltip />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+```
+
+Для полноценной **Pipeline Arena** (живой граф с узлами-агентами и ребрами-retries) — установи `npm install xyflow` (очень лёгкий в 2026) и сделай узлы с цветом по efficiency.
+
+#### D. `AgentEfficiencyHeatmap.tsx` — Agent Hive + Memory (Agents tab)
+
+Простой grid на div + Recharts или чистый CSS grid (быстрее).
+
+```tsx
+const agents = [ /* из active-agents + stats */ ];
+
+return (
+  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
+    {agents.map(agent => {
+      const eff = calculateAgentEfficiency(agent); // success, tokens, kl
+      return (
+        <div key={agent.agent_name} style={{
+          background: '#111',
+          padding: 12,
+          borderRadius: 4,
+          borderLeft: `4px solid ${eff > 85 ? '#6a8a6a' : '#4a6b8a'}`
+        }}>
+          <div style={{ fontSize: 13 }}>{agent.agent_name}</div>
+          <div style={{ fontSize: 28, fontWeight: 600, color: eff > 85 ? '#6a8a6a' : '#aaa' }}>{eff}</div>
+          <div style={{ fontSize: 10, color: '#666' }}>efficiency</div>
+        </div>
+      );
+    })}
+  </div>
+);
+```
+
+### 3. Как интегрировать в `MyceliumCommandCenter.tsx`
+
+В `fetchOverview` добавь:
+
+```tsx
+const effRes = await fetch('http://localhost:5001/api/pipeline/efficiency');
+const effData = await effRes.json();
+setEfficiencyData(effData);
+```
+
+В Overview tab добавь `<EfficiencyKPI ... />` + `<LeagueRadar />`.
+
+В Pipelines tab — `<PipelineGantt runs={pipelines} />`.
+
+В Agents tab — `<AgentEfficiencyHeatmap agents={agents} />`.
+
+### Следующий шаг
+
+Скажи, с чего начинаем:
+
+- **«Давай полный код для Overview + EfficiencyKPI и LeagueRadar»**
+- **«Сначала Pipeline Gantt с RALF»**
+- **«Сначала Agent Heatmap + Memory»**
+- Или **«Добавь react-flow для Arena»**
+
+Всё будет в твоём холодном Nolan стиле, с монохромом, sharp edges и monospace.  
+
+Готовы делать идеальную визуализацию эффективности? 🔥

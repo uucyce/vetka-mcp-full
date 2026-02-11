@@ -237,6 +237,35 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
     }
   }, [fileData]);
 
+  // MARKER_136.W3C: Global keyboard shortcut listeners (Ctrl+S, Ctrl+Z)
+  useEffect(() => {
+    const handleGlobalSave = () => {
+      // If editing raw content, save via onContentChange callback
+      if (isEditing && rawHasChanges && onContentChange) {
+        onContentChange(editableContent);
+        setRawHasChanges(false);
+      }
+      // If editing file, save via saveFile
+      else if (fileData?.hasChanges) {
+        saveFile();
+      }
+    };
+
+    const handleGlobalUndo = () => {
+      if (isEditing) {
+        handleUndo();
+      }
+    };
+
+    window.addEventListener('vetka-save-file', handleGlobalSave);
+    window.addEventListener('vetka-undo', handleGlobalUndo);
+
+    return () => {
+      window.removeEventListener('vetka-save-file', handleGlobalSave);
+      window.removeEventListener('vetka-undo', handleGlobalUndo);
+    };
+  }, [isEditing, rawHasChanges, editableContent, onContentChange, fileData, saveFile, handleUndo]);
+
   // Actions
   const handleCopy = () => navigator.clipboard.writeText(fileData?.content || '');
   const handleDownload = () => {

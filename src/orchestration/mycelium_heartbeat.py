@@ -381,6 +381,11 @@ async def heartbeat_tick(
                 })
                 continue
 
+            # MARKER_136.GUARD: Skip tasks with too-short descriptions (junk prevention)
+            if len(task.task.strip()) < 15:
+                logger.warning(f"[Heartbeat] Skipping too-short task: '{task.task[:50]}' ({len(task.task)} chars)")
+                continue
+
             # MARKER_130.C19A: Deduplication — skip if task with same title exists or was recently processed
             task_title = task.task[:100]
             existing_tasks = board.get_queue()

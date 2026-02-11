@@ -1,0 +1,18 @@
+{
+  "run_id": "task_1770802509",
+  "task": "Create a Python function is_even(n: int) -> bool in file src/utils/check_even.py that returns True if n is even, False otherwise. Include docstring.",
+  "summary": "Completed 1/1 subtasks",
+  "quality_score": 0.9,
+  "issues_found": [],
+  "improvements_for_next_run": [],
+  "files_created": [],
+  "tokens_used": 4729,
+  "duration_s": 45.5,
+  "preset": "dragon_bronze",
+  "status": "done",
+  "subtasks_total": 1,
+  "subtasks_completed": 1,
+  "retries": 1,
+  "tier_upgrades": 0,
+  "saved_at": "2026-02-11T09:35:55Z"
+}

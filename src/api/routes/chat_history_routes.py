@@ -383,6 +383,112 @@ async def get_chats_for_file(file_path: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================
+# MARKER_136.W3B: Chat-File Links API (Phase 136 Wave 3)
+# ============================================================
+
+@router.get("/files/linked-chats")
+async def get_linked_chats(path: str, request: Request):
+    """
+    Get all chats that are linked to a specific file path.
+    A chat is "linked" if:
+    1. The file is in the chat's pinned_file_ids
+    2. The chat's file_path matches the file
+    3. The file is in the chat's items array
+
+    Args:
+        path: File path to find linked chats for
+
+    Returns:
+        List of linked chats with metadata
+    """
+    try:
+        manager = get_chat_history_manager()
+        all_chats = manager.get_all_chats(limit=500, offset=0)
+
+        linked_chats = []
+        for chat in all_chats:
+            is_linked = False
+
+            # Check 1: File is in pinned_file_ids (by path match - node IDs contain paths)
+            pinned = chat.get("pinned_file_ids", [])
+            if any(path in pin_id for pin_id in pinned):
+                is_linked = True
+
+            # Check 2: Chat's file_path matches
+            if chat.get("file_path") == path:
+                is_linked = True
+
+            # Check 3: File is in items array
+            items = chat.get("items", [])
+            if path in items:
+                is_linked = True
+
+            if is_linked:
+                linked_chats.append({
+                    "id": chat["id"],
+                    "display_name": chat.get("display_name") or chat.get("file_name", "Chat"),
+                    "context_type": chat.get("context_type", "file"),
+                    "message_count": len(chat.get("messages", [])),
+                    "last_activity": chat.get("updated_at"),
+                })
+
+        return {
+            "path": path,
+            "chats": linked_chats,
+            "count": len(linked_chats)
+        }
+
+    except Exception as e:
+        print(f"[ChatHistory] Error getting linked chats for {path}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chats/{chat_id}/link-file")
+async def link_file_to_chat(chat_id: str, request: Request):
+    """
+    Link a file to a chat by adding it to pinned_file_ids.
+
+    Args:
+        chat_id: Chat UUID
+        body: { file_path: string }
+
+    Returns:
+        Success status
+    """
+    try:
+        body = await request.json()
+        file_path = body.get("file_path")
+
+        if not file_path:
+            raise HTTPException(status_code=400, detail="file_path is required")
+
+        manager = get_chat_history_manager()
+        chat = manager.get_chat(chat_id)
+
+        if not chat:
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        # Add file path to pinned_file_ids if not already there
+        pinned = chat.get("pinned_file_ids", [])
+        if file_path not in pinned:
+            pinned.append(file_path)
+            manager.update_pinned_files(chat_id, pinned)
+
+        return {
+            "success": True,
+            "chat_id": chat_id,
+            "file_path": file_path,
+            "pinned_count": len(pinned)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error linking file to {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/chats/search/{query}")
 async def search_chats(query: str, request: Request, chat_id: Optional[str] = None):
     """

@@ -399,6 +399,21 @@ export default function App() {
         return;
       }
 
+      // MARKER_136.W3C: Ctrl+S = Save current file
+      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S') && !e.shiftKey) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('vetka-save-file'));
+        return;
+      }
+
+      // MARKER_136.W3C: Ctrl+Z = Undo (dispatch to artifact panel)
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        // Only prevent default if not in an input field (already handled above)
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('vetka-undo'));
+        return;
+      }
+
       // G = Toggle grab mode (also Russian 'п')
       if (e.key === 'g' || e.key === 'G' || e.key === 'п' || e.key === 'П') {
         e.preventDefault();

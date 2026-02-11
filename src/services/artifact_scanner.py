@@ -55,6 +55,7 @@ from typing import List, Dict, Optional, Tuple
 # ============================================================
 
 ARTIFACTS_DIR = Path("data/artifacts")
+VETKA_OUT_DIR = Path("src/vetka_out")
 STAGING_FILE = Path("data/staging.json")
 
 # Extension to (type, language) mapping
@@ -254,17 +255,21 @@ def scan_artifacts() -> List[Dict]:
     """
     artifacts = []
 
-    # Check if artifacts directory exists
-    if not ARTIFACTS_DIR.exists():
-        print(f"[ARTIFACT_SCAN] Artifacts directory not found: {ARTIFACTS_DIR}")
+    scan_dirs = [d for d in (ARTIFACTS_DIR, VETKA_OUT_DIR) if d.exists()]
+    if not scan_dirs:
+        print(f"[ARTIFACT_SCAN] Artifact directories not found: {ARTIFACTS_DIR}, {VETKA_OUT_DIR}")
         return artifacts
 
     # Load staging.json for chat/message links
     staging_links = _load_staging_links()
     print(f"[ARTIFACT_SCAN] Loaded {len(staging_links)} staging links")
 
-    # Scan all files in artifacts directory
-    artifact_files = sorted(ARTIFACTS_DIR.iterdir(), key=lambda p: p.stat().st_ctime)
+    # Scan all files in configured artifact directories
+    artifact_files: List[Path] = []
+    for scan_dir in scan_dirs:
+        artifact_files.extend(
+            sorted(scan_dir.iterdir(), key=lambda p: p.stat().st_ctime)
+        )
 
     for index, file_path in enumerate(artifact_files):
         # Skip non-files (directories, symlinks)
@@ -332,7 +337,10 @@ def scan_artifacts() -> List[Dict]:
 
         artifacts.append(artifact_node)
 
-    print(f"[ARTIFACT_SCAN] Scanned {len(artifacts)} artifacts from {ARTIFACTS_DIR}")
+    print(
+        f"[ARTIFACT_SCAN] Scanned {len(artifacts)} artifacts "
+        f"from {[str(d) for d in scan_dirs]}"
+    )
 
     return artifacts
 
@@ -415,3 +423,129 @@ def update_artifact_positions(
             artifact['visual_hints']['layout_hint'] = new_position
 
     print(f"[ARTIFACT_SCAN] Updated positions for {len(artifact_nodes)} artifacts")
+
+
+# ============================================================
+# MARKER_136.ARTIFACT_APPROVE_REJECT
+# ============================================================
+
+def _load_staging_data() -> Dict:
+    if not STAGING_FILE.exists():
+        return {"version": "1.0", "spawn": {}, "artifacts": {}}
+    try:
+        with open(STAGING_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return {"version": "1.0", "spawn": {}, "artifacts": {}}
+        data.setdefault("spawn", {})
+        data.setdefault("artifacts", {})
+        return data
+    except Exception:
+        return {"version": "1.0", "spawn": {}, "artifacts": {}}
+
+
+def _save_staging_data(data: Dict) -> bool:
+    try:
+        STAGING_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(STAGING_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"[ARTIFACT_SCAN] Failed to save staging data: {e}")
+        return False
+
+
+def _resolve_artifact_filename(artifact_id: str) -> Optional[str]:
+    # 1) Direct filename
+    for base_dir in (ARTIFACTS_DIR, VETKA_OUT_DIR):
+        file_path = base_dir / artifact_id
+        if file_path.exists() and file_path.is_file():
+            return artifact_id
+
+    # 2) Artifact node id ("artifact_<hash>")
+    for base_dir in (ARTIFACTS_DIR, VETKA_OUT_DIR):
+        if not base_dir.exists():
+            continue
+        for file_path in base_dir.iterdir():
+            if not file_path.is_file() or file_path.name.startswith("."):
+                continue
+            if _generate_artifact_id(file_path.name) == artifact_id:
+                return file_path.name
+
+    # 3) staging key -> filename
+    data = _load_staging_data()
+    artifact_data = data.get("artifacts", {}).get(artifact_id)
+    if artifact_data and artifact_data.get("filename"):
+        return artifact_data.get("filename")
+    return None
+
+
+def _upsert_artifact_status(artifact_id: str, filename: str, status: str, reason: str) -> Dict:
+    now_iso = datetime.now().isoformat()
+    data = _load_staging_data()
+    artifacts = data.setdefault("artifacts", {})
+
+    target_key = None
+    if artifact_id in artifacts:
+        target_key = artifact_id
+    else:
+        for key, item in artifacts.items():
+            if item.get("filename") == filename:
+                target_key = key
+                break
+
+    if target_key is None:
+        target_key = artifact_id
+        artifacts[target_key] = {
+            "filename": filename,
+            "status": status,
+            "created_at": now_iso,
+        }
+
+    artifacts[target_key]["filename"] = filename
+    artifacts[target_key]["status"] = status
+    artifacts[target_key]["updated_at"] = now_iso
+
+    if status == "approved":
+        artifacts[target_key]["approved_at"] = now_iso
+        artifacts[target_key]["approval_reason"] = reason
+    if status == "rejected":
+        artifacts[target_key]["rejected_at"] = now_iso
+        artifacts[target_key]["feedback"] = reason
+
+    if not _save_staging_data(data):
+        return {"success": False, "error": "Failed to persist status", "artifact_id": artifact_id}
+
+    return {
+        "success": True,
+        "artifact_id": target_key,
+        "filename": filename,
+        "status": status,
+        "reason": reason,
+    }
+
+
+def approve_artifact(artifact_id: str, reason: str = "Approved via API") -> Dict:
+    """Approve artifact and persist status in staging.json."""
+    filename = _resolve_artifact_filename(artifact_id)
+    if not filename:
+        return {"success": False, "error": f"Artifact not found: {artifact_id}", "artifact_id": artifact_id}
+    return _upsert_artifact_status(
+        artifact_id=artifact_id,
+        filename=filename,
+        status="approved",
+        reason=reason,
+    )
+
+
+def reject_artifact(artifact_id: str, reason: str = "Rejected via API") -> Dict:
+    """Reject artifact and persist feedback in staging.json."""
+    filename = _resolve_artifact_filename(artifact_id)
+    if not filename:
+        return {"success": False, "error": f"Artifact not found: {artifact_id}", "artifact_id": artifact_id}
+    return _upsert_artifact_status(
+        artifact_id=artifact_id,
+        filename=filename,
+        status="rejected",
+        reason=reason,
+    )

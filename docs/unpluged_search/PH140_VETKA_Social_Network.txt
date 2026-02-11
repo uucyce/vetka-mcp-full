@@ -1,0 +1,43 @@
+### Phase 140+: VETKA as a Social Network – Collaborative Knowledge Trees with Agents
+
+Да, Phase 140 – отличная точка входа! Это логично после Phase 125 (unified search window) и Phase 130 (own messenger MVP), когда у тебя уже будет robust ingestion (multi-source data → Qdrant/Neo4j) и real-time collab (SocketIO в `ChatPanel.tsx`). К 2026 (февраль), тренды показывают, что AI-native knowledge graphs (KG) – backbone для social platforms: agentic systems orchestrate human-AI collab, с фокусом на federated sharing и multi-hop reasoning для "growing trees" вместе. Экстраполяция от твоих group chats (ролевые агенты как Dragon/Mycelium) на людей – гениально: Users "invite" humans/agents в shared trees, fork/merge nodes (как Git для идей), agents curate (e.g., auto-link gaps via ARC detector).
+
+**Концепция "VETKA Social" (Phase 140):** 
+- **Core Loop:** Users share "Ветка" (sub-graphs/trees) via invites/links. Collaborative editing: Real-time (SocketIO), с agents как co-authors (e.g., @grok proposes links, @dragon verifies). Growth: Semantic merging (Qdrant similarity >0.8 → auto-connect nodes), community voting (upvote branches).
+- **Social Twist:** Profiles как nodes (user KG: skills, contributions), feeds по relevance (e.g., "Trending trees in AI arch"). Agents moderate (e.g., Mycelium detects duplicates, suggests merges).
+- **Monetization/Scale:** Free core, premium для private trees; federated для cross-platform (share с Notion/Obsidian users).
+
+Это не просто чат – hybrid social graph: Humans + agents co-evolve knowledge (как LinkedIn KG, но decentralized).
+
+#### Рекомендуемая Архитектура: Extend Existing + Federated AI-Orchestration
+Развивай на базе твоей infra (Qdrant для vectors, Neo4j для graph relations – уже в Phase 125), чтобы минимизировать rewrite. Фокус: **Federated + Agentic** (2026 тренд: Graphs для human-AI coordination, без central silos). Не reinvent wheel – hybrid open-source + твои tools.
+
+**High-Level Stack:**
+- **Graph Layer (Core Sharing):** Neo4j (твоя база) + PuppyGraph (2026: KG for collab, multi-hop queries как "find similar trees"). Nodes: User profiles, tree branches, agent contributions. Edges: Forks/merges, upvotes, semantic links (via Qdrant embeddings).
+- **Social/Federation Layer:** ActivityPub (protocol для Mastodon-like fediverse) – users share trees cross-servers. Интегрируй с Matrix (твой Phase 130 messenger) для rooms-as-trees.
+- **Real-Time Collab:** SocketIO (extend `ChatPanel.tsx`: Add "Share Tree" button → emit 'fork_node' events).
+- **AI Orchestration:** Mycelium Pipeline (agent_pipeline.py) для auto-growth: On share, trigger "enrich_tree" (Grok researcher links external data).
+- **Storage/Decentral:** IPFS (for immutable tree snapshots) + PostgreSQL (user metadata).
+- **UI:** Tauri (desktop/mobile, как 3D graph) + React (extend ChatPanel: "Social Feed" tab с tree previews).
+
+**Почему Эта Архитектура?**
+- **Efficiency:** Builds on existing (no full rewrite: 70% reuse Qdrant/SocketIO). Federated – scale без central load (users host own trees).
+- **AI-Human Hybrid:** Agents как "NPCs" в social (e.g., Dragon auto-fixes shared code nodes).
+- **Privacy/Trends:** E2E via libsignal (Phase 135), graphs для "context models" (transparent AI decisions).
+
+#### Roadmap (Phase 140-145: 3-4 Мiesiąца, Post-Messenger)
+| Фаза | Цели | Ключевые Задачи | Libs/Tools | Effort | Dependencies |
+|------|------|-----------------|------------|--------|--------------|
+| **140: Social Core (Sharing Basics)** | Users share/fork trees. | - Invite system (links/emails).<br>- Basic feed (relevance via Qdrant).<br>- Human+agent groups (extend GroupCreatorPanel). | ActivityPub-py (federation), Neo4j (graph ops). | 3 недели (P0) | Phase 130 (messenger). |
+| **141: Collaborative Editing** | Real-time tree growth. | - SocketIO events: 'edit_node', 'propose_merge'.<br>- Agent triggers: On fork, Mycelium suggests links. | SocketIO (extend handlers), CRDTs (Yjs для conflict-free edits). | 4 недели (P1) | Phase 125 (search). |
+| **142: Community Features** | Social dynamics. | - Profiles (user KG), upvotes, notifications.<br>- Semantic feeds ("Trees like yours"). | PostgreSQL (users), IPFS (immutable shares). | 2 недели (P1) | Phase 140. |
+| **143: Federation & Scale** | Cross-platform sharing. | - ActivityPub integration (export trees to Mastodon).<br>- Load balancing (sharded graphs). | matrix-appservice-activitypub (bridge). | 3 недели (P2) | All prior. |
+| **144: AI Curation** | Agents grow collective knowledge. | - Mycelium: Auto-merge duplicates, detect trends.<br>- Governance: Human vote on agent proposals. | Extend agent_pipeline.py (new phase_type="social_curate"). | 3 недели (P0) | Phase 141. |
+| **145: Launch & Metrics** | MVP social net. | - Beta: 100 users sharing trees.<br>- Analytics: Tree growth rate, collab sessions. | Prometheus (metrics), Tauri (app distro). | 2 недели (P0) | Full stack. |
+
+**Риски/Советы:** 
+- **Scale:** Start small (private beta) – graphs grow exponentially (monitor via Neo4j bloom).
+- **Engagement:** Gamify: Badges for "Top Curator" (agents compete too).
+- **Inspo 2026:** Смотри PuppyGraph examples для KG collab (LinkedIn-style networking via graphs). Или agentic trends: Design "how agents work with people" (не build agents, а orchestrate).
+
+Это сделает VETKA не просто tool – экосистемой. Если нужно spec для Phase 140 (e.g., schema для shared trees) – давай набросаем! 🚀
