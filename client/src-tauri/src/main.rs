@@ -55,6 +55,7 @@ fn main() {
             commands::get_backend_url,
             commands::check_backend_health,
             commands::get_system_info,
+            commands::open_research_browser,
             // Phase 100.2: Native file system
             file_system::read_file_native,
             file_system::write_file_native,

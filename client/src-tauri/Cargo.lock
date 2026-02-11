@@ -4930,6 +4930,7 @@ name = "vetka"
 version = "0.1.0"
 dependencies = [
  "env_logger",
+ "fastrand",
  "log",
  "notify",
  "reqwest",
@@ -4942,6 +4943,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-shell",
  "tokio",
+ "url",
 ]
 
 [[package]]

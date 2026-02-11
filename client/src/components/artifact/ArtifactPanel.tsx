@@ -80,6 +80,9 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
   const [isSaving, setIsSaving] = useState(false);
   const [webMode, setWebMode] = useState<'live' | 'md'>('live');
   const [openingNativeWeb, setOpeningNativeWeb] = useState(false);
+  const [webSaving, setWebSaving] = useState(false);
+  const [webMarkdown, setWebMarkdown] = useState<string>('');
+  const [webSaveNote, setWebSaveNote] = useState<string>('');
 
   // Phase 60.4: Editable raw content state
   const [editableContent, setEditableContent] = useState<string>('');
@@ -146,6 +149,8 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
   useEffect(() => {
     if (rawContent?.type === 'web') {
       setWebMode('live');
+      setWebMarkdown('');
+      setWebSaveNote('');
     }
   }, [rawContent?.type, rawContent?.sourceUrl]);
 
@@ -393,6 +398,7 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
           '',
           rawContent.content || '',
         ].join('\n');
+        const markdownToShow = webMarkdown || markdownFallback;
 
         return (
           <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#0a0a0a' }}>
@@ -476,6 +482,52 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                   {openingNativeWeb ? 'OPENING...' : 'NATIVE WINDOW'}
                 </button>
               )}
+              {rawContent.sourceUrl && (
+                <button
+                  onClick={async () => {
+                    if (!rawContent.sourceUrl || webSaving) return;
+                    setWebSaving(true);
+                    setWebSaveNote('');
+                    try {
+                      // MARKER_128.9A_WEB_SAVE_UI: Save real webpage extraction into VETKA artifacts
+                      const resp = await fetch('/api/artifacts/save-webpage', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          url: rawContent.sourceUrl,
+                          title: rawContent.title || '',
+                          snippet: rawContent.content || '',
+                        }),
+                      });
+                      const data = await resp.json();
+                      if (!resp.ok || !data?.success) {
+                        throw new Error(data?.error || `HTTP ${resp.status}`);
+                      }
+                      setWebMarkdown(data.markdown || markdownFallback);
+                      setWebMode('md');
+                      setWebSaveNote(`Saved: ${data?.filename || 'artifact'}`);
+                    } catch (e) {
+                      console.error('[ArtifactPanel] save-webpage failed:', e);
+                      setWebSaveNote('Save failed');
+                    } finally {
+                      setWebSaving(false);
+                    }
+                  }}
+                  style={{
+                    border: '1px solid #2f3f57',
+                    background: '#132238',
+                    color: '#a6c8ff',
+                    fontSize: 10,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    cursor: webSaving ? 'wait' : 'pointer',
+                    opacity: webSaving ? 0.7 : 1,
+                  }}
+                  title="Save extracted web text as markdown artifact"
+                >
+                  {webSaving ? 'SAVING...' : 'SAVE TO VETKA'}
+                </button>
+              )}
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
               {webMode === 'live' && rawContent.sourceUrl ? (
@@ -493,13 +545,18 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                   }}
                 />
               ) : webMode === 'md' ? (
-                <MarkdownViewer content={markdownFallback} />
+                <MarkdownViewer content={markdownToShow} />
               ) : (
                 <div style={{ padding: 16, color: '#777', fontSize: 12 }}>
                   Web URL is missing.
                 </div>
               )}
             </div>
+            {!!webSaveNote && (
+              <div style={{ borderTop: '1px solid #222', padding: '6px 12px', fontSize: 11, color: '#8ab4f8' }}>
+                {webSaveNote}
+              </div>
+            )}
             {!!contentToShow && (
               <div style={{ borderTop: '1px solid #222', padding: '8px 12px', fontSize: 11, color: '#888' }}>
                 {contentToShow}

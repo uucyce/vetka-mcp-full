@@ -10,6 +10,7 @@ from src.api.handlers.artifact_routes import (
     list_artifacts_for_panel,
     approve_artifact_for_panel,
     reject_artifact_for_panel,
+    save_webpage_artifact,
 )
 
 
@@ -18,6 +19,12 @@ router = APIRouter(prefix="/api/artifacts", tags=["artifacts"])
 
 class ArtifactDecisionRequest(BaseModel):
     reason: Optional[str] = None
+
+
+class SaveWebpageRequest(BaseModel):
+    url: str
+    title: Optional[str] = None
+    snippet: Optional[str] = None
 
 
 @router.get("")
@@ -38,4 +45,13 @@ async def reject_artifact_endpoint(artifact_id: str, body: ArtifactDecisionReque
     return reject_artifact_for_panel(
         artifact_id=artifact_id,
         reason=body.reason or "Rejected via API",
+    )
+
+
+@router.post("/save-webpage")
+async def save_webpage_endpoint(body: SaveWebpageRequest):
+    return await save_webpage_artifact(
+        url=body.url,
+        title=body.title or "",
+        snippet=body.snippet or "",
     )

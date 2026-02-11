@@ -2,6 +2,8 @@
 // Phase 100.1: Basic commands
 
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
+use url::Url;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BackendConfig {
@@ -79,4 +81,36 @@ pub fn get_system_info() -> SystemInfo {
         tauri_version: "2.0".to_string(),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
     }
+}
+
+/// MARKER_128.9B_TAURI_CMD: Open native research browser window for any external URL
+#[tauri::command]
+pub fn open_research_browser(app: AppHandle, url: String, title: Option<String>) -> Result<bool, String> {
+    let parsed = Url::parse(&url).map_err(|e| format!("Invalid URL: {e}"))?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err("Only http/https URLs are supported".to_string());
+    }
+
+    let label = format!(
+        "vetka-web-{}-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_millis(),
+        fastrand::u16(..)
+    );
+
+    let window_title = title.unwrap_or_else(|| "VETKA Research Browser".to_string());
+
+    let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::External(parsed))
+        .title(window_title)
+        .inner_size(1280.0, 860.0)
+        .min_inner_size(960.0, 640.0)
+        .resizable(true)
+        .focused(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    window.set_focus().map_err(|e| e.to_string())?;
+    Ok(true)
 }
