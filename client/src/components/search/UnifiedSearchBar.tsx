@@ -10,6 +10,7 @@
  */
 
 // MARKER_137.S1_3: Added unified backend support for web/file contexts
+// MARKER_139.S1_2_UNIFIED_ARTIFACT_FIX: unified result mapping + artifact path normalization
 import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useSearch } from '../../hooks/useSearch';
 import { useStore } from '../../store/useStore';
@@ -332,7 +333,7 @@ export function UnifiedSearchBar({
     }
     // Apply display limit for pagination
     return sorted.slice(0, displayLimit);
-  }, [results, sortMode, sortAscending, displayLimit]);
+  }, [activeResults, sortMode, sortAscending, displayLimit]);
 
   // Handle result click with multi-select
   const handleSelect = useCallback((result: SearchResult, index: number, e: React.MouseEvent) => {
@@ -451,15 +452,24 @@ export function UnifiedSearchBar({
           const data = await res.json();
           const items = data.results || [];
           // Convert to SearchResult format
-          const converted: SearchResult[] = items.map((item: any, idx: number) => ({
-            id: `unified-${idx}-${item.url || item.title}`,
-            name: item.title?.split('/').pop() || item.title || 'Result',
-            path: item.url || item.title,
-            type: item.source === 'web' ? 'doc' : 'code',
-            relevance: item.score || 0.5,
-            preview: item.snippet,
-            source: item.source,
-          }));
+          const converted: SearchResult[] = items.map((item: any, idx: number) => {
+            const source = String(item.source || '');
+            const rawPath = String(item.url || item.title || '');
+            // MARKER_139.S1_2_UNIFIED_ARTIFACT_FIX: /api/files/read expects project-relative path, not file:// URL
+            const normalizedPath = source === 'file' && rawPath.startsWith('file://')
+              ? rawPath.replace(/^file:\/\//, '')
+              : rawPath;
+
+            return {
+              id: `unified-${source}-${idx}-${rawPath || item.title || 'result'}`,
+              name: item.title?.split('/').pop() || item.title || 'Result',
+              path: normalizedPath,
+              type: source === 'web' ? 'doc' : 'code',
+              relevance: item.score || 0.5,
+              preview: item.snippet,
+              source,
+            };
+          });
           setUnifiedResults(converted);
         }
       } catch (err) {
@@ -487,7 +497,7 @@ export function UnifiedSearchBar({
   useEffect(() => {
     setSelectedIds(new Set());
     setLastSelectedIndex(null);
-  }, [results]);
+  }, [activeResults]);
 
   const [isFocused, setIsFocused] = useState(false);
 

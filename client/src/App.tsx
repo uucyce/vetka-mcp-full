@@ -580,14 +580,35 @@ export default function App() {
               onSelectResult={handleSearchSelect}
               onPinResult={handleSearchPin}
               onOpenArtifact={(result) => {
-                // Phase 68.2: Open artifact viewer with file from search
+                // MARKER_139.S1_2_UNIFIED_ARTIFACT_FIX: Web/file unified results need different artifact open handling
+                const source = String((result as any).source || '');
+                const isWeb = source === 'web' || /^https?:\/\//i.test(result.path);
+
+                if (isWeb) {
+                  const title = result.name || 'Web result';
+                  const url = result.path || '';
+                  const snippet = result.preview || '';
+                  setArtifactFile(null);
+                  setArtifactContent({
+                    title,
+                    type: 'markdown',
+                    content: `# ${title}\n\n${url ? `Source: ${url}\n\n` : ''}${snippet || 'No preview available.'}`,
+                  });
+                  setIsArtifactOpen(true);
+                  return;
+                }
+
+                // Phase 68.2: Open artifact viewer with local file from search
+                const normalizedPath = result.path?.startsWith('file://')
+                  ? result.path.replace(/^file:\/\//, '')
+                  : result.path;
                 const ext = result.name.includes('.') ? result.name.split('.').pop() : undefined;
                 setArtifactFile({
-                  path: result.path,
+                  path: normalizedPath,
                   name: result.name,
                   extension: ext
                 });
-                setArtifactContent(null); // Clear any raw content
+                setArtifactContent(null);
                 setIsArtifactOpen(true);
               }}
               placeholder="Search..."

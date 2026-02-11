@@ -1,37 +1,48 @@
-# MARKER_137.RECON_S1_2_TAVILY
-# Recon Report: tb_1770809269_2 (S1.2 Unified Search Tavily)
+# MARKER_139.RECON_S1_2_UNIFIED_SEARCH_ARTIFACT
+# Recon Report: tb_1770809269_2 (Unified Search Tavily wire + Artifact display)
 
 Date: 2026-02-11
 Workspace: /Users/danilagulin/Documents/VETKA_Project/vetka_live_03
 
 ## Scope
-- Task: Wire web provider (Tavily) into federated unified search router
-- File target: `src/api/handlers/unified_search.py`
+Task: `tb_1770809269_2` — S1.2 Unified Search (web provider/Tavily) with practical issue:
+results partially work but do not render correctly in Artifact viewer.
 
 ## Findings
-1. `POST /api/search/unified` already exists:
-- route: `src/api/routes/unified_search_routes.py`
-- handler: `src/api/handlers/unified_search.py`
+1. Backend Tavily wiring is already present.
+- `src/api/handlers/unified_search.py`:
+  - Marker `MARKER_137.S1_2_TAVILY_WIRE`
+  - `_web_search()` calls `WebSearchTool` (`vetka_web_search`) and normalizes results.
+- Route exists:
+  - `src/api/routes/unified_search_routes.py` (`POST /api/search/unified`)
 
-2. `web` source is already connected to Tavily tool:
-- `_web_search()` imports `WebSearchTool` from `src/mcp/tools/web_search_tool.py`
-- calls `WebSearchTool().execute({"query": ..., "max_results": ...})`
+2. Frontend has a memo dependency bug causing unified results not to update reliably.
+- `client/src/components/search/UnifiedSearchBar.tsx`
+  - `sortedResults` is built from `activeResults`, but `useMemo` deps use `results` instead of `activeResults`.
+  - Effect: web/file unified payload can arrive, but visible list remains stale/empty.
 
-3. Gap vs sprint wording:
-- Task text says “currently returns stub”. In current code it is not stub, but lacks explicit score normalization policy and dedicated tests for Tavily mapping path.
+3. Artifact opening path mismatch for unified results.
+- Unified backend returns `file://...` URL for file source.
+- Frontend uses `result.path` directly in ArtifactPanel load via `/api/files/read`.
+- `file://...` and `https://...` are not valid local file paths for that endpoint.
+- Result: ArtifactPanel fallback text:
+  - `// Could not load file ...`
+  - `// Backend not available`
 
-4. Duplicate-risk check:
-- No duplicate unified endpoint found beyond current implementation.
-- Existing tests (`tests/test_unified_search_api.py`) verify aggregator behavior, but not Tavily score normalization/dedup semantics.
+## Implementation plan
+1. `UnifiedSearchBar.tsx`
+- Fix `useMemo` deps to include `activeResults`.
+- Normalize unified result path:
+  - `file://relative/path` -> `relative/path` for file source.
+  - Keep URL for web source in metadata path.
+- Add marker for fix.
 
-## Planned isolated changes
-1. Harden `_web_search()` in `src/api/handlers/unified_search.py`:
-- Explicit score normalization to `[0..1]`
-- URL dedup
-- rank fallback score when provider score missing
+2. `App.tsx`
+- In `onOpenArtifact` callback:
+  - If source is web/URL: open Artifact viewer with `rawContent` preview (title/url/snippet), not file read.
+  - If source is file with `file://`: strip prefix before passing to ArtifactPanel.
+- Add marker for traceability.
 
-2. Add focused tests in `tests/test_unified_search_api.py`:
-- verify Tavily mapping + score normalization
-- verify dedup by URL
-
-3. Keep scope isolated to unified search handler/tests and docs report only.
+## Exclusions
+- No changes to `main.py`, `agent_pipeline.py`, `debug_routes.py`.
+- No backend route rewrites; issue is frontend mapping/render path.
