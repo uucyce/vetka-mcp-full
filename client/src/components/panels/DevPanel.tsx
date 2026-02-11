@@ -1,17 +1,17 @@
 /**
  * MARKER_126.0C: DevPanel — Task Board + Stats + League Tester
  * MARKER_126.2B: Style upgrade — Nolan glassmorphism, monospace, no emoji
- * MARKER_127.2B: Activity tab — real-time pipeline progress
  * MARKER_128.5B: Quick-add with dispatch ("Add & Run")
  * MARKER_128.7A: Toast notifications on pipeline completion
  * MARKER_128.9A: Keyboard navigation (j/k/Enter/r/a)
  * MARKER_129.C14B: MYCELIUM WebSocket connection indicator
  * MARKER_130.C18A: Agent status row in Board tab
- * Phase 130: Agent coordination — who is working on what.
+ * MARKER_136.W1A: Removed Activity tab (Wave 1 cleanup)
+ * Phase 136: Multi-agent sync.
  *
  * @status active
- * @phase 130
- * @depends FloatingWindow, TaskCard, PipelineStats, LeagueTester, BalancesPanel, ActivityLog, useMyceliumSocket
+ * @phase 136
+ * @depends FloatingWindow, TaskCard, PipelineStats, LeagueTester, BalancesPanel, useMyceliumSocket
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -21,7 +21,7 @@ import { TaskCard, TaskData } from './TaskCard';
 import { PipelineStats } from './PipelineStats';
 import { LeagueTester } from './LeagueTester';
 import { BalancesPanel } from './BalancesPanel';  // MARKER_126.7
-import { ActivityLog } from './ActivityLog';  // MARKER_127.2B
+// MARKER_136.W1A: ActivityLog removed (Wave 1 cleanup)
 import { WatcherStats } from './WatcherStats';  // MARKER_129.1B
 import { ArtifactViewer } from './ArtifactViewer';  // MARKER_C23C
 import { AgentStatusBar } from './AgentStatusBar';  // MARKER_C23D
@@ -36,7 +36,7 @@ interface DevPanelProps {
 
 const API_BASE = 'http://localhost:5001/api/debug';
 
-type Tab = 'dag' | 'board' | 'stats' | 'test' | 'balance' | 'activity' | 'watcher' | 'artifacts';  // MARKER_135.4B: +dag
+type Tab = 'dag' | 'board' | 'stats' | 'test' | 'balance' | 'watcher' | 'artifacts';  // MARKER_136.W1A: removed activity
 
 // MARKER_131.C22: Heartbeat settings interface
 interface HeartbeatSettings {
@@ -56,13 +56,13 @@ function formatInterval(seconds: number): string {
   return `${Math.floor(seconds / 604800)}w`;
 }
 
+// MARKER_136.W1A: Removed Activity tab (Wave 1 cleanup)
 const TABS: { id: Tab; label: string }[] = [
   { id: 'dag', label: 'DAG' },  // MARKER_135.4B: First tab
   { id: 'board', label: 'Board' },
   { id: 'stats', label: 'Stats' },
   { id: 'test', label: 'Test' },
   { id: 'balance', label: 'Balance' },
-  { id: 'activity', label: 'Activity' },
   { id: 'watcher', label: 'Watcher' },  // MARKER_129.1B
   { id: 'artifacts', label: 'Artifacts' },  // MARKER_C23C
 ];
@@ -107,6 +107,9 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
   // MARKER_131.C22: Heartbeat settings state
   const [heartbeat, setHeartbeat] = useState<HeartbeatSettings | null>(null);
   const [heartbeatExpanded, setHeartbeatExpanded] = useState(false);
+
+  // MARKER_136.W1B: Countdown timer for next heartbeat tick
+  const [nextTickIn, setNextTickIn] = useState<number | null>(null);
 
   // MARKER_128.9A: Keyboard navigation state
   const [selectedTaskIdx, setSelectedTaskIdx] = useState<number>(-1);
@@ -210,6 +213,25 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
       window.removeEventListener('task-board-updated', handleBoardUpdate);
     };
   }, [isOpen, fetchTasks, showToast]);
+
+  // MARKER_136.W1B: Heartbeat countdown timer
+  useEffect(() => {
+    if (!heartbeat?.enabled || !heartbeat.last_tick) {
+      setNextTickIn(null);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const now = Date.now() / 1000;
+      const nextTick = heartbeat.last_tick + heartbeat.interval;
+      const remaining = Math.max(0, Math.round(nextTick - now));
+      setNextTickIn(remaining);
+    };
+
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [heartbeat?.enabled, heartbeat?.last_tick, heartbeat?.interval]);
 
   // Add task
   const handleAddTask = useCallback(async (andRun: boolean = false) => {
@@ -741,9 +763,16 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
                   {heartbeat?.enabled ? 'ON' : 'OFF'}
                 </span>
                 <span style={{ flex: 1 }} />
-                <span style={{ color: '#666' }}>
-                  {heartbeat ? formatInterval(heartbeat.interval) : '-'}
-                </span>
+                {/* MARKER_136.W1B: Show countdown when enabled */}
+                {heartbeat?.enabled && nextTickIn !== null ? (
+                  <span style={{ color: nextTickIn <= 10 ? '#8a8' : '#666' }}>
+                    next in {formatInterval(nextTickIn)}
+                  </span>
+                ) : (
+                  <span style={{ color: '#666' }}>
+                    {heartbeat ? formatInterval(heartbeat.interval) : '-'}
+                  </span>
+                )}
                 <span style={{ color: '#555' }}>{heartbeatExpanded ? '▾' : '▸'}</span>
               </div>
 
@@ -819,11 +848,15 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
                       </button>
                     </div>
                   </div>
+                  {/* MARKER_136.W1B: Stats row with countdown */}
                   <div style={{ display: 'flex', gap: 16, color: '#777', fontSize: 10 }}>
                     <span>ticks: <span style={{ color: '#aaa' }}>{heartbeat.total_ticks}</span></span>
                     <span>dispatched: <span style={{ color: '#aaa' }}>{heartbeat.tasks_dispatched}</span></span>
                     {heartbeat.last_tick > 0 && (
                       <span>last: <span style={{ color: '#aaa' }}>{new Date(heartbeat.last_tick * 1000).toLocaleTimeString()}</span></span>
+                    )}
+                    {heartbeat.enabled && nextTickIn !== null && (
+                      <span>next: <span style={{ color: nextTickIn <= 10 ? '#8a8' : '#aaa' }}>{formatInterval(nextTickIn)}</span></span>
                     )}
                   </div>
                 </div>
@@ -904,8 +937,7 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
         {/* ═══ BALANCE TAB ═══ MARKER_126.7 */}
         {activeTab === 'balance' && <BalancesPanel />}
 
-        {/* ═══ ACTIVITY TAB ═══ MARKER_127.2B */}
-        {activeTab === 'activity' && <ActivityLog />}
+        {/* MARKER_136.W1A: ACTIVITY tab removed (Wave 1 cleanup) */}
 
         {/* ═══ WATCHER TAB ═══ MARKER_129.1B */}
         {activeTab === 'watcher' && <WatcherStats />}

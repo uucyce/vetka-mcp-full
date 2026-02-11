@@ -1,9 +1,10 @@
 /**
  * MARKER_126.0D: Pipeline Statistics — monochrome bars, no chart library.
  * MARKER_126.12: Live refresh + running task progress + improved summary.
+ * MARKER_136.W1C: Enhanced stats — confidence, subtasks, model breakdown.
  * Nolan style: dark, serious, minimal color. Itten color only for accents.
  *
- * @phase 126.12
+ * @phase 136
  * @depends TaskData
  */
 
@@ -119,6 +120,17 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
     : 0;
   const successRate = totalRuns > 0 ? Math.round((totalSuccess / totalRuns) * 100) : 0;
 
+  // MARKER_136.W1C: Additional stats
+  const avgConfidence = presets.reduce((s, p) => s + p.avgConfidence * p.total, 0) / (totalRuns || 1);
+  let totalSubtasks = 0;
+  let completedSubtasks = 0;
+  for (const task of tasks) {
+    if (task.stats?.subtasks_total) {
+      totalSubtasks += task.stats.subtasks_total;
+      completedSubtasks += task.stats.subtasks_completed || 0;
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* MARKER_126.12B: Running Tasks Section */}
@@ -167,6 +179,7 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
         </div>
       ) : presets.length > 0 && (
         <>
+          {/* MARKER_136.W1C: Enhanced stats grid */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(4, 1fr)',
@@ -174,11 +187,27 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
           }}>
             <StatBox label="Total Runs" value={totalRuns} />
             <StatBox label="Success" value={`${successRate}%`} />
+            <StatBox label="Confidence" value={avgConfidence > 0 ? `${Math.round(avgConfidence)}%` : '-'} />
             <StatBox label="Avg Duration" value={avgDuration > 0 ? `${avgDuration}s` : '-'} />
-            <StatBox label="LLM Calls" value={totalLlmCalls} />
           </div>
 
-          {/* MARKER_126.12C: Token totals */}
+          {/* MARKER_136.W1C: Second row — subtasks + LLM */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 8,
+          }}>
+            <StatBox label="Subtasks" value={totalSubtasks > 0 ? `${completedSubtasks}/${totalSubtasks}` : '-'} />
+            <StatBox label="LLM Calls" value={totalLlmCalls} />
+            <StatBox
+              label="Tokens"
+              value={totalTokensIn + totalTokensOut > 1000
+                ? `${((totalTokensIn + totalTokensOut) / 1000).toFixed(1)}k`
+                : totalTokensIn + totalTokensOut}
+            />
+          </div>
+
+          {/* MARKER_136.W1C: Token breakdown row */}
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -188,11 +217,13 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
             fontSize: 10,
             fontFamily: 'monospace',
           }}>
-            <span style={{ color: '#666' }}>tokens</span>
+            <span style={{ color: '#666' }}>token breakdown</span>
             <span style={{ color: '#888' }}>
-              {totalTokensIn > 1000 ? `${(totalTokensIn / 1000).toFixed(1)}k` : totalTokensIn} in
-              {' / '}
-              {totalTokensOut > 1000 ? `${(totalTokensOut / 1000).toFixed(1)}k` : totalTokensOut} out
+              <span style={{ color: '#777' }}>in:</span> {totalTokensIn > 1000 ? `${(totalTokensIn / 1000).toFixed(1)}k` : totalTokensIn}
+              {' · '}
+              <span style={{ color: '#777' }}>out:</span> {totalTokensOut > 1000 ? `${(totalTokensOut / 1000).toFixed(1)}k` : totalTokensOut}
+              {' · '}
+              <span style={{ color: '#777' }}>ratio:</span> {totalTokensIn > 0 ? (totalTokensOut / totalTokensIn).toFixed(1) : '-'}x
             </span>
           </div>
         </>
@@ -259,7 +290,8 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
               <span style={{ color: '#ccc', fontFamily: 'monospace' }}>{p.preset}</span>
               <span style={{ color: '#888' }}>
                 {p.success}/{p.total} ok
-                {p.avgDuration > 0 && ` \u00B7 ${p.avgDuration}s`}
+                {p.avgConfidence > 0 && ` · ${p.avgConfidence}%`}
+                {p.avgDuration > 0 && ` · ${p.avgDuration}s`}
               </span>
             </div>
             {/* LLM calls bar */}

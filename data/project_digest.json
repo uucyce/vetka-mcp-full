@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-11T10:35:29.167454+00:00",
+  "last_updated": "2026-02-11T10:42:33.792617+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 135,
@@ -29,19 +29,19 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 5288,
+      "points": 5291,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 5273,
+      "points": 5276,
       "vectors": "none",
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "running",
+      "status": "error: HTTPConnectionPool(host='127.0.0.1', port=5001): R",
       "port": 5001,
-      "tools_count": 15
+      "tools_count": 0
     },
     "api_keys": {
       "total": 30,
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "33ac8e03",
+    "commit": "7ca9f3ca",
     "dirty": true
   }
 }
