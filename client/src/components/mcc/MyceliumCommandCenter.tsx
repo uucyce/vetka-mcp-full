@@ -23,6 +23,14 @@ interface MyceliumCommandCenterProps {
   standalone?: boolean;
 }
 
+interface StreamEvent {
+  id: string;
+  ts: number;
+  role: string;
+  message: string;
+  taskId?: string;
+}
+
 // Convert backend response to frontend types
 function mapBackendNode(node: any): DAGNode {
   return {
@@ -85,10 +93,24 @@ export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCen
     type: 'all',
   });
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  // MARKER_139.MCC_DAG_STREAM: Live pipeline output stream for DAG tab
+  const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
 
   // Track last update for debouncing
   const lastFetchRef = useRef<number>(0);
   const DEBOUNCE_MS = 500;
+  const MAX_STREAM_EVENTS = 30;
+
+  const pushStreamEvent = useCallback((event: Omit<StreamEvent, 'id' | 'ts'>) => {
+    const next: StreamEvent = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      ts: Date.now(),
+      role: event.role || 'pipeline',
+      message: event.message || '',
+      taskId: event.taskId,
+    };
+    setStreamEvents(prev => [next, ...prev].slice(0, MAX_STREAM_EVENTS));
+  }, []);
 
   // Fetch DAG data from API
   const fetchDAG = useCallback(async () => {
@@ -143,10 +165,11 @@ export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCen
     fetchDAG();
   }, [fetchDAG]);
 
-  // Listen for real-time updates (via existing Mycelium WS on port 8082)
+  // Listen for real-time updates from SocketIO/Mycelium bridge CustomEvents
   // MARKER_135.3A: task-board-updated triggers DAG refresh
+  // MARKER_139.MCC_DAG_STREAM: Stream output panel fed by pipeline events
   useEffect(() => {
-    const handleTaskBoardUpdate = () => {
+    const triggerFetch = () => {
       // Debounce rapid updates
       const now = Date.now();
       if (now - lastFetchRef.current < DEBOUNCE_MS) {
@@ -158,16 +181,51 @@ export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCen
       fetchDAG();
     };
 
-    // Listen for task board changes (dispatched by useMyceliumSocket)
-    window.addEventListener('task-board-updated', handleTaskBoardUpdate);
-    // Also listen for pipeline activity (more granular updates)
-    window.addEventListener('pipeline-activity', handleTaskBoardUpdate);
+    const handleTaskBoardUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const status = detail.status || detail.action || 'updated';
+      const taskId = detail.task_id || detail.taskId;
+      pushStreamEvent({
+        role: 'board',
+        message: taskId ? `${status} (${taskId})` : `${status}`,
+        taskId,
+      });
+      triggerFetch();
+    };
+
+    const handlePipelineActivity = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const role = detail.role || detail.agent || 'pipeline';
+      const message = detail.message || detail.event || detail.status || 'activity';
+      const taskId = detail.task_id || detail.taskId;
+      pushStreamEvent({ role: String(role), message: String(message), taskId });
+      triggerFetch();
+    };
+
+    const handlePipelineStats = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const running = detail.running ?? detail.running_tasks;
+      const done = detail.done ?? detail.completed_tasks;
+      if (running !== undefined || done !== undefined) {
+        pushStreamEvent({
+          role: 'stats',
+          message: `running=${running ?? 0} done=${done ?? 0}`,
+        });
+      }
+      triggerFetch();
+    };
+
+    // Listen for task board changes (SocketIO and Mycelium WS both dispatch these CustomEvents)
+    window.addEventListener('task-board-updated', handleTaskBoardUpdate as EventListener);
+    window.addEventListener('pipeline-activity', handlePipelineActivity as EventListener);
+    window.addEventListener('pipeline-stats', handlePipelineStats as EventListener);
 
     return () => {
-      window.removeEventListener('task-board-updated', handleTaskBoardUpdate);
-      window.removeEventListener('pipeline-activity', handleTaskBoardUpdate);
+      window.removeEventListener('task-board-updated', handleTaskBoardUpdate as EventListener);
+      window.removeEventListener('pipeline-activity', handlePipelineActivity as EventListener);
+      window.removeEventListener('pipeline-stats', handlePipelineStats as EventListener);
     };
-  }, [fetchDAG]);
+  }, [fetchDAG, pushStreamEvent]);
 
   // Get selected node data
   const selectedNodeData = selectedNode
@@ -282,6 +340,68 @@ export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCen
 
       {/* Filter bar */}
       <FilterBar filters={filters} onChange={setFilters} />
+
+      {/* MARKER_139.MCC_DAG_STREAM: Live pipeline output stream */}
+      <div
+        style={{
+          borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
+          background: '#0d0d0d',
+          padding: '6px 10px',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: 10,
+            marginBottom: 6,
+          }}
+        >
+          <span style={{ color: NOLAN_PALETTE.textDim, letterSpacing: 1, textTransform: 'uppercase' }}>
+            live stream
+          </span>
+          <span style={{ color: NOLAN_PALETTE.textDim }}>
+            {streamEvents.length > 0 ? `${streamEvents.length} events` : 'idle'}
+          </span>
+        </div>
+        <div
+          style={{
+            maxHeight: 72,
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 3,
+            fontSize: 10,
+            fontFamily: 'monospace',
+          }}
+        >
+          {streamEvents.length === 0 ? (
+            <span style={{ color: NOLAN_PALETTE.textDim }}>Waiting for pipeline events...</span>
+          ) : streamEvents.slice(0, 8).map((event) => (
+            <div key={event.id} style={{ display: 'flex', gap: 8 }}>
+              <span style={{ color: '#666', minWidth: 54 }}>
+                {new Date(event.ts).toLocaleTimeString()}
+              </span>
+              <span style={{ color: '#888', minWidth: 62, textTransform: 'uppercase' }}>
+                {event.role}
+              </span>
+              <span
+                style={{
+                  color: '#cfcfcf',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  flex: 1,
+                }}
+                title={event.message}
+              >
+                {event.message}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Main content */}
       <div

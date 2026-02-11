@@ -33,6 +33,15 @@ interface ArchitectMessage {
   subtasks?: string[];
 }
 
+interface ModelOption {
+  id: string;
+  name: string;
+  provider?: string;
+  source?: string;
+  source_display?: string;
+  type?: string;
+}
+
 interface ArchitectChatProps {
   onPlanCreated?: (plan: string) => void;
 }
@@ -42,12 +51,61 @@ export function ArchitectChat({ onPlanCreated }: ArchitectChatProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [model, setModel] = useState('kimi-k2.5');  // Default architect model
+  // MARKER_139.MCC_ARCHITECT_MODELS: Dynamic model inventory for Architect chat
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // MARKER_139.MCC_ARCHITECT_MODELS: Load actual models and prioritize Polza
+  useEffect(() => {
+    let mounted = true;
+    const loadModels = async () => {
+      setModelsLoading(true);
+      try {
+        const res = await fetch('/api/models/autodetect');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const all = (data.models || []) as ModelOption[];
+
+        const textModels = all.filter((m) => {
+          const type = (m.type || '').toLowerCase();
+          return type !== 'voice' && type !== 'stt' && type !== 'tts';
+        });
+
+        const polza = textModels.filter((m) =>
+          String(m.source || '').toLowerCase() === 'polza' ||
+          String(m.provider || '').toLowerCase() === 'polza' ||
+          String(m.source_display || '').toLowerCase() === 'polza'
+        );
+
+        const selected = polza.length > 0 ? polza : textModels;
+        const unique = selected.filter((m, i, arr) =>
+          !!m.id && arr.findIndex((x) => x.id === m.id) === i
+        );
+
+        if (!mounted) return;
+        setModelOptions(unique);
+
+        if (unique.length > 0 && !unique.some((m) => m.id === model)) {
+          setModel(unique[0].id);
+        }
+      } catch {
+        if (!mounted) return;
+        // keep fallback static model list below
+        setModelOptions([]);
+      } finally {
+        if (mounted) setModelsLoading(false);
+      }
+    };
+
+    loadModels();
+    return () => { mounted = false; };
+  }, []);
 
   // MARKER_137.ARCHITECT_FIX: Improved error handling + timeout
   const handleSend = useCallback(async () => {
@@ -199,6 +257,11 @@ Output format:
         }}>
           architect planning
         </div>
+        {loading && (
+          <span style={{ fontSize: 9, color: COLORS.textMuted, marginRight: 6 }}>
+            thinking...
+          </span>
+        )}
         <select
           value={model}
           onChange={(e) => setModel(e.target.value)}
@@ -212,10 +275,20 @@ Output format:
             fontFamily: 'monospace',
           }}
         >
-          <option value="kimi-k2.5">Kimi K2.5</option>
-          <option value="gpt-4o">GPT-4o</option>
-          <option value="claude-3-5-sonnet-20241022">Sonnet</option>
-          <option value="qwen3-235b">Qwen 235B</option>
+          {modelsLoading && <option value={model}>loading models...</option>}
+          {!modelsLoading && modelOptions.length > 0 && modelOptions.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name || m.id} {(m.source_display || m.provider) ? `(${m.source_display || m.provider})` : ''}
+            </option>
+          ))}
+          {!modelsLoading && modelOptions.length === 0 && (
+            <>
+              <option value="kimi-k2.5">Kimi K2.5</option>
+              <option value="gpt-4o">GPT-4o</option>
+              <option value="claude-3-5-sonnet-20241022">Sonnet</option>
+              <option value="qwen3-235b">Qwen 235B</option>
+            </>
+          )}
         </select>
       </div>
 
@@ -237,6 +310,19 @@ Output format:
             fontSize: 10,
           }}>
             describe a task for the architect to plan
+          </div>
+        )}
+
+        {loading && (
+          <div style={{
+            color: COLORS.textMuted,
+            fontSize: 10,
+            padding: '4px 8px',
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 3,
+            background: 'rgba(255,255,255,0.02)',
+          }}>
+            model {model} is generating plan...
           </div>
         )}
 

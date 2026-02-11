@@ -41,8 +41,33 @@ interface ApprovalRequest {
   created_at: string;
 }
 
+interface PanelArtifact {
+  id: string;
+  name: string;
+  status: string;
+  artifact_type: string;
+  language: string;
+  file_path: string;
+  size_bytes: number;
+  modified_at?: number;
+}
+
+interface FeedbackReportSummary {
+  run_id: string;
+  task: string;
+  quality_score?: number;
+  issues_count?: number;
+  improvements_count?: number;
+  preset?: string;
+  status?: string;
+  duration_s?: number;
+  saved_at?: string;
+}
+
 const API_BASE = 'http://localhost:5001/api/approvals';
 const DEBUG_API = 'http://localhost:5001/api/debug';  // MARKER_136.W2A
+const ARTIFACTS_API = 'http://localhost:5001/api/artifacts';
+const FEEDBACK_API = 'http://localhost:5001/api/feedback';
 
 // Nolan palette
 const COLORS = {
@@ -70,6 +95,12 @@ export function ArtifactViewer() {
   const [diskArtifacts, setDiskArtifacts] = useState<DiskArtifact[]>([]);
   const [expandedDiskArtifact, setExpandedDiskArtifact] = useState<string | null>(null);
   const [diskArtifactContent, setDiskArtifactContent] = useState<Record<string, string>>({});
+  // MARKER_139.MCC_ARTIFACTS_REAL_DATA: Real artifact sources for vetka_out + feedback reports
+  const [panelArtifacts, setPanelArtifacts] = useState<PanelArtifact[]>([]);
+  const [expandedPanelArtifact, setExpandedPanelArtifact] = useState<string | null>(null);
+  const [feedbackReports, setFeedbackReports] = useState<FeedbackReportSummary[]>([]);
+  const [expandedReport, setExpandedReport] = useState<string | null>(null);
+  const [reportContent, setReportContent] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
 
   const fetchPending = useCallback(async () => {
@@ -103,6 +134,32 @@ export function ArtifactViewer() {
     }
   }, []);
 
+  const fetchPanelArtifacts = useCallback(async () => {
+    try {
+      const res = await fetch(ARTIFACTS_API);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.success) {
+        setPanelArtifacts(data.artifacts || []);
+      }
+    } catch (err) {
+      console.error('[ArtifactViewer] Failed to fetch /api/artifacts:', err);
+    }
+  }, []);
+
+  const fetchFeedbackReports = useCallback(async () => {
+    try {
+      const res = await fetch(`${FEEDBACK_API}/reports?limit=20`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.success) {
+        setFeedbackReports(data.reports || []);
+      }
+    } catch (err) {
+      console.error('[ArtifactViewer] Failed to fetch feedback reports:', err);
+    }
+  }, []);
+
   // MARKER_136.W2A: Load artifact content on demand
   const loadDiskArtifactContent = useCallback(async (filename: string) => {
     if (diskArtifactContent[filename]) return;
@@ -118,15 +175,36 @@ export function ArtifactViewer() {
     }
   }, [diskArtifactContent]);
 
+  const loadFeedbackReportContent = useCallback(async (runId: string) => {
+    if (reportContent[runId]) return;
+    try {
+      const res = await fetch(`${FEEDBACK_API}/reports/${encodeURIComponent(runId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success && data.report) {
+        setReportContent(prev => ({
+          ...prev,
+          [runId]: JSON.stringify(data.report, null, 2),
+        }));
+      }
+    } catch (err) {
+      console.error('[ArtifactViewer] Failed to load report content:', err);
+    }
+  }, [reportContent]);
+
   useEffect(() => {
     fetchPending();
     fetchDiskArtifacts();
+    fetchPanelArtifacts();
+    fetchFeedbackReports();
     const interval = setInterval(() => {
       fetchPending();
       fetchDiskArtifacts();
+      fetchPanelArtifacts();
+      fetchFeedbackReports();
     }, 10000);
     return () => clearInterval(interval);
-  }, [fetchPending, fetchDiskArtifacts]);
+  }, [fetchPending, fetchDiskArtifacts, fetchPanelArtifacts, fetchFeedbackReports]);
 
   const handleApprove = useCallback(async (requestId: string) => {
     setActionPending(requestId);
@@ -178,6 +256,8 @@ export function ArtifactViewer() {
     if (score >= 0.6) return '#aa8';
     return COLORS.errorText;
   };
+
+  const completedCount = diskArtifacts.length + panelArtifacts.length + feedbackReports.length;
 
   return (
     <div style={{
@@ -232,10 +312,10 @@ export function ArtifactViewer() {
             cursor: 'pointer',
           }}
         >
-          completed ({diskArtifacts.length})
+          completed ({completedCount})
         </button>
         <button
-          onClick={() => { fetchPending(); fetchDiskArtifacts(); }}
+          onClick={() => { fetchPending(); fetchDiskArtifacts(); fetchPanelArtifacts(); fetchFeedbackReports(); }}
           disabled={loading}
           style={{
             padding: '4px 8px',
@@ -470,115 +550,239 @@ export function ArtifactViewer() {
         {/* MARKER_136.W2A: Completed tab content — disk artifacts */}
         {activeTab === 'completed' && (
           <>
-            {diskArtifacts.length === 0 && (
+            {completedCount === 0 && (
               <div style={{ textAlign: 'center', color: COLORS.textDim, padding: 32, fontSize: 10 }}>
                 no completed artifacts<br />
                 <span style={{ fontSize: 9, color: COLORS.textDim }}>pipeline outputs appear here</span>
               </div>
             )}
 
-            {diskArtifacts.map((artifact) => {
-              const isExpanded = expandedDiskArtifact === artifact.filename;
-              const content = diskArtifactContent[artifact.filename];
-
-              return (
-                <div key={artifact.filename} style={{
-                  marginBottom: 8,
-                  background: 'rgba(255,255,255,0.02)',
-                  borderRadius: 4,
-                  border: `1px solid ${COLORS.border}`,
-                  overflow: 'hidden',
-                }}>
-                  {/* Artifact header */}
-                  <div
-                    onClick={() => {
-                      if (!isExpanded) {
-                        loadDiskArtifactContent(artifact.filename);
-                      }
-                      setExpandedDiskArtifact(isExpanded ? null : artifact.filename);
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '8px 10px',
-                      cursor: 'pointer',
-                      borderBottom: isExpanded ? `1px solid ${COLORS.border}` : 'none',
-                    }}
-                  >
-                    <span style={{ color: '#555', fontSize: 10 }}>
-                      {isExpanded ? '▼' : '▸'}
-                    </span>
-                    <span style={{ color: COLORS.text, fontSize: 10, flex: 1 }}>
-                      {artifact.filename}
-                    </span>
-                    <span style={{
-                      fontSize: 8,
-                      color: COLORS.textDim,
-                      background: 'rgba(255,255,255,0.04)',
-                      padding: '1px 4px',
-                      borderRadius: 2,
+            {panelArtifacts.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 9, color: COLORS.textDim, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>
+                  scanned outputs (/api/artifacts)
+                </div>
+                {panelArtifacts.map((artifact) => {
+                  const isExpanded = expandedPanelArtifact === artifact.id;
+                  return (
+                    <div key={artifact.id} style={{
+                      marginBottom: 6,
+                      background: 'rgba(255,255,255,0.02)',
+                      borderRadius: 4,
+                      border: `1px solid ${COLORS.border}`,
+                      overflow: 'hidden',
                     }}>
-                      {artifact.extension}
-                    </span>
-                    <span style={{ fontSize: 8, color: COLORS.textDim }}>
-                      {artifact.size > 1024 ? `${(artifact.size / 1024).toFixed(1)}kb` : `${artifact.size}b`}
-                    </span>
-                  </div>
-
-                  {/* Expanded content */}
-                  {isExpanded && (
-                    <div style={{ padding: 8 }}>
-                      {content ? (
-                        <>
-                          <pre style={{
-                            background: '#181818',
-                            color: '#d0d0d0',
-                            padding: '8px 10px',
-                            borderRadius: 3,
-                            fontSize: 10,
-                            fontFamily: 'monospace',
-                            overflow: 'auto',
-                            maxHeight: 200,
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word',
-                            margin: 0,
-                            border: '1px solid #222',
-                          }}>
-                            {content.slice(0, 3000)}
-                            {content.length > 3000 && '\n... (truncated)'}
-                          </pre>
-                          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                            <button
-                              onClick={() => navigator.clipboard.writeText(content)}
-                              style={{
-                                background: '#333',
-                                color: COLORS.textMuted,
-                                border: '1px solid #444',
-                                borderRadius: 2,
-                                fontSize: 9,
-                                padding: '2px 8px',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              copy
-                            </button>
-                            <span style={{ flex: 1 }} />
-                            <span style={{ fontSize: 8, color: COLORS.textDim }}>
-                              {new Date(artifact.modified).toLocaleString()}
-                            </span>
-                          </div>
-                        </>
-                      ) : (
-                        <div style={{ color: COLORS.textDim, fontSize: 10, textAlign: 'center', padding: 10 }}>
-                          loading...
+                      <div
+                        onClick={() => setExpandedPanelArtifact(isExpanded ? null : artifact.id)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '8px 10px',
+                          cursor: 'pointer',
+                          borderBottom: isExpanded ? `1px solid ${COLORS.border}` : 'none',
+                        }}
+                      >
+                        <span style={{ color: '#555', fontSize: 10 }}>{isExpanded ? '▼' : '▸'}</span>
+                        <span style={{ color: COLORS.text, fontSize: 10, flex: 1 }}>{artifact.name}</span>
+                        <span style={{ fontSize: 8, color: COLORS.textDim }}>{artifact.status}</span>
+                        <span style={{ fontSize: 8, color: COLORS.textDim }}>
+                          {artifact.size_bytes > 1024 ? `${(artifact.size_bytes / 1024).toFixed(1)}kb` : `${artifact.size_bytes}b`}
+                        </span>
+                      </div>
+                      {isExpanded && (
+                        <div style={{ padding: 8, fontSize: 9, color: COLORS.textMuted, lineHeight: 1.5 }}>
+                          <div><strong>path:</strong> {artifact.file_path || '-'}</div>
+                          <div><strong>type:</strong> {artifact.artifact_type || '-'}</div>
+                          <div><strong>language:</strong> {artifact.language || '-'}</div>
                         </div>
                       )}
                     </div>
-                  )}
+                  );
+                })}
+              </div>
+            )}
+
+            {feedbackReports.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 9, color: COLORS.textDim, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>
+                  feedback reports (data/feedback/reports)
                 </div>
-              );
-            })}
+                {feedbackReports.map((report) => {
+                  const isExpanded = expandedReport === report.run_id;
+                  const content = reportContent[report.run_id];
+                  return (
+                    <div key={report.run_id} style={{
+                      marginBottom: 6,
+                      background: 'rgba(255,255,255,0.02)',
+                      borderRadius: 4,
+                      border: `1px solid ${COLORS.border}`,
+                      overflow: 'hidden',
+                    }}>
+                      <div
+                        onClick={() => {
+                          if (!isExpanded) loadFeedbackReportContent(report.run_id);
+                          setExpandedReport(isExpanded ? null : report.run_id);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '8px 10px',
+                          cursor: 'pointer',
+                          borderBottom: isExpanded ? `1px solid ${COLORS.border}` : 'none',
+                        }}
+                      >
+                        <span style={{ color: '#555', fontSize: 10 }}>{isExpanded ? '▼' : '▸'}</span>
+                        <span style={{ color: COLORS.text, fontSize: 10, flex: 1 }}>{report.run_id}</span>
+                        <span style={{ fontSize: 8, color: COLORS.textDim }}>{report.status || '-'}</span>
+                        <span style={{ fontSize: 8, color: getScoreColor(report.quality_score || 0) }}>
+                          {report.quality_score !== undefined ? `${Math.round((report.quality_score || 0) * 100)}%` : '-'}
+                        </span>
+                      </div>
+                      {isExpanded && (
+                        <div style={{ padding: 8 }}>
+                          <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 6 }}>
+                            {report.task || 'No task title'}
+                          </div>
+                          {content ? (
+                            <pre style={{
+                              background: '#181818',
+                              color: '#d0d0d0',
+                              padding: '8px 10px',
+                              borderRadius: 3,
+                              fontSize: 10,
+                              fontFamily: 'monospace',
+                              overflow: 'auto',
+                              maxHeight: 220,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              margin: 0,
+                              border: '1px solid #222',
+                            }}>
+                              {content.slice(0, 3500)}
+                              {content.length > 3500 && '\n... (truncated)'}
+                            </pre>
+                          ) : (
+                            <div style={{ color: COLORS.textDim, fontSize: 10 }}>loading...</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {diskArtifacts.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 9, color: COLORS.textDim, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 }}>
+                  disk artifacts (data/artifacts)
+                </div>
+                {diskArtifacts.map((artifact) => {
+                  const isExpanded = expandedDiskArtifact === artifact.filename;
+                  const content = diskArtifactContent[artifact.filename];
+
+                  return (
+                    <div key={artifact.filename} style={{
+                      marginBottom: 8,
+                      background: 'rgba(255,255,255,0.02)',
+                      borderRadius: 4,
+                      border: `1px solid ${COLORS.border}`,
+                      overflow: 'hidden',
+                    }}>
+                      {/* Artifact header */}
+                      <div
+                        onClick={() => {
+                          if (!isExpanded) {
+                            loadDiskArtifactContent(artifact.filename);
+                          }
+                          setExpandedDiskArtifact(isExpanded ? null : artifact.filename);
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '8px 10px',
+                          cursor: 'pointer',
+                          borderBottom: isExpanded ? `1px solid ${COLORS.border}` : 'none',
+                        }}
+                      >
+                        <span style={{ color: '#555', fontSize: 10 }}>
+                          {isExpanded ? '▼' : '▸'}
+                        </span>
+                        <span style={{ color: COLORS.text, fontSize: 10, flex: 1 }}>
+                          {artifact.filename}
+                        </span>
+                        <span style={{
+                          fontSize: 8,
+                          color: COLORS.textDim,
+                          background: 'rgba(255,255,255,0.04)',
+                          padding: '1px 4px',
+                          borderRadius: 2,
+                        }}>
+                          {artifact.extension}
+                        </span>
+                        <span style={{ fontSize: 8, color: COLORS.textDim }}>
+                          {artifact.size > 1024 ? `${(artifact.size / 1024).toFixed(1)}kb` : `${artifact.size}b`}
+                        </span>
+                      </div>
+
+                      {/* Expanded content */}
+                      {isExpanded && (
+                        <div style={{ padding: 8 }}>
+                          {content ? (
+                            <>
+                              <pre style={{
+                                background: '#181818',
+                                color: '#d0d0d0',
+                                padding: '8px 10px',
+                                borderRadius: 3,
+                                fontSize: 10,
+                                fontFamily: 'monospace',
+                                overflow: 'auto',
+                                maxHeight: 200,
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                                margin: 0,
+                                border: '1px solid #222',
+                              }}>
+                                {content.slice(0, 3000)}
+                                {content.length > 3000 && '\n... (truncated)'}
+                              </pre>
+                              <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                                <button
+                                  onClick={() => navigator.clipboard.writeText(content)}
+                                  style={{
+                                    background: '#333',
+                                    color: COLORS.textMuted,
+                                    border: '1px solid #444',
+                                    borderRadius: 2,
+                                    fontSize: 9,
+                                    padding: '2px 8px',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  copy
+                                </button>
+                                <span style={{ flex: 1 }} />
+                                <span style={{ fontSize: 8, color: COLORS.textDim }}>
+                                  {new Date(artifact.modified).toLocaleString()}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ color: COLORS.textDim, fontSize: 10, textAlign: 'center', padding: 10 }}>
+                              loading...
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </div>

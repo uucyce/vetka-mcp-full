@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-11T14:32:38.743574+00:00",
+  "last_updated": "2026-02-11T14:56:04.892063+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 135,
@@ -12,6 +12,7 @@
   "summary": {
     "headline": "Phase 135 active \u2014 dragon_dragon_silver: S2.3 Jarvis Voice Pipeline: streaming TTS with fil",
     "key_achievements": [
+      "[97c0f71c] Phase 137: Phase 137: MCC Final Fixes\n\nMARKER_137.ARCHITECT_F...",
       "[dragon_dragon_silver] S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction\n\nB",
       "[opus] S1.1 Event-driven dispatch: notify endpoint auto-dispatches on task added, PATCH",
       "[f6f6085c] Phase 136: Phase 136.W3: Wave 3 Features - Folder Modes, Chat...",
@@ -20,8 +21,7 @@
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
       "[dragon_dragon_bronze] Create file src/utils/math_helpers.py with function add(a: int, b: int) -> int t",
-      "[dragon_dragon_bronze] Create file src/utils/math_helpers.py with function add(a: int, b: int) -> int t",
-      "[dragon_dragon_bronze] fix task"
+      "[dragon_dragon_bronze] Create file src/utils/math_helpers.py with function add(a: int, b: int) -> int t"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -29,12 +29,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 5327,
+      "points": 5335,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 5305,
+      "points": 5312,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "98a1fac8",
+    "commit": "97c0f71c",
     "dirty": true
   }
 }
