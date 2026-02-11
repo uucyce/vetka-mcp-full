@@ -425,7 +425,8 @@ async def _handle_pipeline(arguments: Dict[str, Any]) -> str:
                 await ws_broadcaster.broadcast_pipeline_activity(
                     role="system",
                     message=f"Pipeline started: {task[:80]}",
-                    extra={"task_id": task_id, "preset": preset, "phase_type": phase_type}
+                    task_id=task_id,
+                    preset=preset,
                 )
 
             result = await pipeline.execute(task, phase_type=phase_type)
