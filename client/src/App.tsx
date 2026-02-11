@@ -211,7 +211,12 @@ export default function App() {
 
   // Phase 68.2: Artifact content for search preview
   const [artifactFile, setArtifactFile] = useState<{ path: string; name: string; extension?: string } | null>(null);
-  const [artifactContent, setArtifactContent] = useState<{ content: string; title: string; type?: 'text' | 'markdown' | 'code' } | null>(null);
+  const [artifactContent, setArtifactContent] = useState<{
+    content: string;
+    title: string;
+    type?: 'text' | 'markdown' | 'code' | 'web';
+    sourceUrl?: string;
+  } | null>(null);
 
   const nodes = useStore((state) => Object.values(state.nodes));
   const selectedId = useStore((state) => state.selectedId);
@@ -579,7 +584,7 @@ export default function App() {
             <UnifiedSearchBar
               onSelectResult={handleSearchSelect}
               onPinResult={handleSearchPin}
-              onOpenArtifact={(result) => {
+              onOpenArtifact={async (result) => {
                 // MARKER_139.S1_2_UNIFIED_ARTIFACT_FIX: Web/file unified results need different artifact open handling
                 const source = String((result as any).source || '');
                 const isWeb = source === 'web' || /^https?:\/\//i.test(result.path);
@@ -587,14 +592,47 @@ export default function App() {
                 if (isWeb) {
                   const title = result.name || 'Web result';
                   const url = result.path || '';
-                  const snippet = result.preview || '';
                   setArtifactFile(null);
                   setArtifactContent({
                     title,
                     type: 'markdown',
-                    content: `# ${title}\n\n${url ? `Source: ${url}\n\n` : ''}${snippet || 'No preview available.'}`,
+                    content: `# ${title}\n\n${url ? `Source: ${url}\n\n` : ''}Loading web preview...`,
                   });
                   setIsArtifactOpen(true);
+
+                  // MARKER_139.S1_3_WEB_RENDER: Fetch sanitized full-page preview HTML
+                  try {
+                    const resp = await fetch('/api/search/web-preview', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ url, timeout_s: 10 }),
+                    });
+                    const data = await resp.json();
+                    if (resp.ok && data?.success && data?.html) {
+                      setArtifactContent({
+                        title: data.title || title,
+                        type: 'web',
+                        content: data.html,
+                        sourceUrl: data.url || url,
+                      });
+                    } else {
+                      const snippet = result.preview || '';
+                      setArtifactContent({
+                        title,
+                        type: 'markdown',
+                        content: `# ${title}\n\n${url ? `Source: ${url}\n\n` : ''}${snippet || 'No preview available.'}\n\nPreview error: ${data?.error || 'unknown error'}`,
+                        sourceUrl: url,
+                      });
+                    }
+                  } catch (e) {
+                    const snippet = result.preview || '';
+                    setArtifactContent({
+                      title,
+                      type: 'markdown',
+                      content: `# ${title}\n\n${url ? `Source: ${url}\n\n` : ''}${snippet || 'No preview available.'}\n\nPreview error: ${String(e)}`,
+                      sourceUrl: url,
+                    });
+                  }
                   return;
                 }
 

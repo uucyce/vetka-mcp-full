@@ -24,7 +24,8 @@ interface FileInfo {
 interface RawContent {
   content: string;
   title: string;
-  type?: 'text' | 'markdown' | 'code';
+  type?: 'text' | 'markdown' | 'code' | 'web';
+  sourceUrl?: string;
 }
 
 // MARKER_104_VISUAL - Approval levels for artifact editing

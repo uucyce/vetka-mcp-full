@@ -53,7 +53,8 @@ interface FileData {
 interface RawContent {
   content: string;
   title: string;
-  type?: 'text' | 'markdown' | 'code';
+  type?: 'text' | 'markdown' | 'code' | 'web';
+  sourceUrl?: string;
 }
 
 // MARKER_104_VISUAL - Approval levels for artifact editing
@@ -363,6 +364,52 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
 
     // View mode
     switch (rawContent.type) {
+      case 'web':
+        return (
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#0a0a0a' }}>
+            <div style={{
+              padding: '8px 12px',
+              borderBottom: '1px solid #222',
+              fontSize: 11,
+              color: '#999',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              <span style={{ color: '#666', textTransform: 'uppercase', letterSpacing: 1 }}>web preview</span>
+              {rawContent.sourceUrl && (
+                <a
+                  href={rawContent.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: '#8ab4f8', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  title={rawContent.sourceUrl}
+                >
+                  {rawContent.sourceUrl}
+                </a>
+              )}
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              {contentToShow ? (
+                <iframe
+                  title={rawContent.title || 'Web preview'}
+                  srcDoc={contentToShow}
+                  sandbox="allow-popups allow-popups-to-escape-sandbox"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    border: 'none',
+                    background: '#fff',
+                  }}
+                />
+              ) : (
+                <div style={{ padding: 16, color: '#777', fontSize: 12 }}>
+                  Web preview is empty.
+                </div>
+              )}
+            </div>
+          </div>
+        );
       case 'markdown':
         return <MarkdownViewer content={contentToShow} />;
       case 'code':
@@ -556,13 +603,13 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
           <Toolbar
             filename={rawContent.title}
             fileSize={isEditing ? editableContent.length : rawContent.content.length}
-            isEditing={isEditing}
+            isEditing={isEditing && rawContent.type !== 'web'}
             hasChanges={rawHasChanges}
             isSaving={false}
             canUndo={canUndo}
-            onEdit={() => setIsEditing(!isEditing)}
-            onUndo={handleUndo}
-            onSave={handleSaveRaw}
+            onEdit={rawContent.type === 'web' ? undefined : () => setIsEditing(!isEditing)}
+            onUndo={rawContent.type === 'web' ? undefined : handleUndo}
+            onSave={rawContent.type === 'web' ? undefined : handleSaveRaw}
             onSaveAs={handleSaveAs}
             onCopy={handleCopyRaw}
             onDownload={() => {
