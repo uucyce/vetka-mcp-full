@@ -262,6 +262,8 @@ class TaskBoard:
             "pipeline_task_id": None,
             "result_summary": None,
             "stats": None,
+            # MARKER_135.DAG_BRIDGE: Result data for DAG visualization
+            "result": None,  # {agents: {...}, subtasks: [...]} for DAGAggregator
             # MARKER_130.C16A: Multi-agent coordination fields
             "assigned_to": assigned_to,       # Agent name: "opus", "cursor", "dragon", "grok"
             "assigned_at": None,              # ISO timestamp when claimed

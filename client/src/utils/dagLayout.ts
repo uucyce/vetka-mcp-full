@@ -19,48 +19,48 @@ const NODE_DIMENSIONS: Record<DAGNodeType, { width: number; height: number }> = 
   proposal: { width: 140, height: 55 },
 };
 
-// MARKER_135.4A: Strict Nolan monochrome palette (from BalancesPanel)
-// NO bright colors allowed — only these muted tones
+// MARKER_135.5A: Pure VETKA grayscale — like 3D tree on the right
+// NO COLORS AT ALL — only black, white, gray
 export const NOLAN_PALETTE = {
-  // Backgrounds
-  bg: '#111',           // Main background
-  bgLight: '#1a1a1a',   // Cards, hover states
-  bgDim: '#0d0d0d',     // Darker areas, panels
+  // Backgrounds — pure black
+  bg: '#000',           // Main background — pure black
+  bgLight: '#0a0a0a',   // Cards — almost black
+  bgDim: '#050505',     // Panels — darker
 
-  // Borders
-  border: '#222',       // Default border
-  borderDim: '#222',    // Alias for consistency
-  borderLight: '#333',  // Accent/active border
+  // Borders — gray lines
+  border: '#333',       // Default border
+  borderDim: '#222',    // Dim border
+  borderLight: '#555',  // Active/hover border
 
-  // Text hierarchy
-  text: '#e0e0e0',      // Primary text
+  // Text hierarchy — white to gray
+  text: '#fff',         // Primary text — white
   textMuted: '#888',    // Secondary text
   textNormal: '#888',   // Alias
-  textDim: '#666',      // Tertiary text
-  textDimmer: '#444',   // Disabled/placeholder
-  textAccent: '#e0e0e0', // Alias for headers
+  textDim: '#555',      // Tertiary text
+  textDimmer: '#333',   // Disabled/placeholder
+  textAccent: '#fff',   // Headers — white
 
-  // Status (MUTED — no saturated colors!)
-  statusPending: '#444',
-  statusRunning: '#6a6a8a',   // Muted blue-gray
-  statusDone: '#6a8a6a',      // Muted green
-  statusFailed: '#8a6a6a',    // Muted red
+  // Status — PURE GRAYSCALE (no colors!)
+  statusPending: '#333',      // Dark gray
+  statusRunning: '#fff',      // White — active
+  statusDone: '#888',         // Medium gray — completed
+  statusFailed: '#555',       // Dim gray — failed
 
-  // Status backgrounds (for subtle highlights)
-  statusPendingBg: '#1a1a1a',
-  statusRunningBg: '#1a1a2a',
-  statusDoneBg: '#1a2a1a',
-  statusFailedBg: '#2a1a1a',
+  // Status backgrounds — subtle grays
+  statusPendingBg: '#0a0a0a',
+  statusRunningBg: '#111',
+  statusDoneBg: '#0a0a0a',
+  statusFailedBg: '#0a0a0a',
 
-  // Confidence (for proposals)
-  confHigh: '#6a8a6a',
-  confMid: '#7a7a6a',
-  confLow: '#8a6a6a',
+  // Confidence — grayscale
+  confHigh: '#fff',
+  confMid: '#888',
+  confLow: '#555',
 
-  // Edges (subtle, not prominent)
-  edgeStructural: '#333',
-  edgeDataflow: '#3a3a4a',
-  edgeTemporal: '#4a3a3a',
+  // Edges — gray lines like VETKA tree branches
+  edgeStructural: '#444',
+  edgeDataflow: '#555',
+  edgeTemporal: '#333',
 };
 
 /**

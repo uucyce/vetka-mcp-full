@@ -1205,14 +1205,18 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         summarized["_stream_mode"] = "summary"
         return summarized
 
-    async def _emit_to_chat(self, event_type: str, data: Dict[str, Any]):
+    async def _emit_to_chat(self, event_type: str, data):
         """
         Async emit event to chat.
         MARKER_117.8B: SocketIO direct for solo, HTTP async for groups.
+        MARKER_135.FIX_EMIT: Accept both dict and str data safely.
         """
         try:
             # Format stream event as a readable message
-            summary = data.get("result", data.get("marker", str(data)))
+            if isinstance(data, str):
+                summary = data
+            else:
+                summary = data.get("result", data.get("marker", str(data)))
             if isinstance(summary, str) and len(summary) > 300:
                 summary = summary[:300] + "..."
             content = f"[{event_type}] {summary}"
@@ -1335,6 +1339,66 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         tasks = self._load_tasks()
         tasks[task.task_id] = asdict(task)
         self._save_tasks(tasks)
+
+    # MARKER_135.DAG_BRIDGE: Build structured result for DAG visualization
+    def _build_dag_result(self, pipeline_task: PipelineTask, stats: dict) -> dict:
+        """Build structured result for DAG visualization.
+
+        Creates agents/subtasks structure that DAGAggregator expects
+        for generating nodes in the DAG view.
+
+        Returns:
+            {
+                "agents": {
+                    "scout": {"status": "done", "model": "..."},
+                    "architect": {"status": "done", "model": "..."},
+                    ...
+                },
+                "subtasks": [
+                    {"description": "...", "status": "done", "tokens_used": null}
+                ]
+            }
+        """
+        # Agent data from preset models
+        agents = {}
+        agent_roles = ["scout", "architect", "researcher", "coder", "verifier"]
+        pipeline_success = stats.get("success", False)
+
+        for role in agent_roles:
+            model = self.prompts.get(role, {}).get("model", "")
+            agents[role] = {
+                "status": "done" if pipeline_success else "failed",
+                "model": model,
+            }
+
+        # Add verifier average confidence
+        verifier_confidences = [
+            s.verifier_feedback.get("confidence", 0)
+            for s in pipeline_task.subtasks
+            if isinstance(getattr(s, "verifier_feedback", None), dict)
+        ]
+        if verifier_confidences:
+            agents["verifier"]["confidence"] = round(
+                sum(verifier_confidences) / len(verifier_confidences), 2
+            )
+
+        # Subtask data
+        subtasks = []
+        for s in pipeline_task.subtasks:
+            subtask_data = {
+                "description": s.description[:100] if s.description else "Subtask",
+                "status": s.status,
+                "tokens_used": None,  # Not tracked per-subtask currently
+            }
+            # Include verifier feedback if present
+            if isinstance(getattr(s, "verifier_feedback", None), dict):
+                subtask_data["confidence"] = s.verifier_feedback.get("confidence")
+            subtasks.append(subtask_data)
+
+        return {
+            "agents": agents,
+            "subtasks": subtasks,
+        }
 
     # MARKER_102.20_START: Public status method
     def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
@@ -1705,7 +1769,19 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     continue  # Skip this file, don't overwrite
 
                 # MARKER_130.C19D: Extra safety — only overwrite files in safe directories
-                safe_dirs = ('src/vetka_out', 'data/vetka_staging', 'data/artifacts')
+                # MARKER_135.SAFE_DIRS: Expanded to allow pipeline writes to src/ and tests/
+                safe_dirs = ('src/', 'data/', 'tests/')
+                # Never overwrite critical infrastructure files
+                _forbidden = ('agent_pipeline.py', 'mycelium_mcp_server.py', 'vetka_mcp_bridge.py',
+                              '__init__.py', 'main.py', 'app.py')
+                if path_obj.name in _forbidden:
+                    logger.error(f"[Pipeline] BLOCKED critical file: {filepath}")
+                    staging_dir = Path("data/vetka_staging/blocked")
+                    staging_dir.mkdir(parents=True, exist_ok=True)
+                    staging_path = staging_dir / f"{path_obj.stem}_BLOCKED{path_obj.suffix}"
+                    staging_path.write_text(code, encoding='utf-8')
+                    logger.warning(f"[Pipeline] Blocked code saved to: {staging_path}")
+                    continue
                 if path_obj.exists() and not any(str(filepath).startswith(d) for d in safe_dirs):
                     logger.error(f"[Pipeline] BLOCKED: Cannot overwrite existing file {filepath}")
                     staging_dir = Path("data/vetka_staging/blocked")
@@ -1760,7 +1836,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 return
 
             # Safety: existing files outside safe dirs go to staging
-            safe_dirs = ('src/vetka_out', 'data/vetka_staging', 'data/artifacts')
+            # MARKER_135.SAFE_DIRS: Expanded (same as _spawn_pipeline_files)
+            safe_dirs = ('src/', 'data/', 'tests/')
             if path_obj.exists() and not any(str(filepath).startswith(d) for d in safe_dirs):
                 staging_dir = Path("data/vetka_staging/would_overwrite")
                 staging_dir.mkdir(parents=True, exist_ok=True)
@@ -1854,12 +1931,25 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_122.1_END
 
             # Phase 1: Architect breaks down task (with recon context)
+            # MARKER_135.FB_LOOP_A: Inject feedback from past runs into Architect
+            feedback_context = None
+            try:
+                from src.services.feedback_service import get_feedback_for_architect
+                feedback_context = get_feedback_for_architect(max_reports=5)
+                if feedback_context:
+                    await self._emit_progress("@architect", f"📊 Loaded feedback from past runs")
+                    logger.info(f"[Pipeline] Feedback injected into architect ({len(feedback_context)} chars)")
+            except Exception as fb_err:
+                logger.debug(f"[Pipeline] Feedback load skipped: {fb_err}")
+            # MARKER_135.FB_LOOP_A_END
+
             # MARKER_117.6C: Model attribution in progress messages
             architect_model = self.prompts.get("architect", {}).get("model", "")
             await self._emit_progress("@architect", "📋 Breaking down task into subtasks...", model=architect_model)
             # MARKER_133.C33B: Architect phase with timeout — CRITICAL (abort on timeout)
             plan = await self._safe_phase("architect", self._architect_plan(task, phase_type, scout_context=scout_context,
-                                               research_context=initial_research))
+                                               research_context=initial_research,
+                                               feedback_context=feedback_context))
             # MARKER_133.C33B: If architect timed out, abort pipeline
             if plan is None:
                 logger.error("[Pipeline] Architect phase timed out — cannot continue without plan")
@@ -2041,6 +2131,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     from src.orchestration.task_board import get_task_board
                     board = get_task_board()
                     board.record_pipeline_stats(self._board_task_id, pipeline_stats)
+                    # MARKER_135.DAG_BRIDGE: Save structured result for DAG visualization
+                    dag_result = self._build_dag_result(pipeline_task, pipeline_stats)
+                    board.update_task(self._board_task_id, result=dag_result)
+                    logger.info(f"[Pipeline DAG] Result saved for {self._board_task_id}: {len(dag_result.get('agents', {}))} agents, {len(dag_result.get('subtasks', []))} subtasks")
                 # Always store in pipeline_task results
                 if pipeline_task.results:
                     pipeline_task.results["stats"] = pipeline_stats
@@ -2104,13 +2198,40 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                             "issues": vf.get("issues", []),
                             "severity": vf.get("severity", "minor"),
                         })
+                # MARKER_135.FB_LOOP_C: Generate real improvements from this run
+                improvements_for_next = []
+                if issues_found:
+                    # Extract actionable improvements from verifier issues
+                    for iss in issues_found[:5]:
+                        issue_list = iss.get("issues", [])
+                        if issue_list:
+                            improvements_for_next.append(
+                                f"Fix {iss.get('marker', 'unknown')}: {'; '.join(str(i)[:60] for i in issue_list[:2])}"
+                            )
+                retries_total = sum(getattr(s, "retry_count", 0) for s in pipeline_task.subtasks)
+                tier_up = pipeline_stats.get("tier_upgrades", 0)
+                if retries_total > 2:
+                    improvements_for_next.append(
+                        f"High retry count ({retries_total}): consider breaking task into smaller subtasks"
+                    )
+                if tier_up > 0:
+                    improvements_for_next.append(
+                        f"Tier upgraded {tier_up}x: initial complexity estimate may be too low"
+                    )
+                quality = pipeline_stats.get("verifier_avg_confidence", 0)
+                if quality and quality < 0.7:
+                    improvements_for_next.append(
+                        "Low quality score: add more specific instructions in task description"
+                    )
+                # MARKER_135.FB_LOOP_C_END
+
                 final_report = {
                     "run_id": task_id,
                     "task": task[:200],
                     "summary": f"Completed {completed}/{total} subtasks",
-                    "quality_score": pipeline_stats.get("verifier_avg_confidence", 0),
+                    "quality_score": quality if quality else pipeline_stats.get("verifier_avg_confidence", 0),
                     "issues_found": issues_found,
-                    "improvements_for_next_run": [],
+                    "improvements_for_next_run": improvements_for_next,
                     "files_created": pipeline_task.results.get("files_created", []) if pipeline_task.results else [],
                     "tokens_used": pipeline_stats.get("tokens_in", 0) + pipeline_stats.get("tokens_out", 0),
                     "duration_s": pipeline_stats.get("duration_s", 0),
@@ -2118,8 +2239,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     "status": "done" if pipeline_stats.get("success") else "failed",
                     "subtasks_total": total,
                     "subtasks_completed": completed,
-                    "retries": sum(getattr(s, "retry_count", 0) for s in pipeline_task.subtasks),
-                    "tier_upgrades": pipeline_stats.get("tier_upgrades", 0),
+                    "retries": retries_total,
+                    "tier_upgrades": tier_up,
                 }
                 save_report(final_report)
                 logger.info(f"[Feedback] Final report saved: {task_id}")
@@ -2581,7 +2702,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
     # MARKER_102.5_START: Architect planning
     async def _architect_plan(self, task: str, phase_type: str, scout_context: Optional[Dict] = None,
                                research_context: Optional[Dict] = None,
-                               replan_context: Optional[str] = None) -> Dict[str, Any]:
+                               replan_context: Optional[str] = None,
+                               feedback_context: Optional[str] = None) -> Dict[str, Any]:
         """
         Architect breaks down task into subtasks.
         Marks unclear parts with needs_research=True.
@@ -2590,6 +2712,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             scout_context: Optional scout report injected into user message (MARKER_119.4).
             research_context: Optional research results for PM pass (MARKER_122).
             replan_context: Optional failure context for re-planning (MARKER_122).
+            feedback_context: Optional feedback from past pipeline runs (MARKER_135.FB_LOOP).
         """
         tool = self._get_llm_tool()
         if not tool:
@@ -2624,6 +2747,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         # MARKER_122: Inject replan context for architect escalation
         if replan_context:
             user_content += f"\n\n[Re-plan Context]\n{replan_context[:800]}"
+        # MARKER_135.FB_LOOP_B: Inject feedback from past pipeline runs
+        if feedback_context:
+            user_content += f"\n\n{feedback_context[:600]}"
+        # MARKER_135.FB_LOOP_B_END
 
         call_args = {
             "model": model,
@@ -2638,7 +2765,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 "chat_limit": 5,
                 "semantic_query": task,
                 "semantic_limit": 3,
-                "include_prefs": True,
+                "include_prefs": False,  # MARKER_135.FIX_SYNC: was True → sync Qdrant blocked async event loop
                 "compress": True
             }
         }
@@ -2746,7 +2873,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 "chat_limit": 3,
                 "semantic_query": question,
                 "semantic_limit": 5,
-                "include_prefs": True,
+                "include_prefs": False,  # MARKER_135.FIX_SYNC: was True → sync Qdrant blocked async event loop
                 "compress": True
             }
         }
@@ -2940,7 +3067,8 @@ Execute this subtask. Provide clear, actionable output."""}
                     if content:
                         logger.info(f"[Pipeline] FC subtask result: {content[:100]}...")
                         # Post-process: extract and write files (same as one-shot path)
-                        if phase_type == "build" and "```" in content:
+                        # MARKER_135.FIX_WRITE: Also detect "// file:" pattern (Qwen-style output)
+                        if phase_type == "build" and ("```" in content or "// file:" in content):
                             if self.auto_write:
                                 files_created = self._extract_and_write_files(content, subtask)
                                 if files_created:
@@ -2976,7 +3104,8 @@ Execute this subtask. Provide clear, actionable output."""}
                 # MARKER_103.5: Check auto_write flag
                 # auto_write=True: Write files immediately
                 # auto_write=False: Only save to JSON (use retro_apply_spawn.py later)
-                if phase_type == "build" and "```" in content:
+                # MARKER_135.FIX_WRITE: Also detect "// file:" pattern (Qwen-style)
+                if phase_type == "build" and ("```" in content or "// file:" in content):
                     if self.auto_write:
                         files_created = self._extract_and_write_files(content, subtask)
                         if files_created:

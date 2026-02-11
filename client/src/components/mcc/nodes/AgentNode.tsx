@@ -22,19 +22,10 @@ interface AgentNodeProps {
   selected?: boolean;
 }
 
-// Role colors (subtle, muted — strictly Nolan palette tones)
-const ROLE_COLORS: Record<AgentRole, string> = {
-  scout: '#4a5a4a',
-  architect: '#5a5a4a',
-  researcher: '#4a4a5a',
-  coder: '#4a5a5a',
-  verifier: '#5a4a5a',
-};
-
+// MARKER_135.5B: Pure grayscale — no colors
 function AgentNodeComponent({ data, selected }: AgentNodeProps) {
   const borderColor = getStatusBorderColor(data.status);
   const isRunning = data.status === 'running';
-  const roleColor = data.role ? ROLE_COLORS[data.role] : NOLAN_PALETTE.borderLight;
 
   return (
     <div
@@ -72,7 +63,7 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
             width: 8,
             height: 8,
             borderRadius: 2,
-            background: roleColor,
+            background: isRunning ? NOLAN_PALETTE.text : NOLAN_PALETTE.borderLight,
           }}
         />
         <span
