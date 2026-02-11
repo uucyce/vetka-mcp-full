@@ -9,10 +9,13 @@
  * @used_by ChatSidebar
  */
 
+// MARKER_137.S1_3: Added unified backend support for web/file contexts
 import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useSearch } from '../../hooks/useSearch';
 import { useStore } from '../../store/useStore';
 import type { SearchResult } from '../../types/chat';
+
+const API_BASE = 'http://localhost:5001/api';
 
 interface Props {
   /** Called when user clicks on a result */
@@ -206,6 +209,7 @@ const CONTEXT_ICONS: Record<SearchContext, () => React.ReactElement> = {
   social: UsersIcon,
 };
 
+// MARKER_137.S1_3: Enabled web + file contexts (backend ready)
 const SEARCH_CONTEXTS: Array<{
   id: SearchContext;
   prefix: string;
@@ -214,8 +218,8 @@ const SEARCH_CONTEXTS: Array<{
   available: boolean;
 }> = [
   { id: 'vetka', prefix: 'vetka/', label: 'VETKA', description: 'Search in indexed codebase', available: true },
-  { id: 'web', prefix: 'web/', label: 'Web', description: 'Search the internet (requires API)', available: false },
-  { id: 'file', prefix: 'file/', label: 'Filesystem', description: 'Search local files', available: false },
+  { id: 'web', prefix: 'web/', label: 'Web', description: 'Search the internet via Tavily', available: true },
+  { id: 'file', prefix: 'file/', label: 'Filesystem', description: 'Search local files', available: true },
   { id: 'cloud', prefix: 'cloud/', label: 'Cloud', description: 'Search cloud storage', available: false },
   { id: 'social', prefix: 'social/', label: 'Social', description: 'Search social networks', available: false },
 ];
@@ -266,6 +270,11 @@ export function UnifiedSearchBar({
   const [searchContext, setSearchContext] = useState<SearchContext>('vetka');
   const [showContextMenu, setShowContextMenu] = useState(false);
 
+  // MARKER_137.S1_3: Unified backend results for web/file contexts
+  const [unifiedResults, setUnifiedResults] = useState<SearchResult[]>([]);
+  const [unifiedLoading, setUnifiedLoading] = useState(false);
+  const unifiedDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Phase 68.3: Selected file path display
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
 
@@ -279,9 +288,17 @@ export function UnifiedSearchBar({
     return nodeId ? pinnedFileIds.includes(nodeId) : false;
   }, [nodes, pinnedFileIds]);
 
+  // MARKER_137.S1_3: Use unified results for web/file, WebSocket results for vetka
+  const activeResults = React.useMemo(() => {
+    if (searchContext !== 'vetka' && unifiedResults.length > 0) {
+      return unifiedResults;
+    }
+    return results;
+  }, [searchContext, unifiedResults, results]);
+
   // Sort results and apply display limit (pagination)
   const sortedResults = React.useMemo(() => {
-    const sorted = [...results];
+    const sorted = [...activeResults];
     // Direction multiplier: 1 for ascending, -1 for descending
     const dir = sortAscending ? 1 : -1;
 
@@ -397,6 +414,67 @@ export function UnifiedSearchBar({
     setHoveredResult(null);
     setPreviewPosition(null);
   }, []);
+
+  // MARKER_137.S1_3: Call unified backend for web/file contexts
+  useEffect(() => {
+    if (searchContext === 'vetka' || !query.trim()) {
+      setUnifiedResults([]);
+      return;
+    }
+
+    // Clear previous debounce
+    if (unifiedDebounceRef.current) {
+      clearTimeout(unifiedDebounceRef.current);
+    }
+
+    setUnifiedLoading(true);
+
+    unifiedDebounceRef.current = setTimeout(async () => {
+      try {
+        // Map context to unified sources
+        const sourcesMap: Record<SearchContext, string[]> = {
+          vetka: ['semantic'],
+          web: ['web'],
+          file: ['file'],
+          cloud: [], // not implemented
+          social: ['social'],
+        };
+        const sources = sourcesMap[searchContext] || ['file', 'semantic'];
+
+        const res = await fetch(`${API_BASE}/search/unified`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: query.trim(), limit: 20, sources }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const items = data.results || [];
+          // Convert to SearchResult format
+          const converted: SearchResult[] = items.map((item: any, idx: number) => ({
+            id: `unified-${idx}-${item.url || item.title}`,
+            name: item.title?.split('/').pop() || item.title || 'Result',
+            path: item.url || item.title,
+            type: item.source === 'web' ? 'doc' : 'code',
+            relevance: item.score || 0.5,
+            preview: item.snippet,
+            source: item.source,
+          }));
+          setUnifiedResults(converted);
+        }
+      } catch (err) {
+        console.error('[UnifiedSearchBar] Unified search error:', err);
+      } finally {
+        setUnifiedLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      if (unifiedDebounceRef.current) {
+        clearTimeout(unifiedDebounceRef.current);
+      }
+    };
+  }, [query, searchContext]);
 
   // Focus input on mount if not compact
   useEffect(() => {
@@ -614,8 +692,9 @@ export function UnifiedSearchBar({
     <div style={styles.container}>
       {/* Search Input */}
       <div style={{ ...styles.inputWrapper, ...(isFocused ? styles.inputWrapperFocused : {}), position: 'relative' }}>
-        <span style={{ color: isSearching ? '#888' : '#555' }}>
-          {isSearching ? <LoadingSpinner /> : <SearchIcon />}
+        {/* MARKER_137.S1_3: Show loading for either WebSocket or unified search */}
+        <span style={{ color: (isSearching || unifiedLoading) ? '#888' : '#555' }}>
+          {(isSearching || unifiedLoading) ? <LoadingSpinner /> : <SearchIcon />}
         </span>
 
         {/* Phase 68.3: Clickable context prefix */}

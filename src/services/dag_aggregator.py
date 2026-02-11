@@ -110,7 +110,11 @@ class TaskBoard:
         try:
             with open(self.task_board_path, "r") as f:
                 data = json.load(f)
-                return data.get("tasks", [])
+                tasks = data.get("tasks", {})
+                # MARKER_137.S1_4: tasks can be dict (keyed by id) or list
+                if isinstance(tasks, dict):
+                    return list(tasks.values())
+                return tasks
         except (json.JSONDecodeError, IOError):
             return []
 

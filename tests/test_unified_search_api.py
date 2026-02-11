@@ -1,4 +1,5 @@
 # MARKER_136.UNIFIED_SEARCH_BACKEND_TEST
+# MARKER_137.S1_2_TAVILY_WIRE_TEST
 import asyncio
 
 from src.api.handlers import unified_search as us
@@ -48,3 +49,36 @@ def test_unified_search_route_calls_handler(monkeypatch):
     assert response["success"] is True
     assert response["query"] == "pipeline"
     assert response["sources"] == ["file", "web"]
+
+
+def test_web_search_normalizes_scores_and_dedups(monkeypatch):
+    class DummyWebSearchTool:
+        def execute(self, arguments):  # noqa: ARG002
+            return {
+                "success": True,
+                "result": {
+                    "results": [
+                        {"title": "A", "url": "https://a.test", "content": "x", "score": 7.0},
+                        {"title": "A-dup", "url": "https://a.test", "content": "dup", "score": 0.9},
+                        {"title": "B", "url": "https://b.test", "content": "y", "score": -1.0},
+                        {"title": "C", "url": "", "content": "z", "score": None},
+                    ]
+                },
+            }
+
+    monkeypatch.setattr("src.mcp.tools.web_search_tool.WebSearchTool", DummyWebSearchTool)
+
+    rows = us._web_search("query", limit=10)
+    assert len(rows) == 3
+
+    # 7.0 -> normalized to 0.7
+    first = next(r for r in rows if r["url"] == "https://a.test")
+    assert first["score"] == 0.7
+
+    # negative -> clamped
+    second = next(r for r in rows if r["url"] == "https://b.test")
+    assert second["score"] == 0.0
+
+    # missing score -> rank fallback
+    third = next(r for r in rows if r["url"] == "")
+    assert third["score"] > 0.0

@@ -79,7 +79,7 @@ export function CommandPalette() {
     }
   }, [isOpen]);
 
-  // Search function
+  // MARKER_137.S1_3: Search function using unified backend
   const performSearch = useCallback(async (q: string) => {
     if (!q.trim()) {
       setResults(QUICK_ACTIONS);
@@ -89,26 +89,35 @@ export function CommandPalette() {
     setLoading(true);
 
     try {
-      // Parallel search: files + tasks + semantic
-      const [filesRes, tasksRes, semanticRes] = await Promise.all([
-        fetch(`${API_BASE}/search/files?query=${encodeURIComponent(q)}&limit=5`).catch(() => null),
+      // MARKER_137.S1_3: Single unified search + task board
+      const [unifiedRes, tasksRes] = await Promise.all([
+        fetch(`${API_BASE}/search/unified`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: q,
+            limit: 15,
+            sources: ['file', 'semantic', 'web'],
+          }),
+        }).catch(() => null),
         fetch(`${API_BASE}/debug/task-board`).catch(() => null),
-        fetch(`${API_BASE}/semantic/search?query=${encodeURIComponent(q)}&limit=5`).catch(() => null),
       ]);
 
       const newResults: SearchResult[] = [];
 
-      // Files from search
-      if (filesRes?.ok) {
-        const filesData = await filesRes.json();
-        const files = filesData.results || filesData.files || [];
-        for (const file of files.slice(0, 5)) {
+      // Unified search results (file + semantic + web)
+      if (unifiedRes?.ok) {
+        const unified = await unifiedRes.json();
+        const items = unified.results || [];
+        for (const item of items.slice(0, 10)) {
+          const source = item.source || 'file';
+          const isWeb = source === 'web';
           newResults.push({
-            type: 'file',
-            id: file.path || file.file_path,
-            title: file.name || file.path?.split('/').pop() || 'Unknown',
-            subtitle: file.path || file.file_path,
-            icon: 'F',
+            type: isWeb ? 'action' : (source === 'semantic' ? 'semantic' : 'file'),
+            id: item.url || item.title,
+            title: item.title?.split('/').pop() || item.title || 'Result',
+            subtitle: isWeb ? item.snippet?.slice(0, 80) : item.title,
+            icon: isWeb ? 'W' : (source === 'semantic' ? 'S' : 'F'),
           });
         }
       }
@@ -127,21 +136,6 @@ export function CommandPalette() {
             title: task.title,
             subtitle: `${task.status} · ${task.preset || 'no preset'}`,
             icon: 'T',
-          });
-        }
-      }
-
-      // Semantic search results
-      if (semanticRes?.ok) {
-        const semanticData = await semanticRes.json();
-        const semResults = semanticData.results || [];
-        for (const res of semResults.slice(0, 3)) {
-          newResults.push({
-            type: 'semantic',
-            id: res.file_path || res.id,
-            title: res.file_path?.split('/').pop() || 'Result',
-            subtitle: res.snippet?.slice(0, 60) || res.file_path,
-            icon: 'S',
           });
         }
       }

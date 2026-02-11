@@ -114,7 +114,7 @@ class TaskBoard:
         self.tasks: Dict[str, Dict[str, Any]] = {}
         self.settings: Dict[str, Any] = {
             "max_concurrent": 2,
-            "auto_dispatch": False,
+            "auto_dispatch": True,  # MARKER_137.S1_1_EVENT_DISPATCH: Enable by default
             "default_preset": "dragon_silver"
         }
         self._load()
@@ -201,6 +201,19 @@ class TaskBoard:
                 pass  # No event loop (sync context)
         except Exception:
             pass  # Never block save on notification failure
+
+    # MARKER_137.S1_1_EVENT_DISPATCH: Update board settings (auto_dispatch, max_concurrent, etc.)
+    def update_settings(self, **kwargs) -> Dict[str, Any]:
+        """Update board settings and persist to disk."""
+        allowed_keys = {"auto_dispatch", "max_concurrent", "default_preset"}
+        updated = {}
+        for key, value in kwargs.items():
+            if key in allowed_keys:
+                self.settings[key] = value
+                updated[key] = value
+        if updated:
+            self._save("settings_updated")
+        return {"updated": updated, "settings": self.settings}
 
     # ==========================================
     # CRUD OPERATIONS
@@ -310,8 +323,10 @@ class TaskBoard:
                 logger.warning(f"[TaskBoard] Invalid status: {updates['status']}")
                 return False
 
+        # MARKER_137.S1_4: Allow adding 'result' field even if not present
+        ADDABLE_FIELDS = {"result", "stats", "result_summary"}
         for key, value in updates.items():
-            if key in task:
+            if key in task or key in ADDABLE_FIELDS:
                 task[key] = value
 
         self._save(action="updated")

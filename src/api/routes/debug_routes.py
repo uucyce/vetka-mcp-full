@@ -26,8 +26,12 @@ Endpoints (ACTIONS):
 from fastapi import APIRouter, Request, Query
 from typing import Dict, Any, Optional, List
 from pathlib import Path
+import asyncio
+import logging
 import time
 import os
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/debug", tags=["debug"])
 
@@ -1715,6 +1719,16 @@ async def get_task_board_api() -> Dict[str, Any]:
     }
 
 
+# MARKER_137.S1_1_EVENT_DISPATCH: Update task board settings (auto_dispatch toggle)
+@router.patch("/task-board/settings")
+async def update_task_board_settings(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Update TaskBoard settings. Supports: auto_dispatch, max_concurrent, default_preset."""
+    from src.orchestration.task_board import get_task_board
+    board = get_task_board()
+    result = board.update_settings(**body)
+    return {"success": True, **result}
+
+
 # MARKER_127.0A: Pipeline results endpoint for Results Viewer
 @router.get("/pipeline-results/{task_id}")
 async def get_pipeline_results(task_id: str) -> Dict[str, Any]:
@@ -2269,13 +2283,17 @@ async def test_league_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
 
 
 # MARKER_124.3D: Internal notify endpoint for Task Board SocketIO emission
+# MARKER_137.S1_1_EVENT_DISPATCH: Enhanced with auto-dispatch on task added
 @router.post("/task-board/notify")
 async def notify_task_board_update(request: Request, body: Dict[str, Any] = None) -> Dict[str, Any]:
     """Internal endpoint: emit task_board_updated SocketIO event.
 
     Called by TaskBoard._notify_board_update() after save.
+    MARKER_137.S1_1_EVENT_DISPATCH: When action='added' and auto_dispatch=True,
+    automatically dispatches the highest-priority pending task to pipeline.
     """
     body = body or {}
+    action = body.get("action", "update")
     sio = getattr(request.app.state, 'socketio', None)
     if not sio:
         try:
@@ -2286,12 +2304,40 @@ async def notify_task_board_update(request: Request, body: Dict[str, Any] = None
         except Exception:
             pass
 
+    dispatched = False
     if sio:
         await sio.emit("task_board_updated", {
-            "action": body.get("action", "update"),
+            "action": action,
             "summary": body.get("summary", {}),
         })
-        return {"success": True}
+
+        # MARKER_137.S1_1_EVENT_DISPATCH: Auto-dispatch on new task
+        if action == "added":
+            try:
+                from src.orchestration.task_board import TaskBoard
+                board = TaskBoard()
+                if board.settings.get("auto_dispatch", False):
+                    async def _auto_dispatch():
+                        try:
+                            result = await board.dispatch_next()
+                            if result.get("success"):
+                                logger.info(f"[AutoDispatch] Task dispatched: {result.get('task_id', '?')}")
+                                if sio:
+                                    await sio.emit("task_board_updated", {
+                                        "action": "auto_dispatched",
+                                        "task_id": result.get("task_id"),
+                                    })
+                            else:
+                                logger.debug(f"[AutoDispatch] Skip: {result.get('error', 'no pending')}")
+                        except Exception as e:
+                            logger.warning(f"[AutoDispatch] Failed: {e}")
+
+                    asyncio.create_task(_auto_dispatch())
+                    dispatched = True
+            except Exception as e:
+                logger.warning(f"[AutoDispatch] Setup error: {e}")
+
+        return {"success": True, "dispatched": dispatched}
     return {"success": False, "error": "No SocketIO instance"}
 
 

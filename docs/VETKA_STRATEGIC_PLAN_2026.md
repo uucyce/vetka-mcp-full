@@ -164,45 +164,47 @@ Token Budget:
 
 ---
 
-## VI. KEY ARCHITECTURAL DECISIONS
+## VI. KEY ARCHITECTURAL DECISIONS (Updated with Grok Research 2026-02-11)
 
-### Decision 1: Search Stack
+### Decision 1: Search Stack ✅ RESEARCHED
 **Current:** Qdrant (vector) + Weaviate (BM25) + RRF fusion
-**Problem:** Weaviate may be stale, graph weight=0.2 unused
-**Proposal:** Evaluate Meilisearch as BM25 replacement (lighter, faster)
-**Research needed:** ✅ Meilisearch vs Weaviate benchmark for our data
+**Grok Finding:** Keep Weaviate (GraphQL federation fit) + ADD Meilisearch as BM25 fallback.
+Meilisearch: 5K QPS vs Weaviate 2K, 3x lighter memory (2-4GB vs 8-12GB for 1M docs).
+**Decision:** Dual BM25 — Weaviate for hybrid+graph, Meilisearch for fast keyword fallback.
+**Effort:** 1 day (Meilisearch Docker + SDK drop-in). Phase 140.1.
 
-### Decision 2: Knowledge Graph Backend
-**Current:** Qdrant stores vectors, no explicit graph
-**Options:** (a) Qdrant-only with recommend API, (b) Neo4j/ArangoDB, (c) in-memory graph + Qdrant
-**Proposal:** Start with Qdrant recommend → explicit edge JSON, migrate to Neo4j if >1M nodes
-**Research needed:** ✅ Poincaré embeddings for hierarchy encoding
+### Decision 2: Knowledge Graph Backend ✅ RESEARCHED
+**Current:** Qdrant stores vectors, no explicit graph.
+**Grok Finding:** Custom Poincaré (GeoOpt/PyTorch) >> Gensim. GPU train 10K nodes in 2min.
+Hierarchy recall +25% vs cosine. Encode tree depth as hyperbolic radius (root=0, leaves=0.9).
+**Decision:** Custom PoincaréBall encoder → Qdrant (cosine approx OK). Fits Sugiyama Y-axis.
+**Effort:** 2 days. Phase 141.
 
-### Decision 3: Playground Isolation
-**Options:** (a) Docker containers, (b) chroot/namespaces, (c) rsync mirror + file scoping
-**Proposal:** rsync mirror (simplest, no Docker overhead in Tauri context)
-**Research needed:** ✅ Security implications of rsync-only sandbox
+### Decision 3: Playground Isolation ✅ RESEARCHED
+**Grok Finding:** Docker+seccomp >> chroot (escape vulns) >> rsync (no exec isolation).
+Docker: 100ms startup, namespaces+seccomp, network_disabled, 256MB mem limit.
+**Decision:** Docker container per agent run (python:3.12-slim + seccomp:default).
+Rsync for code mirror PRE-exec, Docker for sandboxed execution.
+**Effort:** 1 day (docker-py). Phase 142.
 
-### Decision 4: Messenger Integration
-**Options:** (a) Telegram Bot API, (b) Matrix protocol, (c) Own SocketIO messenger
-**Proposal:** Telegram first (largest user base), Matrix for federation later
-**Research needed:** ✅ Telegram Bot API → pipeline dispatch patterns
+### Decision 4: Autonomous Dispatch ✅ RESEARCHED
+**Grok Finding:** SocketIO (50ms latency, 1K rooms) good for UI. Redis Streams (10ms, 10K+ scale) for backend.
+Pattern: task_board.add() → emit 'task_claimed' → agent picks up → emit 'task_done'.
+**Decision:** SocketIO + Redis Streams hybrid. SocketIO for UI push, Redis for agent queue.
+**Effort:** 3 days. Phase 140.2 (start with SocketIO-only in Sprint 1).
 
 ---
 
-## VII. RESEARCH ASSIGNMENTS (for Grok relay)
+## VII. GROK RESEARCH SUMMARY (2026-02-11)
 
-### Research 1: Search Stack
-"Meilisearch vs Weaviate BM25 performance comparison 2026, Python SDK, memory footprint for 100K-1M documents, hybrid search with external vector DB"
+Full report: `docs/136_ph/Research ReporGROK.txt`
 
-### Research 2: Knowledge Graph
-"Poincaré embeddings Python implementation 2026, gensim vs custom, integration with Qdrant cosine similarity, hierarchy visualization in Three.js"
-
-### Research 3: Sandbox Security
-"Sandboxed code execution for AI agents 2026 — rsync mirror vs Docker, file system isolation best practices, preventing privilege escalation from LLM-generated code"
-
-### Research 4: Autonomous Dispatch
-"Event-driven task dispatch for AI agent systems — SocketIO emit vs Redis pub/sub vs PostgreSQL LISTEN/NOTIFY, optimal patterns for zero-human-loop execution"
+| Topic | Key Finding | VETKA Action | Phase |
+|-------|------------|--------------|-------|
+| Meilisearch vs Weaviate | Keep both: Weaviate for graph, Meili for fast BM25 | Add Meilisearch Docker | 140.1 |
+| Poincaré Embeddings | Custom GeoOpt/PyTorch, +25% hierarchy recall | poincare_encoder.py | 141 |
+| Sandbox Security | Docker+seccomp best, chroot unsafe for LLM code | sandbox_exec.py | 142 |
+| Event-Driven Dispatch | SocketIO+Redis Streams hybrid | Replace polling heartbeat | 140.2 |
 
 ---
 

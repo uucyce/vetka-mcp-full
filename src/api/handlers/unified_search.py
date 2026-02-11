@@ -1,4 +1,5 @@
 # MARKER_136.UNIFIED_SEARCH_BACKEND
+# MARKER_137.S1_2_TAVILY_WIRE
 """
 Unified search handler for federated backend search.
 
@@ -124,6 +125,20 @@ def _semantic_search(query: str, limit: int) -> List[Dict[str, Any]]:
 
 
 def _web_search(query: str, limit: int) -> List[Dict[str, Any]]:
+    def _normalize_web_score(raw_score: Any, rank: int) -> float:
+        try:
+            score = float(raw_score)
+        except (TypeError, ValueError):
+            # Stable fallback when provider does not return score.
+            return max(0.1, 0.75 - (rank * 0.05))
+
+        if score < 0:
+            return 0.0
+        # Tavily usually returns 0..1, but normalize defensively if scale differs.
+        if score > 1.0:
+            score = score / 10.0
+        return min(score, 1.0)
+
     try:
         from src.mcp.tools.web_search_tool import WebSearchTool
 
@@ -131,14 +146,22 @@ def _web_search(query: str, limit: int) -> List[Dict[str, Any]]:
         rows = payload.get("result", {}).get("results", []) if payload.get("success") else []
 
         results: List[Dict[str, Any]] = []
-        for item in rows[:limit]:
+        seen_urls = set()
+        for idx, item in enumerate(rows[:limit]):
+            url = item.get("url", "") or ""
+            if url and url in seen_urls:
+                continue
+            if url:
+                seen_urls.add(url)
+
+            score = _normalize_web_score(item.get("score", 0.0), idx)
             results.append(
                 _normalize_item(
                     source="web",
                     title=item.get("title", ""),
                     snippet=item.get("content", ""),
-                    score=item.get("score", 0.0),
-                    url=item.get("url", ""),
+                    score=score,
+                    url=url,
                 )
             )
         return results

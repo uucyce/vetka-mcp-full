@@ -215,6 +215,18 @@
         "llm_calls": 18,
         "preset": "dragon_gold"
       }
+    },
+    {
+      "task_id": "tb_1770809266_1",
+      "title": "S1.1 Event-driven dispatch: notify endpoint auto-dispatches on task added, PATCH settings API, auto_dispatch=true",
+      "status": "done",
+      "source": "opus",
+      "completed_at": "2026-02-11T15:40:12",
+      "stats": {
+        "duration_s": 0,
+        "llm_calls": 0,
+        "preset": "unknown"
+      }
     }
   ],
   "in_progress": [

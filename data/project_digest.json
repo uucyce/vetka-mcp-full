@@ -1,25 +1,25 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-11T11:30:45.001274+00:00",
+  "last_updated": "2026-02-11T12:44:37.748342+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 135,
-    "subphase": "5",
+    "subphase": "6",
     "name": "Phase 135: Active Development",
     "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 135 active \u2014 dragon_dragon_gold: MCC STATS: real data visualization instead of fake",
+    "headline": "Phase 135 active \u2014 opus: S1.1 Event-driven dispatch: notify endpoint auto-d",
     "key_achievements": [
+      "[opus] S1.1 Event-driven dispatch: notify endpoint auto-dispatches on task added, PATCH",
+      "[f6f6085c] Phase 136: Phase 136.W3: Wave 3 Features - Folder Modes, Chat...",
       "[dragon_dragon_gold] MCC STATS: real data visualization instead of fake 100% bars\n\nSTATS tab shows ba",
       "[33ac8e03] Phase 135.4: Phase 135.4: DAG Tab Integration + Wave 4 Features",
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
       "[dragon_dragon_bronze] Create file src/utils/math_helpers.py with function add(a: int, b: int) -> int t",
       "[dragon_dragon_bronze] Create file src/utils/math_helpers.py with function add(a: int, b: int) -> int t",
-      "[dragon_dragon_bronze] fix task",
-      "[dragon_dragon_bronze] test task",
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task"
     ],
@@ -29,12 +29,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 5304,
+      "points": 5312,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 5287,
+      "points": 5294,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "5a8f6d17",
+    "commit": "f6f6085c",
     "dirty": true
   }
 }
