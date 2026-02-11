@@ -2411,41 +2411,60 @@ async def llm_call_endpoint(request: Request) -> Dict[str, Any]:
     - max_tokens: int (optional, default 2000)
     - temperature: float (optional, default 0.3)
     """
-    from src.elisya.model_router import get_model_router
+    # MARKER_137.ARCHITECT_FIX: Use provider_registry.call_model_v2 directly
+    from src.elisya.provider_registry import call_model_v2
 
     body = await request.json()
     model = body.get("model", "kimi-k2.5")
     messages = body.get("messages", [])
     max_tokens = body.get("max_tokens", 2000)
     temperature = body.get("temperature", 0.3)
+    # MARKER_137.ARCHITECT_FIX: Accept model_source from frontend (from /api/models/autodetect)
+    # This is how user-selected provider flows through without hardcoding
+    model_source = body.get("model_source", "")
 
     if not messages:
         return {"success": False, "error": "No messages provided"}
 
     try:
-        router = get_model_router()
-        response = await router.chat_completion(
+        # Use explicit source if provided (from frontend model selector),
+        # otherwise detect from model name
+        if model_source:
+            provider_name = model_source
+        else:
+            from src.mcp.tools.llm_call_tool_async import LLMCallToolAsync
+            tool = LLMCallToolAsync()
+            provider_name = tool._detect_provider(model)
+
+        result = await call_model_v2(
             model=model,
             messages=messages,
+            source=provider_name,
             max_tokens=max_tokens,
             temperature=temperature,
         )
 
-        # Extract content from response
-        if hasattr(response, 'choices') and response.choices:
-            content = response.choices[0].message.content
-        elif isinstance(response, dict):
-            content = response.get("content") or response.get("choices", [{}])[0].get("message", {}).get("content", "")
+        # MARKER_137.ARCHITECT_FIX: call_model_v2 returns {"message": {"content": "..."}, ...}
+        # Success = has message.content, error = raises exception
+        content = result.get("message", {}).get("content", "")
+        if content:
+            return {
+                "success": True,
+                "response": content,
+                "model": model,
+                "provider": provider_name,
+                "usage": result.get("usage"),
+            }
         else:
-            content = str(response)
-
-        return {
-            "success": True,
-            "response": content,
-            "model": model,
-        }
+            return {
+                "success": False,
+                "error": "Empty response from LLM",
+                "model": model,
+                "provider": provider_name,
+            }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        logger.error(f"[llm-call] Error: {e}")
+        return {"success": False, "error": str(e), "model": model}
 
 
 # ============================================================

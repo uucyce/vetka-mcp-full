@@ -832,8 +832,8 @@ from src.api.routes.mcp_console_routes import router as mcp_console_router
 app.include_router(mcp_console_router)
 
 # === PHASE 133: HEARTBEAT HEALTH & CONFIG PERSISTENCE ===
-from src.api.routes.heartbeat_health import router as heartbeat_health_router
-app.include_router(heartbeat_health_router)
+# MARKER_137.HEARTBEAT_CLEANUP: heartbeat_health.py deleted (duplicate of debug_routes.py)
+# All heartbeat endpoints now served via /api/debug/heartbeat/*
 
 # === PHASE 133: PIPELINE RUN HISTORY ===
 from src.api.routes.pipeline_history import router as pipeline_history_router

@@ -1,31 +1,33 @@
 # MARKER_137.S1_6_HEARTBEAT_DAEMON_TEST
+# MARKER_137.HEARTBEAT_CLEANUP: Updated to use debug_routes (heartbeat_health.py deleted)
 import asyncio
 
 import pytest
 
-from src.api.routes import heartbeat_health
+from src.api.routes import debug_routes
 from src.orchestration import mycelium_heartbeat as hb
 
 
 @pytest.mark.asyncio
 async def test_heartbeat_config_start_stop_roundtrip(monkeypatch, tmp_path):
     config_file = tmp_path / "heartbeat_config.json"
-    state_file = tmp_path / "heartbeat_state.json"
 
-    monkeypatch.setattr(heartbeat_health, "CONFIG_FILE", config_file)
-    monkeypatch.setattr(heartbeat_health, "STATE_FILE", state_file)
+    monkeypatch.setattr(debug_routes, "HEARTBEAT_CONFIG_FILE", config_file)
 
-    payload_on = await heartbeat_health.update_heartbeat_config({"enabled": True, "interval": 45})
+    # Enable with interval=45
+    payload_on = await debug_routes.update_heartbeat_settings({"enabled": True, "interval": 45})
     assert payload_on["success"] is True
-    assert payload_on["config"]["enabled"] is True
-    assert payload_on["config"]["interval"] == 45
+    assert payload_on["enabled"] is True
+    assert payload_on["interval"] == 45
 
-    payload_cfg = await heartbeat_health.get_heartbeat_config()
+    # Read back settings
+    payload_cfg = await debug_routes.get_heartbeat_settings()
     assert payload_cfg["success"] is True
-    assert payload_cfg["config"]["enabled"] is True
+    assert payload_cfg["enabled"] is True
 
-    payload_off = await heartbeat_health.update_heartbeat_config({"enabled": False})
-    assert payload_off["config"]["enabled"] is False
+    # Disable
+    payload_off = await debug_routes.update_heartbeat_settings({"enabled": False})
+    assert payload_off["enabled"] is False
 
 
 @pytest.mark.asyncio

@@ -126,12 +126,17 @@ export function ArchitectChat({ onPlanCreated }: ArchitectChatProps) {
     const timeoutId = setTimeout(() => controller.abort(), 60000);
 
     try {
+      // MARKER_137.ARCHITECT_FIX: Pass model_source so backend routes to correct provider
+      const selectedModel = modelOptions.find((m) => m.id === model);
+      const modelSource = selectedModel?.source || selectedModel?.provider || selectedModel?.source_display || '';
+
       // Call Architect via LLM endpoint
       const res = await fetch(`${API_BASE}/llm-call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model,
+          model_source: modelSource,
           messages: [
             {
               role: 'system',
@@ -221,7 +226,7 @@ Output format:
     } finally {
       setLoading(false);
     }
-  }, [input, loading, model, onPlanCreated]);
+  }, [input, loading, model, modelOptions, onPlanCreated]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
