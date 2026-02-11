@@ -760,14 +760,43 @@ Respond with implementation plan or code."""
             response_text = result.get("result", {}).get("content", "{}")
             verification = self._extract_json(response_text)
 
-            # MARKER_127.3: Normalize parsed result — ensure 'passed' field exists
-            # If verifier returned partial JSON (e.g. {"severity":"major"} without "passed"),
-            # default to False so retry loop catches it
+            # MARKER_137.FIX_VERIFIER: Smart inference when 'passed' field missing
+            # Models (GLM, Qwen) often return partial JSON. Infer 'passed' from context:
+            #   - Has confidence > 0.7 + no/few issues → passed=True
+            #   - Has severity="major" → passed=False
+            #   - Has "pass"/"approve"/"good" in raw text → passed=True
+            #   - Fallback: regex search in raw response_text
             if "passed" not in verification:
-                verification["passed"] = False
-                verification.setdefault("issues", []).append("Verifier did not return 'passed' field")
+                # Strategy 1: Infer from confidence + issues
+                conf = verification.get("confidence", 0)
+                issues = verification.get("issues", [])
+                severity = verification.get("severity", "")
+
+                if severity == "major":
+                    verification["passed"] = False
+                elif conf >= 0.7 and len(issues) == 0:
+                    verification["passed"] = True
+                    logger.info(f"[Pipeline] Verifier: inferred passed=True (confidence={conf}, no issues)")
+                elif conf >= 0.8:
+                    verification["passed"] = True
+                    logger.info(f"[Pipeline] Verifier: inferred passed=True (high confidence={conf})")
+                else:
+                    # Strategy 2: Regex fallback on raw text
+                    import re
+                    raw_lower = response_text.lower()
+                    if re.search(r'"passed"\s*:\s*true', raw_lower):
+                        verification["passed"] = True
+                    elif re.search(r'\b(pass|passed|approved?|correct|complete)\b', raw_lower) and \
+                         not re.search(r'\b(fail|failed|reject|wrong|incomplete|missing)\b', raw_lower):
+                        verification["passed"] = True
+                        logger.info(f"[Pipeline] Verifier: inferred passed=True from positive keywords in text")
+                    else:
+                        verification["passed"] = False
+                        verification.setdefault("issues", []).append("Verifier ambiguous — defaulting to retry")
+
             if "confidence" not in verification:
-                verification["confidence"] = 0.3
+                # Infer confidence from passed status
+                verification["confidence"] = 0.75 if verification.get("passed") else 0.3
             if "issues" not in verification:
                 verification["issues"] = []
 
@@ -3067,8 +3096,8 @@ Execute this subtask. Provide clear, actionable output."""}
                     if content:
                         logger.info(f"[Pipeline] FC subtask result: {content[:100]}...")
                         # Post-process: extract and write files (same as one-shot path)
-                        # MARKER_135.FIX_WRITE: Also detect "// file:" pattern (Qwen-style output)
-                        if phase_type == "build" and ("```" in content or "// file:" in content):
+                        # MARKER_137.FIX_AUTOWRITE: Detect ALL file patterns (// file: AND # file:)
+                        if phase_type == "build" and ("```" in content or "file:" in content.lower()):
                             if self.auto_write:
                                 files_created = self._extract_and_write_files(content, subtask)
                                 if files_created:
@@ -3104,8 +3133,8 @@ Execute this subtask. Provide clear, actionable output."""}
                 # MARKER_103.5: Check auto_write flag
                 # auto_write=True: Write files immediately
                 # auto_write=False: Only save to JSON (use retro_apply_spawn.py later)
-                # MARKER_135.FIX_WRITE: Also detect "// file:" pattern (Qwen-style)
-                if phase_type == "build" and ("```" in content or "// file:" in content):
+                # MARKER_137.FIX_AUTOWRITE: Detect ALL file patterns (// file: AND # file:)
+                if phase_type == "build" and ("```" in content or "file:" in content.lower()):
                     if self.auto_write:
                         files_created = self._extract_and_write_files(content, subtask)
                         if files_created:

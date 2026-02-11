@@ -70,27 +70,36 @@ Three-agent army: Opus (architect), Cursor (frontend), Codex (backend).
 ### SPRINT 1 — "Combat Ready" (Phase 137, ~1 week)
 **Goal:** Stabilize, eliminate remaining bugs, event-driven autonomy.
 
-| # | Task | Agent | Priority | Complexity |
-|---|------|-------|----------|------------|
-| S1.1 | Heartbeat: event-driven dispatch (SocketIO emit on new task) | Opus | P1 | High |
-| S1.2 | Unified Search: wire web provider (Tavily via vetka_web_search) | Codex | P1 | Medium |
-| S1.3 | Unified Search: wire Cmd+K frontend → unified backend | Cursor | P1 | Medium |
-| S1.4 | MCC Stats: connect to real pipeline_history data | Cursor | P2 | Medium |
-| S1.5 | Artifact panel: connect Cursor ArtifactViewer → Codex API endpoints | Cursor | P2 | Low |
-| S1.6 | Tests: heartbeat daemon + unified search E2E | Codex | P2 | Medium |
-| S1.7 | TaskBoard: cleanup old P4-P5 stale tasks | Opus | P3 | Low |
+| # | Task | Owner | Priority | Complexity | Deadline | Acceptance Test |
+|---|------|-------|----------|------------|----------|-----------------|
+| S1.1 | Heartbeat: event-driven dispatch (SocketIO emit on new task) | Opus | P1 | High | 2026-02-14 | New task in board triggers dispatch without polling delay; verified by integration test + MCC live update |
+| S1.2 | Unified Search: wire web provider (Tavily via vetka_web_search) | Codex | P1 | Medium | 2026-02-13 | `/api/search/unified` returns web source results with normalized score and URL dedup |
+| S1.3 | Unified Search: wire Cmd+K frontend → unified backend | Cursor | P1 | Medium | 2026-02-13 | Cmd+K query calls `/api/search/unified`; UI groups results by source and opens selected item |
+| S1.4 | MCC Stats: connect to real pipeline_history data | Cursor | P2 | Medium | 2026-02-15 | Stats panel values match `/api/debug/pipeline-history` on refresh and live updates |
+| S1.5 | Artifact panel: connect Cursor ArtifactViewer → Codex API endpoints | Cursor | P2 | Low | 2026-02-15 | Approve/reject in UI updates `/api/artifacts` state and re-renders status badges |
+| S1.6 | Tests: heartbeat daemon + unified search E2E | Codex | P2 | Medium | 2026-02-13 | `tests/test_heartbeat_daemon.py` + `tests/test_unified_search_e2e.py` + auto-close commit tests all green |
+| S1.7 | TaskBoard: cleanup old P4-P5 stale tasks | Opus | P3 | Low | 2026-02-16 | Stale backlog triaged (close/archive/relabel) with changelog entry and board diff |
 
 ### SPRINT 2 — "Jarvis Awakens" (Phase 138, ~1-2 weeks)
 **Goal:** Intelligent chat agent that knows user, searches everything.
 
-| # | Task | Agent | Priority | Complexity |
-|---|------|-------|----------|------------|
-| S2.1 | Jarvis superagent: chat handler with Engram memory + model routing | Opus→Dragon Gold | P1 | High |
-| S2.2 | Jarvis: tool calling (search, file read, pipeline dispatch) | Codex | P1 | High |
-| S2.3 | Jarvis UI: integrate into existing ChatPanel | Cursor | P1 | Medium |
-| S2.4 | Model fallback chain with key roaming | Codex | P2 | High |
-| S2.5 | Chat history: semantic search over conversations | Codex | P2 | Medium |
-| S2.6 | Folder modes: deep mode (workflow/code/media/knowledge UI variants) | Cursor | P2 | High |
+| # | Task | Owner | Priority | Complexity | Deadline | Acceptance Test |
+|---|------|-------|----------|------------|----------|-----------------|
+| S2.0 | MCC Deep Fix: heartbeat dual panel, artifacts panel, overall QA | Cursor | P1 | Medium | 2026-02-22 | MCC smoke suite passes and no critical UI regressions in 24h |
+| S2.1 | UI Layout: center search bar, icons horizontal right, remove top-right labels | Cursor | P1 | Medium | 2026-02-22 | Visual regression snapshots pass desktop/mobile and layout matches spec |
+| S2.2 | Jarvis MCP: dedicated MCP server (non-blocking, Engram memory, workflow router) | Codex | P1 | High | 2026-02-24 | New MCP Jarvis server runs independently; pipeline load does not degrade Jarvis latency (>95p target met) |
+| S2.3 | Jarvis Voice Pipeline: streaming TTS with pre-generation + filler phrases | Dragon Gold | P1 | High | 2026-02-26 | Voice roundtrip median <2.5s first audio; full response appended without overlap artifacts |
+| S2.4 | Jarvis in Unified Search: voice mode integration (mic before text input) | Cursor | P1 | High | 2026-02-26 | Mic-first mode works in Unified Search; voice input routes to Jarvis and returns voice output |
+| S2.5 | Model Directory: auto-detect local + API voice models (Polza, Qwen TTS) | Codex | P1 | Medium | 2026-02-21 | Model Directory lists local+remote providers with refresh and capability badges (text/voice/image/embed) |
+| S2.6 | Agent Voice IDs: persistent voice assignment per agent + voice messages in chat | Dragon Silver | P2 | Medium | 2026-02-27 | Agent voice config persisted; chat voice messages replay correctly after restart |
+| S2.7 | Model fallback chain with key roaming | Codex | P2 | High | 2026-02-27 | Simulated provider outages recover automatically via fallback order without user-visible failure |
+
+### Sprint Definition of Done (S1-S2)
+- Task is linked to TaskBoard ID and has recon + implementation report in `docs/*_ph/`.
+- Code merged with marker(s), and targeted tests added or updated.
+- `vetka_git_commit` used for commit message containing `tb_...` for auto-close traceability.
+- Acceptance test from sprint table is executed and result captured in report.
+- No unresolved P1/P2 regressions in touched area.
 
 ### SPRINT 3 — "Living Knowledge" (Phase 139, ~2 weeks)
 **Goal:** Knowledge Graph construction — VETKA becomes intelligent.
@@ -164,6 +173,118 @@ Token Budget:
 
 ---
 
+## V-B. JARVIS VOICE ARCHITECTURE (Detail)
+
+### Core Concept
+Jarvis = Superagent, NOT a chat panel feature. Lives in Unified Search bar (centered).
+Hybrid architecture: Engram user memory + multi-model team + workflow templates.
+
+### MCP Architecture
+```
+MCP VETKA (5001)     — fast stateless (search, files, camera)
+MCP MYCELIUM (8082)  — async pipelines (Dragon teams)
+MCP JARVIS (NEW)     — dedicated non-blocking voice+agent (won't lag during pipeline)
+  ├── Engram memory (user preferences, history)
+  ├── Workflow router (per-request workflow selection)
+  ├── Voice pipeline (STT → LLM → TTS streaming)
+  └── Tool access (full VETKA control: search, camera, files, pipeline)
+```
+
+### Voice Pipeline — Low-Latency Strategy
+```
+Problem: Qwen TTS ~10s per generation — too slow for real-time conversation.
+
+Solution: 3-layer pre-generation pipeline:
+
+Layer 1 — Filler Phrases (instant, <100ms):
+  Pre-generated audio bank: "hmm...", "let me think...", "searching now..."
+  Triggered immediately when user finishes speaking.
+
+Layer 2 — T9 Prediction (while user speaks, 1-3s):
+  Based on: viewport context + first words of user input
+  Generate first sentence of response BEFORE user finishes.
+  Play Layer 1 filler → crossfade to Layer 2 prediction.
+
+Layer 3 — Full Response (after user done, 3-10s):
+  Full LLM response → TTS generation.
+  Appended seamlessly after Layer 2 plays.
+
+Timeline:
+  User speaks ──────────────────┐
+  Layer 1 filler (pre-cached) ──│──▶ [plays instantly]
+  Layer 2 predict (parallel) ───│──▶ [plays after filler]
+  User stops ───────────────────┘
+  Layer 3 full response ────────────▶ [plays after Layer 2]
+```
+
+### Voice Activation (No Extra Button)
+```
+Search bar states:
+  1. Empty + no keyboard focus → microphone icon visible (voice mode ready)
+  2. User starts typing → microphone hides, text search active
+  3. User clicks mic / says trigger word → recording wave appears
+  4. Voice message sent → agents respond via TTS automatically
+  5. Text message sent → agents respond via text (normal mode)
+
+Trigger: voice input = voice output. Text input = text output.
+```
+
+### Agent Voice Identity
+```
+Each agent gets permanent voice_id:
+  - Jarvis (superagent): deep calm male voice
+  - Dragon Bronze: fast energetic voice
+  - Dragon Silver: measured professional voice
+  - Dragon Gold: authoritative slow voice
+
+Stored in: data/agent_voice_config.json
+  {
+    "jarvis": {"voice_id": "alloy", "provider": "qwen_tts", "speed": 1.0},
+    "dragon_bronze": {"voice_id": "echo", "provider": "qwen_tts", "speed": 1.2},
+    ...
+  }
+
+Voice messages in chat:
+  - Appear as waveform bars (like Telegram/WhatsApp voice messages)
+  - Agent avatar + wave + duration
+  - Click to play, auto-play in voice conversation mode
+  - Emotional tone auto-detected from LLM response sentiment
+```
+
+### Model Directory Fix
+```
+Problem: "No models found" — hardcoded model list, no auto-detection.
+
+Fix:
+  1. Scan Polza API for available models (including voice: tts, stt)
+  2. Scan local Ollama for installed models
+  3. Scan Qwen TTS local server if running
+  4. Auto-categorize: text/voice/image/embedding
+  5. Show ALL in Model Directory with provider badges
+```
+
+### UI Layout Redesign
+```
+Current (broken):
+  ┌─ Search ─┐ [icons]     [small labels top-right]
+  │ top-left │ vertical
+  └──────────┘ cramped
+
+Target:
+  ┌──────────────────────────────────────────────┐
+  │            [Search Bar — CENTERED]            │
+  │            width: 50%, min: 400px             │
+  │            + mic icon when empty              │
+  └──────────────────────────────────────────────┘
+                        [Chat] [Artifact] [MCC] ← horizontal, top-right
+                        (no small labels)
+
+  Chat panel: slides from RIGHT (doesn't overlap icons)
+  MCC panel: slides from RIGHT below chat (or bottom)
+```
+
+---
+
 ## VI. KEY ARCHITECTURAL DECISIONS (Updated with Grok Research 2026-02-11)
 
 ### Decision 1: Search Stack ✅ RESEARCHED
@@ -226,19 +347,42 @@ These old tasks should be triaged into Sprint 1-2 or archived:
 
 ## IX. SUCCESS METRICS
 
+### A) Shipped Metrics (Delivery)
 | Metric | Current | Sprint 1 Target | Sprint 5 Target |
 |--------|---------|-----------------|-----------------|
-| TaskBoard tasks auto-closed | 30% | 80% | 95% |
+| TaskBoard tasks auto-closed (with `tb_...` in commit) | 30% | 80% | 95% |
 | Pipeline E2E success rate | ~60% | 75% | 90% |
-| Search sources active | 2 (file, semantic) | 4 (+ web, social) | 5 (+ messenger) |
-| Knowledge graph nodes | 0 | 0 | 50K+ |
-| Playground experiments/day | 0 | 0 | 10+ |
-| Human interventions/task | ~3 | ~1 | ~0.2 |
-| Test coverage | ~40 tests | 60+ | 100+ |
+| Search providers implemented | 3 (file, semantic, web) | 4 (+ social adapter) | 5 (+ messenger) |
+| Knowledge graph backend features shipped | 0 | 0 | 6 core modules |
+| Playground capabilities shipped | 0 | 0 | Full isolate+approve flow |
+| Test suite count (strategic areas) | ~40 | 60+ | 100+ |
+
+### B) Adopted Metrics (Usage/Impact)
+| Metric | Current | Sprint 1 Target | Sprint 5 Target |
+|--------|---------|-----------------|-----------------|
+| Cmd+K usage share of search requests | n/a | 40% | 75% |
+| Artifact approve/reject actions from MCC | n/a | 30/day | 150/day |
+| Median time from task creation to first claim | n/a | <5 min | <1 min |
+| Human interventions per pipeline task | ~3 | ~1 | ~0.2 |
+| Voice sessions/day (Jarvis) | 0 | 0 | 100+ |
+| Cross-user shared tree operations/day | 0 | 0 | 200+ |
 
 ---
 
-## X. PHASE TIMELINE
+## X. RISK LOG
+
+| ID | Risk | Probability | Impact | Mitigation | Owner | Trigger |
+|----|------|-------------|--------|------------|-------|---------|
+| R1 | Agents commit via plain git, auto-close not triggered | High | High | Enforce `vetka_git_commit` in DoD + pre-commit checks in agent prompts | Opus | Task done but board status unchanged |
+| R2 | S2.2 Jarvis MCP blocks due to shared-state contention | Medium | High | Isolate Jarvis runtime + contract tests for routing/latency | Codex | p95 latency regression under pipeline load |
+| R3 | Model directory provider APIs unstable | Medium | Medium | Cache + graceful degradation + provider health badges | Codex | Empty/partial model list in UI |
+| R4 | Event-driven heartbeat introduces duplicate dispatch | Medium | High | Idempotent dispatch key + dedup window + audit tests | Opus | Same task executed multiple times |
+| R5 | Playground isolation leaks write access | Low | Critical | Docker seccomp + readonly mounts + integration security tests | Codex | Any write outside sandbox path |
+| R6 | Scope creep in Sprint 2 (voice + UI + MCP at once) | High | Medium | Phase gates with acceptance test per task and strict WIP limits | Opus | >2 P1 tasks overdue simultaneously |
+
+---
+
+## XI. PHASE TIMELINE
 
 ```
 Feb 2026   ├─ Phase 137: Combat Ready (Sprint 1)
