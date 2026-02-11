@@ -39,6 +39,8 @@ import {
   applyHysteresis,
 } from './utils/labelScoring';
 
+const BACKEND_API = 'http://localhost:5001/api';
+
 // ============================================================================
 // MARKER_111.21_FRUSTUM: Phase 112.2 - Frustum Culling Component
 // Phase 112.6: Adaptive Foveated Spot - screen-position LOD
@@ -602,7 +604,7 @@ export default function App() {
 
                   // MARKER_139.S1_3_WEB_RENDER: Fetch sanitized full-page preview HTML
                   try {
-                    const resp = await fetch('/api/search/web-preview', {
+                    const resp = await fetch(`${BACKEND_API}/search/web-preview`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ url, timeout_s: 10 }),

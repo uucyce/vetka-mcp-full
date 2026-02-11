@@ -173,6 +173,17 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
   const loadFile = useCallback(async (path: string) => {
     if (!path) return;
 
+    // MARKER_139.S1_3_WEB_FALLBACK: Never treat http(s) URL as local file path
+    if (/^https?:\/\//i.test(path)) {
+      setFileData({
+        path,
+        content: `# External Web URL\n\nSource: ${path}\n\nUse web preview mode to render full page.`,
+        mimeType: 'text/markdown',
+        hasChanges: false,
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const response = await fetch('/api/files/read', {
@@ -455,6 +466,10 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
     const filename = file.name;
     const fileType = getViewerType(filename);
     const fileUrl = `/api/files/raw?path=${encodeURIComponent(path)}`;
+
+    if (/^https?:\/\//i.test(path)) {
+      return <MarkdownViewer content={content} />;
+    }
 
     switch (fileType) {
       case 'code':
