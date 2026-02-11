@@ -79,6 +79,8 @@ let _invoke: any = null;
 let _listen: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _open: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _webviewWindowCtor: any = null;
 
 async function getInvoke() {
   if (!isTauri()) return null;
@@ -120,6 +122,20 @@ async function getOpen() {
     }
   }
   return _open;
+}
+
+async function getWebviewWindowCtor() {
+  if (!isTauri()) return null;
+  if (!_webviewWindowCtor) {
+    try {
+      const mod = await import('@tauri-apps/api/webviewWindow');
+      _webviewWindowCtor = mod.WebviewWindow;
+    } catch (e) {
+      console.warn('[Tauri] Failed to import @tauri-apps/api/webviewWindow:', e);
+      return null;
+    }
+  }
+  return _webviewWindowCtor;
 }
 
 // ============================================
@@ -203,6 +219,38 @@ export async function openFolderDialog(title: string = 'Select folder to scan'):
   } catch (e) {
     console.warn('Native folder dialog failed:', e);
     return null;
+  }
+}
+
+// MARKER_139.S1_4_WEB_LIVE_DEFAULT: Open full live web page in native Tauri WebView window
+export async function openLiveWebWindow(url: string, title?: string): Promise<boolean> {
+  if (!url || !/^https?:\/\//i.test(url)) return false;
+
+  const WebviewWindow = await getWebviewWindowCtor();
+  if (!WebviewWindow) return false;
+
+  try {
+    const label = `vetka-web-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const win = new WebviewWindow(label, {
+      url,
+      title: title || 'VETKA Live Web',
+      width: 1280,
+      height: 860,
+      minWidth: 900,
+      minHeight: 640,
+      center: true,
+      focus: true,
+      resizable: true,
+    });
+
+    win.once('tauri://error', (event: unknown) => {
+      console.warn('[Tauri] Webview window error:', event);
+    });
+
+    return true;
+  } catch (e) {
+    console.warn('[Tauri] Failed to open live web window:', e);
+    return false;
   }
 }
 

@@ -15,6 +15,7 @@ import { getViewerType } from './utils/fileTypes';
 import { MarkdownViewer } from './viewers/MarkdownViewer';
 import { Toolbar } from './Toolbar';
 import { Loader2 } from 'lucide-react';
+import { isTauri, openLiveWebWindow } from '../../config/tauri';
 
 // Lazy load heavy viewers
 const CodeViewer = lazy(() => import('./viewers/CodeViewer').then(m => ({ default: m.CodeViewer })));
@@ -77,6 +78,8 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [webMode, setWebMode] = useState<'live' | 'md'>('live');
+  const [openingNativeWeb, setOpeningNativeWeb] = useState(false);
 
   // Phase 60.4: Editable raw content state
   const [editableContent, setEditableContent] = useState<string>('');
@@ -138,6 +141,13 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
       setCanUndo(false);
     }
   }, [rawContent?.content]);
+
+  // MARKER_139.S1_4_WEB_LIVE_DEFAULT: Live mode must be default for web artifacts
+  useEffect(() => {
+    if (rawContent?.type === 'web') {
+      setWebMode('live');
+    }
+  }, [rawContent?.type, rawContent?.sourceUrl]);
 
   // Phase 60.4: Push to undo history
   const pushToUndoHistory = useCallback((content: string) => {
@@ -375,7 +385,15 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
 
     // View mode
     switch (rawContent.type) {
-      case 'web':
+      case 'web': {
+        const markdownFallback = [
+          `# ${rawContent.title || 'Web result'}`,
+          '',
+          rawContent.sourceUrl ? `Source: ${rawContent.sourceUrl}` : '',
+          '',
+          rawContent.content || '',
+        ].join('\n');
+
         return (
           <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#0a0a0a' }}>
             <div style={{
@@ -388,6 +406,38 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
               gap: 8,
             }}>
               <span style={{ color: '#666', textTransform: 'uppercase', letterSpacing: 1 }}>web preview</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button
+                  onClick={() => setWebMode('live')}
+                  style={{
+                    border: '1px solid #333',
+                    background: webMode === 'live' ? '#1f2937' : '#111',
+                    color: webMode === 'live' ? '#d1e3ff' : '#999',
+                    fontSize: 10,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                  }}
+                  title="Live web page mode"
+                >
+                  LIVE
+                </button>
+                <button
+                  onClick={() => setWebMode('md')}
+                  style={{
+                    border: '1px solid #333',
+                    background: webMode === 'md' ? '#1f2937' : '#111',
+                    color: webMode === 'md' ? '#d1e3ff' : '#999',
+                    fontSize: 10,
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                  }}
+                  title="Markdown fallback mode"
+                >
+                  MD
+                </button>
+              </div>
               {rawContent.sourceUrl && (
                 <a
                   href={rawContent.sourceUrl}
@@ -399,13 +449,42 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                   {rawContent.sourceUrl}
                 </a>
               )}
+              {isTauri() && rawContent.sourceUrl && (
+                <button
+                  onClick={async () => {
+                    if (!rawContent.sourceUrl || openingNativeWeb) return;
+                    setOpeningNativeWeb(true);
+                    try {
+                      await openLiveWebWindow(rawContent.sourceUrl, rawContent.title || 'VETKA Live Web');
+                    } finally {
+                      setOpeningNativeWeb(false);
+                    }
+                  }}
+                  style={{
+                    marginLeft: 'auto',
+                    border: '1px solid #2f3f57',
+                    background: '#111827',
+                    color: '#a6c8ff',
+                    fontSize: 10,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    cursor: openingNativeWeb ? 'wait' : 'pointer',
+                    opacity: openingNativeWeb ? 0.7 : 1,
+                  }}
+                  title="Open in native Tauri live window"
+                >
+                  {openingNativeWeb ? 'OPENING...' : 'NATIVE WINDOW'}
+                </button>
+              )}
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
-              {contentToShow ? (
+              {webMode === 'live' && rawContent.sourceUrl ? (
                 <iframe
                   title={rawContent.title || 'Web preview'}
-                  srcDoc={contentToShow}
-                  sandbox="allow-popups allow-popups-to-escape-sandbox"
+                  src={rawContent.sourceUrl}
+                  // MARKER_139.S1_4_WEB_LIVE_DEFAULT: Relaxed sandbox for auth/session-heavy websites
+                  sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation allow-downloads"
+                  referrerPolicy="strict-origin-when-cross-origin"
                   style={{
                     width: '100%',
                     height: '100%',
@@ -413,14 +492,22 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                     background: '#fff',
                   }}
                 />
+              ) : webMode === 'md' ? (
+                <MarkdownViewer content={markdownFallback} />
               ) : (
                 <div style={{ padding: 16, color: '#777', fontSize: 12 }}>
-                  Web preview is empty.
+                  Web URL is missing.
                 </div>
               )}
             </div>
+            {!!contentToShow && (
+              <div style={{ borderTop: '1px solid #222', padding: '8px 12px', fontSize: 11, color: '#888' }}>
+                {contentToShow}
+              </div>
+            )}
           </div>
         );
+      }
       case 'markdown':
         return <MarkdownViewer content={contentToShow} />;
       case 'code':
