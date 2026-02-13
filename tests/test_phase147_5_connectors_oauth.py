@@ -10,6 +10,7 @@ from src.services.connectors_state_service import ConnectorsStateService
 class _FakeStore:
     def __init__(self):
         self.saved = {}
+        self.oauth_creds = {}
 
     def has_token(self, provider_id: str) -> bool:
         return provider_id in self.saved
@@ -31,6 +32,12 @@ class _FakeStore:
 
     def clear_token(self, provider_id: str):
         self.saved.pop(provider_id, None)
+
+    def set_oauth_client_credentials(self, provider_id: str, client_id: str, client_secret: str):
+        self.oauth_creds[provider_id] = {"client_id": client_id, "client_secret": client_secret}
+
+    def get_oauth_client_credentials(self, provider_id: str):
+        return self.oauth_creds.get(provider_id)
 
 
 class _FakeStateService:
@@ -153,3 +160,46 @@ def test_oauth_complete_uses_provider_from_pending_state(monkeypatch):
     assert response["success"] is True
     assert response["provider"]["id"] == "google_drive"
     assert fake_store.saved["google_drive"]["access_token"] == "acc-1"
+
+
+def test_set_oauth_credentials_endpoint_saves_to_secure_store(monkeypatch):
+    fake_store = _FakeStore()
+    monkeypatch.setattr(cr, "get_connectors_secure_store", lambda: fake_store)
+    monkeypatch.setattr(cr, "_provider_index", lambda: {
+        "google_drive": {
+            "id": "google_drive",
+            "auth_method": "oauth",
+            "provider_class": "google",
+        }
+    })
+
+    response = asyncio.run(
+        cr.set_oauth_client_credentials(
+            "google_drive",
+            cr.OAuthClientCredentialsRequest(
+                client_id="cid-1",
+                client_secret="secret-1",
+            ),
+        )
+    )
+
+    assert response["success"] is True
+    assert fake_store.oauth_creds["google_drive"]["client_id"] == "cid-1"
+
+
+def test_resolve_oauth_credentials_prefers_secure_store(monkeypatch):
+    fake_store = _FakeStore()
+    fake_store.oauth_creds["google_drive"] = {
+        "client_id": "cid-store",
+        "client_secret": "secret-store",
+    }
+    monkeypatch.setattr(cr, "get_connectors_secure_store", lambda: fake_store)
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "cid-env")
+    monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "secret-env")
+
+    cid, sec = cr._resolve_oauth_client_credentials(
+        {"provider_class": "google"},
+        "google_drive",
+    )
+    assert cid == "cid-store"
+    assert sec == "secret-store"

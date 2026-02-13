@@ -87,6 +87,11 @@ class ManualAuthRequest(BaseModel):
     account_label: Optional[str] = None
 
 
+class OAuthClientCredentialsRequest(BaseModel):
+    client_id: str
+    client_secret: str
+
+
 _oauth_pending: Dict[str, Dict[str, Any]] = {}
 
 
@@ -118,14 +123,18 @@ def _resolve_oauth_client_credentials(provider: Dict[str, Any], provider_id: str
 
     provider_prefix = _clean_env_prefix(provider_id)
     provider_class = _clean_env_prefix(str(provider.get("provider_class") or provider_id))
+    secure_store = get_connectors_secure_store()
+    stored_creds = secure_store.get_oauth_client_credentials(provider_id)
 
     cid = _first_non_empty([
+        stored_creds.get("client_id") if stored_creds else None,
         os.getenv(f"{provider_prefix}_CLIENT_ID"),
         os.getenv(f"{provider_class}_CLIENT_ID"),
         os.getenv("OAUTH_CLIENT_ID"),
         os.getenv("GOOGLE_CLIENT_ID") if provider_class == "GOOGLE" else None,
     ])
     secret = _first_non_empty([
+        stored_creds.get("client_secret") if stored_creds else None,
         os.getenv(f"{provider_prefix}_CLIENT_SECRET"),
         os.getenv(f"{provider_class}_CLIENT_SECRET"),
         os.getenv("OAUTH_CLIENT_SECRET"),
@@ -307,6 +316,25 @@ def _build_connector_response(provider: Dict[str, Any], secure_store) -> Connect
         last_scan_count=provider.get("last_scan_count"),
         last_sync_at=provider.get("last_sync_at"),
     )
+
+
+@router.post("/{provider_id}/oauth/credentials")
+async def set_oauth_client_credentials(provider_id: str, body: OAuthClientCredentialsRequest) -> dict:
+    provider = _provider_index().get(provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail=f"Unknown provider: {provider_id}")
+    auth_method = str(provider.get("auth_method", "")).lower()
+    if auth_method not in {"oauth", "oauth2"}:
+        raise HTTPException(status_code=400, detail=f"Provider does not use OAuth: {provider_id}")
+
+    client_id = (body.client_id or "").strip()
+    client_secret = (body.client_secret or "").strip()
+    if not client_id or not client_secret:
+        raise HTTPException(status_code=400, detail="client_id and client_secret are required")
+
+    secure_store = get_connectors_secure_store()
+    secure_store.set_oauth_client_credentials(provider_id, client_id, client_secret)
+    return {"success": True, "provider_id": provider_id, "message": "OAuth credentials saved"}
 
 
 @router.get("/status")

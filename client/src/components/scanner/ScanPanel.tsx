@@ -68,6 +68,14 @@ interface ConnectorProvider {
   last_scan_count?: number;
 }
 type ConnectorAuthMethod = 'oauth' | 'api_key' | 'link';
+const resolveAuthMethods = (provider: ConnectorProvider | null): ConnectorAuthMethod[] => {
+  if (!provider) return ['oauth'];
+  const declared = String(provider.auth_method || '').toLowerCase();
+  if (declared === 'oauth' || declared === 'oauth2') return ['oauth'];
+  if (declared === 'api_key') return ['api_key', 'link'];
+  if (declared === 'basic') return ['link'];
+  return ['oauth', 'api_key', 'link'];
+};
 
 interface ScanPanelProps {
   onFileClick: (path: string) => void;
@@ -272,6 +280,8 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
   const [connectModalProvider, setConnectModalProvider] = useState<ConnectorProvider | null>(null);
   const [connectAuthMethod, setConnectAuthMethod] = useState<ConnectorAuthMethod>('oauth');
   const [connectValue, setConnectValue] = useState('');
+  const [oauthClientId, setOauthClientId] = useState('');
+  const [oauthClientSecret, setOauthClientSecret] = useState('');
   const [connectSubmitting, setConnectSubmitting] = useState(false);
 
   // Phase 92.4: Inline path input state (no popup!)
@@ -423,9 +433,12 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
   }, [currentSource.id, loadConnectors, onEvent]);
 
   const openConnectModal = useCallback((provider: ConnectorProvider) => {
+    const methods = resolveAuthMethods(provider);
     setConnectModalProvider(provider);
-    setConnectAuthMethod(provider.auth_method === 'api_key' ? 'api_key' : 'oauth');
+    setConnectAuthMethod(methods[0]);
     setConnectValue('');
+    setOauthClientId('');
+    setOauthClientSecret('');
   }, []);
 
   const submitConnectModal = useCallback(async () => {
@@ -434,12 +447,31 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
     try {
       const providerId = connectModalProvider.id;
       if (connectAuthMethod === 'oauth') {
+        const hasInlineOauthCreds = oauthClientId.trim().length > 0 || oauthClientSecret.trim().length > 0;
+        if (hasInlineOauthCreds) {
+          if (!oauthClientId.trim() || !oauthClientSecret.trim()) {
+            throw new Error('Both Client ID and Client Secret are required');
+          }
+          const credsResp = await fetch(`${API_BASE}/connectors/${encodeURIComponent(providerId)}/oauth/credentials`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              client_id: oauthClientId.trim(),
+              client_secret: oauthClientSecret.trim(),
+            }),
+          });
+          const credsData = await credsResp.json();
+          if (!credsResp.ok || !credsData?.success) {
+            throw new Error(credsData?.detail || credsData?.error || `HTTP ${credsResp.status}`);
+          }
+        }
+
         // MARKER_147_5_SCANPANEL_OAUTH_HANDOFF: start OAuth and open real provider URL, no local auto-complete.
         const startResp = await fetch(`${API_BASE}/connectors/${encodeURIComponent(providerId)}/oauth/start`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(
-            isTauri()
+            isTauri() && connectModalProvider.provider_class !== 'google'
               ? { redirect_uri: 'vetka://oauth/callback' }
               : {}
           ),
@@ -460,6 +492,8 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
         // Close modal immediately and poll backend status while user completes OAuth in browser.
         setConnectModalProvider(null);
         setConnectValue('');
+        setOauthClientId('');
+        setOauthClientSecret('');
 
         const pollUntil = Date.now() + 180000;
         const poll = async () => {
@@ -510,11 +544,22 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       setConnectValue('');
     } catch (err) {
       console.error('[ScanPanel] Connector auth failed:', err);
-      alert('Connector auth failed');
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      alert(`Connector auth failed: ${msg}`);
     } finally {
       setConnectSubmitting(false);
     }
-  }, [connectModalProvider, connectSubmitting, connectAuthMethod, connectValue, currentSource.id, loadConnectors, onEvent]);
+  }, [
+    connectModalProvider,
+    connectSubmitting,
+    connectAuthMethod,
+    connectValue,
+    oauthClientId,
+    oauthClientSecret,
+    currentSource.id,
+    loadConnectors,
+    onEvent
+  ]);
 
   // ============== PHASE 100.2: NATIVE DRAG & DROP ==============
 
@@ -1302,29 +1347,63 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
             <div className="connector-modal-title">
               Connect {connectModalProvider.display_name}
             </div>
+            {(() => {
+              const allowedMethods = resolveAuthMethods(connectModalProvider);
+              return (
+                <>
             <div className="connector-methods">
-              <button
-                className={`connector-method-btn ${connectAuthMethod === 'oauth' ? 'active' : ''}`}
-                onClick={() => setConnectAuthMethod('oauth')}
-                disabled={connectSubmitting}
-              >
-                OAuth
-              </button>
-              <button
-                className={`connector-method-btn ${connectAuthMethod === 'api_key' ? 'active' : ''}`}
-                onClick={() => setConnectAuthMethod('api_key')}
-                disabled={connectSubmitting}
-              >
-                API key
-              </button>
-              <button
-                className={`connector-method-btn ${connectAuthMethod === 'link' ? 'active' : ''}`}
-                onClick={() => setConnectAuthMethod('link')}
-                disabled={connectSubmitting}
-              >
-                Link
-              </button>
+              {allowedMethods.includes('oauth') && (
+                <button
+                  className={`connector-method-btn ${connectAuthMethod === 'oauth' ? 'active' : ''}`}
+                  onClick={() => setConnectAuthMethod('oauth')}
+                  disabled={connectSubmitting}
+                >
+                  OAuth
+                </button>
+              )}
+              {allowedMethods.includes('api_key') && (
+                <button
+                  className={`connector-method-btn ${connectAuthMethod === 'api_key' ? 'active' : ''}`}
+                  onClick={() => setConnectAuthMethod('api_key')}
+                  disabled={connectSubmitting}
+                >
+                  API key
+                </button>
+              )}
+              {allowedMethods.includes('link') && (
+                <button
+                  className={`connector-method-btn ${connectAuthMethod === 'link' ? 'active' : ''}`}
+                  onClick={() => setConnectAuthMethod('link')}
+                  disabled={connectSubmitting}
+                >
+                  Link
+                </button>
+              )}
             </div>
+            {allowedMethods.length === 1 && allowedMethods[0] === 'oauth' && (
+              <div className="connector-sub" style={{ marginTop: 10 }}>
+                Paste Client ID / Client Secret once (optional). They are stored securely for OAuth start.
+              </div>
+            )}
+            {connectAuthMethod === 'oauth' && (
+              <>
+                <input
+                  className="connector-auth-input"
+                  style={{ marginTop: 10 }}
+                  value={oauthClientId}
+                  onChange={(e) => setOauthClientId(e.target.value)}
+                  placeholder="Client ID (optional)"
+                  disabled={connectSubmitting}
+                />
+                <input
+                  className="connector-auth-input"
+                  value={oauthClientSecret}
+                  onChange={(e) => setOauthClientSecret(e.target.value)}
+                  placeholder="Client secret (optional)"
+                  disabled={connectSubmitting}
+                />
+              </>
+            )}
             {connectAuthMethod !== 'oauth' && (
               <input
                 className="connector-auth-input"
@@ -1350,6 +1429,9 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
                 {connectSubmitting ? 'Authorizing...' : 'Continue'}
               </button>
             </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

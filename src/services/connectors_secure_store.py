@@ -114,6 +114,33 @@ class ConnectorsSecureStore:
             self._entries[provider_id] = entry
             self._persist()
 
+    def set_oauth_client_credentials(self, provider_id: str, client_id: str, client_secret: str) -> None:
+        with self._lock:
+            entry: Dict[str, Any] = dict(self._entries.get(provider_id, {}))
+            entry["oauth_client_id_enc"] = self._encode(client_id)
+            entry["oauth_client_secret_enc"] = self._encode(client_secret)
+            entry["oauth_credentials_updated_at"] = _utc_now_iso()
+            entry["updated_at"] = _utc_now_iso()
+            self._entries[provider_id] = entry
+            self._persist()
+
+    def get_oauth_client_credentials(self, provider_id: str) -> Optional[Dict[str, str]]:
+        with self._lock:
+            item = self._entries.get(provider_id)
+        if not item:
+            return None
+        cid_enc = item.get("oauth_client_id_enc")
+        sec_enc = item.get("oauth_client_secret_enc")
+        if not cid_enc or not sec_enc:
+            return None
+        try:
+            return {
+                "client_id": self._decode(str(cid_enc)),
+                "client_secret": self._decode(str(sec_enc)),
+            }
+        except Exception:
+            return None
+
     def clear_token(self, provider_id: str) -> None:
         with self._lock:
             if provider_id in self._entries:
