@@ -130,8 +130,10 @@ async def lifespan(app: FastAPI):
                     await asyncio.sleep(5)
                     continue
 
+                # MARKER_140: monitor_all=True scans ALL active groups + recent solo chats
+                monitor_all = config.get("monitor_all", True)
                 # Run heartbeat tick FIRST, then sleep (responsive startup)
-                result = await heartbeat_tick(group_id=MCP_DEV_GROUP_ID, dry_run=False)
+                result = await heartbeat_tick(group_id=MCP_DEV_GROUP_ID, dry_run=False, monitor_all=monitor_all)
                 tasks_found = len(result.get("results", []))
                 if tasks_found > 0:
                     logger.info(f"[Heartbeat] Tick completed: {tasks_found} tasks processed")

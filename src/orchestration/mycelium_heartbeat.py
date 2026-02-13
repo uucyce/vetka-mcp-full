@@ -92,6 +92,8 @@ class ParsedTask:
     source_message_id: str
     sender_id: str
     trigger: str  # "dragon", "fix", "build", etc.
+    source_chat_id: str = ""  # MARKER_140: which chat this task came from
+    source_chat_type: str = "group"  # "group" or "solo"
 
 
 def _load_state() -> HeartbeatState:
@@ -152,6 +154,82 @@ def _fetch_new_messages(
         return []
 
 
+# MARKER_140.SOLO_CHAT: Fetch messages from solo chats for @mention processing
+def _fetch_solo_chat_messages(
+    chat_id: str,
+    since_id: Optional[str] = None,
+    limit: int = 20
+) -> List[Dict[str, Any]]:
+    """Fetch new messages from a solo chat via REST API.
+
+    Solo chats use role/content format. We normalize to match group chat format
+    (sender_id, content, id) so _parse_tasks works uniformly.
+    """
+    import httpx
+
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(f"http://localhost:5001/api/chats/{chat_id}")
+            if response.status_code != 200:
+                return []
+            data = response.json()
+            raw_messages = data.get("messages", [])
+
+            # Normalize solo chat messages to group chat format
+            normalized = []
+            for msg in raw_messages:
+                msg_id = msg.get("id", "")
+                # Skip messages we've already seen
+                if since_id and msg_id <= since_id:
+                    continue
+                normalized.append({
+                    "id": msg_id,
+                    "content": msg.get("content", ""),
+                    "sender_id": msg.get("agent") or msg.get("role", "user"),
+                    "message_type": msg.get("role", "user"),
+                    "timestamp": msg.get("timestamp", ""),
+                })
+
+            # Only return last N messages
+            return normalized[-limit:]
+    except Exception as e:
+        logger.error(f"[Heartbeat] Fetch solo chat {chat_id[:8]} error: {e}")
+        return []
+
+
+def _fetch_all_active_group_ids() -> List[str]:
+    """Fetch all active group IDs from VETKA server."""
+    import httpx
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get("http://localhost:5001/api/debug/mcp/groups")
+            if response.status_code == 200:
+                data = response.json()
+                groups = data.get("groups", [])
+                return [g.get("id") for g in groups if g.get("id")]
+            return []
+    except Exception:
+        return []
+
+
+def _fetch_recent_solo_chat_ids(limit: int = 10) -> List[str]:
+    """Fetch IDs of recently active solo chats."""
+    import httpx
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(
+                "http://localhost:5001/api/chats",
+                params={"limit": limit, "offset": 0}
+            )
+            if response.status_code == 200:
+                data = response.json()
+                chats = data.get("chats", [])
+                return [c.get("id") for c in chats if c.get("id")]
+            return []
+    except Exception:
+        return []
+
+
 def _parse_tasks(messages: List[Dict[str, Any]]) -> List[ParsedTask]:
     """Parse task triggers from chat messages."""
     tasks = []
@@ -186,7 +264,9 @@ def _parse_tasks(messages: List[Dict[str, Any]]) -> List[ParsedTask]:
                     phase_type=phase_type,
                     source_message_id=message_id,
                     sender_id=sender_id,
-                    trigger=trigger_word
+                    trigger=trigger_word,
+                    source_chat_id=msg.get("_source_chat_id", ""),
+                    source_chat_type=msg.get("_source_chat_type", "group"),
                 ))
                 break  # One task per message
 
@@ -302,21 +382,23 @@ async def _handle_board_command(task: ParsedTask, group_id: str) -> Dict[str, An
 
 async def heartbeat_tick(
     group_id: str = HEARTBEAT_GROUP_ID,
-    dry_run: bool = False
+    dry_run: bool = False,
+    monitor_all: bool = False,
 ) -> Dict[str, Any]:
     """
     Execute one heartbeat tick.
 
-    1. Load state (last_message_id)
+    1. Load state (last_message_id per chat)
     2. Fetch new messages since last tick
-    3. Parse tasks from messages
+    3. Parse tasks from messages (@dragon, @doctor, @titan, etc.)
     4. Dispatch tasks to pipeline (unless dry_run)
     5. Update state
     6. Report back to chat
 
     Args:
-        group_id: Group chat to monitor
+        group_id: Primary group chat to monitor (legacy, always included)
         dry_run: If True, parse but don't execute tasks
+        monitor_all: If True, monitor ALL active group + solo chats (MARKER_140)
 
     Returns:
         Tick result with new messages count, tasks found, tasks dispatched
@@ -325,10 +407,62 @@ async def heartbeat_tick(
     state = _load_state()
 
     logger.info(f"[Heartbeat] Tick #{state.total_ticks + 1} "
-                f"(last_msg: {state.last_message_id or 'none'})")
+                f"(last_msg: {state.last_message_id or 'none'}, monitor_all={monitor_all})")
 
-    # 1. Fetch new messages
-    messages = _fetch_new_messages(group_id, since_id=state.last_message_id)
+    # MARKER_140.MULTI_CHAT: Collect messages from all monitored chats
+    # Per-chat last_message_id tracking (stored in state file under "chat_cursors")
+    _cursors_file = Path(__file__).parent.parent.parent / "data" / "heartbeat_cursors.json"
+    chat_cursors = {}
+    try:
+        if _cursors_file.exists():
+            chat_cursors = json.loads(_cursors_file.read_text())
+    except Exception:
+        chat_cursors = {}
+
+    all_messages = []
+
+    if monitor_all:
+        # Fetch from ALL active groups
+        group_ids = _fetch_all_active_group_ids()
+        if group_id not in group_ids:
+            group_ids.append(group_id)
+
+        for gid in group_ids:
+            cursor = chat_cursors.get(f"group:{gid}")
+            msgs = _fetch_new_messages(gid, since_id=cursor)
+            if msgs:
+                # Tag messages with source chat for dispatch routing
+                for m in msgs:
+                    m["_source_chat_id"] = gid
+                    m["_source_chat_type"] = "group"
+                all_messages.extend(msgs)
+                # Update cursor to latest message
+                chat_cursors[f"group:{gid}"] = msgs[-1].get("id", cursor)
+
+        # Fetch from recent solo chats
+        solo_ids = _fetch_recent_solo_chat_ids(limit=10)
+        for cid in solo_ids:
+            cursor = chat_cursors.get(f"solo:{cid}")
+            msgs = _fetch_solo_chat_messages(cid, since_id=cursor)
+            if msgs:
+                for m in msgs:
+                    m["_source_chat_id"] = cid
+                    m["_source_chat_type"] = "solo"
+                all_messages.extend(msgs)
+                chat_cursors[f"solo:{cid}"] = msgs[-1].get("id", cursor)
+
+        # Persist cursors
+        try:
+            _cursors_file.parent.mkdir(parents=True, exist_ok=True)
+            _cursors_file.write_text(json.dumps(chat_cursors, indent=2))
+        except Exception:
+            pass
+
+        messages = all_messages
+    else:
+        # Legacy single-group mode
+        messages = _fetch_new_messages(group_id, since_id=state.last_message_id)
+
     new_count = len(messages)
 
     if new_count == 0:

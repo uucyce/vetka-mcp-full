@@ -2615,16 +2615,17 @@ def _load_heartbeat_config() -> Dict[str, Any]:
             return json.loads(HEARTBEAT_CONFIG_FILE.read_text())
         except Exception:
             pass
-    # Default: OFF to prevent token burn
-    return {"enabled": False, "interval": 60}
+    # Default: OFF to prevent token burn; monitor_all scans all chats
+    return {"enabled": False, "interval": 60, "monitor_all": True}
 
 
-def _save_heartbeat_config(enabled: bool, interval: int):
+def _save_heartbeat_config(enabled: bool, interval: int, monitor_all: bool = True):
     """Persist heartbeat config to disk."""
     from datetime import datetime
     config = {
         "enabled": enabled,
         "interval": interval,
+        "monitor_all": monitor_all,
         "updated_at": datetime.utcnow().isoformat()
     }
     HEARTBEAT_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -2686,14 +2687,17 @@ async def update_heartbeat_settings(body: Dict[str, Any]) -> Dict[str, Any]:
     Body params:
     - enabled: bool
     - interval: int (seconds, 10-604800)
+    - monitor_all: bool (MARKER_140: scan all groups + solo chats)
 
     MARKER_133.C33E: Settings now persist across server restarts.
     MARKER_137.S2: Extended interval cap from 1h to 1 week.
+    MARKER_140: Added monitor_all for multi-chat scanning.
     """
     # Load current config
     config = _load_heartbeat_config()
     enabled = config.get("enabled", False)
     interval = config.get("interval", 60)
+    monitor_all = config.get("monitor_all", True)
 
     # Apply updates
     if "enabled" in body:
@@ -2703,13 +2707,17 @@ async def update_heartbeat_settings(body: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_137.S2: 10s to 1 week (frontend has 6h/12h/1d/1w options)
         interval = max(10, min(body["interval"], 604800))
 
+    if "monitor_all" in body:
+        monitor_all = bool(body["monitor_all"])
+
     # Persist to disk + sync to env
-    _save_heartbeat_config(enabled, interval)
+    _save_heartbeat_config(enabled, interval, monitor_all)
 
     return {
         "success": True,
         "enabled": enabled,
         "interval": interval,
+        "monitor_all": monitor_all,
         "message": "Settings saved to disk. Persists across restarts.",
         "config_file": str(HEARTBEAT_CONFIG_FILE),
     }
