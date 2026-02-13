@@ -31,6 +31,8 @@ interface WorkflowToolbarProps {
   // Edit mode toggle
   onToggleEdit: () => void;
   editMode: boolean;
+  // MARKER_144.7: Generate workflow from description
+  onGenerate?: (workflow: any) => void;
 }
 
 const btnStyle: React.CSSProperties = {
@@ -80,13 +82,16 @@ function WorkflowToolbarComponent({
   onSetName,
   onToggleEdit,
   editMode,
+  onGenerate,
 }: WorkflowToolbarProps) {
   const [showLoadMenu, setShowLoadMenu] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [executing, setExecuting] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const executeWorkflow = useMCCStore(s => s.executeWorkflow);
+  const activePreset = useMCCStore(s => s.activePreset);
 
   // Load workflows list when menu opens
   useEffect(() => {
@@ -155,6 +160,42 @@ function WorkflowToolbarComponent({
     await onLoad(wfId);
     setShowLoadMenu(false);
   }, [onLoad]);
+
+  // MARKER_144.7: Generate workflow from natural language description
+  const handleGenerate = useCallback(async () => {
+    const description = prompt('Describe the workflow to generate:');
+    if (!description?.trim()) return;
+    setGenerating(true);
+    setValidationMsg('Generating...');
+    try {
+      const res = await fetch('http://localhost:5001/api/workflows/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: description.trim(),
+          preset: activePreset,
+          save: false,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.workflow) {
+          setValidationMsg(
+            `Generated: ${data.workflow.nodes?.length || 0} nodes (${data.model_used || 'unknown'})`
+          );
+          onGenerate?.(data.workflow);
+        } else {
+          setValidationMsg(`Generate failed: ${data.error || 'unknown'}`);
+        }
+      } else {
+        setValidationMsg('Generate API error');
+      }
+    } catch (err) {
+      setValidationMsg('Generate error');
+    } finally {
+      setGenerating(false);
+    }
+  }, [activePreset, onGenerate]);
 
   return (
     <div
@@ -292,6 +333,18 @@ function WorkflowToolbarComponent({
           {/* Validate */}
           <button style={btnStyle} onClick={handleValidate} title="Validate workflow">
             Validate ✓
+          </button>
+
+          {/* MARKER_144.7: AI Generate */}
+          <button
+            style={generating ? btnDisabledStyle : {
+              ...btnStyle,
+              background: 'rgba(255,255,255,0.03)',
+            }}
+            onClick={!generating ? handleGenerate : undefined}
+            title="AI: generate workflow from description"
+          >
+            {generating ? '...' : '✦ Generate'}
           </button>
 
           <div style={separatorStyle} />

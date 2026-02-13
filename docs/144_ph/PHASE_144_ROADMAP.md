@@ -1,7 +1,7 @@
 # Phase 144 — DAG Workflow Editor: Interactive Node CRUD & Ecosystem Bridge
 
 **Phase:** 144
-**Status:** In Progress (9/12 markers done)
+**Status:** In Progress (10/12 markers done)
 **Previous:** Phase 143 (MCC Unified Workspace)
 **Date:** 2026-02-14
 
@@ -198,12 +198,14 @@ Thin bar between header and DAG area (only visible in edit mode):
 - Execute: converts workflow → pipeline tasks, dispatches
 - Import/Export: see MARKER_144.8
 
-#### MARKER_144.7 — Architect AI → Workflow Generation
+#### MARKER_144.7 — Architect AI → Workflow Generation ✅
 **Priority:** P2
 **Files:**
-- MODIFY `server/pipeline_prompts.json` — add workflow_architect prompt variant
-- NEW `server/workflow_architect.py` (~150 lines)
-- MODIFY `server/main.py` — register endpoint
+- NEW `src/services/workflow_architect.py` (~300 lines)
+- MODIFY `src/api/routes/workflow_template_routes.py` — add generate endpoint
+- MODIFY `client/src/components/mcc/WorkflowToolbar.tsx` — "✦ Generate" button
+- MODIFY `client/src/components/mcc/MyceliumCommandCenter.tsx` — wire generate + architect changes
+- MODIFY `client/src/components/mcc/MCCTaskList.tsx` — wire onAcceptArchitectChanges
 
 **Spec:**
 New endpoint: `POST /api/workflows/generate`
@@ -216,11 +218,15 @@ New endpoint: `POST /api/workflows/generate`
 ```
 Response: complete workflow JSON with nodes + edges.
 
-The workflow_architect prompt extends existing architect prompt:
-- Same role decomposition logic
-- Additionally outputs node positions (layered layout hints)
-- Adds condition/parallel/loop nodes where appropriate
-- Includes edge types (conditional branches, parallel forks)
+**Implementation:**
+- `workflow_architect.py` — system prompt for structured JSON output (9 node types, 7 edge types)
+- Uses `call_model_v2()` from provider_registry (Kimi K2.5 for dragon_silver)
+- JSON parsing with markdown code block handling
+- Post-processing: assign IDs, validate types, fix positions, drop invalid edges
+- Fallback workflow generation when LLM unavailable (low/medium/high templates)
+- Quick validation before returning
+- Frontend: "✦ Generate" button in WorkflowToolbar, prompt dialog, loads result into DAG
+- ArchitectChat `onAcceptChanges` prop now wired through MCCTaskList → MCC
 
 User flow: describe task → AI generates workflow → user edits visually → execute.
 
@@ -467,8 +473,8 @@ P1 (Should Have — Week 1-2): 6/7 DONE
   ✅ MARKER_144.12 → Architect Chat Dialog + Task Creation        [e2ef1dc1]
   ✅ MARKER_144.10 → Workflow Execution Bridge (run workflows)
 
-P2 (Nice to Have — Week 3-4):
-  ⏳ MARKER_144.7 → AI Workflow Generation
+P2 (Nice to Have — Week 3-4): 1/2 DONE
+  ✅ MARKER_144.7 → AI Workflow Generation (workflow_architect.py + generate API + frontend)
   ⏳ MARKER_144.8 → n8n Import/Export
 
 P3 (Future):
@@ -480,7 +486,7 @@ P3 (Future):
 ## Verification Checklist
 
 1. ✅ `npm run build` — zero TypeScript errors (in our files)
-2. ✅ `python -m pytest tests/ -v` — all 19 tests pass
+2. ✅ `python -m pytest tests/ -v` — 96 tests pass (19 store + 13 execute + 26 architect helpers + 8 generate API + 30 other)
 3. ✅ Create workflow via context menu (right-click → add node)
 4. ✅ Connect nodes by dragging handles
 5. ✅ Save workflow → reload → workflow persists

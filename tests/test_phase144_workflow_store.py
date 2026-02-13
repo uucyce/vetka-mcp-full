@@ -716,3 +716,360 @@ class TestWorkflowAPIExecute:
         assert set(join["dependency_node_ids"]) == {"left", "right"}
         # All should have dragon_gold preset
         assert all(t["preset"] == "dragon_gold" for t in tasks)
+
+
+# ============================================================
+# MARKER_144.7: Workflow Architect (Generation) Tests
+# ============================================================
+
+from src.services.workflow_architect import (
+    _parse_workflow_json,
+    _post_process_workflow,
+    _quick_validate,
+    _generate_fallback_workflow,
+    _load_preset_architect_model,
+)
+
+
+class TestWorkflowArchitectHelpers:
+    """Test helper functions in workflow_architect.py."""
+
+    # --- JSON parsing ---
+
+    def test_parse_direct_json(self):
+        """Direct JSON string should parse."""
+        raw = '{"name": "Test", "nodes": [], "edges": []}'
+        result = _parse_workflow_json(raw)
+        assert result is not None
+        assert result["name"] == "Test"
+
+    def test_parse_json_in_code_block(self):
+        """JSON wrapped in markdown code block should parse."""
+        raw = '```json\n{"name": "Test", "nodes": [], "edges": []}\n```'
+        result = _parse_workflow_json(raw)
+        assert result is not None
+        assert result["name"] == "Test"
+
+    def test_parse_json_with_prose(self):
+        """JSON embedded in prose text should be extracted."""
+        raw = 'Here is the workflow:\n{"name": "Test", "nodes": [], "edges": []}\nHope that helps!'
+        result = _parse_workflow_json(raw)
+        assert result is not None
+        assert result["name"] == "Test"
+
+    def test_parse_invalid_returns_none(self):
+        """Completely invalid content should return None."""
+        assert _parse_workflow_json("not json at all") is None
+
+    def test_parse_empty_returns_none(self):
+        """Empty string should return None."""
+        assert _parse_workflow_json("") is None
+
+    # --- Post-processing ---
+
+    def test_post_process_assigns_id(self):
+        """Workflow without ID gets one assigned."""
+        wf = {"nodes": [{"id": "n1", "type": "task", "label": "A"}], "edges": []}
+        result = _post_process_workflow(wf, "Test task")
+        assert result["id"].startswith("wf_")
+
+    def test_post_process_preserves_id(self):
+        """Workflow with existing ID keeps it."""
+        wf = {"id": "custom_id", "nodes": [], "edges": []}
+        result = _post_process_workflow(wf, "Test")
+        assert result["id"] == "custom_id"
+
+    def test_post_process_assigns_name(self):
+        """Name derived from description if missing."""
+        wf = {"nodes": [], "edges": []}
+        result = _post_process_workflow(wf, "Build a REST API")
+        assert result["name"] == "Build a REST API"
+
+    def test_post_process_fixes_missing_node_fields(self):
+        """Nodes without label/position/data get defaults."""
+        wf = {
+            "nodes": [{"id": "n1", "type": "task"}],
+            "edges": [],
+        }
+        result = _post_process_workflow(wf, "Test")
+        node = result["nodes"][0]
+        assert node["label"] == "Step 1"
+        assert "x" in node["position"]
+        assert "y" in node["position"]
+        assert isinstance(node["data"], dict)
+
+    def test_post_process_fixes_invalid_type(self):
+        """Invalid node type gets replaced with 'task'."""
+        wf = {
+            "nodes": [{"id": "n1", "type": "banana", "label": "Bad"}],
+            "edges": [],
+        }
+        result = _post_process_workflow(wf, "Test")
+        assert result["nodes"][0]["type"] == "task"
+
+    def test_post_process_drops_invalid_edges(self):
+        """Edges referencing non-existent nodes get dropped."""
+        wf = {
+            "nodes": [{"id": "n1", "type": "task", "label": "A"}],
+            "edges": [{"id": "e1", "source": "n1", "target": "n999"}],
+        }
+        result = _post_process_workflow(wf, "Test")
+        assert len(result["edges"]) == 0
+
+    def test_post_process_keeps_valid_edges(self):
+        """Valid edges are preserved."""
+        wf = {
+            "nodes": [
+                {"id": "n1", "type": "task", "label": "A"},
+                {"id": "n2", "type": "task", "label": "B"},
+            ],
+            "edges": [{"id": "e1", "source": "n1", "target": "n2"}],
+        }
+        result = _post_process_workflow(wf, "Test")
+        assert len(result["edges"]) == 1
+
+    def test_post_process_metadata_generated_flag(self):
+        """Metadata should have generated=True flag."""
+        wf = {"nodes": [], "edges": []}
+        result = _post_process_workflow(wf, "Test")
+        assert result["metadata"]["generated"] is True
+        assert result["metadata"]["generator"] == "workflow_architect_v1"
+
+    # --- Quick validation ---
+
+    def test_validate_empty_nodes_fails(self):
+        """Workflow with no nodes is invalid."""
+        result = _quick_validate({"nodes": [], "edges": []})
+        assert result["valid"] is False
+        assert "No nodes" in result["errors"][0]
+
+    def test_validate_valid_workflow(self):
+        """Simple valid workflow passes."""
+        result = _quick_validate({
+            "nodes": [
+                {"id": "n1", "type": "task", "label": "A"},
+                {"id": "n2", "type": "task", "label": "B"},
+            ],
+            "edges": [{"id": "e1", "source": "n1", "target": "n2"}],
+        })
+        assert result["valid"] is True
+        assert result["node_count"] == 2
+        assert result["edge_count"] == 1
+
+    def test_validate_bad_edge_source(self):
+        """Edge with invalid source node fails."""
+        result = _quick_validate({
+            "nodes": [{"id": "n1", "type": "task", "label": "A"}],
+            "edges": [{"id": "e1", "source": "ghost", "target": "n1"}],
+        })
+        assert result["valid"] is False
+
+    def test_validate_duplicate_node_ids(self):
+        """Duplicate node IDs detected."""
+        result = _quick_validate({
+            "nodes": [
+                {"id": "n1", "type": "task", "label": "A"},
+                {"id": "n1", "type": "task", "label": "B"},
+            ],
+            "edges": [],
+        })
+        assert result["valid"] is False
+        assert "Duplicate" in result["errors"][0]
+
+    # --- Fallback workflow generation ---
+
+    def test_fallback_low_complexity(self):
+        """Low complexity generates 2 nodes (implement + verify)."""
+        result = _generate_fallback_workflow("Fix a bug", "low")
+        assert result["success"] is True
+        wf = result["workflow"]
+        assert len(wf["nodes"]) == 2
+        assert len(wf["edges"]) == 1
+        assert wf["nodes"][0]["type"] == "task"
+        assert wf["nodes"][1]["type"] == "agent"
+
+    def test_fallback_medium_complexity(self):
+        """Medium complexity generates 3 nodes (research + implement + verify)."""
+        result = _generate_fallback_workflow("Add a feature", "medium")
+        assert result["success"] is True
+        wf = result["workflow"]
+        assert len(wf["nodes"]) == 3
+        assert len(wf["edges"]) == 2
+
+    def test_fallback_high_complexity(self):
+        """High complexity generates 6 nodes with parallel branches."""
+        result = _generate_fallback_workflow("Full redesign", "high")
+        assert result["success"] is True
+        wf = result["workflow"]
+        assert len(wf["nodes"]) == 6
+        assert len(wf["edges"]) == 6
+        # Should have parallel branches (2 nodes at same depth)
+        labels = [n["label"] for n in wf["nodes"]]
+        assert "Implement Core" in labels
+        assert "Implement UI" in labels
+
+    def test_fallback_default_complexity(self):
+        """No complexity hint defaults to medium."""
+        result = _generate_fallback_workflow("Some task")
+        assert result["success"] is True
+        assert len(result["workflow"]["nodes"]) == 3  # medium default
+
+    def test_fallback_workflow_has_id(self):
+        """Fallback workflow gets a workflow ID."""
+        result = _generate_fallback_workflow("Test")
+        assert result["workflow"]["id"].startswith("wf_")
+
+    def test_fallback_metadata(self):
+        """Fallback workflow has generator metadata."""
+        result = _generate_fallback_workflow("Test", "low")
+        meta = result["workflow"]["metadata"]
+        assert meta["generated"] is True
+        assert meta["generator"] == "workflow_architect_fallback"
+        assert meta["complexity_hint"] == "low"
+
+    def test_fallback_validation_passes(self):
+        """Generated fallback workflows should always pass validation."""
+        for hint in ["low", "medium", "high"]:
+            result = _generate_fallback_workflow(f"Task {hint}", hint)
+            assert result["validation"]["valid"] is True
+
+    # --- Preset model loading ---
+
+    def test_preset_model_dragon_silver(self):
+        """Dragon silver should resolve to kimi-k2.5."""
+        model = _load_preset_architect_model("dragon_silver")
+        assert "kimi" in model.lower() or "moonshotai" in model.lower()
+
+    def test_preset_model_unknown_falls_back(self):
+        """Unknown preset falls back to kimi-k2.5."""
+        model = _load_preset_architect_model("nonexistent_preset")
+        assert "kimi" in model.lower() or "moonshotai" in model.lower()
+
+
+class TestWorkflowGenerateAPI:
+    """Test the /api/workflows/generate endpoint."""
+
+    @pytest.fixture
+    def api_client(self, tmp_path, monkeypatch):
+        """FastAPI test client with temp WorkflowStore."""
+        from fastapi.testclient import TestClient
+        from fastapi import FastAPI
+        import src.api.routes.workflow_template_routes as mod
+
+        test_store = WorkflowStore(project_root=tmp_path)
+        monkeypatch.setattr(mod, "_store", test_store)
+
+        app = FastAPI()
+        app.include_router(mod.router)
+        return TestClient(app)
+
+    def test_generate_fallback_basic(self, api_client):
+        """Generate endpoint returns a valid workflow (fallback mode)."""
+        resp = api_client.post("/api/workflows/generate", json={
+            "description": "Build a REST API with auth",
+            "preset": "dragon_silver",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert "workflow" in data
+        wf = data["workflow"]
+        assert len(wf["nodes"]) >= 2
+        assert len(wf["edges"]) >= 1
+
+    def test_generate_with_complexity_hint(self, api_client):
+        """High complexity hint generates more nodes."""
+        resp = api_client.post("/api/workflows/generate", json={
+            "description": "Full system redesign with frontend, backend, database, and tests",
+            "complexity_hint": "high",
+            "preset": "dragon_silver",
+        })
+        data = resp.json()
+        assert data["success"] is True
+        assert len(data["workflow"]["nodes"]) >= 3
+
+    def test_generate_low_complexity(self, api_client):
+        """Low complexity generates a small workflow (2-4 nodes)."""
+        resp = api_client.post("/api/workflows/generate", json={
+            "description": "Fix a typo",
+            "complexity_hint": "low",
+            "preset": "dragon_silver",
+        })
+        data = resp.json()
+        assert data["success"] is True
+        # Low complexity: 2-4 nodes depending on LLM vs fallback
+        assert 2 <= len(data["workflow"]["nodes"]) <= 4
+
+    def test_generate_and_save(self, api_client):
+        """Generate with save=true should persist the workflow."""
+        resp = api_client.post("/api/workflows/generate", json={
+            "description": "Create a feature",
+            "save": True,
+            "preset": "dragon_silver",
+        })
+        data = resp.json()
+        assert data["success"] is True
+        assert data.get("saved") is True
+        assert "workflow_id" in data
+
+        # Verify it's actually saved
+        wf_id = data["workflow_id"]
+        resp2 = api_client.get(f"/api/workflows/{wf_id}")
+        assert resp2.status_code == 200
+        assert resp2.json()["workflow"]["name"] is not None
+
+    def test_generate_without_save(self, api_client):
+        """Generate without save should not persist."""
+        resp = api_client.post("/api/workflows/generate", json={
+            "description": "Test no save",
+            "save": False,
+        })
+        data = resp.json()
+        assert data["success"] is True
+        assert data.get("saved") is not True
+
+        # Workflows list should still be empty
+        resp2 = api_client.get("/api/workflows")
+        assert resp2.json()["count"] == 0
+
+    def test_generate_has_valid_structure(self, api_client):
+        """Generated workflow should pass full WorkflowStore validation."""
+        resp = api_client.post("/api/workflows/generate", json={
+            "description": "Add user authentication",
+            "complexity_hint": "medium",
+        })
+        data = resp.json()
+        wf = data["workflow"]
+
+        # Validate via the validate endpoint
+        resp2 = api_client.post("/api/workflows/validate", json={
+            "name": wf.get("name", "Test"),
+            "nodes": [
+                {"id": n["id"], "type": n["type"], "label": n["label"],
+                 "position": n.get("position", {"x": 0, "y": 0}), "data": n.get("data", {})}
+                for n in wf["nodes"]
+            ],
+            "edges": [
+                {"id": e["id"], "source": e["source"], "target": e["target"],
+                 "type": e.get("type", "structural"), "data": e.get("data", {})}
+                for e in wf["edges"]
+            ],
+        })
+        assert resp2.json()["validation"]["valid"] is True
+
+    def test_generate_validation_in_response(self, api_client):
+        """Response should include validation info."""
+        resp = api_client.post("/api/workflows/generate", json={
+            "description": "Test validation",
+        })
+        data = resp.json()
+        assert "validation" in data
+        assert data["validation"]["valid"] is True
+
+    def test_generate_model_used(self, api_client):
+        """Response should indicate which model was used."""
+        resp = api_client.post("/api/workflows/generate", json={
+            "description": "Test model",
+        })
+        data = resp.json()
+        assert "model_used" in data

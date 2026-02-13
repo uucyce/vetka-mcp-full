@@ -35,7 +35,16 @@ function fmtInterval(s: number): string {
   return `${Math.floor(s / 3600)}h`;
 }
 
-export function MCCTaskList() {
+interface MCCTaskListProps {
+  /** MARKER_144.7: Callback when Architect proposes DAG changes user accepts */
+  onAcceptArchitectChanges?: (changes: {
+    addNodes?: Array<{ type: string; label: string }>;
+    removeNodes?: string[];
+    addEdges?: Array<{ source: string; target: string; type: string }>;
+  }) => void;
+}
+
+export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {}) {
   const {
     tasks, tasksLoading, fetchTasks, addTask, dispatchTask,
     dispatchNext, cancelTask, selectedTaskId, selectTask,
@@ -309,6 +318,7 @@ export function MCCTaskList() {
       <ArchitectChat
         selectedNodeId={selectedTaskId}
         workflowContext={{ nodeCount: tasks.length, edgeCount: 0 }}
+        onAcceptChanges={onAcceptArchitectChanges}
       />
 
       {/* Footer: dispatch + heartbeat */}

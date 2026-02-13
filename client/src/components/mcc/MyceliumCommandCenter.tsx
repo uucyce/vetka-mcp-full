@@ -22,7 +22,7 @@ import { useMCCStore } from '../../store/useMCCStore';
 import { NOLAN_PALETTE, createTestDAGData } from '../../utils/dagLayout';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
 import { useDAGEditor } from '../../hooks/useDAGEditor';
-import type { DAGNode, DAGEdge, DAGStats, DAGNodeType } from '../../types/dag';
+import type { DAGNode, DAGEdge, DAGStats, DAGNodeType, EdgeType } from '../../types/dag';
 
 const API_BASE = 'http://localhost:5001/api';
 
@@ -326,6 +326,68 @@ export function MyceliumCommandCenter() {
     }
   }, [selectedNode, fetchDAG, selectedTaskId]);
 
+  // MARKER_144.7: Handle generated workflow — load into DAG editor
+  const handleGeneratedWorkflow = useCallback(async (workflow: any) => {
+    if (!workflow?.nodes?.length) return;
+    if (!editMode) toggleEditMode();
+
+    // Save the generated workflow first, then load it via dagEditor.load
+    try {
+      const res = await fetch(`${API_BASE}/workflows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(workflow),
+      });
+      const data = await res.json();
+      if (data.success && data.id) {
+        await dagEditor.load(data.id);
+        pushStreamEvent({
+          role: 'architect',
+          message: `Generated workflow loaded: ${workflow.name || 'Untitled'} (${workflow.nodes.length} nodes)`,
+        });
+      }
+    } catch (err) {
+      console.error('[MCC] Failed to save generated workflow:', err);
+    }
+  }, [editMode, toggleEditMode, dagEditor, pushStreamEvent]);
+
+  // MARKER_144.7: Handle Architect-proposed DAG changes (from ArchitectChat)
+  const handleAcceptArchitectChanges = useCallback((changes: {
+    addNodes?: Array<{ type: string; label: string }>;
+    removeNodes?: string[];
+    addEdges?: Array<{ source: string; target: string; type: string }>;
+  }) => {
+    if (!editMode) {
+      // Auto-enter edit mode when accepting changes
+      toggleEditMode();
+    }
+    // Add proposed nodes
+    if (changes.addNodes) {
+      const startY = effectiveNodes.length * 120;
+      changes.addNodes.forEach((node, i) => {
+        dagEditor.addNode(
+          (node.type as DAGNodeType) || 'task',
+          { x: 200, y: startY + i * 120 },
+          node.label,
+        );
+      });
+    }
+    // Remove proposed nodes
+    if (changes.removeNodes) {
+      changes.removeNodes.forEach(id => dagEditor.removeNode(id));
+    }
+    // Add proposed edges
+    if (changes.addEdges) {
+      changes.addEdges.forEach(edge => {
+        dagEditor.addEdge(edge.source, edge.target, (edge.type || 'structural') as EdgeType);
+      });
+    }
+    pushStreamEvent({
+      role: 'architect',
+      message: `DAG changes applied: +${changes.addNodes?.length || 0} nodes, +${changes.addEdges?.length || 0} edges`,
+    });
+  }, [editMode, toggleEditMode, effectiveNodes, dagEditor, pushStreamEvent]);
+
   // MARKER_143.P3: Get selected task title for breadcrumb
   const selectedTaskTitle = useMemo(() => {
     if (!selectedTaskId) return null;
@@ -466,6 +528,7 @@ export function MyceliumCommandCenter() {
         onSetName={dagEditor.setWorkflowName}
         onToggleEdit={toggleEditMode}
         editMode={editMode}
+        onGenerate={handleGeneratedWorkflow}
       />
 
       {/* ═══ MAIN THREE-COLUMN LAYOUT ═══ */}
@@ -479,7 +542,7 @@ export function MyceliumCommandCenter() {
               minHeight: 0,
             }}
           >
-            <MCCTaskList />
+            <MCCTaskList onAcceptArchitectChanges={handleAcceptArchitectChanges} />
           </div>
         )}
 

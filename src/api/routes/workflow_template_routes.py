@@ -69,6 +69,14 @@ class WorkflowValidateRequest(BaseModel):
     edges: List[WorkflowEdgeModel] = Field(default_factory=list)
 
 
+class WorkflowGenerateRequest(BaseModel):
+    """MARKER_144.7: Request body for AI workflow generation."""
+    description: str
+    complexity_hint: Optional[str] = None  # "low", "medium", "high"
+    preset: str = "dragon_silver"
+    save: bool = False  # If true, auto-save the generated workflow
+
+
 # ============================================================
 # Endpoints
 # ============================================================
@@ -149,6 +157,38 @@ async def delete_workflow(workflow_id: str):
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Workflow not found: {workflow_id}")
     return {"success": True, "message": f"Workflow {workflow_id} deleted"}
+
+
+@router.post("/generate")
+async def generate_workflow(request: WorkflowGenerateRequest):
+    """
+    MARKER_144.7: AI-powered workflow generation.
+
+    Takes a natural language description → Architect AI generates a complete
+    workflow (nodes + edges) → returns it for the DAG editor.
+
+    If save=True, also saves the generated workflow to the store.
+    Falls back to template generation when LLM is unavailable.
+    """
+    from src.services.workflow_architect import generate_workflow as gen_wf
+
+    result = await gen_wf(
+        description=request.description,
+        preset=request.preset,
+        complexity_hint=request.complexity_hint,
+    )
+
+    if not result.get("success"):
+        return result
+
+    # Optionally save the generated workflow
+    if request.save and result.get("workflow"):
+        store = get_store()
+        wf_id = store.save(result["workflow"])
+        result["saved"] = True
+        result["workflow_id"] = wf_id
+
+    return result
 
 
 @router.post("/validate")
