@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { useStore, TreeNode, AgentMessage, CameraCommand } from '../store/useStore';
+import { useStore, TreeNode, AgentMessage, CameraCommand, ActiveWebContext } from '../store/useStore';
 import { useChatTreeStore } from '../store/chatTreeStore';
 import { calculateSimpleLayout } from '../utils/layout';
 import {
@@ -397,12 +397,32 @@ interface PinnedFile {
   type: string;
 }
 
+interface WebContextPayload {
+  url: string;
+  title?: string;
+  summary?: string;
+  source?: ActiveWebContext['source'];
+  web_open?: boolean;
+  captured_at?: string;
+}
+
 interface ClientToServerEvents {
   request_tree: () => void;
   move_node: (data: { path: string; position: { x: number; y: number; z: number } }) => void;
   select_node: (data: { path: string }) => void;
   // Phase 70: Added viewport_context for AI spatial awareness
-  user_message: (data: { text: string; node_path: string; node_id: string; model?: string; pinned_files?: PinnedFile[]; viewport_context?: ViewportContext }) => void;
+  user_message: (data: {
+    text: string;
+    node_path: string;
+    node_id: string;
+    model?: string;
+    model_source?: string;
+    pinned_files?: PinnedFile[];
+    viewport_context?: ViewportContext;
+    web_context?: WebContextPayload;
+    chat_id?: string;
+    display_name?: string;
+  }) => void;
   // === PHASE 55: APPROVAL ACTIONS ===
   approve_artifact: (data: { request_id: string; reason?: string }) => void;
   reject_artifact: (data: { request_id: string; reason: string }) => void;
@@ -1545,6 +1565,19 @@ export function useSocket() {
       console.log('[VIEWPORT] Camera not available, skipping viewport context');
     }
 
+    // MARKER_140.WEB_CTX_SCHEMA: Include live web context when a web page is actively open
+    const activeWebContext = useStore.getState().activeWebContext;
+    const webContextPayload: WebContextPayload | undefined = (
+      activeWebContext?.web_open && activeWebContext?.url
+    ) ? {
+      url: activeWebContext.url,
+      title: activeWebContext.title,
+      summary: (activeWebContext.summary || '').slice(0, 3000),
+      source: activeWebContext.source,
+      web_open: true,
+      captured_at: activeWebContext.captured_at,
+    } : undefined;
+
     // FIX_109.4b: Use passed chatId first, fallback to store
     const effectiveChatId = chatId || useStore.getState().currentChatId;
 
@@ -1560,6 +1593,8 @@ export function useSocket() {
       pinned_files: pinnedFiles.length > 0 ? pinnedFiles : undefined,  // Phase 61
       // Phase 70: Full viewport context for AI spatial awareness
       viewport_context: viewportContext || undefined,
+      // MARKER_140.WEB_CTX_SCHEMA: Live page context (priority summary) while preserving viewport flow
+      web_context: webContextPayload,
       // FIX_109.4b: Pass chat_id for unified ID system
       chat_id: effectiveChatId || undefined,
       // MARKER_109_14: Pass display_name for chat naming (priority: pinned > node > keywords)

@@ -16,6 +16,7 @@ import { MarkdownViewer } from './viewers/MarkdownViewer';
 import { Toolbar } from './Toolbar';
 import { Loader2 } from 'lucide-react';
 import { isTauri, openLiveWebWindow } from '../../config/tauri';
+import { useStore } from '../../store/useStore';
 
 // Lazy load heavy viewers
 const CodeViewer = lazy(() => import('./viewers/CodeViewer').then(m => ({ default: m.CodeViewer })));
@@ -74,6 +75,7 @@ interface Props {
 }
 
 export function ArtifactPanel({ file, rawContent, onClose, onContentChange, approvalLevel, artifactId }: Props) {
+  const setActiveWebContext = useStore((state) => state.setActiveWebContext);
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -151,6 +153,21 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
       setWebMode('live');
       setWebMarkdown('');
       setWebSaveNote('');
+      if (rawContent.sourceUrl) {
+        setActiveWebContext({
+          url: rawContent.sourceUrl,
+          title: rawContent.title || 'Web page',
+          summary: rawContent.content || '',
+          source: 'unified_search',
+          web_open: true,
+          captured_at: new Date().toISOString(),
+        });
+      }
+    } else {
+      const current = useStore.getState().activeWebContext;
+      if (current && current.source !== 'native_window' && current.web_open) {
+        setActiveWebContext({ ...current, web_open: false });
+      }
     }
   }, [rawContent?.type, rawContent?.sourceUrl]);
 
@@ -461,7 +478,17 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                     if (!rawContent.sourceUrl || openingNativeWeb) return;
                     setOpeningNativeWeb(true);
                     try {
-                      await openLiveWebWindow(rawContent.sourceUrl, rawContent.title || 'VETKA Live Web');
+                      const opened = await openLiveWebWindow(rawContent.sourceUrl, rawContent.title || 'VETKA Live Web');
+                      if (opened) {
+                        setActiveWebContext({
+                          url: rawContent.sourceUrl,
+                          title: rawContent.title || 'Web page',
+                          summary: rawContent.content || '',
+                          source: 'native_window',
+                          web_open: true,
+                          captured_at: new Date().toISOString(),
+                        });
+                      }
                     } finally {
                       setOpeningNativeWeb(false);
                     }
@@ -506,6 +533,14 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                       setWebMarkdown(data.markdown || markdownFallback);
                       setWebMode('md');
                       setWebSaveNote(`Saved: ${data?.filename || 'artifact'}`);
+                      setActiveWebContext({
+                        url: rawContent.sourceUrl,
+                        title: data?.title || rawContent.title || 'Web page',
+                        summary: String(data?.markdown || markdownFallback).slice(0, 3000),
+                        source: 'saved_web_artifact',
+                        web_open: true,
+                        captured_at: new Date().toISOString(),
+                      });
                     } catch (e) {
                       console.error('[ArtifactPanel] save-webpage failed:', e);
                       setWebSaveNote('Save failed');

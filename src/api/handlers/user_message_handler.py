@@ -156,6 +156,7 @@ def register_user_message_handler(sio, app=None):
         detect_provider,
         is_local_ollama_model,
         build_model_prompt,
+        build_web_context_summary,
         get_agent_short_name,
         emit_stream_wrapper,
     )
@@ -259,6 +260,8 @@ def register_user_message_handler(sio, app=None):
 
         # [PHASE71-M1] Phase 71: Viewport context for spatial awareness
         viewport_context = data.get("viewport_context", None)
+        # MARKER_140.WEB_CTX_INGEST: Optional live web page context from frontend
+        web_context = data.get("web_context", None)
 
         # FIX_109.4: Accept chat_id from frontend for unified ID system (like groups)
         # This allows MCP to interact with solo chats using the same ID
@@ -288,6 +291,8 @@ def register_user_message_handler(sio, app=None):
             print(
                 f"[PHASE_71] Viewport context: {viewport_context.get('total_pinned', 0)} pinned, {viewport_context.get('total_visible', 0)} visible, zoom ~{viewport_context.get('zoom_level', 0)}"
             )
+        if web_context and web_context.get("url"):
+            print(f"[MARKER_140] Live web context: {web_context.get('url')}")
 
         # Phase 53: Get per-session chat manager and set context
         chat_manager = ChatRegistry.get_manager(sid)
@@ -415,6 +420,7 @@ def register_user_message_handler(sio, app=None):
                         if viewport_context
                         else ""
                     )
+                    web_context_summary = build_web_context_summary(web_context)
 
                     # Phase 73: Build JSON dependency context for AI agents
                     # Phase 73.6: Pass session_id for cold start legend detection
@@ -444,6 +450,7 @@ def register_user_message_handler(sio, app=None):
                         history_context,
                         viewport_summary,
                         json_context,
+                        web_context_summary,
                     )
 
                     agent_short_name = get_agent_short_name(requested_model)
@@ -596,6 +603,7 @@ def register_user_message_handler(sio, app=None):
                 viewport_summary = (
                     build_viewport_summary(viewport_context) if viewport_context else ""
                 )
+                web_context_summary = build_web_context_summary(web_context)
 
                 # Phase 73: Build JSON dependency context for AI agents
                 # Phase 73.6: Pass session_id for cold start legend detection
@@ -669,6 +677,7 @@ def register_user_message_handler(sio, app=None):
                     history_context,
                     viewport_summary,
                     json_context,
+                    web_context_summary,
                 )
 
                 # Phase 93.3: Streaming via provider_registry
@@ -965,6 +974,7 @@ def register_user_message_handler(sio, app=None):
                         if viewport_context
                         else ""
                     )
+                    web_context_summary = build_web_context_summary(web_context)
 
                     # Phase 73: Build JSON dependency context for AI agents
                     # Phase 73.6: Pass session_id for cold start legend detection
@@ -999,6 +1009,7 @@ def register_user_message_handler(sio, app=None):
                         history_context,
                         viewport_summary,
                         json_context,
+                        web_context_summary,
                     )
 
                     # Call the model directly

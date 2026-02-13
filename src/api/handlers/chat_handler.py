@@ -114,6 +114,7 @@ def build_model_prompt(
     history_context: str = "",
     viewport_summary: str = "",
     json_context: str = "",
+    web_context_summary: str = "",
 ) -> str:
     """
     Build a standard prompt for direct model calls.
@@ -132,6 +133,16 @@ def build_model_prompt(
     Returns:
         Formatted prompt string
     """
+    # MARKER_140.WEB_CTX_PROMPT: Prioritized live web summary section (without replacing viewport context)
+    web_section = ""
+    if web_context_summary:
+        web_section = f"""## LIVE WEB CONTEXT (PRIMARY WHEN RELEVANT)
+The user currently has a web page open in VETKA research window.
+Use this context first for internet-related questions.
+
+{web_context_summary}
+"""
+
     # Phase 71: Build spatial context section if available
     spatial_section = ""
     if viewport_summary:
@@ -148,12 +159,48 @@ The user is viewing this codebase in a 3D visualization. Here's what they can se
 
 {context_for_model}
 
-{json_section}{pinned_context}{spatial_section}{history_context}## CURRENT USER QUESTION
+{json_section}{pinned_context}{web_section}{spatial_section}{history_context}## CURRENT USER QUESTION
 {text}
 
 ---
 
 Provide a helpful, specific answer:"""
+
+
+def build_web_context_summary(web_context: Optional[Dict[str, Any]]) -> str:
+    """
+    MARKER_140.WEB_CTX_SUMMARY: Compact web context summary for prompt injection.
+    """
+    if not web_context or not web_context.get("url"):
+        return ""
+
+    url = str(web_context.get("url", "")).strip()
+    if not url:
+        return ""
+
+    title = str(web_context.get("title", "")).strip()
+    source = str(web_context.get("source", "")).strip()
+    captured_at = str(web_context.get("captured_at", "")).strip()
+    summary = str(web_context.get("summary", "")).strip()
+
+    # Guard token bloat: keep only concise live summary
+    if len(summary) > 2500:
+        summary = summary[:2500] + "\n...[truncated]"
+
+    lines = [
+        f"- URL: {url}",
+    ]
+    if title:
+        lines.append(f"- Title: {title}")
+    if source:
+        lines.append(f"- Source: {source}")
+    if captured_at:
+        lines.append(f"- Captured: {captured_at}")
+
+    if summary:
+        lines.extend(["", "### Page Summary", summary])
+
+    return "\n".join(lines)
 
 
 async def call_ollama_model(

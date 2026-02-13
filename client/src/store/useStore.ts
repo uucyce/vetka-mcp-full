@@ -76,6 +76,16 @@ export interface CameraCommand {
   highlight: boolean;
 }
 
+// MARKER_140.WEB_CTX_STATE: Active web context for chat/model prompt injection
+export interface ActiveWebContext {
+  url: string;
+  title?: string;
+  summary?: string;
+  source?: 'unified_search' | 'native_window' | 'saved_web_artifact' | 'manual';
+  web_open?: boolean;
+  captured_at?: string;
+}
+
 // [PHASE70-M1] useStore.ts: Camera ref field — IMPLEMENTED
 
 interface TreeState {
@@ -111,6 +121,8 @@ interface TreeState {
 
   // Phase 61: Pinned files for multi-file context
   pinnedFileIds: string[];
+  // MARKER_140.WEB_CTX_STATE: Optional live web context (does not replace viewport context)
+  activeWebContext: ActiveWebContext | null;
 
   // FIX_109.4: Current chat ID for unified ID system (solo chats like groups)
   currentChatId: string | null;
@@ -159,6 +171,9 @@ interface TreeState {
   clearPinnedFiles: () => void;
   // Phase 100.2: Set pinned files from backend (for persistence)
   setPinnedFiles: (ids: string[]) => void;
+  // MARKER_140.WEB_CTX_STATE: Mutators for live web context
+  setActiveWebContext: (ctx: ActiveWebContext | null) => void;
+  clearActiveWebContext: () => void;
 
   // Phase 65: Smart pin based on node type
   pinNodeSmart: (nodeId: string) => void;
@@ -218,6 +233,7 @@ export const useStore = create<TreeState>((set, get) => ({
 
   // Phase 61: Pinned files
   pinnedFileIds: [],
+  activeWebContext: null,
 
   // FIX_109.4: Current chat ID for unified ID system
   currentChatId: null,
@@ -407,6 +423,8 @@ export const useStore = create<TreeState>((set, get) => ({
 
   // Phase 100.2: Set pinned files from backend (for persistence)
   setPinnedFiles: (ids) => set({ pinnedFileIds: ids }),
+  setActiveWebContext: (activeWebContext) => set({ activeWebContext }),
+  clearActiveWebContext: () => set({ activeWebContext: null }),
 
   // Phase 65: Smart pin based on node type (file → toggle, folder → subtree)
   pinNodeSmart: (nodeId) => set((state) => {
