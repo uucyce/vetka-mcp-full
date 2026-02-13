@@ -26,6 +26,12 @@ import { TaskNode } from './nodes/TaskNode';
 import { AgentNode } from './nodes/AgentNode';
 import { SubtaskNode } from './nodes/SubtaskNode';
 import { ProposalNode } from './nodes/ProposalNode';
+// MARKER_144.4: Phase 144 workflow editor node types
+import { ConditionNode } from './nodes/ConditionNode';
+import { ParallelNode } from './nodes/ParallelNode';
+import { LoopNode } from './nodes/LoopNode';
+import { TransformNode } from './nodes/TransformNode';
+import { GroupNode } from './nodes/GroupNode';
 import { layoutSugiyamaBT, createTestDAGData, NOLAN_PALETTE } from '../../utils/dagLayout';
 import type { DAGNode, DAGEdge, NodeStatus } from '../../types/dag';
 
@@ -33,11 +39,17 @@ import type { DAGNode, DAGEdge, NodeStatus } from '../../types/dag';
 type PositionMap = Record<string, { x: number; y: number }>;
 
 // Register custom node types (use Record for xyflow v12 compatibility)
+// MARKER_144.4: Extended with Phase 144 workflow editor node types
 const nodeTypes = {
   task: TaskNode,
   agent: AgentNode,
   subtask: SubtaskNode,
   proposal: ProposalNode,
+  condition: ConditionNode,
+  parallel: ParallelNode,
+  loop: LoopNode,
+  transform: TransformNode,
+  group: GroupNode,
 } as const;
 
 interface DAGViewProps {
@@ -53,6 +65,8 @@ interface DAGViewProps {
   onConnect?: (connection: Connection) => void;
   onNodesDelete?: (nodes: Node[]) => void;
   onEdgesDelete?: (edges: Edge[]) => void;
+  // MARKER_144.3: Context menu callback
+  onContextMenu?: (event: React.MouseEvent, target: { kind: 'canvas' | 'node' | 'edge'; id?: string; position: { x: number; y: number } }) => void;
 }
 
 export function DAGView({
@@ -68,6 +82,8 @@ export function DAGView({
   onConnect,
   onNodesDelete,
   onEdgesDelete,
+  // MARKER_144.3: Context menu
+  onContextMenu,
 }: DAGViewProps) {
   // If no data provided, use test data
   const { nodes: inputNodes, edges: inputEdges } = useMemo(() => {
@@ -210,6 +226,34 @@ export function DAGView({
     onEdgeSelect?.(null);
   }, [onNodeSelect, onEdgeSelect]);
 
+  // MARKER_144.3: Right-click handlers for context menu (only in edit mode)
+  const handleNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      if (!editMode || !onContextMenu) return;
+      event.preventDefault();
+      onContextMenu(event, { kind: 'node', id: node.id, position: { x: event.clientX, y: event.clientY } });
+    },
+    [editMode, onContextMenu]
+  );
+
+  const handleEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      if (!editMode || !onContextMenu) return;
+      event.preventDefault();
+      onContextMenu(event, { kind: 'edge', id: edge.id, position: { x: event.clientX, y: event.clientY } });
+    },
+    [editMode, onContextMenu]
+  );
+
+  const handlePaneContextMenu = useCallback(
+    (event: MouseEvent | React.MouseEvent) => {
+      if (!editMode || !onContextMenu) return;
+      event.preventDefault();
+      onContextMenu(event as React.MouseEvent, { kind: 'canvas', position: { x: event.clientX, y: event.clientY } });
+    },
+    [editMode, onContextMenu]
+  );
+
   // MARKER_137.2C: Get node color for minimap (actually used now)
   const getNodeColor = useCallback((node: Node): string => {
     const status = node.data?.status as NodeStatus;
@@ -253,6 +297,10 @@ export function DAGView({
         onNodesDelete={editMode ? onNodesDelete : undefined}
         onEdgesDelete={editMode ? onEdgesDelete : undefined}
         deleteKeyCode={editMode ? 'Delete' : null}
+        // MARKER_144.3: Context menu handlers (no-op when editMode=false)
+        onNodeContextMenu={editMode ? handleNodeContextMenu : undefined}
+        onEdgeContextMenu={editMode ? handleEdgeContextMenu : undefined}
+        onPaneContextMenu={editMode ? handlePaneContextMenu : undefined}
       >
         <Background color="#111" gap={32} size={1} />
         <Controls
