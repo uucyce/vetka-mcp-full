@@ -101,6 +101,8 @@ export function ArtifactViewer() {
   const [feedbackReports, setFeedbackReports] = useState<FeedbackReportSummary[]>([]);
   const [expandedReport, setExpandedReport] = useState<string | null>(null);
   const [reportContent, setReportContent] = useState<Record<string, string>>({});
+  // MARKER_141.PANEL_ARTIFACT_CONTENT: Content cache for panel artifacts
+  const [panelArtifactContent, setPanelArtifactContent] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
 
   const fetchPending = useCallback(async () => {
@@ -191,6 +193,21 @@ export function ArtifactViewer() {
       console.error('[ArtifactViewer] Failed to load report content:', err);
     }
   }, [reportContent]);
+
+  // MARKER_141.PANEL_ARTIFACT_CONTENT: Load panel artifact content on demand
+  const loadPanelArtifactContent = useCallback(async (artifactId: string) => {
+    if (panelArtifactContent[artifactId]) return;
+    try {
+      const res = await fetch(`${ARTIFACTS_API}/${encodeURIComponent(artifactId)}/content`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success && data.content) {
+        setPanelArtifactContent(prev => ({ ...prev, [artifactId]: data.content }));
+      }
+    } catch (err) {
+      console.error('[ArtifactViewer] Failed to load panel artifact content:', err);
+    }
+  }, [panelArtifactContent]);
 
   useEffect(() => {
     fetchPending();
@@ -564,6 +581,7 @@ export function ArtifactViewer() {
                 </div>
                 {panelArtifacts.map((artifact) => {
                   const isExpanded = expandedPanelArtifact === artifact.id;
+                  const content = panelArtifactContent[artifact.id];
                   return (
                     <div key={artifact.id} style={{
                       marginBottom: 6,
@@ -573,7 +591,10 @@ export function ArtifactViewer() {
                       overflow: 'hidden',
                     }}>
                       <div
-                        onClick={() => setExpandedPanelArtifact(isExpanded ? null : artifact.id)}
+                        onClick={() => {
+                          if (!isExpanded) loadPanelArtifactContent(artifact.id);
+                          setExpandedPanelArtifact(isExpanded ? null : artifact.id);
+                        }}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -590,11 +611,54 @@ export function ArtifactViewer() {
                           {artifact.size_bytes > 1024 ? `${(artifact.size_bytes / 1024).toFixed(1)}kb` : `${artifact.size_bytes}b`}
                         </span>
                       </div>
+                      {/* MARKER_141.PANEL_ARTIFACT_CONTENT: Show metadata + content on expand */}
                       {isExpanded && (
-                        <div style={{ padding: 8, fontSize: 9, color: COLORS.textMuted, lineHeight: 1.5 }}>
-                          <div><strong>path:</strong> {artifact.file_path || '-'}</div>
-                          <div><strong>type:</strong> {artifact.artifact_type || '-'}</div>
-                          <div><strong>language:</strong> {artifact.language || '-'}</div>
+                        <div style={{ padding: 8 }}>
+                          <div style={{ fontSize: 9, color: COLORS.textMuted, lineHeight: 1.5, marginBottom: 6 }}>
+                            <div><strong>path:</strong> {artifact.file_path || '-'}</div>
+                            <div><strong>type:</strong> {artifact.artifact_type || '-'}</div>
+                            <div><strong>language:</strong> {artifact.language || '-'}</div>
+                          </div>
+                          {content ? (
+                            <>
+                              <pre style={{
+                                background: '#181818',
+                                color: '#d0d0d0',
+                                padding: '8px 10px',
+                                borderRadius: 3,
+                                fontSize: 10,
+                                fontFamily: 'monospace',
+                                overflow: 'auto',
+                                maxHeight: 200,
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
+                                margin: 0,
+                                border: '1px solid #222',
+                              }}>
+                                {content.slice(0, 3000)}
+                                {content.length > 3000 && '\n... (truncated)'}
+                              </pre>
+                              <button
+                                onClick={() => navigator.clipboard.writeText(content)}
+                                style={{
+                                  marginTop: 6,
+                                  background: '#333',
+                                  color: COLORS.textMuted,
+                                  border: '1px solid #444',
+                                  borderRadius: 2,
+                                  fontSize: 9,
+                                  padding: '2px 8px',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                copy
+                              </button>
+                            </>
+                          ) : (
+                            <div style={{ color: COLORS.textDim, fontSize: 10, textAlign: 'center', padding: 10 }}>
+                              loading content...
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

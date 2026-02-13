@@ -68,6 +68,9 @@ from .unified_search_routes import router as unified_search_router
 # MARKER_136.ARTIFACT_API_ROUTE
 from .artifact_routes import router as artifact_router
 
+# MARKER_141.PIPELINE_CONFIG: Pipeline presets + prompts API
+from .pipeline_config_routes import router as pipeline_config_router
+
 
 def get_all_routers() -> List[APIRouter]:
     """
@@ -104,6 +107,7 @@ def get_all_routers() -> List[APIRouter]:
         dag_router,  # /api/dag/* (Phase 135 - DAG visualization)
         unified_search_router,  # /api/search/unified (Phase 136 - unified federated search)
         artifact_router,  # /api/artifacts/* (Phase 136 - artifacts panel API)
+        pipeline_config_router,  # /api/pipeline/* (Phase 141 - presets + prompts config)
     ]
 
 
@@ -178,4 +182,5 @@ __all__ = [
     "dag_router",
     "unified_search_router",
     "artifact_router",
+    "pipeline_config_router",
 ]
