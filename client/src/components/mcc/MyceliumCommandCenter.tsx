@@ -15,6 +15,7 @@ import { DetailPanel } from './DetailPanel';
 import { FilterBar } from './FilterBar';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
+import { createTestDAGData } from '../../utils/dagLayout';
 import type { DAGNode, DAGEdge, DAGFilters, DAGStats } from '../../types/dag';
 
 const API_BASE = 'http://localhost:5001/api';
@@ -227,9 +228,13 @@ export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCen
     };
   }, [fetchDAG, pushStreamEvent]);
 
+  // MARKER_141.FIX: Use same data source as DAGView for node lookup
+  // When dagNodes is empty, DAGView falls back to test data — we must too
+  const effectiveNodes = dagNodes.length > 0 ? dagNodes : createTestDAGData().nodes;
+
   // Get selected node data
   const selectedNodeData = selectedNode
-    ? dagNodes.find(n => n.id === selectedNode) || null
+    ? effectiveNodes.find(n => n.id === selectedNode) || null
     : null;
 
   // MARKER_135.4D: Handle node actions (approve, reject, retry)
