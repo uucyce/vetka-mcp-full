@@ -16,10 +16,13 @@ import { MCCDetailPanel } from './MCCDetailPanel';
 import { PresetDropdown } from './PresetDropdown';
 import { StreamPanel } from './StreamPanel';
 import { WatcherMicroStatus } from './WatcherMicroStatus';
+import { WorkflowToolbar } from './WorkflowToolbar';
+import { DAGContextMenu, type ContextMenuTarget } from './DAGContextMenu';
 import { useMCCStore } from '../../store/useMCCStore';
 import { NOLAN_PALETTE, createTestDAGData } from '../../utils/dagLayout';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
-import type { DAGNode, DAGEdge, DAGStats } from '../../types/dag';
+import { useDAGEditor } from '../../hooks/useDAGEditor';
+import type { DAGNode, DAGEdge, DAGStats, DAGNodeType } from '../../types/dag';
 
 const API_BASE = 'http://localhost:5001/api';
 
@@ -90,6 +93,11 @@ export function MyceliumCommandCenter() {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [showStream, setShowStream] = useState(true);
+
+  // MARKER_144.6: Edit mode + context menu
+  const editMode = useMCCStore(s => s.editMode);
+  const toggleEditMode = useMCCStore(s => s.toggleEditMode);
+  const [contextMenuTarget, setContextMenuTarget] = useState<ContextMenuTarget | null>(null);
 
   // Track last update for debouncing
   const lastFetchRef = useRef<number>(0);
@@ -194,6 +202,72 @@ export function MyceliumCommandCenter() {
     const testData = createTestDAGData();
     return { effectiveNodes: testData.nodes, effectiveEdges: testData.edges };
   }, [dagNodes, dagEdges]);
+
+  // MARKER_144.2: DAG Editor hook — manages workflow editing state
+  // Uses effectiveNodes/effectiveEdges as initial data, provides mutators
+  const dagEditor = useDAGEditor(
+    effectiveNodes,
+    effectiveEdges,
+    (updater) => {
+      if (typeof updater === 'function') {
+        setDagNodes(prev => {
+          const effective = prev.length > 0 ? prev : createTestDAGData().nodes;
+          return updater(effective);
+        });
+      } else {
+        setDagNodes(updater);
+      }
+    },
+    (updater) => {
+      if (typeof updater === 'function') {
+        setDagEdges(prev => {
+          const effective = prev.length > 0 ? prev : createTestDAGData().edges;
+          return updater(effective);
+        });
+      } else {
+        setDagEdges(updater);
+      }
+    },
+  );
+
+  // MARKER_144.3: Context menu handlers
+  const handleContextMenu = useCallback((_event: React.MouseEvent, target: { kind: 'canvas' | 'node' | 'edge'; id?: string; position: { x: number; y: number } }) => {
+    if (target.kind === 'canvas') {
+      setContextMenuTarget({ kind: 'canvas', position: target.position });
+    } else if (target.kind === 'node' && target.id) {
+      setContextMenuTarget({ kind: 'node', nodeId: target.id, position: target.position });
+    } else if (target.kind === 'edge' && target.id) {
+      setContextMenuTarget({ kind: 'edge', edgeId: target.id, position: target.position });
+    }
+  }, []);
+
+  const handleAddNodeFromMenu = useCallback((type: DAGNodeType, position: { x: number; y: number }) => {
+    dagEditor.addNode(type, position);
+  }, [dagEditor]);
+
+  const handleDuplicateNode = useCallback((nodeId: string) => {
+    const node = effectiveNodes.find(n => n.id === nodeId);
+    if (node) {
+      dagEditor.addNode(node.type, { x: 50, y: 50 }, `${node.label} (copy)`);
+    }
+  }, [dagEditor, effectiveNodes]);
+
+  // MARKER_144.6: Keyboard shortcuts for edit mode (Ctrl+Z, Ctrl+Shift+Z)
+  useEffect(() => {
+    if (!editMode) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        dagEditor.undo();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        dagEditor.redo();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [editMode, dagEditor]);
 
   // Selected node data for detail panel
   const selectedNodeData = useMemo(() => {
@@ -358,6 +432,25 @@ export function MyceliumCommandCenter() {
         </div>
       </div>
 
+      {/* ═══ MARKER_144.6: Workflow Toolbar — only renders controls when editMode=true ═══ */}
+      <WorkflowToolbar
+        workflowId={dagEditor.workflowId}
+        workflowName={dagEditor.workflowName}
+        isDirty={dagEditor.isDirty}
+        canUndo={dagEditor.canUndo}
+        canRedo={dagEditor.canRedo}
+        onNew={dagEditor.newWorkflow}
+        onSave={dagEditor.save}
+        onLoad={dagEditor.load}
+        onListWorkflows={dagEditor.listWorkflows}
+        onValidate={dagEditor.validate}
+        onUndo={dagEditor.undo}
+        onRedo={dagEditor.redo}
+        onSetName={dagEditor.setWorkflowName}
+        onToggleEdit={toggleEditMode}
+        editMode={editMode}
+      />
+
       {/* ═══ MAIN THREE-COLUMN LAYOUT ═══ */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         {/* LEFT COLUMN: Task List (220px) */}
@@ -441,6 +534,11 @@ export function MyceliumCommandCenter() {
                 selectedNode={selectedNode}
                 onNodeSelect={setSelectedNode}
                 onEdgeSelect={handleEdgeSelect}
+                editMode={editMode}
+                onConnect={dagEditor.handleConnect}
+                onNodesDelete={(deletedNodes) => deletedNodes.forEach(n => dagEditor.removeNode(n.id))}
+                onEdgesDelete={(deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))}
+                onContextMenu={handleContextMenu}
               />
             )}
           </div>
@@ -464,10 +562,24 @@ export function MyceliumCommandCenter() {
               selectedEdge={selectedEdgeData}
               stats={stats}
               onNodeAction={handleNodeAction}
+              editMode={editMode}
+              onUpdateNodeData={dagEditor.updateNodeData}
             />
           </div>
         )}
       </div>
+
+      {/* ═══ MARKER_144.3: Context Menu Overlay — only in edit mode ═══ */}
+      {editMode && (
+        <DAGContextMenu
+          target={contextMenuTarget}
+          onClose={() => setContextMenuTarget(null)}
+          onAddNode={handleAddNodeFromMenu}
+          onDeleteNode={dagEditor.removeNode}
+          onDuplicateNode={handleDuplicateNode}
+          onDeleteEdge={dagEditor.removeEdge}
+        />
+      )}
     </div>
   );
 }

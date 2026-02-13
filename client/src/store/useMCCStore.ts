@@ -73,6 +73,9 @@ interface MCCState {
   // Stream
   streamEvents: StreamEvent[];
 
+  // MARKER_144.6: Edit mode for DAG workflow editor
+  editMode: boolean;
+
   // Actions
   fetchTasks: () => Promise<void>;
   addTask: (title: string, preset: string, phaseType: string, tags: string[], selectedKey?: any) => Promise<string | null>;
@@ -87,6 +90,9 @@ interface MCCState {
   cancelTask: (taskId: string) => Promise<void>;
   removeTask: (taskId: string) => Promise<void>;
   changePriority: (taskId: string, priority: number) => Promise<void>;
+  // MARKER_144.6: Toggle edit mode
+  setEditMode: (mode: boolean) => void;
+  toggleEditMode: () => void;
 }
 
 const MAX_STREAM_EVENTS = 30;
@@ -103,6 +109,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   heartbeat: null,
   activeAgents: [],
   streamEvents: [],
+  editMode: false,
 
   // ── Fetch tasks + agents + heartbeat ──
   fetchTasks: async () => {
@@ -272,6 +279,10 @@ export const useMCCStore = create<MCCState>((set, get) => ({
       console.error('[MCC] Remove failed:', err);
     }
   },
+
+  // ── MARKER_144.6: Edit mode ──
+  setEditMode: (mode) => set({ editMode: mode }),
+  toggleEditMode: () => set(state => ({ editMode: !state.editMode })),
 
   // ── Change priority ──
   changePriority: async (taskId, priority) => {

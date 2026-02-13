@@ -23,6 +23,9 @@ interface MCCDetailPanelProps {
   selectedEdge: { id: string; source: string; target: string; type: string } | null;
   stats: DAGStats | null;
   onNodeAction: (action: string) => void;
+  // MARKER_144.5: Edit mode node property editor
+  editMode?: boolean;
+  onUpdateNodeData?: (nodeId: string, data: Partial<DAGNode>) => void;
 }
 
 // MARKER_143.P6I: Compact read-only role summary for overview mode.
@@ -80,11 +83,118 @@ function RolesSummary({ activePreset }: { activePreset: string }) {
   );
 }
 
+// MARKER_144.5: Inline node property editor for edit mode
+function NodePropertyEditor({
+  node,
+  onUpdate,
+}: {
+  node: DAGNode;
+  onUpdate: (nodeId: string, data: Partial<DAGNode>) => void;
+}) {
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    background: 'rgba(255,255,255,0.04)',
+    border: `1px solid ${NOLAN_PALETTE.border}`,
+    borderRadius: 2,
+    padding: '3px 6px',
+    color: NOLAN_PALETTE.text,
+    fontSize: 10,
+    fontFamily: 'monospace',
+    outline: 'none',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 8,
+    color: NOLAN_PALETTE.textDim,
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    marginBottom: 2,
+    marginTop: 8,
+  };
+
+  return (
+    <div style={{ padding: 10 }}>
+      <div style={{ fontSize: 9, color: '#555', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
+        edit node
+      </div>
+
+      {/* Type (read-only) */}
+      <div style={labelStyle}>type</div>
+      <div style={{ fontSize: 10, color: NOLAN_PALETTE.textMuted, padding: '3px 0' }}>
+        {node.type}
+      </div>
+
+      {/* Label */}
+      <div style={labelStyle}>label</div>
+      <input
+        style={inputStyle}
+        value={node.label}
+        onChange={e => onUpdate(node.id, { label: e.target.value })}
+      />
+
+      {/* Description */}
+      <div style={labelStyle}>description</div>
+      <textarea
+        style={{ ...inputStyle, minHeight: 48, resize: 'vertical' }}
+        value={node.description || ''}
+        onChange={e => onUpdate(node.id, { description: e.target.value })}
+        placeholder="Node description..."
+      />
+
+      {/* Type-specific fields */}
+      {node.type === 'agent' && (
+        <>
+          <div style={labelStyle}>role</div>
+          <select
+            style={inputStyle}
+            value={node.role || ''}
+            onChange={e => onUpdate(node.id, { role: e.target.value as any })}
+          >
+            <option value="">—</option>
+            <option value="scout">scout</option>
+            <option value="architect">architect</option>
+            <option value="researcher">researcher</option>
+            <option value="coder">coder</option>
+            <option value="verifier">verifier</option>
+          </select>
+
+          <div style={labelStyle}>model</div>
+          <input
+            style={inputStyle}
+            value={node.model || ''}
+            onChange={e => onUpdate(node.id, { model: e.target.value })}
+            placeholder="e.g. kimi-k2.5"
+          />
+        </>
+      )}
+
+      {/* Status selector for all types */}
+      <div style={labelStyle}>status</div>
+      <select
+        style={inputStyle}
+        value={node.status}
+        onChange={e => onUpdate(node.id, { status: e.target.value as any })}
+      >
+        <option value="pending">pending</option>
+        <option value="running">running</option>
+        <option value="done">done</option>
+        <option value="failed">failed</option>
+      </select>
+
+      <div style={{ marginTop: 10, fontSize: 8, color: NOLAN_PALETTE.textDimmer, textAlign: 'center' }}>
+        ID: {node.id}
+      </div>
+    </div>
+  );
+}
+
 export function MCCDetailPanel({
   selectedDagNode,
   selectedEdge,
   stats,
   onNodeAction,
+  editMode = false,
+  onUpdateNodeData,
 }: MCCDetailPanelProps) {
   const selectedTaskId = useMCCStore(s => s.selectedTaskId);
   const tasks = useMCCStore(s => s.tasks);
@@ -106,8 +216,15 @@ export function MCCDetailPanel({
   }, [selectedDagNode, selectedTask]);
 
   // MARKER_143.P4B: In dag_node mode, DetailPanel renders full-height with its own padding.
-  // Other modes use MCCDetailPanel's own padding.
+  // MARKER_144.5: In edit mode, show NodePropertyEditor instead of read-only DetailPanel.
   if (mode === 'dag_node') {
+    if (editMode && selectedDagNode && onUpdateNodeData) {
+      return (
+        <div style={{ height: '100%', fontFamily: 'monospace', color: NOLAN_PALETTE.text, overflowY: 'auto' }}>
+          <NodePropertyEditor node={selectedDagNode} onUpdate={onUpdateNodeData} />
+        </div>
+      );
+    }
     return (
       <div style={{ height: '100%', fontFamily: 'monospace', color: NOLAN_PALETTE.text }}>
         <DetailPanel
