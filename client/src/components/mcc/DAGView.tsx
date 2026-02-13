@@ -1,9 +1,10 @@
 /**
  * MARKER_135.1A: DAG View — main visualization component.
+ * MARKER_137.2A: Edge highlighting on node select (VETKA-style).
  * Uses xyflow for interactive graph with Sugiyama BT layout.
  * Root at bottom, proposals at top — VETKA spatial metaphor.
  *
- * @phase 135.1
+ * @phase 137
  * @status active
  */
 
@@ -16,6 +17,7 @@ import {
   useNodesState,
   useEdgesState,
   type Node,
+  type Edge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -42,6 +44,7 @@ interface DAGViewProps {
   dagEdges?: DAGEdge[];
   selectedNode?: string | null;
   onNodeSelect?: (nodeId: string | null) => void;
+  onEdgeSelect?: (edgeId: string | null) => void;
   width?: number | string;
   height?: number | string;
 }
@@ -51,6 +54,7 @@ export function DAGView({
   dagEdges,
   selectedNode,
   onNodeSelect,
+  onEdgeSelect,
   width = '100%',
   height = '100%',
 }: DAGViewProps) {
@@ -95,11 +99,66 @@ export function DAGView({
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
 
+  // Keep a ref to the base edges (before highlighting) for reset
+  const baseEdgesRef = useRef<Edge[]>(layoutedEdges);
+
   // Update nodes/edges when layout changes
   useEffect(() => {
     setNodes(layoutedNodes);
     setEdges(layoutedEdges);
+    baseEdgesRef.current = layoutedEdges;
   }, [layoutedNodes, layoutedEdges, setNodes, setEdges]);
+
+  // MARKER_137.2B: Apply edge highlighting when selectedNode changes
+  useEffect(() => {
+    if (!selectedNode) {
+      // Reset all edges and nodes to default
+      setEdges(baseEdgesRef.current);
+      setNodes(nds => nds.map(n => ({
+        ...n,
+        style: { ...n.style, opacity: 1 },
+      })));
+      return;
+    }
+
+    // Find connected edges
+    const connectedEdgeIds = new Set<string>();
+    const connectedNodeIds = new Set<string>();
+    connectedNodeIds.add(selectedNode);
+
+    baseEdgesRef.current.forEach(e => {
+      if (e.source === selectedNode || e.target === selectedNode) {
+        connectedEdgeIds.add(e.id);
+        connectedNodeIds.add(e.source);
+        connectedNodeIds.add(e.target);
+      }
+    });
+
+    // Update edges: brighten connected, dim others
+    setEdges(baseEdgesRef.current.map(e => {
+      const isConnected = connectedEdgeIds.has(e.id);
+      return {
+        ...e,
+        style: {
+          ...e.style,
+          stroke: isConnected ? '#fff' : (e.style?.stroke || NOLAN_PALETTE.edgeStructural),
+          strokeWidth: isConnected ? 2.5 : 1,
+          opacity: isConnected ? 1.0 : 0.08,
+        },
+        animated: isConnected ? true : false,
+        zIndex: isConnected ? 10 : 0,
+      };
+    }));
+
+    // Update nodes: dim unconnected
+    setNodes(nds => nds.map(n => ({
+      ...n,
+      style: {
+        ...n.style,
+        opacity: connectedNodeIds.has(n.id) ? 1.0 : 0.25,
+      },
+    })));
+  }, [selectedNode, setEdges, setNodes]);
 
   // Track user drag changes
   const handleNodesChange = useCallback((changes: any) => {
@@ -116,17 +175,31 @@ export function DAGView({
   // Handle node click
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      onNodeSelect?.(node.id);
+      // Toggle: click same node again → deselect
+      if (node.id === selectedNode) {
+        onNodeSelect?.(null);
+      } else {
+        onNodeSelect?.(node.id);
+      }
     },
-    [onNodeSelect]
+    [onNodeSelect, selectedNode]
+  );
+
+  // Handle edge click
+  const onEdgeClick = useCallback(
+    (_: React.MouseEvent, edge: Edge) => {
+      onEdgeSelect?.(edge.id);
+    },
+    [onEdgeSelect]
   );
 
   // Handle pane click (deselect)
   const onPaneClick = useCallback(() => {
     onNodeSelect?.(null);
-  }, [onNodeSelect]);
+    onEdgeSelect?.(null);
+  }, [onNodeSelect, onEdgeSelect]);
 
-  // Get node color for minimap
+  // MARKER_137.2C: Get node color for minimap (actually used now)
   const getNodeColor = useCallback((node: Node): string => {
     const status = node.data?.status as NodeStatus;
     switch (status) {
@@ -153,6 +226,7 @@ export function DAGView({
         onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
         fitView
@@ -173,12 +247,13 @@ export function DAGView({
             borderRadius: 4,
           }}
         />
+        {/* MARKER_137.2C: MiniMap now uses actual status colors */}
         <MiniMap
           position="bottom-right"
-          nodeColor={() => '#666'}
-          maskColor="rgba(0,0,0,0.9)"
+          nodeColor={getNodeColor}
+          maskColor="rgba(0,0,0,0.85)"
           style={{
-            background: '#000',
+            background: '#0a0a0a',
             border: `1px solid ${NOLAN_PALETTE.border}`,
             borderRadius: 4,
           }}
@@ -206,6 +281,7 @@ export function DAGView({
 
         .react-flow__node {
           animation: nodeFadeIn 0.3s ease-out;
+          transition: opacity 0.2s ease;
         }
 
         .react-flow__node.selected {
@@ -223,6 +299,25 @@ export function DAGView({
 
         .react-flow__edge {
           animation: nodeFadeIn 0.4s ease-out;
+          transition: opacity 0.2s ease;
+        }
+
+        .react-flow__edge path {
+          transition: stroke 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease;
+        }
+
+        /* Controls button styling for dark theme */
+        .react-flow__controls button {
+          background: ${NOLAN_PALETTE.bgDim} !important;
+          border-color: ${NOLAN_PALETTE.border} !important;
+          color: ${NOLAN_PALETTE.textMuted} !important;
+          fill: ${NOLAN_PALETTE.textMuted} !important;
+        }
+        .react-flow__controls button:hover {
+          background: ${NOLAN_PALETTE.bgLight} !important;
+        }
+        .react-flow__controls button svg {
+          fill: ${NOLAN_PALETTE.textMuted} !important;
         }
       `}</style>
     </div>

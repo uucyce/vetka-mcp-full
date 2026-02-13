@@ -1,29 +1,96 @@
 /**
  * MARKER_135.3A: Detail Panel — right sidebar with node info.
- * MARKER_141.DETAIL_PANEL: Added model selector + prompt viewer/editor for agent nodes.
- * Shows selected node details, stats, and action buttons.
- * When an agent node is selected, allows changing the model and viewing/editing the prompt.
+ * MARKER_137.3A: Simplified to active-preset-only. No scrolling through all presets.
+ * Shows selected node details, role config for active preset, prompt editor.
+ * Edge info display when edge is selected.
  *
- * @phase 141
+ * @phase 137
  * @status active
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+import { useStore } from '../../store/useStore';
 import type { DAGNode, DAGStats } from '../../types/dag';
 
 const PIPELINE_API = 'http://localhost:5001/api/pipeline';
+const MODELS_API = 'http://localhost:5001/api/models';
+
+// MARKER_137.7A: Map Balance panel key provider names → model source field values
+// Balance tab uses provider names like 'polza', 'openrouter', 'xai', 'openai'
+// Model API uses source field like 'polza', 'openrouter', 'direct', 'nanogpt'
+const KEY_PROVIDER_TO_MODEL_SOURCE: Record<string, string[]> = {
+  polza: ['polza'],
+  openrouter: ['openrouter'],
+  xai: ['direct'],
+  openai: ['direct'],
+  anthropic: ['direct'],
+  google: ['gemini_direct'],
+  nanogpt: ['nanogpt'],
+  poe: ['poe'],
+};
+
+// MARKER_137.6A: Cached model list — fetched once, shared across all RoleEditors
+interface ModelInfo {
+  id: string;
+  provider: string;
+  source: string;
+}
+
+let _cachedModels: ModelInfo[] | null = null;
+let _modelsFetching = false;
+const _modelListeners: Array<(models: ModelInfo[]) => void> = [];
+
+function fetchModelsOnce() {
+  if (_cachedModels) return;
+  if (_modelsFetching) return;
+  _modelsFetching = true;
+
+  fetch(MODELS_API)
+    .then(r => r.json())
+    .then(data => {
+      const models: ModelInfo[] = (data.models || []).map((m: any) => ({
+        id: m.id || '',
+        provider: m.provider || '',
+        source: m.source || '',
+      }));
+      _cachedModels = models;
+      _modelListeners.forEach(cb => cb(models));
+      _modelListeners.length = 0;
+    })
+    .catch(() => {
+      _modelsFetching = false;
+    });
+}
+
+function useModelList(): ModelInfo[] {
+  const [models, setModels] = useState<ModelInfo[]>(_cachedModels || []);
+
+  useEffect(() => {
+    if (_cachedModels) {
+      setModels(_cachedModels);
+      return;
+    }
+    _modelListeners.push(setModels);
+    fetchModelsOnce();
+  }, []);
+
+  return models;
+}
 
 interface DetailPanelProps {
   node: DAGNode | null;
   stats: DAGStats | null;
   onAction: (action: string) => void;
+  activePreset: string;
+  selectedEdge?: { id: string; source: string; target: string; type: string } | null;
 }
 
-// MARKER_141.ROLE_EDITOR: Agent role editing sub-component
-function RoleEditor({ role }: { role: string }) {
-  const [presets, setPresets] = useState<Record<string, any>>({});
-  const [defaultPreset, setDefaultPreset] = useState('');
+// MARKER_137.3B: Role editor — shows ONLY active preset model, not all presets
+// MARKER_137.6B: Model selector with searchable dropdown from /api/models
+// MARKER_137.7B: Filters models by selected Balance key provider
+function RoleEditor({ role, activePreset }: { role: string; activePreset: string }) {
+  const [model, setModel] = useState('');
   const [prompt, setPrompt] = useState('');
   const [temperature, setTemperature] = useState(0.3);
   const [loading, setLoading] = useState(true);
@@ -32,19 +99,62 @@ function RoleEditor({ role }: { role: string }) {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
-  // Fetch presets and prompt for this role
+  // MARKER_137.6C: Model search combobox state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(0);
+  const allModels = useModelList();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // MARKER_137.7C: Get selected key from Balance panel via Zustand store
+  const selectedKey = useStore(s => s.selectedKey);
+  const activeSource = selectedKey?.provider
+    ? KEY_PROVIDER_TO_MODEL_SOURCE[selectedKey.provider] || [selectedKey.provider]
+    : null;
+
+  // MARKER_137.7D: Filter by source (selected key provider) → deduplicate by id → filter by search
+  const filteredModels = useMemo(() => {
+    // Step 1: Filter by source if a key is selected
+    let pool = allModels;
+    if (activeSource) {
+      pool = allModels.filter(m => activeSource.includes(m.source));
+    }
+
+    // Step 2: Deduplicate by model id (keep first occurrence)
+    const seen = new Set<string>();
+    const deduped: ModelInfo[] = [];
+    for (const m of pool) {
+      if (!seen.has(m.id)) {
+        seen.add(m.id);
+        deduped.push(m);
+      }
+    }
+
+    // Step 3: Apply search filter
+    if (!searchQuery.trim()) return deduped.slice(0, 80);
+    const q = searchQuery.toLowerCase();
+    return deduped
+      .filter(m => m.id.toLowerCase().includes(q) || m.provider.toLowerCase().includes(q))
+      .slice(0, 80);
+  }, [allModels, searchQuery, activeSource]);
+
+  // Fetch model for active preset + prompt for this role
   useEffect(() => {
     setLoading(true);
     setSaveMsg('');
     setEditingPrompt(false);
+    setDropdownOpen(false);
 
     Promise.all([
-      fetch(`${PIPELINE_API}/presets`).then(r => r.json()).catch(() => ({ success: false })),
+      fetch(`${PIPELINE_API}/presets/${activePreset}`).then(r => r.json()).catch(() => ({ success: false })),
       fetch(`${PIPELINE_API}/prompts/${role}`).then(r => r.json()).catch(() => ({ success: false })),
-    ]).then(([presetsData, promptData]) => {
-      if (presetsData.success) {
-        setPresets(presetsData.presets || {});
-        setDefaultPreset(presetsData.default_preset || 'dragon_silver');
+    ]).then(([presetData, promptData]) => {
+      if (presetData.success && presetData.preset) {
+        const roles = presetData.preset.roles || {};
+        const m = roles[role] || '';
+        setModel(m);
+        setSearchQuery(m);
       }
       if (promptData.success && promptData.prompt) {
         setPrompt(promptData.prompt.system || '');
@@ -53,24 +163,23 @@ function RoleEditor({ role }: { role: string }) {
       }
       setLoading(false);
     });
-  }, [role]);
+  }, [role, activePreset]);
 
-  // MARKER_141.CHANGE_MODEL: Save model change for a role in a preset
-  const handleModelChange = useCallback(async (presetName: string, newModel: string) => {
+  // Save model change
+  const saveModel = useCallback(async (newModel: string) => {
+    if (newModel === model) return;
     setSaving(true);
     setSaveMsg('');
     try {
       const res = await fetch(`${PIPELINE_API}/presets/update-role`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preset_name: presetName, role, model: newModel }),
+        body: JSON.stringify({ preset_name: activePreset, role, model: newModel }),
       });
       const data = await res.json();
       if (data.success) {
-        setSaveMsg(`saved: ${newModel.split('/').pop()}`);
-        // Refresh presets
-        const fresh = await fetch(`${PIPELINE_API}/presets`).then(r => r.json());
-        if (fresh.success) setPresets(fresh.presets || {});
+        setModel(newModel);
+        setSaveMsg('model saved ✓');
       } else {
         setSaveMsg(`error: ${data.detail || 'unknown'}`);
       }
@@ -78,10 +187,32 @@ function RoleEditor({ role }: { role: string }) {
       setSaveMsg('network error');
     }
     setSaving(false);
-    setTimeout(() => setSaveMsg(''), 3000);
-  }, [role]);
+    setTimeout(() => setSaveMsg(''), 2500);
+  }, [model, activePreset, role]);
 
-  // MARKER_141.SAVE_PROMPT: Save prompt changes
+  // Select a model from dropdown
+  const selectModel = useCallback((modelId: string) => {
+    setSearchQuery(modelId);
+    setDropdownOpen(false);
+    saveModel(modelId);
+  }, [saveModel]);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
+          inputRef.current && !inputRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+        // Restore current model if user didn't select
+        setSearchQuery(model);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [dropdownOpen, model]);
+
+  // Save prompt change
   const handleSavePrompt = useCallback(async () => {
     setSaving(true);
     setSaveMsg('');
@@ -103,121 +234,169 @@ function RoleEditor({ role }: { role: string }) {
       setSaveMsg('network error');
     }
     setSaving(false);
-    setTimeout(() => setSaveMsg(''), 3000);
+    setTimeout(() => setSaveMsg(''), 2500);
   }, [role, editedPrompt, temperature]);
 
   if (loading) {
     return (
-      <div style={{ color: NOLAN_PALETTE.textDim, fontSize: 10, padding: 8 }}>
+      <div style={{ color: NOLAN_PALETTE.textDim, fontSize: 10, padding: 4, marginTop: 8 }}>
         loading config...
       </div>
     );
   }
 
-  // Get current model for this role across presets
-  const currentPreset = presets[defaultPreset];
-  const currentRoles = currentPreset?.roles || currentPreset || {};
-  const currentModel = currentRoles[role] || '';
-
   return (
     <div style={{ marginTop: 12 }}>
       {/* Section header */}
-      <div style={{
-        fontSize: 9,
-        color: NOLAN_PALETTE.textDim,
-        textTransform: 'uppercase',
-        letterSpacing: 1,
-        marginBottom: 8,
-        borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`,
-        paddingTop: 8,
-      }}>
-        role config
-      </div>
+      <SectionHeader label="role config" />
 
-      {/* Current model display */}
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 8, color: NOLAN_PALETTE.textDim, textTransform: 'uppercase' }}>
-          model ({defaultPreset})
+      {/* MARKER_137.6D: Model — searchable combobox */}
+      <div style={{ marginBottom: 8, position: 'relative' }}>
+        <div style={{ fontSize: 8, color: NOLAN_PALETTE.textDim, textTransform: 'uppercase', marginBottom: 3 }}>
+          model ({activePreset})
         </div>
-        <div style={{ fontSize: 11, color: NOLAN_PALETTE.textAccent, marginTop: 2 }}>
-          {currentModel || 'not set'}
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <input
+            ref={inputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setDropdownOpen(true);
+              setHighlightIdx(0);
+            }}
+            onFocus={() => {
+              setDropdownOpen(true);
+              setHighlightIdx(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setHighlightIdx(i => Math.min(i + 1, filteredModels.length - 1));
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setHighlightIdx(i => Math.max(i - 1, 0));
+              } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (dropdownOpen && filteredModels[highlightIdx]) {
+                  selectModel(filteredModels[highlightIdx].id);
+                } else if (searchQuery.trim()) {
+                  // Allow custom model ID entry
+                  selectModel(searchQuery.trim());
+                }
+              } else if (e.key === 'Escape') {
+                setDropdownOpen(false);
+                setSearchQuery(model);
+                inputRef.current?.blur();
+              }
+            }}
+            disabled={saving}
+            placeholder="search models..."
+            style={{
+              flex: 1,
+              background: 'rgba(0,0,0,0.3)',
+              border: `1px solid ${dropdownOpen ? NOLAN_PALETTE.borderLight : NOLAN_PALETTE.borderDim}`,
+              borderRadius: 2,
+              padding: '4px 6px',
+              color: '#fff',
+              fontSize: 10,
+              fontFamily: 'monospace',
+              outline: 'none',
+            }}
+          />
+          {/* MARKER_137.7E: Show source filter badge */}
+          <span style={{ fontSize: 8, color: activeSource ? '#6a8a6a' : NOLAN_PALETTE.textDim }}>
+            {activeSource ? activeSource[0] : (allModels.length > 0 ? 'all' : '...')}
+          </span>
         </div>
-      </div>
 
-      {/* Model per preset — editable */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{
-          fontSize: 8,
-          color: NOLAN_PALETTE.textDim,
-          textTransform: 'uppercase',
-          marginBottom: 4,
-        }}>
-          model in each preset
-        </div>
-        {Object.entries(presets).map(([presetName, preset]: [string, any]) => {
-          const roles = preset.roles || preset;
-          const model = roles[role] || '';
-          const isDefault = presetName === defaultPreset;
-
-          return (
-            <div key={presetName} style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              marginBottom: 4,
-              padding: '3px 6px',
-              background: isDefault ? 'rgba(255,255,255,0.04)' : 'transparent',
-              borderRadius: 3,
-              border: isDefault ? `1px solid ${NOLAN_PALETTE.borderDim}` : '1px solid transparent',
-            }}>
-              <span style={{
-                fontSize: 9,
-                color: isDefault ? NOLAN_PALETTE.text : NOLAN_PALETTE.textDim,
-                minWidth: 80,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-                title={presetName}
-              >
-                {isDefault ? '● ' : '  '}{presetName.replace('dragon_', 'd_')}
-              </span>
-              <input
-                type="text"
-                value={model}
-                onChange={(e) => {
-                  // Optimistic update in local state
-                  const updated = { ...presets };
-                  const r = updated[presetName].roles || updated[presetName];
-                  r[role] = e.target.value;
-                  setPresets(updated);
-                }}
-                onBlur={(e) => {
-                  if (e.target.value !== model) {
-                    handleModelChange(presetName, e.target.value);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    (e.target as HTMLInputElement).blur();
-                  }
-                }}
-                disabled={saving}
-                style={{
-                  flex: 1,
-                  background: 'rgba(0,0,0,0.3)',
-                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-                  borderRadius: 2,
-                  padding: '2px 4px',
-                  color: NOLAN_PALETTE.text,
-                  fontSize: 9,
-                  fontFamily: 'monospace',
-                  outline: 'none',
-                }}
-              />
-            </div>
-          );
-        })}
+        {/* MARKER_137.6E: Dropdown list */}
+        {dropdownOpen && filteredModels.length > 0 && (
+          <div
+            ref={dropdownRef}
+            style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              maxHeight: 200,
+              overflowY: 'auto',
+              background: '#111',
+              border: `1px solid ${NOLAN_PALETTE.borderLight}`,
+              borderRadius: '0 0 3px 3px',
+              zIndex: 100,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+            }}
+          >
+            {filteredModels.map((m, idx) => {
+              const isCurrent = m.id === model;
+              const isHighlighted = idx === highlightIdx;
+              return (
+                <div
+                  key={`${m.id}-${m.source}`}
+                  onClick={() => selectModel(m.id)}
+                  onMouseEnter={() => setHighlightIdx(idx)}
+                  style={{
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: isHighlighted
+                      ? 'rgba(255,255,255,0.08)'
+                      : isCurrent
+                        ? 'rgba(255,255,255,0.04)'
+                        : 'transparent',
+                    borderLeft: isCurrent ? '2px solid #fff' : '2px solid transparent',
+                  }}
+                >
+                  <span style={{
+                    fontSize: 9,
+                    fontFamily: 'monospace',
+                    color: isCurrent ? '#fff' : NOLAN_PALETTE.text,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    flex: 1,
+                  }}>
+                    {m.id}
+                  </span>
+                  <span style={{
+                    fontSize: 7,
+                    color: NOLAN_PALETTE.textDim,
+                    marginLeft: 6,
+                    flexShrink: 0,
+                    textTransform: 'uppercase',
+                  }}>
+                    {m.source}
+                  </span>
+                </div>
+              );
+            })}
+            {filteredModels.length >= 80 && (
+              <div style={{
+                padding: '3px 8px',
+                fontSize: 8,
+                color: NOLAN_PALETTE.textDim,
+                textAlign: 'center',
+                borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              }}>
+                type to filter • {activeSource ? `${activeSource[0]} models` : `${allModels.length} all models`}
+              </div>
+            )}
+            {!activeSource && filteredModels.length > 0 && filteredModels.length < 80 && (
+              <div style={{
+                padding: '3px 8px',
+                fontSize: 8,
+                color: '#8a8a6a',
+                textAlign: 'center',
+                borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              }}>
+                select a key in Balance tab to filter by provider
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Save message */}
@@ -241,6 +420,7 @@ function RoleEditor({ role }: { role: string }) {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        marginTop: 8,
       }}>
         <span>system prompt</span>
         <span style={{ fontSize: 9, color: NOLAN_PALETTE.textDim }}>
@@ -270,8 +450,8 @@ function RoleEditor({ role }: { role: string }) {
             onChange={(e) => setEditedPrompt(e.target.value)}
             style={{
               width: '100%',
-              minHeight: 120,
-              maxHeight: 250,
+              minHeight: 100,
+              maxHeight: 200,
               background: '#181818',
               color: '#d0d0d0',
               border: `1px solid ${NOLAN_PALETTE.borderDim}`,
@@ -301,30 +481,31 @@ function RoleEditor({ role }: { role: string }) {
           </div>
         </>
       ) : (
-        <>
-          <pre style={{
-            background: '#181818',
-            color: '#b0b0b0',
-            padding: '6px 8px',
-            borderRadius: 3,
-            fontSize: 9,
-            fontFamily: 'monospace',
-            overflow: 'auto',
-            maxHeight: 120,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            margin: 0,
-            border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-            cursor: 'pointer',
-          }}
+        <div>
+          <pre
+            style={{
+              background: '#181818',
+              color: '#b0b0b0',
+              padding: '6px 8px',
+              borderRadius: 3,
+              fontSize: 9,
+              fontFamily: 'monospace',
+              overflow: 'auto',
+              maxHeight: 80,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              margin: 0,
+              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              cursor: 'pointer',
+            }}
             onClick={() => {
               setEditingPrompt(true);
               setEditedPrompt(prompt);
             }}
             title="Click to edit"
           >
-            {prompt.slice(0, 500)}
-            {prompt.length > 500 && '\n... (click to edit)'}
+            {prompt.slice(0, 300)}
+            {prompt.length > 300 && '\n... (click to edit)'}
           </pre>
           <button
             onClick={() => {
@@ -345,14 +526,15 @@ function RoleEditor({ role }: { role: string }) {
           >
             edit prompt
           </button>
-        </>
+        </div>
       )}
     </div>
   );
 }
 
 
-export function DetailPanel({ node, stats, onAction }: DetailPanelProps) {
+// MARKER_137.3C: Main DetailPanel
+export function DetailPanel({ node, stats, onAction, activePreset, selectedEdge }: DetailPanelProps) {
   return (
     <div
       style={{
@@ -364,20 +546,27 @@ export function DetailPanel({ node, stats, onAction }: DetailPanelProps) {
         overflow: 'auto',
       }}
     >
+      {/* MARKER_137.3D: Edge info (when edge is selected) */}
+      {selectedEdge && (
+        <div style={{ marginBottom: 12 }}>
+          <SectionHeader label="connection" />
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: 8,
+          }}>
+            <MetaItem label="From" value={selectedEdge.source.split('_').slice(-1)[0]} />
+            <MetaItem label="To" value={selectedEdge.target.split('_').slice(-1)[0]} />
+            <MetaItem label="Type" value={selectedEdge.type} />
+            <MetaItem label="ID" value={selectedEdge.id} />
+          </div>
+        </div>
+      )}
+
       {/* Selected Node Info */}
       {node ? (
         <div style={{ marginBottom: 16 }}>
-          <div
-            style={{
-              fontSize: 9,
-              color: NOLAN_PALETTE.textDim,
-              textTransform: 'uppercase',
-              letterSpacing: 1,
-              marginBottom: 8,
-            }}
-          >
-            selected
-          </div>
+          <SectionHeader label="selected" />
 
           {/* Node type badge */}
           <div
@@ -420,8 +609,8 @@ export function DetailPanel({ node, stats, onAction }: DetailPanelProps) {
           >
             <MetaItem label="Status" value={node.status} />
             <MetaItem label="Layer" value={node.layer} />
-            {node.durationS && <MetaItem label="Duration" value={`${node.durationS}s`} />}
-            {node.tokens && <MetaItem label="Tokens" value={node.tokens} />}
+            {node.durationS != null && <MetaItem label="Duration" value={`${node.durationS}s`} />}
+            {node.tokens != null && <MetaItem label="Tokens" value={node.tokens} />}
             {node.model && <MetaItem label="Model" value={node.model} />}
             {node.role && <MetaItem label="Role" value={node.role} />}
             {node.confidence !== undefined && (
@@ -441,12 +630,12 @@ export function DetailPanel({ node, stats, onAction }: DetailPanelProps) {
             <ActionButton label="Retry" onClick={() => onAction('retry')} />
           )}
 
-          {/* MARKER_141.ROLE_EDITOR: Show role editor for agent nodes */}
+          {/* MARKER_137.3E: Role editor for agent nodes — active preset only */}
           {node.type === 'agent' && node.role && (
-            <RoleEditor role={node.role} />
+            <RoleEditor role={node.role} activePreset={activePreset} />
           )}
         </div>
-      ) : (
+      ) : !selectedEdge ? (
         <div
           style={{
             color: NOLAN_PALETTE.textDim,
@@ -457,22 +646,12 @@ export function DetailPanel({ node, stats, onAction }: DetailPanelProps) {
         >
           Click a node to see details
         </div>
-      )}
+      ) : null}
 
       {/* Stats Summary */}
       {stats && (
         <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}` }}>
-          <div
-            style={{
-              fontSize: 9,
-              color: NOLAN_PALETTE.textDim,
-              textTransform: 'uppercase',
-              letterSpacing: 1,
-              marginBottom: 8,
-            }}
-          >
-            overview
-          </div>
+          <SectionHeader label="overview" />
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <StatRow label="Total Tasks" value={stats.totalTasks} />
@@ -487,13 +666,32 @@ export function DetailPanel({ node, stats, onAction }: DetailPanelProps) {
   );
 }
 
+
+// ── Shared sub-components ──
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div
+      style={{
+        fontSize: 9,
+        color: NOLAN_PALETTE.textDim,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+        marginBottom: 8,
+      }}
+    >
+      {label}
+    </div>
+  );
+}
+
 function MetaItem({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
       <div style={{ fontSize: 8, color: NOLAN_PALETTE.textDim, textTransform: 'uppercase' }}>
         {label}
       </div>
-      <div style={{ fontSize: 11, color: NOLAN_PALETTE.text }}>
+      <div style={{ fontSize: 11, color: NOLAN_PALETTE.text, wordBreak: 'break-all' }}>
         {value}
       </div>
     </div>

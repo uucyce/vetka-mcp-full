@@ -127,6 +127,79 @@ async def update_preset_role(req: UpdateRoleModel):
     }
 
 
+class CreatePreset(BaseModel):
+    """Create a new preset by cloning an existing one."""
+    name: str
+    clone_from: str
+
+
+# MARKER_137.5A: Create new preset by cloning existing one
+@router.post("/presets/create")
+async def create_preset(req: CreatePreset):
+    """
+    Create a new preset by cloning an existing one.
+    Used by LeagueSelector '+ new' button.
+    """
+    data = _load_json(_PRESETS_FILE)
+    presets = data.get("presets", {})
+
+    if req.clone_from not in presets:
+        raise HTTPException(status_code=404, detail=f"Source preset '{req.clone_from}' not found")
+
+    if req.name in presets:
+        raise HTTPException(status_code=409, detail=f"Preset '{req.name}' already exists")
+
+    # Validate name
+    if not req.name or len(req.name) > 50:
+        raise HTTPException(status_code=400, detail="Invalid preset name")
+
+    # Deep copy source preset
+    import copy
+    new_preset = copy.deepcopy(presets[req.clone_from])
+    new_preset["description"] = f"Custom preset (cloned from {req.clone_from})"
+
+    presets[req.name] = new_preset
+    _save_json(_PRESETS_FILE, data)
+
+    return {
+        "success": True,
+        "name": req.name,
+        "cloned_from": req.clone_from,
+    }
+
+
+class DeletePresetRequest(BaseModel):
+    """Delete a custom preset."""
+    name: str
+
+
+# MARKER_137.5B: Delete a custom preset
+@router.post("/presets/delete")
+async def delete_preset(req: DeletePresetRequest):
+    """
+    Delete a custom preset. Cannot delete base Dragon/Titan presets.
+    """
+    data = _load_json(_PRESETS_FILE)
+    presets = data.get("presets", {})
+
+    if req.name not in presets:
+        raise HTTPException(status_code=404, detail=f"Preset '{req.name}' not found")
+
+    # Protect base presets
+    protected = {"dragon_bronze", "dragon_silver", "dragon_gold"}
+    if req.name in protected:
+        raise HTTPException(status_code=403, detail=f"Cannot delete base preset '{req.name}'")
+
+    # Don't delete the default preset
+    if data.get("default_preset") == req.name:
+        raise HTTPException(status_code=400, detail="Cannot delete the default preset. Change default first.")
+
+    del presets[req.name]
+    _save_json(_PRESETS_FILE, data)
+
+    return {"success": True, "deleted": req.name}
+
+
 class SetDefaultPreset(BaseModel):
     """Set the default preset."""
     preset_name: str

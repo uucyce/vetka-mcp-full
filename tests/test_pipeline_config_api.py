@@ -202,6 +202,63 @@ class TestPresetsAPI:
         with pytest.raises(Exception):  # HTTPException
             await set_default_preset(req)
 
+    # MARKER_137.TESTS: Create/delete preset tests
+    @pytest.mark.asyncio
+    async def test_create_preset_by_cloning(self, tmp_presets):
+        from src.api.routes.pipeline_config_routes import create_preset, CreatePreset
+
+        req = CreatePreset(name="my_custom", clone_from="dragon_silver")
+        result = await create_preset(req)
+        assert result["success"] is True
+        assert result["name"] == "my_custom"
+        assert result["cloned_from"] == "dragon_silver"
+
+        # Verify the new preset is in the file
+        data = json.loads(tmp_presets.read_text())
+        assert "my_custom" in data["presets"]
+        # Verify roles were cloned
+        assert data["presets"]["my_custom"]["roles"]["coder"] == "qwen/qwen3-coder"
+
+    @pytest.mark.asyncio
+    async def test_create_preset_duplicate_name(self, tmp_presets):
+        from src.api.routes.pipeline_config_routes import create_preset, CreatePreset
+
+        req = CreatePreset(name="dragon_silver", clone_from="dragon_bronze")
+        with pytest.raises(Exception):  # HTTPException 409
+            await create_preset(req)
+
+    @pytest.mark.asyncio
+    async def test_create_preset_nonexistent_source(self, tmp_presets):
+        from src.api.routes.pipeline_config_routes import create_preset, CreatePreset
+
+        req = CreatePreset(name="new_preset", clone_from="nonexistent")
+        with pytest.raises(Exception):  # HTTPException 404
+            await create_preset(req)
+
+    @pytest.mark.asyncio
+    async def test_delete_custom_preset(self, tmp_presets):
+        from src.api.routes.pipeline_config_routes import (
+            create_preset, CreatePreset, delete_preset, DeletePresetRequest
+        )
+
+        # First create a custom preset
+        await create_preset(CreatePreset(name="temp_preset", clone_from="dragon_bronze"))
+        # Then delete it
+        result = await delete_preset(DeletePresetRequest(name="temp_preset"))
+        assert result["success"] is True
+        assert result["deleted"] == "temp_preset"
+
+        # Verify it's gone
+        data = json.loads(tmp_presets.read_text())
+        assert "temp_preset" not in data["presets"]
+
+    @pytest.mark.asyncio
+    async def test_delete_protected_preset(self, tmp_presets):
+        from src.api.routes.pipeline_config_routes import delete_preset, DeletePresetRequest
+
+        with pytest.raises(Exception):  # HTTPException 403
+            await delete_preset(DeletePresetRequest(name="dragon_silver"))
+
 
 # ============================================================
 # Prompts API
