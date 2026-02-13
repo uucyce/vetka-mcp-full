@@ -89,7 +89,8 @@ interface DetailPanelProps {
 // MARKER_137.3B: Role editor — shows ONLY active preset model, not all presets
 // MARKER_137.6B: Model selector with searchable dropdown from /api/models
 // MARKER_137.7B: Filters models by selected Balance key provider
-function RoleEditor({ role, activePreset }: { role: string; activePreset: string }) {
+// MARKER_143.P6C: Exported for use in RolesConfigPanel (MCCDetailPanel)
+export function RoleEditor({ role, activePreset }: { role: string; activePreset: string }) {
   const [model, setModel] = useState('');
   const [prompt, setPrompt] = useState('');
   const [temperature, setTemperature] = useState(0.3);

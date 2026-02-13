@@ -1,36 +1,27 @@
 /**
- * MARKER_135.1A: Mycelium Command Center — main container.
- * MARKER_135.2C: Connected to real API (Wave 2).
- * MARKER_135.3A: Live updates via WebSocket (Wave 3).
- * MARKER_137.4A: Optimized — FilterBar removed, LeagueSelector added,
- *   edge highlighting, compact stream, active preset management.
+ * MARKER_143.P2: Mycelium Command Center — unified three-column workspace.
+ * Merges Board + DAG + Stream + Artifacts into ONE view.
+ * Layout: Left (tasks) | Center (DAG + stream) | Right (detail panel)
  *
- * @phase 137
+ * Replaces the old two-panel DAG-only layout from Phase 137.
+ *
+ * @phase 143
  * @status active
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { DAGView } from './DAGView';
-import { DetailPanel } from './DetailPanel';
-import { LeagueSelector } from './LeagueSelector';
-import { NOLAN_PALETTE } from '../../utils/dagLayout';
+import { MCCTaskList } from './MCCTaskList';
+import { MCCDetailPanel } from './MCCDetailPanel';
+import { PresetDropdown } from './PresetDropdown';
+import { StreamPanel } from './StreamPanel';
+import { WatcherMicroStatus } from './WatcherMicroStatus';
+import { useMCCStore } from '../../store/useMCCStore';
+import { NOLAN_PALETTE, createTestDAGData } from '../../utils/dagLayout';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
-import { createTestDAGData } from '../../utils/dagLayout';
 import type { DAGNode, DAGEdge, DAGStats } from '../../types/dag';
 
 const API_BASE = 'http://localhost:5001/api';
-
-interface MyceliumCommandCenterProps {
-  standalone?: boolean;
-}
-
-interface StreamEvent {
-  id: string;
-  ts: number;
-  role: string;
-  message: string;
-  taskId?: string;
-}
 
 // Convert backend response to frontend types
 function mapBackendNode(node: any): DAGNode {
@@ -75,59 +66,46 @@ function mapBackendStats(stats: any): DAGStats {
   };
 }
 
-export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCenterProps) {
+export function MyceliumCommandCenter() {
   // WebSocket connection status
   const { connected } = useMyceliumSocket();
+
+  // MCC store state
+  const selectedTaskId = useMCCStore(s => s.selectedTaskId);
+  const selectTask = useMCCStore(s => s.selectTask);
+  const pushStreamEvent = useMCCStore(s => s.pushStreamEvent);
+  const tasks = useMCCStore(s => s.tasks);
 
   // DAG data state
   const [dagNodes, setDagNodes] = useState<DAGNode[]>([]);
   const [dagEdges, setDagEdges] = useState<DAGEdge[]>([]);
   const [stats, setStats] = useState<DAGStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // UI state
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<{
     id: string; source: string; target: string; type: string;
   } | null>(null);
-  const [panelCollapsed, setPanelCollapsed] = useState(false);
-  const [showStream, setShowStream] = useState(false);
-
-  // MARKER_137.4B: Active preset state — managed here, passed down
-  const [activePreset, setActivePreset] = useState('dragon_silver');
-
-  // MARKER_139.MCC_DAG_STREAM: Live pipeline output stream for DAG tab
-  const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [showStream, setShowStream] = useState(true);
 
   // Track last update for debouncing
   const lastFetchRef = useRef<number>(0);
   const DEBOUNCE_MS = 500;
-  const MAX_STREAM_EVENTS = 30;
 
-  const pushStreamEvent = useCallback((event: Omit<StreamEvent, 'id' | 'ts'>) => {
-    const next: StreamEvent = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      ts: Date.now(),
-      role: event.role || 'pipeline',
-      message: event.message || '',
-      taskId: event.taskId,
-    };
-    setStreamEvents(prev => [next, ...prev].slice(0, MAX_STREAM_EVENTS));
-  }, []);
-
-  // Fetch DAG data from API
-  const fetchDAG = useCallback(async () => {
+  // MARKER_143.P3: Fetch DAG data — filtered by selectedTaskId when set
+  const fetchDAG = useCallback(async (taskId?: string | null) => {
     try {
-      const res = await fetch(`${API_BASE}/dag`);
+      const url = taskId
+        ? `${API_BASE}/dag?task_id=${encodeURIComponent(taskId)}`
+        : `${API_BASE}/dag`;
+      const res = await fetch(url);
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
-
-      // Map backend response to frontend types
       const nodes = (data.nodes || []).map(mapBackendNode);
       const edges = (data.edges || []).map(mapBackendEdge);
       const mappedStats = mapBackendStats(data.stats || {});
@@ -135,51 +113,31 @@ export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCen
       setDagNodes(nodes);
       setDagEdges(edges);
       setStats(mappedStats);
-      setError(null);
     } catch (err) {
-      // Fallback to test data if API unavailable
-      console.warn('DAG API unavailable, using test data:', err);
+      console.warn('DAG API unavailable:', err);
       setDagNodes([]);
       setDagEdges([]);
       setStats({
-        totalTasks: 0,
-        runningTasks: 0,
-        completedTasks: 0,
-        failedTasks: 0,
-        successRate: 0,
-        totalAgents: 0,
-        totalSubtasks: 0,
+        totalTasks: 0, runningTasks: 0, completedTasks: 0,
+        failedTasks: 0, successRate: 0, totalAgents: 0, totalSubtasks: 0,
       });
-      setError(null); // Don't show error, just use test data
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // MARKER_137.4C: Fetch default preset on mount
+  // MARKER_143.P3: Refetch DAG when selectedTaskId changes
   useEffect(() => {
-    fetch(`${API_BASE}/pipeline/presets`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.success && data.default_preset) {
-          setActivePreset(data.default_preset);
-        }
-      })
-      .catch(() => {});
-  }, []);
+    fetchDAG(selectedTaskId);
+  }, [selectedTaskId, fetchDAG]);
 
-  // Fetch on mount
-  useEffect(() => {
-    fetchDAG();
-  }, [fetchDAG]);
-
-  // Listen for real-time updates from SocketIO/Mycelium bridge CustomEvents
+  // Listen for real-time updates via CustomEvents
   useEffect(() => {
     const triggerFetch = () => {
       const now = Date.now();
       if (now - lastFetchRef.current < DEBOUNCE_MS) return;
       lastFetchRef.current = now;
-      fetchDAG();
+      fetchDAG(selectedTaskId);
     };
 
     const handleTaskBoardUpdate = (e: Event) => {
@@ -225,59 +183,64 @@ export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCen
       window.removeEventListener('pipeline-activity', handlePipelineActivity as EventListener);
       window.removeEventListener('pipeline-stats', handlePipelineStats as EventListener);
     };
-  }, [fetchDAG, pushStreamEvent]);
+  }, [fetchDAG, pushStreamEvent, selectedTaskId]);
 
-  // MARKER_141.FIX: Use same data source as DAGView for node lookup
-  const effectiveNodes = dagNodes.length > 0 ? dagNodes : createTestDAGData().nodes;
-  const effectiveEdges = dagEdges.length > 0 ? dagEdges : createTestDAGData().edges;
+  // MARKER_143.P4C: Effective nodes/edges — use test data when API returns empty
+  // This ensures selectedNodeData can find clicked nodes even with test DAG.
+  const { effectiveNodes, effectiveEdges } = useMemo(() => {
+    if (dagNodes.length > 0) {
+      return { effectiveNodes: dagNodes, effectiveEdges: dagEdges };
+    }
+    const testData = createTestDAGData();
+    return { effectiveNodes: testData.nodes, effectiveEdges: testData.edges };
+  }, [dagNodes, dagEdges]);
 
-  // Get selected node data
-  const selectedNodeData = selectedNode
-    ? effectiveNodes.find(n => n.id === selectedNode) || null
-    : null;
+  // Selected node data for detail panel
+  const selectedNodeData = useMemo(() => {
+    if (!selectedNode) return null;
+    return effectiveNodes.find(n => n.id === selectedNode) || null;
+  }, [selectedNode, effectiveNodes]);
 
-  // MARKER_137.4D: Get selected edge data
-  const selectedEdgeData = selectedEdge
-    ? (() => {
-        const e = effectiveEdges.find(e => e.id === selectedEdge.id);
-        return e ? { id: e.id, source: e.source, target: e.target, type: e.type } : null;
-      })()
-    : null;
+  // Selected edge data
+  const selectedEdgeData = useMemo(() => {
+    if (!selectedEdge) return null;
+    const e = effectiveEdges.find(e => e.id === selectedEdge.id);
+    return e ? { id: e.id, source: e.source, target: e.target, type: e.type } : null;
+  }, [selectedEdge, effectiveEdges]);
 
-  // Handle edge selection from DAGView
+  // Handle edge selection
   const handleEdgeSelect = useCallback((edgeId: string | null) => {
     if (!edgeId) {
       setSelectedEdge(null);
       return;
     }
-    const edge = effectiveEdges.find(e => e.id === edgeId);
+    const edge = dagEdges.find(e => e.id === edgeId);
     if (edge) {
       setSelectedEdge({ id: edge.id, source: edge.source, target: edge.target, type: edge.type });
     }
-  }, [effectiveEdges]);
+  }, [dagEdges]);
 
-  // MARKER_135.4D: Handle node actions (approve, reject, retry)
+  // Handle node actions
   const handleNodeAction = useCallback(async (action: string) => {
     if (!selectedNode) return;
-
     try {
       const res = await fetch(`${API_BASE}/dag/node/${selectedNode}/action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       });
-
-      if (!res.ok) {
-        throw new Error(`Action failed: HTTP ${res.status}`);
-      }
-
-      const result = await res.json();
-      console.log('[DAG] Action result:', result);
-      fetchDAG();
+      if (res.ok) fetchDAG(selectedTaskId);
     } catch (err) {
       console.error('[DAG] Action error:', err);
     }
-  }, [selectedNode, fetchDAG]);
+  }, [selectedNode, fetchDAG, selectedTaskId]);
+
+  // MARKER_143.P3: Get selected task title for breadcrumb
+  const selectedTaskTitle = useMemo(() => {
+    if (!selectedTaskId) return null;
+    const t = tasks.find(t => t.id === selectedTaskId);
+    return t?.title || selectedTaskId.slice(0, 12);
+  }, [selectedTaskId, tasks]);
 
   return (
     <div
@@ -289,32 +252,36 @@ export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCen
         fontFamily: 'monospace',
       }}
     >
-      {/* MARKER_137.4E: Compact header — title + status + stream toggle + panel toggle */}
+      {/* ═══ HEADER ═══ */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '6px 12px',
+          padding: '5px 10px',
           borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
           flexShrink: 0,
         }}
       >
+        {/* Left: title + preset dropdown */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div
             style={{
               color: NOLAN_PALETTE.textAccent,
-              fontSize: 11,
+              fontSize: 10,
               fontWeight: 600,
               textTransform: 'uppercase',
               letterSpacing: 2,
             }}
           >
-            Mycelium DAG
+            MCC
           </div>
+
+          <PresetDropdown />
+
           <span
             style={{
-              fontSize: 10,
+              fontSize: 9,
               color: connected ? NOLAN_PALETTE.statusDone : NOLAN_PALETTE.statusFailed,
               opacity: 0.9,
             }}
@@ -323,25 +290,15 @@ export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCen
           </span>
         </div>
 
-        {/* Right side: stats + controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Stats summary — compact */}
+        {/* Right: watcher + stats + panel toggles */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <WatcherMicroStatus />
+
           {stats && (
-            <div
-              style={{
-                display: 'flex',
-                gap: 10,
-                fontSize: 10,
-                color: NOLAN_PALETTE.textNormal,
-              }}
-            >
+            <div style={{ display: 'flex', gap: 8, fontSize: 9, color: NOLAN_PALETTE.textNormal }}>
               <span>{stats.totalTasks}t</span>
-              <span style={{ color: NOLAN_PALETTE.statusRunning }}>
-                {stats.runningTasks}r
-              </span>
-              <span style={{ color: NOLAN_PALETTE.statusDone }}>
-                {stats.completedTasks}d
-              </span>
+              <span style={{ color: NOLAN_PALETTE.statusRunning }}>{stats.runningTasks}r</span>
+              <span style={{ color: NOLAN_PALETTE.statusDone }}>{stats.completedTasks}d</span>
             </div>
           )}
 
@@ -351,163 +308,162 @@ export function MyceliumCommandCenter({ standalone = false }: MyceliumCommandCen
             style={{
               background: showStream ? 'rgba(255,255,255,0.06)' : 'transparent',
               border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-              borderRadius: 3,
-              padding: '3px 8px',
+              borderRadius: 2,
+              padding: '2px 6px',
               color: showStream ? NOLAN_PALETTE.text : NOLAN_PALETTE.textDim,
-              fontSize: 9,
+              fontSize: 8,
               cursor: 'pointer',
               fontFamily: 'monospace',
             }}
             title="Toggle live stream"
           >
-            {streamEvents.length > 0 ? `stream (${streamEvents.length})` : 'stream'}
+            stream
           </button>
 
-          {/* Panel toggle */}
+          {/* Left panel toggle */}
           <button
-            onClick={() => setPanelCollapsed(!panelCollapsed)}
+            onClick={() => setLeftCollapsed(!leftCollapsed)}
             style={{
               background: 'transparent',
               border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-              borderRadius: 3,
-              padding: '3px 8px',
+              borderRadius: 2,
+              padding: '2px 6px',
               color: NOLAN_PALETTE.textNormal,
-              fontSize: 9,
+              fontSize: 8,
               cursor: 'pointer',
               fontFamily: 'monospace',
             }}
+            title="Toggle tasks panel [["
           >
-            {panelCollapsed ? '◀ panel' : '▶ panel'}
+            {leftCollapsed ? '▶' : '◀'}
+          </button>
+
+          {/* Right panel toggle */}
+          <button
+            onClick={() => setRightCollapsed(!rightCollapsed)}
+            style={{
+              background: 'transparent',
+              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              borderRadius: 2,
+              padding: '2px 6px',
+              color: NOLAN_PALETTE.textNormal,
+              fontSize: 8,
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+            }}
+            title="Toggle detail panel ]"
+          >
+            {rightCollapsed ? '◀' : '▶'}
           </button>
         </div>
       </div>
 
-      {/* MARKER_137.4F: League Selector — replaces FilterBar */}
-      <LeagueSelector
-        activePreset={activePreset}
-        onPresetChange={setActivePreset}
-        compact
-      />
-
-      {/* MARKER_137.4G: Collapsible live stream — hidden by default */}
-      {showStream && (
-        <div
-          style={{
-            borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
-            background: '#060606',
-            padding: '4px 10px',
-            flexShrink: 0,
-          }}
-        >
+      {/* ═══ MAIN THREE-COLUMN LAYOUT ═══ */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        {/* LEFT COLUMN: Task List (220px) */}
+        {!leftCollapsed && (
           <div
             style={{
-              maxHeight: 60,
-              overflowY: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-              fontSize: 9,
-              fontFamily: 'monospace',
+              width: 220,
+              flexShrink: 0,
+              minHeight: 0,
             }}
           >
-            {streamEvents.length === 0 ? (
-              <span style={{ color: NOLAN_PALETTE.textDim }}>Waiting for pipeline events...</span>
-            ) : streamEvents.slice(0, 6).map((event) => (
-              <div key={event.id} style={{ display: 'flex', gap: 6 }}>
-                <span style={{ color: '#555', minWidth: 48, fontSize: 8 }}>
-                  {new Date(event.ts).toLocaleTimeString()}
-                </span>
-                <span style={{ color: '#777', minWidth: 50, textTransform: 'uppercase', fontSize: 8 }}>
-                  {event.role}
-                </span>
-                <span
-                  style={{
-                    color: '#bbb',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    flex: 1,
-                    fontSize: 9,
-                  }}
-                  title={event.message}
-                >
-                  {event.message}
-                </span>
-              </div>
-            ))}
+            <MCCTaskList />
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Main content */}
-      <div
-        style={{
-          display: 'flex',
-          flex: 1,
-          minHeight: 0,
-        }}
-      >
-        {/* DAG View */}
+        {/* CENTER COLUMN: DAG + Stream */}
         <div
           style={{
-            flex: panelCollapsed ? 1 : 0.8,
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
             minWidth: 0,
-            transition: 'flex 0.2s ease',
+            minHeight: 0,
           }}
         >
-          {loading ? (
+          {/* MARKER_143.P3: Task breadcrumb — shows when filtered by task */}
+          {selectedTaskId && selectedTaskTitle && (
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                color: NOLAN_PALETTE.textDim,
-                fontSize: 12,
+                gap: 6,
+                padding: '3px 10px',
+                background: 'rgba(255,255,255,0.03)',
+                borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                fontSize: 9,
+                flexShrink: 0,
               }}
             >
-              Loading DAG...
+              <span style={{ color: '#555' }}>Task:</span>
+              <span style={{ color: '#ccc', fontWeight: 600 }}>{selectedTaskTitle}</span>
+              <button
+                onClick={() => selectTask(null)}
+                style={{
+                  background: 'transparent',
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 2,
+                  color: '#888',
+                  fontSize: 8,
+                  padding: '0px 4px',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  marginLeft: 'auto',
+                }}
+                title="Show all tasks"
+              >
+                show all
+              </button>
             </div>
-          ) : error ? (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                color: NOLAN_PALETTE.statusFailed,
-                fontSize: 12,
-              }}
-            >
-              Error: {error}
-            </div>
-          ) : (
-            <DAGView
-              dagNodes={dagNodes.length > 0 ? dagNodes : undefined}
-              dagEdges={dagEdges.length > 0 ? dagEdges : undefined}
-              selectedNode={selectedNode}
-              onNodeSelect={setSelectedNode}
-              onEdgeSelect={handleEdgeSelect}
-            />
           )}
+
+          {/* DAG View */}
+          <div style={{ flex: 1, minHeight: 0 }}>
+            {loading ? (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '100%',
+                  color: NOLAN_PALETTE.textDim,
+                  fontSize: 11,
+                }}
+              >
+                Loading DAG...
+              </div>
+            ) : (
+              <DAGView
+                dagNodes={effectiveNodes}
+                dagEdges={effectiveEdges}
+                selectedNode={selectedNode}
+                onNodeSelect={setSelectedNode}
+                onEdgeSelect={handleEdgeSelect}
+              />
+            )}
+          </div>
+
+          {/* Stream Panel — collapsible bottom */}
+          {showStream && <StreamPanel maxEvents={8} />}
         </div>
 
-        {/* Detail Panel */}
-        {!panelCollapsed && (
+        {/* RIGHT COLUMN: Detail Panel (240px) */}
+        {!rightCollapsed && (
           <div
             style={{
-              flex: 0.2,
-              minWidth: 200,
-              maxWidth: 300,
+              width: 240,
+              flexShrink: 0,
               borderLeft: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              minHeight: 0,
             }}
           >
-            <DetailPanel
-              node={selectedNodeData}
-              stats={stats}
-              onAction={handleNodeAction}
-              activePreset={activePreset}
+            <MCCDetailPanel
+              selectedDagNode={selectedNodeData}
               selectedEdge={selectedEdgeData}
+              stats={stats}
+              onNodeAction={handleNodeAction}
             />
           </div>
         )}
