@@ -291,6 +291,140 @@ class WorkflowStore:
         valid = len(errors) == 0
         return ValidationResult(valid=valid, errors=errors, warnings=warnings)
 
+    def workflow_to_tasks(
+        self,
+        workflow: Dict[str, Any],
+        preset: str = "dragon_silver",
+    ) -> List[Dict[str, Any]]:
+        """
+        MARKER_144.10: Convert workflow nodes → TaskBoard-compatible task dicts.
+
+        Maps node types to task properties:
+        - task/subtask → build phase, priority from node data or edge position
+        - agent → build phase, tagged with agent role
+        - condition/proposal → research phase (needs investigation)
+        - parallel → creates group marker, forks handled by dependencies
+        - loop/transform/group → build phase with special tags
+
+        Structural edges become task dependencies (parent must complete first).
+
+        Returns:
+            List of task dicts ready for TaskBoard.add_task().
+        """
+        nodes = workflow.get("nodes", [])
+        edges = workflow.get("edges", [])
+
+        if not nodes:
+            return []
+
+        # Build adjacency and reverse-adjacency for dependency tracking
+        # node_id -> list of parent node_ids (structural edges only)
+        parents: Dict[str, List[str]] = {n["id"]: [] for n in nodes}
+        for edge in edges:
+            if edge.get("type", "structural") in ("structural", "temporal"):
+                target = edge.get("target", "")
+                source = edge.get("source", "")
+                if target in parents:
+                    parents[target].append(source)
+
+        # Compute topological order for priority assignment
+        # Roots (no parents) get highest priority, deeper nodes get lower
+        depth: Dict[str, int] = {}
+        def compute_depth(nid: str, visited: set) -> int:
+            if nid in depth:
+                return depth[nid]
+            if nid in visited:
+                return 0  # Cycle guard
+            visited.add(nid)
+            if not parents.get(nid):
+                depth[nid] = 0
+                return 0
+            max_parent = max(compute_depth(p, visited) for p in parents[nid])
+            depth[nid] = max_parent + 1
+            return depth[nid]
+
+        for node in nodes:
+            compute_depth(node["id"], set())
+
+        # Map node types to phase_type
+        PHASE_MAP = {
+            "task": "build",
+            "subtask": "build",
+            "agent": "build",
+            "condition": "research",
+            "proposal": "research",
+            "parallel": "build",
+            "loop": "build",
+            "transform": "build",
+            "group": "build",
+        }
+
+        # Map depth to priority (0=P1 highest, 1=P2, 2+=P3)
+        def depth_to_priority(d: int) -> int:
+            if d == 0:
+                return 1
+            elif d == 1:
+                return 2
+            else:
+                return 3
+
+        # Node ID → task ID mapping (for dependency resolution later)
+        node_to_task: Dict[str, str] = {}
+        task_list: List[Dict[str, Any]] = []
+
+        for node in nodes:
+            nid = node.get("id", "")
+            ntype = node.get("type", "task")
+            label = node.get("label", "Untitled")
+            data = node.get("data", {})
+
+            # Build task description from node data
+            desc_parts = []
+            if data.get("description"):
+                desc_parts.append(data["description"])
+            if data.get("role"):
+                desc_parts.append(f"Role: {data['role']}")
+            if data.get("model"):
+                desc_parts.append(f"Model: {data['model']}")
+            desc_parts.append(f"[from workflow node {nid}, type={ntype}]")
+            description = "\n".join(desc_parts)
+
+            # Tags
+            tags = [preset.split("_")[0] if "_" in preset else "dragon"]
+            if ntype == "agent" and data.get("role"):
+                tags.append(data["role"])
+            if ntype in ("condition", "proposal"):
+                tags.append("research")
+            tags.append(f"wf:{workflow.get('id', 'unknown')}")
+
+            phase_type = PHASE_MAP.get(ntype, "build")
+            priority = data.get("priority", depth_to_priority(depth.get(nid, 0)))
+
+            # Parent node IDs → will be resolved to task IDs after all tasks created
+            parent_node_ids = parents.get(nid, [])
+
+            task_dict = {
+                "title": label,
+                "description": description,
+                "priority": priority,
+                "tags": tags,
+                "phase_type": phase_type,
+                "preset": preset,
+                "parent_node_ids": parent_node_ids,  # Temporary, resolved below
+                "node_id": nid,  # For reference
+                "complexity": data.get("complexity", 1),
+            }
+            node_to_task[nid] = nid  # Will be replaced with actual task IDs
+            task_list.append(task_dict)
+
+        # Resolve parent_node_ids → dependency list (uses node_ids for now,
+        # actual task_id mapping happens at execution time when tasks are added)
+        for task in task_list:
+            parent_nids = task.pop("parent_node_ids", [])
+            task["dependency_node_ids"] = parent_nids  # Kept for task creation order
+
+        return task_list
+
     @staticmethod
     def _has_cycle(adjacency: Dict[str, List[str]], node_ids: set) -> bool:
         """

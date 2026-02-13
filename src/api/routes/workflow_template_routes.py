@@ -161,3 +161,132 @@ async def validate_workflow(request: WorkflowValidateRequest):
     workflow_dict = request.model_dump()
     result = store.validate(workflow_dict)
     return {"success": True, "validation": result.to_dict()}
+
+
+# ============================================================
+# MARKER_144.10: Workflow Execution Bridge
+# ============================================================
+
+class WorkflowExecuteRequest(BaseModel):
+    """Request body for executing a workflow."""
+    preset: str = "dragon_silver"
+    dry_run: bool = False  # If true, return planned tasks without dispatching
+
+
+@router.post("/{workflow_id}/execute")
+async def execute_workflow(workflow_id: str, request: WorkflowExecuteRequest):
+    """
+    MARKER_144.10: Execute a workflow by converting nodes → TaskBoard tasks.
+
+    1. Load workflow from store
+    2. Validate (must pass)
+    3. Convert nodes → task dicts via workflow_to_tasks()
+    4. Add tasks to TaskBoard (respecting dependency order)
+    5. Optionally dispatch first batch (root tasks with no dependencies)
+
+    If dry_run=True, returns planned tasks without adding to board.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    store = get_store()
+    workflow = store.load(workflow_id)
+    if not workflow:
+        raise HTTPException(status_code=404, detail=f"Workflow not found: {workflow_id}")
+
+    # Validate first
+    validation = store.validate(workflow)
+    if not validation.valid:
+        return {
+            "success": False,
+            "error": "Workflow has validation errors",
+            "validation": validation.to_dict(),
+        }
+
+    # Convert nodes to task dicts
+    task_dicts = store.workflow_to_tasks(workflow, request.preset)
+
+    if not task_dicts:
+        return {
+            "success": False,
+            "error": "Workflow has no nodes to execute",
+        }
+
+    # Dry run — just return the planned tasks
+    if request.dry_run:
+        return {
+            "success": True,
+            "dry_run": True,
+            "workflow_id": workflow_id,
+            "workflow_name": workflow.get("name", "Untitled"),
+            "planned_tasks": task_dicts,
+            "count": len(task_dicts),
+        }
+
+    # Real execution — add tasks to TaskBoard
+    try:
+        from src.orchestration.task_board import get_task_board
+        board = get_task_board()
+    except ImportError:
+        return {
+            "success": False,
+            "error": "TaskBoard not available",
+        }
+
+    # Add tasks in topological order (roots first)
+    # node_id → actual task_id mapping for dependency resolution
+    node_to_task_id: Dict[str, str] = {}
+    created_task_ids: List[str] = []
+    root_task_ids: List[str] = []
+
+    for task_dict in task_dicts:
+        node_id = task_dict.get("node_id", "")
+        dep_node_ids = task_dict.get("dependency_node_ids", [])
+
+        # Resolve dependencies to actual task IDs
+        dependencies = []
+        for dep_nid in dep_node_ids:
+            if dep_nid in node_to_task_id:
+                dependencies.append(node_to_task_id[dep_nid])
+
+        # Add to board
+        task_id = board.add_task(
+            title=task_dict["title"],
+            description=task_dict.get("description", ""),
+            priority=task_dict.get("priority", 3),
+            tags=task_dict.get("tags", []),
+            dependencies=dependencies if dependencies else None,
+            complexity=task_dict.get("complexity", 1),
+        )
+
+        node_to_task_id[node_id] = task_id
+        created_task_ids.append(task_id)
+
+        if not dep_node_ids:
+            root_task_ids.append(task_id)
+
+    # Dispatch root tasks (no dependencies)
+    dispatched = []
+    for root_id in root_task_ids[:3]:  # Dispatch up to 3 roots in parallel
+        try:
+            result = await board.dispatch_task(root_id)
+            if result.get("success"):
+                dispatched.append(root_id)
+        except Exception as e:
+            logger.warning(f"[Workflow Execute] Dispatch failed for {root_id}: {e}")
+
+    logger.info(
+        f"[Workflow Execute] {workflow.get('name')}: "
+        f"{len(created_task_ids)} tasks created, {len(dispatched)} dispatched"
+    )
+
+    return {
+        "success": True,
+        "workflow_id": workflow_id,
+        "workflow_name": workflow.get("name", "Untitled"),
+        "tasks_created": created_task_ids,
+        "tasks_dispatched": dispatched,
+        "root_tasks": root_task_ids,
+        "count": len(created_task_ids),
+        "node_to_task_map": node_to_task_id,
+    }

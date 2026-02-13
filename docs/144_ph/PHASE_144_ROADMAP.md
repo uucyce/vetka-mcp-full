@@ -1,7 +1,7 @@
 # Phase 144 — DAG Workflow Editor: Interactive Node CRUD & Ecosystem Bridge
 
 **Phase:** 144
-**Status:** In Progress (6/12 markers done)
+**Status:** In Progress (9/12 markers done)
 **Previous:** Phase 143 (MCC Unified Workspace)
 **Date:** 2026-02-14
 
@@ -458,14 +458,14 @@ P0 (Must Have — Week 1): ✅ ALL DONE
   ✅ MARKER_144.1 → Workflow Store (backend persistence)         [d0c2676e]
   ✅ MARKER_144.2 → ReactFlow CRUD (enable connections)          [d0c2676e]
 
-P1 (Should Have — Week 1-2): 4/6 DONE
+P1 (Should Have — Week 1-2): 6/7 DONE
   ✅ MARKER_144.3 → Context Menu (right-click UX)                [1c74e7a8]
   ✅ MARKER_144.4 → New Node Types (5 visual components)         [1c74e7a8]
   ✅ MARKER_144.5 → Node Property Editor (edit in detail panel)  [239a420a]
   ✅ MARKER_144.6 → Workflow Toolbar (save/load/execute)         [239a420a]
-  ⏳ MARKER_144.10 → Workflow Execution Bridge (run workflows)
-  ⏳ MARKER_144.11 → Agent Stream on Node Click + Artifact Link
-  ⏳ MARKER_144.12 → Architect Chat Dialog + Task Creation
+  ✅ MARKER_144.11 → Agent Stream on Node Click + Artifact Link  [e2ef1dc1]
+  ✅ MARKER_144.12 → Architect Chat Dialog + Task Creation        [e2ef1dc1]
+  ✅ MARKER_144.10 → Workflow Execution Bridge (run workflows)
 
 P2 (Nice to Have — Week 3-4):
   ⏳ MARKER_144.7 → AI Workflow Generation
@@ -489,8 +489,25 @@ P3 (Future):
 8. ✅ Undo/redo works (Ctrl+Z / Ctrl+Shift+Z)
 9. ⏳ Import n8n JSON → converts to VETKA workflow
 10. ⏳ Export VETKA workflow → valid n8n JSON
-11. ⏳ Click node → agent stream + artifact links visible
-12. ⏳ Architect chat dialog — send message → get DAG mutations
+11. ✅ Click node → agent stream + artifact links visible
+12. ✅ Architect chat dialog — send message → get DAG mutations
+
+---
+
+## Known Bugs
+
+### BUG_144.1 — RoleEditor model mismatch with preset
+**Severity:** Low (cosmetic, does not affect execution)
+**Observed:** When clicking @architect node in DAG, the ROLE CONFIG section shows
+`qwen/qwen3-30b-a3b` (OpenRouter) in the model dropdown, while the node metadata
+correctly shows `model: kimi-k2.5`. The RoleEditor pulls model list from a different
+source (model_presets.json or model phonebook) than what the pipeline actually used.
+**Root cause:** RoleEditor (Phase 143) fetches available models independently of the
+preset config. When preset is `titan_lite`, the model list includes Qwen models from
+OpenRouter, creating visual inconsistency.
+**Fix:** RoleEditor should filter model dropdown by the active preset's configured models,
+or at minimum pre-select the model that was actually used by the pipeline.
+**Deferred to:** Phase 145 or next bugfix pass.
 
 ---
 

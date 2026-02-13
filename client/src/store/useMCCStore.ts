@@ -93,6 +93,15 @@ interface MCCState {
   // MARKER_144.6: Toggle edit mode
   setEditMode: (mode: boolean) => void;
   toggleEditMode: () => void;
+  // MARKER_144.10: Execute workflow (convert nodes → tasks → dispatch)
+  executeWorkflow: (workflowId: string, preset?: string, dryRun?: boolean) => Promise<{
+    success: boolean;
+    count?: number;
+    tasks_created?: string[];
+    tasks_dispatched?: string[];
+    planned_tasks?: any[];
+    error?: string;
+  }>;
 }
 
 const MAX_STREAM_EVENTS = 30;
@@ -283,6 +292,36 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   // ── MARKER_144.6: Edit mode ──
   setEditMode: (mode) => set({ editMode: mode }),
   toggleEditMode: () => set(state => ({ editMode: !state.editMode })),
+
+  // ── MARKER_144.10: Execute workflow ──
+  executeWorkflow: async (workflowId, preset, dryRun = false) => {
+    try {
+      const activePreset = preset || get().activePreset;
+      const res = await fetch(`${API_BASE}/workflows/${encodeURIComponent(workflowId)}/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preset: activePreset, dry_run: dryRun }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && !dryRun) {
+          // Refresh task list after execution
+          get().fetchTasks();
+          // Push stream event
+          get().pushStreamEvent({
+            role: 'workflow',
+            message: `Executed "${data.workflow_name}": ${data.count} tasks created, ${data.tasks_dispatched?.length || 0} dispatched`,
+          });
+        }
+        return data;
+      }
+      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      return { success: false, error: err.error || err.detail || `HTTP ${res.status}` };
+    } catch (err) {
+      console.error('[MCC] Execute workflow failed:', err);
+      return { success: false, error: String(err) };
+    }
+  },
 
   // ── Change priority ──
   changePriority: async (taskId, priority) => {
