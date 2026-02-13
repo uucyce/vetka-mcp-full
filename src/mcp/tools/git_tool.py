@@ -267,54 +267,28 @@ class GitCommitTool(BaseMCPTool):
         """
         MARKER_108_7_AUTO_DIGEST: Update project_digest.json after successful commit.
 
-        This is the "breaking news" pattern - agents reading digest will see
-        the latest commit immediately, enabling context-aware collaboration.
+        NOTE (MARKER_142.FIX): The pre-commit hook already runs
+        scripts/update_project_digest.py which handles full digest update
+        (system status, git info, staging). This method now only does a
+        lightweight JSON patch (commit hash + dirty flag) to avoid the
+        double-write conflict that caused Errno 30 from worktrees.
 
-        Updates:
-        - git.commit: new hash
-        - git.dirty: false
-        - last_updated: now
-        - Extracts phase from commit message if present (e.g., "Phase 109.1: ...")
+        If even this lightweight write fails (e.g. read-only FS in worktree),
+        it logs the error instead of silently swallowing it.
         """
         try:
             if not DIGEST_PATH.exists():
-                return None
+                return "digest file not found, skipped"
 
             with open(DIGEST_PATH, 'r') as f:
                 digest = json.load(f)
 
-            # Update git section
+            # Lightweight patch — only commit hash and dirty flag
             if "git" not in digest:
                 digest["git"] = {}
             digest["git"]["commit"] = commit_hash
             digest["git"]["dirty"] = False
-
-            # Update timestamp
             digest["last_updated"] = datetime.now(timezone.utc).isoformat()
-
-            # Extract phase from commit message if present
-            # Pattern: "Phase 109.1: ..." or "Phase 108.7 - ..."
-            import re
-            phase_match = re.search(r'Phase\s+(\d+)\.?(\d*)', message, re.IGNORECASE)
-            if phase_match:
-                phase_num = int(phase_match.group(1))
-                subphase = phase_match.group(2) or None
-
-                # Add to recent commits in summary
-                commit_entry = f"Phase {phase_num}"
-                if subphase:
-                    commit_entry += f".{subphase}"
-                commit_entry += f": {message[:50]}..."
-
-                # Add to key_achievements if not already there
-                if "summary" in digest and "key_achievements" in digest["summary"]:
-                    achievements = digest["summary"]["key_achievements"]
-                    # Prepend new achievement (breaking news at top!)
-                    new_achievement = f"[{commit_hash}] {commit_entry}"
-                    if new_achievement not in achievements:
-                        achievements.insert(0, new_achievement)
-                        # Keep max 10 achievements
-                        digest["summary"]["key_achievements"] = achievements[:10]
 
             # Write updated digest
             with open(DIGEST_PATH, 'w') as f:
@@ -322,9 +296,19 @@ class GitCommitTool(BaseMCPTool):
 
             return f"Updated: commit={commit_hash}, dirty=false"
 
+        except OSError as e:
+            # MARKER_142.FIX: Log instead of silently swallowing
+            # Common in worktree context where data/ may be read-only
+            import logging
+            logging.getLogger("vetka.git").warning(
+                f"Digest update skipped (OSError {e.errno}): {e}. "
+                f"Pre-commit hook should have handled this."
+            )
+            return f"skipped: {e}"
         except Exception as e:
-            # Don't fail commit if digest update fails
-            return None
+            import logging
+            logging.getLogger("vetka.git").warning(f"Digest update failed: {e}")
+            return f"skipped: {e}"
 
     def _auto_complete_tasks(self, commit_hash: str, message: str) -> Optional[list]:
         """
