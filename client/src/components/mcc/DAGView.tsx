@@ -18,6 +18,7 @@ import {
   useEdgesState,
   type Node,
   type Edge,
+  type Connection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -47,6 +48,11 @@ interface DAGViewProps {
   onEdgeSelect?: (edgeId: string | null) => void;
   width?: number | string;
   height?: number | string;
+  // MARKER_144.2: Edit mode props (additive — all optional)
+  editMode?: boolean;
+  onConnect?: (connection: Connection) => void;
+  onNodesDelete?: (nodes: Node[]) => void;
+  onEdgesDelete?: (edges: Edge[]) => void;
 }
 
 export function DAGView({
@@ -57,6 +63,11 @@ export function DAGView({
   onEdgeSelect,
   width = '100%',
   height = '100%',
+  // MARKER_144.2: Edit mode props (default: read-only, no regression)
+  editMode = false,
+  onConnect,
+  onNodesDelete,
+  onEdgesDelete,
 }: DAGViewProps) {
   // If no data provided, use test data
   const { nodes: inputNodes, edges: inputEdges } = useMemo(() => {
@@ -234,9 +245,14 @@ export function DAGView({
         minZoom={0.2}
         maxZoom={3}
         nodesDraggable={true}
-        nodesConnectable={false}
+        nodesConnectable={editMode}
         elementsSelectable={true}
         proOptions={{ hideAttribution: true }}
+        // MARKER_144.2: Edit mode handlers (no-op when editMode=false)
+        onConnect={editMode ? onConnect : undefined}
+        onNodesDelete={editMode ? onNodesDelete : undefined}
+        onEdgesDelete={editMode ? onEdgesDelete : undefined}
+        deleteKeyCode={editMode ? 'Delete' : null}
       >
         <Background color="#111" gap={32} size={1} />
         <Controls

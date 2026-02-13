@@ -70,6 +70,10 @@ from .artifact_routes import router as artifact_router
 
 # MARKER_141.PIPELINE_CONFIG: Pipeline presets + prompts API
 from .pipeline_config_routes import router as pipeline_config_router
+from .connectors_routes import router as connectors_router
+
+# MARKER_144.1B: Workflow template CRUD (distinct from /api/workflow orchestrator history)
+from .workflow_template_routes import router as workflow_template_router
 
 
 def get_all_routers() -> List[APIRouter]:
@@ -108,6 +112,8 @@ def get_all_routers() -> List[APIRouter]:
         unified_search_router,  # /api/search/unified (Phase 136 - unified federated search)
         artifact_router,  # /api/artifacts/* (Phase 136 - artifacts panel API)
         pipeline_config_router,  # /api/pipeline/* (Phase 141 - presets + prompts config)
+        connectors_router,  # /api/connectors/* (Phase 147.2 - cloud/social connectors)
+        workflow_template_router,  # /api/workflows/* (Phase 144 - workflow template CRUD)
     ]
 
 
@@ -183,4 +189,6 @@ __all__ = [
     "unified_search_router",
     "artifact_router",
     "pipeline_config_router",
+    "connectors_router",
+    "workflow_template_router",
 ]

@@ -7,7 +7,9 @@
  */
 
 // Node types in the DAG
-export type DAGNodeType = 'task' | 'agent' | 'subtask' | 'proposal';
+// MARKER_144.4: Extended with workflow editor node types
+export type DAGNodeType = 'task' | 'agent' | 'subtask' | 'proposal'
+  | 'condition' | 'parallel' | 'loop' | 'transform' | 'group';
 
 // Agent roles in the pipeline
 export type AgentRole = 'scout' | 'architect' | 'researcher' | 'coder' | 'verifier';
@@ -16,7 +18,9 @@ export type AgentRole = 'scout' | 'architect' | 'researcher' | 'coder' | 'verifi
 export type NodeStatus = 'pending' | 'running' | 'done' | 'failed';
 
 // Edge types for different relationships
-export type EdgeType = 'structural' | 'dataflow' | 'temporal';
+// MARKER_144.4: Extended with workflow editor edge types
+export type EdgeType = 'structural' | 'dataflow' | 'temporal'
+  | 'conditional' | 'parallel_fork' | 'parallel_join' | 'feedback';
 
 /**
  * DAG Node — represents any entity in the graph.
@@ -114,4 +118,61 @@ export interface DAGNodeDetail extends DAGNode {
   tokensOut?: number;
   error?: string;
   result?: unknown;
+}
+
+// ============================================================
+// MARKER_144.1: Workflow Template Types
+// ============================================================
+
+/**
+ * A node in a workflow template (user-created).
+ */
+export interface WorkflowNode {
+  id: string;
+  type: DAGNodeType;
+  label: string;
+  position: { x: number; y: number };
+  data: Record<string, any>;
+}
+
+/**
+ * An edge in a workflow template.
+ */
+export interface WorkflowEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: EdgeType;
+  label?: string;
+  data?: Record<string, any>;
+}
+
+/**
+ * Complete workflow template.
+ */
+export interface Workflow {
+  id: string;
+  name: string;
+  description?: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+  metadata: {
+    created_at: string;
+    updated_at: string;
+    author?: string;
+    preset?: string;
+    version: number;
+  };
+}
+
+/**
+ * Workflow summary (from list endpoint — no nodes/edges).
+ */
+export interface WorkflowSummary {
+  id: string;
+  name: string;
+  description?: string;
+  node_count: number;
+  edge_count: number;
+  metadata: Record<string, any>;
 }

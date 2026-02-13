@@ -12,11 +12,18 @@ import type { Node, Edge } from '@xyflow/react';
 import type { DAGNode, DAGEdge, NodeStatus, DAGNodeType } from '../types/dag';
 
 // Node dimensions by type
+// MARKER_144.4: Extended with workflow editor node dimensions
 const NODE_DIMENSIONS: Record<DAGNodeType, { width: number; height: number }> = {
   task: { width: 160, height: 60 },
   agent: { width: 120, height: 50 },
   subtask: { width: 140, height: 45 },
   proposal: { width: 140, height: 55 },
+  // Phase 144 additions
+  condition: { width: 100, height: 100 },   // Diamond shape
+  parallel: { width: 160, height: 50 },     // Wide rectangle
+  loop: { width: 120, height: 60 },         // Rounded with cycle icon
+  transform: { width: 130, height: 50 },    // Trapezoid shape
+  group: { width: 240, height: 160 },       // Large container
 };
 
 // MARKER_135.5A: Pure VETKA grayscale — like 3D tree on the right
@@ -61,6 +68,12 @@ export const NOLAN_PALETTE = {
   edgeStructural: '#444',
   edgeDataflow: '#555',
   edgeTemporal: '#333',
+
+  // MARKER_144.4: Workflow editor edge colors
+  edgeConditional: '#666',      // Slightly brighter for condition branches
+  edgeParallelFork: '#555',
+  edgeParallelJoin: '#555',
+  edgeFeedback: '#444',         // Dashed loop-back
 };
 
 /**
@@ -143,22 +156,35 @@ export function layoutSugiyamaBT(
     };
   });
 
+  // MARKER_144.4: Edge color mapping for all edge types
+  const getEdgeColor = (edgeType: string): string => {
+    switch (edgeType) {
+      case 'structural': return NOLAN_PALETTE.edgeStructural;
+      case 'dataflow': return NOLAN_PALETTE.edgeDataflow;
+      case 'temporal': return NOLAN_PALETTE.edgeTemporal;
+      case 'conditional': return NOLAN_PALETTE.edgeConditional;
+      case 'parallel_fork': return NOLAN_PALETTE.edgeParallelFork;
+      case 'parallel_join': return NOLAN_PALETTE.edgeParallelJoin;
+      case 'feedback': return NOLAN_PALETTE.edgeFeedback;
+      default: return NOLAN_PALETTE.edgeStructural;
+    }
+  };
+
   // Convert to xyflow edges
   const edges: Edge[] = dagEdges.map((edge) => ({
     id: edge.id,
     source: edge.source,
     target: edge.target,
     type: 'smoothstep',
-    animated: edge.type === 'temporal' || edge.animated,
+    animated: edge.type === 'temporal' || edge.type === 'feedback' || edge.animated,
     style: {
-      stroke: edge.type === 'structural'
-        ? NOLAN_PALETTE.edgeStructural
-        : edge.type === 'dataflow'
-          ? NOLAN_PALETTE.edgeDataflow
-          : NOLAN_PALETTE.edgeTemporal,
+      stroke: getEdgeColor(edge.type),
       strokeWidth: 1 + edge.strength * 2,
       opacity: 0.6 + edge.strength * 0.4,
+      strokeDasharray: edge.type === 'feedback' ? '5 3' : undefined,
     },
+    label: (edge as any).label || undefined,
+    labelStyle: { fill: NOLAN_PALETTE.textDim, fontSize: 9, fontFamily: 'monospace' },
   }));
 
   return { nodes, edges };
