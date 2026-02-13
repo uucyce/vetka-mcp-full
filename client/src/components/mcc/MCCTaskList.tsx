@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';
 import { useStore } from '../../store/useStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+import { ArchitectChat } from './ArchitectChat';
 
 // Status dot shapes
 const STATUS_COLORS: Record<string, string> = {
@@ -303,6 +304,12 @@ export function MCCTaskList() {
           );
         })}
       </div>
+
+      {/* MARKER_144.12: Architect Chat — collaborative dialog */}
+      <ArchitectChat
+        selectedNodeId={selectedTaskId}
+        workflowContext={{ nodeCount: tasks.length, edgeCount: 0 }}
+      />
 
       {/* Footer: dispatch + heartbeat */}
       <div style={{ borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`, padding: '6px 8px' }}>

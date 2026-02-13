@@ -99,6 +99,23 @@ export function MyceliumCommandCenter() {
   const toggleEditMode = useMCCStore(s => s.toggleEditMode);
   const [contextMenuTarget, setContextMenuTarget] = useState<ContextMenuTarget | null>(null);
 
+  // MARKER_144.11: Artifact viewer state — when user clicks artifact from node stream
+  const [viewingArtifact, setViewingArtifact] = useState<{
+    id: string; name: string; file_path: string; language: string;
+  } | null>(null);
+  const [artifactContent, setArtifactContent] = useState<string>('');
+
+  const handleViewArtifact = useCallback((artifact: { id: string; name: string; file_path: string; language: string }) => {
+    setViewingArtifact(artifact);
+    // Fetch artifact content
+    fetch(`http://localhost:5001/api/artifacts/${encodeURIComponent(artifact.id)}/content`)
+      .then(r => r.json())
+      .then(data => {
+        setArtifactContent(data.content || data.text || '');
+      })
+      .catch(() => setArtifactContent('(failed to load artifact content)'));
+  }, []);
+
   // Track last update for debouncing
   const lastFetchRef = useRef<number>(0);
   const DEBOUNCE_MS = 500;
@@ -564,10 +581,88 @@ export function MyceliumCommandCenter() {
               onNodeAction={handleNodeAction}
               editMode={editMode}
               onUpdateNodeData={dagEditor.updateNodeData}
+              onViewArtifact={handleViewArtifact}
             />
           </div>
         )}
       </div>
+
+      {/* ═══ MARKER_144.11: Artifact Viewer Overlay ═══ */}
+      {viewingArtifact && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.8)',
+            zIndex: 200,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+          onClick={() => setViewingArtifact(null)}
+        >
+          <div
+            style={{
+              margin: '20px auto',
+              width: '80%',
+              maxWidth: 700,
+              maxHeight: '80%',
+              background: NOLAN_PALETTE.bg,
+              border: `1px solid ${NOLAN_PALETTE.border}`,
+              borderRadius: 4,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '8px 12px',
+              borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
+            }}>
+              <div>
+                <div style={{ fontSize: 11, color: NOLAN_PALETTE.text, fontWeight: 600 }}>
+                  {viewingArtifact.name}
+                </div>
+                <div style={{ fontSize: 8, color: NOLAN_PALETTE.textDim, marginTop: 2 }}>
+                  {viewingArtifact.language} · {viewingArtifact.file_path}
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingArtifact(null)}
+                style={{
+                  background: 'transparent',
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 2,
+                  color: NOLAN_PALETTE.textMuted,
+                  padding: '2px 8px',
+                  fontSize: 9,
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                }}
+              >
+                close
+              </button>
+            </div>
+            {/* Content */}
+            <pre style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: 12,
+              margin: 0,
+              fontSize: 10,
+              color: '#bbb',
+              fontFamily: 'monospace',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              lineHeight: 1.5,
+            }}>
+              {artifactContent || 'Loading...'}
+            </pre>
+          </div>
+        </div>
+      )}
 
       {/* ═══ MARKER_144.3: Context Menu Overlay — only in edit mode ═══ */}
       {editMode && (

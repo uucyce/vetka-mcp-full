@@ -12,6 +12,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';
 import { DetailPanel } from './DetailPanel';
 import { PipelineResultsViewer } from './PipelineResultsViewer';
+import { NodeStreamView } from './NodeStreamView';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import type { DAGNode, DAGStats } from '../../types/dag';
 
@@ -26,6 +27,8 @@ interface MCCDetailPanelProps {
   // MARKER_144.5: Edit mode node property editor
   editMode?: boolean;
   onUpdateNodeData?: (nodeId: string, data: Partial<DAGNode>) => void;
+  // MARKER_144.11: Artifact viewer callback
+  onViewArtifact?: (artifact: { id: string; name: string; file_path: string; language: string }) => void;
 }
 
 // MARKER_143.P6I: Compact read-only role summary for overview mode.
@@ -79,6 +82,40 @@ function RolesSummary({ activePreset }: { activePreset: string }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// MARKER_144.11: Tab bar for dag_node mode — switches between Info and Stream views
+function DagNodeTabBar({ activeTab, onTabChange }: {
+  activeTab: 'info' | 'stream';
+  onTabChange: (tab: 'info' | 'stream') => void;
+}) {
+  const tabBtn = (tab: 'info' | 'stream', label: string): React.CSSProperties => ({
+    background: activeTab === tab ? 'rgba(255,255,255,0.06)' : 'transparent',
+    border: 'none',
+    borderBottom: activeTab === tab ? `1px solid ${NOLAN_PALETTE.text}` : '1px solid transparent',
+    padding: '4px 10px',
+    color: activeTab === tab ? NOLAN_PALETTE.text : NOLAN_PALETTE.textDim,
+    fontSize: 8,
+    cursor: 'pointer',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+  });
+
+  return (
+    <div style={{
+      display: 'flex',
+      borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
+      flexShrink: 0,
+    }}>
+      <button style={tabBtn('info', 'info')} onClick={() => onTabChange('info')}>
+        info
+      </button>
+      <button style={tabBtn('stream', 'stream')} onClick={() => onTabChange('stream')}>
+        stream
+      </button>
     </div>
   );
 }
@@ -195,11 +232,20 @@ export function MCCDetailPanel({
   onNodeAction,
   editMode = false,
   onUpdateNodeData,
+  onViewArtifact,
 }: MCCDetailPanelProps) {
   const selectedTaskId = useMCCStore(s => s.selectedTaskId);
   const tasks = useMCCStore(s => s.tasks);
   const activePreset = useMCCStore(s => s.activePreset);
   const activeAgents = useMCCStore(s => s.activeAgents);
+
+  // MARKER_144.11: Tab state for dag_node mode (info vs stream)
+  const [dagNodeTab, setDagNodeTab] = useState<'info' | 'stream'>('info');
+
+  // Reset tab when node changes
+  useEffect(() => {
+    setDagNodeTab('info');
+  }, [selectedDagNode?.id]);
 
   const selectedTask = useMemo(() => {
     if (!selectedTaskId) return null;
@@ -217,6 +263,7 @@ export function MCCDetailPanel({
 
   // MARKER_143.P4B: In dag_node mode, DetailPanel renders full-height with its own padding.
   // MARKER_144.5: In edit mode, show NodePropertyEditor instead of read-only DetailPanel.
+  // MARKER_144.11: Three sub-views — info (detail), stream (agent output), edit (property editor)
   if (mode === 'dag_node') {
     if (editMode && selectedDagNode && onUpdateNodeData) {
       return (
@@ -226,14 +273,30 @@ export function MCCDetailPanel({
       );
     }
     return (
-      <div style={{ height: '100%', fontFamily: 'monospace', color: NOLAN_PALETTE.text }}>
-        <DetailPanel
-          node={selectedDagNode}
-          stats={stats}
-          onAction={onNodeAction}
-          activePreset={activePreset}
-          selectedEdge={selectedEdge}
-        />
+      <div style={{ height: '100%', fontFamily: 'monospace', color: NOLAN_PALETTE.text, display: 'flex', flexDirection: 'column' }}>
+        {/* MARKER_144.11: Tab bar — info vs stream */}
+        <DagNodeTabBar activeTab={dagNodeTab} onTabChange={setDagNodeTab} />
+
+        {dagNodeTab === 'info' && (
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <DetailPanel
+              node={selectedDagNode}
+              stats={stats}
+              onAction={onNodeAction}
+              activePreset={activePreset}
+              selectedEdge={selectedEdge}
+            />
+          </div>
+        )}
+
+        {dagNodeTab === 'stream' && selectedDagNode && (
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <NodeStreamView
+              node={selectedDagNode}
+              onViewArtifact={onViewArtifact}
+            />
+          </div>
+        )}
       </div>
     );
   }

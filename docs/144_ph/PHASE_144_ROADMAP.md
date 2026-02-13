@@ -1,7 +1,7 @@
 # Phase 144 — DAG Workflow Editor: Interactive Node CRUD & Ecosystem Bridge
 
 **Phase:** 144
-**Status:** Planning
+**Status:** In Progress (6/12 markers done)
 **Previous:** Phase 143 (MCC Unified Workspace)
 **Date:** 2026-02-14
 
@@ -62,9 +62,10 @@ Export converts VETKA workflow → external JSON. Lossy both ways (documented).
 
 ## Implementation Roadmap
 
-### Week 1: Foundation (MARKER_144.1–144.4)
+### Week 1: Foundation (MARKER_144.1–144.4) ✅ DONE
 
-#### MARKER_144.1 — Workflow Store & Persistence
+#### MARKER_144.1 — Workflow Store & Persistence ✅
+**Commit:** `d0c2676e`
 **Priority:** P0 (blocker for everything)
 **Files:**
 - NEW `server/workflow_store.py` (~200 lines)
@@ -95,7 +96,8 @@ POST   /api/workflows/{id}/execute → convert to pipeline tasks & dispatch
 POST   /api/workflows/validate     → validate without saving
 ```
 
-#### MARKER_144.2 — Enable ReactFlow CRUD
+#### MARKER_144.2 — Enable ReactFlow CRUD ✅
+**Commit:** `d0c2676e`
 **Priority:** P0
 **Files:**
 - MODIFY `client/src/components/mcc/DAGView.tsx` (~+80 lines)
@@ -116,7 +118,8 @@ POST   /api/workflows/validate     → validate without saving
    - `save()` / `load(id)` — workflow persistence
 5. Track `editMode: boolean` in useMCCStore — toggle between view/edit
 
-#### MARKER_144.3 — Context Menu
+#### MARKER_144.3 — Context Menu ✅
+**Commit:** `1c74e7a8`
 **Priority:** P1
 **Files:**
 - NEW `client/src/components/mcc/DAGContextMenu.tsx` (~120 lines)
@@ -130,7 +133,8 @@ POST   /api/workflows/validate     → validate without saving
 - Position: spawn at cursor coordinates
 - Style: Nolan palette, monospace, compact
 
-#### MARKER_144.4 — New Node Types (Visual)
+#### MARKER_144.4 — New Node Types (Visual) ✅
+**Commit:** `1c74e7a8`
 **Priority:** P1
 **Files:**
 - NEW `client/src/components/mcc/nodes/ConditionNode.tsx` (~80 lines)
@@ -155,7 +159,8 @@ All follow Nolan palette: dark bg, light text, monospace, 9-10px font.
 
 ### Week 2: Intelligence & Editing (MARKER_144.5–144.7)
 
-#### MARKER_144.5 — Node Property Editor (Detail Panel)
+#### MARKER_144.5 — Node Property Editor (Detail Panel) ✅
+**Commit:** `239a420a`
 **Priority:** P1
 **Files:**
 - MODIFY `client/src/components/mcc/MCCDetailPanel.tsx` (~+100 lines)
@@ -174,7 +179,8 @@ When a node is selected in edit mode, detail panel shows editable properties:
 
 Changes auto-save to workflow (debounced 500ms).
 
-#### MARKER_144.6 — Workflow Toolbar
+#### MARKER_144.6 — Workflow Toolbar ✅
+**Commit:** `239a420a`
 **Priority:** P1
 **Files:**
 - NEW `client/src/components/mcc/WorkflowToolbar.tsx` (~120 lines)
@@ -276,6 +282,83 @@ Converts a saved workflow into executable pipeline:
 3. Dispatch via existing Mycelium pipeline infrastructure
 4. Stream progress back through WebSocket (same as current pipeline)
 
+### Week 4: Live Integration & Architect Dialog (MARKER_144.11–144.12)
+
+#### MARKER_144.11 — Agent Stream on Node Click + Artifact Viewer
+**Priority:** P1
+**Files:**
+- MODIFY `client/src/components/mcc/MCCDetailPanel.tsx` (~+120 lines)
+- MODIFY `client/src/components/mcc/MyceliumCommandCenter.tsx` (~+60 lines)
+- MODIFY `client/src/components/artifact/ArtifactPanel.tsx` (~+40 lines)
+- NEW `client/src/components/mcc/NodeStreamView.tsx` (~150 lines)
+
+**Spec:**
+When user clicks a node in DAG:
+1. **Agent stream panel** — shows real-time log of the agent assigned to that node
+   - If node is running → live WebSocket stream (architect/coder/researcher output)
+   - If node is completed → historical output from pipeline_history
+   - If node is pending → "Waiting for execution..." placeholder
+2. **Artifact link** — if the node produced artifacts (code files, proposals), show them
+   in the artifact viewer panel. Click artifact → opens in ArtifactPanel
+3. **DAG ↔ Artifact bridge** — connect ArtifactPanel back to DAG context:
+   - Artifact panel shows breadcrumb: `workflow > node > artifact`
+   - ArtifactPanel gets `nodeId` prop linking it to the DAG node that produced it
+   - Currently ArtifactPanel is disconnected — this reconnects it to the MCC workspace
+
+**Data flow:**
+```
+Node click → selectedNode → fetch /api/dag/node/{id}/stream
+                          → fetch /api/dag/node/{id}/artifacts
+                          → display in DetailPanel right column
+                          → click artifact → ArtifactPanel overlay
+```
+
+#### MARKER_144.12 — Architect Chat Dialog + Task Creation
+**Priority:** P1
+**Files:**
+- NEW `client/src/components/mcc/ArchitectChat.tsx` (~250 lines)
+- MODIFY `client/src/components/mcc/MCCTaskList.tsx` (~+80 lines)
+- MODIFY `client/src/components/mcc/MyceliumCommandCenter.tsx` (~+40 lines)
+- MODIFY `src/api/routes/workflow_template_routes.py` (~+30 lines)
+
+**Spec:**
+Interactive dialog between user and Architect AI within the MCC workspace:
+
+**Task Panel (Left Column) — Top Section:**
+- **"New Task" input** at the top of task list — quick task creation for Architect
+- User types a high-level task description → Architect breaks it down into subtasks
+- Subtasks appear as new DAG nodes automatically (architect creates the graph)
+- Preset selector (dragon_bronze/silver/gold) available for each task
+
+**Task Panel (Left Column) — Bottom Section:**
+- **Architect Chat input** at the bottom — conversational interface
+- User sends message → routed to Architect agent (Kimi K2.5 or selected preset)
+- Architect responds with reasoning, asks clarifying questions
+- On "confirm" or "execute" — Architect generates/updates the DAG nodes
+- Chat history persists per workflow session
+
+**Two interaction modes:**
+1. **Autonomous mode** — user creates task at top, Architect decomposes + executes
+   without further input. Standard `@dragon` pipeline flow.
+2. **Collaborative mode** — user chats with Architect at bottom, iterates on plan,
+   Architect proposes DAG changes visually, user approves node-by-node.
+
+**Node ↔ Chat link:**
+- Clicking an Architect node in DAG shows Architect's reasoning in chat panel
+- Architect can reference DAG nodes by ID in responses: "I suggest splitting node X into..."
+- User can select a node and ask: "Why did you structure it this way?"
+
+**API:**
+```
+POST /api/workflows/{id}/architect-chat
+  { message: string, context: { selectedNodeId?, workflowSnapshot? } }
+  → { response: string, dagChanges?: { addNodes[], removeNodes[], addEdges[] } }
+```
+
+The Architect sees the current DAG state + chat history as context.
+Response may include proposed DAG mutations which get applied visually with a
+"Accept / Reject" prompt before modifying the actual workflow.
+
 ---
 
 ## New Type Definitions
@@ -359,46 +442,55 @@ interface WorkflowEdge {
 | `server/workflow_executor.py` | NEW | ~200 | 144.10 |
 | `server/langgraph_pipeline.py` | MODIFY | +50 | 144.10 |
 
-**Total:** ~2,400 new lines, ~530 modified lines
+| `client/src/components/mcc/NodeStreamView.tsx` | NEW | ~150 | 144.11 |
+| `client/src/components/artifact/ArtifactPanel.tsx` | MODIFY | +40 | 144.11 |
+| `client/src/components/mcc/ArchitectChat.tsx` | NEW | ~250 | 144.12 |
+| `client/src/components/mcc/MCCTaskList.tsx` | MODIFY | +80 | 144.12 |
+
+**Total:** ~3,100 new lines, ~810 modified lines
 
 ---
 
 ## Execution Order (Priority)
 
 ```
-P0 (Must Have — Week 1):
-  MARKER_144.1 → Workflow Store (backend persistence)
-  MARKER_144.2 → ReactFlow CRUD (enable connections, add/delete nodes)
+P0 (Must Have — Week 1): ✅ ALL DONE
+  ✅ MARKER_144.1 → Workflow Store (backend persistence)         [d0c2676e]
+  ✅ MARKER_144.2 → ReactFlow CRUD (enable connections)          [d0c2676e]
 
-P1 (Should Have — Week 1-2):
-  MARKER_144.3 → Context Menu (right-click UX)
-  MARKER_144.4 → New Node Types (5 visual components)
-  MARKER_144.5 → Node Property Editor (edit in detail panel)
-  MARKER_144.6 → Workflow Toolbar (save/load/execute)
-  MARKER_144.10 → Workflow Execution Bridge (run workflows)
+P1 (Should Have — Week 1-2): 4/6 DONE
+  ✅ MARKER_144.3 → Context Menu (right-click UX)                [1c74e7a8]
+  ✅ MARKER_144.4 → New Node Types (5 visual components)         [1c74e7a8]
+  ✅ MARKER_144.5 → Node Property Editor (edit in detail panel)  [239a420a]
+  ✅ MARKER_144.6 → Workflow Toolbar (save/load/execute)         [239a420a]
+  ⏳ MARKER_144.10 → Workflow Execution Bridge (run workflows)
+  ⏳ MARKER_144.11 → Agent Stream on Node Click + Artifact Link
+  ⏳ MARKER_144.12 → Architect Chat Dialog + Task Creation
 
-P2 (Nice to Have — Week 2-3):
-  MARKER_144.7 → AI Workflow Generation
-  MARKER_144.8 → n8n Import/Export
+P2 (Nice to Have — Week 3-4):
+  ⏳ MARKER_144.7 → AI Workflow Generation
+  ⏳ MARKER_144.8 → n8n Import/Export
 
 P3 (Future):
-  MARKER_144.9 → ComfyUI Import/Export
+  ⏳ MARKER_144.9 → ComfyUI Import/Export
 ```
 
 ---
 
 ## Verification Checklist
 
-1. `npm run build` — zero TypeScript errors
-2. `python -m pytest tests/ -v` — all tests pass
-3. Create workflow via context menu (right-click → add node)
-4. Connect nodes by dragging handles
-5. Save workflow → reload → workflow persists
-6. Validate workflow → shows errors for cycles/orphans
-7. Execute workflow → pipeline runs, DAG shows progress
-8. Undo/redo works (Ctrl+Z / Ctrl+Shift+Z)
-9. Import n8n JSON → converts to VETKA workflow
-10. Export VETKA workflow → valid n8n JSON
+1. ✅ `npm run build` — zero TypeScript errors (in our files)
+2. ✅ `python -m pytest tests/ -v` — all 19 tests pass
+3. ✅ Create workflow via context menu (right-click → add node)
+4. ✅ Connect nodes by dragging handles
+5. ✅ Save workflow → reload → workflow persists
+6. ✅ Validate workflow → shows errors for cycles/orphans
+7. ⏳ Execute workflow → pipeline runs, DAG shows progress
+8. ✅ Undo/redo works (Ctrl+Z / Ctrl+Shift+Z)
+9. ⏳ Import n8n JSON → converts to VETKA workflow
+10. ⏳ Export VETKA workflow → valid n8n JSON
+11. ⏳ Click node → agent stream + artifact links visible
+12. ⏳ Architect chat dialog — send message → get DAG mutations
 
 ---
 
