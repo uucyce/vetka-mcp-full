@@ -22,7 +22,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './ScanPanel.css';
 import { API_BASE } from '../../config/api.config';
-import { isTauri, onFilesDropped, handleDropPaths, openFolderDialog, type FileInfo as TauriFileInfo } from '../../config/tauri';
+import { isTauri, onFilesDropped, onOAuthDeepLink, handleDropPaths, openFolderDialog, openExternalWebWindow, type FileInfo as TauriFileInfo } from '../../config/tauri';
 
 // Interfaces
 interface WatchedDirectory {
@@ -39,6 +39,36 @@ interface ScannedFile {
   modified?: string;
 }
 
+interface ConnectorProvider {
+  id: string;
+  source: 'cloud' | 'social';
+  display_name: string;
+  connected: boolean;
+  status?: 'connected' | 'expired' | 'error' | 'pending';
+  auth_method?: 'oauth' | 'api_key' | 'basic' | 'custom';
+  provider_class?: string;
+  auth_flow?: string;
+  capabilities?: {
+    read: boolean;
+    write: boolean;
+    offline_access: boolean;
+    webhooks: boolean;
+  };
+  requires_verification?: boolean;
+  rate_limit_model?: string;
+  rate_limit_policy?: string;
+  compliance_notes?: string;
+  token_policy?: string;
+  token_present?: boolean;
+  last_refresh_at?: string | null;
+  expires_in?: number;
+  account_label?: string | null;
+  last_sync_at?: string | null;
+  last_scan_at?: string | null;
+  last_scan_count?: number;
+}
+type ConnectorAuthMethod = 'oauth' | 'api_key' | 'link';
+
 interface ScanPanelProps {
   onFileClick: (path: string) => void;
   onFilePin?: (path: string) => void;  // Phase 92.5: Pin file to chat context
@@ -48,7 +78,7 @@ interface ScanPanelProps {
 }
 
 export interface ScannerEvent {
-  type: 'tab_opened' | 'directory_added' | 'directory_removed' | 'scan_complete' | 'scan_error' | 'files_dropped';
+  type: 'tab_opened' | 'directory_added' | 'directory_removed' | 'scan_complete' | 'scan_error' | 'files_dropped' | 'connector_connected' | 'connector_disconnected' | 'connector_scanned';
   path?: string;
   filesCount?: number;
   error?: string;
@@ -104,18 +134,6 @@ const ChevronLeft = () => (
 const ChevronRight = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <polyline points="9 18 15 12 9 6"/>
-  </svg>
-);
-
-const ChevronDown = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="6 9 12 15 18 9"/>
-  </svg>
-);
-
-const ChevronUp = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="18 15 12 9 6 15"/>
   </svg>
 );
 
@@ -244,10 +262,17 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
   const [scannedFiles, setScannedFiles] = useState<ScannedFile[]>([]);
 
   // UI state
-  const [isExpanded, setIsExpanded] = useState(true);
   const [panelHeight, setPanelHeight] = useState(350);
   const [isDragging, setIsDragging] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [connectorProviders, setConnectorProviders] = useState<ConnectorProvider[]>([]);
+  const [connectorsLoading, setConnectorsLoading] = useState(false);
+  const [connectorBusy, setConnectorBusy] = useState<Record<string, 'connect' | 'scan' | 'disconnect' | null>>({});
+  const [secureStorageEnabled, setSecureStorageEnabled] = useState(false);
+  const [connectModalProvider, setConnectModalProvider] = useState<ConnectorProvider | null>(null);
+  const [connectAuthMethod, setConnectAuthMethod] = useState<ConnectorAuthMethod>('oauth');
+  const [connectValue, setConnectValue] = useState('');
+  const [connectSubmitting, setConnectSubmitting] = useState(false);
 
   // Phase 92.4: Inline path input state (no popup!)
   const [pathInput, setPathInput] = useState('');
@@ -290,6 +315,206 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       })
       .catch(() => {});
   }, []);
+
+  // ============== PHASE 147.2: CONNECTORS (CLOUD/SOCIAL) ==============
+
+  const loadConnectors = useCallback(async (source: 'cloud' | 'social') => {
+    setConnectorsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/connectors/status?source=${encodeURIComponent(source)}`);
+      const result = await response.json();
+      if (response.ok && result?.success && Array.isArray(result.providers)) {
+        setConnectorProviders(result.providers as ConnectorProvider[]);
+        setSecureStorageEnabled(Boolean(result?.secure_storage_enabled));
+      } else {
+        setConnectorProviders([]);
+        setSecureStorageEnabled(false);
+      }
+    } catch (err) {
+      console.error('[ScanPanel] Failed to load connectors:', err);
+      setConnectorProviders([]);
+      setSecureStorageEnabled(false);
+    } finally {
+      setConnectorsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentSource.id === 'cloud' || currentSource.id === 'social') {
+      void loadConnectors(currentSource.id as 'cloud' | 'social');
+    }
+  }, [currentSource.id, loadConnectors]);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    let unlistenFn: (() => void) | null = null;
+    const setup = async () => {
+      unlistenFn = await onOAuthDeepLink(async (payload) => {
+        const urls = Array.isArray(payload?.urls) ? payload.urls : [];
+        const oauthUrl = urls.find((u) => String(u).startsWith('vetka://oauth/callback'));
+        if (!oauthUrl) return;
+
+        try {
+          const parsed = new URL(oauthUrl);
+          const authCode = parsed.searchParams.get('code') || '';
+          const oauthState = parsed.searchParams.get('state') || '';
+          if (!authCode || !oauthState) return;
+
+          const response = await fetch(`${API_BASE}/connectors/oauth/complete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              oauth_state: oauthState,
+              auth_code: authCode,
+            }),
+          });
+          const result = await response.json();
+          if (!response.ok || !result?.success) {
+            throw new Error(result?.detail || result?.error || `HTTP ${response.status}`);
+          }
+
+          if (currentSource.id === 'cloud' || currentSource.id === 'social') {
+            await loadConnectors(currentSource.id as 'cloud' | 'social');
+          }
+          onEvent?.({ type: 'connector_connected' });
+        } catch (err) {
+          console.error('[ScanPanel] OAuth deep-link completion failed:', err);
+        }
+      });
+    };
+
+    setup();
+    return () => {
+      unlistenFn?.();
+    };
+  }, [currentSource.id, loadConnectors, onEvent]);
+
+  const runConnectorAction = useCallback(async (
+    providerId: string,
+    action: 'scan' | 'disconnect'
+  ) => {
+    setConnectorBusy((prev) => ({ ...prev, [providerId]: action }));
+    try {
+      const endpoint = `${API_BASE}/connectors/${encodeURIComponent(providerId)}/${action}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const result = await response.json();
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.detail || result?.error || `HTTP ${response.status}`);
+      }
+
+      if (currentSource.id === 'cloud' || currentSource.id === 'social') {
+        await loadConnectors(currentSource.id as 'cloud' | 'social');
+      }
+      if (action === 'scan') {
+        onEvent?.({ type: 'connector_scanned', filesCount: result?.scanned_count || 0 });
+      } else {
+        onEvent?.({ type: 'connector_disconnected' });
+      }
+    } catch (err) {
+      console.error(`[ScanPanel] Connector ${action} failed:`, err);
+      alert(`Connector ${action} failed`);
+    } finally {
+      setConnectorBusy((prev) => ({ ...prev, [providerId]: null }));
+    }
+  }, [currentSource.id, loadConnectors, onEvent]);
+
+  const openConnectModal = useCallback((provider: ConnectorProvider) => {
+    setConnectModalProvider(provider);
+    setConnectAuthMethod(provider.auth_method === 'api_key' ? 'api_key' : 'oauth');
+    setConnectValue('');
+  }, []);
+
+  const submitConnectModal = useCallback(async () => {
+    if (!connectModalProvider || connectSubmitting) return;
+    setConnectSubmitting(true);
+    try {
+      const providerId = connectModalProvider.id;
+      if (connectAuthMethod === 'oauth') {
+        // MARKER_147_5_SCANPANEL_OAUTH_HANDOFF: start OAuth and open real provider URL, no local auto-complete.
+        const startResp = await fetch(`${API_BASE}/connectors/${encodeURIComponent(providerId)}/oauth/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            isTauri()
+              ? { redirect_uri: 'vetka://oauth/callback' }
+              : {}
+          ),
+        });
+        const startData = await startResp.json();
+        if (!startResp.ok || !startData?.success || !startData?.auth_url) {
+          throw new Error(startData?.detail || startData?.error || `HTTP ${startResp.status}`);
+        }
+
+        const authUrl = String(startData.auth_url);
+        if (isTauri()) {
+          await openExternalWebWindow(authUrl, `Connect ${connectModalProvider.display_name}`);
+        } else {
+          window.open(authUrl, '_blank', 'noopener,noreferrer');
+        }
+
+        // MARKER_147_5_SCANPANEL_OAUTH_POLL: background status poll after browser callback.
+        // Close modal immediately and poll backend status while user completes OAuth in browser.
+        setConnectModalProvider(null);
+        setConnectValue('');
+
+        const pollUntil = Date.now() + 180000;
+        const poll = async () => {
+          if (Date.now() > pollUntil) return;
+          try {
+            const response = await fetch(`${API_BASE}/connectors/status?source=${encodeURIComponent(currentSource.id)}`);
+            const result = await response.json();
+            const provider = Array.isArray(result?.providers)
+              ? (result.providers as ConnectorProvider[]).find((p) => p.id === providerId)
+              : null;
+            if (provider?.connected && provider?.token_present) {
+              await loadConnectors(currentSource.id as 'cloud' | 'social');
+              onEvent?.({ type: 'connector_connected' });
+              return;
+            }
+          } catch {
+            // keep polling
+          }
+          setTimeout(() => {
+            void poll();
+          }, 2000);
+        };
+        setTimeout(() => {
+          void poll();
+        }, 1500);
+        return;
+      } else {
+        const manualResp = await fetch(`${API_BASE}/connectors/${encodeURIComponent(providerId)}/auth/manual`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            auth_type: connectAuthMethod,
+            value: connectValue.trim(),
+            account_label: providerId,
+          }),
+        });
+        const manualData = await manualResp.json();
+        if (!manualResp.ok || !manualData?.success) {
+          throw new Error(manualData?.detail || manualData?.error || `HTTP ${manualResp.status}`);
+        }
+      }
+
+      if (currentSource.id === 'cloud' || currentSource.id === 'social') {
+        await loadConnectors(currentSource.id as 'cloud' | 'social');
+      }
+      onEvent?.({ type: 'connector_connected' });
+      setConnectModalProvider(null);
+      setConnectValue('');
+    } catch (err) {
+      console.error('[ScanPanel] Connector auth failed:', err);
+      alert('Connector auth failed');
+    } finally {
+      setConnectSubmitting(false);
+    }
+  }, [connectModalProvider, connectSubmitting, connectAuthMethod, connectValue, currentSource.id, loadConnectors, onEvent]);
 
   // ============== PHASE 100.2: NATIVE DRAG & DROP ==============
 
@@ -754,8 +979,6 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
 
   // ============== UI HELPERS ==============
 
-  const toggleExpanded = useCallback(() => setIsExpanded(prev => !prev), []);
-
   const getFileName = (path: string): string => {
     const parts = path.split('/');
     return parts[parts.length - 1] || path;
@@ -871,7 +1094,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       {/* ===== CONTENT ===== */}
       <div className="scan-panel-content">
           {/* Local Files source content */}
-          {currentSource.available ? (
+          {currentSource.id === 'local' ? (
             <>
               {/* Phase 100.2: Tauri = Browse button only, Browser = path input */}
               <div className="path-input-row">
@@ -964,6 +1187,102 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
                 </div>
               )}
             </>
+          ) : (currentSource.id === 'cloud' || currentSource.id === 'social') ? (
+            <div className="connectors-panel">
+              <div className="connectors-header">
+                Connect accounts and run scan into VETKA
+                <span className={`connectors-secure ${secureStorageEnabled ? 'on' : 'off'}`}>
+                  {secureStorageEnabled ? 'secure store: on' : 'secure store: fallback'}
+                </span>
+              </div>
+              {connectorsLoading ? (
+                <div className="connectors-loading">
+                  <LoadingIcon />
+                  <span>Loading connectors...</span>
+                </div>
+              ) : connectorProviders.length === 0 ? (
+                <div className="coming-soon-panel">
+                  <div className="coming-soon-text">No providers configured</div>
+                  <div className="coming-soon-hint">Check backend connector defaults</div>
+                </div>
+              ) : (
+                <div className="connectors-list">
+                  {connectorProviders.map((provider) => {
+                    const busyAction = connectorBusy[provider.id];
+                    const isBusy = Boolean(busyAction);
+                    const isConnected = provider.connected && (provider.status || 'pending') === 'connected';
+                    const needsAuth = !isConnected || !provider.token_present;
+                    return (
+                      <div key={provider.id} className="connector-card">
+                        <div className="connector-meta">
+                          <div className="connector-name">{provider.display_name}</div>
+                          <div className="connector-sub">
+                            <span className={`connector-status ${isConnected ? 'connected' : 'disconnected'}`}>
+                              {(provider.status || (provider.connected ? 'connected' : 'pending')).toUpperCase()}
+                            </span>
+                            {provider.connected ? (
+                              <span className="connector-token">
+                                {provider.token_present ? 'token: saved' : 'token: missing'}
+                              </span>
+                            ) : null}
+                            {provider.last_scan_count ? (
+                              <span className="connector-last">
+                                {provider.last_scan_count} items
+                              </span>
+                            ) : null}
+                            {provider.last_refresh_at ? (
+                              <span className="connector-refresh">
+                                refreshed {new Date(provider.last_refresh_at).toLocaleDateString()}
+                              </span>
+                            ) : null}
+                            {provider.requires_verification ? (
+                              <span className="connector-policy">review required</span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="connector-actions">
+                          {needsAuth ? (
+                            <button
+                              className="connector-btn"
+                              disabled={isBusy}
+                              onClick={() => openConnectModal(provider)}
+                              title={`Authorize ${provider.display_name}`}
+                            >
+                              Auth
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                className="connector-btn"
+                                disabled={isBusy}
+                                onClick={() => void runConnectorAction(provider.id, 'scan')}
+                                title={`Scan ${provider.display_name}`}
+                              >
+                                {busyAction === 'scan' ? 'Scanning...' : 'Scan'}
+                              </button>
+                              <button
+                                className="connector-btn ghost"
+                                disabled={isBusy}
+                                onClick={() => void runConnectorAction(provider.id, 'disconnect')}
+                                title={`Disconnect ${provider.display_name}`}
+                              >
+                                {busyAction === 'disconnect' ? 'Disconnecting...' : 'Disconnect'}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                        {provider.capabilities ? (
+                          <div className="connector-capabilities">
+                            {provider.capabilities.offline_access && <span>Offline</span>}
+                            {provider.capabilities.webhooks && <span>Webhooks</span>}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           ) : (
             /* Coming soon panel for other sources */
             <div className="coming-soon-panel">
@@ -976,6 +1295,64 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
             </div>
           )}
         </div>
+
+      {connectModalProvider && (
+        <div className="connector-modal-overlay" onClick={() => !connectSubmitting && setConnectModalProvider(null)}>
+          <div className="connector-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="connector-modal-title">
+              Connect {connectModalProvider.display_name}
+            </div>
+            <div className="connector-methods">
+              <button
+                className={`connector-method-btn ${connectAuthMethod === 'oauth' ? 'active' : ''}`}
+                onClick={() => setConnectAuthMethod('oauth')}
+                disabled={connectSubmitting}
+              >
+                OAuth
+              </button>
+              <button
+                className={`connector-method-btn ${connectAuthMethod === 'api_key' ? 'active' : ''}`}
+                onClick={() => setConnectAuthMethod('api_key')}
+                disabled={connectSubmitting}
+              >
+                API key
+              </button>
+              <button
+                className={`connector-method-btn ${connectAuthMethod === 'link' ? 'active' : ''}`}
+                onClick={() => setConnectAuthMethod('link')}
+                disabled={connectSubmitting}
+              >
+                Link
+              </button>
+            </div>
+            {connectAuthMethod !== 'oauth' && (
+              <input
+                className="connector-auth-input"
+                value={connectValue}
+                onChange={(e) => setConnectValue(e.target.value)}
+                placeholder={connectAuthMethod === 'api_key' ? 'Paste API key' : 'Paste auth link/token'}
+                disabled={connectSubmitting}
+              />
+            )}
+            <div className="connector-modal-actions">
+              <button
+                className="connector-btn ghost"
+                onClick={() => setConnectModalProvider(null)}
+                disabled={connectSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                className="connector-btn"
+                onClick={() => void submitConnectModal()}
+                disabled={connectSubmitting || (connectAuthMethod !== 'oauth' && !connectValue.trim())}
+              >
+                {connectSubmitting ? 'Authorizing...' : 'Continue'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== RESIZE HANDLE (at bottom) ===== */}
       <div

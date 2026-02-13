@@ -10,6 +10,7 @@ mod file_system;
 mod heartbeat;
 
 use tauri::{Manager, Emitter, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_deep_link::DeepLinkExt;
 
 // MARKER_134.C34B: Mycelium Command Center window commands
 #[tauri::command]
@@ -50,12 +51,14 @@ fn main() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_deep_link::init())
         .invoke_handler(tauri::generate_handler![
             // Phase 100.1: Basic commands
             commands::get_backend_url,
             commands::check_backend_health,
             commands::get_system_info,
             commands::open_research_browser,
+            commands::open_external_webview,
             // Phase 100.2: Native file system
             file_system::read_file_native,
             file_system::write_file_native,
@@ -69,6 +72,27 @@ fn main() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
+
+            #[cfg(desktop)]
+            {
+                // MARKER_147_5_TAURI_DEEPLINK_EVENT: bridge native vetka://oauth/callback into frontend event stream.
+                let main_handle = app.handle().clone();
+                let _ = app.deep_link().on_open_url(move |event| {
+                    let urls: Vec<String> = event.urls().iter().map(|u| u.to_string()).collect();
+                    if let Some(window) = main_handle.get_webview_window("main") {
+                        let _ = window.emit("oauth-deep-link", serde_json::json!({ "urls": urls }));
+                    }
+                });
+
+                if let Ok(current) = app.deep_link().get_current() {
+                    if !current.is_empty() {
+                        let urls: Vec<String> = current.iter().map(|u| u.to_string()).collect();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.emit("oauth-deep-link", serde_json::json!({ "urls": urls }));
+                        }
+                    }
+                }
+            }
 
             // Start heartbeat service in background
             tauri::async_runtime::spawn(async move {

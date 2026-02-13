@@ -58,6 +58,10 @@ export interface FileChangeEvent {
   paths: string[];
 }
 
+export interface OAuthDeepLinkEvent {
+  urls: string[];
+}
+
 // ============================================
 // Runtime Detection
 // ============================================
@@ -207,20 +211,92 @@ export async function openFolderDialog(title: string = 'Select folder to scan'):
 }
 
 // MARKER_139.S1_4_WEB_LIVE_DEFAULT: Open full live web page in native Tauri WebView window
-export async function openLiveWebWindow(url: string, title?: string): Promise<boolean> {
+export async function openLiveWebWindow(url: string, title?: string, savePath?: string): Promise<boolean> {
   if (!url || !/^https?:\/\//i.test(url)) return false;
   const invoke = await getInvoke();
   if (!invoke) return false;
 
   try {
+    let inferredSavePath = (savePath || '').trim();
+    let savePaths: string[] = inferredSavePath ? [inferredSavePath] : [];
+
+    // MARKER_147.WEB_SHELL_SAVE_PATHS: infer viewport node path candidates for save destination dropdown.
+    try {
+      const [{ useStore }, viewport] = await Promise.all([
+        import('../store/useStore'),
+        import('../utils/viewport'),
+      ]);
+      const state = useStore.getState();
+      const pushPath = (p: string | undefined) => {
+        const clean = String(p || '').trim();
+        if (!clean || savePaths.includes(clean)) return;
+        savePaths.push(clean);
+      };
+
+      // Always include obvious viewport anchors even when camera context is unavailable.
+      if (state.selectedId && state.nodes[state.selectedId]) {
+        pushPath(state.nodes[state.selectedId]?.path);
+      }
+      for (const pinnedId of state.pinnedFileIds || []) {
+        pushPath(state.nodes[pinnedId]?.path);
+        if (savePaths.length >= 24) break;
+      }
+
+      const camera = state.cameraRef;
+      if (camera) {
+        const vctx = viewport.buildViewportContext(state.nodes, state.pinnedFileIds, camera);
+        const ranked = [...vctx.pinned_nodes, ...vctx.viewport_nodes]
+          .filter((n: any) => n?.path && (n.type === 'file' || n.type === 'folder'))
+          .sort((a: any, b: any) => {
+            if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
+            if (a.is_center !== b.is_center) return a.is_center ? -1 : 1;
+            return (a.distance_to_camera || 0) - (b.distance_to_camera || 0);
+          });
+        const uniq = new Set<string>();
+        for (const node of ranked) {
+          const p = String(node.path || '').trim();
+          if (!p || uniq.has(p)) continue;
+          uniq.add(p);
+          savePaths.push(p);
+          if (savePaths.length >= 24) break;
+        }
+      }
+      if (!inferredSavePath && savePaths.length > 0) {
+        inferredSavePath = savePaths[0];
+      }
+      savePaths = savePaths.slice(0, 24);
+    } catch {
+      // non-fatal: keep opener-provided savePath only
+    }
+
     // MARKER_128.9C_TAURI_INVOKE: Use Rust command for reliable native browser window creation
     const opened = await invoke('open_research_browser', {
       url,
       title: title || 'VETKA Live Web',
+      save_path: inferredSavePath,
+      save_paths: savePaths,
     });
     return opened === true;
   } catch (e) {
     console.warn('[Tauri] Failed to open live web window:', e);
+    return false;
+  }
+}
+
+// Open raw external webview (no shell) for sites that cannot render in embedded preview.
+export async function openExternalWebWindow(url: string, title?: string): Promise<boolean> {
+  if (!url || !/^https?:\/\//i.test(url)) return false;
+  const invoke = await getInvoke();
+  if (!invoke) return false;
+
+  try {
+    const opened = await invoke('open_external_webview', {
+      url,
+      title: title || 'VETKA External Web',
+    });
+    return opened === true;
+  } catch (e) {
+    console.warn('[Tauri] Failed to open external web window:', e);
     return false;
   }
 }
@@ -362,6 +438,21 @@ export async function onFilesDropped(callback: (paths: string[]) => void): Promi
   if (!listen) return null;
 
   const unlisten = await listen<string[]>('files-dropped', (event) => {
+    callback(event.payload);
+  });
+  return unlisten;
+}
+
+/**
+ * Listen for OAuth deep-link URLs emitted by Tauri backend.
+ * Event payload: { urls: string[] }
+ */
+export async function onOAuthDeepLink(callback: (payload: OAuthDeepLinkEvent) => void): Promise<(() => void) | null> {
+  const listen = await getListen();
+  if (!listen) return null;
+
+  const unlisten = await listen('oauth-deep-link', (event: { payload?: OAuthDeepLinkEvent }) => {
+    if (!event?.payload) return;
     callback(event.payload);
   });
   return unlisten;

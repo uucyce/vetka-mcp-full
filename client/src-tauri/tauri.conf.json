@@ -58,5 +58,13 @@
       "minimumSystemVersion": "10.15"
     }
   },
-  "plugins": {}
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "vetka"
+        ]
+      }
+    }
+  }
 }
