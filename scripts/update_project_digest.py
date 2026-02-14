@@ -163,22 +163,42 @@ def auto_sync_from_git(digest: dict) -> dict:
             return digest
         commit_hash, message = parts[0][:8], parts[1]
 
-        # Extract phase from commit message (e.g., "Phase 119.5: ...")
+        # Extract phase from commit message — supports multiple formats:
+        # "Phase 119.5: ..."  →  (119, "5")
+        # "Phase 144 COMPLETE: ..."  →  (144, "0")
+        # "MARKER_144.7: ..."  →  (144, "7")
         phase_match = re.search(r'Phase\s+(\d+)\.(\d+)', message, re.IGNORECASE)
+        if not phase_match:
+            # Try "Phase X COMPLETE" or "Phase X:" without subphase
+            phase_match = re.search(r'Phase\s+(\d+)\b', message, re.IGNORECASE)
+        if not phase_match:
+            # Try "MARKER_X.Y" format (e.g., "MARKER_144.7:")
+            phase_match = re.search(r'MARKER[_\s]+(\d+)\.(\d+)', message, re.IGNORECASE)
         if not phase_match:
             return digest
 
         phase_num = int(phase_match.group(1))
-        subphase = phase_match.group(2)
+        try:
+            subphase = phase_match.group(2) or "0"
+        except IndexError:
+            subphase = "0"
 
         # Update current_phase
         digest.setdefault("current_phase", {})
         digest["current_phase"]["number"] = phase_num
         digest["current_phase"]["subphase"] = subphase
-        digest["current_phase"]["status"] = "COMPLETED"
 
-        # Extract title after "Phase XXX.Y: " or "Phase XXX.Y — "
-        title_match = re.search(r'Phase\s+\d+[\.\d]*[:\s\u2014-]+(.+?)(?:\n|$)', message)
+        # Detect status from message content
+        if "complete" in message.lower():
+            digest["current_phase"]["status"] = "COMPLETED"
+        else:
+            digest["current_phase"]["status"] = "IN_PROGRESS"
+
+        # Extract title — supports Phase, MARKER_, and COMPLETE variants
+        title_match = re.search(
+            r'(?:Phase|MARKER[_\s])\s*\d+[\.\d]*\s*(?:COMPLETE)?[:\s\u2014\u2014—-]+(.+?)(?:\n|$)',
+            message, re.IGNORECASE
+        )
         if title_match:
             digest["current_phase"]["name"] = title_match.group(1).strip()[:80]
 
@@ -358,6 +378,7 @@ def git_push(remote: str = "origin", branch: str = None) -> bool:
 
 def update_digest(
     phase_number: int = None,
+    phase_subphase: str = None,
     phase_name: str = None,
     phase_status: str = None,
     headline: str = None,
@@ -384,6 +405,9 @@ def update_digest(
     if phase_number is not None:
         digest["current_phase"]["number"] = phase_number
         print(f"  Phase number: {phase_number}")
+    if phase_subphase is not None:
+        digest["current_phase"]["subphase"] = phase_subphase
+        print(f"  Subphase: {phase_subphase}")
     if phase_name is not None:
         digest["current_phase"]["name"] = phase_name
         print(f"  Phase name: {phase_name}")
@@ -503,6 +527,7 @@ def main():
 
     update_digest(
         phase_number=args.phase,
+        phase_subphase=args.subphase,
         phase_name=args.name,
         phase_status=args.status,
         headline=args.headline,

@@ -1,17 +1,18 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-14T00:01:11.672280+00:00",
+  "last_updated": "2026-02-14T00:36:22.891211+00:00",
   "auto_updated": true,
   "current_phase": {
-    "number": 135,
-    "subphase": "7",
-    "name": "Phase 135: Active Development",
-    "status": "IN_PROGRESS",
+    "number": 144,
+    "subphase": "0",
+    "name": "n8n/ComfyUI converters + Architect Chat fix (12/12 markers)",
+    "status": "COMPLETED",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 135 active \u2014 dragon_dragon_silver: S2.3 Jarvis Voice Pipeline: streaming TTS with fil",
+    "headline": "Phase 144.0 DONE! n8n/ComfyUI converters + Architect Chat fix (12/12 markers)",
     "key_achievements": [
+      "[51a426ca] Phase 144.0: Phase 144 COMPLETE: n8n/ComfyUI converters + Architect Chat ",
       "[97c0f71c] Phase 137: Phase 137: MCC Final Fixes\n\nMARKER_137.ARCHITECT_F...",
       "[dragon_dragon_silver] S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction\n\nB",
       "[opus] S1.1 Event-driven dispatch: notify endpoint auto-dispatches on task added, PATCH",
@@ -21,7 +22,7 @@
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
       "[dragon_dragon_bronze] Create file src/utils/math_helpers.py with function add(a: int, b: int) -> int t",
-      "[dragon_dragon_bronze] Create file src/utils/math_helpers.py with function add(a: int, b: int) -> int t"
+      "Phase 144: DAG Workflow Editor \u2014 12/12 markers, 131 tests, n8n+ComfyUI converters, Architect Chat fix"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -29,12 +30,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 5656,
+      "points": 5657,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 5627,
+      "points": 5628,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -107,7 +108,7 @@
     }
   ],
   "agent_instructions": {
-    "on_connect": "Read digest. Phase 119.5 COMPLETE! Scout role (5th pipeline agent), MGC dedup, STM bridge, Heartbeat E2E all done.",
+    "on_connect": "Read digest. Phase 144 COMPLETE! DAG Workflow Editor with n8n/ComfyUI converters, Architect Chat fix, 131 tests.",
     "methodology": "Use Haiku scouts for recon, Sonnet for verify, Opus for synthesis",
     "key_constraint": "NO NEW PANELS OR BUTTONS - use existing UI, add functions only",
     "new_features": [
@@ -141,7 +142,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "3f899210",
+    "commit": "51a426ca",
     "dirty": true
   }
 }
