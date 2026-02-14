@@ -2,7 +2,7 @@
 VETKA File Watcher - Real-Time File System Monitoring.
 
 @status: active
-@phase: 96
+@phase: 146.5
 @depends: watchdog, threading, src.scanners.qdrant_updater, src.memory.qdrant_client,
           src.initialization.components_init
 @used_by: src.api.routes.watcher_routes, src.initialization.components_init
@@ -18,6 +18,7 @@ Features:
 - Phase 80.20: Fix async emit from sync context (AsyncServer.emit is coroutine)
 - Phase 90.3: Qdrant retry logic (2s delay, prevents silent skip)
 - Phase 96.1: TripleWrite integration for coherent writes
+- Phase 146.5: SpamDetector — auto-mute noisy directories + SocketIO alert
 """
 
 import os
@@ -66,6 +67,12 @@ SKIP_PATTERNS = [
     'config.json',              # App config — rarely changes, no need to index
     'tool_audit_log.jsonl',     # Append-only audit log
     'mcp_audit',                # MCP audit directory
+    # MARKER_146.5_WATCHER: Skip playground sandboxes and agent worktrees
+    # These are temporary git worktrees with full project copies — indexing them
+    # causes massive log spam and blocks the event loop (100+ files per worktree)
+    '.playgrounds',             # PlaygroundManager worktrees (active + test)
+    '.claude/worktrees',        # Claude Code agent experiment worktrees
+    'data/playground_settings.json',  # Playground config (changes on settings update)
 ]
 
 # Supported file extensions for watching
@@ -75,6 +82,147 @@ SUPPORTED_EXTENSIONS = {
     '.java', '.go', '.rs', '.rb', '.php', '.c', '.cpp', '.h',
     '.swift', '.kt', '.scala', '.vue', '.svelte'
 }
+
+
+# ============================================================
+# SPAM DETECTOR — MARKER_146.5_SPAM
+# ============================================================
+# Auto-detects noisy directories that generate excessive events.
+# When a directory exceeds SPAM_THRESHOLD events in SPAM_WINDOW seconds:
+# 1. Auto-mutes the directory (adds to runtime skip set)
+# 2. Emits SocketIO alert with suggested block path
+# 3. Logs warning with the offending path
+
+SPAM_THRESHOLD = 50       # Events per window to trigger mute
+SPAM_WINDOW_SECONDS = 10  # Sliding window duration
+SPAM_COOLDOWN = 300       # Seconds before un-muting (5 min)
+
+
+class SpamDetector:
+    """
+    Tracks event frequency per parent directory.
+    When a dir exceeds threshold, auto-mutes it and emits alert.
+    """
+
+    def __init__(self, threshold: int = SPAM_THRESHOLD, window: float = SPAM_WINDOW_SECONDS,
+                 cooldown: float = SPAM_COOLDOWN):
+        self.threshold = threshold
+        self.window = window
+        self.cooldown = cooldown
+        self._counters: Dict[str, List[float]] = defaultdict(list)  # dir -> [timestamps]
+        self._muted: Dict[str, float] = {}  # dir -> mute_until timestamp
+        self._alert_callback: Optional[Callable] = None
+        self._lock = threading.Lock()
+
+    def set_alert_callback(self, callback: Callable):
+        """Set callback for spam alerts: callback(dir_path, event_count)."""
+        self._alert_callback = callback
+
+    def record_event(self, file_path: str) -> bool:
+        """
+        Record an event for a file. Returns True if event should proceed,
+        False if the directory is muted (spam detected).
+        """
+        # Extract the "interesting" parent — go 2 levels up from project root
+        # to catch patterns like .playgrounds/pg_xxx/ or .claude/worktrees/cranky-borg/
+        dir_key = self._extract_dir_key(file_path)
+        now = time.time()
+
+        with self._lock:
+            # Check if directory is currently muted
+            if dir_key in self._muted:
+                if now < self._muted[dir_key]:
+                    return False  # Still muted — silently skip
+                else:
+                    # Cooldown expired — unmute
+                    del self._muted[dir_key]
+                    print(f"[Watcher] 🔊 Un-muted directory (cooldown expired): {dir_key}")
+
+            # Add timestamp, prune old ones
+            timestamps = self._counters[dir_key]
+            timestamps.append(now)
+            cutoff = now - self.window
+            self._counters[dir_key] = [t for t in timestamps if t > cutoff]
+
+            # Check threshold
+            count = len(self._counters[dir_key])
+            if count >= self.threshold:
+                # SPAM DETECTED — auto-mute
+                self._muted[dir_key] = now + self.cooldown
+                self._counters[dir_key] = []  # Reset counter
+
+                suggested_skip = self._suggest_skip_pattern(dir_key)
+                print(f"\n{'='*60}")
+                print(f"[Watcher] 🚨 SPAM DETECTED: {dir_key}")
+                print(f"[Watcher]    {count} events in {self.window}s (threshold: {self.threshold})")
+                print(f"[Watcher]    Auto-muted for {self.cooldown}s")
+                print(f"[Watcher]    💡 Suggested skip pattern: '{suggested_skip}'")
+                print(f"[Watcher]    Add to SKIP_PATTERNS in file_watcher.py to permanently block")
+                print(f"{'='*60}\n")
+
+                # Emit alert via callback (SocketIO → frontend)
+                if self._alert_callback:
+                    try:
+                        self._alert_callback(dir_key, count, suggested_skip)
+                    except Exception as e:
+                        print(f"[Watcher] Alert callback error: {e}")
+
+                return False  # Muted now
+
+        return True  # Event allowed
+
+    def is_muted(self, file_path: str) -> bool:
+        """Check if a file's parent directory is currently muted."""
+        dir_key = self._extract_dir_key(file_path)
+        with self._lock:
+            if dir_key in self._muted:
+                return time.time() < self._muted[dir_key]
+        return False
+
+    def get_muted_dirs(self) -> Dict[str, float]:
+        """Return dict of muted directories and their unmute timestamps."""
+        now = time.time()
+        with self._lock:
+            return {d: t for d, t in self._muted.items() if t > now}
+
+    def _extract_dir_key(self, file_path: str) -> str:
+        """
+        Extract a meaningful directory key for grouping.
+        Groups by top-level 'unusual' directory (playground, worktree, etc.)
+        """
+        parts = Path(file_path).parts
+        # Find the first 'dotdir' component (.playgrounds, .claude, etc.)
+        for i, part in enumerate(parts):
+            if part.startswith('.') and part not in ('.', '..'):
+                # Return up to 2 levels deep: .playgrounds/pg_xxx
+                end = min(i + 2, len(parts))
+                return str(Path(*parts[:end]))
+        # Fallback: use direct parent
+        return str(Path(file_path).parent)
+
+    def _suggest_skip_pattern(self, dir_key: str) -> str:
+        """
+        Generate a suggested SKIP_PATTERNS entry for the noisy directory.
+        Strips to the most useful top-level component.
+        """
+        parts = Path(dir_key).parts
+        # Find dotdir component
+        for part in parts:
+            if part.startswith('.') and part not in ('.', '..'):
+                return part  # e.g. '.playgrounds' or '.claude'
+        # Fallback: last 2 components
+        if len(parts) >= 2:
+            return str(Path(*parts[-2:]))
+        return dir_key
+
+
+# Global SpamDetector instance (shared across all handlers)
+_spam_detector = SpamDetector()
+
+
+def get_spam_detector() -> SpamDetector:
+    """Get the global SpamDetector instance."""
+    return _spam_detector
 
 
 # ============================================================
@@ -107,29 +255,24 @@ class VetkaFileHandler(FileSystemEventHandler):
 
     def on_any_event(self, event: FileSystemEvent) -> None:
         """Handle any file system event."""
-        # MARKER_90.9_DEBUG_START: Debug logging per Grok/Kimi K2 analysis
-        print(f"[DEBUG_WATCHER] Raw event: type={event.event_type}, path={event.src_path}, is_dir={event.is_directory}")
-        # MARKER_90.9_DEBUG_END
-
         # Skip directory events
         if event.is_directory:
-            print(f"[DEBUG_WATCHER] SKIP: is_directory=True")
             return
 
         path = event.src_path
 
-        # Skip ignored patterns
+        # Skip ignored patterns (SKIP_PATTERNS — static blocklist)
         if self._should_skip(path):
-            print(f"[DEBUG_WATCHER] SKIP: matches skip pattern -> {path}")
             return
+
+        # MARKER_146.5_SPAM: Dynamic spam detection — auto-mute noisy directories
+        if not _spam_detector.record_event(path):
+            return  # Directory is muted (spam detected)
 
         # Skip unsupported extensions (if filtering is enabled)
         ext = Path(path).suffix.lower()
         if ext and ext not in SUPPORTED_EXTENSIONS:
-            print(f"[DEBUG_WATCHER] SKIP: unsupported extension '{ext}' -> {path}")
             return
-
-        print(f"[DEBUG_WATCHER] PASS: Adding to pending batch -> {path}")
 
         with self.lock:
             # Add event to pending batch
@@ -302,6 +445,9 @@ class VetkaFileWatcher:
 
         if use_emit_queue:
             self._start_emit_worker()
+
+        # MARKER_146.5_SPAM: Wire SpamDetector alerts to SocketIO
+        _spam_detector.set_alert_callback(self._on_spam_detected)
 
         # Ensure data directory exists
         os.makedirs(os.path.dirname(state_file), exist_ok=True)
@@ -558,6 +704,25 @@ class VetkaFileWatcher:
         self._emit_worker_thread = threading.Thread(target=worker, daemon=True, name="WatcherEmitWorker")
         self._emit_worker_thread.start()
         print("[Watcher] Emit worker started (queue mode with async support)")
+
+    def _on_spam_detected(self, dir_path: str, event_count: int, suggested_skip: str) -> None:
+        """
+        MARKER_146.5_SPAM: Callback when SpamDetector identifies a noisy directory.
+        Emits a watcher_spam_alert SocketIO event to frontend with:
+        - dir_path: the directory that's spamming
+        - event_count: how many events triggered the alert
+        - suggested_skip: pattern to add to SKIP_PATTERNS
+        """
+        self._emit('watcher_spam_alert', {
+            'dir_path': dir_path,
+            'event_count': event_count,
+            'suggested_skip': suggested_skip,
+            'message': f'Directory "{dir_path}" generated {event_count} events in {SPAM_WINDOW_SECONDS}s. '
+                       f'Auto-muted for {SPAM_COOLDOWN}s. '
+                       f'Suggest adding \'{suggested_skip}\' to SKIP_PATTERNS.',
+            'action': 'add_skip_pattern',
+            'time': time.time()
+        })
 
     def _emit(self, event_name: str, data: Dict) -> None:
         """

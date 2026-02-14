@@ -1,17 +1,18 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-14T17:07:18.030635+00:00",
+  "last_updated": "2026-02-14T17:14:02.072559+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 146,
-    "subphase": "0",
-    "name": "Playground architecture + audit log fix",
+    "subphase": "5",
+    "name": "Playground Ops \u2014 review, promote, reject + settings",
     "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 146.0 DONE! Playground architecture + audit log fix",
+    "headline": "Phase 146.5 DONE! Playground Ops \u2014 review, promote, reject + settings",
     "key_achievements": [
+      "[96e75f8a] Phase 146.5: Phase 146.5: Playground Ops \u2014 review, promote, reject + sett",
       "[3850aca1] Phase 146.0: Phase 146.E2E: Playground sandbox E2E testing + cross-proces",
       "[cd006d29] Phase 146.0: Phase 146: Playground architecture + audit log fix",
       "[dragon_dragon_silver] Create a simple Python utility file at src/utils/favorite_utils.py with a Favori",
@@ -20,8 +21,7 @@
       "[dragon_dragon_bronze] test task",
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
-      "[dragon_dragon_bronze] fix task",
-      "[dragon_dragon_bronze] test task"
+      "[dragon_dragon_bronze] fix task"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -39,9 +39,9 @@
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "offline",
+      "status": "running",
       "port": 5001,
-      "tools_count": 0
+      "tools_count": 15
     },
     "api_keys": {
       "total": 30,
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "3850aca1",
+    "commit": "96e75f8a",
     "dirty": true
   }
 }

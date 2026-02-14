@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, List
 
-from src.scanners.file_watcher import get_watcher
+from src.scanners.file_watcher import get_watcher, get_spam_detector, SKIP_PATTERNS
 from src.scanners.qdrant_updater import get_qdrant_updater
 
 
@@ -821,3 +821,57 @@ async def cleanup_browser_files():
     except Exception as e:
         print(f"[Watcher] Cleanup error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# SPAM DETECTOR ENDPOINTS — MARKER_146.5_SPAM
+# ============================================================
+
+@router.get("/spam-status")
+async def get_spam_status():
+    """Get currently muted directories from SpamDetector."""
+    detector = get_spam_detector()
+    muted = detector.get_muted_dirs()
+    import time
+    now = time.time()
+    return {
+        'muted_directories': [
+            {
+                'path': path,
+                'unmute_in_seconds': round(unmute_at - now),
+                'unmute_at': unmute_at
+            }
+            for path, unmute_at in muted.items()
+        ],
+        'skip_patterns': list(SKIP_PATTERNS),
+        'total_skip_patterns': len(SKIP_PATTERNS)
+    }
+
+
+class AddSkipPatternRequest(BaseModel):
+    """Request to add a pattern to SKIP_PATTERNS at runtime."""
+    pattern: str
+
+
+@router.post("/spam-block")
+async def add_skip_pattern(req: AddSkipPatternRequest):
+    """
+    Add a pattern to SKIP_PATTERNS at runtime.
+    This is a temporary block — survives until server restart.
+    To make permanent, add to SKIP_PATTERNS in file_watcher.py.
+    """
+    pattern = req.pattern.strip()
+    if not pattern:
+        raise HTTPException(status_code=400, detail="Pattern cannot be empty")
+
+    if pattern in SKIP_PATTERNS:
+        return {'success': False, 'message': f"Pattern '{pattern}' already in SKIP_PATTERNS"}
+
+    SKIP_PATTERNS.append(pattern)
+    print(f"[Watcher] 🚫 Added runtime skip pattern: '{pattern}'")
+    return {
+        'success': True,
+        'message': f"Pattern '{pattern}' added to SKIP_PATTERNS (runtime only)",
+        'total_skip_patterns': len(SKIP_PATTERNS),
+        'note': 'This is temporary. Add to SKIP_PATTERNS in file_watcher.py for permanence.'
+    }
