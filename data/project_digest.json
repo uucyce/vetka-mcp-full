@@ -1,17 +1,18 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-14T20:16:16.495737+00:00",
+  "last_updated": "2026-02-14T21:11:56.885261+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 149,
-    "subphase": "0",
-    "name": "Dragon Silver test + HeartbeatChip + Sparse Apply design",
+    "subphase": "1",
+    "name": "Qdrant cleanup \u2014 remove 6351 worktree/playground junk points",
     "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 149.0 DONE! Dragon Silver test + HeartbeatChip + Sparse Apply design",
+    "headline": "Phase 149.1 DONE! Qdrant cleanup \u2014 remove 6351 worktree/playground junk points",
     "key_achievements": [
+      "[f596cc9b] Phase 149.1: Phase 149.1: Qdrant cleanup \u2014 remove 6351 worktree/playgroun",
       "[b929a015] Phase 149.0: Phase 149: Dragon Silver test + HeartbeatChip + Sparse Apply",
       "[dragon_dragon_silver] Create HeartbeatChip.tsx React component in client/src/components/mcc/HeartbeatC",
       "[08875a38] Phase 148.0: Add CURSOR brief: Header controls + Playground frontend (Pha",
@@ -20,8 +21,7 @@
       "[96e75f8a] Phase 146.5: Phase 146.5: Playground Ops \u2014 review, promote, reject + sett",
       "[3850aca1] Phase 146.0: Phase 146.E2E: Playground sandbox E2E testing + cross-proces",
       "[cd006d29] Phase 146.0: Phase 146: Playground architecture + audit log fix",
-      "[dragon_dragon_silver] Create a simple Python utility file at src/utils/favorite_utils.py with a Favori",
-      "[dragon_dragon_bronze] Add a star/favorite toggle button component for chat messages. Create a React co"
+      "[dragon_dragon_silver] Create a simple Python utility file at src/utils/favorite_utils.py with a Favori"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -29,12 +29,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2565,
+      "points": 2567,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2535,
+      "points": 2537,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "b929a015",
+    "commit": "f596cc9b",
     "dirty": true
   }
 }

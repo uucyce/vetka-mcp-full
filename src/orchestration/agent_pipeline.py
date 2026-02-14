@@ -933,8 +933,10 @@ Respond with implementation plan or code."""
     # MARKER_122.2_END
 
     # MARKER_122.3_START: Retry coder with verifier feedback
-    async def _retry_coder(self, subtask, verifier_result: Dict, phase_type: str) -> str:
-        """Re-run coder with verifier feedback injected into context."""
+    # MARKER_149.RETRY_FIX: Save first attempt + inject into retry context
+    async def _retry_coder(self, subtask, verifier_result: Dict, phase_type: str,
+                           previous_result: str = "") -> str:
+        """Re-run coder with verifier feedback AND previous attempt injected into context."""
         subtask.retry_count += 1
         if subtask.context is None:
             subtask.context = {}
@@ -949,6 +951,14 @@ Respond with implementation plan or code."""
         feedback += f"Previous output was rejected. Fix the issues above."
 
         subtask.context["verifier_feedback"] = feedback
+
+        # MARKER_149.RETRY_FIX: Preserve first attempt so coder can fix it, not rewrite from scratch
+        if previous_result and subtask.retry_count == 1:
+            # Truncate if too long (keep first 4000 chars — enough for context)
+            prev_truncated = previous_result[:4000]
+            if len(previous_result) > 4000:
+                prev_truncated += "\n... (truncated)"
+            subtask.context["previous_attempt"] = prev_truncated
         # MARKER_127.1A: Store full verifier dict for stats collection
         subtask.verifier_feedback = verifier_result
 
@@ -2583,8 +2593,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         break
                     if sev == "major" and subtask.visible:
                         await self._emit_progress("@verifier", f"⚠️ Major issue — retrying coder once", i+1, total_subtasks)
-                    # Retry coder with feedback
-                    result = await self._retry_coder(subtask, verification, phase_type)
+                    # Retry coder with feedback + MARKER_149.RETRY_FIX: pass first attempt
+                    result = await self._retry_coder(subtask, verification, phase_type, previous_result=result)
                     # MARKER_133.C33B: Verifier retry with timeout
                     # MARKER_145.ADAPTIVE_TIMEOUT: Verifier model for retry timeout
                     verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type),
@@ -2812,7 +2822,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         if sev == "major" and subtask.retry_count > 0:
                             subtask.escalated = True
                             break
-                        result = await self._retry_coder(subtask, verification, phase_type)
+                        # MARKER_149.RETRY_FIX: pass first attempt to retry (parallel path)
+                        result = await self._retry_coder(subtask, verification, phase_type, previous_result=result)
                         # MARKER_133.C33B: Verifier retry with timeout (parallel path)
                         # MARKER_145.ADAPTIVE_TIMEOUT: Verifier model for parallel retry
                         verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type),
@@ -3125,6 +3136,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_122.5A: Pass STM previous results to coder
             if subtask.context.get("previous_results"):
                 context_parts.append(f"Previous subtask results:\n{subtask.context['previous_results']}")
+            # MARKER_149.RETRY_FIX: Inject verifier feedback + previous attempt on retry
+            if subtask.context.get("verifier_feedback"):
+                context_parts.append(subtask.context["verifier_feedback"])
+            if subtask.context.get("previous_attempt"):
+                context_parts.append(
+                    f"YOUR PREVIOUS CODE (fix the issues, do NOT rewrite from scratch):\n"
+                    f"```\n{subtask.context['previous_attempt']}\n```"
+                )
             # MARKER_122.5B: Pass scout report to coder
             if subtask.context.get("scout_report"):
                 scout = subtask.context["scout_report"]
