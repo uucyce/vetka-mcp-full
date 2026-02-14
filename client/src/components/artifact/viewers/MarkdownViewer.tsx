@@ -10,12 +10,22 @@
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { isTauri, openLiveWebWindow } from '../../../config/tauri';
 
 interface Props {
   content: string;
 }
 
 export function MarkdownViewer({ content }: Props) {
+  const handleLinkClick = async (event: React.MouseEvent<HTMLAnchorElement>, href?: string) => {
+    const url = String(href || '').trim();
+    if (!url || !/^https?:\/\//i.test(url)) return;
+    if (!isTauri()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    await openLiveWebWindow(url, 'VETKA Web');
+  };
+
   return (
     <div style={{
       height: '100%',
@@ -47,8 +57,13 @@ export function MarkdownViewer({ content }: Props) {
           blockquote: ({ ...props }) => (
             <blockquote style={{ borderLeft: '4px solid #333', paddingLeft: 16, fontStyle: 'italic', color: '#888', margin: '16px 0' }} {...props} />
           ),
-          a: ({ ...props }) => (
-            <a style={{ color: '#60a5fa', textDecoration: 'none' }} {...props} />
+          a: ({ href, ...props }) => (
+            <a
+              href={href}
+              style={{ color: '#60a5fa', textDecoration: 'none' }}
+              onClick={(e) => void handleLinkClick(e, href)}
+              {...props}
+            />
           ),
           ul: ({ ...props }) => (
             <ul style={{ paddingLeft: 24, marginBottom: 12 }} {...props} />

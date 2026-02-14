@@ -33,13 +33,12 @@ import { useTreeData } from './hooks/useTreeData';
 import { useSocket } from './hooks/useSocket';
 import type { SearchResult } from './types/chat';
 import { calculateAdaptiveLODWithFloor } from './utils/lod';
+import { isTauri, onWebArtifactSaved, openLiveWebWindow } from './config/tauri';
 import {
   computeLabelScore,
   selectTopLabels,
   applyHysteresis,
 } from './utils/labelScoring';
-
-const BACKEND_API = 'http://localhost:5001/api';
 
 // ============================================================================
 // MARKER_111.21_FRUSTUM: Phase 112.2 - Frustum Culling Component
@@ -254,7 +253,28 @@ export default function App() {
   const togglePinFile = useStore((state) => state.togglePinFile);
   const allNodes = useStore((state) => state.nodes);
 
-  const handleSearchSelect = useCallback((result: SearchResult) => {
+  const handleSearchSelect = useCallback(async (result: SearchResult) => {
+    const source = String((result as any).source || '');
+    const isWeb = source.startsWith('web') || /^https?:\/\//i.test(result.path || '');
+
+    // MARKER_144.IMPL_STEP_2_WEB_RESULT_NATIVE_OPEN: In web context open native browser directly.
+    if (isWeb) {
+      if (isTauri() && result.path) {
+        await openLiveWebWindow(result.path, result.name || 'VETKA Live Web', selectedNode?.path || '');
+        return;
+      }
+      // Browser fallback: open existing artifact panel web preview.
+      setArtifactFile(null);
+      setArtifactContent({
+        title: result.name || 'Web result',
+        type: 'web',
+        content: result.preview || '',
+        sourceUrl: result.path || '',
+      });
+      setIsArtifactOpen(true);
+      return;
+    }
+
     // Find node by path and select it
     const nodeId = Object.keys(allNodes).find(id => allNodes[id]?.path === result.path);
     if (nodeId) {
@@ -262,7 +282,7 @@ export default function App() {
     }
     // Fly camera to result
     setCameraCommand({ target: result.path, zoom: 'close', highlight: true });
-  }, [allNodes, selectNode, setCameraCommand]);
+  }, [allNodes, selectNode, selectedNode, setCameraCommand, setArtifactFile, setArtifactContent, setIsArtifactOpen]);
 
   const handleSearchPin = useCallback((result: SearchResult) => {
     // Find node by path and toggle pin
@@ -271,6 +291,63 @@ export default function App() {
       togglePinFile(nodeId);
     }
   }, [allNodes, togglePinFile]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    if (!isTauri()) return;
+
+    // MARKER_148.WEB_SAVE_MAIN_REFRESH_FOCUS: sync direct-web save with graph refresh + camera highlight.
+    void onWebArtifactSaved((payload) => {
+      if (!payload?.success) return;
+      window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
+
+      const filePath = String(payload.file_path || '').trim();
+
+      const pathBase = (p: string): string => {
+        if (!p) return '';
+        const normalized = p.replace(/\\/g, '/');
+        const parts = normalized.split('/').filter(Boolean);
+        return parts.length > 0 ? parts[parts.length - 1] : normalized;
+      };
+      const uniq = (arr: string[]) => Array.from(new Set(arr.map((s) => s.trim()).filter(Boolean)));
+      const candidates = uniq([
+        filePath,
+        pathBase(filePath),
+      ]);
+      if (candidates.length === 0) return;
+
+      const hasNodeFor = (probe: string): boolean => {
+        const stateNodes = useStore.getState().nodes;
+        const probeNorm = probe.replace(/\\/g, '/');
+        const probeBase = pathBase(probeNorm);
+        return Object.values(stateNodes).some((n) => {
+          const nodePath = String(n.path || '').replace(/\\/g, '/');
+          return (
+            nodePath === probeNorm ||
+            n.name === probeBase ||
+            nodePath.endsWith('/' + probeBase) ||
+            nodePath.includes(probeNorm)
+          );
+        });
+      };
+
+      let attempts = 0;
+      const timer = setInterval(() => {
+        attempts += 1;
+        const resolved = candidates.find((c) => hasNodeFor(c)) || '';
+        if (resolved || attempts >= 14) {
+          clearInterval(timer);
+          // MARKER_149.WEB_SAVE_CAMERA_STRICT_FILE: never fallback to folder path for web-save focus.
+          const strictTarget = resolved || candidates[0];
+          setCameraCommand({ target: strictTarget, zoom: 'close', highlight: true });
+        }
+      }, 300);
+    }).then((dispose) => { unlisten = dispose; });
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [setCameraCommand]);
 
   // Phase 100.4: Drop zone handlers
   const handleDropToTree = useCallback(async (event: DropZoneEvent) => {
@@ -589,52 +666,24 @@ export default function App() {
               onOpenArtifact={async (result) => {
                 // MARKER_139.S1_2_UNIFIED_ARTIFACT_FIX: Web/file unified results need different artifact open handling
                 const source = String((result as any).source || '');
-                const isWeb = source === 'web' || /^https?:\/\//i.test(result.path);
+                const isWeb = source.startsWith('web') || /^https?:\/\//i.test(result.path);
 
                 if (isWeb) {
+                  if (isTauri() && result.path) {
+                    await openLiveWebWindow(result.path, result.name || 'VETKA Live Web', selectedNode?.path || '');
+                    return;
+                  }
+                  // Browser fallback (non-Tauri runtime only)
                   const title = result.name || 'Web result';
                   const url = result.path || '';
                   setArtifactFile(null);
                   setArtifactContent({
                     title,
-                    type: 'markdown',
-                    content: `# ${title}\n\n${url ? `Source: ${url}\n\n` : ''}Loading web preview...`,
+                    type: 'web',
+                    content: result.preview || '',
+                    sourceUrl: url,
                   });
                   setIsArtifactOpen(true);
-
-                  // MARKER_139.S1_3_WEB_RENDER: Fetch sanitized full-page preview HTML
-                  try {
-                    const resp = await fetch(`${BACKEND_API}/search/web-preview`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ url, timeout_s: 10 }),
-                    });
-                    const data = await resp.json();
-                    if (resp.ok && data?.success && data?.html) {
-                      setArtifactContent({
-                        title: data.title || title,
-                        type: 'web',
-                        content: data.html,
-                        sourceUrl: data.url || url,
-                      });
-                    } else {
-                      const snippet = result.preview || '';
-                      setArtifactContent({
-                        title,
-                        type: 'markdown',
-                        content: `# ${title}\n\n${url ? `Source: ${url}\n\n` : ''}${snippet || 'No preview available.'}\n\nPreview error: ${data?.error || 'unknown error'}`,
-                        sourceUrl: url,
-                      });
-                    }
-                  } catch (e) {
-                    const snippet = result.preview || '';
-                    setArtifactContent({
-                      title,
-                      type: 'markdown',
-                      content: `# ${title}\n\n${url ? `Source: ${url}\n\n` : ''}${snippet || 'No preview available.'}\n\nPreview error: ${String(e)}`,
-                      sourceUrl: url,
-                    });
-                  }
                   return;
                 }
 

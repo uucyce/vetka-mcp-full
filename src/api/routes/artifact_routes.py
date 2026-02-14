@@ -12,6 +12,7 @@ from src.api.handlers.artifact_routes import (
     list_artifacts_for_panel,
     approve_artifact_for_panel,
     reject_artifact_for_panel,
+    save_search_result_artifact,
     save_webpage_artifact,
 )
 
@@ -27,6 +28,22 @@ class SaveWebpageRequest(BaseModel):
     url: str
     title: Optional[str] = None
     snippet: Optional[str] = None
+    raw_html: Optional[str] = None
+    raw_text: Optional[str] = None
+    output_format: Optional[str] = None
+    file_name: Optional[str] = None
+    target_node_path: Optional[str] = None
+
+
+class SaveSearchResultRequest(BaseModel):
+    source: str
+    path: Optional[str] = None
+    url: Optional[str] = None
+    title: Optional[str] = None
+    snippet: Optional[str] = None
+    output_format: Optional[str] = None
+    file_name: Optional[str] = None
+    target_node_path: Optional[str] = None
 
 
 @router.get("")
@@ -56,6 +73,25 @@ async def save_webpage_endpoint(body: SaveWebpageRequest):
         url=body.url,
         title=body.title or "",
         snippet=body.snippet or "",
+        raw_html=body.raw_html or "",
+        raw_text=body.raw_text or "",
+        output_format=body.output_format or "md",
+        file_name=body.file_name or "",
+        target_node_path=body.target_node_path or "",
+    )
+
+
+@router.post("/save-search-result")
+async def save_search_result_endpoint(body: SaveSearchResultRequest):
+    return await save_search_result_artifact(
+        source=body.source,
+        path=body.path or "",
+        url=body.url or "",
+        title=body.title or "",
+        snippet=body.snippet or "",
+        output_format=body.output_format or "md",
+        file_name=body.file_name or "",
+        target_node_path=body.target_node_path or "",
     )
 
 
