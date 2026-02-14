@@ -17,6 +17,7 @@ Tests:
 
 import time
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from src.scanners.file_watcher import (
@@ -133,11 +134,15 @@ class TestSpamDetectorDirKey(unittest.TestCase):
         )
         self.assertIn(".claude", key)
 
-    def test_regular_path_uses_parent(self):
-        """Regular paths use direct parent directory."""
+    def test_regular_path_returns_none(self):
+        """Regular (non-dot) paths return None — never spam-checked."""
         key = self.detector._extract_dir_key("/project/src/utils/helper.py")
-        # Should not crash, returns some parent
-        self.assertTrue(len(key) > 0)
+        self.assertIsNone(key)
+
+    def test_regular_path_client(self):
+        """Client directory paths return None."""
+        key = self.detector._extract_dir_key("/project/client/src/App.tsx")
+        self.assertIsNone(key)
 
     def test_independent_directory_tracking(self):
         """Different directories tracked independently."""
@@ -200,6 +205,79 @@ class TestSpamDetectorAlertCallback(unittest.TestCase):
         # Should not crash without callback
         for i in range(5):
             detector.record_event(f"/project/.playgrounds/pg_no_cb/file_{i}.py")
+
+
+class TestBulkScanProtection(unittest.TestCase):
+    """
+    CRITICAL: Regular directories must NEVER be muted, even under heavy load.
+    This protects legitimate bulk scans (adding a folder with 100+ files).
+    """
+
+    def test_bulk_scan_100_files_not_muted(self):
+        """Adding a folder with 100 files should NOT trigger spam detection."""
+        detector = SpamDetector(threshold=10, window=5.0, cooldown=2.0)
+
+        # Simulate adding a large project folder — 100 files all at once
+        all_passed = True
+        for i in range(100):
+            result = detector.record_event(f"/project/src/components/Component_{i}.tsx")
+            if not result:
+                all_passed = False
+                break
+
+        self.assertTrue(all_passed, "Regular directory was muted during bulk scan!")
+
+    def test_bulk_scan_nested_dirs_not_muted(self):
+        """Files across nested regular dirs should not be muted."""
+        detector = SpamDetector(threshold=10, window=5.0, cooldown=2.0)
+
+        dirs = ['src/utils', 'src/hooks', 'src/api', 'client/components', 'tests']
+        all_passed = True
+        for d in dirs:
+            for i in range(30):
+                result = detector.record_event(f"/project/{d}/file_{i}.py")
+                if not result:
+                    all_passed = False
+                    break
+        # 150 events total across regular dirs — none should be muted
+        self.assertTrue(all_passed, "Regular nested directories were muted!")
+
+    def test_dotdir_still_muted(self):
+        """Hidden directories ARE still muted (the original behavior)."""
+        detector = SpamDetector(threshold=10, window=5.0, cooldown=2.0)
+
+        # Spam a hidden dir — should trigger mute
+        for i in range(10):
+            detector.record_event(f"/project/.cache/build/file_{i}.py")
+
+        result = detector.record_event("/project/.cache/build/extra.py")
+        self.assertFalse(result, "Hidden directory should be muted!")
+
+    def test_regular_dir_never_appears_in_muted(self):
+        """Regular directories should never appear in get_muted_dirs()."""
+        detector = SpamDetector(threshold=5, window=5.0, cooldown=2.0)
+
+        # Send 100 events from regular dir
+        for i in range(100):
+            detector.record_event(f"/project/src/file_{i}.py")
+
+        muted = detector.get_muted_dirs()
+        # No regular dirs in muted list
+        for path in muted:
+            has_dotdir = any(part.startswith('.') and part not in ('.', '..')
+                           for part in Path(path).parts)
+            self.assertTrue(has_dotdir,
+                           f"Regular directory '{path}' found in muted list!")
+
+    def test_is_muted_false_for_regular_dir(self):
+        """is_muted() always returns False for regular directories."""
+        detector = SpamDetector(threshold=5, window=5.0, cooldown=2.0)
+
+        # Even after many events, regular dir is not muted
+        for i in range(50):
+            detector.record_event(f"/project/src/file_{i}.py")
+
+        self.assertFalse(detector.is_muted("/project/src/file_0.py"))
 
 
 class TestSkipPatternsPlayground(unittest.TestCase):

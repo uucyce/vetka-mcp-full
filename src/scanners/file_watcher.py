@@ -102,6 +102,10 @@ class SpamDetector:
     """
     Tracks event frequency per parent directory.
     When a dir exceeds threshold, auto-mutes it and emits alert.
+
+    IMPORTANT: Only mutes HIDDEN directories (starting with dot: .playgrounds, .claude, etc.)
+    Regular user directories (src/, client/, docs/) are NEVER muted — even with 1000 events.
+    This prevents false-positive muting during legitimate bulk scans (adding a large folder).
     """
 
     def __init__(self, threshold: int = SPAM_THRESHOLD, window: float = SPAM_WINDOW_SECONDS,
@@ -122,10 +126,21 @@ class SpamDetector:
         """
         Record an event for a file. Returns True if event should proceed,
         False if the directory is muted (spam detected).
+
+        SAFETY: Only hidden directories (dotdirs) can be muted.
+        Regular directories always return True, even under heavy load.
+        This prevents bulk scans (adding a folder with 100+ files) from
+        being incorrectly classified as spam.
         """
-        # Extract the "interesting" parent — go 2 levels up from project root
-        # to catch patterns like .playgrounds/pg_xxx/ or .claude/worktrees/cranky-borg/
+        # Extract dir key — returns None for regular (non-dot) directories
         dir_key = self._extract_dir_key(file_path)
+
+        # MARKER_146.5_SAFE: Regular directories are NEVER spam-checked.
+        # Only hidden directories (.playgrounds, .claude, .cache, etc.)
+        # can be auto-muted. This ensures legitimate bulk scans pass through.
+        if dir_key is None:
+            return True  # Regular directory — always allow
+
         now = time.time()
 
         with self._lock:
@@ -174,6 +189,8 @@ class SpamDetector:
     def is_muted(self, file_path: str) -> bool:
         """Check if a file's parent directory is currently muted."""
         dir_key = self._extract_dir_key(file_path)
+        if dir_key is None:
+            return False  # Regular directories are never muted
         with self._lock:
             if dir_key in self._muted:
                 return time.time() < self._muted[dir_key]
@@ -185,20 +202,28 @@ class SpamDetector:
         with self._lock:
             return {d: t for d, t in self._muted.items() if t > now}
 
-    def _extract_dir_key(self, file_path: str) -> str:
+    def _extract_dir_key(self, file_path: str) -> Optional[str]:
         """
         Extract a meaningful directory key for grouping.
-        Groups by top-level 'unusual' directory (playground, worktree, etc.)
+        Returns key ONLY for hidden (dot) directories.
+        Returns None for regular directories — they are never spam-checked.
+
+        Examples:
+          /project/.playgrounds/pg_xxx/src/file.py → "/project/.playgrounds/pg_xxx"
+          /project/.claude/worktrees/cranky-borg/main.py → "/project/.claude/worktrees"
+          /project/src/utils/helper.py → None (regular dir, never muted)
+          /project/client/src/App.tsx → None (regular dir, never muted)
         """
         parts = Path(file_path).parts
-        # Find the first 'dotdir' component (.playgrounds, .claude, etc.)
+        # Find the first 'dotdir' component (.playgrounds, .claude, .cache, etc.)
         for i, part in enumerate(parts):
             if part.startswith('.') and part not in ('.', '..'):
                 # Return up to 2 levels deep: .playgrounds/pg_xxx
                 end = min(i + 2, len(parts))
                 return str(Path(*parts[:end]))
-        # Fallback: use direct parent
-        return str(Path(file_path).parent)
+        # No dotdir found → this is a regular user directory.
+        # Return None to signal "do not spam-check this path".
+        return None
 
     def _suggest_skip_pattern(self, dir_key: str) -> str:
         """
