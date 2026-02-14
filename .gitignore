@@ -100,6 +100,9 @@ node_modules/
 # Phase 44.7: File cleanup
 _trash/
 
+# Phase 146: Playground worktrees (ephemeral sandboxes)
+.playgrounds/
+
 # Tauri build artifacts
 client/src-tauri/target/
 venv_voice/

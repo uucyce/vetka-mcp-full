@@ -231,6 +231,11 @@ class PlaygroundManager:
             Path to the worktree root, or None if not found/inactive
         """
         config = self._playgrounds.get(playground_id)
+        if not config:
+            # MARKER_146.CROSS_PROCESS: Reload from disk — playground may have been
+            # created by another process (e.g., Claude Code creates, MYCELIUM resolves)
+            self._load_config()
+            config = self._playgrounds.get(playground_id)
         if not config or config.status != "active":
             return None
 
