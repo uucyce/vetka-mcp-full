@@ -127,6 +127,7 @@ MYCELIUM_TOOLS = [
                 "provider": {"type": "string", "description": "LLM provider override"},
                 "chat_id": {"type": "string", "description": "Chat ID for progress streaming"},
                 "auto_write": {"type": "boolean", "description": "Auto-write files (false=staging mode)"},
+                "playground_id": {"type": "string", "description": "Playground ID for sandboxed execution (files scoped to worktree)"},
             },
             "required": ["task"],
         },
@@ -345,6 +346,48 @@ MYCELIUM_TOOLS = [
             "required": ["artifact_id"],
         },
     ),
+    # --- Playground (MARKER_146.PLAYGROUND_MCP) ---
+    Tool(
+        name="mycelium_playground_create",
+        description="Create an isolated playground (git worktree) for safe agent experiments. "
+                    "Pipeline writes go to the worktree, not main codebase. "
+                    "Returns playground_id to pass to mycelium_pipeline.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "What the agent will work on"},
+                "preset": {"type": "string", "description": "Team preset (default: dragon_silver)"},
+                "auto_write": {"type": "boolean", "description": "Allow file writes in playground (default: true)"},
+            },
+        },
+    ),
+    Tool(
+        name="mycelium_playground_list",
+        description="List active playground instances with status, age, and pipeline run count.",
+        inputSchema={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="mycelium_playground_destroy",
+        description="Destroy a playground and clean up its git worktree.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "playground_id": {"type": "string", "description": "Playground ID to destroy"},
+            },
+            "required": ["playground_id"],
+        },
+    ),
+    Tool(
+        name="mycelium_playground_diff",
+        description="Get git diff of changes made in a playground vs source branch.",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "playground_id": {"type": "string", "description": "Playground ID"},
+            },
+            "required": ["playground_id"],
+        },
+    ),
     # --- System ---
     Tool(
         name="mycelium_health",
@@ -381,6 +424,8 @@ async def _handle_pipeline(arguments: Dict[str, Any]) -> str:
     provider = arguments.get("provider")
     # MARKER_133.FIX2: Default auto_write=True — Dragon writes real code
     auto_write = arguments.get("auto_write", True)
+    # MARKER_146.PLAYGROUND_PIPELINE: Playground scoping
+    playground_id = arguments.get("playground_id")
 
     task_id = f"myc_{uuid.uuid4().hex[:8]}"
 
@@ -408,6 +453,20 @@ async def _handle_pipeline(arguments: Dict[str, Any]) -> str:
         ws_broadcaster = await _get_ws_broadcaster()
         _write_breadcrumb("started", f"http_client={'yes' if http_client else 'no'}, ws={'yes' if ws_broadcaster else 'no'}")
         try:
+            # MARKER_146.PLAYGROUND_PIPELINE: Resolve playground root for path scoping
+            playground_root = None
+            if playground_id:
+                try:
+                    from src.orchestration.playground_manager import get_playground_manager
+                    pg_manager = get_playground_manager()
+                    playground_root = pg_manager.get_playground_root(playground_id)
+                    if playground_root:
+                        logger.info(f"Pipeline {task_id}: scoped to playground {playground_id} at {playground_root}")
+                    else:
+                        logger.warning(f"Pipeline {task_id}: playground {playground_id} not found, running unscoped")
+                except Exception as e:
+                    logger.warning(f"Pipeline {task_id}: playground resolution failed: {e}")
+
             from src.orchestration.agent_pipeline import AgentPipeline
             pipeline = AgentPipeline(
                 chat_id=chat_id,
@@ -417,6 +476,7 @@ async def _handle_pipeline(arguments: Dict[str, Any]) -> str:
                 async_mode=True,  # MARKER_129.6: Native async
                 http_client=http_client,
                 ws_broadcaster=ws_broadcaster,
+                playground_root=str(playground_root) if playground_root else None,
             )
             _write_breadcrumb("pipeline_created")
 
@@ -431,6 +491,13 @@ async def _handle_pipeline(arguments: Dict[str, Any]) -> str:
 
             result = await pipeline.execute(task, phase_type=phase_type)
             _write_breadcrumb("completed", str(result)[:500] if result else "no result")
+
+            # MARKER_146.PLAYGROUND_PIPELINE: Record playground usage
+            if playground_id and playground_root:
+                try:
+                    pg_manager.record_pipeline_run(playground_id)
+                except Exception:
+                    pass
 
             # Notify completion
             if ws_broadcaster:
@@ -683,6 +750,45 @@ async def _handle_tracker_status(arguments: Dict[str, Any]) -> str:
 
 
 # ============================================================
+# MARKER_146.PLAYGROUND_MCP: Playground handlers
+# ============================================================
+
+async def _handle_playground_create(arguments: Dict[str, Any]) -> str:
+    """Create a new playground with git worktree."""
+    from src.orchestration.playground_manager import create_playground
+    result = await create_playground(
+        task=arguments.get("task", ""),
+        preset=arguments.get("preset", "dragon_silver"),
+        auto_write=arguments.get("auto_write", True),
+    )
+    return json.dumps(result, default=str)
+
+
+async def _handle_playground_list(arguments: Dict[str, Any]) -> str:
+    """List playground instances."""
+    from src.orchestration.playground_manager import list_playgrounds_summary
+    playgrounds = list_playgrounds_summary()
+    return json.dumps({"success": True, "playgrounds": playgrounds, "count": len(playgrounds)})
+
+
+async def _handle_playground_destroy(arguments: Dict[str, Any]) -> str:
+    """Destroy a playground."""
+    from src.orchestration.playground_manager import destroy_playground
+    result = await destroy_playground(arguments.get("playground_id", ""))
+    return json.dumps(result, default=str)
+
+
+async def _handle_playground_diff(arguments: Dict[str, Any]) -> str:
+    """Get git diff from playground."""
+    from src.orchestration.playground_manager import get_playground_manager
+    manager = get_playground_manager()
+    diff = await manager.get_diff(arguments.get("playground_id", ""))
+    if diff is not None:
+        return json.dumps({"success": True, "diff": diff})
+    return json.dumps({"success": False, "error": "Playground not found or no changes"})
+
+
+# ============================================================
 # Tool dispatch table
 # ============================================================
 _TOOL_DISPATCH = {
@@ -708,6 +814,11 @@ _TOOL_DISPATCH = {
     "mycelium_reject_artifact": _handle_reject_artifact,
     "mycelium_health": _handle_health,
     "mycelium_devpanel_stream": _handle_devpanel_stream,
+    # --- Playground (MARKER_146.PLAYGROUND_MCP) ---
+    "mycelium_playground_create": _handle_playground_create,
+    "mycelium_playground_list": _handle_playground_list,
+    "mycelium_playground_destroy": _handle_playground_destroy,
+    "mycelium_playground_diff": _handle_playground_diff,
 }
 
 

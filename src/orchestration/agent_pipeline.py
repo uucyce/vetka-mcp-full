@@ -44,6 +44,15 @@ except ImportError:
     FC_LOOP_AVAILABLE = False
     logger.debug("[Pipeline] FC loop not available, coder will use one-shot mode")
 
+# MARKER_145.ADAPTIVE_TIMEOUT_IMPORT: Adaptive timeout from model registry
+try:
+    from src.elisya.llm_model_registry import calculate_timeout as _calculate_adaptive_timeout
+    from src.elisya.model_updater import ensure_model_profile as _ensure_model_profile
+    ADAPTIVE_TIMEOUT_AVAILABLE = True
+except ImportError:
+    ADAPTIVE_TIMEOUT_AVAILABLE = False
+    logger.debug("[Pipeline] Adaptive timeout not available, using static PHASE_TIMEOUTS")
+
 # MARKER_104_PARALLEL_1: Semaphore control for parallel pipeline execution
 # Phase 104.2: MAX_PARALLEL_PIPELINES controls concurrent subtask execution
 # Default: 5 pipelines max to protect M4 Pro from overload (Grok Phase 103 Audit recommendation)
@@ -71,11 +80,16 @@ VERIFIER_PASS_THRESHOLD = float(os.getenv("VETKA_VERIFIER_PASS_THRESHOLD", "0.75
 # MARKER_122_END
 
 # MARKER_133.C33B: Per-phase timeouts (seconds) — prevents pipeline hangs
+# MARKER_145.ADAPTIVE_TIMEOUT: These are FALLBACK defaults only.
+# Real timeout should be computed by get_adaptive_timeout(phase, model, context_tokens)
+# based on: (a) model size/speed profile, (b) task complexity, (c) context window usage.
+# See: Elisya context sizing research → timeout = f(model_params, context_ratio, task_type)
+# TODO: Replace with adaptive formula after Elisya research (Phase 145+)
 PHASE_TIMEOUTS = {
     "scout": int(os.getenv("VETKA_TIMEOUT_SCOUT", "30")),
     "architect": int(os.getenv("VETKA_TIMEOUT_ARCHITECT", "60")),
     "researcher": int(os.getenv("VETKA_TIMEOUT_RESEARCHER", "45")),
-    "coder": int(os.getenv("VETKA_TIMEOUT_CODER", "90")),
+    "coder": int(os.getenv("VETKA_TIMEOUT_CODER", "180")),  # Fallback; was 90, raised for FC 4-turn loops
     "verifier": int(os.getenv("VETKA_TIMEOUT_VERIFIER", "30")),
 }
 # MARKER_133.C33B_END
@@ -162,7 +176,8 @@ class AgentPipeline:
     def __init__(self, chat_id: Optional[str] = None, auto_write: bool = True,
                  provider: Optional[str] = None, preset: Optional[str] = None,
                  sio=None, sid: Optional[str] = None,
-                 async_mode: bool = False, http_client=None, ws_broadcaster=None):
+                 async_mode: bool = False, http_client=None, ws_broadcaster=None,
+                 playground_root: Optional[str] = None):
         self.llm_tool = None  # Lazy load
         # MARKER_129.4: Async mode for MYCELIUM (native async LLM calls)
         self.async_mode = async_mode
@@ -180,6 +195,8 @@ class AgentPipeline:
         self.preset_models: Optional[Dict[str, str]] = None
         # MARKER_117.6C: Track last used model for attribution in chat
         self._last_used_model: str = ""
+        # MARKER_145.ADAPTIVE_TIMEOUT: Task complexity for adaptive timeout (set by architect)
+        self._task_complexity: str = "medium"
         # MARKER_126.0A: Pipeline statistics counters
         self._llm_calls: int = 0
         self._tokens_in: int = 0
@@ -201,6 +218,9 @@ class AgentPipeline:
         # auto_write=False: Only save to JSON, use retro_apply_myc.py later
         self.auto_write = auto_write
         # MARKER_103.5_END
+        # MARKER_146.PLAYGROUND: Scoped file writes to playground worktree
+        # When set, all file writes go to playground_root instead of PROJECT_ROOT
+        self.playground_root = playground_root
         # MARKER_104_ELISION_PROMPTS_START: Initialize ELISION compressor
         # ELISION = Efficient Language-Independent Symbolic Inversion of Names
         # Provides 40-60% token savings without semantic loss
@@ -322,13 +342,49 @@ Respond with implementation plan or code."""
     # MARKER_117_PRESETS_END
 
     # MARKER_133.C33B: Per-phase timeout wrapper
-    async def _safe_phase(self, phase_name: str, coro) -> Optional[Any]:
+    # MARKER_145.ADAPTIVE_TIMEOUT: Enhanced with model-aware adaptive timeout
+    async def _safe_phase(self, phase_name: str, coro, *, model: str = "", fc_turns: int = 1) -> Optional[Any]:
         """Execute pipeline phase with timeout. Returns None on timeout (non-fatal for most phases).
 
         MARKER_133.C33B: Each phase gets a configurable timeout.
-        If exceeded — skip and continue (except architect, which aborts).
+        MARKER_145.ADAPTIVE_TIMEOUT: When model is provided, calculates timeout based on
+        model speed profile (tokens/sec), task complexity, FC overhead.
+        Falls back to static PHASE_TIMEOUTS on any error.
+
+        Args:
+            phase_name: Pipeline phase ("scout", "architect", "researcher", "coder", "verifier").
+            coro: Coroutine to execute.
+            model: Model ID string (e.g. "qwen/qwen3-coder"). Empty = use static timeout.
+            fc_turns: Expected function-calling round-trips (coder FC=4, others=1).
         """
-        timeout = PHASE_TIMEOUTS.get(phase_name, 60)
+        # MARKER_145.ADAPTIVE_TIMEOUT: Try adaptive timeout, fallback to static
+        fallback_timeout = PHASE_TIMEOUTS.get(phase_name, 60)
+        timeout = fallback_timeout
+
+        if model and ADAPTIVE_TIMEOUT_AVAILABLE:
+            try:
+                # On-demand: ensure profile exists (lazy fetch, ~0ms if cached)
+                await _ensure_model_profile(model)
+                complexity = getattr(self, "_task_complexity", "medium")
+                timeout = await _calculate_adaptive_timeout(
+                    model_id=model,
+                    input_tokens=self._estimate_input_tokens(phase_name),
+                    expected_output_tokens=self._estimate_output_tokens(phase_name),
+                    fc_turns=fc_turns,
+                    task_complexity=complexity,
+                )
+                logger.info(
+                    "[Pipeline] Adaptive timeout: %s=%ds (model=%s, complexity=%s, fc=%d) [static fallback=%ds]",
+                    phase_name, timeout, model, complexity, fc_turns, fallback_timeout,
+                )
+            except Exception as e:
+                timeout = fallback_timeout
+                logger.warning(
+                    "[Pipeline] Adaptive timeout failed for %s (model=%s): %s — using fallback %ds",
+                    phase_name, model, e, fallback_timeout,
+                )
+        # MARKER_145.ADAPTIVE_TIMEOUT_END
+
         try:
             return await asyncio.wait_for(coro, timeout=timeout)
         except asyncio.TimeoutError:
@@ -339,6 +395,52 @@ Respond with implementation plan or code."""
             logger.error(f"[Pipeline] Phase '{phase_name}' failed: {e}")
             return None
     # MARKER_133.C33B_END
+
+    # MARKER_145.ADAPTIVE_TIMEOUT: Helper methods for token estimation
+    def _estimate_input_tokens(self, phase_name: str) -> int:
+        """Estimate input tokens for a pipeline phase.
+
+        These are rough estimates based on typical prompt sizes + context injection.
+        Used by calculate_timeout() for processing time estimation.
+        """
+        estimates = {
+            "scout": 2000,      # task + prefetch context
+            "architect": 5000,  # task + scout report + research + feedback
+            "researcher": 3000, # task + web search results
+            "coder": 6000,      # task + subtask + context + marker rails + FC tool results
+            "verifier": 4000,   # task + coder output + checklist
+        }
+        return estimates.get(phase_name, 4000)
+
+    def _estimate_output_tokens(self, phase_name: str) -> int:
+        """Estimate expected output tokens for a pipeline phase."""
+        estimates = {
+            "scout": 500,       # structured JSON report
+            "architect": 1200,  # plan with subtasks
+            "researcher": 800,  # research findings
+            "coder": 2000,      # code output (largest)
+            "verifier": 300,    # pass/fail JSON
+        }
+        return estimates.get(phase_name, 800)
+    @staticmethod
+    def _normalize_complexity(complexity: str) -> str:
+        """Normalize architect complexity estimate to calculate_timeout keys.
+
+        Architect may return: low, medium, high, simple, complex, etc.
+        calculate_timeout expects: simple, medium, complex.
+        """
+        mapping = {
+            "low": "simple",
+            "simple": "simple",
+            "easy": "simple",
+            "medium": "medium",
+            "moderate": "medium",
+            "high": "complex",
+            "complex": "complex",
+            "hard": "complex",
+        }
+        return mapping.get(complexity.lower().strip(), "medium")
+    # MARKER_145.ADAPTIVE_TIMEOUT_HELPERS_END
 
     # MARKER_119.4: Scout role — codebase scan before Architect
     # MARKER_124.7B: Pre-fetch via VetkaSearchCodeTool (ripgrep) before Scout LLM call
@@ -678,9 +780,12 @@ Respond with implementation plan or code."""
         """
         try:
             # MARKER_133.C33B: Apply phase timeouts to scout and researcher
+            # MARKER_145.ADAPTIVE_TIMEOUT: Pass model IDs for adaptive timeout calculation
+            _scout_model = self.prompts.get("scout", {}).get("model", "")
+            _researcher_model = self.prompts.get("researcher", {}).get("model", "")
             results = await asyncio.gather(
-                self._safe_phase("scout", self._scout_scan(task, phase_type)) if "scout" in self.prompts else asyncio.sleep(0),
-                self._safe_phase("researcher", self._research(task)),
+                self._safe_phase("scout", self._scout_scan(task, phase_type), model=_scout_model) if "scout" in self.prompts else asyncio.sleep(0),
+                self._safe_phase("researcher", self._research(task), model=_researcher_model),
                 return_exceptions=True
             )
             scout_ctx = results[0] if not isinstance(results[0], (Exception, type(None), float)) else None
@@ -1689,6 +1794,22 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         return True, ""
 
+    # MARKER_146.PLAYGROUND: Resolve file path for writes (playground-aware)
+    def _resolve_write_path(self, filepath: str) -> "Path":
+        """Resolve a relative filepath to an absolute path, scoped to playground if set.
+
+        Args:
+            filepath: Relative path like "src/voice/config.py"
+
+        Returns:
+            Path object — either in playground worktree or in PROJECT_ROOT
+        """
+        from pathlib import Path
+        if self.playground_root:
+            # Scope all writes to the playground worktree
+            return Path(self.playground_root) / filepath
+        return Path(filepath)
+
     # MARKER_103.4_START: Extract code blocks and write files to disk
     def _extract_and_write_files(self, content: str, subtask: Subtask) -> List[str]:
         """
@@ -1783,14 +1904,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # Ensure directory exists and write file
             try:
-                path_obj = Path(filepath)
+                # MARKER_146.PLAYGROUND: Scope writes to playground if active
+                path_obj = self._resolve_write_path(filepath)
 
                 # MARKER_130.C19D: Validate code language matches file extension
                 is_valid, error_msg = self._validate_code_language(code, filepath)
                 if not is_valid:
                     logger.error(f"[Pipeline] {error_msg} for {filepath}")
                     # Save to staging instead of overwriting
-                    staging_dir = Path("data/vetka_staging/blocked")
+                    staging_dir = self._resolve_write_path("data/vetka_staging/blocked")
                     staging_dir.mkdir(parents=True, exist_ok=True)
                     staging_path = staging_dir / f"{path_obj.stem}_BLOCKED{path_obj.suffix}"
                     staging_path.write_text(code, encoding='utf-8')
@@ -1800,20 +1922,20 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 # MARKER_130.C19D: Extra safety — only overwrite files in safe directories
                 # MARKER_135.SAFE_DIRS: Expanded to allow pipeline writes to src/ and tests/
                 safe_dirs = ('src/', 'data/', 'tests/')
-                # Never overwrite critical infrastructure files
+                # Never overwrite critical infrastructure files (unless in playground)
                 _forbidden = ('agent_pipeline.py', 'mycelium_mcp_server.py', 'vetka_mcp_bridge.py',
                               '__init__.py', 'main.py', 'app.py')
-                if path_obj.name in _forbidden:
+                if path_obj.name in _forbidden and not self.playground_root:
                     logger.error(f"[Pipeline] BLOCKED critical file: {filepath}")
-                    staging_dir = Path("data/vetka_staging/blocked")
+                    staging_dir = self._resolve_write_path("data/vetka_staging/blocked")
                     staging_dir.mkdir(parents=True, exist_ok=True)
                     staging_path = staging_dir / f"{path_obj.stem}_BLOCKED{path_obj.suffix}"
                     staging_path.write_text(code, encoding='utf-8')
                     logger.warning(f"[Pipeline] Blocked code saved to: {staging_path}")
                     continue
-                if path_obj.exists() and not any(str(filepath).startswith(d) for d in safe_dirs):
+                if path_obj.exists() and not any(str(filepath).startswith(d) for d in safe_dirs) and not self.playground_root:
                     logger.error(f"[Pipeline] BLOCKED: Cannot overwrite existing file {filepath}")
-                    staging_dir = Path("data/vetka_staging/blocked")
+                    staging_dir = self._resolve_write_path("data/vetka_staging/blocked")
                     staging_dir.mkdir(parents=True, exist_ok=True)
                     staging_path = staging_dir / f"{path_obj.stem}_WOULD_OVERWRITE{path_obj.suffix}"
                     staging_path.write_text(code, encoding='utf-8')
@@ -1823,7 +1945,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 path_obj.parent.mkdir(parents=True, exist_ok=True)
                 path_obj.write_text(code, encoding='utf-8')
                 files_created.append(filepath)
-                logger.info(f"[Pipeline] Spawn created: {filepath} ({len(code)} chars)")
+                scope_label = f" [playground]" if self.playground_root else ""
+                logger.info(f"[Pipeline] Spawn created{scope_label}: {filepath} ({len(code)} chars)")
 
                 # MARKER_123.1D: Phase 123.1 - Emit glow for pipeline-created files
                 try:
@@ -1837,7 +1960,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 logger.error(f"[Pipeline] Failed to write {filepath}: {e}")
                 # Fallback to staging directory
                 try:
-                    fallback_dir = Path("data/vetka_staging")
+                    fallback_dir = self._resolve_write_path("data/vetka_staging")
                     fallback_dir.mkdir(parents=True, exist_ok=True)
                     fallback_path = fallback_dir / Path(filepath).name
                     fallback_path.write_text(code, encoding='utf-8')
@@ -1852,23 +1975,24 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         """MARKER_133.FIX3: Write a single extracted file to disk with safety checks."""
         from pathlib import Path
         try:
-            path_obj = Path(filepath)
+            # MARKER_146.PLAYGROUND: Scope writes to playground if active
+            path_obj = self._resolve_write_path(filepath)
 
             # Validate code language
             is_valid, error_msg = self._validate_code_language(code, filepath)
             if not is_valid:
                 logger.error(f"[Pipeline] {error_msg} for {filepath}")
-                staging_dir = Path("data/vetka_staging/blocked")
+                staging_dir = self._resolve_write_path("data/vetka_staging/blocked")
                 staging_dir.mkdir(parents=True, exist_ok=True)
                 staging_path = staging_dir / f"{path_obj.stem}_BLOCKED{path_obj.suffix}"
                 staging_path.write_text(code, encoding='utf-8')
                 return
 
-            # Safety: existing files outside safe dirs go to staging
+            # Safety: existing files outside safe dirs go to staging (relaxed in playground)
             # MARKER_135.SAFE_DIRS: Expanded (same as _spawn_pipeline_files)
             safe_dirs = ('src/', 'data/', 'tests/')
-            if path_obj.exists() and not any(str(filepath).startswith(d) for d in safe_dirs):
-                staging_dir = Path("data/vetka_staging/would_overwrite")
+            if path_obj.exists() and not any(str(filepath).startswith(d) for d in safe_dirs) and not self.playground_root:
+                staging_dir = self._resolve_write_path("data/vetka_staging/would_overwrite")
                 staging_dir.mkdir(parents=True, exist_ok=True)
                 staging_path = staging_dir / f"{path_obj.stem}_NEW{path_obj.suffix}"
                 staging_path.write_text(code, encoding='utf-8')
@@ -1879,7 +2003,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             path_obj.parent.mkdir(parents=True, exist_ok=True)
             path_obj.write_text(code, encoding='utf-8')
             files_created.append(filepath)
-            logger.info(f"[Pipeline] Created: {filepath} ({len(code)} chars)")
+            scope_label = f" [playground]" if self.playground_root else ""
+            logger.info(f"[Pipeline] Created{scope_label}: {filepath} ({len(code)} chars)")
 
             try:
                 from src.services.activity_hub import get_activity_hub
@@ -1891,7 +2016,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         except Exception as e:
             logger.error(f"[Pipeline] Failed to write {filepath}: {e}")
             try:
-                fallback_dir = Path("data/vetka_staging")
+                fallback_dir = self._resolve_write_path("data/vetka_staging")
                 fallback_dir.mkdir(parents=True, exist_ok=True)
                 fallback_path = fallback_dir / Path(filepath).name
                 fallback_path.write_text(code, encoding='utf-8')
@@ -1976,9 +2101,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             architect_model = self.prompts.get("architect", {}).get("model", "")
             await self._emit_progress("@architect", "📋 Breaking down task into subtasks...", model=architect_model)
             # MARKER_133.C33B: Architect phase with timeout — CRITICAL (abort on timeout)
+            # MARKER_145.ADAPTIVE_TIMEOUT: Architect model for adaptive timeout
             plan = await self._safe_phase("architect", self._architect_plan(task, phase_type, scout_context=scout_context,
                                                research_context=initial_research,
-                                               feedback_context=feedback_context))
+                                               feedback_context=feedback_context),
+                                          model=architect_model)
             # MARKER_133.C33B: If architect timed out, abort pipeline
             if plan is None:
                 logger.error("[Pipeline] Architect phase timed out — cannot continue without plan")
@@ -2009,6 +2136,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # Architect (e.g. Kimi K2.5) evaluates complexity → pipeline switches tier
             # for coder/researcher roles. Architect itself always runs on initial preset.
             complexity = plan.get("estimated_complexity", "medium")
+            # MARKER_145.ADAPTIVE_TIMEOUT: Store complexity for adaptive timeout in coder/verifier phases
+            self._task_complexity = self._normalize_complexity(complexity)
             tier_preset = self._resolve_tier(complexity)
             if tier_preset and tier_preset != self.preset_name:
                 old_tier = self.preset_name
@@ -2038,8 +2167,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if initial_research and isinstance(initial_research, dict) and initial_research.get("confidence", 1.0) < 0.7:
                 await self._emit_progress("@architect", "📋 PM pass: refining plan with research context...", model=architect_model)
                 # MARKER_133.C33B: Architect PM pass with timeout
+                # MARKER_145.ADAPTIVE_TIMEOUT: Architect model for PM pass
                 refined_plan = await self._safe_phase("architect", self._architect_plan(task, phase_type, scout_context=scout_context,
-                                                   research_context=initial_research))
+                                                   research_context=initial_research),
+                                                     model=architect_model)
                 if refined_plan is None:
                     # PM replan failed, continue with original plan
                     logger.warning("[Pipeline] Architect PM pass timed out — using original plan")
@@ -2416,7 +2547,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 await self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks, model=coder_model)
 
             # MARKER_133.C33B: Coder phase with timeout
-            result = await self._safe_phase("coder", self._execute_subtask(subtask, phase_type))
+            # MARKER_145.ADAPTIVE_TIMEOUT: Coder gets fc_turns=4 for FC loop, model from prompts
+            _coder_fc = MAX_FC_TURNS_CODER if FC_LOOP_AVAILABLE else 1
+            result = await self._safe_phase("coder", self._execute_subtask(subtask, phase_type),
+                                            model=coder_model, fc_turns=_coder_fc)
             if result is None:
                 # Coder timed out — mark subtask as failed and continue
                 subtask.status = "failed"
@@ -2430,7 +2564,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 if subtask.visible:
                     await self._emit_progress("@verifier", f"🔎 Verifying: {subtask.marker or f'step_{i+1}'}...", i+1, total_subtasks, model=verifier_model)
                 # MARKER_133.C33B: Verifier phase with timeout
-                verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type))
+                # MARKER_145.ADAPTIVE_TIMEOUT: Verifier model for adaptive timeout
+                verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type),
+                                                      model=verifier_model)
                 if verification is None:
                     # Verifier timed out — assume passed to continue pipeline
                     verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
@@ -2450,7 +2586,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     # Retry coder with feedback
                     result = await self._retry_coder(subtask, verification, phase_type)
                     # MARKER_133.C33B: Verifier retry with timeout
-                    verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type))
+                    # MARKER_145.ADAPTIVE_TIMEOUT: Verifier model for retry timeout
+                    verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type),
+                                                          model=verifier_model)
                     if verification is None:
                         verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
                         break  # Exit retry loop on timeout
@@ -2461,10 +2599,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         await self._emit_progress("system", f"⚡ Upgrading coder tier to {self.preset_name}")
                         subtask.retry_count = 0
                         # MARKER_133.C33B: Coder tier upgrade with timeout
-                        result = await self._safe_phase("coder", self._execute_subtask(subtask, phase_type))
+                        # MARKER_145.ADAPTIVE_TIMEOUT: Re-read model after tier upgrade (preset changed)
+                        _upgraded_coder_model = self.prompts.get("coder", {}).get("model", "")
+                        _upgraded_verifier_model = self.prompts.get("verifier", {}).get("model", "")
+                        result = await self._safe_phase("coder", self._execute_subtask(subtask, phase_type),
+                                                        model=_upgraded_coder_model, fc_turns=_coder_fc)
                         if result is None:
                             result = "Coder phase timed out during tier upgrade"
-                        verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type))
+                        verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type),
+                                                              model=_upgraded_verifier_model)
                         if verification is None:
                             verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
 
@@ -2642,7 +2785,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 # Execute subtask
                 subtask.status = "executing"
                 # MARKER_133.C33B: Coder phase with timeout (parallel path)
-                result = await self._safe_phase("coder", self._execute_subtask(subtask, phase_type))
+                # MARKER_145.ADAPTIVE_TIMEOUT: Coder model + FC turns for parallel path
+                _par_coder_model = self.prompts.get("coder", {}).get("model", "")
+                _par_coder_fc = MAX_FC_TURNS_CODER if FC_LOOP_AVAILABLE else 1
+                result = await self._safe_phase("coder", self._execute_subtask(subtask, phase_type),
+                                                model=_par_coder_model, fc_turns=_par_coder_fc)
                 if result is None:
                     subtask.status = "failed"
                     subtask.result = "Coder phase timed out"
@@ -2653,7 +2800,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     if subtask.visible:
                         await self._emit_progress("@verifier", f"🔎 [P] Verifying: {subtask.marker or f'step_{idx+1}'}...", idx+1, total_subtasks)
                     # MARKER_133.C33B: Verifier phase with timeout (parallel path)
-                    verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type))
+                    # MARKER_145.ADAPTIVE_TIMEOUT: Verifier model for parallel path
+                    _par_verifier_model = self.prompts.get("verifier", {}).get("model", "")
+                    verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type),
+                                                          model=_par_verifier_model)
                     if verification is None:
                         verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
                     # MARKER_127.3: Default passed=False, major gets one retry (parallel path)
@@ -2664,7 +2814,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                             break
                         result = await self._retry_coder(subtask, verification, phase_type)
                         # MARKER_133.C33B: Verifier retry with timeout (parallel path)
-                        verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type))
+                        # MARKER_145.ADAPTIVE_TIMEOUT: Verifier model for parallel retry
+                        verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type),
+                                                              model=_par_verifier_model)
                         if verification is None:
                             verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
                             break

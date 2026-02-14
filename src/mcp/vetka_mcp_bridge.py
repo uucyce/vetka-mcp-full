@@ -230,29 +230,31 @@ async def _audit_log_tool_call(
     from datetime import datetime
     from pathlib import Path
 
-    audit_file = Path("data/tool_audit_log.jsonl")
-    audit_file.parent.mkdir(parents=True, exist_ok=True)
-
-    # Sanitize arguments — remove content (too large) and sensitive data
-    safe_args = {}
-    for k, v in arguments.items():
-        if k in ("content",):
-            safe_args[k] = f"[{len(str(v))} chars]"
-        elif k in ("api_key", "token", "password"):
-            safe_args[k] = "[REDACTED]"
-        else:
-            safe_args[k] = v
-
-    entry = {
-        "timestamp": datetime.now().isoformat(),
-        "tool": tool_name,
-        "arguments": safe_args,
-        "dry_run": arguments.get("dry_run", True),
-        "approved": approved,
-        "status": result_status,
-    }
-
+    # MARKER_146.AUDIT_FIX: Wrap entire audit in try/except to prevent
+    # Read-only filesystem errors from blocking git commit operations
     try:
+        audit_file = Path("data/tool_audit_log.jsonl")
+        audit_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Sanitize arguments — remove content (too large) and sensitive data
+        safe_args = {}
+        for k, v in arguments.items():
+            if k in ("content",):
+                safe_args[k] = f"[{len(str(v))} chars]"
+            elif k in ("api_key", "token", "password"):
+                safe_args[k] = "[REDACTED]"
+            else:
+                safe_args[k] = v
+
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "tool": tool_name,
+            "arguments": safe_args,
+            "dry_run": arguments.get("dry_run", True),
+            "approved": approved,
+            "status": result_status,
+        }
+
         with open(audit_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception as e:

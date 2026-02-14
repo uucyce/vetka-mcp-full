@@ -1,28 +1,27 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-14T00:36:22.891211+00:00",
+  "last_updated": "2026-02-14T16:12:21.316051+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 144,
-    "subphase": "0",
-    "name": "n8n/ComfyUI converters + Architect Chat fix (12/12 markers)",
-    "status": "COMPLETED",
+    "subphase": "8",
+    "name": "Phase 144: Active Development",
+    "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 144.0 DONE! n8n/ComfyUI converters + Architect Chat fix (12/12 markers)",
+    "headline": "Phase 144 active \u2014 dragon_dragon_bronze: fix task",
     "key_achievements": [
-      "[51a426ca] Phase 144.0: Phase 144 COMPLETE: n8n/ComfyUI converters + Architect Chat ",
-      "[97c0f71c] Phase 137: Phase 137: MCC Final Fixes\n\nMARKER_137.ARCHITECT_F...",
-      "[dragon_dragon_silver] S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction\n\nB",
-      "[opus] S1.1 Event-driven dispatch: notify endpoint auto-dispatches on task added, PATCH",
-      "[f6f6085c] Phase 136: Phase 136.W3: Wave 3 Features - Folder Modes, Chat...",
-      "[dragon_dragon_gold] MCC STATS: real data visualization instead of fake 100% bars\n\nSTATS tab shows ba",
-      "[33ac8e03] Phase 135.4: Phase 135.4: DAG Tab Integration + Wave 4 Features",
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
-      "[dragon_dragon_bronze] Create file src/utils/math_helpers.py with function add(a: int, b: int) -> int t",
-      "Phase 144: DAG Workflow Editor \u2014 12/12 markers, 131 tests, n8n+ComfyUI converters, Architect Chat fix"
+      "[dragon_dragon_bronze] fix task",
+      "[dragon_dragon_bronze] test task",
+      "[dragon_dragon_bronze] fix task",
+      "[dragon_dragon_bronze] test task",
+      "[dragon_dragon_bronze] fix task",
+      "[dragon_dragon_bronze] test task",
+      "[51a426ca] Phase 144.0: Phase 144 COMPLETE: n8n/ComfyUI converters + Architect Chat ",
+      "[97c0f71c] Phase 137: Phase 137: MCC Final Fixes\n\nMARKER_137.ARCHITECT_F..."
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -30,12 +29,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 5657,
+      "points": 5671,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 5628,
+      "points": 5641,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -142,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "51a426ca",
+    "commit": "d154d5f0",
     "dirty": true
   }
 }
