@@ -11,7 +11,8 @@ The Architect responds with:
 - Text response (reasoning, plan, questions)
 - Optional DAG mutations (addNodes, removeNodes, addEdges)
 
-Falls back gracefully when Mycelium pipeline is unavailable.
+MARKER_144.12B: Uses call_model_v2 directly (replaced broken MyceliumClient).
+Falls back gracefully when LLM provider is unavailable.
 
 @phase 144
 @status active
@@ -80,16 +81,11 @@ async def architect_chat(request: ArchitectChatRequest):
     """
     Send a message to the Architect agent and get a response.
 
-    The Architect will:
-    1. Analyze the user's message in context
-    2. Provide strategic guidance or task decomposition
-    3. Optionally propose DAG workflow changes
+    MARKER_144.12B: Uses call_model_v2 directly (replaces broken MyceliumClient).
+    Provider auto-detected from model prefix (moonshotai/ → POLZA).
     """
     try:
-        # Try to use Mycelium pipeline for LLM call
-        from src.services.mycelium_client import MyceliumClient
-
-        client = MyceliumClient()
+        from src.elisya.provider_registry import call_model_v2
 
         # Build messages for LLM
         system_prompt = _build_architect_prompt(request.message, request.context)
@@ -106,39 +102,78 @@ async def architect_chat(request: ArchitectChatRequest):
         # Add current message
         messages.append({"role": "user", "content": request.message})
 
-        # Determine architect model from preset
+        # Determine architect model + provider from preset
         preset = request.context.preset if request.context else "dragon_silver"
-        model = _get_architect_model(preset)
+        model, provider_source = _get_architect_model_v2(preset)
 
-        response_text = await client.call_model(
-            model=model,
+        logger.info(f"[Architect Chat] Calling {model} via {provider_source} (preset={preset})")
+
+        result = await call_model_v2(
             messages=messages,
+            model=model,
+            source=provider_source,
             max_tokens=1024,
             temperature=0.7,
         )
+
+        # Extract text from standardized response dict
+        # call_model_v2 returns: {"message": {"role": "assistant", "content": "..."}, ...}
+        response_text = ""
+        if isinstance(result, dict):
+            msg = result.get("message", {})
+            if isinstance(msg, dict):
+                response_text = msg.get("content", "")
+            elif isinstance(msg, str):
+                response_text = msg
+        elif isinstance(result, str):
+            response_text = result
+
+        if not response_text:
+            logger.warning("[Architect Chat] Empty response from LLM, using fallback")
+            return _fallback_response(request)
 
         return ArchitectChatResponse(
             success=True,
             response=response_text,
         )
 
-    except ImportError:
-        logger.warning("[Architect Chat] MyceliumClient not available, using fallback")
-        return _fallback_response(request)
     except Exception as e:
-        logger.error(f"[Architect Chat] Error: {e}")
+        logger.error(f"[Architect Chat] LLM error: {e}")
         return _fallback_response(request)
 
 
-def _get_architect_model(preset: str) -> str:
-    """Get the architect model name based on the active preset."""
-    model_map = {
-        "dragon_bronze": "qwen3-30b",
-        "dragon_silver": "kimi-k2.5",
-        "dragon_gold": "kimi-k2.5",
-        "dragon_gold_gpt": "gpt-5.2",
+def _get_architect_model_v2(preset: str) -> tuple:
+    """
+    Get architect model + provider source from preset.
+    MARKER_144.12B: Fully qualified model names for call_model_v2 routing.
+    Returns (model_id, provider_source).
+    """
+    # Load from model_presets.json dynamically (same as workflow_architect.py)
+    try:
+        from pathlib import Path
+        presets_path = Path(__file__).parent.parent.parent.parent / "data" / "templates" / "model_presets.json"
+        if presets_path.exists():
+            data = json.loads(presets_path.read_text(encoding="utf-8"))
+            presets = data.get("presets", {})
+            if preset in presets:
+                model = presets[preset]["roles"].get("architect", "moonshotai/kimi-k2.5")
+                provider = presets[preset].get("provider", "polza")
+                return (model, provider)
+    except Exception as e:
+        logger.warning(f"[Architect Chat] Failed to load preset config: {e}")
+
+    # Fallback hardcoded map
+    fallback = {
+        "dragon_bronze": ("qwen/qwen3-30b-a3b", "polza"),
+        "dragon_silver": ("moonshotai/kimi-k2.5", "polza"),
+        "dragon_gold": ("moonshotai/kimi-k2.5", "polza"),
+        "dragon_gold_gpt": ("moonshotai/kimi-k2.5", "polza"),
+        "titan_lite": ("qwen/qwen3-30b-a3b", "polza"),
+        "titan_core": ("google/gemini-3-pro-preview", "polza"),
+        "titan_prime": ("anthropic/claude-opus-4.6", "polza"),
+        "quality": ("anthropic/claude-opus-4.6", "polza"),
     }
-    return model_map.get(preset, "kimi-k2.5")
+    return fallback.get(preset, ("moonshotai/kimi-k2.5", "polza"))
 
 
 def _fallback_response(request: ArchitectChatRequest) -> ArchitectChatResponse:

@@ -191,6 +191,106 @@ async def generate_workflow(request: WorkflowGenerateRequest):
     return result
 
 
+# ============================================================
+# MARKER_144.8 + 144.9: Import/Export Endpoints
+# ============================================================
+
+class WorkflowImportRequest(BaseModel):
+    """Request body for importing a workflow from external format."""
+    data: Dict[str, Any]  # Raw JSON from n8n or ComfyUI
+    format: Optional[str] = None  # "n8n", "comfyui", or None for auto-detect
+    save: bool = True  # Save imported workflow to store
+
+
+class WorkflowExportRequest(BaseModel):
+    """Request body for exporting a workflow to external format."""
+    format: str = "n8n"  # "n8n" or "comfyui"
+    comfyui_format: str = "graph"  # For ComfyUI: "graph" or "api"
+
+
+@router.post("/import")
+async def import_workflow(request: WorkflowImportRequest):
+    """
+    MARKER_144.8/144.9: Import workflow from n8n or ComfyUI format.
+    Auto-detects format if not specified.
+    Returns VETKA workflow JSON.
+    """
+    from src.services.converters.n8n_converter import detect_n8n_format, n8n_to_vetka
+    from src.services.converters.comfyui_converter import detect_comfyui_format, comfyui_to_vetka
+
+    data = request.data
+    fmt = request.format
+
+    # Auto-detect format if not specified
+    if not fmt:
+        if detect_n8n_format(data):
+            fmt = "n8n"
+        elif detect_comfyui_format(data) != "none":
+            fmt = "comfyui"
+        else:
+            return {"success": False, "error": "Unknown workflow format. Expected n8n or ComfyUI JSON."}
+
+    try:
+        if fmt == "n8n":
+            workflow = n8n_to_vetka(data)
+        elif fmt == "comfyui":
+            workflow = comfyui_to_vetka(data)
+        else:
+            return {"success": False, "error": f"Unsupported format: {fmt}"}
+    except Exception as e:
+        return {"success": False, "error": f"Conversion failed: {str(e)}"}
+
+    # Validate converted workflow
+    store = get_store()
+    validation = store.validate(workflow)
+
+    # Save if requested
+    saved_id = None
+    if request.save:
+        saved_id = store.save(workflow)
+
+    return {
+        "success": True,
+        "format_detected": fmt,
+        "workflow": workflow,
+        "workflow_id": saved_id,
+        "saved": request.save and saved_id is not None,
+        "validation": validation.to_dict(),
+    }
+
+
+@router.post("/{workflow_id}/export")
+async def export_workflow(workflow_id: str, request: WorkflowExportRequest):
+    """
+    MARKER_144.8/144.9: Export workflow to n8n or ComfyUI format.
+    Returns converted JSON ready for download.
+    """
+    from src.services.converters.n8n_converter import vetka_to_n8n
+    from src.services.converters.comfyui_converter import vetka_to_comfyui
+
+    store = get_store()
+    workflow = store.load(workflow_id)
+    if not workflow:
+        raise HTTPException(status_code=404, detail=f"Workflow not found: {workflow_id}")
+
+    try:
+        if request.format == "n8n":
+            exported = vetka_to_n8n(workflow)
+        elif request.format == "comfyui":
+            exported = vetka_to_comfyui(workflow, fmt=request.comfyui_format)
+        else:
+            return {"success": False, "error": f"Unsupported export format: {request.format}"}
+    except Exception as e:
+        return {"success": False, "error": f"Export failed: {str(e)}"}
+
+    return {
+        "success": True,
+        "format": request.format,
+        "workflow_name": workflow.get("name", "Untitled"),
+        "exported": exported,
+    }
+
+
 @router.post("/validate")
 async def validate_workflow(request: WorkflowValidateRequest):
     """

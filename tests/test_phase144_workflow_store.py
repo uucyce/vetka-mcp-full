@@ -1073,3 +1073,532 @@ class TestWorkflowGenerateAPI:
         })
         data = resp.json()
         assert "model_used" in data
+
+
+# ============================================================
+# MARKER_144.8: n8n Converter Tests
+# ============================================================
+
+class TestN8NConverter:
+    """Tests for n8n ↔ VETKA conversion."""
+
+    def test_detect_n8n_format_valid(self):
+        from src.services.converters.n8n_converter import detect_n8n_format
+        n8n_data = {
+            "nodes": [
+                {"name": "Start", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [250, 300]}
+            ],
+            "connections": {},
+        }
+        assert detect_n8n_format(n8n_data) is True
+
+    def test_detect_n8n_format_invalid(self):
+        from src.services.converters.n8n_converter import detect_n8n_format
+        assert detect_n8n_format({"nodes": [{"id": "n1", "type": "task"}], "edges": []}) is False
+        assert detect_n8n_format({"random": "data"}) is False
+        assert detect_n8n_format("not a dict") is False
+
+    def test_detect_n8n_empty_with_connections(self):
+        from src.services.converters.n8n_converter import detect_n8n_format
+        assert detect_n8n_format({"nodes": [], "connections": {}}) is True
+
+    def test_n8n_to_vetka_basic(self):
+        from src.services.converters.n8n_converter import n8n_to_vetka
+        n8n = {
+            "name": "My n8n Workflow",
+            "nodes": [
+                {"name": "Start", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [250, 300]},
+                {"name": "Code", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [450, 300], "parameters": {"jsCode": "return items;"}},
+            ],
+            "connections": {
+                "Start": {"main": [[{"node": "Code", "type": "main", "index": 0}]]}
+            },
+        }
+        result = n8n_to_vetka(n8n)
+        assert result["name"] == "My n8n Workflow"
+        assert len(result["nodes"]) == 2
+        assert len(result["edges"]) == 1
+        assert result["metadata"]["imported_from"] == "n8n"
+
+    def test_n8n_to_vetka_node_types(self):
+        from src.services.converters.n8n_converter import n8n_to_vetka
+        n8n = {
+            "name": "Type Test",
+            "nodes": [
+                {"name": "If", "type": "n8n-nodes-base.if", "typeVersion": 1, "position": [0, 0]},
+                {"name": "HTTP", "type": "n8n-nodes-base.httpRequest", "typeVersion": 3, "position": [200, 0]},
+                {"name": "Set", "type": "n8n-nodes-base.set", "typeVersion": 2, "position": [400, 0]},
+            ],
+            "connections": {},
+        }
+        result = n8n_to_vetka(n8n)
+        types = {n["label"]: n["type"] for n in result["nodes"]}
+        assert types["If"] == "condition"
+        assert types["HTTP"] == "agent"
+        assert types["Set"] == "transform"
+
+    def test_n8n_to_vetka_preserves_params(self):
+        from src.services.converters.n8n_converter import n8n_to_vetka
+        n8n = {
+            "name": "Params",
+            "nodes": [
+                {"name": "Code", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [0, 0],
+                 "parameters": {"jsCode": "const x = 1; return items;", "mode": "runOnceForAllItems"}},
+            ],
+            "connections": {},
+        }
+        result = n8n_to_vetka(n8n)
+        node_data = result["nodes"][0]["data"]
+        assert "n8n_parameters" in node_data
+        assert node_data["n8n_parameters"]["jsCode"] == "const x = 1; return items;"
+
+    def test_n8n_to_vetka_conditional_edges(self):
+        from src.services.converters.n8n_converter import n8n_to_vetka
+        n8n = {
+            "name": "Conditional",
+            "nodes": [
+                {"name": "If Check", "type": "n8n-nodes-base.if", "typeVersion": 1, "position": [0, 0]},
+                {"name": "True Branch", "type": "n8n-nodes-base.code", "typeVersion": 1, "position": [200, -100]},
+                {"name": "False Branch", "type": "n8n-nodes-base.code", "typeVersion": 1, "position": [200, 100]},
+            ],
+            "connections": {
+                "If Check": {
+                    "main": [
+                        [{"node": "True Branch", "type": "main", "index": 0}],
+                        [{"node": "False Branch", "type": "main", "index": 0}],
+                    ]
+                }
+            },
+        }
+        result = n8n_to_vetka(n8n)
+        edges = result["edges"]
+        assert len(edges) == 2
+        labels = {e.get("label") for e in edges}
+        assert "true" in labels
+        assert "false" in labels
+        assert all(e["type"] == "conditional" for e in edges)
+
+    def test_n8n_to_vetka_positions(self):
+        from src.services.converters.n8n_converter import n8n_to_vetka
+        n8n = {
+            "name": "Pos Test",
+            "nodes": [
+                {"name": "A", "type": "n8n-nodes-base.code", "typeVersion": 1, "position": [100, 200]},
+                {"name": "B", "type": "n8n-nodes-base.code", "typeVersion": 1, "position": {"x": 300, "y": 400}},
+            ],
+            "connections": {},
+        }
+        result = n8n_to_vetka(n8n)
+        assert result["nodes"][0]["position"] == {"x": 100, "y": 200}
+        assert result["nodes"][1]["position"] == {"x": 300, "y": 400}
+
+    def test_vetka_to_n8n_basic(self):
+        from src.services.converters.n8n_converter import vetka_to_n8n
+        workflow = {
+            "id": "wf_test",
+            "name": "Test Workflow",
+            "nodes": [
+                {"id": "n1", "type": "task", "label": "Do Something", "position": {"x": 0, "y": 0}, "data": {"description": "desc"}},
+                {"id": "n2", "type": "transform", "label": "Transform", "position": {"x": 200, "y": 0}, "data": {}},
+            ],
+            "edges": [
+                {"id": "e1", "source": "n1", "target": "n2", "type": "structural"},
+            ],
+        }
+        result = vetka_to_n8n(workflow)
+        assert result["name"] == "Test Workflow"
+        assert len(result["nodes"]) == 2
+        assert "connections" in result
+        assert result["meta"]["exported_from"] == "vetka"
+
+    def test_vetka_to_n8n_node_types(self):
+        from src.services.converters.n8n_converter import vetka_to_n8n
+        workflow = {
+            "name": "Types",
+            "nodes": [
+                {"id": "n1", "type": "condition", "label": "Check", "position": {"x": 0, "y": 0}, "data": {}},
+                {"id": "n2", "type": "agent", "label": "API Call", "position": {"x": 200, "y": 0}, "data": {}},
+            ],
+            "edges": [],
+        }
+        result = vetka_to_n8n(workflow)
+        types = {n["name"]: n["type"] for n in result["nodes"]}
+        assert types["Check"] == "n8n-nodes-base.if"
+        assert types["API Call"] == "n8n-nodes-base.httpRequest"
+
+    def test_n8n_roundtrip(self):
+        """Import n8n → export back → structure preserved."""
+        from src.services.converters.n8n_converter import n8n_to_vetka, vetka_to_n8n
+        original_n8n = {
+            "name": "Roundtrip",
+            "nodes": [
+                {"name": "Start", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0]},
+                {"name": "Process", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [200, 0],
+                 "parameters": {"jsCode": "return items;"}},
+            ],
+            "connections": {
+                "Start": {"main": [[{"node": "Process", "type": "main", "index": 0}]]}
+            },
+        }
+        vetka = n8n_to_vetka(original_n8n)
+        exported = vetka_to_n8n(vetka)
+        # Check structure preserved
+        assert exported["name"] == "Roundtrip"
+        assert len(exported["nodes"]) == 2
+        # Original n8n type should be restored from data.n8n_type
+        node_types = {n["name"]: n["type"] for n in exported["nodes"]}
+        assert node_types["Start"] == "n8n-nodes-base.manualTrigger"
+        assert node_types["Process"] == "n8n-nodes-base.code"
+
+
+# ============================================================
+# MARKER_144.9: ComfyUI Converter Tests
+# ============================================================
+
+class TestComfyUIConverter:
+    """Tests for ComfyUI ↔ VETKA conversion."""
+
+    def test_detect_graph_format(self):
+        from src.services.converters.comfyui_converter import detect_comfyui_format
+        graph = {
+            "nodes": [{"id": 1, "type": "KSampler", "pos": [0, 0]}],
+            "links": [[1, 1, 0, 2, 0, "MODEL"]],
+        }
+        assert detect_comfyui_format(graph) == "graph"
+
+    def test_detect_api_format(self):
+        from src.services.converters.comfyui_converter import detect_comfyui_format
+        api = {
+            "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "v1-5.safetensors"}},
+            "2": {"class_type": "KSampler", "inputs": {"model": ["1", 0]}},
+        }
+        assert detect_comfyui_format(api) == "api"
+
+    def test_detect_none_format(self):
+        from src.services.converters.comfyui_converter import detect_comfyui_format
+        assert detect_comfyui_format({"random": "data"}) == "none"
+        assert detect_comfyui_format("string") == "none"
+
+    def test_comfyui_graph_to_vetka(self):
+        from src.services.converters.comfyui_converter import comfyui_to_vetka
+        graph = {
+            "nodes": [
+                {"id": 1, "type": "CheckpointLoaderSimple", "pos": [100, 200], "title": "Load Model"},
+                {"id": 2, "type": "KSampler", "pos": [300, 200], "title": "Sampler"},
+                {"id": 3, "type": "SaveImage", "pos": [500, 200], "title": "Save"},
+            ],
+            "links": [
+                [1, 1, 0, 2, 0, "MODEL"],
+                [2, 2, 0, 3, 0, "IMAGE"],
+            ],
+            "extra": {"title": "My ComfyUI Workflow"},
+        }
+        result = comfyui_to_vetka(graph)
+        assert len(result["nodes"]) == 3
+        assert len(result["edges"]) == 2
+        assert result["metadata"]["imported_from"] == "comfyui_graph"
+        # Check type mapping
+        types = {n["label"]: n["type"] for n in result["nodes"]}
+        assert types["Load Model"] == "agent"
+        assert types["Sampler"] == "task"
+        assert types["Save"] == "proposal"
+
+    def test_comfyui_api_to_vetka(self):
+        from src.services.converters.comfyui_converter import comfyui_to_vetka
+        api = {
+            "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "v1-5.safetensors"}},
+            "2": {"class_type": "CLIPTextEncode", "inputs": {"text": "a cat", "clip": ["1", 1]}},
+            "3": {"class_type": "KSampler", "inputs": {"model": ["1", 0], "positive": ["2", 0]}},
+        }
+        result = comfyui_to_vetka(api)
+        assert len(result["nodes"]) == 3
+        assert len(result["edges"]) == 3  # clip→2, model→3, positive→3
+        assert result["metadata"]["imported_from"] == "comfyui_api"
+
+    def test_comfyui_api_preserves_inputs(self):
+        from src.services.converters.comfyui_converter import comfyui_to_vetka
+        api = {
+            "1": {"class_type": "KSampler", "inputs": {
+                "seed": 42, "steps": 20, "cfg": 7.5,
+                "sampler_name": "euler", "scheduler": "normal",
+                "model": ["2", 0],
+            }},
+            "2": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "sd_xl.safetensors"}},
+        }
+        result = comfyui_to_vetka(api)
+        # Non-link inputs should be preserved
+        sampler = [n for n in result["nodes"] if n["label"] == "KSampler"][0]
+        inputs = sampler["data"].get("comfyui_inputs", {})
+        assert inputs.get("seed") == 42
+        assert inputs.get("steps") == 20
+
+    def test_vetka_to_comfyui_graph(self):
+        from src.services.converters.comfyui_converter import vetka_to_comfyui
+        workflow = {
+            "name": "Test Export",
+            "nodes": [
+                {"id": "n1", "type": "agent", "label": "Load Model", "position": {"x": 0, "y": 0}, "data": {}},
+                {"id": "n2", "type": "task", "label": "Sample", "position": {"x": 200, "y": 0}, "data": {}},
+            ],
+            "edges": [
+                {"id": "e1", "source": "n1", "target": "n2", "type": "dataflow", "data": {"from_slot": 0, "to_slot": 0}},
+            ],
+        }
+        result = vetka_to_comfyui(workflow, fmt="graph")
+        assert len(result["nodes"]) == 2
+        assert len(result["links"]) == 1
+        assert result["extra"]["exported_from"] == "vetka"
+
+    def test_vetka_to_comfyui_api(self):
+        from src.services.converters.comfyui_converter import vetka_to_comfyui
+        workflow = {
+            "name": "API Export",
+            "nodes": [
+                {"id": "n1", "type": "agent", "label": "Load", "position": {"x": 0, "y": 0}, "data": {}},
+                {"id": "n2", "type": "task", "label": "Process", "position": {"x": 200, "y": 0}, "data": {}},
+            ],
+            "edges": [
+                {"id": "e1", "source": "n1", "target": "n2", "type": "dataflow",
+                 "data": {"from_slot": 0, "input_name": "model"}},
+            ],
+        }
+        result = vetka_to_comfyui(workflow, fmt="api")
+        assert "1" in result
+        assert "2" in result
+        assert result["1"]["class_type"] == "VETKAAgent"
+        # Edge should create input link
+        assert result["2"]["inputs"].get("model") == ["1", 0]
+
+    def test_comfyui_graph_roundtrip(self):
+        from src.services.converters.comfyui_converter import comfyui_to_vetka, vetka_to_comfyui
+        original = {
+            "nodes": [
+                {"id": 1, "type": "CheckpointLoaderSimple", "pos": [0, 0], "title": "Load",
+                 "widgets_values": ["model.safetensors"]},
+                {"id": 2, "type": "KSampler", "pos": [200, 0], "title": "Sample"},
+            ],
+            "links": [[1, 1, 0, 2, 0, "MODEL"]],
+        }
+        vetka = comfyui_to_vetka(original)
+        exported = vetka_to_comfyui(vetka, fmt="graph")
+        # Check structure preserved
+        assert len(exported["nodes"]) == 2
+        assert len(exported["links"]) == 1
+        # Original class_type should be restored
+        types = {n["title"]: n["type"] for n in exported["nodes"]}
+        assert types["Load"] == "CheckpointLoaderSimple"
+        assert types["Sample"] == "KSampler"
+
+    def test_comfyui_positions(self):
+        from src.services.converters.comfyui_converter import comfyui_to_vetka
+        graph = {
+            "nodes": [
+                {"id": 1, "type": "KSampler", "pos": [150, 300]},
+            ],
+            "links": [],
+        }
+        result = comfyui_to_vetka(graph)
+        assert result["nodes"][0]["position"] == {"x": 150, "y": 300}
+
+
+# ============================================================
+# MARKER_144.8/9: Import/Export API Endpoint Tests
+# ============================================================
+
+class TestImportExportAPI:
+    """Tests for import/export API endpoints."""
+
+    @pytest.fixture
+    def api_client(self, store):
+        from fastapi.testclient import TestClient
+        from src.api.routes.workflow_template_routes import router, _store
+        from fastapi import FastAPI
+        import src.api.routes.workflow_template_routes as mod
+        mod._store = store
+        app = FastAPI()
+        app.include_router(router)
+        yield TestClient(app)
+        mod._store = None
+
+    def test_import_n8n(self, api_client):
+        n8n_data = {
+            "name": "Test n8n",
+            "nodes": [
+                {"name": "Start", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0]},
+                {"name": "Code", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [200, 0]},
+            ],
+            "connections": {
+                "Start": {"main": [[{"node": "Code", "type": "main", "index": 0}]]}
+            },
+        }
+        resp = api_client.post("/api/workflows/import", json={"data": n8n_data, "save": True})
+        data = resp.json()
+        assert data["success"] is True
+        assert data["format_detected"] == "n8n"
+        assert data["saved"] is True
+        assert data["workflow_id"] is not None
+        assert len(data["workflow"]["nodes"]) == 2
+
+    def test_import_comfyui_graph(self, api_client):
+        comfy_data = {
+            "nodes": [
+                {"id": 1, "type": "CheckpointLoaderSimple", "pos": [0, 0]},
+                {"id": 2, "type": "KSampler", "pos": [200, 0]},
+            ],
+            "links": [[1, 1, 0, 2, 0, "MODEL"]],
+        }
+        resp = api_client.post("/api/workflows/import", json={"data": comfy_data, "save": True})
+        data = resp.json()
+        assert data["success"] is True
+        assert data["format_detected"] == "comfyui"
+        assert len(data["workflow"]["nodes"]) == 2
+
+    def test_import_comfyui_api(self, api_client):
+        comfy_api = {
+            "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "model.safetensors"}},
+            "2": {"class_type": "KSampler", "inputs": {"model": ["1", 0], "seed": 42}},
+        }
+        resp = api_client.post("/api/workflows/import", json={"data": comfy_api, "format": "comfyui", "save": False})
+        data = resp.json()
+        assert data["success"] is True
+        assert data["format_detected"] == "comfyui"
+        assert data["saved"] is False
+
+    def test_import_auto_detect(self, api_client):
+        """Auto-detection should identify n8n format."""
+        n8n_data = {
+            "nodes": [{"name": "A", "type": "n8n-nodes-base.code", "typeVersion": 1, "position": [0, 0]}],
+            "connections": {},
+        }
+        resp = api_client.post("/api/workflows/import", json={"data": n8n_data})
+        assert resp.json()["format_detected"] == "n8n"
+
+    def test_import_unknown_format(self, api_client):
+        resp = api_client.post("/api/workflows/import", json={"data": {"random": "stuff"}})
+        data = resp.json()
+        assert data["success"] is False
+        assert "Unknown" in data["error"]
+
+    def test_export_n8n(self, api_client, store):
+        """Export a saved workflow as n8n JSON."""
+        workflow = {
+            "name": "Export Test",
+            "nodes": [
+                {"id": "n1", "type": "task", "label": "Do Stuff", "position": {"x": 0, "y": 0}, "data": {}},
+            ],
+            "edges": [],
+        }
+        wf_id = store.save(workflow)
+        resp = api_client.post(f"/api/workflows/{wf_id}/export", json={"format": "n8n"})
+        data = resp.json()
+        assert data["success"] is True
+        assert data["format"] == "n8n"
+        assert len(data["exported"]["nodes"]) == 1
+        assert "connections" in data["exported"]
+
+    def test_export_comfyui(self, api_client, store):
+        """Export a saved workflow as ComfyUI JSON."""
+        workflow = {
+            "name": "ComfyUI Export",
+            "nodes": [
+                {"id": "n1", "type": "agent", "label": "Load", "position": {"x": 0, "y": 0}, "data": {}},
+                {"id": "n2", "type": "task", "label": "Sample", "position": {"x": 200, "y": 0}, "data": {}},
+            ],
+            "edges": [
+                {"id": "e1", "source": "n1", "target": "n2", "type": "dataflow"},
+            ],
+        }
+        wf_id = store.save(workflow)
+        resp = api_client.post(f"/api/workflows/{wf_id}/export", json={"format": "comfyui"})
+        data = resp.json()
+        assert data["success"] is True
+        assert data["format"] == "comfyui"
+        assert len(data["exported"]["nodes"]) == 2
+        assert "links" in data["exported"]
+
+    def test_export_nonexistent(self, api_client):
+        resp = api_client.post("/api/workflows/wf_nonexistent/export", json={"format": "n8n"})
+        assert resp.status_code == 404
+
+    def test_import_and_export_roundtrip(self, api_client, store):
+        """Import n8n → save → export n8n → structure matches."""
+        original = {
+            "name": "Roundtrip API",
+            "nodes": [
+                {"name": "Start", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0]},
+                {"name": "End", "type": "n8n-nodes-base.noOp", "typeVersion": 1, "position": [200, 0]},
+            ],
+            "connections": {
+                "Start": {"main": [[{"node": "End", "type": "main", "index": 0}]]}
+            },
+        }
+        # Import
+        imp = api_client.post("/api/workflows/import", json={"data": original, "save": True})
+        imp_data = imp.json()
+        assert imp_data["success"]
+        wf_id = imp_data["workflow_id"]
+
+        # Export
+        exp = api_client.post(f"/api/workflows/{wf_id}/export", json={"format": "n8n"})
+        exp_data = exp.json()
+        assert exp_data["success"]
+        exported = exp_data["exported"]
+
+        # Structure should match
+        assert exported["name"] == "Roundtrip API"
+        assert len(exported["nodes"]) == 2
+        node_names = {n["name"] for n in exported["nodes"]}
+        assert "Start" in node_names
+        assert "End" in node_names
+
+
+# ============================================================
+# MARKER_144.12B: Architect Chat Fix Tests
+# ============================================================
+
+class TestArchitectChatFix:
+    """Tests for the architect chat LLM connection fix."""
+
+    def test_get_architect_model_v2_dragon_silver(self):
+        from src.api.routes.architect_chat_routes import _get_architect_model_v2
+        model, source = _get_architect_model_v2("dragon_silver")
+        assert "kimi" in model.lower() or "moonshotai" in model.lower()
+        assert source == "polza"
+
+    def test_get_architect_model_v2_dragon_bronze(self):
+        from src.api.routes.architect_chat_routes import _get_architect_model_v2
+        model, source = _get_architect_model_v2("dragon_bronze")
+        assert "qwen" in model.lower()
+        assert source == "polza"
+
+    def test_get_architect_model_v2_unknown_preset(self):
+        from src.api.routes.architect_chat_routes import _get_architect_model_v2
+        model, source = _get_architect_model_v2("nonexistent_preset")
+        # Should fall back to kimi-k2.5 / polza
+        assert model is not None
+        assert source is not None
+
+    def test_architect_chat_fallback(self):
+        """Fallback response should work when LLM unavailable."""
+        from src.api.routes.architect_chat_routes import _fallback_response, ArchitectChatRequest
+        req = ArchitectChatRequest(message="help me plan a project")
+        resp = _fallback_response(req)
+        assert resp.success is True
+        assert len(resp.response) > 0
+
+    def test_architect_chat_api_endpoint(self):
+        """The /api/architect/chat endpoint should exist and return a response."""
+        from fastapi.testclient import TestClient
+        from src.api.routes.architect_chat_routes import router
+        from fastapi import FastAPI
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+        resp = client.post("/api/architect/chat", json={
+            "message": "Hello architect",
+            "context": {"preset": "dragon_silver"},
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert len(data["response"]) > 0

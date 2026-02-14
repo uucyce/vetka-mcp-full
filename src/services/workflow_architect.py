@@ -191,16 +191,14 @@ async def generate_workflow(
             content = result
 
         if not content:
-            return {"success": False, "error": "Empty response from architect model"}
+            logger.warning("[WorkflowArchitect] Empty LLM response, using fallback")
+            return _generate_fallback_workflow(description, complexity_hint)
 
         # Parse JSON from response
         workflow = _parse_workflow_json(content)
         if workflow is None:
-            return {
-                "success": False,
-                "error": "Failed to parse workflow JSON from architect response",
-                "raw_response": content[:500],
-            }
+            logger.warning("[WorkflowArchitect] Failed to parse LLM JSON, using fallback")
+            return _generate_fallback_workflow(description, complexity_hint)
 
         # Post-process: assign IDs, validate structure
         workflow = _post_process_workflow(workflow, description)
@@ -208,12 +206,8 @@ async def generate_workflow(
         # Validate
         validation = _quick_validate(workflow)
         if validation["errors"]:
-            return {
-                "success": False,
-                "error": f"Generated workflow has errors: {validation['errors'][0]}",
-                "workflow": workflow,
-                "validation": validation,
-            }
+            logger.warning(f"[WorkflowArchitect] Generated workflow invalid: {validation['errors']}, using fallback")
+            return _generate_fallback_workflow(description, complexity_hint)
 
         return {
             "success": True,
@@ -228,7 +222,9 @@ async def generate_workflow(
         return _generate_fallback_workflow(description, complexity_hint)
     except Exception as e:
         logger.error(f"[WorkflowArchitect] Generation failed: {e}")
-        return {"success": False, "error": str(e)}
+        # Fallback to template when LLM fails (API key missing, network error, etc.)
+        logger.info("[WorkflowArchitect] Using fallback template generation")
+        return _generate_fallback_workflow(description, complexity_hint)
 
 
 def _parse_workflow_json(content: str) -> Optional[Dict[str, Any]]:

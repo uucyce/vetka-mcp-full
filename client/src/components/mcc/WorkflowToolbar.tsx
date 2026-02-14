@@ -33,6 +33,8 @@ interface WorkflowToolbarProps {
   editMode: boolean;
   // MARKER_144.7: Generate workflow from description
   onGenerate?: (workflow: any) => void;
+  // MARKER_144.8/9: Import/Export
+  onImport?: (workflow: any) => void;
 }
 
 const btnStyle: React.CSSProperties = {
@@ -83,6 +85,7 @@ function WorkflowToolbarComponent({
   onToggleEdit,
   editMode,
   onGenerate,
+  onImport,
 }: WorkflowToolbarProps) {
   const [showLoadMenu, setShowLoadMenu] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
@@ -196,6 +199,78 @@ function WorkflowToolbarComponent({
       setGenerating(false);
     }
   }, [activePreset, onGenerate]);
+
+  // MARKER_144.8: Import workflow from file (n8n or ComfyUI JSON)
+  const handleImport = useCallback(async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e: any) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        setValidationMsg('Importing...');
+        const res = await fetch('http://localhost:5001/api/workflows/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data, save: true }),
+        });
+        if (res.ok) {
+          const result = await res.json();
+          if (result.success && result.workflow) {
+            setValidationMsg(
+              `Imported ${result.format_detected}: ${result.workflow.nodes?.length || 0} nodes`
+            );
+            onImport?.(result.workflow);
+          } else {
+            setValidationMsg(`Import failed: ${result.error || 'unknown'}`);
+          }
+        } else {
+          setValidationMsg('Import API error');
+        }
+      } catch (err) {
+        setValidationMsg('Import error: invalid JSON');
+      }
+    };
+    input.click();
+  }, [onImport]);
+
+  // MARKER_144.8/9: Export workflow to n8n or ComfyUI
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const handleExport = useCallback(async (format: 'n8n' | 'comfyui') => {
+    if (!workflowId) {
+      setValidationMsg('Save workflow first');
+      return;
+    }
+    setShowExportMenu(false);
+    try {
+      const res = await fetch(`http://localhost:5001/api/workflows/${workflowId}/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.exported) {
+          // Download as JSON file
+          const blob = new Blob([JSON.stringify(data.exported, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${workflowName || 'workflow'}_${format}.json`;
+          a.click();
+          URL.revokeObjectURL(url);
+          setValidationMsg(`Exported as ${format}`);
+        } else {
+          setValidationMsg(`Export failed: ${data.error || 'unknown'}`);
+        }
+      }
+    } catch (err) {
+      setValidationMsg('Export error');
+    }
+  }, [workflowId, workflowName]);
 
   return (
     <div
@@ -346,6 +421,59 @@ function WorkflowToolbarComponent({
           >
             {generating ? '...' : '✦ Generate'}
           </button>
+
+          {/* MARKER_144.8: Import */}
+          <button
+            style={btnStyle}
+            onClick={handleImport}
+            title="Import n8n or ComfyUI workflow JSON"
+          >
+            ↓ Import
+          </button>
+
+          {/* MARKER_144.8/9: Export dropdown */}
+          <div style={{ position: 'relative' }}>
+            <button
+              style={workflowId ? btnStyle : btnDisabledStyle}
+              onClick={workflowId ? () => setShowExportMenu(!showExportMenu) : undefined}
+              title={workflowId ? 'Export workflow to n8n or ComfyUI' : 'Save workflow first'}
+            >
+              ↑ Export ▾
+            </button>
+            {showExportMenu && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  zIndex: 100,
+                  background: NOLAN_PALETTE.bgLight,
+                  border: `1px solid ${NOLAN_PALETTE.border}`,
+                  borderRadius: 3,
+                  minWidth: 120,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                }}
+              >
+                <div
+                  style={{ padding: '5px 10px', fontSize: 9, color: NOLAN_PALETTE.text, cursor: 'pointer' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = NOLAN_PALETTE.bgDim)}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  onClick={() => handleExport('n8n')}
+                >
+                  n8n JSON
+                </div>
+                <div
+                  style={{ padding: '5px 10px', fontSize: 9, color: NOLAN_PALETTE.text, cursor: 'pointer',
+                    borderTop: `1px solid ${NOLAN_PALETTE.borderDim}` }}
+                  onMouseEnter={e => (e.currentTarget.style.background = NOLAN_PALETTE.bgDim)}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  onClick={() => handleExport('comfyui')}
+                >
+                  ComfyUI JSON
+                </div>
+              </div>
+            )}
+          </div>
 
           <div style={separatorStyle} />
 

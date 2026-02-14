@@ -529,6 +529,7 @@ export function MyceliumCommandCenter() {
         onToggleEdit={toggleEditMode}
         editMode={editMode}
         onGenerate={handleGeneratedWorkflow}
+        onImport={handleGeneratedWorkflow}
       />
 
       {/* ═══ MAIN THREE-COLUMN LAYOUT ═══ */}
