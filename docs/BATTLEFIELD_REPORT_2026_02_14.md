@@ -1,19 +1,27 @@
-# VETKA BATTLEFIELD REPORT — Phase 148 UPDATE
-## Commander: Opus | Date: 2026-02-14 | Deadline: 2026-02-17 (MVP)
+# VETKA BATTLEFIELD REPORT — Phase 149 UPDATE
+## Commander: Opus | Date: 2026-02-14 (evening) | Deadline: 2026-02-17 (MVP)
 
 ---
 
 ## I. EXECUTIVE SUMMARY
 
-**Phase 146.5 COMPLETE. Phase 148 IN PROGRESS.**
+**Phase 149 LAUNCHED. Cursor REMOVED from army. Dragon + Codex + Opus only.**
 
-**Playground backend — полностью готов:** worktree isolation, scoped pipeline writes, review/promote/reject, SpamDetector, 74 теста. Ожидаем frontend (CURSOR).
+**DRAGON SILVER FIRST TEST — COMPLETED:**
+- HeartbeatChip.tsx: 8/10, PROMOTED to main (170 lines, Zustand, Nolan style)
+- MCCTaskList.tsx: REJECTED (Dragon deleted 410/430 lines — destructive rewrite)
+- DevPanel.tsx: REJECTED (same destructive pattern)
+- **Verdict:** Dragon = excellent for NEW files, DANGEROUS for modifications
 
-**Codex активен:** Чинит heartbeat.rs crash, web shell save paths, unified search. Отчитался о Phase 148 fixes.
+**Playground Sandbox VALIDATED:** Caught Dragon's destructive edits BEFORE they hit main.
+Without sandbox, MCCTaskList would be destroyed. Selective promote saved the day.
 
-**Критическая находка:** Двойная архитектура heartbeat (Rust vs Python) — нужна консолидация.
+**BUG-2 FOUND + FIXED:** `playground_manager.get_diff()` didn't show untracked files.
 
-**Readiness: 72% → Target 90%** (Day 2 evening)
+**NEW INITIATIVE:** Sparse Apply mechanism (Phase 150) — Dragon outputs patches instead of full files.
+Design doc written, Grok research completed, Aider/Sweep patterns identified.
+
+**Readiness: 75% → Target 90%** (Day 3)
 
 ---
 
@@ -225,10 +233,50 @@ Header controls (left to right):
 - ◀ ▶ Stream controls (existing)
 ```
 
-**⚠️ Задача для CURSOR:**
-- Перенести heartbeat из MCCTaskList footer → Header
-- Добавить Playground badge в Header
-- Settings gear → playground settings + heartbeat config
+**⚠️ Задача переназначена: CURSOR → DRAGON Silver (new files) + OPUS (wiring)**
+- HeartbeatChip.tsx: ✅ DONE (Dragon created, user refined, promoted to main)
+- PlaygroundBadge.tsx: NEXT (Dragon Silver — new file)
+- Wire into header: OPUS manual (2-3 lines)
+- Settings gear: FUTURE
+
+---
+
+## VI-B. DRAGON SILVER TEST RESULTS (Phase 149) 🐉 NEW
+
+### Test: D-149.1 HeartbeatChip in Playground Sandbox
+
+| Metric | Value |
+|--------|-------|
+| **Pipeline** | Dragon Silver (Kimi architect + Grok researcher + Qwen coder + GLM verifier) |
+| **Playground** | pg_4ce1a45a (git worktree) |
+| **Time** | ~4 minutes total |
+| **Files created** | 1 new (HeartbeatChip.tsx) + 2 modified (MCCTaskList, DevPanel) |
+
+**Results per file:**
+
+| File | Action | Quality | Decision |
+|------|--------|---------|----------|
+| `HeartbeatChip.tsx` (NEW) | Created 170-line component | 8/10 — correct Zustand, Nolan style, countdown timer, toggle | ✅ PROMOTED |
+| `MCCTaskList.tsx` (MODIFIED) | Deleted 410 of 430 lines | 0/10 — CATASTROPHIC rewrite | ❌ REJECTED |
+| `DevPanel.tsx` (MODIFIED) | Deleted 656 lines | 0/10 — CATASTROPHIC rewrite | ❌ REJECTED |
+
+**Key finding:** Dragon LLMs rewrite entire files instead of making surgical edits.
+This is a known industry problem (Aider, Sweep, Cursor Composer all solve differently).
+
+**Decision:** Dragon = new files ONLY. Modifications → Opus/Codex/Sparse Apply (Phase 150).
+
+### BUG-2 Found: playground_manager.get_diff() misses untracked files
+- `get_diff()` used `git diff --stat HEAD` — only sees tracked changes
+- NEW files are `??` (untracked) → invisible to diff
+- `review()` method correctly catches untracked via `git status --porcelain`
+- **FIX (MARKER_149.FIX_DIFF):** Added untracked file detection to `get_diff()`
+
+### Sparse Apply Initiative (Phase 150)
+- **Problem:** Dragon rewrites entire files → breaks existing code
+- **Solution:** Three modes: CREATE (works now) + MARKER INSERT + UNIFIED DIFF
+- **Design doc:** `docs/150_ph/SPARSE_APPLY_DESIGN.md`
+- **Prior art:** Aider (prompt templates), Sweep (patch generator), tree-sitter (AST validation)
+- **ETA:** Phase 150A (marker insert) = 2-3 hours, 200 LOC
 
 ---
 
@@ -299,27 +347,36 @@ Header controls (left to right):
 
 ## IX. NEXT ACTIONS (Priority Order)
 
+### Army Roster (Updated — NO CURSOR)
+
+| Agent | Role | Cost | Status |
+|-------|------|------|--------|
+| **Opus** | Architecture, briefs, wiring, review | $$$ | ACTIVE |
+| **Codex** | Bug fixes, tests, isolated modules | $$ | ACTIVE (debugging viewport) |
+| **Dragon Silver** | New file creation via Playground | ¢ | TESTED, ready for D-149.2 |
+| **Haiku Scouts** | Recon, markers, file discovery | ¢ | 6 deployed in Phase 149 |
+| ~~Cursor~~ | ~~Removed~~ | ~~$$$~~ | ~~Too expensive~~ |
+
 ### OPUS (Now):
 1. ~~Playground Ops backend~~ ✅ DONE
 2. ~~SpamDetector~~ ✅ DONE
-3. **Write CURSOR brief** for: Header UI (heartbeat+playground+settings) → PG-5,6,7,8
-4. **Review Codex changes** after his Phase 148 fixes land
-5. **D2.4:** Dispatch Dragon Silver for Cmd+K → unified search
+3. ~~Dragon test D-149.1~~ ✅ DONE (HeartbeatChip promoted)
+4. ~~BATTLE_PLAN_149~~ ✅ DONE
+5. ~~SPARSE_APPLY_DESIGN~~ ✅ DONE
+6. **Wire HeartbeatChip into MCC header** (manual, 3-5 lines)
+7. **Launch Dragon D-149.2** (PlaygroundBadge — new file)
+8. **Review Codex** when he finishes viewport debugging
 
 ### CODEX (Parallel):
-1. Finish unified search web provider
-2. Scanner dedup (BUG-1) — critical
-3. Web artifact pipeline
+1. **Currently:** Debugging viewport fallback/focus issues
+2. **Next:** Scanner dedup (BUG-1) — critical → `docs/149_ph/CODEX_BRIEF_149.md`
+3. **Then:** Unified search web provider
 
-### CURSOR (Next):
-1. **PG-5:** Sandbox toggle in TaskCard dispatch
-2. **PG-6:** Playground Review tab in MCC
-3. **Header UI:** Heartbeat toggle + Playground badge + Settings gear
-4. Move heartbeat control from MCCTaskList footer → Header
-
-### DRAGON SILVER (Queue):
-1. D2.4: Cmd+K → unified search backend wiring
-2. Sprint 1 remaining tasks
+### DRAGON SILVER (Queue — via Playground):
+1. ~~D-149.1: HeartbeatChip~~ ✅ DONE + PROMOTED
+2. **D-149.2: PlaygroundBadge** (new file) — READY
+3. **D-149.3: TaskCard sandbox toggle** — NEEDS Sparse Apply or manual
+4. **D-149.4: Wire header** — NEEDS Sparse Apply or manual
 
 ---
 
@@ -377,6 +434,18 @@ where:
 
 ---
 
-*Generated by Opus Commander + Explore Agent (Heartbeat Analysis) + 19 SpamDetector Tests*
-*Phase 146.5 COMPLETE — Phase 148 IN PROGRESS*
-*Commits: 3850aca1, 96e75f8a, ff12bb42*
+## XIV. PHASE 149 DOCS CREATED
+
+| File | Purpose |
+|------|---------|
+| `docs/149_ph/BATTLE_PLAN_149.md` | Full battle plan: Dragon+Codex+Opus assignments |
+| `docs/149_ph/OPUS_STATUS.md` | Agent coordination, file boundaries |
+| `docs/149_ph/CODEX_BRIEF_149.md` | Codex tasks: BUG-1, S1.2, E2E tests |
+| `docs/149_ph/RECON_REPORT_149.md` | 6 Haiku scout findings |
+| `docs/150_ph/SPARSE_APPLY_DESIGN.md` | Sparse Apply architecture (Grok research) |
+
+---
+
+*Generated by Opus Commander + Dragon Silver Test + Grok 4.1 Research*
+*Phase 149 IN PROGRESS — Dragon tested, Sparse Apply designed*
+*Key commit: HeartbeatChip.tsx promoted from playground pg_4ce1a45a*

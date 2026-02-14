@@ -357,13 +357,19 @@ class PlaygroundManager:
     async def get_diff(self, playground_id: str) -> Optional[str]:
         """Get git diff of changes made in the playground vs source branch.
 
+        Includes BOTH tracked modifications AND untracked new files.
+        MARKER_149.FIX_DIFF: Fixed to include untracked files via git status.
+
         Args:
             playground_id: Playground to diff
 
         Returns:
-            Git diff string, or None if not found
+            Git diff string (tracked changes + untracked file list), or None if not found
         """
         config = self._playgrounds.get(playground_id)
+        if not config:
+            self._load_config()
+            config = self._playgrounds.get(playground_id)
         if not config:
             return None
 
@@ -372,15 +378,38 @@ class PlaygroundManager:
             return None
 
         try:
-            result = await asyncio.to_thread(
+            parts = []
+
+            # 1. Tracked changes (git diff --stat HEAD)
+            diff_result = await asyncio.to_thread(
                 subprocess.run,
                 ["git", "diff", "--stat", "HEAD"],
-                capture_output=True,
-                text=True,
-                cwd=str(worktree_path),
-                timeout=10,
+                capture_output=True, text=True,
+                cwd=str(worktree_path), timeout=10,
             )
-            return result.stdout if result.returncode == 0 else None
+            if diff_result.returncode == 0 and diff_result.stdout.strip():
+                parts.append(diff_result.stdout.strip())
+
+            # 2. Untracked new files (git status --porcelain)
+            status_result = await asyncio.to_thread(
+                subprocess.run,
+                ["git", "status", "--porcelain"],
+                capture_output=True, text=True,
+                cwd=str(worktree_path), timeout=10,
+            )
+            if status_result.returncode == 0:
+                untracked = []
+                for line in status_result.stdout.strip().split("\n"):
+                    if line.startswith("??"):
+                        filepath = line[3:].strip()
+                        if filepath not in (".playground.json",) and not filepath.startswith("data/vetka_staging"):
+                            untracked.append(filepath)
+                if untracked:
+                    parts.append(f"\nNew files ({len(untracked)}):")
+                    for f in untracked:
+                        parts.append(f"  + {f}")
+
+            return "\n".join(parts) if parts else ""
         except Exception as e:
             logger.warning("Failed to get diff for %s: %s", playground_id, e)
             return None
