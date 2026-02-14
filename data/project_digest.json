@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-14T16:43:42.580976+00:00",
+  "last_updated": "2026-02-14T17:07:18.030635+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 146,
@@ -12,6 +12,7 @@
   "summary": {
     "headline": "Phase 146.0 DONE! Playground architecture + audit log fix",
     "key_achievements": [
+      "[3850aca1] Phase 146.0: Phase 146.E2E: Playground sandbox E2E testing + cross-proces",
       "[cd006d29] Phase 146.0: Phase 146: Playground architecture + audit log fix",
       "[dragon_dragon_silver] Create a simple Python utility file at src/utils/favorite_utils.py with a Favori",
       "[dragon_dragon_bronze] Add a star/favorite toggle button component for chat messages. Create a React co",
@@ -20,8 +21,7 @@
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
       "[dragon_dragon_bronze] fix task",
-      "[dragon_dragon_bronze] test task",
-      "[dragon_dragon_bronze] fix task"
+      "[dragon_dragon_bronze] test task"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -39,9 +39,9 @@
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "running",
+      "status": "offline",
       "port": 5001,
-      "tools_count": 15
+      "tools_count": 0
     },
     "api_keys": {
       "total": 30,
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "cd006d29",
+    "commit": "3850aca1",
     "dirty": true
   }
 }

@@ -2344,6 +2344,148 @@ async def notify_task_board_update(request: Request, body: Dict[str, Any] = None
 
 
 # ============================================================
+# MARKER_146.5_PLAYGROUND_REST: Playground Management Endpoints
+# ============================================================
+
+
+@router.get("/playground")
+async def list_playgrounds_api() -> Dict[str, Any]:
+    """List all playgrounds (active and inactive).
+
+    Returns:
+        {"success": true, "playgrounds": [...], "active_count": N}
+    """
+    from src.orchestration.playground_manager import list_playgrounds_summary
+    playgrounds = list_playgrounds_summary()
+    active_count = sum(1 for p in playgrounds if p.get("status") == "active")
+    return {
+        "success": True,
+        "playgrounds": playgrounds,
+        "active_count": active_count,
+        "total_count": len(playgrounds),
+    }
+
+
+@router.post("/playground/create")
+async def create_playground_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Create a new playground sandbox.
+
+    Body params:
+        task: str — what the agent will work on
+        preset: str — dragon team preset (default: dragon_silver)
+        auto_write: bool — allow file writes (default: true)
+    """
+    from src.orchestration.playground_manager import create_playground
+    body = body or {}
+    try:
+        result = await create_playground(
+            task=body.get("task", ""),
+            preset=body.get("preset", "dragon_silver"),
+            auto_write=body.get("auto_write", True),
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@router.get("/playground/{pg_id}/review")
+async def review_playground_api(pg_id: str) -> Dict[str, Any]:
+    """Review changes in a playground — per-file diffs and stats.
+
+    Returns:
+        {"playground_id", "changed_files": [{path, status, diff}], "total_changes"}
+    """
+    from src.orchestration.playground_manager import review_playground
+    result = await review_playground(pg_id)
+    return result
+
+
+@router.post("/playground/{pg_id}/promote")
+async def promote_playground_api(pg_id: str, body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Promote playground code to main codebase.
+
+    Body params:
+        strategy: "copy" (default) | "cherry-pick" | "merge"
+        files: list[str] — specific files to promote (null = all)
+        commit_message: str — optional git commit message
+        destroy_after: bool — destroy playground after promote (default: true)
+
+    Returns:
+        {"success", "promoted_files": [...], "strategy", "errors": [...]}
+    """
+    from src.orchestration.playground_manager import promote_playground
+    body = body or {}
+    result = await promote_playground(
+        playground_id=pg_id,
+        files=body.get("files"),
+        strategy=body.get("strategy", "copy"),
+        commit_message=body.get("commit_message"),
+        destroy_after=body.get("destroy_after", True),
+    )
+    return result
+
+
+@router.post("/playground/{pg_id}/reject")
+async def reject_playground_api(pg_id: str, body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Reject playground results. Marks as failed, optionally destroys.
+
+    Body params:
+        reason: str — why rejected
+        destroy: bool — destroy after rejection (default: false)
+    """
+    from src.orchestration.playground_manager import reject_playground
+    body = body or {}
+    result = await reject_playground(
+        playground_id=pg_id,
+        reason=body.get("reason", ""),
+        destroy=body.get("destroy", False),
+    )
+    return result
+
+
+@router.delete("/playground/{pg_id}")
+async def destroy_playground_api(pg_id: str) -> Dict[str, Any]:
+    """Destroy a playground and its git worktree."""
+    from src.orchestration.playground_manager import destroy_playground
+    result = await destroy_playground(pg_id)
+    return result
+
+
+@router.get("/playground/settings")
+async def get_playground_settings_api() -> Dict[str, Any]:
+    """Get playground configuration settings."""
+    from src.orchestration.playground_manager import PlaygroundManager
+    settings = PlaygroundManager.load_settings()
+    return {"success": True, **settings}
+
+
+@router.patch("/playground/settings")
+async def update_playground_settings_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Update playground settings.
+
+    Body params:
+        base_dir: str — directory for worktrees
+        max_concurrent: int — max playgrounds (1-10)
+        ttl_hours: float — auto-expire hours
+        auto_cleanup: bool — enable auto-cleanup
+    """
+    from src.orchestration.playground_manager import PlaygroundManager
+    body = body or {}
+    current = PlaygroundManager.load_settings()
+    # Merge updates
+    if "base_dir" in body:
+        current["base_dir"] = body["base_dir"]
+    if "max_concurrent" in body:
+        current["max_concurrent"] = max(1, min(10, int(body["max_concurrent"])))
+    if "ttl_hours" in body:
+        current["ttl_hours"] = max(0.5, min(24, float(body["ttl_hours"])))
+    if "auto_cleanup" in body:
+        current["auto_cleanup"] = bool(body["auto_cleanup"])
+    saved = PlaygroundManager.save_settings(current)
+    return {"success": True, **saved}
+
+
+# ============================================================
 # MARKER_136.W2A: DISK ARTIFACTS ENDPOINTS
 # ============================================================
 

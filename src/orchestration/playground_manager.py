@@ -386,6 +386,350 @@ class PlaygroundManager:
             return None
 
     # ------------------------------------------------------------------
+    # MARKER_146.5_PROMOTE: Review, Promote, Reject lifecycle
+    # ------------------------------------------------------------------
+
+    async def review(self, playground_id: str) -> Optional[Dict]:
+        """Get a detailed review of changes made in the playground.
+
+        Returns a structured review with per-file diffs, stats, and metadata.
+
+        Args:
+            playground_id: Playground to review
+
+        Returns:
+            Dict with changed_files, stats, playground metadata, or None if not found
+        """
+        config = self._playgrounds.get(playground_id)
+        if not config:
+            self._load_config()
+            config = self._playgrounds.get(playground_id)
+        if not config:
+            return None
+
+        worktree_path = Path(config.worktree_path)
+        if not worktree_path.exists():
+            return None
+
+        # Get list of changed files (tracked + untracked)
+        changed_files = []
+
+        try:
+            # Tracked modifications (git diff)
+            diff_result = await asyncio.to_thread(
+                subprocess.run,
+                ["git", "diff", "HEAD", "--name-status"],
+                capture_output=True, text=True,
+                cwd=str(worktree_path), timeout=10,
+            )
+            for line in diff_result.stdout.strip().split("\n"):
+                if not line.strip():
+                    continue
+                parts = line.split("\t", 1)
+                if len(parts) == 2:
+                    status_code, filepath = parts
+                    changed_files.append({
+                        "path": filepath,
+                        "status": {"M": "modified", "A": "added", "D": "deleted"}.get(status_code, status_code),
+                        "tracked": True,
+                    })
+
+            # Untracked files (git status --porcelain)
+            status_result = await asyncio.to_thread(
+                subprocess.run,
+                ["git", "status", "--porcelain"],
+                capture_output=True, text=True,
+                cwd=str(worktree_path), timeout=10,
+            )
+            for line in status_result.stdout.strip().split("\n"):
+                if not line.strip():
+                    continue
+                if line.startswith("??"):
+                    filepath = line[3:].strip()
+                    # Skip playground metadata and staging dirs
+                    if filepath in (".playground.json",) or filepath.startswith("data/vetka_staging"):
+                        continue
+                    changed_files.append({
+                        "path": filepath,
+                        "status": "new",
+                        "tracked": False,
+                    })
+
+            # Get unified diff for each file
+            for f in changed_files:
+                try:
+                    if f["tracked"] and f["status"] != "deleted":
+                        diff_cmd = ["git", "diff", "HEAD", "--", f["path"]]
+                    elif f["status"] == "new":
+                        # For untracked files, show entire content as diff
+                        file_path = worktree_path / f["path"]
+                        if file_path.exists() and file_path.stat().st_size < 50000:
+                            content = file_path.read_text(encoding="utf-8", errors="replace")
+                            f["diff"] = f"+++ b/{f['path']}\n" + "\n".join(
+                                f"+{line}" for line in content.split("\n")
+                            )
+                            f["size"] = len(content)
+                            continue
+                        else:
+                            continue
+                    else:
+                        continue
+
+                    diff_out = await asyncio.to_thread(
+                        subprocess.run, diff_cmd,
+                        capture_output=True, text=True,
+                        cwd=str(worktree_path), timeout=10,
+                    )
+                    if diff_out.returncode == 0:
+                        f["diff"] = diff_out.stdout
+                except Exception as e:
+                    f["diff_error"] = str(e)
+
+        except Exception as e:
+            logger.warning("Failed to review playground %s: %s", playground_id, e)
+            return {"error": str(e), "playground_id": playground_id}
+
+        return {
+            "playground_id": config.playground_id,
+            "task": config.task_description,
+            "branch": config.branch_name,
+            "status": config.status,
+            "preset": config.preset,
+            "pipeline_runs": config.pipeline_runs,
+            "created_at": config.created_at,
+            "age_minutes": round((time.time() - config.created_at) / 60, 1),
+            "changed_files": changed_files,
+            "total_changes": len(changed_files),
+            "worktree_path": config.worktree_path,
+        }
+
+    async def promote(
+        self,
+        playground_id: str,
+        files: Optional[List[str]] = None,
+        strategy: str = "copy",
+        commit_message: Optional[str] = None,
+        destroy_after: bool = True,
+    ) -> Dict:
+        """Promote playground changes to the main codebase.
+
+        MARKER_146.5_PROMOTE: The critical "last mile" — moving sandbox code to production.
+
+        Args:
+            playground_id: Playground to promote from
+            files: Specific files to promote (None = all changed)
+            strategy: "copy" (default), "cherry-pick", or "merge"
+            commit_message: Optional git commit message
+            destroy_after: Whether to destroy playground after promote
+
+        Returns:
+            Dict with promoted files, strategy used, success status
+        """
+        config = self._playgrounds.get(playground_id)
+        if not config:
+            self._load_config()
+            config = self._playgrounds.get(playground_id)
+        if not config or config.status != "active":
+            return {"success": False, "error": f"Playground {playground_id} not found or not active"}
+
+        worktree_path = Path(config.worktree_path)
+        if not worktree_path.exists():
+            return {"success": False, "error": f"Worktree missing: {worktree_path}"}
+
+        promoted_files = []
+        errors = []
+
+        if strategy == "copy":
+            # Strategy 1: Copy files from worktree to main
+            # Get files to promote
+            if files is None:
+                review_data = await self.review(playground_id)
+                if not review_data or "changed_files" not in review_data:
+                    return {"success": False, "error": "No changes to promote"}
+                files = [f["path"] for f in review_data["changed_files"]]
+
+            for filepath in files:
+                src = worktree_path / filepath
+                dst = PROJECT_ROOT / filepath
+
+                if not src.exists():
+                    errors.append(f"Source not found: {filepath}")
+                    continue
+
+                # Security: validate the destination is within project root
+                try:
+                    dst_resolved = dst.resolve()
+                    root_resolved = PROJECT_ROOT.resolve()
+                    if not str(dst_resolved).startswith(str(root_resolved)):
+                        errors.append(f"Path traversal blocked: {filepath}")
+                        continue
+                except (ValueError, OSError):
+                    errors.append(f"Invalid path: {filepath}")
+                    continue
+
+                try:
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(str(src), str(dst))
+                    promoted_files.append(filepath)
+                    logger.info("Promoted: %s → %s", src, dst)
+                except Exception as e:
+                    errors.append(f"Failed to copy {filepath}: {e}")
+
+        elif strategy == "cherry-pick":
+            # Strategy 2: Cherry-pick commits from playground branch
+            try:
+                # First, commit all changes in the playground
+                await self._run_git(["add", "-A"], cwd=str(worktree_path))
+                msg = commit_message or f"Playground {playground_id}: {config.task_description[:60]}"
+                try:
+                    await self._run_git(
+                        ["commit", "-m", msg],
+                        cwd=str(worktree_path),
+                    )
+                except RuntimeError:
+                    pass  # Nothing to commit is OK
+
+                # Get the latest commit on playground branch
+                commit_hash = await self._run_git(
+                    ["rev-parse", config.branch_name],
+                )
+
+                # Cherry-pick into main
+                await self._run_git(["cherry-pick", commit_hash])
+                promoted_files = files or ["(all via cherry-pick)"]
+
+            except Exception as e:
+                errors.append(f"Cherry-pick failed: {e}")
+                # Abort cherry-pick if in progress
+                try:
+                    await self._run_git(["cherry-pick", "--abort"])
+                except Exception:
+                    pass
+
+        elif strategy == "merge":
+            # Strategy 3: Merge playground branch into main
+            try:
+                # Commit changes in playground first
+                await self._run_git(["add", "-A"], cwd=str(worktree_path))
+                msg = commit_message or f"Playground {playground_id}: {config.task_description[:60]}"
+                try:
+                    await self._run_git(["commit", "-m", msg], cwd=str(worktree_path))
+                except RuntimeError:
+                    pass
+
+                # Merge into main
+                await self._run_git(["merge", config.branch_name, "--no-ff", "-m",
+                                     f"Merge playground {playground_id}: {config.task_description[:60]}"])
+                promoted_files = files or ["(all via merge)"]
+
+            except Exception as e:
+                errors.append(f"Merge failed: {e}")
+                try:
+                    await self._run_git(["merge", "--abort"])
+                except Exception:
+                    pass
+        else:
+            return {"success": False, "error": f"Unknown strategy: {strategy}"}
+
+        # Post-promote cleanup
+        if promoted_files and destroy_after:
+            await self.destroy(playground_id)
+
+        return {
+            "success": len(promoted_files) > 0,
+            "playground_id": playground_id,
+            "strategy": strategy,
+            "promoted_files": promoted_files,
+            "errors": errors,
+            "destroyed": destroy_after and len(promoted_files) > 0,
+        }
+
+    async def reject(
+        self,
+        playground_id: str,
+        reason: str = "",
+        destroy: bool = False,
+    ) -> Dict:
+        """Reject playground results.
+
+        Marks the playground as failed and optionally destroys it.
+
+        Args:
+            playground_id: Playground to reject
+            reason: Why the results were rejected
+            destroy: Whether to destroy the playground
+
+        Returns:
+            Dict with status
+        """
+        config = self._playgrounds.get(playground_id)
+        if not config:
+            self._load_config()
+            config = self._playgrounds.get(playground_id)
+        if not config:
+            return {"success": False, "error": f"Playground {playground_id} not found"}
+
+        config.status = "failed"
+        self._save_config()
+        logger.info("Playground rejected: %s (reason: %s)", playground_id, reason or "none")
+
+        if destroy:
+            await self.destroy(playground_id)
+
+        return {
+            "success": True,
+            "playground_id": playground_id,
+            "status": "failed",
+            "reason": reason,
+            "destroyed": destroy,
+        }
+
+    # ------------------------------------------------------------------
+    # MARKER_146.5_SETTINGS: Playground settings persistence
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def load_settings(cls) -> Dict:
+        """Load playground settings from disk.
+
+        Returns:
+            Dict with base_dir, max_concurrent, ttl_hours, auto_cleanup
+        """
+        settings_file = PROJECT_ROOT / "data" / "playground_settings.json"
+        defaults = {
+            "base_dir": str(PLAYGROUND_BASE),
+            "max_concurrent": MAX_PLAYGROUNDS,
+            "ttl_hours": PLAYGROUND_TTL_SECONDS / 3600,
+            "auto_cleanup": True,
+        }
+        if settings_file.exists():
+            try:
+                saved = json.loads(settings_file.read_text())
+                defaults.update(saved)
+            except (json.JSONDecodeError, OSError):
+                pass
+        return defaults
+
+    @classmethod
+    def save_settings(cls, settings: Dict) -> Dict:
+        """Save playground settings to disk.
+
+        Args:
+            settings: Dict with base_dir, max_concurrent, ttl_hours, auto_cleanup
+
+        Returns:
+            The saved settings
+        """
+        settings_file = PROJECT_ROOT / "data" / "playground_settings.json"
+        try:
+            settings_file.parent.mkdir(parents=True, exist_ok=True)
+            settings_file.write_text(json.dumps(settings, indent=2))
+            logger.info("Playground settings saved: %s", settings)
+        except Exception as e:
+            logger.warning("Failed to save playground settings: %s", e)
+        return settings
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
@@ -537,3 +881,34 @@ def list_playgrounds_summary() -> List[Dict]:
         }
         for p in manager.list_playgrounds(include_inactive=True)
     ]
+
+
+async def review_playground(playground_id: str) -> Dict:
+    """Review playground changes — convenience for MCP/REST."""
+    manager = get_playground_manager()
+    result = await manager.review(playground_id)
+    return result or {"error": "Playground not found", "playground_id": playground_id}
+
+
+async def promote_playground(
+    playground_id: str,
+    files: Optional[List[str]] = None,
+    strategy: str = "copy",
+    commit_message: Optional[str] = None,
+    destroy_after: bool = True,
+) -> Dict:
+    """Promote playground to main — convenience for MCP/REST."""
+    manager = get_playground_manager()
+    return await manager.promote(
+        playground_id=playground_id,
+        files=files,
+        strategy=strategy,
+        commit_message=commit_message,
+        destroy_after=destroy_after,
+    )
+
+
+async def reject_playground(playground_id: str, reason: str = "", destroy: bool = False) -> Dict:
+    """Reject playground — convenience for MCP/REST."""
+    manager = get_playground_manager()
+    return await manager.reject(playground_id, reason=reason, destroy=destroy)

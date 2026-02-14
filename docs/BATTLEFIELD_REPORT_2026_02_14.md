@@ -127,7 +127,8 @@
 
 | Gap | Current | Target | Effort | Phase |
 |-----|---------|--------|--------|-------|
-| **Playground (sandbox)** | 85% | 90% E2E | needs MYCELIUM restart to verify | ✅ 146 |
+| **Playground infra** | 85% | 90% E2E | needs MYCELIUM restart to verify | ✅ 146 |
+| **Playground Ops (UI+Promote)** | 0% | MVP working | 8-12h (backend+frontend) | 🔥 146.5 |
 | **Scanner Dedup** | broken | fixed | 3h | 🔥 145 |
 | **Heartbeat multi-group** | single group | multi | 2h | 🔥 145 |
 | **Knowledge Graph** | 10% | 10% | skip | 149+ |
@@ -431,7 +432,84 @@ where:
 
 ---
 
-## XI. RISK LOG
+## XI. PLAYGROUND OPS — Missing User Workflow (NEW)
+
+**Problem:** У нас есть инфраструктура (worktree, scoped writes, 53 теста), но нет пользовательского flow.
+Агент создаёт код в sandbox — и что дальше? Нет UI для управления, нет выбора location, нет promote.
+
+### Gap A: MCC Sandbox Toggle (UI для вкл/выкл)
+**Current:** TaskCard → ▶ Run → dispatch → writes to MAIN
+**Target:** TaskCard → ▶ Run → dropdown [🔒 Sandbox / ⚡ Direct / 📂 Custom]
+**Owner:** CURSOR (frontend) + OPUS (backend endpoint tweak)
+**Effort:** 2-3h
+**Implementation:**
+- MCCTaskList dispatch → передаёт `sandbox_mode` параметр
+- dispatch endpoint → если sandbox → `playground_create` → `playground_id` в pipeline
+- StreamPanel показывает: `🔒 Running in sandbox: pg_xxx`
+- StatusBar: badge с количеством активных playgrounds
+
+### Gap B: Custom Playground Location
+**Current:** Hardcoded `.playgrounds/` в project root
+**Target:** Пользователь выбирает base_dir (любой путь на диске)
+**Owner:** OPUS (backend) + CURSOR (settings UI)
+**Effort:** 1h
+**Implementation:**
+- `PlaygroundManager.__init__(base_dir=...)` уже поддерживает! Нужен только REST + UI
+- `GET/PATCH /api/debug/playground/settings` → `data/playground_settings.json`
+- Settings panel в DevPanel: base_dir picker, max_concurrent, auto-expire timer
+- Сценарий: пользователь хочет playgrounds на быстром SSD или в tmpfs
+
+### Gap C: Promote Flow (⭐ КРИТИЧЕСКИЙ) — Review → Approve → Merge
+**Current:** Pipeline пишет файлы в worktree → конец. Нет способа перенести в main.
+**Target:** Полный цикл: generate → review diff → approve/reject per file → promote to main
+**Owner:** OPUS (backend) + CURSOR (UI)
+**Effort:** 4-6h
+**Implementation:**
+
+**Backend (3 new endpoints):**
+```
+GET  /api/debug/playground/{pg_id}/review     → файлы, диффы, статистика
+POST /api/debug/playground/{pg_id}/promote    → перенос в main (cherry-pick/copy/merge)
+POST /api/debug/playground/{pg_id}/reject     → пометить как rejected, опционально destroy
+```
+
+**Promote strategies:**
+1. **Copy files** (default MVP) — `shutil.copy2` worktree → main, затем `vetka_git_commit`
+2. **Cherry-pick** — `git cherry-pick` из playground branch (чище git history)
+3. **Merge** — `git merge playground/pg_xxx` (все изменения разом)
+
+**Frontend (MCCDetailPanel новый tab "Playground"):**
+- Diff viewer для каждого файла (уже есть `DiffViewer.tsx`)
+- Per-file checkboxes: ☑ promote / ☐ skip
+- Action buttons: [✅ Approve All] [🚀 Promote Selected] [❌ Reject All]
+- Post-promote: auto-destroy playground + refresh 3D tree (glow on promoted files)
+
+**Full lifecycle:**
+```
+@dragon task → dispatch(sandbox=true) → playground_create → pipeline runs
+  → files in worktree → MCC shows "Review Available"
+  → user opens Review tab → sees diff per file
+  → checks files to promote → clicks 🚀 Promote
+  → files copied to main → vetka_git_commit → playground destroyed
+  → 3D tree refreshes → new files glow green
+```
+
+### Day 2-3 Playground Ops Roadmap
+
+| # | Task | Owner | Hours | Status |
+|---|------|-------|-------|--------|
+| PG-1 | Backend: promote endpoint (copy strategy) | OPUS | 2h | 📋 Ready |
+| PG-2 | Backend: review endpoint (diff + file list) | OPUS | 1h | 📋 Ready |
+| PG-3 | Backend: reject endpoint + auto-destroy | OPUS | 30min | 📋 Ready |
+| PG-4 | Backend: playground settings persistence | OPUS | 30min | 📋 Ready |
+| PG-5 | Frontend: Sandbox toggle in TaskCard | CURSOR | 2h | 📋 Brief needed |
+| PG-6 | Frontend: Playground Review tab in MCC | CURSOR | 3h | 📋 Brief needed |
+| PG-7 | Frontend: Promote button + file selector | CURSOR | 2h | 📋 Dep: PG-6 |
+| PG-8 | Frontend: Settings panel (location, limits) | CURSOR | 1h | 📋 Brief needed |
+
+---
+
+## XII. RISK LOG
 
 | Risk | Probability | Impact | Mitigation |
 |------|-------------|--------|------------|
