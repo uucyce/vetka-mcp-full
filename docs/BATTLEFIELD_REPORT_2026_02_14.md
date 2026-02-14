@@ -1,15 +1,19 @@
-# VETKA BATTLEFIELD REPORT — Phase 145 Recon
+# VETKA BATTLEFIELD REPORT — Phase 148 UPDATE
 ## Commander: Opus | Date: 2026-02-14 | Deadline: 2026-02-17 (MVP)
 
 ---
 
 ## I. EXECUTIVE SUMMARY
 
-**Phase 144 COMPLETE.** Мы на переломной точке: ядро Mycelium работает (pipeline, TaskBoard, MCC, DAG Editor), но есть критические баги (сканер-дубликаты, heartbeat reliability) и стратегические gap-ы (Playground, Knowledge Graph, Jarvis).
+**Phase 146.5 COMPLETE. Phase 148 IN PROGRESS.**
 
-**Цель до 17 февраля:** Починить Mycelium для полуавтономной работы, поднять Playground, делегировать рутину агентам.
+**Playground backend — полностью готов:** worktree isolation, scoped pipeline writes, review/promote/reject, SpamDetector, 74 теста. Ожидаем frontend (CURSOR).
 
-**Readiness: 65% → Target 90%** (по оценке Грока + наш аудит)
+**Codex активен:** Чинит heartbeat.rs crash, web shell save paths, unified search. Отчитался о Phase 148 fixes.
+
+**Критическая находка:** Двойная архитектура heartbeat (Rust vs Python) — нужна консолидация.
+
+**Readiness: 72% → Target 90%** (Day 2 evening)
 
 ---
 
@@ -27,10 +31,14 @@
 | n8n/ComfyUI Converters | 144 | 100% | 63 tests |
 | OAuth Integration | 147.5 | 100% | tested |
 | Mycelium Standalone Server | 140 | 85% | 50 tests |
-| Unified Search Backend | 136 | 60% | partial |
+| Unified Search Backend | 148 | 70% | partial (Codex working) |
 | Heartbeat Daemon | 140 | 55% | 50 tests |
+| **Playground Infrastructure** | **146** | **95%** | **74 tests** |
+| **Playground Ops (Backend)** | **146.5** | **100%** | **21 tests** |
+| **Watcher SpamDetector** | **146.5** | **100%** | **19 tests** |
+| **Adaptive Timeout** | **145** | **100%** | **36 tests** |
 
-**Total: 101 test files, ~800+ tests, 30/43 tasks done (70%)**
+**Total: ~115 test files, ~900+ tests**
 
 ---
 
@@ -38,274 +46,286 @@
 
 ### BUG-1: Scanner Duplicates 🔴 CRITICAL
 **Impact:** Дерево показывает 2-3x файлов. UX сломан.
-**Root Cause (Sonnet V3 audit):**
-1. `qdrant_updater.py` — нет path normalization перед генерацией point ID
-2. `watcher_routes.py:166` — при добавлении папки запускается И watcher И full scan = двойная индексация
-3. Нет проверки "already indexed" перед upsert в Qdrant
-4. `os.path.expanduser()` не используется консистентно (~/project vs /Users/x/project = 2 записи)
+**Root Cause:** Path normalization, double scan, no dedup in Qdrant
+- **OWNER: CODEX** — in progress
 
-**Fix (2-3 часа):**
-- [ ] Path normalize в `_get_point_id()` — `os.path.abspath(os.path.expanduser(path))`
-- [ ] Prevent double-scan в `watcher_routes.py` — только scan если not already_watching
-- [ ] Добавить indexed_paths cache в EmbeddingPipeline
-- **OWNER: CODEX** (isolated module, не трогает pipeline)
+### BUG-2: Heartbeat Architecture Duplication 🟠 HIGH ⬅️ UPDATED
+**Impact:** ДВА heartbeat работают одновременно без синхронизации
+**Root Cause:** Rust heartbeat.rs (Phase 100.3) и Python mycelium_heartbeat.py (Phase 117.2c) — разные системы
 
-### BUG-2: Heartbeat Hardcoded GROUP_ID 🟠 HIGH
-**Impact:** Heartbeat мониторит ОДИН чат. Остальные чаты игнорируются.
-**File:** `mycelium_heartbeat.py` — hardcoded `GROUP_ID="5e2198c2-..."`
-**Fix:** YAML config multi-group
-- **OWNER: CODEX**
+| Aspect | System A (Rust) | System B (Python) |
+|--------|-----------------|-------------------|
+| Location | `heartbeat.rs` | `mycelium_heartbeat.py` |
+| Interval | 5 min (HARDCODED) | 60s (configurable) |
+| UI Control | NONE | MCC toggle + interval |
+| Execution | Show notification only | Full pipeline dispatch |
+| Chat monitoring | None | All groups + solos |
+| TaskBoard | No | Yes |
+| Tests | 0 | 28+ |
+
+**РЕШЕНИЕ: Удалить System A (Rust heartbeat).** System B делает ВСЁ что делает A + намного больше.
+⚠️ **НО:** Codex уже починил `heartbeat.rs` (MARKER_148.HEARTBEAT_NO_BLOCK_ON) — убрал `block_on` crash.
+**Рекомендация:** Пока оставить как есть. Перенести в Rust только если нужны OS-native notifications.
 
 ### BUG-3: FC Loop Silent Degradation 🟠 HIGH
-**Impact:** Если `src/tools/fc_loop.py` не импортируется → coder падает на one-shot без уведомления
-**File:** `agent_pipeline.py` — `FC_LOOP_AVAILABLE = try/except`
-**Fix:** Required dependency + heartbeat health check
 - **OWNER: CODEX**
 
-### BUG-4: Coder Timeout 90s Too Short 🟡 MEDIUM
-**Impact:** Сложные FC loops с 4 turns вылетают по timeout
-**File:** `agent_pipeline.py` — `PHASE_TIMEOUTS['coder'] = 90`
-**Fix:** Adaptive timeout или увеличить до 180s
-- **OWNER: DRAGON SILVER** (simple config change)
+### ~~BUG-4: Coder Timeout 90s Too Short~~ ✅ FIXED
+- **Fix:** Adaptive timeout per-model (Phase 145)
 
 ### BUG-5: Chat Group Name Bug 🟡 MEDIUM
-**Impact:** Edit name создаёт новый чат, контент теряется
-**Source:** `119_dragon_todo.txt`
-**Fix:** Нужен аудит ChatPanel rename flow
-- **OWNER: CURSOR** (frontend)
+- **OWNER: CURSOR**
 
 ### BUG-6: Model/Provider Not Persisted in Solo Chat 🟡 MEDIUM
-**Impact:** При повторном обращении фолбэк на openrouter
-**Source:** `119_dragon_todo.txt`
 - **OWNER: CODEX**
 
 ### BUG-7: Hardcoded localhost:5001 in 16 Components 🟢 LOW
-**Impact:** Не будет работать в production
-**Fix:** Import from `config/api.config.ts`
-- **OWNER: DRAGON BRONZE** (search-replace)
+- **OWNER: DRAGON BRONZE**
 
-### BUG-8: Web Shell Navigation Race 🟠 HIGH (Codex Phase 147.6 Recon)
-**Impact:** Быстрые клики по веб-результатам → старый контент перезаписывает новый
-**Root Cause:** `loadPreview()` без AbortController/navigation token guard
-**Files:** `WebShellStandalone.tsx:128`, `commands.rs:96`
-**Fix:** AbortController per navigation + monotonic navigationRequestId
-- **OWNER: CODEX**
+### BUG-8: Web Shell Navigation Race 🟠 HIGH
+- **OWNER: CODEX** — in progress
 
-### BUG-9: Web Shell Save Path Empty 🟡 MEDIUM (Codex Phase 147.6 Recon)
-**Impact:** Нет предложений куда сохранить при save-to-vetka
-**Root Cause:** Нет backend fallback resolver, frontend зависит от viewport state
-**Fix:** `POST /api/tree/recommend-save-paths` backend resolver
-- **OWNER: CODEX**
+### BUG-9: Web Shell Save Path Empty 🟡 MEDIUM
+- **Status: FIXED by Codex (MARKER_148.WEB_SAVE_PATH_INTERNAL_FILTER)**
+- Save modal now shows `<select>` with real path list
+- Filters `.claude/worktrees`, `.playgrounds` from suggestions
 
-### BUG-10: Web Shell Find-in-Page Fragile 🟡 MEDIUM (Codex Phase 147.6 Recon)
-**Impact:** Поиск ломается на динамических/санитизированных страницах
-**Root Cause:** `window.find()` fallback + iframe contentDocument доступ нестабилен
-**Fix:** Детерминистическая модель поиска с rebuild index on load
-- **OWNER: CODEX**
+### ~~BUG-10: Web Shell Find-in-Page~~ 🟡 Deferred
+
+### BUG-11: Watcher Spam from Worktrees 🟢 FIXED (Phase 146.5)
+- **Was:** Watcher indexed `.playgrounds/` and `.claude/worktrees/` → 100+ events/sec → backend freeze
+- **Fix:** 2-layer protection:
+  1. Static: `.playgrounds`, `.claude/worktrees` added to SKIP_PATTERNS
+  2. Dynamic: SpamDetector — auto-mutes dirs exceeding 50 events/10s
+  3. Removed DEBUG_WATCHER print spam (Phase 90.9 leftovers)
+- **Tests:** 19 tests, REST API: `/api/watcher/spam-status`, `/api/watcher/spam-block`
 
 ---
 
-## IV. TASKBOARD — PENDING TASKS (11)
+## IV. CODEX PHASE 148 REPORT (Received)
 
-| ID | Title | Priority | Owner | Sprint |
-|----|-------|----------|-------|--------|
-| tb_..._1 | S1.1 Event-driven dispatch | P1 | Opus ✅ DONE | S1 |
-| tb_..._2 | S1.2 Unified Search: Tavily web provider | P2 | Codex | S1 |
-| tb_..._3 | S1.3 Cmd+K → unified backend | P2 | Cursor | S1 |
-| tb_..._4 | S1.4 MCC Stats real data | P2 | Cursor | S1 |
-| tb_..._5 | S1.5 Artifact panel → API | P2 | Cursor | S1 |
-| tb_..._6 | S1.6 Tests: heartbeat+search E2E | P2 | Codex | S1 |
-| tb_..._1 | Pipeline commands infra | P2 | Titan | - |
-| tb_..._2 | Pipeline Quality Gates | P2 | Dragon | - |
-| tb_..._13 | Tests: artifact_scanner | P3 | Codex | S1 |
-| tb_..._14 | Tests: feedback_service | P3 | Codex | S1 |
-| tb_..._9 | Research: search/embedding models | P4 | Archive | - |
+### 148.1: Heartbeat.rs Crash Fix ✅
+- **Problem:** `Cannot start a runtime from within a runtime` — `block_on` inside async heartbeat
+- **Fix:** Rewrote heartbeat to pure `await` without `block_on`
+- **File:** `heartbeat.rs`
+- **Marker:** MARKER_148.HEARTBEAT_NO_BLOCK_ON
 
----
+### 148.2: Web Save Path Internal Filter ✅
+- **Problem:** Save suggestions included `.claude/worktrees`, `.playgrounds` paths
+- **Fix:** `<select>` in modal + filter internal paths from suggestions
+- **Files:** `commands.rs`, `tauri.ts`
+- **Marker:** MARKER_148.WEB_SAVE_PATH_INTERNAL_FILTER
 
-## V. STRATEGIC GAPS
+### 148.3: Post-Save Pipeline to Graph ✅
+- **Problem:** After save-webpage, file not visible in 3D tree
+- **Fix:** POST to `/api/watcher/index-file` + emit `vetka:web-artifact-saved` + retry camera focus (8 attempts)
+- **Files:** `commands.rs`, `App.tsx`, `tauri.ts`
+- **Marker:** MARKER_148.WEB_SAVE_MAIN_REFRESH_FOCUS
 
-| Gap | Current | Target | Effort | Phase |
-|-----|---------|--------|--------|-------|
-| **Playground infra** | 85% | 90% E2E | needs MYCELIUM restart to verify | ✅ 146 |
-| **Playground Ops (UI+Promote)** | 0% | MVP working | 8-12h (backend+frontend) | 🔥 146.5 |
-| **Scanner Dedup** | broken | fixed | 3h | 🔥 145 |
-| **Heartbeat multi-group** | single group | multi | 2h | 🔥 145 |
-| **Knowledge Graph** | 10% | 10% | skip | 149+ |
-| **Jarvis Superagent** | 0% | 0% | skip | 148+ |
-| **Messenger (Telegram)** | 0% | 0% | skip | 150+ |
-| **Social/Federation** | 0% | 0% | skip | future |
-| **Frontend Tests** | 0 tests | 0 | skip for now | future |
+### Codex Still Working On:
+- Unified Search `/web` provider integration
+- Web artifact save → Qdrant index pipeline
 
 ---
 
-## VI. MVP PLAN — 3 Days (Feb 14-17)
+## V. PLAYGROUND — FULL STATUS
 
-### Day 1 (Feb 14): FIX — "Stop the Bleeding"
+### Infrastructure (Phase 146) ✅ DONE — 53 tests
 
-| # | Task | Owner | Hours | Status |
-|---|------|-------|-------|--------|
-| D1.1 | Fix Scanner Duplicates (BUG-1) | **CODEX** | 3h | 📋 Briefing ready |
-| D1.2 | Fix Heartbeat multi-group (BUG-2) | **CODEX** | 2h | 📋 Briefing ready |
-| D1.3 | Web Shell: navigation race + AbortController (BUG-8) | **CODEX** | 2h | 📋 Briefing ready |
-| D1.4 | Web Shell: save path backend resolver (BUG-9) | **CODEX** | 1.5h | 📋 Briefing ready |
-| D1.5 | Increase coder timeout to 180s (BUG-4) | **OPUS** | 5min | ✅ DONE |
-| D1.6 | Cleanup TaskBoard junk tasks | **OPUS** | 15min | ✅ DONE |
-| D1.7 | Fix FC loop degradation alert (BUG-3) | **CODEX** | 1h | 📋 Briefing ready |
-| D1.8 | **Adaptive Timeout** (model-aware `_safe_phase`) | **OPUS** | 2h | ✅ DONE (36 tests) |
-| D1.9 | **Frontend Polling Cleanup** (7 components, ~103K req/day saved) | **OPUS** | 1h | ✅ DONE |
-| D1.10 | **Kill model_updater cron** → on-demand | **OPUS** | 30min | ✅ DONE |
+| Component | Status | Tests |
+|-----------|--------|-------|
+| PlaygroundManager (worktree lifecycle) | ✅ | 34 unit |
+| Pipeline scoped writes | ✅ | 6 E2E |
+| Cross-process state sync | ✅ | 3 E2E |
+| Path security (traversal blocked) | ✅ | 2 E2E |
+| MCP tools (4 tools) | ✅ | 3 E2E |
+| Git diff | ✅ | 2 E2E |
+| Config persistence | ✅ | 3 E2E |
 
-**Day 1 Evening Check:** Поиск → клик по веб-результату → сохранение → нет дубликатов в дереве.
+### Operations (Phase 146.5) ✅ DONE — 21 tests
 
-### Day 2 (Feb 15): BUILD — "Playground MVP"
+| Endpoint | Method | Status | Tests |
+|----------|--------|--------|-------|
+| `/api/debug/playground` | GET | ✅ list all | 1 |
+| `/api/debug/playground/create` | POST | ✅ create | 1 |
+| `/api/debug/playground/{pg_id}/review` | GET | ✅ per-file diffs | 5 |
+| `/api/debug/playground/{pg_id}/promote` | POST | ✅ copy/cherry-pick/merge | 6 |
+| `/api/debug/playground/{pg_id}/reject` | POST | ✅ mark failed + destroy | 3 |
+| `/api/debug/playground/{pg_id}` | DELETE | ✅ destroy | 1 |
+| `/api/debug/playground/settings` | GET/PATCH | ✅ config persist | 2 |
+| Full lifecycle test | E2E | ✅ create→write→review→promote | 1 |
 
-| # | Task | Owner | Hours | Dependency |
-|---|------|-------|-------|------------|
-| D2.1 | Playground: git worktree + scoped MCP | **OPUS** | 2h | ✅ DONE |
-| D2.2 | Playground: pipeline sandbox flag | **CODEX** | 2h | D2.1 |
-| D2.3 | Playground: test Dragon Silver in sandbox | **OPUS** | 1h | D2.2 |
-| D2.4 | Wire Cmd+K → unified search (S1.3) | **DRAGON SILVER** | 3h | — |
-| D2.5 | Wire Tavily web provider (S1.2) | **CODEX** | 2h | — |
+### Frontend (Pending — CURSOR)
 
-### Day 3 (Feb 16-17): DELEGATE — "Agents Go Autonomous"
-
-| # | Task | Owner | Hours | Dependency |
-|---|------|-------|-------|------------|
-| D3.1 | E2E test: Heartbeat dispatch cycle | **CODEX** | 2h | D1.2 |
-| D3.2 | Load TaskBoard with Phase 145 tasks | **OPUS** | 30min | D2.3 |
-| D3.3 | Dragon Silver: fix remaining Sprint 1 | **DRAGON SILVER** | 4h | D2.3 |
-| D3.4 | Dragon Bronze: CAM UI integration | **DRAGON BRONZE** | 3h | — |
-| D3.5 | Verify full pipeline: task → dispatch → execute → commit | **OPUS** | 2h | D3.1-D3.3 |
-| D3.6 | Write tests for Phase 145 | **CODEX** | 2h | D3.5 |
+| # | Task | Status |
+|---|------|--------|
+| PG-5 | Sandbox toggle in TaskCard dispatch | 📋 Brief needed |
+| PG-6 | Playground Review tab in MCC | 📋 Brief needed |
+| PG-7 | Promote button + file selector | 📋 Dep: PG-6 |
+| PG-8 | Settings panel (location, limits) | 📋 Brief needed |
 
 ---
 
-## VII. ARMY ASSIGNMENTS
+## VI. HEARTBEAT ARCHITECTURE ANALYSIS 🔍 NEW
 
-### OPUS (You — Architect & Commander)
-- **Day 1:** Fix coder timeout (5min), cleanup TaskBoard, orchestrate
-- **Day 2:** Playground architecture (git worktree + scoped MCP), test in sandbox
-- **Day 3:** Load tasks, verify full pipeline, final review
-- **Budget:** Save context for synthesis and architecture decisions
-
-### CODEX (Parallel Worker — Backend)
-- **Day 1:** BUG-1 (scanner dedup), BUG-2 (heartbeat multi-group), BUG-3 (FC alert)
-- **Day 2:** Playground sandbox flag, Tavily web provider
-- **Day 3:** E2E heartbeat test, Phase 145 tests
-- **Briefing doc needed:** Yes (write before dispatching)
-
-### DRAGON SILVER (Mycelium Pipeline — Standard)
-- **Day 2:** Wire Cmd+K → unified search
-- **Day 3:** Fix remaining Sprint 1 tasks via pipeline
-- **Dispatch via:** `@dragon build "wire Cmd+K frontend to POST /api/search/unified"`
-
-### DRAGON BRONZE (Mycelium Pipeline — Quick)
-- **Day 1:** Replace hardcoded URLs in 16 components
-- **Day 3:** CAM UI integration (4 TODO markers)
-- **Dispatch via:** `@dragon build "replace http://localhost:5001 with API_BASE import"`
-
-### GROK (External Research — You Relay)
-- **Day 1:** Research prompt for Playground security (Docker vs worktree depth)
-- **Day 2:** Research prompt for Unified Search architecture (Meilisearch vs current)
-
----
-
-## VIII. GROK RESEARCH REQUEST #2
-
-> **Grok, задача:**
->
-> **1. Playground Deep Dive:**
-> - Мы выбрали `git worktree` для MVP. Вопрос: как правильно scoped MCP tools?
-> - Нужно чтобы agent_pipeline.py мог работать в worktree с ограниченными правами
-> - Какие env vars нужны? Как предотвратить запись в main tree?
-> - Есть ли готовые Python библиотеки для sandbox execution (не Docker)?
->
-> **2. Scanner Dedup — Best Practices:**
-> - Qdrant point ID generation: uuid5 от normalized path — достаточно?
-> - Или нужен content hash (SHA256) как дополнительная проверка?
-> - Как другие проекты решают dedup при hot-reload/watchdog?
->
-> **Файлы:** `src/scanning/qdrant_updater.py`, `src/scanning/file_watcher.py`
-
----
-
-## IX. ADAPTIVE TIMEOUT — FULL RECON REPORT (5 Scouts)
-
-### Scout 3: Pipeline Integration Points (Sonnet)
-
-**CENTRAL FINDING:** `_safe_phase()` (line 330) — единственная точка интеграции.
-- Все 11 вызовов pipeline проходят через неё
-- Модель **доступна** на каждом call site (`self.prompts[role]["model"]`), но **НЕ передаётся** в `_safe_phase`
-- `_safe_phase` знает только `phase_name` → берёт timeout из `PHASE_TIMEOUTS` dict
-- **Решение:** Добавить параметр `model: str = None` в `_safe_phase`
-
-**Все call sites:**
-
-| Line | Phase | Coroutine | Model Source |
-|------|-------|-----------|--------------|
-| 687 | scout | `_scout_scan()` | `self.prompts["scout"]["model"]` |
-| 688 | researcher | `_research()` | `self.prompts["researcher"]["model"]` |
-| 1984 | architect | `_architect_plan()` | `self.prompts["architect"]["model"]` |
-| 2424 | coder | `_execute_subtask()` | `self.prompts["coder"]["model"]` |
-| 2438 | verifier | `_verify_subtask()` | `self.prompts["verifier"]["model"]` |
-| +6 retry/parallel | coder/verifier | same | same |
-
-### Scout 4: VETKA Chat LLM Timeouts (Sonnet)
-
-**CRITICAL: 15+ LLM call sites OUTSIDE pipeline, each with different timeout!**
-
-| Context | Timeout | Hardcoded? | Adaptive? |
-|---------|---------|------------|-----------|
-| Group Chat Agent | 120s | YES | NO |
-| Group Chat Hostess | 30s | YES | NO |
-| Doctor Triage | **NONE** ⚠️ | N/A | N/A |
-| Provider HTTP (all) | 120s | YES | NO |
-| Ollama Inference | 60s | YES | NO |
-| Streaming Total | 300s | YES | NO |
-| Context Injection | 3-5s | YES | NO |
-
-**⚠️ VULNERABILITY:** Doctor triage LLM call (line 346) has NO timeout wrapper!
-
-### Scout 5: Unified LLM Call Points (Sonnet)
-
-**CENTRAL HUB FOUND: `call_model_v2()` in `provider_registry.py:1498`**
+### Current State: Two Independent Systems Running
 
 ```
-User Request → Handler → orchestrator → call_model_v2() → Provider.call() → httpx
+┌─ SYSTEM A: Rust (heartbeat.rs) ──────────────────────┐
+│ • Fixed 5-minute interval (hardcoded)                 │
+│ • Polls GET /api/tasks/open (endpoint doesn't exist!) │
+│ • Shows OS notification if tasks open                 │
+│ • NO UI control, NO TaskBoard integration             │
+│ • NO multi-chat, NO dedup                             │
+│ • 0 tests                                             │
+│ • Status: ORPHANED (running but unused)               │
+└───────────────────────────────────────────────────────┘
+
+┌─ SYSTEM B: Python (mycelium_heartbeat.py) ───────────┐
+│ • Configurable interval (1m-1d, MCC toggle)           │
+│ • Monitors ALL group chats + solo chats               │
+│ • Parses @dragon/@doctor/@titan/@board triggers       │
+│ • Routes through TaskBoard priority queue             │
+│ • Dispatches via Mycelium pipeline                    │
+│ • 213+ ticks completed, 28+ tests                     │
+│ • Status: PRODUCTION-READY                            │
+└───────────────────────────────────────────────────────┘
 ```
 
-- **ALL** LLM calls pass through `call_model_v2()`
-- Both pipeline AND chat handlers use it
-- Currently NO timeout parameter in its signature
-- Timeout is delegated to each provider's `.call()` method (hardcoded @ 120s)
-- **SINGLE INJECTION POINT** for adaptive timeout
+### Decision: Keep System B, Repurpose System A
 
-### Strategic Decision: Mycelium First, VETKA Later
+**System B** — полноценная продакшен-система, не трогаем.
 
-**Командир прав:** Не трогаем VETKA chat сейчас. Стратегия:
+**System A (Rust)** — единственная польза: OS-native notifications. Варианты:
+1. ❌ Удалить полностью (самое простое)
+2. ✅ **Превратить в thin client:** Rust heartbeat опрашивает System B status через REST
+   → показывает OS notification "3 tasks pending, heartbeat active"
+   → убрать дублирование логики, оставить только нотификации
 
-1. **Phase 145:** Adaptive timeout ТОЛЬКО в Mycelium Pipeline (`agent_pipeline.py`)
-   - Файл `src/elisya/llm_model_registry.py` — общая библиотека
-   - Вызов `calculate_timeout()` в `_safe_phase()`
-   - НЕ трогаем `provider_registry.py` и chat handlers
+### UI Consolidation: Header Controls
 
-2. **Phase 146+:** Когда Pipeline стабилен → портируем в VETKA chat
-   - Добавим `timeout` параметр в `call_model_v2()`
-   - Пробросим через все 7 Provider.call() методов
-   - Покроем Doctor Triage (закроем vulnerability)
+**Проблема:** Heartbeat toggle сейчас внизу MCCTaskList (под чатом). Это главное — должно быть в шапке.
 
-3. **Артефакты:** В VETKA кодеры работают в артефактах (не в pipeline subtasks)
-   - Артефакт timeout != Pipeline timeout
-   - Отдельная формула для artifact generation
+**Новый Header Layout:**
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ MCC  ◇ silver ▾  • LIVE  │ ❤️ ON 47s │ 🔒 PG:2 │ ⚙ │  ◀ ▶  │
+│                           │  heartbeat │ sandbox  │set│  stream │
+└──────────────────────────────────────────────────────────────────┘
 
-### Files Ready to Create
+Header controls (left to right):
+- ❤️ Heartbeat toggle + countdown ("ON 47s" / "OFF")
+  - Click: toggle on/off
+  - Long press: interval selector popup (1m/5m/15m/1h)
+- 🔒 Playground badge ("PG:2" = 2 active sandboxes)
+  - Click: open playground list
+  - Badge turns green when promote available
+- ⚙ Settings gear
+  - Opens: playground base_dir, heartbeat interval, GitHub token
+- ◀ ▶ Stream controls (existing)
+```
 
-| File | Lines | Status |
-|------|-------|--------|
-| `src/elisya/llm_model_registry.py` | ~490 | Code ready, needs Write |
-| `src/elisya/model_updater.py` | ~180 | Code ready, needs Write |
-| `agent_pipeline.py` (patch) | ~20 lines diff | Planned |
+**⚠️ Задача для CURSOR:**
+- Перенести heartbeat из MCCTaskList footer → Header
+- Добавить Playground badge в Header
+- Settings gear → playground settings + heartbeat config
+
+---
+
+## VII. STRATEGIC GAPS — Updated
+
+| Gap | Current | Target | Status |
+|-----|---------|--------|--------|
+| **Playground Infra** | 95% | 100% E2E | ✅ 146 DONE |
+| **Playground Ops Backend** | 100% | 100% | ✅ 146.5 DONE |
+| **Playground Ops Frontend** | 0% | MVP | 🔥 PG-5,6,7,8 (CURSOR) |
+| **Watcher SpamDetector** | 100% | 100% | ✅ 146.5 DONE |
+| **Heartbeat Consolidation** | analyzed | unified | 🔥 Remove Rust dupe |
+| **Header UI (HB+PG+Settings)** | 0% | MVP | 🔥 CURSOR task |
+| **Scanner Dedup** | broken | fixed | 🔴 CODEX working |
+| **Unified Search Web** | 70% | 90% | 🟠 CODEX working |
+| **Knowledge Graph** | 10% | 10% | skip → Phase 149+ |
+| **Jarvis Superagent** | 0% | 0% | skip → Phase 148+ |
+| **Messenger (Telegram)** | 0% | 0% | skip → Phase 150+ |
+
+---
+
+## VIII. MVP PLAN — Updated Status
+
+### Day 1 (Feb 14): FIX — ✅ DONE
+
+| # | Task | Owner | Status |
+|---|------|-------|--------|
+| D1.1 | Fix Scanner Duplicates | CODEX | 🔴 In progress |
+| D1.2 | Fix Heartbeat multi-group | CODEX | ⚠️ Needs reassessment (see Heartbeat Analysis) |
+| D1.5 | Increase coder timeout | OPUS | ✅ DONE (adaptive timeout) |
+| D1.6 | Cleanup TaskBoard | OPUS | ✅ DONE |
+| D1.8 | Adaptive Timeout | OPUS | ✅ DONE (36 tests) |
+| D1.9 | Frontend Polling Cleanup | OPUS | ✅ DONE (~103K req/day saved) |
+| D1.10 | Kill model_updater cron | OPUS | ✅ DONE |
+
+### Day 2 (Feb 14-15): BUILD — 🔶 IN PROGRESS
+
+| # | Task | Owner | Status |
+|---|------|-------|--------|
+| D2.1 | Playground: git worktree + scoped MCP | OPUS | ✅ DONE (53 tests) |
+| D2.2 | Playground: pipeline sandbox flag | OPUS | ✅ DONE (included in D2.1) |
+| D2.3 | Playground: test Dragon Silver in sandbox | OPUS | ✅ DONE (cross-process bug found & fixed) |
+| D2.3b | Playground: review/promote/reject backend | OPUS | ✅ DONE (21 tests) |
+| D2.3c | Watcher SpamDetector | OPUS | ✅ DONE (19 tests) |
+| D2.4 | Wire Cmd+K → unified search | DRAGON SILVER | 📋 Pending |
+| D2.5 | Wire Tavily web provider | CODEX | 🔶 In progress |
+
+### Codex Parallel Track (Phase 148):
+
+| # | Task | Status |
+|---|------|--------|
+| C148.1 | Heartbeat.rs crash fix | ✅ DONE |
+| C148.2 | Web save path filter | ✅ DONE |
+| C148.3 | Post-save pipeline refresh | ✅ DONE |
+| C148.4 | Unified Search `/web` provider | 🔶 In progress |
+| C148.5 | Web artifact save → Qdrant | 🔶 In progress |
+
+### Day 3 (Feb 16-17): DELEGATE
+
+| # | Task | Owner | Status |
+|---|------|-------|--------|
+| D3.1 | E2E test: Heartbeat dispatch | CODEX | 📋 Pending |
+| D3.2 | Load TaskBoard with current tasks | OPUS | 📋 Pending |
+| D3.3 | Dragon Silver: Sprint 1 remaining | DRAGON SILVER | 📋 Pending |
+| D3.5 | Verify full pipeline cycle | OPUS | 📋 Pending |
+
+---
+
+## IX. NEXT ACTIONS (Priority Order)
+
+### OPUS (Now):
+1. ~~Playground Ops backend~~ ✅ DONE
+2. ~~SpamDetector~~ ✅ DONE
+3. **Write CURSOR brief** for: Header UI (heartbeat+playground+settings) → PG-5,6,7,8
+4. **Review Codex changes** after his Phase 148 fixes land
+5. **D2.4:** Dispatch Dragon Silver for Cmd+K → unified search
+
+### CODEX (Parallel):
+1. Finish unified search web provider
+2. Scanner dedup (BUG-1) — critical
+3. Web artifact pipeline
+
+### CURSOR (Next):
+1. **PG-5:** Sandbox toggle in TaskCard dispatch
+2. **PG-6:** Playground Review tab in MCC
+3. **Header UI:** Heartbeat toggle + Playground badge + Settings gear
+4. Move heartbeat control from MCCTaskList footer → Header
+
+### DRAGON SILVER (Queue):
+1. D2.4: Cmd+K → unified search backend wiring
+2. Sprint 1 remaining tasks
+
+---
+
+## X. ADAPTIVE TIMEOUT — FULL RECON REPORT (5 Scouts)
+
+*(Unchanged from previous version — see Phase 145 details)*
 
 ### Adaptive Timeout Formula (from Grok Research)
 
@@ -319,207 +339,44 @@ where:
   result = clamp(timeout, 45s, 600s)
 ```
 
-### Model Speed Profiles (Hardcoded Defaults)
+---
 
-| Model | TPS (output) | Recommended Timeout (medium, 8k) |
-|-------|-------------|----------------------------------|
-| Grok Fast 4.1 | 90 | 55-80s |
-| GPT-4o | 80 | 65-90s |
-| Qwen3-coder-flash | 85 | 55-80s |
-| Qwen3-coder | 55 | 90-130s |
-| Kimi K2.5 | 50 | 100-150s |
-| GLM-4.7-flash | 80 | 55-80s |
-| Qwen3-235B | 30 | 180-300s ⚠️ |
-| Claude Opus | 40 | 140-220s |
+## XI. COMMITS (Day 2 — Phase 146-146.5)
+
+| Hash | Phase | Description | Tests |
+|------|-------|-------------|-------|
+| `3850aca1` | 146.E2E | Playground E2E tests + cross-process fix | 53 |
+| `96e75f8a` | 146.5 | Playground Ops: review, promote, reject + settings | 21 |
+| `ff12bb42` | 146.5 | SpamDetector: auto-mute noisy watcher dirs | 19 |
 
 ---
 
-## X. SUCCESS CRITERIA — Feb 17
+## XII. SUCCESS CRITERIA — Feb 17
 
-| Metric | Current | Target |
-|--------|---------|--------|
-| Scanner duplicates | 2-3x files | 0 duplicates |
-| Heartbeat reliability | single group | multi-group |
-| Pipeline dispatch cycle | manual | semi-autonomous |
-| Playground operational | 0% | MVP working |
-| TaskBoard pending tasks | 11 | ≤5 |
-| Tests passing | ~800 | ~850+ (53 playground + 36 adaptive) |
-
----
-
-## X. COMPLETED FIXES (Phase 145, Day 1)
-
-### FIX-1: Adaptive Timeout (BUG-4 killer) ✅
-- **Created:** `src/elisya/llm_model_registry.py` — 20 model speed profiles, 3-tier API fetch, disk cache
-- **Created:** `src/elisya/model_updater.py` — ON-DEMAND only (no cron, no polling)
-- **Modified:** `agent_pipeline.py` — `_safe_phase()` now calculates timeout per-model
-- **Formula:** `timeout = (tokens / output_tps) × complexity + fc_overhead + buffer` → [45s, 600s]
-- **Tests:** 36 new tests, all passing
-
-### FIX-2: Frontend Polling Cleanup ✅ (BUG-10 NEW — was hidden)
-- **Problem:** 7 React components polling backend every 3-30 seconds = **~130,000 API calls/day**
-- **Root cause:** setInterval() without event-driven alternatives
-- **Impact:** CPU heat, unreadable logs, wasted bandwidth
-
-| Component | Was | Now | Saved/Day |
-|-----------|-----|-----|-----------|
-| ArtifactViewer.tsx | 10s × 4 fetches | Mount only | 34,560 |
-| ChatPanel.tsx | 3s polling | 120s fallback | 28,080 |
-| AgentStatusBar.tsx | 5s polling | Event-driven | 17,280 |
-| PipelineStats.tsx | 5-30s + events | 60s render tick only | ~10,000 |
-| MCCTaskList.tsx | 30s + events | Event-only | 2,880 |
-| WatcherStats.tsx | 10s polling | 120s fallback | 7,920 |
-| WatcherMicroStatus.tsx | 30s polling | Mount only | 2,880 |
-| **TOTAL SAVED** | | | **~103,600 req/day** |
-
-### FIX-3: Playground Architecture (D2.1) ✅
-- **Created:** `src/orchestration/playground_manager.py` — Git worktree lifecycle manager
-  - `PlaygroundManager`: create/destroy/list/cleanup playground instances
-  - `PlaygroundConfig`: dataclass with serialization, persistence to JSON
-  - Path validation: `validate_path()`, `scope_path()` — blocks `..` traversal
-  - Auto-expiry: `cleanup_expired()` — removes inactive playgrounds after 4h
-  - Max 5 concurrent playgrounds
-  - Convenience functions: `create_playground()`, `destroy_playground()`, `list_playgrounds_summary()`
-- **Modified:** `agent_pipeline.py` — `playground_root` parameter
-  - `_resolve_write_path(filepath)` — prefixes playground root for all file writes
-  - Both `_extract_and_write_files()` and `_write_extracted_file()` use scoped paths
-  - Staging dirs also scoped: `data/vetka_staging/` → `playground/data/vetka_staging/`
-  - Forbidden file checks relaxed in playground (can modify `main.py` in worktree)
-- **Modified:** `mycelium_mcp_server.py` — 4 new MCP tools + pipeline integration
-  - `mycelium_playground_create`: create worktree sandbox
-  - `mycelium_playground_list`: list active playgrounds
-  - `mycelium_playground_destroy`: cleanup worktree
-  - `mycelium_playground_diff`: git diff of playground changes
-  - `mycelium_pipeline` accepts `playground_id` param → scopes file writes
-- **Tests:** 34 new (8 classes), all passing + 136 regression tests green
-- **Architecture:**
-  ```
-  MCP tool call: mycelium_pipeline(task="...", playground_id="pg_abc123")
-  → PlaygroundManager resolves playground root
-  → AgentPipeline(playground_root="/path/to/.playgrounds/pg_abc123")
-  → _resolve_write_path("src/new.py") → /path/to/.playgrounds/pg_abc123/src/new.py
-  → Pipeline writes ONLY to worktree, main codebase untouched
-  ```
-
-### FIX-4: Cross-Process Playground Bug (D2.3) ✅
-- **Bug found during E2E testing:** Pipeline wrote files to MAIN codebase instead of playground!
-- **Root cause:** MYCELIUM server (separate process) created PlaygroundManager singleton BEFORE
-  playground was created by Claude Code. `get_playground_root()` looked up in-memory dict → miss
-  → returned None → pipeline ran UNSCOPED → files leaked to main
-- **Fix (MARKER_146.CROSS_PROCESS):** `get_playground_root()` now auto-reloads from disk when
-  playground_id not found in memory. `_load_config()` re-reads `playgrounds.json`
-- **Added `.playgrounds/` to `.gitignore`** — worktrees are ephemeral
-- **E2E test results:**
-  - 19 E2E tests (real git worktrees, not mocked) — ALL passing
-  - Dragon Silver pipeline dispatched with playground_id
-  - Pipeline completed, but files leaked to main (before fix)
-  - Cross-process fix ensures MYCELIUM reads fresh config from disk
-  - Requires MYCELIUM restart to take effect (code change in separate process)
-- **Key learning:** Any multi-process architecture needs disk-based state synchronization.
-  The singleton pattern works within ONE process but fails across process boundaries.
+| Metric | Was (Day 1) | Now (Day 2) | Target |
+|--------|-------------|-------------|--------|
+| Scanner duplicates | 2-3x files | 2-3x (Codex working) | 0 duplicates |
+| Heartbeat reliability | single group | analyzed, dual system | unified system |
+| Pipeline dispatch cycle | manual | semi-autonomous | autonomous |
+| Playground operational | 0% | **95% backend** | MVP frontend |
+| Tests passing | ~800 | **~900+** | ~950+ |
+| Watcher spam | broken | **FIXED** | n/a |
+| Header controls (HB+PG) | none | designed | MVP implemented |
 
 ---
 
-### Day 2 Roadmap Status
-
-| # | Task | Owner | Status |
-|---|------|-------|--------|
-| D2.1 | Playground: git worktree + scoped MCP | OPUS | ✅ DONE |
-| D2.2 | Playground: pipeline sandbox flag | CODEX | ⚠️ Included in D2.1 (playground_root scoping) |
-| D2.3 | Playground: test Dragon Silver in sandbox | OPUS | ✅ DONE (53 tests, cross-process bug found & fixed) |
-| D2.4 | Wire Cmd+K → unified search | DRAGON SILVER | Pending |
-| D2.5 | Wire Tavily web provider | CODEX | Pending |
-
----
-
-## XI. PLAYGROUND OPS — Missing User Workflow (NEW)
-
-**Problem:** У нас есть инфраструктура (worktree, scoped writes, 53 теста), но нет пользовательского flow.
-Агент создаёт код в sandbox — и что дальше? Нет UI для управления, нет выбора location, нет promote.
-
-### Gap A: MCC Sandbox Toggle (UI для вкл/выкл)
-**Current:** TaskCard → ▶ Run → dispatch → writes to MAIN
-**Target:** TaskCard → ▶ Run → dropdown [🔒 Sandbox / ⚡ Direct / 📂 Custom]
-**Owner:** CURSOR (frontend) + OPUS (backend endpoint tweak)
-**Effort:** 2-3h
-**Implementation:**
-- MCCTaskList dispatch → передаёт `sandbox_mode` параметр
-- dispatch endpoint → если sandbox → `playground_create` → `playground_id` в pipeline
-- StreamPanel показывает: `🔒 Running in sandbox: pg_xxx`
-- StatusBar: badge с количеством активных playgrounds
-
-### Gap B: Custom Playground Location
-**Current:** Hardcoded `.playgrounds/` в project root
-**Target:** Пользователь выбирает base_dir (любой путь на диске)
-**Owner:** OPUS (backend) + CURSOR (settings UI)
-**Effort:** 1h
-**Implementation:**
-- `PlaygroundManager.__init__(base_dir=...)` уже поддерживает! Нужен только REST + UI
-- `GET/PATCH /api/debug/playground/settings` → `data/playground_settings.json`
-- Settings panel в DevPanel: base_dir picker, max_concurrent, auto-expire timer
-- Сценарий: пользователь хочет playgrounds на быстром SSD или в tmpfs
-
-### Gap C: Promote Flow (⭐ КРИТИЧЕСКИЙ) — Review → Approve → Merge
-**Current:** Pipeline пишет файлы в worktree → конец. Нет способа перенести в main.
-**Target:** Полный цикл: generate → review diff → approve/reject per file → promote to main
-**Owner:** OPUS (backend) + CURSOR (UI)
-**Effort:** 4-6h
-**Implementation:**
-
-**Backend (3 new endpoints):**
-```
-GET  /api/debug/playground/{pg_id}/review     → файлы, диффы, статистика
-POST /api/debug/playground/{pg_id}/promote    → перенос в main (cherry-pick/copy/merge)
-POST /api/debug/playground/{pg_id}/reject     → пометить как rejected, опционально destroy
-```
-
-**Promote strategies:**
-1. **Copy files** (default MVP) — `shutil.copy2` worktree → main, затем `vetka_git_commit`
-2. **Cherry-pick** — `git cherry-pick` из playground branch (чище git history)
-3. **Merge** — `git merge playground/pg_xxx` (все изменения разом)
-
-**Frontend (MCCDetailPanel новый tab "Playground"):**
-- Diff viewer для каждого файла (уже есть `DiffViewer.tsx`)
-- Per-file checkboxes: ☑ promote / ☐ skip
-- Action buttons: [✅ Approve All] [🚀 Promote Selected] [❌ Reject All]
-- Post-promote: auto-destroy playground + refresh 3D tree (glow on promoted files)
-
-**Full lifecycle:**
-```
-@dragon task → dispatch(sandbox=true) → playground_create → pipeline runs
-  → files in worktree → MCC shows "Review Available"
-  → user opens Review tab → sees diff per file
-  → checks files to promote → clicks 🚀 Promote
-  → files copied to main → vetka_git_commit → playground destroyed
-  → 3D tree refreshes → new files glow green
-```
-
-### Day 2-3 Playground Ops Roadmap
-
-| # | Task | Owner | Hours | Status |
-|---|------|-------|-------|--------|
-| PG-1 | Backend: promote endpoint (copy strategy) | OPUS | 2h | 📋 Ready |
-| PG-2 | Backend: review endpoint (diff + file list) | OPUS | 1h | 📋 Ready |
-| PG-3 | Backend: reject endpoint + auto-destroy | OPUS | 30min | 📋 Ready |
-| PG-4 | Backend: playground settings persistence | OPUS | 30min | 📋 Ready |
-| PG-5 | Frontend: Sandbox toggle in TaskCard | CURSOR | 2h | 📋 Brief needed |
-| PG-6 | Frontend: Playground Review tab in MCC | CURSOR | 3h | 📋 Brief needed |
-| PG-7 | Frontend: Promote button + file selector | CURSOR | 2h | 📋 Dep: PG-6 |
-| PG-8 | Frontend: Settings panel (location, limits) | CURSOR | 1h | 📋 Brief needed |
-
----
-
-## XII. RISK LOG
+## XIII. RISK LOG
 
 | Risk | Probability | Impact | Mitigation |
 |------|-------------|--------|------------|
 | Scanner fix breaks existing Qdrant data | Medium | High | Backup data/ before fix |
-| Playground worktree conflicts with main | Low | Medium | Separate branch + `.gitignore` |
-| Dragon pipeline fails in sandbox | Medium | Medium | Test with bronze first |
-| Codex overwhelmed (6 tasks Day 1) | Medium | High | Prioritize BUG-1, defer BUG-6 |
-| Feb 17 deadline too aggressive | High | Medium | MVP = Playground + Scanner fix only |
+| Playground frontend delays MVP | Medium | High | Backend complete, frontend can follow |
+| Heartbeat consolidation touches Rust | Low | Medium | Keep both running, just add UI |
+| Codex overwhelmed (multiple tracks) | Medium | High | Prioritize scanner dedup |
+| Feb 17 deadline tight for frontend | High | Medium | MVP = backend ready, UI follows |
 
 ---
 
-*Generated by Opus Commander + 3 Sonnet Verifiers + 6 Haiku Scouts + Grok Recon*
-*Phase 145 RECON COMPLETE — Awaiting Commander Approval*
+*Generated by Opus Commander + Explore Agent (Heartbeat Analysis) + 19 SpamDetector Tests*
+*Phase 146.5 COMPLETE — Phase 148 IN PROGRESS*
+*Commits: 3850aca1, 96e75f8a, ff12bb42*

@@ -1,17 +1,18 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-14T17:14:02.072559+00:00",
+  "last_updated": "2026-02-14T17:37:25.350776+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 146,
     "subphase": "5",
-    "name": "Playground Ops \u2014 review, promote, reject + settings",
+    "name": "SpamDetector \u2014 auto-mute noisy watcher directories",
     "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 146.5 DONE! Playground Ops \u2014 review, promote, reject + settings",
+    "headline": "Phase 146.5 DONE! SpamDetector \u2014 auto-mute noisy watcher directories",
     "key_achievements": [
+      "[ff12bb42] Phase 146.5: Phase 146.5: SpamDetector \u2014 auto-mute noisy watcher director",
       "[96e75f8a] Phase 146.5: Phase 146.5: Playground Ops \u2014 review, promote, reject + sett",
       "[3850aca1] Phase 146.0: Phase 146.E2E: Playground sandbox E2E testing + cross-proces",
       "[cd006d29] Phase 146.0: Phase 146: Playground architecture + audit log fix",
@@ -20,8 +21,7 @@
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
       "[dragon_dragon_bronze] fix task",
-      "[dragon_dragon_bronze] test task",
-      "[dragon_dragon_bronze] fix task"
+      "[dragon_dragon_bronze] test task"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -29,12 +29,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 5727,
+      "points": 5730,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 5695,
+      "points": 5698,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "96e75f8a",
+    "commit": "ff12bb42",
     "dirty": true
   }
 }
