@@ -26,7 +26,10 @@ class LocalProjectScanner:
     IGNORE_PATTERNS = [
         '.git', '__pycache__', 'node_modules', '.env',
         '.DS_Store', '*.pyc', 'build', 'dist', 'venv', '.venv',
-        '.idea', '.vscode', 'target', '.gradle', 'Pods'
+        '.idea', '.vscode', 'target', '.gradle', 'Pods',
+        # MARKER_149.SCAN_SKIP: Prevent indexing temporary agent worktrees
+        '.playgrounds', '.claude',  # Playground sandboxes + Codex worktrees
+        'site-packages', 'venv_mcp',  # Virtual environments
     ]
 
     LANG_MAP = {

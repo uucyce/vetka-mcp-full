@@ -716,8 +716,10 @@ class QdrantIncrementalUpdater:
 
         if skip_dirs is None:
             # FIX_101.1: Added venv_mcp and site-packages to prevent indexing virtual env files
+            # MARKER_149.SCAN_SKIP: Unified skip list — prevent indexing worktrees/playgrounds
             skip_dirs = ['node_modules', '__pycache__', 'venv', '.venv', 'venv_mcp',
-                        'site-packages', 'dist', 'build', '.git', '.idea', '.vscode']
+                        'site-packages', 'dist', 'build', '.git', '.idea', '.vscode',
+                        '.playgrounds', '.claude', 'Pods', 'target']
 
         # Phase 92.3: First pass - count total files for progress
         total_files = 0
