@@ -17,6 +17,7 @@ import { PresetDropdown } from './PresetDropdown';
 import { StreamPanel } from './StreamPanel';
 import { WatcherMicroStatus } from './WatcherMicroStatus';
 import { HeartbeatChip } from './HeartbeatChip';
+import { PlaygroundBadge } from './PlaygroundBadge';
 import { WorkflowToolbar } from './WorkflowToolbar';
 import { DAGContextMenu, type ContextMenuTarget } from './DAGContextMenu';
 import { useMCCStore } from '../../store/useMCCStore';
@@ -448,6 +449,7 @@ export function MyceliumCommandCenter() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <WatcherMicroStatus />
           <HeartbeatChip />
+          <PlaygroundBadge />
 
           {stats && (
             <div style={{ display: 'flex', gap: 8, fontSize: 9, color: NOLAN_PALETTE.textNormal }}>
