@@ -244,14 +244,28 @@ export function createTestDAGData(): { nodes: DAGNode[]; edges: DAGEdge[] } {
       durationS: 5,
     },
 
-    // Layer 2: Subtasks
+    // Layer 1.5: Coder (executes subtasks)
+    {
+      id: `agent_${taskId}_coder`,
+      type: 'agent',
+      label: '@coder',
+      status: 'running',
+      layer: 1,
+      parentId: `task_${taskId}`,
+      taskId,
+      role: 'coder',
+      model: 'qwen3-coder',
+      durationS: 12,
+    },
+
+    // Layer 2: Subtasks (children of coder)
     {
       id: `sub_${taskId}_0`,
       type: 'subtask',
       label: 'Create cache service',
       status: 'done',
       layer: 2,
-      parentId: `agent_${taskId}_architect`,
+      parentId: `agent_${taskId}_coder`,
       taskId,
       tokens: 1240,
     },
@@ -261,7 +275,7 @@ export function createTestDAGData(): { nodes: DAGNode[]; edges: DAGEdge[] } {
       label: 'Add Redis client',
       status: 'running',
       layer: 2,
-      parentId: `agent_${taskId}_architect`,
+      parentId: `agent_${taskId}_coder`,
       taskId,
       tokens: 890,
     },
@@ -271,7 +285,7 @@ export function createTestDAGData(): { nodes: DAGNode[]; edges: DAGEdge[] } {
       label: 'Update API endpoints',
       status: 'pending',
       layer: 2,
-      parentId: `agent_${taskId}_architect`,
+      parentId: `agent_${taskId}_coder`,
       taskId,
     },
 
@@ -305,11 +319,15 @@ export function createTestDAGData(): { nodes: DAGNode[]; edges: DAGEdge[] } {
     { id: 'e1', source: `task_${taskId}`, target: `agent_${taskId}_scout`, type: 'structural', strength: 0.8 },
     { id: 'e2', source: `task_${taskId}`, target: `agent_${taskId}_architect`, type: 'structural', strength: 0.9 },
     { id: 'e3', source: `task_${taskId}`, target: `agent_${taskId}_researcher`, type: 'structural', strength: 0.7 },
+    { id: 'e3b', source: `task_${taskId}`, target: `agent_${taskId}_coder`, type: 'structural', strength: 0.9 },
 
-    // Agents → Subtasks
-    { id: 'e4', source: `agent_${taskId}_architect`, target: `sub_${taskId}_0`, type: 'dataflow', strength: 0.8 },
-    { id: 'e5', source: `agent_${taskId}_architect`, target: `sub_${taskId}_1`, type: 'dataflow', strength: 0.8 },
-    { id: 'e6', source: `agent_${taskId}_architect`, target: `sub_${taskId}_2`, type: 'dataflow', strength: 0.6 },
+    // Architect → Coder (plan → execute)
+    { id: 'e3c', source: `agent_${taskId}_architect`, target: `agent_${taskId}_coder`, type: 'dataflow', strength: 0.9 },
+
+    // Coder → Subtasks
+    { id: 'e4', source: `agent_${taskId}_coder`, target: `sub_${taskId}_0`, type: 'dataflow', strength: 0.8 },
+    { id: 'e5', source: `agent_${taskId}_coder`, target: `sub_${taskId}_1`, type: 'dataflow', strength: 0.8 },
+    { id: 'e6', source: `agent_${taskId}_coder`, target: `sub_${taskId}_2`, type: 'dataflow', strength: 0.6 },
 
     // Subtask → Verifier
     { id: 'e7', source: `sub_${taskId}_0`, target: `agent_${taskId}_verifier`, type: 'temporal', strength: 0.7 },

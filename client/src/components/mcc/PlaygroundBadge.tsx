@@ -3,18 +3,18 @@ import { useState, useEffect, useCallback } from 'react';
 interface PlaygroundInfo {
   playground_id: string;
   branch: string;
-  created_at: string;
   status: string;
   pipeline_runs: number;
+  files_created: number;
+  age_minutes: number;
   task?: string;
 }
 
-function timeAgo(isoString: string): string {
-  const diff = (Date.now() - new Date(isoString).getTime()) / 1000;
-  if (diff < 60) return `${Math.round(diff)}s`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-  return `${Math.floor(diff / 86400)}d`;
+function fmtAge(minutes: number): string {
+  if (minutes < 1) return '<1m';
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h`;
+  return `${Math.floor(minutes / 1440)}d`;
 }
 
 const API_DEBUG = 'http://localhost:5001/api/debug';
@@ -139,7 +139,7 @@ export function PlaygroundBadge() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <span style={{ color: '#e0e0e0' }}>{pg.playground_id.slice(0, 12)}</span>
-                    <span style={{ color: '#666' }}>{timeAgo(pg.created_at)} ago</span>
+                    <span style={{ color: '#666' }}>{fmtAge(pg.age_minutes)} ago</span>
                   </div>
                   {pg.task && (
                     <div style={{

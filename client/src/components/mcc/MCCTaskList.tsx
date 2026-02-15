@@ -48,7 +48,7 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
   const {
     tasks, tasksLoading, fetchTasks, addTask, dispatchTask,
     dispatchNext, cancelTask, selectedTaskId, selectTask,
-    statusFilter, setStatusFilter, activePreset, heartbeat, updateHeartbeat,
+    statusFilter, setStatusFilter, activePreset,
     activeAgents,
   } = useMCCStore();
 
@@ -56,37 +56,23 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
   const clearSelectedKey = useStore(s => s.clearSelectedKey);
 
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [hbExpanded, setHbExpanded] = useState(false);
-  const [nextTickIn, setNextTickIn] = useState<number | null>(null);
+  // heartbeat state removed — now in HeartbeatChip (header)
 
-  // Fetch on mount + poll + listen for events
+  // MARKER_145.CLEANUP: Fetch on mount + event-driven only — no polling.
+  // Was: 30s setInterval alongside event listener = duplicate fetches.
+  // Event 'task-board-updated' fires on every board change from backend.
   useEffect(() => {
     fetchTasks();
-    const interval = setInterval(fetchTasks, 30000);
 
     const handleBoardUpdate = () => fetchTasks();
     window.addEventListener('task-board-updated', handleBoardUpdate);
 
     return () => {
-      clearInterval(interval);
       window.removeEventListener('task-board-updated', handleBoardUpdate);
     };
   }, [fetchTasks]);
 
-  // Heartbeat countdown
-  useEffect(() => {
-    if (!heartbeat?.enabled || !heartbeat.last_tick) {
-      setNextTickIn(null);
-      return;
-    }
-    const update = () => {
-      const remaining = Math.max(0, Math.round(heartbeat.last_tick + heartbeat.interval - Date.now() / 1000));
-      setNextTickIn(remaining);
-    };
-    update();
-    const timer = setInterval(update, 1000);
-    return () => clearInterval(timer);
-  }, [heartbeat?.enabled, heartbeat?.last_tick, heartbeat?.interval]);
+  // Heartbeat countdown moved to HeartbeatChip — Phase 149.2
 
   // Add & optionally run
   const handleAdd = useCallback(async (andRun: boolean) => {
@@ -344,63 +330,7 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
           dispatch next {pendingCount > 0 && `(${pendingCount})`}
         </button>
 
-        {/* Heartbeat compact */}
-        <div
-          onClick={() => setHbExpanded(!hbExpanded)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: '5px 0', marginTop: 4, cursor: 'pointer', fontSize: 9,
-          }}
-        >
-          <span style={{
-            width: 6, height: 6, borderRadius: '50%',
-            background: heartbeat?.enabled ? '#6a6' : '#444',
-          }} />
-          <span style={{ color: '#888' }}>Heartbeat</span>
-          <span style={{
-            color: heartbeat?.enabled ? '#8a8' : '#666',
-            padding: '1px 4px',
-            background: heartbeat?.enabled ? 'rgba(100,160,100,0.1)' : 'rgba(255,255,255,0.03)',
-            borderRadius: 2, fontSize: 8,
-          }}>{heartbeat?.enabled ? 'ON' : 'OFF'}</span>
-          <span style={{ flex: 1 }} />
-          {heartbeat?.enabled && nextTickIn !== null && (
-            <span style={{ color: '#666', fontSize: 8 }}>{fmtInterval(nextTickIn)}</span>
-          )}
-        </div>
-
-        {hbExpanded && heartbeat && (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '4px 0' }}>
-            <select
-              value={heartbeat.interval}
-              onChange={e => { e.stopPropagation(); updateHeartbeat({ interval: parseInt(e.target.value) }); }}
-              onClick={e => e.stopPropagation()}
-              style={{
-                background: '#1a1a1a', border: '1px solid #333', borderRadius: 2,
-                color: '#ccc', fontSize: 9, padding: '2px 4px',
-              }}
-            >
-              <option value="60">1m</option>
-              <option value="300">5m</option>
-              <option value="900">15m</option>
-              <option value="3600">1h</option>
-              <option value="86400">1d</option>
-            </select>
-            <button
-              onClick={e => { e.stopPropagation(); updateHeartbeat({ enabled: !heartbeat.enabled }); }}
-              style={{
-                padding: '2px 8px',
-                background: heartbeat.enabled ? '#2a3a2a' : '#2a2a2a',
-                border: `1px solid ${heartbeat.enabled ? '#3a4a3a' : '#444'}`,
-                borderRadius: 2, color: heartbeat.enabled ? '#8a8' : '#888',
-                fontSize: 9, cursor: 'pointer',
-              }}
-            >{heartbeat.enabled ? 'OFF' : 'ON'}</button>
-            <span style={{ color: '#666', fontSize: 8 }}>
-              ticks:{heartbeat.total_ticks} disp:{heartbeat.tasks_dispatched}
-            </span>
-          </div>
-        )}
+        {/* Heartbeat moved to header HeartbeatChip — Phase 149.2 */}
       </div>
 
       {/* Pulse animation */}
