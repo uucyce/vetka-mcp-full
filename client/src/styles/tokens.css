@@ -1,0 +1,39 @@
+:root {
+  --bg-primary: #000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #111;
+  --bg-hover: #1a1a1a;
+  --bg-active: #222;
+
+  --border-dim: #222;
+  --border-default: #333;
+  --border-bright: #555;
+
+  --text-primary: #fff;
+  --text-secondary: #ccc;
+  --text-muted: #888;
+  --text-dim: #555;
+  --text-disabled: #333;
+
+  --accent: #4ecdc4;
+  --accent-dim: rgba(78, 205, 196, 0.3);
+
+  --status-success: #4ecdc4;
+  --status-warning: #f0c040;
+  --status-error: #ff4444;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+
+  --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  --font-size-xs: 9px;
+  --font-size-sm: 10px;
+  --font-size-md: 11px;
+  --font-size-lg: 13px;
+
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 12px;
+}

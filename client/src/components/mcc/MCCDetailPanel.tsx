@@ -461,7 +461,7 @@ export function MCCDetailPanel({
       </div>
 
       {/* MARKER_151.8: Compact architect chat (same component as Architect tab) */}
-      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`, minHeight: 230, maxHeight: 320 }}>
+      <div data-onboarding="architect-chat" style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`, minHeight: 230, maxHeight: 320 }}>
         <ArchitectChat mode="compact" />
       </div>
     </div>

@@ -11,7 +11,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import MyceliumStandalone from './MyceliumStandalone';
+import WebShellStandalone from './WebShellStandalone';
 import './styles/voice.css'; // Phase 60.5: Voice animations
+import './styles/tokens.css'; // Phase 151.17: Nolan design tokens
 import { initBrowserAgentBridge } from './utils/browserAgentBridge'; // Phase 80: Browser Agent API
 
 // Phase 80: Initialize browser agent bridge for Claude in Chrome etc.
@@ -23,6 +25,9 @@ const pathname = window.location.pathname;
 function Root() {
   if (pathname === '/mycelium') {
     return <MyceliumStandalone />;
+  }
+  if (pathname === '/web-shell') {
+    return <WebShellStandalone />;
   }
   return <App />;
 }

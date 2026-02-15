@@ -21,7 +21,10 @@ import { KeyDropdown } from './KeyDropdown';
 import { WorkflowToolbar } from './WorkflowToolbar';
 import { DAGContextMenu, type ContextMenuTarget } from './DAGContextMenu';
 import { NodePicker } from './NodePicker';
+import { OnboardingOverlay } from './OnboardingOverlay';
 import { useMCCStore } from '../../store/useMCCStore';
+import { useOnboarding } from '../../hooks/useOnboarding';
+import { useLimitedTooltip } from '../../hooks/useLimitedTooltip';
 import { NOLAN_PALETTE, createTestDAGData } from '../../utils/dagLayout';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
 import { useDAGEditor } from '../../hooks/useDAGEditor';
@@ -100,6 +103,7 @@ export function MyceliumCommandCenter() {
   const [showStream, setShowStream] = useState(true);
   const [executing, setExecuting] = useState(false);
   const [executeMsg, setExecuteMsg] = useState<string | null>(null);
+  const { step: onboardingStep, completed: onboardingCompleted, dismissed: onboardingDismissed, advance: onboardingAdvance, dismiss: onboardingDismiss } = useOnboarding();
 
   // MARKER_144.6: Edit mode + context menu
   const editMode = useMCCStore(s => s.editMode);
@@ -420,6 +424,29 @@ export function MyceliumCommandCenter() {
 
     setExecuting(true);
     try {
+      // MARKER_151.18A: Auto-create sandbox on first execute when none exists.
+      try {
+        const listRes = await fetch('http://localhost:5001/api/debug/playground');
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          const playgrounds = Array.isArray(listData.playgrounds) ? listData.playgrounds : [];
+          if (playgrounds.length === 0) {
+            await fetch('http://localhost:5001/api/debug/playground/create', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                task: `vetka-workspace-${Date.now()}`,
+                preset: 'dragon_silver',
+                auto_write: true,
+              }),
+            });
+            setExecuteMsg('created sandbox');
+          }
+        }
+      } catch {
+        // Non-blocking: execute can proceed even if sandbox bootstrap failed.
+      }
+
       const wfId = dagEditor.isDirty
         ? await dagEditor.save(dagEditor.workflowName)
         : currentWorkflowId;
@@ -441,6 +468,13 @@ export function MyceliumCommandCenter() {
       setExecuting(false);
     }
   }, [dagEditor, executeWorkflow]);
+
+  const ttTeam = useLimitedTooltip('mcc_team', 'Select AI team preset (Dragon Bronze/Silver/Gold)');
+  const ttSandbox = useLimitedTooltip('mcc_sandbox', 'Choose working directory for agent file writes');
+  const ttHeartbeat = useLimitedTooltip('mcc_heartbeat', 'Set automatic task polling interval');
+  const ttKey = useLimitedTooltip('mcc_key', 'Select API key and view remaining balance');
+  const ttStats = useLimitedTooltip('mcc_stats', 'pending / running / done tasks');
+  const ttExecute = useLimitedTooltip('mcc_execute', 'Run current workflow or dispatch next task');
 
   // MARKER_143.P3: Get selected task title for breadcrumb
   const selectedTaskTitle = useMemo(() => {
@@ -482,10 +516,18 @@ export function MyceliumCommandCenter() {
           MCC
         </div>
 
-        <PresetDropdown />
-        <SandboxDropdown />
-        <HeartbeatChip />
-        <KeyDropdown />
+        <div data-onboarding="team-dropdown" onMouseEnter={ttTeam.onMouseEnter} title={ttTeam.title}>
+          <PresetDropdown />
+        </div>
+        <div data-onboarding="sandbox-dropdown" onMouseEnter={ttSandbox.onMouseEnter} title={ttSandbox.title}>
+          <SandboxDropdown />
+        </div>
+        <div onMouseEnter={ttHeartbeat.onMouseEnter} title={ttHeartbeat.title}>
+          <HeartbeatChip />
+        </div>
+        <div data-onboarding="key-dropdown" onMouseEnter={ttKey.onMouseEnter} title={ttKey.title}>
+          <KeyDropdown />
+        </div>
 
         <div style={{ flex: 1 }} />
 
@@ -499,7 +541,11 @@ export function MyceliumCommandCenter() {
           {connected ? '● LIVE' : '○ OFF'}
         </span>
 
-        <div style={{ display: 'flex', gap: 7, fontSize: 9, color: NOLAN_PALETTE.textNormal }}>
+        <div
+          style={{ display: 'flex', gap: 7, fontSize: 9, color: NOLAN_PALETTE.textNormal }}
+          onMouseEnter={ttStats.onMouseEnter}
+          title={ttStats.title}
+        >
           <span>{summary?.by_status?.pending ?? stats?.totalTasks ?? 0}t</span>
           <span style={{ color: NOLAN_PALETTE.statusRunning }}>{runningCount}r</span>
           <span style={{ color: NOLAN_PALETTE.statusDone }}>{summary?.by_status?.done ?? stats?.completedTasks ?? 0}d</span>
@@ -507,6 +553,7 @@ export function MyceliumCommandCenter() {
 
         <button
           onClick={!executing ? handleExecute : undefined}
+          data-onboarding="execute-button"
           style={{
             background: 'rgba(78,205,196,0.15)',
             border: '1px solid #4ecdc4',
@@ -519,7 +566,8 @@ export function MyceliumCommandCenter() {
             fontWeight: 600,
             opacity: executing ? 0.8 : 1,
           }}
-          title="Execute workflow (auto-save first)"
+          onMouseEnter={ttExecute.onMouseEnter}
+          title={ttExecute.title}
         >
           {executing ? '...' : '▶ Execute'}
         </button>
@@ -812,6 +860,14 @@ export function MyceliumCommandCenter() {
             dagEditor.addNode(type, position);
             setNodePickerPos(null);
           }}
+        />
+      )}
+
+      {!onboardingCompleted && !onboardingDismissed && (
+        <OnboardingOverlay
+          step={onboardingStep}
+          onAdvance={onboardingAdvance}
+          onDismiss={onboardingDismiss}
         />
       )}
     </div>
