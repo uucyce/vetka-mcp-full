@@ -324,7 +324,8 @@ class TaskBoard:
                 return False
 
         # MARKER_137.S1_4: Allow adding 'result' field even if not present
-        ADDABLE_FIELDS = {"result", "stats", "result_summary"}
+        # MARKER_151.12A: Added result_status for user feedback (applied/rejected/rework)
+        ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status"}
         for key, value in updates.items():
             if key in task or key in ADDABLE_FIELDS:
                 task[key] = value
@@ -717,6 +718,45 @@ class TaskBoard:
         self._save(action="stats_recorded")
         logger.info(f"[TaskBoard] Stats recorded for {task_id}: {stats.get('preset', '?')}")
         return True
+
+    # MARKER_151.12B: Compute adjusted success blending verifier + user feedback
+    def compute_adjusted_stats(self, task_id: str) -> dict:
+        """Blend pipeline self-assessment with user feedback for adjusted success score.
+
+        Formula: adjusted_success = 0.7 * verifier_success + 0.3 * user_feedback
+        User feedback values: applied=1.0, rework=0.5, rejected=0.0, None=passthrough
+
+        Returns dict with original stats + adjusted_success, user_feedback, has_user_feedback.
+        Empty dict if task not found or has no stats.
+        """
+        task = self.tasks.get(task_id)
+        if not task or "stats" not in task:
+            return {}
+
+        stats = task["stats"]
+        result_status = task.get("result_status")
+
+        # Verifier self-assessment: pipeline success flag
+        verifier_success = 1.0 if stats.get("success", False) else 0.0
+
+        # Map user feedback to numeric value
+        user_feedback_map = {
+            "applied": 1.0,
+            "rework": 0.5,
+            "rejected": 0.0,
+            None: verifier_success,  # No feedback → trust verifier
+        }
+        user_success = user_feedback_map.get(result_status, verifier_success)
+
+        # Blend: 70% verifier + 30% user
+        adjusted_success = 0.7 * verifier_success + 0.3 * user_success
+
+        return {
+            **stats,
+            "adjusted_success": round(adjusted_success, 3),
+            "user_feedback": result_status,
+            "has_user_feedback": result_status is not None,
+        }
 
     # ==========================================
     # CANCEL (MARKER_126.5D)

@@ -209,6 +209,8 @@ class AgentPipeline:
         self._llm_calls: int = 0
         self._tokens_in: int = 0
         self._tokens_out: int = 0
+        # MARKER_151.11A: Per-agent statistics breakdown
+        self._agent_stats: Dict[str, Dict] = {}  # role → {calls, tokens_in, tokens_out, duration_s, retries, success_count, fail_count}
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
         self.stm_limit = PIPELINE_STM_LIMIT
@@ -504,17 +506,25 @@ Respond with implementation plan or code."""
             call_args["model_source"] = self.provider_override
 
         # MARKER_129.4: Dual-mode LLM call (async in MYCELIUM, sync in VETKA)
+        # MARKER_151.11C: Scout timing for per-agent stats
+        _scout_t0 = time.time()
         if getattr(self, 'async_mode', False):
             result = await tool.execute(call_args)
         else:
             result = tool.execute(call_args)
+        _scout_duration = time.time() - _scout_t0
         self._track_llm_call(result)
+        _scout_usage = result.get("result", {}).get("usage", {})
         self._last_used_model = result.get("result", {}).get("model", model)
 
         try:
             if not result.get("success"):
                 logger.warning(f"[Pipeline] Scout LLM call failed: {result.get('error')}")
+                self._track_agent_stat("scout", _scout_usage.get("prompt_tokens", 0),
+                                       _scout_usage.get("completion_tokens", 0), _scout_duration, success=False)
                 return None
+            self._track_agent_stat("scout", _scout_usage.get("prompt_tokens", 0),
+                                   _scout_usage.get("completion_tokens", 0), _scout_duration, success=True)
             response_text = result.get("result", {}).get("content", "{}")
             scout_data = self._extract_json(response_text)
             # MARKER_128.1A: Inject detected project context into scout_data
@@ -859,15 +869,21 @@ Respond with implementation plan or code."""
                 call_args["model_source"] = self.provider_override
 
             # MARKER_129.4: Dual-mode LLM call
+            # MARKER_151.11D: Verifier timing for per-agent stats
+            _verifier_t0 = time.time()
             if getattr(self, 'async_mode', False):
                 result = await tool.execute(call_args)
             else:
                 result = tool.execute(call_args)
+            _verifier_duration = time.time() - _verifier_t0
             self._track_llm_call(result)
+            _verifier_usage = result.get("result", {}).get("usage", {})
             self._last_used_model = result.get("result", {}).get("model", model)
 
             if not result.get("success"):
                 logger.warning(f"[Pipeline] Verifier LLM call failed: {result.get('error')}")
+                self._track_agent_stat("verifier", _verifier_usage.get("prompt_tokens", 0),
+                                       _verifier_usage.get("completion_tokens", 0), _verifier_duration, success=False)
                 return default_pass
 
             response_text = result.get("result", {}).get("content", "{}")
@@ -933,6 +949,10 @@ Respond with implementation plan or code."""
                 )
                 verification["severity"] = "minor"  # Don't escalate, just retry
 
+            # MARKER_151.11D: Track verifier success based on parsed result
+            self._track_agent_stat("verifier", _verifier_usage.get("prompt_tokens", 0),
+                                   _verifier_usage.get("completion_tokens", 0), _verifier_duration,
+                                   success=verification.get("passed", False))
             return verification
 
         except Exception as e:
@@ -946,6 +966,9 @@ Respond with implementation plan or code."""
                            previous_result: str = "") -> str:
         """Re-run coder with verifier feedback AND previous attempt injected into context."""
         subtask.retry_count += 1
+        # MARKER_151.11I: Track coder retries in per-agent stats
+        if "coder" in self._agent_stats:
+            self._agent_stats["coder"]["retries"] += 1
         if subtask.context is None:
             subtask.context = {}
 
@@ -1102,6 +1125,30 @@ Respond with implementation plan or code."""
         if usage:
             self._tokens_in += usage.get("prompt_tokens", 0)
             self._tokens_out += usage.get("completion_tokens", 0)
+
+    # MARKER_151.11B: Per-agent statistics tracking
+    def _track_agent_stat(self, role: str, tokens_in: int = 0, tokens_out: int = 0,
+                          duration: float = 0.0, success: bool = True):
+        """Track per-agent statistics for Stats Dashboard v2.
+
+        Called alongside _track_llm_call at each LLM call site.
+        Tracks: calls, tokens, duration, success/fail counts, retries.
+        """
+        if role not in self._agent_stats:
+            self._agent_stats[role] = {
+                'calls': 0, 'tokens_in': 0, 'tokens_out': 0,
+                'duration_s': 0.0, 'retries': 0,
+                'success_count': 0, 'fail_count': 0
+            }
+        stats = self._agent_stats[role]
+        stats['calls'] += 1
+        stats['tokens_in'] += tokens_in
+        stats['tokens_out'] += tokens_out
+        stats['duration_s'] += duration
+        if success:
+            stats['success_count'] += 1
+        else:
+            stats['fail_count'] += 1
 
     # MARKER_104_ELISION_PROMPTS_START: Context compression method
     def _compress_context(self, context: Any, level: int = None) -> tuple:
@@ -2303,6 +2350,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     ),
                     "completed_at": time.time(),
                     "duration_s": round(time.time() - pipeline_task.timestamp, 1),
+                    # MARKER_151.11H: Per-agent stats breakdown for Stats Dashboard v2
+                    "agent_stats": dict(self._agent_stats),
                 }
                 # Save to TaskBoard if task has a board ID
                 if hasattr(self, '_board_task_id') and self._board_task_id:
@@ -2899,6 +2948,50 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         self._update_task(pipeline_task)
     # MARKER_104_PARALLEL_5_END
 
+    # MARKER_151.14A: Collect team performance summary for Architect context
+    async def _get_team_performance_summary(self) -> str:
+        """Collect recent per-agent stats for Architect context.
+
+        Aggregates agent_stats across last 10 tasks from TaskBoard.
+        Returns formatted summary string, or empty string if no data.
+        Never raises — graceful degradation.
+        """
+        try:
+            from src.orchestration.task_board import get_task_board
+            board = get_task_board()
+            all_tasks = board.list_tasks()
+            # Filter tasks that have per-agent stats
+            recent_tasks = [
+                t for t in all_tasks
+                if t.get("stats", {}).get("agent_stats")
+            ]
+            if not recent_tasks:
+                return ""
+
+            # Aggregate per-agent across last 10 tasks
+            agent_totals: Dict[str, Dict[str, int]] = {}
+            for task in recent_tasks[-10:]:
+                for role, stats in task["stats"].get("agent_stats", {}).items():
+                    if role not in agent_totals:
+                        agent_totals[role] = {"calls": 0, "success": 0, "fail": 0}
+                    agent_totals[role]["calls"] += stats.get("calls", 0)
+                    agent_totals[role]["success"] += stats.get("success_count", 0)
+                    agent_totals[role]["fail"] += stats.get("fail_count", 0)
+
+            if not agent_totals:
+                return ""
+
+            lines = ["## TEAM PERFORMANCE (last 10 runs)"]
+            for role, totals in agent_totals.items():
+                total = totals["success"] + totals["fail"]
+                rate = totals["success"] / total * 100 if total > 0 else 0
+                flag = " ⚠️ WEAK" if rate < 60 else ""
+                lines.append(f"- {role}: {rate:.0f}% success ({totals['calls']} calls){flag}")
+
+            return "\n".join(lines)
+        except Exception:
+            return ""  # Graceful — never block pipeline
+
     # MARKER_102.5_START: Architect planning
     async def _architect_plan(self, task: str, phase_type: str, scout_context: Optional[Dict] = None,
                                research_context: Optional[Dict] = None,
@@ -2951,6 +3044,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if feedback_context:
             user_content += f"\n\n{feedback_context[:600]}"
         # MARKER_135.FB_LOOP_B_END
+        # MARKER_151.14B: Inject team performance summary for Architect awareness
+        team_perf = await self._get_team_performance_summary()
+        if team_perf:
+            user_content = f"{team_perf}\n\n{user_content}"
 
         call_args = {
             "model": model,
@@ -2972,11 +3069,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if self.provider_override:
             call_args["model_source"] = self.provider_override
         # MARKER_129.4: Dual-mode LLM call
+        # MARKER_151.11E: Architect timing for per-agent stats
+        _arch_t0 = time.time()
         if getattr(self, 'async_mode', False):
             result = await tool.execute(call_args)
         else:
             result = tool.execute(call_args)
+        _arch_duration = time.time() - _arch_t0
         self._track_llm_call(result)
+        _arch_usage = result.get("result", {}).get("usage", {})
         # MARKER_117.6C: Track architect model for attribution
         self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
 
@@ -2985,6 +3086,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # LLMCallTool returns: {"success": bool, "result": {"content": str, ...}, "error": str}
             if not result.get("success"):
                 logger.warning(f"[Pipeline] Architect LLM call failed: {result.get('error')}")
+                self._track_agent_stat("architect", _arch_usage.get("prompt_tokens", 0),
+                                       _arch_usage.get("completion_tokens", 0), _arch_duration, success=False)
                 raise ValueError(result.get("error", "Unknown error"))
 
             response_text = result.get("result", {}).get("content", "{}")
@@ -2999,10 +3102,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 plan["estimated_complexity"] = "medium"
 
             logger.info(f"[Pipeline] Architect plan: {len(plan.get('subtasks', []))} subtasks, {plan.get('execution_order')}")
+            self._track_agent_stat("architect", _arch_usage.get("prompt_tokens", 0),
+                                   _arch_usage.get("completion_tokens", 0), _arch_duration, success=True)
             return plan
 
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"[Pipeline] Failed to parse architect response: {e}")
+            self._track_agent_stat("architect", _arch_usage.get("prompt_tokens", 0),
+                                   _arch_usage.get("completion_tokens", 0), _arch_duration, success=False)
             return {
                 "subtasks": [{"description": task, "needs_research": True, "question": task, "marker": "MARKER_102.1"}],
                 "execution_order": "sequential",
@@ -3080,11 +3187,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if self.provider_override:
             call_args["model_source"] = self.provider_override
         # MARKER_129.4: Dual-mode LLM call
+        # MARKER_151.11F: Researcher timing for per-agent stats
+        _res_t0 = time.time()
         if getattr(self, 'async_mode', False):
             result = await tool.execute(call_args)
         else:
             result = tool.execute(call_args)
+        _res_duration = time.time() - _res_t0
         self._track_llm_call(result)
+        _res_usage = result.get("result", {}).get("usage", {})
         # MARKER_117.6C: Track researcher model for attribution
         self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
 
@@ -3092,6 +3203,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         try:
             if not result.get("success"):
                 logger.warning(f"[Pipeline] Researcher LLM call failed: {result.get('error')}")
+                self._track_agent_stat("researcher", _res_usage.get("prompt_tokens", 0),
+                                       _res_usage.get("completion_tokens", 0), _res_duration, success=False)
                 raise ValueError(result.get("error", "Unknown error"))
 
             response_text = result.get("result", {}).get("content", "{}")
@@ -3106,10 +3219,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 research["confidence"] = 0.7
 
             logger.info(f"[Pipeline] Research confidence: {research.get('confidence', 'N/A')}")
+            self._track_agent_stat("researcher", _res_usage.get("prompt_tokens", 0),
+                                   _res_usage.get("completion_tokens", 0), _res_duration, success=True)
             return research
 
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"[Pipeline] Failed to parse researcher response: {e}")
+            self._track_agent_stat("researcher", _res_usage.get("prompt_tokens", 0),
+                                   _res_usage.get("completion_tokens", 0), _res_duration, success=False)
             # Fallback: use raw text as enriched context
             raw_content = result.get("result", {}).get("content", question) if result.get("success") else question
             return {
@@ -3384,6 +3501,8 @@ Execute this subtask. Provide clear, actionable output."""}
         # Gives coder read-only tools (vetka_read_file, vetka_search_semantic, etc.)
         # so it can read actual file contents before writing code.
         # Falls back to one-shot if FC unavailable or fails.
+        # MARKER_151.11G: Coder timing for per-agent stats (covers both FC and one-shot paths)
+        _coder_t0 = time.time()
         if phase_type in ("fix", "build") and FC_LOOP_AVAILABLE:
             try:
                 coder_tool_schemas = get_coder_tool_schemas()
@@ -3400,6 +3519,7 @@ Execute this subtask. Provide clear, actionable output."""}
                         progress_callback=self._emit_progress,
                         base_path=self.playground_root,
                     )
+                    _coder_duration = time.time() - _coder_t0
                     # Track model for attribution
                     self._last_used_model = fc_result.get("model", model)
                     # Log tool usage
@@ -3416,6 +3536,8 @@ Execute this subtask. Provide clear, actionable output."""}
                     content = fc_result.get("content", "")
                     if content:
                         logger.info(f"[Pipeline] FC subtask result: {content[:100]}...")
+                        # MARKER_151.11G: Track coder FC success (no token info from FC loop)
+                        self._track_agent_stat("coder", 0, 0, _coder_duration, success=True)
                         # MARKER_150.4D: Try PatchApplier FIRST for patch mode
                         if patch_target_files and self.auto_write:
                             files_patched = await self._apply_patches(content, subtask)
@@ -3449,7 +3571,9 @@ Execute this subtask. Provide clear, actionable output."""}
             result = await tool.execute(call_args)
         else:
             result = tool.execute(call_args)
+        _coder_duration = time.time() - _coder_t0
         self._track_llm_call(result)
+        _coder_usage = result.get("result", {}).get("usage", {})
         # MARKER_117.6C: Track coder model for attribution
         self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
 
@@ -3458,6 +3582,9 @@ Execute this subtask. Provide clear, actionable output."""}
             content = result.get("result", {}).get("content", "")
             if content:
                 logger.info(f"[Pipeline] Subtask result: {content[:100]}...")
+                # MARKER_151.11G: Track coder one-shot success
+                self._track_agent_stat("coder", _coder_usage.get("prompt_tokens", 0),
+                                       _coder_usage.get("completion_tokens", 0), _coder_duration, success=True)
 
                 # MARKER_150.4E: Try PatchApplier FIRST for patch mode (one-shot path)
                 if patch_target_files and self.auto_write:
@@ -3489,10 +3616,14 @@ Execute this subtask. Provide clear, actionable output."""}
                 return content
             else:
                 logger.warning(f"[Pipeline] Subtask returned empty content")
+                self._track_agent_stat("coder", _coder_usage.get("prompt_tokens", 0),
+                                       _coder_usage.get("completion_tokens", 0), _coder_duration, success=False)
                 return "Subtask completed (no content)"
         else:
             error = result.get("error", "Unknown error")
             logger.warning(f"[Pipeline] Subtask LLM call failed: {error}")
+            self._track_agent_stat("coder", _coder_usage.get("prompt_tokens", 0),
+                                   _coder_usage.get("completion_tokens", 0), _coder_duration, success=False)
             return f"Error: {error}"
     # MARKER_102.22_END
     # MARKER_102.7_END

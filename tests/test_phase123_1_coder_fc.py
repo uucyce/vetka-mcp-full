@@ -332,6 +332,8 @@ class TestCoderFCIntegration:
         pipeline._llm_calls = 0
         pipeline._tokens_in = 0
         pipeline._tokens_out = 0
+        # MARKER_151.11A per-agent stats
+        pipeline._agent_stats = {}
         # MARKER_150.2_PLAYGROUND: playground_root for FC loop base_path
         pipeline.playground_root = None
         return pipeline

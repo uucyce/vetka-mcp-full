@@ -1713,6 +1713,14 @@ async def get_task_board_api() -> Dict[str, Any]:
     tasks = board.get_queue()  # All tasks, sorted by priority
     summary = board.get_board_summary()
 
+    # MARKER_151.12C: Enrich tasks with adjusted_stats (blended verifier + user feedback)
+    for task in tasks:
+        task_id = task.get("id")
+        if task_id and task.get("stats"):
+            adjusted = board.compute_adjusted_stats(task_id)
+            if adjusted:
+                task["adjusted_stats"] = adjusted
+
     return {
         "success": True,
         "tasks": tasks,
