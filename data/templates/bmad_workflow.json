@@ -1,0 +1,164 @@
+{
+  "id": "bmad_default_v1",
+  "name": "BMAD Loop (Build → Measure → Adjust → Deploy)",
+  "description": "Default self-improving agent pipeline. Scout explores codebase, Architect plans, Coder builds (with FC tools), Verifier+Eval measure quality, retry loop adjusts, Approval gate blocks until human/auto-approve, Promote deploys to main.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-02-15T12:00:00Z",
+    "updated_at": "2026-02-15T12:00:00Z",
+    "author": "vetka-system",
+    "preset": "dragon_silver",
+    "phase": "150"
+  },
+  "nodes": [
+    {
+      "id": "scout",
+      "type": "agent",
+      "label": "Scout (Codebase Recon)",
+      "position": { "x": 100, "y": 300 },
+      "data": {
+        "role": "scout",
+        "description": "Scans codebase via ripgrep + Qdrant, finds target files, places markers",
+        "outputs": ["relevant_files", "marker_map", "patterns_found"]
+      }
+    },
+    {
+      "id": "architect",
+      "type": "agent",
+      "label": "Architect (Plan)",
+      "position": { "x": 300, "y": 300 },
+      "data": {
+        "role": "architect",
+        "description": "Creates subtask plan from Scout report. References MARKER_SCOUT_X in subtasks.",
+        "outputs": ["subtasks", "plan_confidence"]
+      }
+    },
+    {
+      "id": "researcher",
+      "type": "agent",
+      "label": "Researcher (Web + Docs)",
+      "position": { "x": 300, "y": 100 },
+      "data": {
+        "role": "researcher",
+        "description": "Web research via Tavily + Context7 library docs. Enriches architect plan.",
+        "optional": true,
+        "outputs": ["web_sources", "api_patterns", "known_issues"]
+      }
+    },
+    {
+      "id": "coder",
+      "type": "agent",
+      "label": "Coder (Build)",
+      "position": { "x": 550, "y": 300 },
+      "data": {
+        "role": "coder",
+        "description": "Writes code following marker rails. FC loop: search → read → write.",
+        "mode": "sparse_apply",
+        "outputs": ["code_result", "files_changed"]
+      }
+    },
+    {
+      "id": "measure",
+      "type": "parallel",
+      "label": "Measure (Verify + Eval)",
+      "position": { "x": 800, "y": 300 },
+      "data": {
+        "description": "Parallel quality check: Verifier (code-specific 3-point checklist) + Eval agent (scoring + memory)",
+        "children": ["verifier", "eval_agent"]
+      }
+    },
+    {
+      "id": "verifier",
+      "type": "agent",
+      "label": "Verifier (Code Review)",
+      "position": { "x": 750, "y": 150 },
+      "data": {
+        "role": "verifier",
+        "description": "3-point checklist: HAS_CODE, CORRECT, COMPLETE. Returns passed/confidence/issues.",
+        "parent": "measure",
+        "outputs": ["passed", "confidence", "issues", "severity"]
+      }
+    },
+    {
+      "id": "eval_agent",
+      "type": "agent",
+      "label": "Eval Agent (Score)",
+      "position": { "x": 850, "y": 150 },
+      "data": {
+        "role": "eval",
+        "description": "evaluate_with_retry() — deep quality scoring with few-shot memory. Returns 0.0-1.0.",
+        "call": "evaluate_with_retry",
+        "source_file": "src/agents/eval_agent.py",
+        "parent": "measure",
+        "outputs": ["score", "feedback", "high_score_saved"]
+      }
+    },
+    {
+      "id": "adjust",
+      "type": "condition",
+      "label": "Quality Gate (score >= 0.8?)",
+      "position": { "x": 1050, "y": 300 },
+      "data": {
+        "description": "If eval score < 0.8 OR verifier.passed == false → retry coder with feedback",
+        "condition": "eval_score >= 0.8 AND verifier_passed == true",
+        "threshold": 0.8,
+        "max_retries": 3
+      }
+    },
+    {
+      "id": "retry_coder",
+      "type": "agent",
+      "label": "Retry Coder (Adjust)",
+      "position": { "x": 1050, "y": 100 },
+      "data": {
+        "role": "coder",
+        "description": "Re-run coder with verifier feedback + previous attempt (MARKER_149.RETRY_FIX). Fixes issues, does NOT rewrite from scratch.",
+        "feedback_from": ["verifier", "eval_agent"],
+        "preserves_previous": true,
+        "outputs": ["code_result", "retry_count"]
+      }
+    },
+    {
+      "id": "approval_gate",
+      "type": "gate",
+      "label": "Approval Gate",
+      "position": { "x": 1300, "y": 300 },
+      "data": {
+        "description": "Blocks until human approves or auto-approve triggers. SocketIO modal in chat.",
+        "service": "approval_service",
+        "auto_approve_rules": {
+          "new_files": true,
+          "modifications_under_50_lines": true,
+          "eval_score_above_0.95": true
+        }
+      }
+    },
+    {
+      "id": "deploy",
+      "type": "task",
+      "label": "Deploy (Promote to Main)",
+      "position": { "x": 1550, "y": 300 },
+      "data": {
+        "description": "Promote approved files from playground worktree to main branch. Strategy: copy (default) or sparse apply.",
+        "action": "playground_promote",
+        "strategy": "copy",
+        "destroy_after": true
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "scout", "target": "architect", "type": "structural", "label": "recon report" },
+    { "id": "e2", "source": "scout", "target": "researcher", "type": "structural", "label": "research queries" },
+    { "id": "e3", "source": "architect", "target": "coder", "type": "dataflow", "label": "subtask plan" },
+    { "id": "e4", "source": "researcher", "target": "coder", "type": "dataflow", "label": "web context" },
+    { "id": "e5", "source": "coder", "target": "measure", "type": "dataflow", "label": "code output" },
+    { "id": "e5a", "source": "measure", "target": "verifier", "type": "parallel_fork" },
+    { "id": "e5b", "source": "measure", "target": "eval_agent", "type": "parallel_fork" },
+    { "id": "e6", "source": "verifier", "target": "adjust", "type": "dataflow", "label": "review result" },
+    { "id": "e6b", "source": "eval_agent", "target": "adjust", "type": "dataflow", "label": "eval score" },
+    { "id": "e7_pass", "source": "adjust", "target": "approval_gate", "type": "conditional", "label": "PASS (score >= 0.8)" },
+    { "id": "e7_fail", "source": "adjust", "target": "retry_coder", "type": "conditional", "label": "RETRY (score < 0.8)" },
+    { "id": "e8_feedback", "source": "retry_coder", "target": "measure", "type": "feedback", "label": "retry → re-verify" },
+    { "id": "e9", "source": "approval_gate", "target": "deploy", "type": "temporal", "label": "approved" }
+  ]
+}
