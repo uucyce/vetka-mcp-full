@@ -68,12 +68,16 @@ class VetkaSearchSemanticTool(BaseTool):
     _SKIP_NAMES = {"__init__.py", "index.ts", "index.js"}
     _SKIP_PATH_PARTS = {"node_modules", "__pycache__", ".git", "dist", "build"}
 
-    async def execute(self, query: str = "", limit: int = 10, **kwargs) -> ToolResult:
+    async def execute(self, query: str = "", limit: int = 10, _base_path: str = "", **kwargs) -> ToolResult:
         """Hybrid search: semantic results + Qdrant code-only filtered search.
 
         MARKER_124.5A: Embedding models rank docs (.md, .txt) above code files.
         Fix: run TWO searches — general semantic + code-only filtered via Qdrant.
         Merge results, dedup by path, code files first.
+
+        MARKER_150.2_PLAYGROUND: _base_path accepted but not actively used here
+        (Qdrant indexes main project; semantic search returns same results regardless).
+        File reading from playground is handled by VetkaReadFileTool + VetkaSearchCodeTool.
         """
         try:
             if not query or len(query) < 2:
@@ -502,14 +506,17 @@ class VetkaReadFileTool(BaseTool):
             needs_user_approval=False
         )
 
-    async def execute(self, file_path: str = "", marker: str = "", **kwargs) -> ToolResult:
+    async def execute(self, file_path: str = "", marker: str = "", _base_path: str = "", **kwargs) -> ToolResult:
         try:
             if not self._tool:
                 return ToolResult(success=False, result=None, error="ReadFileTool not available")
 
+            # MARKER_150.2_PLAYGROUND: Use playground path if provided
+            effective_root = _base_path or self._PROJECT_ROOT
+
             # MARKER_124.8B: If marker specified, do focused read
             if marker:
-                return await self._read_marker_focused(file_path, marker)
+                return await self._read_marker_focused(file_path, marker, effective_root)
 
             # Normal full-file read
             arguments = {"path": file_path, "max_lines": 500}
@@ -540,7 +547,7 @@ class VetkaReadFileTool(BaseTool):
         except Exception as e:
             return ToolResult(success=False, result=None, error=str(e))
 
-    async def _read_marker_focused(self, file_path: str, marker: str) -> ToolResult:
+    async def _read_marker_focused(self, file_path: str, marker: str, effective_root: str = "") -> ToolResult:
         """Read only the code block around a specific MARKER_ tag.
 
         MARKER_124.8B: Instead of reading 500+ lines, reads ±20 lines
@@ -550,13 +557,18 @@ class VetkaReadFileTool(BaseTool):
         that aren't written to disk. If marker not found in file text,
         tries to extract line number from marker format (e.g., 'line:42')
         or uses a fallback line param passed as 'MARKER_SCOUT_1:42'.
+
+        MARKER_150.2_PLAYGROUND: effective_root overrides _PROJECT_ROOT
+        when running inside a playground worktree.
         """
         from pathlib import Path
+
+        root = effective_root or self._PROJECT_ROOT
 
         # Resolve path
         p = Path(file_path)
         if not p.is_absolute():
-            p = Path(self._PROJECT_ROOT) / p
+            p = Path(root) / p
 
         if not p.exists():
             return ToolResult(success=False, result=None, error=f"File not found: {file_path}")
@@ -663,11 +675,11 @@ class VetkaSearchFilesTool(BaseTool):
             needs_user_approval=False
         )
 
-    async def execute(self, query: str = "", search_type: str = "content", limit: int = 10, **kwargs) -> ToolResult:
+    async def execute(self, query: str = "", search_type: str = "content", limit: int = 10, _base_path: str = "", **kwargs) -> ToolResult:
         """Delegates to VetkaSearchSemanticTool hybrid search (MARKER_124.5A)."""
         # Both tools now use the same hybrid search (semantic + code-only)
         semantic_tool = VetkaSearchSemanticTool()
-        result = await semantic_tool.execute(query=query, limit=limit)
+        result = await semantic_tool.execute(query=query, limit=limit, _base_path=_base_path)
         # Rebrand output
         if result.success and result.result:
             result = ToolResult(
@@ -716,7 +728,7 @@ class VetkaListFilesTool(BaseTool):
             needs_user_approval=False
         )
 
-    async def execute(self, path: str = "", pattern: str = "*", recursive: bool = False, **kwargs) -> ToolResult:
+    async def execute(self, path: str = "", pattern: str = "*", recursive: bool = False, _base_path: str = "", **kwargs) -> ToolResult:
         try:
             if not self._tool:
                 return ToolResult(success=False, result=None, error="ListFilesTool not available")
@@ -806,10 +818,17 @@ class VetkaSearchCodeTool(BaseTool):
             needs_user_approval=False
         )
 
-    async def execute(self, query: str = "", file_type: str = "", limit: int = 10, **kwargs) -> ToolResult:
-        """Multi-strategy code search: name → ripgrep → semantic fallback."""
+    async def execute(self, query: str = "", file_type: str = "", limit: int = 10, _base_path: str = "", **kwargs) -> ToolResult:
+        """Multi-strategy code search: name → ripgrep → semantic fallback.
+
+        MARKER_150.2_PLAYGROUND: _base_path overrides _PROJECT_ROOT for
+        playground-scoped ripgrep searches.
+        """
         if not query or len(query) < 2:
             return ToolResult(success=False, result=None, error="Query too short (min 2 chars)")
+
+        # MARKER_150.2_PLAYGROUND: Use playground path if provided
+        effective_root = _base_path or self._PROJECT_ROOT
 
         try:
             results = []
@@ -827,7 +846,7 @@ class VetkaSearchCodeTool(BaseTool):
                         results.append(r)
 
             # Strategy 2: ripgrep content search (for code patterns like "toggleBookmark", "interface Chat")
-            rg_results = await self._search_by_ripgrep(query, file_type, limit)
+            rg_results = await self._search_by_ripgrep(query, file_type, limit, effective_root)
             if rg_results:
                 strategies_used.append("ripgrep")
                 for r in rg_results:
@@ -852,7 +871,7 @@ class VetkaSearchCodeTool(BaseTool):
             strat_str = "+".join(strategies_used)
             formatted = f"Code search: '{query}' — {len(top)} results ({strat_str})\n"
             for r in top:
-                rel_path = r["path"].replace(self._PROJECT_ROOT + "/", "")
+                rel_path = r["path"].replace(effective_root + "/", "").replace(self._PROJECT_ROOT + "/", "")
                 match_info = r.get("match", "")
                 context = r.get("context", "")
                 if match_info:
@@ -909,14 +928,18 @@ class VetkaSearchCodeTool(BaseTool):
             pass
         return results
 
-    async def _search_by_ripgrep(self, query: str, file_type: str, limit: int) -> list:
+    async def _search_by_ripgrep(self, query: str, file_type: str, limit: int, search_root: str = "") -> list:
         """Search file contents using ripgrep subprocess.
 
         MARKER_124.8A: If query looks like a MARKER_, use context mode (-C 5)
         to return surrounding code lines for precise location.
+
+        MARKER_150.2_PLAYGROUND: search_root overrides _PROJECT_ROOT
+        for playground-scoped searches.
         """
         import asyncio
 
+        root = search_root or self._PROJECT_ROOT
         is_marker_query = query.startswith("MARKER_")
         results = []
         try:
@@ -937,7 +960,7 @@ class VetkaSearchCodeTool(BaseTool):
 
             # Add query and path
             cmd.append(query)
-            cmd.append(self._PROJECT_ROOT)
+            cmd.append(root)
 
             proc = await asyncio.create_subprocess_exec(
                 *cmd,

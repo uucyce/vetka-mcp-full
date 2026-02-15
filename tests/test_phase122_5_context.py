@@ -45,6 +45,8 @@ def _make_pipeline(**kwargs):
     p._llm_calls = 0
     p._tokens_in = 0
     p._tokens_out = 0
+    # MARKER_150.2_PLAYGROUND
+    p.playground_root = None
     for k, v in kwargs.items():
         setattr(p, k, v)
     return p

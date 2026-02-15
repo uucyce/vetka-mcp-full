@@ -3240,6 +3240,7 @@ Execute this subtask. Provide clear, actionable output."""}
             try:
                 coder_tool_schemas = get_coder_tool_schemas()
                 if coder_tool_schemas:
+                    # MARKER_150.2_PLAYGROUND: Pass playground_root for scoped file reads
                     fc_result = await execute_fc_loop(
                         model=model,
                         messages=call_args["messages"],
@@ -3249,6 +3250,7 @@ Execute this subtask. Provide clear, actionable output."""}
                         max_tokens=4000,
                         provider_source=self.provider_override,
                         progress_callback=self._emit_progress,
+                        base_path=self.playground_root,
                     )
                     # Track model for attribution
                     self._last_used_model = fc_result.get("model", model)

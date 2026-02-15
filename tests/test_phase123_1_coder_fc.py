@@ -332,6 +332,8 @@ class TestCoderFCIntegration:
         pipeline._llm_calls = 0
         pipeline._tokens_in = 0
         pipeline._tokens_out = 0
+        # MARKER_150.2_PLAYGROUND: playground_root for FC loop base_path
+        pipeline.playground_root = None
         return pipeline
 
     def _make_subtask(self, description="implement feature"):

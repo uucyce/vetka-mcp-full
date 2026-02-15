@@ -1,27 +1,27 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-15T11:39:09.838954+00:00",
+  "last_updated": "2026-02-15T12:04:43.856944+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 150,
-    "subphase": "0",
-    "name": "Grok research prompt \u2014 DAG-drives-pipeline architecture",
+    "subphase": "1",
+    "name": "BMAD workflow template + DAG Executor MVP",
     "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 150.0 DONE! Grok research prompt \u2014 DAG-drives-pipeline architecture",
+    "headline": "Phase 150.1 DONE! BMAD workflow template + DAG Executor MVP",
     "key_achievements": [
-      "[4175a227] Phase 150.0: Phase 150: Grok research prompt \u2014 DAG-drives-pipeline archit",
-      "[70aaa1ff] Phase 149.5: Phase 149.5: Rename chip labels \u2014 HB\u2192Heartbeat, PG\u2192Playgroun",
-      "[611222db] Phase 149.4: Phase 149.4: UI audit fixes \u2014 heartbeat cleanup, NaN fix, DA",
-      "[fcdf742e] Phase 149.3: Phase 149.3: PlaygroundBadge chip + header wiring",
-      "[1291e16f] Phase 149.2: Phase 149.2: Retry loop fix + HeartbeatChip wiring",
-      "[dragon_dragon_silver] Create NEW file: client/src/components/mcc/PlaygroundBadge.tsx\n\nTASK: Build a Pl",
-      "[f596cc9b] Phase 149.1: Phase 149.1: Qdrant cleanup \u2014 remove 6351 worktree/playgroun",
-      "[b929a015] Phase 149.0: Phase 149: Dragon Silver test + HeartbeatChip + Sparse Apply",
-      "[dragon_dragon_silver] Create HeartbeatChip.tsx React component in client/src/components/mcc/HeartbeatC",
-      "[08875a38] Phase 148.0: Add CURSOR brief: Header controls + Playground frontend (Pha"
+      "[31dcba0c] Phase 150.1: Phase 150.1: BMAD workflow template + DAG Executor MVP",
+      "[dragon_dragon_bronze] fix task",
+      "[dragon_dragon_bronze] test task",
+      "[dragon_dragon_silver] S1.2 Unified Search: wire web provider (Tavily) into federated router\n\nConnect v",
+      "[dragon_dragon_bronze] fix task",
+      "[dragon_dragon_bronze] test task",
+      "[dragon_dragon_bronze] fix task",
+      "[dragon_dragon_bronze] test task",
+      "[dragon_dragon_bronze] fix task",
+      "[dragon_dragon_bronze] test task"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -29,19 +29,19 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2578,
+      "points": 2580,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2547,
+      "points": 2549,
       "vectors": "none",
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "running",
+      "status": "offline",
       "port": 5001,
-      "tools_count": 15
+      "tools_count": 0
     },
     "api_keys": {
       "total": 30,
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "4175a227",
+    "commit": "31dcba0c",
     "dirty": true
   }
 }

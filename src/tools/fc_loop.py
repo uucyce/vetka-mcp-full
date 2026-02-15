@@ -443,6 +443,7 @@ async def execute_fc_loop(
     max_tokens: int = 4000,
     provider_source: Optional[str] = None,
     progress_callback: Optional[Callable] = None,
+    base_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Shared async Function Calling loop.
@@ -460,6 +461,9 @@ async def execute_fc_loop(
         provider_source: Provider routing hint (e.g., "polza", "openrouter")
         progress_callback: Optional async callback for progress updates
                           Signature: async def(agent: str, message: str)
+        base_path: Optional playground root path for scoped file access.
+                   MARKER_150.2_PLAYGROUND: When set, all FC tool reads are scoped
+                   to this directory instead of the default PROJECT_ROOT.
 
     Returns:
         Dict with keys:
@@ -482,7 +486,8 @@ async def execute_fc_loop(
     messages = list(messages)
     all_tool_executions = []
     fc_turns_completed = 0
-    executor = SafeToolExecutor()
+    # MARKER_150.2_PLAYGROUND: Pass base_path for playground-scoped file reads
+    executor = SafeToolExecutor(base_path=base_path)
 
     # Initial LLM call with tools
     response = await call_model_v2(

@@ -34,15 +34,20 @@ class SafeToolExecutor:
     - User approval flow (if needed)
     - Audit logging
     - Error handling
+    - MARKER_150.2_PLAYGROUND: Optional base_path for playground-scoped file access
     """
-    
-    def __init__(self, 
+
+    def __init__(self,
                  max_permission: PermissionLevel = PermissionLevel.WRITE,
                  rate_limit: RateLimitConfig = None,
-                 approval_callback=None):
+                 approval_callback=None,
+                 base_path: Optional[str] = None):
         self.max_permission = max_permission
         self.rate_limit = rate_limit or RateLimitConfig()
         self.approval_callback = approval_callback  # async def(tool_call) -> bool
+        # MARKER_150.2_PLAYGROUND: When set, file tools read from this root
+        # instead of the default PROJECT_ROOT. Used for playground isolation.
+        self.base_path = base_path
         self._call_counts: Dict[str, List[float]] = {}
     
     def _check_rate_limit(self, tool_name: str) -> bool:
@@ -115,8 +120,14 @@ class SafeToolExecutor:
                 logger.warning(f"Tool {tool_call.tool_name} needs approval but no callback set")
         
         # 5. Execute
+        # MARKER_150.2_PLAYGROUND: Inject _base_path into tool args if playground is active
+        # Tools that support it (VetkaReadFileTool, VetkaSearchCodeTool) will use this
+        # to scope file reads to the playground worktree instead of PROJECT_ROOT.
+        exec_args = dict(tool_call.arguments)
+        if self.base_path:
+            exec_args["_base_path"] = self.base_path
         try:
-            result = await tool.execute(**tool_call.arguments)
+            result = await tool.execute(**exec_args)
             result.execution_time_ms = (time.time() - start_time) * 1000
             return result
         except Exception as e:
