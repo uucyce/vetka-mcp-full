@@ -83,7 +83,7 @@ export function PlaygroundBadge() {
             background: hasActive ? '#4ecdc4' : '#444',
           }}
         />
-        <span>PG {activeCount}</span>
+        <span>Playground {activeCount}</span>
       </div>
 
       {/* Dropdown */}

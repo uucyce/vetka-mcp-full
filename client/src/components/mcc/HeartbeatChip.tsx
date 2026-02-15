@@ -81,7 +81,7 @@ export function HeartbeatChip() {
       />
 
       {/* Label */}
-      <span>{isActive ? `HB ${displayTime}` : 'HB off'}</span>
+      <span>{isActive ? `Heartbeat ${displayTime}` : 'Heartbeat off'}</span>
 
       {/* Interval popup */}
       {showIntervalInput && (

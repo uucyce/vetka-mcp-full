@@ -1,17 +1,18 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-15T10:30:19.880611+00:00",
+  "last_updated": "2026-02-15T11:09:03.491497+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 149,
-    "subphase": "3",
-    "name": "PlaygroundBadge chip + header wiring",
+    "subphase": "4",
+    "name": "UI audit fixes \u2014 heartbeat cleanup, NaN fix, DAG coder node",
     "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 149.3 DONE! PlaygroundBadge chip + header wiring",
+    "headline": "Phase 149.4 DONE! UI audit fixes \u2014 heartbeat cleanup, NaN fix, DAG coder node",
     "key_achievements": [
+      "[611222db] Phase 149.4: Phase 149.4: UI audit fixes \u2014 heartbeat cleanup, NaN fix, DA",
       "[fcdf742e] Phase 149.3: Phase 149.3: PlaygroundBadge chip + header wiring",
       "[1291e16f] Phase 149.2: Phase 149.2: Retry loop fix + HeartbeatChip wiring",
       "[dragon_dragon_silver] Create NEW file: client/src/components/mcc/PlaygroundBadge.tsx\n\nTASK: Build a Pl",
@@ -20,8 +21,7 @@
       "[dragon_dragon_silver] Create HeartbeatChip.tsx React component in client/src/components/mcc/HeartbeatC",
       "[08875a38] Phase 148.0: Add CURSOR brief: Header controls + Playground frontend (Pha",
       "[498ec9a3] Phase 148.0: Update Battlefield Report: Phase 148 status + heartbeat anal",
-      "[ff12bb42] Phase 146.5: Phase 146.5: SpamDetector \u2014 auto-mute noisy watcher director",
-      "[96e75f8a] Phase 146.5: Phase 146.5: Playground Ops \u2014 review, promote, reject + sett"
+      "[ff12bb42] Phase 146.5: Phase 146.5: SpamDetector \u2014 auto-mute noisy watcher director"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "9173b496",
+    "commit": "611222db",
     "dirty": true
   }
 }
