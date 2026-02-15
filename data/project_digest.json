@@ -1,27 +1,27 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-15T12:04:43.856944+00:00",
+  "last_updated": "2026-02-15T12:37:27.976649+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 150,
-    "subphase": "1",
-    "name": "BMAD workflow template + DAG Executor MVP",
+    "subphase": "2",
+    "name": "Playground isolation for coder FC tools",
     "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 150.1 DONE! BMAD workflow template + DAG Executor MVP",
+    "headline": "Phase 150.2 DONE! Playground isolation for coder FC tools",
     "key_achievements": [
+      "[7915ae0e] Phase 150.2: Phase 150.2: Playground isolation for coder FC tools",
+      "[dragon_dragon_bronze] fix task",
+      "[dragon_dragon_bronze] test task",
+      "[dragon_dragon_bronze] fix task",
+      "[dragon_dragon_bronze] test task",
+      "[dragon_dragon_silver] C-149.1: Fix BUG-1 Scanner Duplicates (CRITICAL)\n\n3D tree shows 2-3x duplicate f",
       "[31dcba0c] Phase 150.1: Phase 150.1: BMAD workflow template + DAG Executor MVP",
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
-      "[dragon_dragon_silver] S1.2 Unified Search: wire web provider (Tavily) into federated router\n\nConnect v",
-      "[dragon_dragon_bronze] fix task",
-      "[dragon_dragon_bronze] test task",
-      "[dragon_dragon_bronze] fix task",
-      "[dragon_dragon_bronze] test task",
-      "[dragon_dragon_bronze] fix task",
-      "[dragon_dragon_bronze] test task"
+      "[dragon_dragon_silver] S1.2 Unified Search: wire web provider (Tavily) into federated router\n\nConnect v"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -29,19 +29,19 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2580,
+      "points": 2587,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2549,
+      "points": 2555,
       "vectors": "none",
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "offline",
+      "status": "running",
       "port": 5001,
-      "tools_count": 0
+      "tools_count": 15
     },
     "api_keys": {
       "total": 30,
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "31dcba0c",
+    "commit": "7915ae0e",
     "dirty": true
   }
 }
