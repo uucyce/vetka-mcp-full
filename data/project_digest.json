@@ -1,27 +1,27 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-15T12:41:29.975362+00:00",
+  "last_updated": "2026-02-15T12:45:42.193343+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 150,
     "subphase": "3",
-    "name": "Wire DAG Executor to real pipeline methods",
+    "name": "Live DAG streaming \u2014 dag_node_update events",
     "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 150.3 DONE! Wire DAG Executor to real pipeline methods",
+    "headline": "Phase 150.3 DONE! Live DAG streaming \u2014 dag_node_update events",
     "key_achievements": [
+      "[9ed6768e] Phase 150.3: Phase 150.3: Live DAG streaming \u2014 dag_node_update events",
+      "[dragon_dragon_bronze] fix task",
+      "[dragon_dragon_bronze] test task",
       "[4e639ef1] Phase 150.3: Phase 150.3: Wire DAG Executor to real pipeline methods",
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
       "[7915ae0e] Phase 150.2: Phase 150.2: Playground isolation for coder FC tools",
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
-      "[dragon_dragon_bronze] fix task",
-      "[dragon_dragon_bronze] test task",
-      "[dragon_dragon_silver] C-149.1: Fix BUG-1 Scanner Duplicates (CRITICAL)\n\n3D tree shows 2-3x duplicate f",
-      "[31dcba0c] Phase 150.1: Phase 150.1: BMAD workflow template + DAG Executor MVP"
+      "[dragon_dragon_bronze] fix task"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -29,12 +29,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2588,
+      "points": 2589,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2556,
+      "points": 2557,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "4e639ef1",
+    "commit": "9ed6768e",
     "dirty": true
   }
 }
