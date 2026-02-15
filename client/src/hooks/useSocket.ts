@@ -387,6 +387,18 @@ interface ServerToClientEvents {
     preset?: string;
     timestamp: number;
   }) => void;
+  // MARKER_150.3_STREAMING: DAG node update for live visualization
+  dag_node_update: (data: {
+    type: string;
+    workflow_id: string;
+    node_id: string;
+    label: string;
+    status: string;
+    message: string;
+    output_preview?: string;
+    duration_s?: number;
+    timestamp: number;
+  }) => void;
 }
 
 // Phase 61: Pinned file type
@@ -450,6 +462,7 @@ interface ClientToServerEvents {
     mode?: 'hybrid' | 'semantic' | 'keyword' | 'filename';
     filters?: Record<string, unknown>;
     min_score?: number;
+    viewport_context?: ViewportContext;
   }) => void;
   // MARKER_109_4_VIEWPORT: Phase 109.4 - Viewport sync for MCP agents
   viewport_update: (data: {
@@ -1378,6 +1391,25 @@ export function useSocket() {
       }
     });
 
+    // MARKER_150.3_STREAMING: DAG node update events for live DAG visualization
+    socket.on('dag_node_update', (data: {
+      type: string;
+      workflow_id: string;
+      node_id: string;
+      label: string;
+      status: string;
+      message: string;
+      output_preview?: string;
+      duration_s?: number;
+      timestamp: number;
+    }) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('dag-node-update', { detail: data })
+        );
+      }
+    });
+
     // MARKER_104_FRONTEND
     // === PHASE 104.8: VOICE & ROOM EVENT HANDLERS ===
 
@@ -1751,12 +1783,21 @@ export function useSocket() {
       return;
     }
 
+    const nodesRecord = useStore.getState().nodes;
+    const pinnedIds = useStore.getState().pinnedFileIds;
+    const camera = useStore.getState().cameraRef;
+    const viewportContext = camera
+      ? buildViewportContext(nodesRecord, pinnedIds, camera)
+      : undefined;
+
     socketRef.current.emit('search_query', {
       text: query,
       limit,
       mode,
       filters,
-      min_score: minScore  // Phase 68.2: Pass to backend for filtering
+      min_score: minScore,  // Phase 68.2: Pass to backend for filtering
+      // MARKER_146.STEP1_CONTEXTUAL_RETRIEVAL_SOCKET: Viewport always-on contextual retrieval input.
+      viewport_context: viewportContext,
     });
     // console.log('[Socket] Emitted search_query:', query);
   }, []);

@@ -563,6 +563,120 @@ class TestFullDAGExecution:
         assert executor._role_to_node["eval"] == "eval_agent"
 
 
+# ── Test: DAG Streaming ──
+
+class TestDAGStreaming:
+    """Test dag_node_update event emission."""
+
+    @pytest.mark.asyncio
+    async def test_progress_callback_receives_events(self):
+        """Progress callback should receive events for each executed node."""
+        template = _load_bmad_template()
+        executor = DAGExecutor(template)
+        pipeline, subtasks = _make_mock_pipeline()
+
+        events = []
+        async def capture(node_id, message):
+            events.append((node_id, message))
+
+        await executor.execute(
+            task="Test streaming", phase_type="build",
+            pipeline=pipeline, progress_callback=capture,
+        )
+
+        # Should have events for all main-loop nodes (running + done)
+        node_ids_in_events = {e[0] for e in events}
+        assert "scout" in node_ids_in_events
+        assert "coder" in node_ids_in_events
+        assert "adjust" in node_ids_in_events
+        # Should have at least 2 events per node (running + done)
+        assert len(events) >= 8  # At least 8 main loop nodes × 1 event each
+
+    @pytest.mark.asyncio
+    async def test_socketio_dag_node_update_emitted(self):
+        """SocketIO should receive dag_node_update events."""
+        template = _load_bmad_template()
+        executor = DAGExecutor(template)
+        pipeline, subtasks = _make_mock_pipeline()
+
+        # Mock SocketIO
+        sio_events = []
+        mock_sio = AsyncMock()
+        async def capture_emit(event_name, data):
+            sio_events.append((event_name, data))
+        mock_sio.emit = capture_emit
+
+        await executor.execute(
+            task="Test SIO", phase_type="build",
+            pipeline=pipeline, sio=mock_sio,
+        )
+
+        # Filter dag_node_update events
+        dag_events = [(name, data) for name, data in sio_events if name == "dag_node_update"]
+        assert len(dag_events) > 0
+
+        # Check event structure
+        _, first_event = dag_events[0]
+        assert "node_id" in first_event
+        assert "status" in first_event
+        assert "workflow_id" in first_event
+        assert first_event["type"] == "dag_node_update"
+
+    @pytest.mark.asyncio
+    async def test_ws_broadcaster_receives_events(self):
+        """WebSocket broadcaster should receive dag_node_update events."""
+        template = _load_bmad_template()
+        executor = DAGExecutor(template)
+        pipeline, subtasks = _make_mock_pipeline()
+
+        ws_events = []
+        mock_ws = AsyncMock()
+        async def capture_broadcast(data):
+            ws_events.append(data)
+        mock_ws.broadcast = capture_broadcast
+
+        await executor.execute(
+            task="Test WS", phase_type="build",
+            pipeline=pipeline, ws_broadcaster=mock_ws,
+        )
+
+        dag_events = [e for e in ws_events if e.get("type") == "dag_node_update"]
+        assert len(dag_events) > 0
+
+        # Check status transitions exist
+        statuses = [e["status"] for e in dag_events]
+        assert "running" in statuses
+        assert "done" in statuses
+
+    def test_output_preview_coder(self):
+        """Output preview should summarize coder results."""
+        output = {
+            "subtask_count": 3, "done_count": 2, "failed_count": 1,
+            "results": [], "subtasks": [],
+        }
+        preview = DAGExecutor._make_output_preview(output)
+        assert "2/3 subtasks done" in preview
+        assert "1 failed" in preview
+
+    def test_output_preview_verifier(self):
+        """Output preview should summarize verifier results."""
+        output = {"passed": True, "confidence": 0.85, "verifications": []}
+        preview = DAGExecutor._make_output_preview(output)
+        assert "passed=True" in preview
+        assert "0.85" in preview
+
+    def test_output_preview_condition(self):
+        """Output preview should summarize condition branch."""
+        output = {"passed": True, "branch": "pass", "retry_count": 0}
+        preview = DAGExecutor._make_output_preview(output)
+        assert "branch=pass" in preview
+
+    def test_output_preview_empty(self):
+        """Empty output should return empty string."""
+        assert DAGExecutor._make_output_preview(None) == ""
+        assert DAGExecutor._make_output_preview({}) == ""
+
+
 # ── Test: Template Loading ──
 
 class TestTemplateLoading:

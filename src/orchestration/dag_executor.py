@@ -111,6 +111,10 @@ class DAGExecutor:
         # Progress callback: async fn(node_id, role, message)
         self._progress_callback: Optional[Callable] = None
 
+        # MARKER_150.3_STREAMING: SocketIO + WS broadcaster for live DAG updates
+        self._sio = None          # SocketIO server (for pipeline_activity broadcast)
+        self._ws_broadcaster = None  # MYCELIUM WebSocket broadcaster
+
     def topological_sort(self) -> List[str]:
         """
         Kahn's algorithm — BFS topological sort.
@@ -148,6 +152,8 @@ class DAGExecutor:
         playground_path: str = None,
         pipeline: Any = None,
         progress_callback: Callable = None,
+        sio: Any = None,
+        ws_broadcaster: Any = None,
     ) -> Dict[str, Any]:
         """
         Execute the workflow DAG.
@@ -158,11 +164,17 @@ class DAGExecutor:
             playground_path: Path to playground worktree (if sandboxed)
             pipeline: AgentPipeline instance (reuse existing, or create new)
             progress_callback: async fn(node_id, role, message) for live updates
+            sio: SocketIO server instance (for dag_node_update broadcast)
+            ws_broadcaster: MYCELIUM WebSocket broadcaster (for DevPanel)
 
         Returns:
             Dict with node results, stats, and final output
         """
         self._progress_callback = progress_callback
+        self._sio = sio or (pipeline.sio if pipeline and hasattr(pipeline, 'sio') else None)
+        self._ws_broadcaster = ws_broadcaster or (
+            pipeline._ws_broadcaster if pipeline and hasattr(pipeline, '_ws_broadcaster') else None
+        )
         start_time = time.time()
 
         # Get execution order
@@ -211,7 +223,8 @@ class DAGExecutor:
             result.started_at = time.time()
             self.results[node_id] = result
 
-            await self._emit(node_id, f"▶ {node.get('label', node_id)}")
+            # MARKER_150.3_STREAMING: Emit "running" status
+            await self._emit(node_id, f"▶ {node.get('label', node_id)}", status="running")
 
             try:
                 if node_type == "agent":
@@ -235,7 +248,10 @@ class DAGExecutor:
                 result.status = "failed"
                 result.error = str(e)
                 logger.error(f"[DAGExecutor] Node {node_id} failed: {e}")
-                await self._emit(node_id, f"❌ {node.get('label', node_id)}: {str(e)[:100]}")
+                await self._emit(
+                    node_id, f"❌ {node.get('label', node_id)}: {str(e)[:100]}",
+                    status="failed"
+                )
 
                 # Check if error should stop execution
                 if not node.get("data", {}).get("optional", False):
@@ -245,7 +261,12 @@ class DAGExecutor:
             result.duration_s = round(result.completed_at - result.started_at, 2)
 
             if result.status == "done":
-                await self._emit(node_id, f"✅ {node.get('label', node_id)} ({result.duration_s}s)")
+                # MARKER_150.3_STREAMING: Emit "done" status with output preview
+                preview = self._make_output_preview(output)
+                await self._emit(
+                    node_id, f"✅ {node.get('label', node_id)} ({result.duration_s}s)",
+                    status="done", output_preview=preview
+                )
 
         # Compile results
         total_time = round(time.time() - start_time, 2)
@@ -810,14 +831,111 @@ class DAGExecutor:
             return self.results[node_id].output
         return None
 
-    async def _emit(self, node_id: str, message: str):
-        """Emit progress event."""
+    @staticmethod
+    def _make_output_preview(output: Any) -> str:
+        """Create a concise preview of node output for streaming.
+
+        MARKER_150.3_STREAMING: Extracts key info without sending full output.
+        """
+        if not output or not isinstance(output, dict):
+            return ""
+        parts = []
+        # Subtask counts
+        if "subtask_count" in output:
+            done = output.get("done_count", "?")
+            failed = output.get("failed_count", 0)
+            parts.append(f"{done}/{output['subtask_count']} subtasks done")
+            if failed:
+                parts.append(f"{failed} failed")
+        # Verifier results
+        if "passed" in output:
+            icon = "✅" if output["passed"] else "❌"
+            conf = output.get("confidence", "?")
+            parts.append(f"{icon} passed={output['passed']} conf={conf}")
+        # Eval score
+        if "score" in output and "passed" not in output:
+            parts.append(f"score={output['score']}")
+        # Condition branch
+        if "branch" in output:
+            parts.append(f"branch={output['branch']}")
+        # Gate
+        if "approved" in output:
+            parts.append(f"approved={output['approved']}")
+        # Generic warning/note
+        if "warning" in output:
+            parts.append(output["warning"][:80])
+        return " | ".join(parts) if parts else str(output)[:200]
+
+    async def _emit(self, node_id: str, message: str, status: str = None, output_preview: str = None):
+        """Emit progress event + structured dag_node_update.
+
+        MARKER_150.3_STREAMING: Sends two types of events:
+        1. progress_callback (custom fn) — for callers that provide their own handler
+        2. dag_node_update — structured event via SocketIO + WS for live DAG visualization
+
+        dag_node_update payload:
+        {
+            "type": "dag_node_update",
+            "workflow_id": "bmad_default_v1",
+            "node_id": "coder",
+            "label": "Coder (Build)",
+            "status": "running" | "done" | "failed" | "skipped",
+            "message": "🔨 Subtask 1/3: Add toggleBookmark...",
+            "output_preview": "function toggle() { ... }",
+            "duration_s": 12.5,
+            "timestamp": 1708012345.678
+        }
+        """
+        # 1. Custom callback (for tests and custom integrations)
         if self._progress_callback:
             try:
                 await self._progress_callback(node_id, message)
             except Exception:
                 pass
-        logger.info(f"[DAGExecutor] {node_id}: {message}")
+
+        # Get node metadata
+        node = self.nodes.get(node_id, {})
+        label = node.get("label", node_id)
+        result = self.results.get(node_id)
+
+        # Determine status from node result or override
+        if status:
+            node_status = status
+        elif result:
+            node_status = result.status
+        else:
+            node_status = "running"
+
+        # Build structured event
+        event_data = {
+            "type": "dag_node_update",
+            "workflow_id": self.workflow_id,
+            "node_id": node_id,
+            "label": label,
+            "status": node_status,
+            "message": message,
+            "timestamp": time.time(),
+        }
+        if output_preview:
+            event_data["output_preview"] = output_preview[:500]
+        if result and result.duration_s > 0:
+            event_data["duration_s"] = result.duration_s
+
+        # 2. MYCELIUM WebSocket broadcast (for DevPanel)
+        if self._ws_broadcaster:
+            try:
+                await self._ws_broadcaster.broadcast(event_data)
+            except Exception:
+                pass
+
+        # 3. SocketIO broadcast (for all connected clients)
+        if self._sio:
+            try:
+                await self._sio.emit("dag_node_update", event_data)
+            except Exception:
+                pass
+
+        logger.info(f"[DAGExecutor] {node_id}[{node_status}]: {message}")
 
 
 # ── Convenience Functions ──
