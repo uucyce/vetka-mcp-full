@@ -14,6 +14,8 @@ import { DetailPanel } from './DetailPanel';
 import { PipelineResultsViewer } from './PipelineResultsViewer';
 import { NodeStreamView } from './NodeStreamView';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+import { PipelineStats } from '../panels/PipelineStats';
+import { ArchitectChat } from '../panels/ArchitectChat';
 import type { DAGNode, DAGStats } from '../../types/dag';
 
 const PIPELINE_API = 'http://localhost:5001/api/pipeline';
@@ -452,6 +454,16 @@ export function MCCDetailPanel({
           </div>
         </div>
       )}
+
+      {/* MARKER_151.9: Compact stats preview (same component as Stats tab) */}
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}` }}>
+        <PipelineStats tasks={tasks} mode="compact" />
+      </div>
+
+      {/* MARKER_151.8: Compact architect chat (same component as Architect tab) */}
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`, minHeight: 230, maxHeight: 320 }}>
+        <ArchitectChat mode="compact" />
+      </div>
     </div>
   );
 }

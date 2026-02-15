@@ -15,11 +15,12 @@ import { MCCTaskList } from './MCCTaskList';
 import { MCCDetailPanel } from './MCCDetailPanel';
 import { PresetDropdown } from './PresetDropdown';
 import { StreamPanel } from './StreamPanel';
-import { WatcherMicroStatus } from './WatcherMicroStatus';
 import { HeartbeatChip } from './HeartbeatChip';
-import { PlaygroundBadge } from './PlaygroundBadge';
+import { SandboxDropdown } from './SandboxDropdown';
+import { KeyDropdown } from './KeyDropdown';
 import { WorkflowToolbar } from './WorkflowToolbar';
 import { DAGContextMenu, type ContextMenuTarget } from './DAGContextMenu';
+import { NodePicker } from './NodePicker';
 import { useMCCStore } from '../../store/useMCCStore';
 import { NOLAN_PALETTE, createTestDAGData } from '../../utils/dagLayout';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
@@ -80,6 +81,8 @@ export function MyceliumCommandCenter() {
   const selectTask = useMCCStore(s => s.selectTask);
   const pushStreamEvent = useMCCStore(s => s.pushStreamEvent);
   const tasks = useMCCStore(s => s.tasks);
+  const summary = useMCCStore(s => s.summary);
+  const executeWorkflow = useMCCStore(s => s.executeWorkflow);
 
   // DAG data state
   const [dagNodes, setDagNodes] = useState<DAGNode[]>([]);
@@ -95,11 +98,14 @@ export function MyceliumCommandCenter() {
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [showStream, setShowStream] = useState(true);
+  const [executing, setExecuting] = useState(false);
+  const [executeMsg, setExecuteMsg] = useState<string | null>(null);
 
   // MARKER_144.6: Edit mode + context menu
   const editMode = useMCCStore(s => s.editMode);
   const toggleEditMode = useMCCStore(s => s.toggleEditMode);
   const [contextMenuTarget, setContextMenuTarget] = useState<ContextMenuTarget | null>(null);
+  const [nodePickerPos, setNodePickerPos] = useState<{ x: number; y: number } | null>(null);
 
   // MARKER_144.11: Artifact viewer state — when user clicks artifact from node stream
   const [viewingArtifact, setViewingArtifact] = useState<{
@@ -251,6 +257,7 @@ export function MyceliumCommandCenter() {
 
   // MARKER_144.3: Context menu handlers
   const handleContextMenu = useCallback((_event: React.MouseEvent, target: { kind: 'canvas' | 'node' | 'edge'; id?: string; position: { x: number; y: number } }) => {
+    setNodePickerPos(null);
     if (target.kind === 'canvas') {
       setContextMenuTarget({ kind: 'canvas', position: target.position });
     } else if (target.kind === 'node' && target.id) {
@@ -259,6 +266,12 @@ export function MyceliumCommandCenter() {
       setContextMenuTarget({ kind: 'edge', edgeId: target.id, position: target.position });
     }
   }, []);
+
+  const handlePaneDoubleClick = useCallback((position: { x: number; y: number }) => {
+    if (!editMode) return;
+    setContextMenuTarget(null);
+    setNodePickerPos(position);
+  }, [editMode]);
 
   const handleAddNodeFromMenu = useCallback((type: DAGNodeType, position: { x: number; y: number }) => {
     dagEditor.addNode(type, position);
@@ -390,6 +403,45 @@ export function MyceliumCommandCenter() {
     });
   }, [editMode, toggleEditMode, effectiveNodes, dagEditor, pushStreamEvent]);
 
+  // MARKER_151.7B: Stream panel auto-visibility follows running tasks.
+  const runningCount = summary?.by_status?.running ?? stats?.runningTasks ?? 0;
+  useEffect(() => {
+    setShowStream(runningCount > 0);
+  }, [runningCount]);
+
+  // MARKER_151.5C: Header execute action (save first, then execute workflow).
+  const handleExecute = useCallback(async () => {
+    setExecuteMsg(null);
+    const currentWorkflowId = dagEditor.workflowId;
+    if (!currentWorkflowId && !dagEditor.isDirty) {
+      setExecuteMsg('save workflow first');
+      return;
+    }
+
+    setExecuting(true);
+    try {
+      const wfId = dagEditor.isDirty
+        ? await dagEditor.save(dagEditor.workflowName)
+        : currentWorkflowId;
+
+      if (!wfId) {
+        setExecuteMsg('save failed');
+        return;
+      }
+
+      const result = await executeWorkflow(wfId);
+      if (result.success) {
+        setExecuteMsg(`ok: ${result.count || 0} tasks`);
+      } else {
+        setExecuteMsg(`fail: ${result.error || 'unknown'}`);
+      }
+    } catch {
+      setExecuteMsg('execute error');
+    } finally {
+      setExecuting(false);
+    }
+  }, [dagEditor, executeWorkflow]);
+
   // MARKER_143.P3: Get selected task title for breadcrumb
   const selectedTaskTitle = useMemo(() => {
     if (!selectedTaskId) return null;
@@ -407,112 +459,119 @@ export function MyceliumCommandCenter() {
         fontFamily: 'monospace',
       }}
     >
-      {/* ═══ HEADER ═══ */}
+      {/* ═══ HEADER / MARKER_151.5_UNIFIED_BAR ═══ */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '5px 10px',
+          gap: 8,
+          padding: '6px 10px',
           borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
           flexShrink: 0,
         }}
       >
-        {/* Left: title + preset dropdown */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
-            style={{
-              color: NOLAN_PALETTE.textAccent,
-              fontSize: 10,
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: 2,
-            }}
-          >
-            MCC
-          </div>
+        <div
+          style={{
+            color: NOLAN_PALETTE.textAccent,
+            fontSize: 10,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: 2,
+          }}
+        >
+          MCC
+        </div>
 
-          <PresetDropdown />
+        <PresetDropdown />
+        <SandboxDropdown />
+        <HeartbeatChip />
+        <KeyDropdown />
 
+        <div style={{ flex: 1 }} />
+
+        <span
+          style={{
+            fontSize: 9,
+            color: connected ? NOLAN_PALETTE.statusDone : NOLAN_PALETTE.statusFailed,
+            opacity: 0.9,
+          }}
+        >
+          {connected ? '● LIVE' : '○ OFF'}
+        </span>
+
+        <div style={{ display: 'flex', gap: 7, fontSize: 9, color: NOLAN_PALETTE.textNormal }}>
+          <span>{summary?.by_status?.pending ?? stats?.totalTasks ?? 0}t</span>
+          <span style={{ color: NOLAN_PALETTE.statusRunning }}>{runningCount}r</span>
+          <span style={{ color: NOLAN_PALETTE.statusDone }}>{summary?.by_status?.done ?? stats?.completedTasks ?? 0}d</span>
+        </div>
+
+        <button
+          onClick={!executing ? handleExecute : undefined}
+          style={{
+            background: 'rgba(78,205,196,0.15)',
+            border: '1px solid #4ecdc4',
+            borderRadius: 3,
+            padding: '3px 9px',
+            color: executing ? '#7aa7a5' : '#c6ffff',
+            fontSize: 10,
+            cursor: executing ? 'wait' : 'pointer',
+            fontFamily: 'monospace',
+            fontWeight: 600,
+            opacity: executing ? 0.8 : 1,
+          }}
+          title="Execute workflow (auto-save first)"
+        >
+          {executing ? '...' : '▶ Execute'}
+        </button>
+
+        {/* Left panel toggle */}
+        <button
+          onClick={() => setLeftCollapsed(!leftCollapsed)}
+          style={{
+            background: 'transparent',
+            border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+            borderRadius: 2,
+            padding: '2px 6px',
+            color: NOLAN_PALETTE.textNormal,
+            fontSize: 8,
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+          }}
+          title="Toggle tasks panel [["
+        >
+          {leftCollapsed ? '▶' : '◀'}
+        </button>
+
+        {/* Right panel toggle */}
+        <button
+          onClick={() => setRightCollapsed(!rightCollapsed)}
+          style={{
+            background: 'transparent',
+            border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+            borderRadius: 2,
+            padding: '2px 6px',
+            color: NOLAN_PALETTE.textNormal,
+            fontSize: 8,
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+          }}
+          title="Toggle detail panel ]"
+        >
+          {rightCollapsed ? '◀' : '▶'}
+        </button>
+
+        {executeMsg && (
           <span
             style={{
-              fontSize: 9,
-              color: connected ? NOLAN_PALETTE.statusDone : NOLAN_PALETTE.statusFailed,
-              opacity: 0.9,
+              fontSize: 8,
+              color: executeMsg.startsWith('ok:') ? NOLAN_PALETTE.statusDone : NOLAN_PALETTE.statusFailed,
+              marginLeft: 2,
             }}
+            title={executeMsg}
           >
-            {connected ? '● LIVE' : '○ OFF'}
+            {executeMsg}
           </span>
-        </div>
-
-        {/* Right: watcher + stats + panel toggles */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <WatcherMicroStatus />
-          <HeartbeatChip />
-          <PlaygroundBadge />
-
-          {stats && (
-            <div style={{ display: 'flex', gap: 8, fontSize: 9, color: NOLAN_PALETTE.textNormal }}>
-              <span>{stats.totalTasks}t</span>
-              <span style={{ color: NOLAN_PALETTE.statusRunning }}>{stats.runningTasks}r</span>
-              <span style={{ color: NOLAN_PALETTE.statusDone }}>{stats.completedTasks}d</span>
-            </div>
-          )}
-
-          {/* Stream toggle */}
-          <button
-            onClick={() => setShowStream(!showStream)}
-            style={{
-              background: showStream ? 'rgba(255,255,255,0.06)' : 'transparent',
-              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-              borderRadius: 2,
-              padding: '2px 6px',
-              color: showStream ? NOLAN_PALETTE.text : NOLAN_PALETTE.textDim,
-              fontSize: 8,
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-            }}
-            title="Toggle live stream"
-          >
-            stream
-          </button>
-
-          {/* Left panel toggle */}
-          <button
-            onClick={() => setLeftCollapsed(!leftCollapsed)}
-            style={{
-              background: 'transparent',
-              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-              borderRadius: 2,
-              padding: '2px 6px',
-              color: NOLAN_PALETTE.textNormal,
-              fontSize: 8,
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-            }}
-            title="Toggle tasks panel [["
-          >
-            {leftCollapsed ? '▶' : '◀'}
-          </button>
-
-          {/* Right panel toggle */}
-          <button
-            onClick={() => setRightCollapsed(!rightCollapsed)}
-            style={{
-              background: 'transparent',
-              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-              borderRadius: 2,
-              padding: '2px 6px',
-              color: NOLAN_PALETTE.textNormal,
-              fontSize: 8,
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-            }}
-            title="Toggle detail panel ]"
-          >
-            {rightCollapsed ? '◀' : '▶'}
-          </button>
-        </div>
+        )}
       </div>
 
       {/* ═══ MARKER_144.6: Workflow Toolbar — only renders controls when editMode=true ═══ */}
@@ -624,6 +683,7 @@ export function MyceliumCommandCenter() {
                 onNodesDelete={(deletedNodes) => deletedNodes.forEach(n => dagEditor.removeNode(n.id))}
                 onEdgesDelete={(deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))}
                 onContextMenu={handleContextMenu}
+                onPaneDoubleClick={handlePaneDoubleClick}
               />
             )}
           </div>
@@ -741,6 +801,17 @@ export function MyceliumCommandCenter() {
           onDeleteNode={dagEditor.removeNode}
           onDuplicateNode={handleDuplicateNode}
           onDeleteEdge={dagEditor.removeEdge}
+        />
+      )}
+
+      {editMode && (
+        <NodePicker
+          position={nodePickerPos}
+          onClose={() => setNodePickerPos(null)}
+          onSelect={(type, position) => {
+            dagEditor.addNode(type, position);
+            setNodePickerPos(null);
+          }}
         />
       )}
     </div>

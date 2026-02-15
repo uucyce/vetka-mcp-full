@@ -20,6 +20,7 @@ import { AgentStatusBar } from './AgentStatusBar';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
 import { MyceliumCommandCenter } from '../mcc/MyceliumCommandCenter';
 import { useMCCStore } from '../../store/useMCCStore';
+import { useDevPanelStore, type DevPanelTab } from '../../store/useDevPanelStore';
 
 interface DevPanelProps {
   isOpen?: boolean;
@@ -27,9 +28,7 @@ interface DevPanelProps {
   standalone?: boolean;
 }
 
-type Tab = 'mcc' | 'stats' | 'architect' | 'balance';
-
-const TABS: { id: Tab; label: string }[] = [
+const TABS: { id: DevPanelTab; label: string }[] = [
   { id: 'mcc', label: 'MCC' },
   { id: 'stats', label: 'Stats' },
   { id: 'architect', label: 'Architect' },
@@ -45,7 +44,8 @@ interface ToastData {
 }
 
 export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPanelProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('mcc');
+  const activeTab = useDevPanelStore(s => s.activeTab);
+  const setActiveTab = useDevPanelStore(s => s.setActiveTab);
   const [toasts, setToasts] = useState<ToastData[]>([]);
 
   // MARKER_129.C14B: MYCELIUM WebSocket connection
@@ -158,14 +158,14 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
         {/* ═══ STATS TAB ═══ */}
         {activeTab === 'stats' && (
           <div style={{ padding: 12, flex: 1, overflowY: 'auto' }}>
-            <PipelineStats tasks={tasks} />
+            <PipelineStats tasks={tasks} mode="expanded" />
           </div>
         )}
 
         {/* ═══ ARCHITECT TAB ═══ */}
         {activeTab === 'architect' && (
           <div style={{ padding: 12, flex: 1, overflowY: 'auto' }}>
-            <ArchitectChat />
+            <ArchitectChat mode="expanded" />
           </div>
         )}
 

@@ -91,9 +91,7 @@ function WorkflowToolbarComponent({
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [executing, setExecuting] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const executeWorkflow = useMCCStore(s => s.executeWorkflow);
   const activePreset = useMCCStore(s => s.activePreset);
 
   // Load workflows list when menu opens
@@ -131,33 +129,6 @@ function WorkflowToolbarComponent({
       setValidationMsg(`Invalid: ${result.errors.length} errors`);
     }
   }, [onValidate]);
-
-  // MARKER_144.10: Execute workflow — save first, then convert to tasks + dispatch
-  const handleExecute = useCallback(async () => {
-    if (!workflowId) {
-      setValidationMsg('Save workflow first');
-      return;
-    }
-    setExecuting(true);
-    try {
-      // Save if dirty
-      if (isDirty) {
-        await onSave(workflowName);
-      }
-      const result = await executeWorkflow(workflowId);
-      if (result.success) {
-        setValidationMsg(
-          `Executed: ${result.count} tasks, ${result.tasks_dispatched?.length || 0} dispatched`
-        );
-      } else {
-        setValidationMsg(`Execute failed: ${result.error || 'unknown'}`);
-      }
-    } catch (err) {
-      setValidationMsg('Execute error');
-    } finally {
-      setExecuting(false);
-    }
-  }, [workflowId, isDirty, workflowName, onSave, executeWorkflow]);
 
   const handleLoad = useCallback(async (wfId: string) => {
     await onLoad(wfId);
@@ -474,25 +445,6 @@ function WorkflowToolbarComponent({
               </div>
             )}
           </div>
-
-          <div style={separatorStyle} />
-
-          {/* MARKER_144.10: Execute workflow */}
-          <button
-            style={executing || !workflowId ? btnDisabledStyle : {
-              ...btnStyle,
-              background: 'rgba(255,255,255,0.04)',
-              color: NOLAN_PALETTE.text,
-              fontWeight: 600,
-            }}
-            onClick={!executing && workflowId ? handleExecute : undefined}
-            title={workflowId
-              ? 'Execute workflow: convert to tasks + dispatch'
-              : 'Save workflow first to execute'
-            }
-          >
-            {executing ? '...' : '▶ Execute'}
-          </button>
 
           {/* Validation message toast */}
           {validationMsg && (

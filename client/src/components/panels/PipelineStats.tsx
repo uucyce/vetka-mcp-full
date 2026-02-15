@@ -12,9 +12,11 @@
 import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { TaskData, PipelineStatsData } from './TaskCard';
+import { useDevPanelStore } from '../../store/useDevPanelStore';
 
 interface PipelineStatsProps {
   tasks: TaskData[];
+  mode?: 'compact' | 'expanded';
   onRefresh?: () => void;  // MARKER_126.12A: Callback to trigger parent refresh
 }
 
@@ -41,10 +43,14 @@ function formatElapsed(startedAt?: string): string {
   return `${minutes}m ${secs}s`;
 }
 
-export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
+export function PipelineStats({ tasks, mode = 'expanded', onRefresh }: PipelineStatsProps) {
+  const setActiveTab = useDevPanelStore(s => s.setActiveTab);
   // MARKER_126.12A: Live refresh via CustomEvent
   const [, setTick] = useState(0);
 
+  // MARKER_145.CLEANUP: Event-driven + cheap 60s re-render tick.
+  // Was: 5s/30s setInterval polling data PLUS event listener = triple-fetch.
+  // Now: event fires data refresh, 60s tick only for elapsed time display.
   useEffect(() => {
     const handleBoardUpdate = () => {
       setTick(t => t + 1);
@@ -53,12 +59,10 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
 
     window.addEventListener('task-board-updated', handleBoardUpdate);
 
-    // MARKER_126.12B: Poll more frequently (5s) when running tasks exist
-    const hasRunning = tasks.some(t => t.status === 'running');
+    // 60s tick for elapsed time display only — no data fetch
     const interval = setInterval(() => {
-      setTick(t => t + 1);  // Force re-render for elapsed time
-      if (hasRunning) onRefresh?.();  // Fetch fresh data when running
-    }, hasRunning ? 5000 : 30000);
+      setTick(t => t + 1);
+    }, 60000);
 
     return () => {
       window.removeEventListener('task-board-updated', handleBoardUpdate);
@@ -139,9 +143,75 @@ export function PipelineStats({ tasks, onRefresh }: PipelineStatsProps) {
     { key: 'out', value: totalTokensOut, color: '#d9d9d9' },
   ];
   const tokenMax = Math.max(...tokenSeries.map(s => s.value), 1);
+  const weakLink = presets.length > 0
+    ? [...presets].sort((a, b) => a.avgConfidence - b.avgConfidence)[0]?.preset || '-'
+    : '-';
+
+  if (mode === 'compact') {
+    return (
+      <div
+        style={{
+          border: '1px solid #222',
+          borderRadius: 4,
+          padding: 8,
+          background: 'rgba(255,255,255,0.01)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+          <span style={{ fontSize: 8, color: '#666', textTransform: 'uppercase', letterSpacing: 1 }}>
+            stats
+          </span>
+          <button
+            onClick={() => setActiveTab('stats')}
+            style={{
+              marginLeft: 'auto',
+              border: '1px solid #333',
+              borderRadius: 2,
+              background: 'transparent',
+              color: '#999',
+              fontFamily: 'monospace',
+              fontSize: 9,
+              padding: '1px 6px',
+              cursor: 'pointer',
+            }}
+            title="Expand to Stats tab"
+          >
+            ↗
+          </button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+          <StatBox label="Total Runs" value={totalRuns} />
+          <StatBox label="Success" value={`${successRate}%`} />
+          <StatBox label="Confidence" value={avgConfidence > 0 ? `${Math.round(avgConfidence)}%` : '-'} />
+          <StatBox label="Weak Link" value={weakLink.replace('dragon_', '').replace('titan_', '')} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 9, color: '#666', textTransform: 'uppercase', letterSpacing: 1 }}>
+          stats
+        </span>
+        <button
+          onClick={() => setActiveTab('mcc')}
+          style={{
+            border: '1px solid #333',
+            borderRadius: 2,
+            background: 'transparent',
+            color: '#999',
+            fontFamily: 'monospace',
+            fontSize: 9,
+            padding: '1px 6px',
+            cursor: 'pointer',
+          }}
+          title="Collapse back to MCC"
+        >
+          ↙
+        </button>
+      </div>
       {/* MARKER_126.12B: Running Tasks Section */}
       {runningTasks.length > 0 && (
         <div style={{
