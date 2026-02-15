@@ -42,6 +42,8 @@ interface ServerToClientEvents {
   connect_error: (error: Error) => void;
   tree_updated: (data: { nodes: any[]; edges?: any[]; tree?: any }) => void;
   node_added: (data: { path: string; node?: any; event?: any }) => void;
+  // MARKER_136.CAM_SOCKET_FILE_INDEXED: emitted by /api/watcher/index-file route
+  file_indexed: (data: { path: string; name?: string; parent_folder?: string }) => void;
   node_removed: (data: { path: string; event?: any }) => void;
   node_updated: (data: { path: string; event?: any }) => void;
   tree_bulk_update: (data: { path: string; count: number; events: string[] }) => void;
@@ -649,6 +651,33 @@ export function useSocket() {
           console.log('[Socket] ✅ Camera focusing on new file:', fileName);
         }
       }, 800);
+    });
+
+    // MARKER_136.CAM_SOCKET_FILE_INDEXED: explicit camera trigger for manual index-file flow
+    socket.on('file_indexed', async (data) => {
+      const targetPath = String(data?.path || '').trim();
+      if (!targetPath) return;
+
+      await reloadTreeFromHttp();
+
+      const targetBase = targetPath.split('/').pop() || targetPath;
+      let attempts = 0;
+      const timer = setInterval(() => {
+        attempts += 1;
+        const stateNodes = useStore.getState().nodes;
+        const hasNode = Object.values(stateNodes).some((n: any) => {
+          const nodePath = String(n.path || '');
+          return nodePath === targetPath || nodePath.endsWith('/' + targetBase) || n.name === targetBase;
+        });
+        if (hasNode || attempts >= 12) {
+          clearInterval(timer);
+          setCameraCommand({
+            target: hasNode ? targetPath : targetBase,
+            zoom: 'medium',
+            highlight: true,
+          });
+        }
+      }, 250);
     });
 
     socket.on('node_removed', (data) => {

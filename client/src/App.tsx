@@ -352,7 +352,7 @@ export default function App() {
   // Phase 100.4: Drop zone handlers
   const handleDropToTree = useCallback(async (event: DropZoneEvent) => {
     // console.log('[App] Drop to tree:', event);
-    const { files, paths } = event;
+    const { files } = event;
     if (files.length === 0) return;
 
     // Open chat to show scan results
@@ -360,69 +360,141 @@ export default function App() {
       setIsChatOpen(true);
     }
 
-    // For real file paths (Tauri mode), use index-file endpoint
-    const realPaths = paths.filter(p => !p.startsWith('browser://'));
+    // MARKER_136.CAM_TRIGGER_ROUTING: split native drops by kind (file vs folder)
+    const realItems = files.filter(f => !f.path.startsWith('browser://'));
 
-    if (realPaths.length > 0) {
-      // Index files via backend
-      for (const filePath of realPaths) {
+    if (realItems.length > 0) {
+      let indexedFiles = 0;
+      let addedFolders = 0;
+
+      for (const item of realItems) {
         try {
-          const response = await fetch('/api/watcher/index-file', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              path: filePath,
-              recursive: files.find(f => f.path === filePath)?.is_dir || false,
-            }),
-          });
-
-          if (response.ok) {
-            // console.log('[App] Indexed file:', filePath);
+          if (item.is_dir) {
+            // MARKER_136.CAM_TRIGGER_FOLDER_ADD: folder drop must go through watcher/add
+            const response = await fetch('/api/watcher/add', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                path: item.path,
+                recursive: true,
+              }),
+            });
+            if (response.ok) addedFolders += 1;
+          } else {
+            // MARKER_136.CAM_TRIGGER_FILE_INDEX: file drop must go through index-file
+            const response = await fetch('/api/watcher/index-file', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                path: item.path,
+                recursive: false,
+              }),
+            });
+            if (response.ok) indexedFiles += 1;
           }
         } catch (err) {
-          console.error('[App] Failed to index file:', err);
+          console.error('[App] Failed to process dropped item:', err);
         }
       }
 
-      // Fly camera to first file's parent
-      const firstName = files[0]?.name || 'dropped';
-      window.dispatchEvent(new CustomEvent('camera-fly-to-folder', {
-        detail: { folderName: firstName, filesCount: files.length },
-      }));
+      if (indexedFiles > 0 || addedFolders > 0) {
+        window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
+      }
+
+      // MARKER_136.CAM_TRIGGER_CONDITIONAL: folder -> folder focus, file -> file focus
+      const firstReal = realItems[0];
+      if (firstReal?.is_dir) {
+        window.dispatchEvent(new CustomEvent('camera-fly-to-folder', {
+          detail: { folderName: firstReal.name || 'dropped', filesCount: realItems.length },
+        }));
+      } else if (firstReal?.path) {
+        const targetPath = firstReal.path;
+        const targetBase = targetPath.replace(/\\/g, '/').split('/').pop() || targetPath;
+        let attempts = 0;
+        const timer = setInterval(() => {
+          attempts += 1;
+          const stateNodes = useStore.getState().nodes;
+          const targetNorm = targetPath.replace(/\\/g, '/');
+          const hasNode = Object.values(stateNodes).some((n) => {
+            const nodePath = String(n.path || '').replace(/\\/g, '/');
+            return nodePath === targetNorm || nodePath.endsWith('/' + targetBase) || n.name === targetBase;
+          });
+          if (hasNode || attempts >= 14) {
+            clearInterval(timer);
+            const finalTarget = hasNode ? targetPath : targetBase;
+            setCameraCommand({ target: finalTarget, zoom: 'medium', highlight: true });
+          }
+        }, 250);
+      }
 
       // Switch to scanner tab
       window.dispatchEvent(new CustomEvent('vetka-switch-to-scanner'));
     } else {
-      // Browser mode - use virtual paths
-      const rootName = files[0]?.name || 'browser-drop';
-      try {
-        const response = await fetch('/api/watcher/add-from-browser', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            rootName,
-            files: files.map(f => ({
-              name: f.name,
+      // Browser mode fallback: try to resolve real disk paths first, use virtual paths only if unresolved.
+      const unresolved: typeof files = [];
+      for (const f of files) {
+        try {
+          const rr = await fetch('/api/files/resolve-path', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: f.name,
               relativePath: f.path.replace('browser://', ''),
-              size: f.size,
-              type: 'application/octet-stream',
-              lastModified: f.modified || Date.now(),
-            })),
-            timestamp: Date.now(),
-          }),
-        });
-
-        if (response.ok) {
-          window.dispatchEvent(new CustomEvent('camera-fly-to-folder', {
-            detail: { folderName: rootName, filesCount: files.length },
-          }));
-          window.dispatchEvent(new CustomEvent('vetka-switch-to-scanner'));
+              fileSize: f.size,
+            }),
+          });
+          const resolved = await rr.json();
+          const candidatePath = resolved?.path || (Array.isArray(resolved?.candidates) ? resolved.candidates[0] : '');
+          if (rr.ok && candidatePath) {
+            const idxRes = await fetch('/api/watcher/index-file', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: candidatePath }),
+            });
+            if (!idxRes.ok) unresolved.push(f);
+          } else {
+            unresolved.push(f);
+          }
+        } catch (err) {
+          console.error('[App] Resolve/index dropped file failed:', err);
+          unresolved.push(f);
         }
-      } catch (err) {
-        console.error('[App] Error indexing dropped files:', err);
+      }
+
+      // Final fallback for files that couldn't be resolved: keep browser:// virtual indexing.
+      if (unresolved.length > 0) {
+        const rootName = unresolved[0]?.name || 'browser-drop';
+        try {
+          const response = await fetch('/api/watcher/add-from-browser', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              rootName,
+              files: unresolved.map(f => ({
+                name: f.name,
+                relativePath: f.path.replace('browser://', ''),
+                size: f.size,
+                type: 'application/octet-stream',
+                lastModified: f.modified || Date.now(),
+              })),
+              timestamp: Date.now(),
+            }),
+          });
+
+          if (response.ok) {
+            window.dispatchEvent(new CustomEvent('camera-fly-to-folder', {
+              detail: { folderName: rootName, filesCount: unresolved.length },
+            }));
+            window.dispatchEvent(new CustomEvent('vetka-switch-to-scanner'));
+          }
+        } catch (err) {
+          console.error('[App] Error indexing dropped files:', err);
+        }
+      } else {
+        window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
       }
     }
-  }, [isChatOpen]);
+  }, [isChatOpen, setCameraCommand]);
 
   const handleDropToChat = useCallback(async (event: DropZoneEvent) => {
     // console.log('[App] Drop to chat:', event);

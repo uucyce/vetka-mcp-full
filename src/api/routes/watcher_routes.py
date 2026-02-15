@@ -679,11 +679,22 @@ async def index_single_file(req: IndexFileRequest, request: Request):
                 content=content,
                 embedding=embedding,
                 metadata={
+                    'type': 'scanned_file',
+                    'path': file_path,
+                    'name': file_obj.name,
+                    'parent_folder': str(file_obj.parent),
                     'size': stat.st_size,
+                    'size_bytes': stat.st_size,
                     'mtime': stat.st_mtime,
+                    'created_time': stat.st_ctime,
+                    'modified_time': stat.st_mtime,
                     'extension': file_obj.suffix.lower(),
                     'depth': file_path.count('/'),
-                    'source': 'drag_drop_resolved'
+                    'source': 'drag_drop_resolved',
+                    'deleted': False,
+                    'content': content[:500],
+                    'content_hash': updater._get_content_hash(file_obj),
+                    'updated_at': time_module.time(),
                 }
             )
             if tw_result.get('qdrant'):
