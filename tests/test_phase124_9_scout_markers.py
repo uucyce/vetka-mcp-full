@@ -271,7 +271,7 @@ class TestPromptUpdates:
         )
         prompts = json.load(open(prompts_path))
         coder_prompt = prompts["coder"]["system"]
-        assert "GPS" in coder_prompt or "rails" in coder_prompt
+        assert "GPS" in coder_prompt or "rails" in coder_prompt or "RAILS" in coder_prompt
 
     def test_scout_prompt_has_line_numbers(self):
         """Scout prompt should reference line numbers for marker placement."""

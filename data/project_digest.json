@@ -1,26 +1,26 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-15T12:45:42.193343+00:00",
+  "last_updated": "2026-02-15T14:08:56.995393+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 150,
     "subphase": "3",
-    "name": "Live DAG streaming \u2014 dag_node_update events",
+    "name": "Sparse Apply \u2014 PatchApplier for surgical code edits",
     "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 150.3 DONE! Live DAG streaming \u2014 dag_node_update events",
+    "headline": "Phase 150.3 DONE! Sparse Apply \u2014 PatchApplier for surgical code edits",
     "key_achievements": [
-      "[9ed6768e] Phase 150.3: Phase 150.3: Live DAG streaming \u2014 dag_node_update events",
+      "[2fdadd6f] Phase 150.3: Phase 150.3: Sparse Apply \u2014 PatchApplier for surgical code e",
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
-      "[4e639ef1] Phase 150.3: Phase 150.3: Wire DAG Executor to real pipeline methods",
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
-      "[7915ae0e] Phase 150.2: Phase 150.2: Playground isolation for coder FC tools",
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
+      "[dragon_titan_lite] build new API endpoint",
+      "[dragon_dragon_silver] D-149.2: PlaygroundBadge component for MCC header\n\nCreate PlaygroundBadge.tsx in",
       "[dragon_dragon_bronze] fix task"
     ],
     "pending_items": [
@@ -29,12 +29,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2589,
+      "points": 2627,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2557,
+      "points": 2594,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "9ed6768e",
+    "commit": "2fdadd6f",
     "dirty": true
   }
 }

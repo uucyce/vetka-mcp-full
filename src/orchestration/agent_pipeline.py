@@ -44,6 +44,14 @@ except ImportError:
     FC_LOOP_AVAILABLE = False
     logger.debug("[Pipeline] FC loop not available, coder will use one-shot mode")
 
+# MARKER_150.4_IMPORT: PatchApplier for sparse apply (surgical code edits)
+try:
+    from src.tools.patch_applier import PatchApplier
+    PATCH_APPLIER_AVAILABLE = True
+except ImportError:
+    PATCH_APPLIER_AVAILABLE = False
+    logger.debug("[Pipeline] PatchApplier not available, coder will use full-file mode")
+
 # MARKER_145.ADAPTIVE_TIMEOUT_IMPORT: Adaptive timeout from model registry
 try:
     from src.elisya.llm_model_registry import calculate_timeout as _calculate_adaptive_timeout
@@ -3113,6 +3121,126 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
     # MARKER_102.18_END
     # MARKER_102.6_END
 
+    # MARKER_150.4A: Detect target files from subtask context → determine patch vs create mode
+    @staticmethod
+    def _detect_target_files(subtask: 'Subtask', base_path: str = "") -> List[str]:
+        """Extract target file paths from subtask context (marker_map + relevant_files).
+
+        Returns list of EXISTING file paths that the coder should PATCH (not rewrite).
+        Empty list = CREATE mode (new files).
+        """
+        from pathlib import Path
+        target_files = []
+        seen = set()
+
+        context = subtask.context or {}
+        scout = context.get("scout_report", {})
+
+        # Source 1: marker_map entries (most precise — Scout placed markers at exact locations)
+        marker_map = scout.get("marker_map", [])
+        if isinstance(marker_map, list):
+            for m in marker_map:
+                if isinstance(m, dict):
+                    f_path = m.get("file", "")
+                    if f_path and f_path not in seen:
+                        seen.add(f_path)
+                        # Resolve against base_path (playground worktree) or project root
+                        full_path = Path(base_path) / f_path if base_path else Path(f_path)
+                        if full_path.is_file():
+                            target_files.append(f_path)
+
+        # Source 2: relevant_files from Scout (broader, but less precise)
+        relevant = scout.get("relevant_files", [])
+        if isinstance(relevant, list):
+            for f_path in relevant[:5]:
+                if isinstance(f_path, str) and f_path not in seen:
+                    seen.add(f_path)
+                    full_path = Path(base_path) / f_path if base_path else Path(f_path)
+                    if full_path.is_file():
+                        target_files.append(f_path)
+
+        return target_files
+
+    # MARKER_150.4B: Apply patches from coder output to target files
+    async def _apply_patches(self, content: str, subtask: 'Subtask') -> List[str]:
+        """Apply coder's patch output (unified diff or marker insert) to files.
+
+        Returns list of files successfully patched. Empty = no patches applied.
+        Falls back gracefully — if PatchApplier fails, returns empty (caller uses old path).
+        """
+        if not PATCH_APPLIER_AVAILABLE:
+            return []
+
+        base_path = self.playground_root or ""
+        applier = PatchApplier(base_path=base_path)
+
+        files_patched = []
+        try:
+            # Detect mode from coder output
+            mode = applier.detect_mode(content, target_file="")
+            logger.info(f"[Pipeline] PatchApplier detected mode: {mode}")
+
+            if mode == "unified_diff":
+                # Extract all diff patches from content
+                patches = applier.extract_patches(content)
+                for patch in patches:
+                    file_path = patch.get("file_path", "")
+                    diff_content = patch.get("diff", "")
+                    if file_path and diff_content:
+                        try:
+                            result = applier.apply_unified_diff(file_path, diff_content)
+                            if result.get("success"):
+                                files_patched.append(file_path)
+                                logger.info(f"[Pipeline] Patched (diff): {file_path}")
+                                await self._emit_progress("@coder", f"🔧 Patched: {file_path}")
+                            else:
+                                logger.warning(f"[Pipeline] Diff apply failed for {file_path}: {result.get('error', '')}")
+                        except Exception as e:
+                            logger.warning(f"[Pipeline] Diff apply error for {file_path}: {e}")
+
+            elif mode == "marker_insert":
+                patches = applier.extract_patches(content)
+                for patch in patches:
+                    file_path = patch.get("file_path", "")
+                    marker_id = patch.get("marker", "")
+                    code = patch.get("code", "")
+                    action = patch.get("action", "INSERT_AFTER")
+                    if file_path and code:
+                        try:
+                            result = applier.apply_marker_insert(
+                                file_path, marker_id, code, action
+                            )
+                            if result.get("success"):
+                                files_patched.append(file_path)
+                                logger.info(f"[Pipeline] Patched (marker): {file_path} at {marker_id}")
+                                await self._emit_progress("@coder", f"📌 Marker insert: {file_path}")
+                            else:
+                                logger.warning(f"[Pipeline] Marker insert failed for {file_path}: {result.get('error', '')}")
+                        except Exception as e:
+                            logger.warning(f"[Pipeline] Marker insert error for {file_path}: {e}")
+
+            elif mode == "create":
+                # New file — extract and create via PatchApplier
+                patches = applier.extract_patches(content)
+                for patch in patches:
+                    file_path = patch.get("file_path", "")
+                    file_content = patch.get("content", "")
+                    if file_path and file_content:
+                        try:
+                            result = applier.create_file(file_path, file_content)
+                            if result.get("success"):
+                                files_patched.append(file_path)
+                                logger.info(f"[Pipeline] Created: {file_path}")
+                                await self._emit_progress("@coder", f"📁 Created: {file_path}")
+                        except Exception as e:
+                            logger.warning(f"[Pipeline] Create file error for {file_path}: {e}")
+
+        except Exception as e:
+            logger.warning(f"[Pipeline] PatchApplier failed: {e}")
+
+        return files_patched
+    # MARKER_150.4B_END
+
     # MARKER_102.7_START: Subtask execution
     async def _execute_subtask(self, subtask: Subtask, phase_type: str) -> str:
         """
@@ -3203,6 +3331,26 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 logger.debug(f"[Pipeline] Library docs skipped: {e}")
         # MARKER_119.8_END
 
+        # MARKER_150.4C: Detect PATCH vs CREATE mode from target files
+        patch_target_files = []
+        mode_instruction = ""
+        if phase_type in ("fix", "build") and PATCH_APPLIER_AVAILABLE:
+            patch_target_files = self._detect_target_files(
+                subtask, base_path=self.playground_root or ""
+            )
+            if patch_target_files:
+                files_str = ", ".join(patch_target_files[:5])
+                mode_instruction = (
+                    f"\n\n⚠️ MODE: PATCH — You are MODIFYING existing files: {files_str}\n"
+                    "Output UNIFIED DIFF format (--- a/ +++ b/ @@ @@) with 3 context lines.\n"
+                    "Do NOT rewrite the entire file. Output ONLY the changed portions.\n"
+                    "Read each target file FIRST to get correct line numbers."
+                )
+                logger.info(f"[Pipeline] PATCH MODE for {len(patch_target_files)} files: {files_str}")
+            else:
+                mode_instruction = "\n\n📝 MODE: CREATE — You are creating NEW files. Output full file content."
+        # MARKER_150.4C_END
+
         # MARKER_102.22_START: Fixed LLM call + context passing
         # LLMCallTool.execute is synchronous
         # MARKER_117_PROVIDER: Pass model_source for provider routing
@@ -3215,7 +3363,7 @@ Phase type: {phase_type}
 Subtask: {subtask.description}
 Marker: {subtask.marker or 'MARKER_102.X'}
 
-{context_str}{lib_context}
+{context_str}{lib_context}{mode_instruction}
 
 Execute this subtask. Provide clear, actionable output."""}
             ],
@@ -3268,6 +3416,15 @@ Execute this subtask. Provide clear, actionable output."""}
                     content = fc_result.get("content", "")
                     if content:
                         logger.info(f"[Pipeline] FC subtask result: {content[:100]}...")
+                        # MARKER_150.4D: Try PatchApplier FIRST for patch mode
+                        if patch_target_files and self.auto_write:
+                            files_patched = await self._apply_patches(content, subtask)
+                            if files_patched:
+                                content += f"\n\n[Pipeline Note: Patched files - {', '.join(files_patched)}]"
+                                return content
+                            else:
+                                logger.info("[Pipeline] PatchApplier returned no results, falling through to extract_and_write")
+                        # MARKER_150.4D_END
                         # Post-process: extract and write files (same as one-shot path)
                         # MARKER_137.FIX_AUTOWRITE: Detect ALL file patterns (// file: AND # file:)
                         if phase_type == "build" and ("```" in content or "file:" in content.lower()):
@@ -3301,6 +3458,16 @@ Execute this subtask. Provide clear, actionable output."""}
             content = result.get("result", {}).get("content", "")
             if content:
                 logger.info(f"[Pipeline] Subtask result: {content[:100]}...")
+
+                # MARKER_150.4E: Try PatchApplier FIRST for patch mode (one-shot path)
+                if patch_target_files and self.auto_write:
+                    files_patched = await self._apply_patches(content, subtask)
+                    if files_patched:
+                        content += f"\n\n[Pipeline Note: Patched files - {', '.join(files_patched)}]"
+                        return content
+                    else:
+                        logger.info("[Pipeline] PatchApplier (one-shot) returned no results, falling through")
+                # MARKER_150.4E_END
 
                 # MARKER_103.4_START: Post-process build phase - extract and write files
                 # MARKER_103.5: Check auto_write flag
