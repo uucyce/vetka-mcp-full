@@ -6,11 +6,14 @@
  * @phase 143
  * @status active
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';
 import { useStore } from '../../store/useStore';
+import { useDevPanelStore } from '../../store/useDevPanelStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { ArchitectChat } from './ArchitectChat';
+import { TaskFilterBar } from '../panels/TaskFilterBar';
+import { TaskEditor } from '../panels/TaskEditor';
 
 // Status dot shapes
 const STATUS_COLORS: Record<string, string> = {
@@ -48,14 +51,17 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
   const {
     tasks, tasksLoading, fetchTasks, addTask, dispatchTask,
     dispatchNext, cancelTask, selectedTaskId, selectTask,
-    statusFilter, setStatusFilter, activePreset,
+    activePreset,
     activeAgents,
   } = useMCCStore();
 
   const selectedKey = useStore(s => s.selectedKey);
   const clearSelectedKey = useStore(s => s.clearSelectedKey);
+  const taskFilters = useDevPanelStore(s => s.taskFilters);
+  const setTaskFilters = useDevPanelStore(s => s.setTaskFilters);
 
   const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   // heartbeat state removed — now in HeartbeatChip (header)
 
   // MARKER_145.CLEANUP: Fetch on mount + event-driven only — no polling.
@@ -96,9 +102,54 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
     if (selectedKey) clearSelectedKey();
   }, [dispatchNext, selectedKey, clearSelectedKey]);
 
-  const filteredTasks = tasks.filter(t =>
-    statusFilter === 'all' || t.status === statusFilter || (statusFilter === 'done' && t.status === 'failed')
-  );
+  const taskSources = useMemo(() => {
+    return Array.from(new Set(tasks.map(t => String(t.source || '')).filter(Boolean))).sort();
+  }, [tasks]);
+
+  const taskPresets = useMemo(() => {
+    return Array.from(new Set(tasks.map(t => String(t.preset || '')).filter(Boolean))).sort();
+  }, [tasks]);
+
+  const filteredTasks = useMemo(() => {
+    const q = taskFilters.query.trim().toLowerCase();
+    const fromTs = taskFilters.dateFrom ? new Date(`${taskFilters.dateFrom}T00:00:00`).getTime() : null;
+    const toTs = taskFilters.dateTo ? new Date(`${taskFilters.dateTo}T23:59:59`).getTime() : null;
+
+    const out = tasks.filter((t) => {
+      if (!taskFilters.showCompleted && (t.status === 'done' || t.status === 'failed')) return false;
+      if (taskFilters.source !== 'all' && String(t.source || '') !== taskFilters.source) return false;
+      if (taskFilters.preset !== 'all' && String(t.preset || '') !== taskFilters.preset) return false;
+      if (taskFilters.statuses.length > 0 && !taskFilters.statuses.includes(String(t.status || ''))) return false;
+
+      if (q) {
+        const hay = `${t.title || ''} ${t.description || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+
+      if (fromTs !== null || toTs !== null) {
+        const createdTs = t.created_at ? new Date(t.created_at).getTime() : null;
+        if (createdTs !== null) {
+          if (fromTs !== null && createdTs < fromTs) return false;
+          if (toTs !== null && createdTs > toTs) return false;
+        }
+      }
+
+      return true;
+    });
+
+    const scoreSuccess = (t: any) => Number(t?.stats?.success ? 1 : 0);
+    const scoreDuration = (t: any) => Number(t?.stats?.duration_s || 0);
+    const scorePriority = (t: any) => Number(t?.priority || 99);
+    const scoreCreated = (t: any) => new Date(t?.created_at || 0).getTime();
+
+    out.sort((a: any, b: any) => {
+      if (taskFilters.sortBy === 'created_at') return scoreCreated(b) - scoreCreated(a);
+      if (taskFilters.sortBy === 'duration_s') return scoreDuration(b) - scoreDuration(a);
+      if (taskFilters.sortBy === 'success_rate') return scoreSuccess(b) - scoreSuccess(a);
+      return scorePriority(a) - scorePriority(b);
+    });
+    return out;
+  }, [tasks, taskFilters]);
 
   const pendingCount = tasks.filter(t => t.status === 'pending').length;
 
@@ -172,29 +223,13 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
         </div>
       </div>
 
-      {/* Status filters */}
-      <div style={{
-        display: 'flex',
-        gap: 3,
-        padding: '4px 8px',
-        borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
-      }}>
-        {(['all', 'pending', 'running', 'done'] as const).map(f => (
-          <button
-            key={f}
-            onClick={() => setStatusFilter(f)}
-            style={{
-              padding: '2px 6px',
-              background: statusFilter === f ? 'rgba(255,255,255,0.08)' : 'transparent',
-              border: `1px solid ${statusFilter === f ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.04)'}`,
-              borderRadius: 2,
-              color: statusFilter === f ? '#ccc' : '#555',
-              fontSize: 9,
-              cursor: 'pointer',
-            }}
-          >{f}</button>
-        ))}
-      </div>
+      {/* MARKER_152.8: Advanced task filtering/search/sort */}
+      <TaskFilterBar
+        value={taskFilters}
+        sources={taskSources}
+        presets={taskPresets}
+        onChange={setTaskFilters}
+      />
 
       {/* Active agents row */}
       {activeAgents.length > 0 && (
@@ -230,70 +265,131 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
           const isSelected = task.id === selectedTaskId;
           const isRunning = task.status === 'running';
           const isDispatchable = task.status === 'pending' || task.status === 'queued';
+          const isEditing = editingTaskId === task.id;
           return (
-            <div
-              key={task.id}
-              onClick={() => selectTask(isSelected ? null : task.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '5px 8px',
-                cursor: 'pointer',
-                background: isSelected ? 'rgba(255,255,255,0.06)' : 'transparent',
-                borderLeft: isSelected ? '2px solid #fff' : '2px solid transparent',
-                transition: 'all 0.1s',
-              }}
-              onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
-              onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
-            >
-              {/* Priority */}
-              <span style={{
-                fontSize: 8, fontWeight: 700, color: '#000',
-                background: PRIORITY_COLORS[task.priority] || '#444',
-                padding: '0px 3px', borderRadius: 1, minWidth: 14, textAlign: 'center',
-              }}>P{task.priority}</span>
+            <div key={task.id}>
+              <div
+                onClick={() => selectTask(isSelected ? null : task.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '5px 8px',
+                  cursor: 'pointer',
+                  background: isSelected ? 'rgba(255,255,255,0.06)' : 'transparent',
+                  borderLeft: isSelected ? '2px solid #fff' : '2px solid transparent',
+                  transition: 'all 0.1s',
+                }}
+                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+              >
+                {/* Priority */}
+                <span style={{
+                  fontSize: 8, fontWeight: 700, color: '#000',
+                  background: PRIORITY_COLORS[task.priority] || '#444',
+                  padding: '0px 3px', borderRadius: 1, minWidth: 14, textAlign: 'center',
+                }}>P{task.priority}</span>
 
-              {/* Title */}
-              <span style={{
-                flex: 1, color: isSelected ? '#fff' : '#ccc', fontSize: 10,
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>{task.title}</span>
+                {/* Title */}
+                <span style={{
+                  flex: 1, color: isSelected ? '#fff' : '#ccc', fontSize: 10,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>{task.title}</span>
 
-              {/* Preset badge */}
-              {task.preset && (
-                <span style={{ fontSize: 8, color: '#555' }}>
-                  {task.preset.replace(/^dragon_/, '').replace(/^titans?_/, 't:').slice(0, 6)}
-                </span>
-              )}
+                {/* Preset badge */}
+                {task.preset && (
+                  <span style={{ fontSize: 8, color: '#555' }}>
+                    {task.preset.replace(/^dragon_/, '').replace(/^titans?_/, 't:').slice(0, 6)}
+                  </span>
+                )}
 
-              {/* Status dot */}
-              <span style={{
-                width: 6, height: 6, borderRadius: '50%',
-                background: STATUS_COLORS[task.status] || '#555',
-                boxShadow: isRunning ? '0 0 4px rgba(224,224,224,0.4)' : 'none',
-                animation: isRunning ? 'mccPulse 1.5s infinite' : 'none',
-              }} />
+                {/* Source chip */}
+                {task.source && (
+                  <span style={{
+                    fontSize: 8,
+                    color: '#777',
+                    border: '1px solid #2a2a2a',
+                    borderRadius: 2,
+                    padding: '0 4px',
+                    textTransform: 'lowercase',
+                    maxWidth: 68,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {task.source.replace(/_todo$/, '').slice(0, 10)}
+                  </span>
+                )}
 
-              {/* Inline actions (on hover / selected) */}
-              {isSelected && isDispatchable && (
-                <button
-                  onClick={e => { e.stopPropagation(); dispatchTask(task.id, activePreset, selectedKey); }}
-                  style={{
-                    background: '#2d3d5a', color: '#8af', border: '1px solid #3d4d6a',
-                    borderRadius: 2, padding: '1px 5px', fontSize: 9, cursor: 'pointer',
+                {/* Status dot */}
+                <span style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: STATUS_COLORS[task.status] || '#555',
+                  boxShadow: isRunning ? '0 0 4px rgba(224,224,224,0.4)' : 'none',
+                  animation: isRunning ? 'mccPulse 1.5s infinite' : 'none',
+                }} />
+
+                {isSelected && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      setEditingTaskId(isEditing ? null : task.id);
+                    }}
+                    style={{
+                      background: isEditing ? 'rgba(78,205,196,0.14)' : 'transparent',
+                      color: isEditing ? '#bffff9' : '#7a7a7a',
+                      border: '1px solid #333',
+                      borderRadius: 2,
+                      padding: '1px 5px',
+                      fontSize: 9,
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                    }}
+                    title="Edit task"
+                  >
+                    ✎
+                  </button>
+                )}
+
+                {/* Inline actions (on selected) */}
+                {isSelected && isDispatchable && (
+                  <button
+                    onClick={e => { e.stopPropagation(); dispatchTask(task.id, activePreset, selectedKey); }}
+                    style={{
+                      background: '#2d3d5a', color: '#8af', border: '1px solid #3d4d6a',
+                      borderRadius: 2, padding: '1px 5px', fontSize: 9, cursor: 'pointer',
+                    }}
+                  >▶</button>
+                )}
+                {isSelected && task.status === 'running' && (
+                  <button
+                    onClick={e => { e.stopPropagation(); cancelTask(task.id); }}
+                    style={{
+                      background: 'rgba(160,80,80,0.15)', color: '#c88',
+                      border: '1px solid rgba(160,80,80,0.3)',
+                      borderRadius: 2, padding: '1px 5px', fontSize: 9, cursor: 'pointer',
+                    }}
+                  >■</button>
+                )}
+              </div>
+              {isSelected && isEditing && (
+                <TaskEditor
+                  task={{
+                    id: task.id,
+                    title: task.title,
+                    description: task.description,
+                    priority: task.priority,
+                    tags: task.tags,
+                    source: task.source,
+                    source_chat_id: (task as any).source_chat_id,
+                    source_group_id: (task as any).source_group_id,
                   }}
-                >▶</button>
-              )}
-              {isSelected && task.status === 'running' && (
-                <button
-                  onClick={e => { e.stopPropagation(); cancelTask(task.id); }}
-                  style={{
-                    background: 'rgba(160,80,80,0.15)', color: '#c88',
-                    border: '1px solid rgba(160,80,80,0.3)',
-                    borderRadius: 2, padding: '1px 5px', fontSize: 9, cursor: 'pointer',
+                  onSaved={() => {
+                    setEditingTaskId(null);
+                    fetchTasks();
                   }}
-                >■</button>
+                  onCancel={() => setEditingTaskId(null)}
+                />
               )}
             </div>
           );
