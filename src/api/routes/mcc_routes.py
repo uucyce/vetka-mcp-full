@@ -1,11 +1,12 @@
 """
 MARKER_153.1B: MCC REST API Routes.
+MARKER_153.2B: Sandbox management — status, recreate, delete.
 
 Endpoints for Mycelium Command Center initialization, state persistence,
-and project setup. Foundation for Phase 153 Matryoshka navigation.
+project setup, and sandbox lifecycle management.
 
 @phase 153
-@wave 1
+@wave 1-2
 @status active
 """
 
@@ -210,7 +211,7 @@ async def project_init(req: ProjectInitRequest):
 @router.delete("/project")
 async def delete_project():
     """
-    Delete project config. Does NOT delete sandbox (use /api/playground/delete).
+    Delete project config. Does NOT delete sandbox (use DELETE /api/mcc/sandbox).
     Allows reconfiguring with a new project.
     """
     from src.services.project_config import CONFIG_PATH, SESSION_STATE_PATH
@@ -222,3 +223,137 @@ async def delete_project():
             deleted.append(os.path.basename(path))
 
     return {"ok": True, "deleted": deleted}
+
+
+# ──────────────────────────────────────────────────────────────
+# MARKER_153.2B: Sandbox management endpoints
+# ──────────────────────────────────────────────────────────────
+
+class SandboxStatusResponse(BaseModel):
+    exists: bool
+    sandbox_path: str = ""
+    file_count: int = 0
+    used_gb: float = 0.0
+    quota_gb: int = 10
+    percent: float = 0.0
+    warning: bool = False
+    exceeded: bool = False
+
+
+@router.get("/sandbox/status", response_model=SandboxStatusResponse)
+async def sandbox_status():
+    """
+    Get sandbox disk usage and quota status.
+    Used by SandboxDropdown to show [Sandbox ✓ 2.1/10GB] or [No Sandbox].
+    """
+    config = ProjectConfig.load()
+    if config is None:
+        return SandboxStatusResponse(exists=False)
+    return SandboxStatusResponse(**config.get_sandbox_status())
+
+
+class SandboxRecreateRequest(BaseModel):
+    force: bool = False  # Force recreate even if exists
+
+
+@router.post("/sandbox/recreate")
+async def sandbox_recreate(req: SandboxRecreateRequest):
+    """
+    Delete and recreate sandbox from source.
+    Used when sandbox gets corrupted or user wants a fresh copy.
+    """
+    config = ProjectConfig.load()
+    if config is None:
+        raise HTTPException(status_code=404, detail="No project configured")
+
+    # Check if sandbox exists and force isn't set
+    if config.sandbox_exists() and not req.force:
+        return {
+            "ok": False,
+            "error": "Sandbox already exists. Use force=true to recreate.",
+            "status": config.get_sandbox_status(),
+        }
+
+    # Delete existing sandbox
+    if config.sandbox_exists():
+        try:
+            shutil.rmtree(config.sandbox_path)
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete sandbox: {e}")
+
+    # Recreate from source
+    try:
+        if config.source_type == "local":
+            if not os.path.isdir(config.source_path):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Source path not found: {config.source_path}",
+                )
+            shutil.copytree(
+                config.source_path,
+                config.sandbox_path,
+                ignore=shutil.ignore_patterns(
+                    'node_modules', '.git', '__pycache__', '*.pyc',
+                    'dist', 'build', '.next', 'target',
+                ),
+            )
+        elif config.source_type == "git":
+            import subprocess
+            result = subprocess.run(
+                ["git", "clone", "--depth=1", config.source_path, config.sandbox_path],
+                capture_output=True, text=True, timeout=120,
+            )
+            if result.returncode != 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Git clone failed: {result.stderr[:500]}",
+                )
+    except HTTPException:
+        raise
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Recreate failed: {str(e)[:500]}")
+
+    return {
+        "ok": True,
+        "status": config.get_sandbox_status(),
+    }
+
+
+@router.delete("/sandbox")
+async def delete_sandbox():
+    """
+    Delete sandbox directory (but keep project config).
+    Sandbox can be recreated via POST /api/mcc/sandbox/recreate.
+    """
+    config = ProjectConfig.load()
+    if config is None:
+        raise HTTPException(status_code=404, detail="No project configured")
+
+    if not config.sandbox_exists():
+        return {"ok": True, "message": "Sandbox already absent"}
+
+    try:
+        shutil.rmtree(config.sandbox_path)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete sandbox: {e}")
+
+    return {"ok": True, "sandbox_path": config.sandbox_path}
+
+
+@router.patch("/sandbox/quota")
+async def update_quota(quota_gb: int):
+    """Update project quota (1-100 GB)."""
+    if quota_gb < 1 or quota_gb > 100:
+        raise HTTPException(status_code=400, detail="quota_gb must be 1-100")
+
+    config = ProjectConfig.load()
+    if config is None:
+        raise HTTPException(status_code=404, detail="No project configured")
+
+    config.quota_gb = quota_gb
+    if not config.save():
+        raise HTTPException(status_code=500, detail="Failed to save config")
+
+    return {"ok": True, "quota_gb": quota_gb, "status": config.get_sandbox_status()}

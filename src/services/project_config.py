@@ -1,16 +1,18 @@
 """
 MARKER_153.1A: Project Configuration — persistence between restarts.
+MARKER_153.2A: Sandbox utilities — quota check, disk usage, status.
 
 Stores project source, sandbox path, quota, and Qdrant collection.
 Single project per instance (Phase 153). Multi-project = Phase 154.
 
 @phase 153
-@wave 1
+@wave 1-2
 @status active
 """
 
 import json
 import os
+import subprocess
 import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
@@ -96,6 +98,76 @@ class ProjectConfig:
         if self.quota_gb < 1 or self.quota_gb > 100:
             errors.append(f"quota_gb must be 1-100, got {self.quota_gb}")
         return errors
+
+    # ── MARKER_153.2A: Sandbox utilities ──
+
+    def sandbox_exists(self) -> bool:
+        """Check if sandbox directory exists on disk."""
+        return bool(self.sandbox_path) and os.path.isdir(self.sandbox_path)
+
+    def get_disk_usage_bytes(self) -> int:
+        """Get sandbox disk usage in bytes. Returns 0 if sandbox doesn't exist."""
+        if not self.sandbox_exists():
+            return 0
+        try:
+            # Use du -sb for fast recursive byte count (macOS: du -sk then *1024)
+            result = subprocess.run(
+                ["du", "-sk", self.sandbox_path],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                # du -sk returns KB, convert to bytes
+                kb = int(result.stdout.split()[0])
+                return kb * 1024
+        except (subprocess.TimeoutExpired, ValueError, OSError):
+            pass
+        return 0
+
+    def get_disk_usage_gb(self) -> float:
+        """Get sandbox disk usage in GB (rounded to 2 decimals)."""
+        return round(self.get_disk_usage_bytes() / (1024 ** 3), 2)
+
+    def check_quota(self) -> dict:
+        """
+        Check sandbox disk usage against quota.
+        Returns: {used_gb, quota_gb, percent, warning, exceeded}
+        """
+        used_gb = self.get_disk_usage_gb()
+        quota_gb = self.quota_gb
+        percent = round((used_gb / quota_gb) * 100, 1) if quota_gb > 0 else 0
+        return {
+            "used_gb": used_gb,
+            "quota_gb": quota_gb,
+            "percent": percent,
+            "warning": percent >= 80,
+            "exceeded": percent >= 100,
+        }
+
+    def get_sandbox_status(self) -> dict:
+        """Full sandbox status for REST API / UI."""
+        exists = self.sandbox_exists()
+        quota = self.check_quota() if exists else {
+            "used_gb": 0, "quota_gb": self.quota_gb,
+            "percent": 0, "warning": False, "exceeded": False,
+        }
+        file_count = 0
+        if exists:
+            try:
+                # Fast file count: find . -type f | wc -l
+                result = subprocess.run(
+                    ["find", self.sandbox_path, "-type", "f"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if result.returncode == 0:
+                    file_count = len(result.stdout.strip().splitlines())
+            except (subprocess.TimeoutExpired, OSError):
+                pass
+        return {
+            "exists": exists,
+            "sandbox_path": self.sandbox_path,
+            "file_count": file_count,
+            **quota,
+        }
 
 
 @dataclass
