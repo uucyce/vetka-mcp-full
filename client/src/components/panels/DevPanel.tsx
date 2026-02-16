@@ -14,6 +14,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FloatingWindow } from '../artifact/FloatingWindow';
 import { PipelineStats } from './PipelineStats';
+import { StatsDashboard } from './StatsDashboard';
 import { ArchitectChat } from './ArchitectChat';
 import { BalancesPanel } from './BalancesPanel';
 import { AgentStatusBar } from './AgentStatusBar';
@@ -158,7 +159,7 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
         {/* ═══ STATS TAB ═══ */}
         {activeTab === 'stats' && (
           <div style={{ padding: 12, flex: 1, overflowY: 'auto' }}>
-            <PipelineStats tasks={tasks} mode="expanded" />
+            <StatsDashboard mode="expanded" />
           </div>
         )}
 

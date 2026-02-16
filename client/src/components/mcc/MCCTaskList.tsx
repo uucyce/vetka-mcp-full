@@ -14,6 +14,7 @@ import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { ArchitectChat } from './ArchitectChat';
 import { TaskFilterBar } from '../panels/TaskFilterBar';
 import { TaskEditor } from '../panels/TaskEditor';
+import { TaskDrillDown } from '../panels/TaskDrillDown';
 
 // Status dot shapes
 const STATUS_COLORS: Record<string, string> = {
@@ -62,6 +63,7 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
 
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [drillTaskId, setDrillTaskId] = useState<string | null>(null);
   // heartbeat state removed — now in HeartbeatChip (header)
 
   // MARKER_145.CLEANUP: Fetch on mount + event-driven only — no polling.
@@ -333,6 +335,28 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
                   <button
                     onClick={e => {
                       e.stopPropagation();
+                      setDrillTaskId(task.id);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      color: '#7a7a7a',
+                      border: '1px solid #333',
+                      borderRadius: 2,
+                      padding: '1px 5px',
+                      fontSize: 9,
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                    }}
+                    title="Task drill-down"
+                  >
+                    📊
+                  </button>
+                )}
+
+                {isSelected && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
                       setEditingTaskId(isEditing ? null : task.id);
                     }}
                     style={{
@@ -431,6 +455,12 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
 
       {/* Pulse animation */}
       <style>{`@keyframes mccPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }`}</style>
+
+      <TaskDrillDown
+        isOpen={Boolean(drillTaskId)}
+        taskId={drillTaskId}
+        onClose={() => setDrillTaskId(null)}
+      />
     </div>
   );
 }
