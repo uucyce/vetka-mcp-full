@@ -23,6 +23,8 @@ Changes from Flask version:
 """
 
 import os
+import mimetypes
+import hashlib
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -43,6 +45,7 @@ class ReindexRequest(BaseModel):
     """Request to reindex files."""
     path: Optional[str] = "src"
     limit: Optional[int] = 500
+    multimodal: Optional[bool] = False
 
 
 # ============================================================
@@ -226,6 +229,9 @@ async def triple_write_reindex(req: ReindexRequest):
 
         TEXT_EXTENSIONS = {'.py', '.js', '.ts', '.jsx', '.tsx', '.md', '.txt', '.json',
                           '.yaml', '.yml', '.html', '.css', '.sh', '.sql', '.go', '.rs'}
+        OCR_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff'}
+        MEDIA_EXTENSIONS = {'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg',
+                            '.mp4', '.mov', '.mkv', '.avi', '.webm'}
 
         for root, dirs, files in os.walk(target_dir):
             # Skip hidden and common ignore
@@ -240,9 +246,10 @@ async def triple_write_reindex(req: ReindexRequest):
                     skipped += 1
                     continue
 
-                # Only index text files
+                # Extension gate
                 ext = os.path.splitext(fname)[1].lower()
-                if ext not in TEXT_EXTENSIONS:
+                allowed = ext in TEXT_EXTENSIONS or (req.multimodal and (ext in OCR_EXTENSIONS or ext in MEDIA_EXTENSIONS))
+                if not allowed:
                     skipped += 1
                     continue
 
@@ -250,9 +257,33 @@ async def triple_write_reindex(req: ReindexRequest):
                 rel_path = os.path.relpath(fpath, PROJECT_ROOT)
 
                 try:
-                    # Read content
-                    with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
-                        content = f.read()
+                    # Read content (text / OCR / media summary)
+                    if ext in TEXT_EXTENSIONS:
+                        with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = f.read()
+                    elif ext in OCR_EXTENSIONS:
+                        try:
+                            from src.ocr.ocr_processor import get_ocr_processor
+                            ocr = get_ocr_processor()
+                            ocr_result = ocr.process_pdf(fpath) if ext == '.pdf' else ocr.process_image(fpath)
+                            content = (ocr_result.get('text') or '').strip()
+                            if not content:
+                                content = f"[OCR empty] file={rel_path}"
+                        except Exception as ocr_err:
+                            content = f"[OCR error] file={rel_path} error={str(ocr_err)[:160]}"
+                    else:
+                        mime_type, _ = mimetypes.guess_type(fpath)
+                        mime_type = mime_type or 'application/octet-stream'
+                        size_bytes = os.path.getsize(fpath)
+                        with open(fpath, 'rb') as fb:
+                            digest = hashlib.sha256(fb.read()).hexdigest()
+                        content = (
+                            f"[Media file summary]\n"
+                            f"path={rel_path}\n"
+                            f"mime={mime_type}\n"
+                            f"size_bytes={size_bytes}\n"
+                            f"sha256={digest}"
+                        )
 
                     # Skip very large or empty files
                     if len(content) < 10 or len(content) > 100000:
@@ -263,7 +294,10 @@ async def triple_write_reindex(req: ReindexRequest):
                     stat = os.stat(fpath)
                     metadata = {
                         'size': stat.st_size,
-                        'mtime': datetime.fromtimestamp(stat.st_mtime).isoformat()
+                        'mtime': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        'extension': ext,
+                        'mime_type': mimetypes.guess_type(fpath)[0] or 'application/octet-stream',
+                        'ingest_mode': 'multimodal' if req.multimodal else 'text_only',
                     }
 
                     # Get embedding

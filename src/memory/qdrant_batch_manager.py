@@ -5,6 +5,7 @@
 import asyncio
 import hashlib
 import logging
+from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
@@ -350,12 +351,25 @@ class QdrantBatchManager:
                 continue
 
             point_id = int(hashlib.md5(artifact.artifact_id.encode()).hexdigest()[:16], 16)
+            ext = Path(artifact.filepath).suffix.lower()
+            if ext in {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".svg"}:
+                modality = "image"
+            elif ext in {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}:
+                modality = "audio"
+            elif ext in {".mp4", ".mov", ".mkv", ".avi", ".webm"}:
+                modality = "video"
+            elif ext == ".pdf":
+                modality = "document_pdf"
+            else:
+                modality = "text"
 
             payload = {
                 "artifact_id": artifact.artifact_id,
                 "name": artifact.name,
                 "content": artifact.content[:5000],
                 "artifact_type": artifact.artifact_type,
+                "modality": modality,
+                "extension": ext,
                 "workflow_id": artifact.workflow_id,
                 "filepath": artifact.filepath,
                 "timestamp": artifact.timestamp

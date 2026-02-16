@@ -282,3 +282,80 @@ MARKER_153.RECON.EXEC_ORDER_REFRESH
 3. Store timestamped chunks in Qdrant and expose edge evidence in graph payload.
 4. Add MCP montage tools as separate opt-in mode.
 5. Benchmark on Apple Silicon (M4) and freeze defaults by latency/quality budget.
+
+---
+
+## Implementation Update (2026-02-17)
+
+MARKER_153.IMPL.UPDATE_2026_02_17
+
+This section tracks what is already implemented after RECON, with code-level status.
+
+### Gap status refresh
+
+- `G02` Browser mixed payload contract: **IMPLEMENTED**
+  - `/api/watcher/add-from-browser` now supports `mode=metadata_only|content_small`
+  - Optional `contentBase64/contentHash` added to browser file model.
+  - File: `src/api/routes/watcher_routes.py`
+
+- `G03` `/index-file` binary fallback: **IMPLEMENTED**
+  - Replaced raw `"[Binary file]"` with binary summary + OCR route for image/PDF.
+  - File: `src/api/routes/watcher_routes.py`
+
+- `G04` Artifact content API text-centric: **IMPLEMENTED**
+  - Artifact content endpoint now returns `utf-8` for text and `base64 + mimeType` for binary.
+  - File: `src/api/routes/artifact_routes.py`
+
+- `G05` OCR routing inconsistency: **PARTIAL**
+  - OCR now explicitly used in `/index-file` for image/PDF.
+  - Local scanner includes media files so embedding pipeline OCR path can process them.
+  - Remaining: audio/video transcription path still summary-first.
+  - Files: `src/api/routes/watcher_routes.py`, `src/scanners/local_scanner.py`, `src/scanners/embedding_pipeline.py`
+
+- `G06` Triple-write reindex text-only: **IMPLEMENTED**
+  - `/api/triple-write/reindex` now supports `multimodal=true` for OCR + media summary ingest.
+  - File: `src/api/routes/triple_write_routes.py`
+
+- `G07` Artifact batch indexing path drift: **IMPLEMENTED**
+  - Added `artifacts` collection mapping in Qdrant client.
+  - Batch artifact payload now carries modality + extension.
+  - Files: `src/memory/qdrant_client.py`, `src/memory/qdrant_batch_manager.py`
+
+- `G08` Frontend decode/render policy: **PARTIAL**
+  - Backend now emits enough binary metadata for render policy.
+  - Remaining: frontend viewer branches for full media/pdf/audio rendering.
+
+- `G10` REF/CITATION/FOOTNOTE extraction: **IMPLEMENTED (artifact-level references)**
+  - Added document link parsing and artifact->artifact `reference` edges.
+  - File: `src/services/artifact_scanner.py`
+
+- `G11` classify_edge wiring: **IMPLEMENTED**
+  - Final graph payload now includes `style/color/opacity/width/visual_type/description`.
+  - File: `src/layout/knowledge_layout.py`
+
+- `G13` Stream transparency gap: **IMPLEMENTED**
+  - Added `stream_meta` socket events and chat display for stream diagnostics.
+  - Files: `src/elisya/provider_registry.py`, `src/api/handlers/user_message_handler.py`, `client/src/hooks/useSocket.ts`
+
+- `G14` Stream tooling reality gap: **PARTIAL**
+  - Transparency fixed (explicitly signals stream path is planning-only for tools).
+  - Remaining: true tool execution loop in streaming path.
+
+- `G15` BM25 escaping gap: **IMPLEMENTED**
+  - Added newline/backslash normalization + robust quote escaping.
+  - File: `src/memory/weaviate_helper.py`
+
+- `G16` Web save indexing gap: **IMPLEMENTED**
+  - `/api/artifacts/save-webpage` now triggers semantic indexing bridge.
+  - File: `src/api/routes/artifact_routes.py`
+
+- `G17` Watcher throughput gap: **IMPLEMENTED**
+  - Added soft burst-throttle for regular directories (high threshold, short cooldown).
+  - File: `src/scanners/file_watcher.py`
+
+### Remaining priorities
+
+1. `G01` finalize unified extension/MIME policy with explicit allow/deny + size limits.
+2. `G08` complete frontend media render policy.
+3. `G09/G12` full universal multimodal scanner chain (audio/video chunk extraction + temporal relation persistence).
+4. `G14` add true streaming tool execution loop (not only advisory telemetry).

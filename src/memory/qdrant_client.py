@@ -87,7 +87,8 @@ class QdrantVetkaClient:
         'leaf': 'VetkaLeaf',
         'changelog': 'VetkaChangeLog',
         'trash': 'VetkaTrash',  # MARKER-77-02: Phase 77 Memory Sync trash collection
-        'chat': 'VetkaGroupChat'  # MARKER_103.7: Phase 103 - Chat history persistence
+        'chat': 'VetkaGroupChat',  # MARKER_103.7: Phase 103 - Chat history persistence
+        'artifacts': 'VetkaArtifacts'  # MARKER_153.IMPL.G07: artifact batch collection
     }
     
     VECTOR_SIZE = 768  # For embeddings (adjustable)

@@ -677,15 +677,30 @@ async def index_single_file(req: IndexFileRequest, request: Request):
         if is_text_like:
             content = file_obj.read_text(encoding='utf-8', errors='replace')
         else:
-            raw = file_obj.read_bytes()
-            digest = hashlib.sha256(raw).hexdigest()
-            content = (
-                f"[Binary file summary]\n"
-                f"mime={mime_type}\n"
-                f"size_bytes={len(raw)}\n"
-                f"sha256={digest}\n"
-                f"path={file_path}"
-            )
+            # OCR route for image/PDF in drag-drop index path
+            ocr_text = ""
+            if file_obj.suffix.lower() in {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff"}:
+                try:
+                    from src.ocr.ocr_processor import get_ocr_processor
+                    ocr = get_ocr_processor()
+                    ocr_result = ocr.process_pdf(str(file_obj)) if file_obj.suffix.lower() == ".pdf" else ocr.process_image(str(file_obj))
+                    if ocr_result.get("text") and not ocr_result.get("error"):
+                        ocr_text = ocr_result["text"][:8000]
+                except Exception as ocr_err:
+                    print(f"[Watcher] OCR error for {file_obj.name}: {ocr_err}")
+
+            if ocr_text:
+                content = ocr_text
+            else:
+                raw = file_obj.read_bytes()
+                digest = hashlib.sha256(raw).hexdigest()
+                content = (
+                    f"[Binary file summary]\n"
+                    f"mime={mime_type}\n"
+                    f"size_bytes={len(raw)}\n"
+                    f"sha256={digest}\n"
+                    f"path={file_path}"
+                )
 
         # Generate point ID from path
         point_id = uuid.uuid5(uuid.NAMESPACE_DNS, file_path).int & 0x7FFFFFFFFFFFFFFF
