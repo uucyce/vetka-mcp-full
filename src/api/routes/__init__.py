@@ -78,6 +78,9 @@ from .workflow_template_routes import router as workflow_template_router
 # MARKER_144.12: Architect Chat — conversational interface in MCC
 from .architect_chat_routes import router as architect_chat_router
 
+# MARKER_152.2: Pipeline Analytics — stats dashboard, drill-down, trends, cost
+from .analytics_routes import router as analytics_router
+
 
 def get_all_routers() -> List[APIRouter]:
     """
@@ -118,6 +121,7 @@ def get_all_routers() -> List[APIRouter]:
         connectors_router,  # /api/connectors/* (Phase 147.2 - cloud/social connectors)
         workflow_template_router,  # /api/workflows/* (Phase 144 - workflow template CRUD)
         architect_chat_router,  # /api/architect/* (Phase 144.12 - Architect Chat)
+        analytics_router,  # /api/analytics/* (Phase 152 - Pipeline analytics dashboard)
     ]
 
 
@@ -196,4 +200,5 @@ __all__ = [
     "connectors_router",
     "workflow_template_router",
     "architect_chat_router",
+    "analytics_router",
 ]

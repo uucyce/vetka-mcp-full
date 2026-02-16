@@ -211,6 +211,8 @@ class AgentPipeline:
         self._tokens_out: int = 0
         # MARKER_151.11A: Per-agent statistics breakdown
         self._agent_stats: Dict[str, Dict] = {}  # role → {calls, tokens_in, tokens_out, duration_s, retries, success_count, fail_count}
+        # MARKER_152.4: Timeline events for pipeline drill-down visualization
+        self._timeline_events: List[Dict] = []  # [{ts, role, event, detail, duration_s}]
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
         self.stm_limit = PIPELINE_STM_LIMIT
@@ -969,6 +971,9 @@ Respond with implementation plan or code."""
         # MARKER_151.11I: Track coder retries in per-agent stats
         if "coder" in self._agent_stats:
             self._agent_stats["coder"]["retries"] += 1
+        # MARKER_152.4: Timeline event for retry
+        issues_str = "; ".join(str(i) for i in verifier_result.get("issues", [])[:2])
+        self._emit_timeline_event("coder", "retry", f"attempt {subtask.retry_count}: {issues_str}")
         if subtask.context is None:
             subtask.context = {}
 
@@ -1027,6 +1032,8 @@ Respond with implementation plan or code."""
         self.preset_name = new_tier
         self._apply_preset()
         logger.info(f"[Pipeline] ⚡ Tier upgrade: {old_tier} → {new_tier}")
+        # MARKER_152.4: Timeline event for tier upgrade
+        self._emit_timeline_event("pipeline", "tier_upgrade", f"{old_tier} → {new_tier}")
         return True
     # MARKER_122.4_END
 
@@ -1040,6 +1047,11 @@ Respond with implementation plan or code."""
         Calls architect with context about what failed and why.
         Returns new plan (same format as _architect_plan).
         """
+        # MARKER_152.4: Timeline event for escalation
+        self._emit_timeline_event(
+            "architect", "escalate",
+            f"{len(failed_subtasks)} failed subtasks → re-plan"
+        )
         # Build failure context
         failure_lines = []
         for s in failed_subtasks:
@@ -1149,6 +1161,32 @@ Respond with implementation plan or code."""
             stats['success_count'] += 1
         else:
             stats['fail_count'] += 1
+        # MARKER_152.4: Auto-emit timeline event from stat tracking
+        self._emit_timeline_event(
+            role=role,
+            event="end" if success else "fail",
+            detail=f"tokens={tokens_in+tokens_out}" if (tokens_in + tokens_out) > 0 else "",
+            duration_s=duration,
+        )
+
+    # MARKER_152.4: Timeline event tracking for pipeline drill-down
+    def _emit_timeline_event(self, role: str, event: str, detail: str = "",
+                              duration_s: float = 0.0, subtask_idx: int = -1):
+        """Record a timestamped pipeline event for drill-down timeline visualization.
+
+        Events build a complete execution trace: start/end of each agent phase,
+        retries, escalations, verifier verdicts, tier upgrades.
+
+        Used by: GET /api/analytics/task/{id} → timeline[] for Recharts Gantt.
+        """
+        self._timeline_events.append({
+            "ts": time.time(),
+            "role": role,
+            "event": event,       # start, end, retry, escalate, verify_pass, verify_fail, tier_upgrade
+            "detail": detail[:200] if detail else "",
+            "duration_s": round(duration_s, 2),
+            "subtask_idx": subtask_idx,
+        })
 
     # MARKER_104_ELISION_PROMPTS_START: Context compression method
     def _compress_context(self, context: Any, level: int = None) -> tuple:
@@ -2113,6 +2151,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         self._update_task(pipeline_task)
 
         logger.info(f"[Pipeline] Starting {phase_type} pipeline for: {task[:50]}...")
+        # MARKER_152.4: Pipeline start event
+        self._emit_timeline_event("pipeline", "start", f"{phase_type} | {self.preset_name}")
 
         # MARKER_126.9E: Apply selected key preference if set from UI
         if hasattr(self, 'selected_key') and self.selected_key:
@@ -2135,6 +2175,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         try:
             # MARKER_122.1: Phase 0 — Parallel Recon (Scout + Researcher concurrently)
             await self._emit_progress("@mycelium", "🔍 Parallel recon: Scout + Researcher...")
+            self._emit_timeline_event("scout", "start", "parallel recon")
+            self._emit_timeline_event("researcher", "start", "parallel recon")
             scout_context, initial_research = await self._parallel_recon(task, phase_type)
             # MARKER_122.5C: Store scout context for subtask injection
             self._scout_context = scout_context
@@ -2164,6 +2206,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # MARKER_117.6C: Model attribution in progress messages
             architect_model = self.prompts.get("architect", {}).get("model", "")
+            self._emit_timeline_event("architect", "start", "planning subtasks")
             await self._emit_progress("@architect", "📋 Breaking down task into subtasks...", model=architect_model)
             # MARKER_133.C33B: Architect phase with timeout — CRITICAL (abort on timeout)
             # MARKER_145.ADAPTIVE_TIMEOUT: Architect model for adaptive timeout
@@ -2352,6 +2395,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     "duration_s": round(time.time() - pipeline_task.timestamp, 1),
                     # MARKER_151.11H: Per-agent stats breakdown for Stats Dashboard v2
                     "agent_stats": dict(self._agent_stats),
+                    # MARKER_152.4: Timeline events for drill-down visualization
+                    "timeline": list(self._timeline_events),
                 }
                 # Save to TaskBoard if task has a board ID
                 if hasattr(self, '_board_task_id') and self._board_task_id:

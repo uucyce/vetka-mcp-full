@@ -233,6 +233,8 @@ class TaskBoard:
         assigned_to: Optional[str] = None,  # MARKER_130.C16A
         agent_type: Optional[str] = None,   # MARKER_130.C16A
         created_by: str = "unknown",        # MARKER_133.C33D: Client attribution
+        source_chat_id: Optional[str] = None,   # MARKER_152.3: Chat provenance
+        source_group_id: Optional[str] = None,  # MARKER_152.3: Group provenance
     ) -> str:
         """Add a new task to the board.
 
@@ -285,6 +287,9 @@ class TaskBoard:
             "commit_message": None,           # First line of commit message
             # MARKER_133.C33D: Client attribution
             "created_by": created_by,         # "claude-code", "cursor", "opencode", "heartbeat"
+            # MARKER_152.3: Task provenance — trace back to originating chat
+            "source_chat_id": source_chat_id,   # VETKA chat UUID where task was created
+            "source_group_id": source_group_id, # Group chat UUID (for @dragon/@doctor tasks)
         }
 
         self._save(action="added")
@@ -325,7 +330,9 @@ class TaskBoard:
 
         # MARKER_137.S1_4: Allow adding 'result' field even if not present
         # MARKER_151.12A: Added result_status for user feedback (applied/rejected/rework)
-        ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status"}
+        # MARKER_152.3: Added source_chat_id, source_group_id for task provenance
+        ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status",
+                          "source_chat_id", "source_group_id"}
         for key, value in updates.items():
             if key in task or key in ADDABLE_FIELDS:
                 task[key] = value

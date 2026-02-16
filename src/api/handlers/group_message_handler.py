@@ -403,6 +403,7 @@ async def _doctor_triage(chat_id: str, task_text: str, sender_id: str):
             preset=suggested_team,
             source="doctor_triage",
             tags=tags + ["hold", "needs-approve"],
+            source_group_id=chat_id,  # MARKER_152.3: Task provenance
         )
         board.update_task(task_id, status="hold")
 
@@ -423,6 +424,7 @@ async def _doctor_triage(chat_id: str, task_text: str, sender_id: str):
             preset=suggested_team,
             source="doctor_triage",
             tags=tags + ["triage-pending"],
+            source_group_id=chat_id,  # MARKER_152.3: Task provenance
         )
 
         # Store pending task for quick-action handling
@@ -671,6 +673,7 @@ async def handle_intake_reply(chat_id: str, reply_text: str) -> bool:
             preset=preset,
             source=f"intake_{agent_id}",
             tags=[team, agent_id],
+            source_group_id=chat_id,  # MARKER_152.3: Task provenance
         )
 
         try:
