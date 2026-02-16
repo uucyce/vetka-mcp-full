@@ -309,7 +309,8 @@ This section tracks what is already implemented after RECON, with code-level sta
 - `G05` OCR routing inconsistency: **PARTIAL**
   - OCR now explicitly used in `/index-file` for image/PDF.
   - Local scanner includes media files so embedding pipeline OCR path can process them.
-  - Remaining: audio/video transcription path still summary-first.
+  - Audio/video transcription path added in embedding pipeline with local Whisper fallback + chunk metadata.
+  - Remaining: production-grade long-media chunk persistence/search ranking.
   - Files: `src/api/routes/watcher_routes.py`, `src/scanners/local_scanner.py`, `src/scanners/embedding_pipeline.py`
 
 - `G06` Triple-write reindex text-only: **IMPLEMENTED**
@@ -338,8 +339,8 @@ This section tracks what is already implemented after RECON, with code-level sta
   - Files: `src/elisya/provider_registry.py`, `src/api/handlers/user_message_handler.py`, `client/src/hooks/useSocket.ts`
 
 - `G14` Stream tooling reality gap: **PARTIAL**
-  - Transparency fixed (explicitly signals stream path is planning-only for tools).
-  - Remaining: true tool execution loop in streaming path.
+  - Transparency fixed (`stream_meta`) and pre-stream tool execution pass is now active.
+  - Remaining: iterative tool loops during token streaming.
 
 - `G15` BM25 escaping gap: **IMPLEMENTED**
   - Added newline/backslash normalization + robust quote escaping.
@@ -358,5 +359,6 @@ This section tracks what is already implemented after RECON, with code-level sta
 1. `G01` finalize unified extension/MIME policy with explicit allow/deny + size limits.  
    Status: **PARTIAL IMPLEMENTED** (`src/scanners/mime_policy.py` + watcher/reindex integration).
 2. `G09/G12` full universal multimodal scanner chain (audio/video chunk extraction + temporal relation persistence).  
-   Status: **PARTIAL IMPLEMENTED** (artifact temporal edges + multimodal ingest), chunk-level AV extraction still pending.
-3. `G14` add true streaming tool execution loop (not only advisory telemetry).
+   Status: **PARTIAL IMPLEMENTED** (artifact temporal edges + multimodal ingest + AV extraction contracts), long-media indexing strategy still pending.
+3. `G14` add true streaming tool execution loop (not only advisory telemetry).  
+   Status: **PARTIAL IMPLEMENTED** (pre-stream tool execution pass live).
