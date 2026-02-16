@@ -213,3 +213,72 @@ MARKER_153.REPORT.WAIT_GO
 - Open items are now implementation gaps (not research gaps).
 - Recommendation: proceed only with IMPL NARROW in dependency order above.
 
+---
+
+## External Multimodal Addendum (Feb 2026)
+
+MARKER_153.RECON.EXTERNAL_MULTIMODAL_2026_02_17
+
+Source: user-provided external research report (image/video/audio OCR/transcription/embedding ecosystem, Feb 17, 2026).  
+Verification level in this section: **EXTERNAL / NOT CODE-VERIFIED**.  
+Policy: treat as strategic input; validate provider/library claims during integration tests.
+
+### External claims mapped to VETKA gaps
+
+1. OCR stack maturity (DeepSeek/Qwen/GLM + OSS OCR):
+   - Directly relevant to `G05` (OCR routing inconsistency).
+   - Confirms need for non-PDF OCR path (images + video frames + structured output).
+
+2. Audio/video transcription + timestamps:
+   - Directly relevant to `G12` (end-to-end multimodal relation pipeline).
+   - Enables temporal edges from media timeline payload (timestamp-based dependencies).
+
+3. Multimodal embeddings (Qwen3-VL / MiniCPM-V / CLIP family):
+   - Relevant to `G07` (artifact batch/index path) and `G12`.
+   - Requires explicit payload schema for frame/chunk embeddings in Qdrant.
+
+4. Agentic montage/editing tools:
+   - Extension target after ingestion stabilization.
+   - Should be implemented as optional MCP-heavy mode, not base ingestion blocker.
+
+### Architecture delta (accepted for Phase 153+ planning)
+
+MARKER_153.RECON.MULTIMODAL_DELTA_ACCEPTED
+
+Add three contracts before deep implementation:
+
+1. `OCRResult` contract (image/PDF/frame):
+   - `{text, confidence, boxes[], timestamp?, source_path, extractor}`.
+
+2. `MediaChunk` contract (audio/video timeline):
+   - `{start_sec, end_sec, text, speaker?, frame_ref?, confidence}`.
+
+3. `QdrantPayload` multimodal extension:
+   - `{mime_type, modality, timestamp_sec?, chunk_id?, source_artifact_id, extraction_version}`.
+
+These contracts become mandatory in:
+- `src/api/routes/watcher_routes.py`
+- `src/scanners/qdrant_updater.py`
+- `src/services/artifact_scanner.py`
+- `src/layout/knowledge_layout.py` (temporal edge rendering)
+
+### Recommended stack policy (implementation-safe)
+
+MARKER_153.RECON.STACK_POLICY_2026Q1
+
+- Base fallback (local-first): `Whisper + EasyOCR/Tesseract` for guaranteed offline operation.
+- Optional high-quality path: pluggable VL model adapter (`Qwen/GLM/DeepSeek`) behind feature flags.
+- MCP/video-editing tools (`montage`) only after ingestion contracts + Qdrant schema are stable.
+
+### Updated execution order (with external inputs)
+
+MARKER_153.RECON.EXEC_ORDER_REFRESH
+
+1. Finalize multimodal contracts (`OCRResult`, `MediaChunk`, `QdrantPayload`).
+2. Implement scanner routing:
+   - image/pdf -> OCR
+   - audio -> transcript chunks
+   - video -> frame OCR + transcript chunks
+3. Store timestamped chunks in Qdrant and expose edge evidence in graph payload.
+4. Add MCP montage tools as separate opt-in mode.
+5. Benchmark on Apple Silicon (M4) and freeze defaults by latency/quality budget.
