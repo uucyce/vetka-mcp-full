@@ -26,11 +26,13 @@ import { OnboardingModal } from './OnboardingModal';
 import { MCCBreadcrumb } from './MCCBreadcrumb';
 import { RailsActionBar } from './RailsActionBar';
 import { ToastContainer } from './ToastContainer';
+import { CaptainBar } from './CaptainBar';
 import { useMCCStore } from '../../store/useMCCStore';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useLimitedTooltip } from '../../hooks/useLimitedTooltip';
 import { useRoadmapDAG } from '../../hooks/useRoadmapDAG';
 import { useToast } from '../../hooks/useToast';
+import { useCaptain } from '../../hooks/useCaptain';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { NOLAN_PALETTE, createTestDAGData } from '../../utils/dagLayout';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
@@ -184,6 +186,10 @@ export function MyceliumCommandCenter() {
 
   // MARKER_153.6C: Toast notifications for pipeline/system events
   const { toasts, addToast, dismissToast } = useToast();
+
+  // MARKER_153.7C: Architect Captain recommendations
+  const captain = useCaptain(mccReady && hasProject);
+  const [captainDismissed, setCaptainDismissed] = useState(false);
 
   useEffect(() => {
     initMCC().then(() => {
@@ -719,6 +725,26 @@ export function MyceliumCommandCenter() {
             minHeight: 0,
           }}
         >
+          {/* MARKER_153.7D: Captain recommendation bar — roadmap level only */}
+          {!captainDismissed && (
+            <CaptainBar
+              recommendation={captain.recommendation}
+              progress={captain.progress}
+              loading={captain.loading}
+              onAccept={async () => {
+                const result = await captain.acceptRecommendation();
+                if (result?.ok) {
+                  addToast('info', `Task created: ${result.task_title}`);
+                }
+              }}
+              onReject={async () => {
+                await captain.rejectRecommendation();
+                addToast('info', 'Recommendation skipped');
+              }}
+              onDismiss={() => setCaptainDismissed(true)}
+            />
+          )}
+
           {/* MARKER_143.P3: Task breadcrumb — shows when filtered by task */}
           {selectedTaskId && selectedTaskTitle && (
             <div

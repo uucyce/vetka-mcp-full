@@ -2,13 +2,14 @@
 MARKER_153.1B: MCC REST API Routes.
 MARKER_153.2B: Sandbox management — status, recreate, delete.
 MARKER_153.4F: Roadmap + Workflow + Prefetch endpoints.
+MARKER_153.7B: Architect Captain — recommend, accept, reject, progress.
 
 Endpoints for Mycelium Command Center initialization, state persistence,
 project setup, sandbox lifecycle, roadmap generation, workflow templates,
-and architect prefetch.
+architect prefetch, and architect captain recommendations.
 
 @phase 153
-@wave 1-4
+@wave 1-7
 @status active
 """
 
@@ -441,3 +442,72 @@ async def run_prefetch(req: PrefetchRequest):
         config=config,
     )
     return asdict(ctx)
+
+
+# ──────────────────────────────────────────────────────────────
+# MARKER_153.7B: Architect Captain — Recommendations
+# ──────────────────────────────────────────────────────────────
+
+@router.get("/captain/recommend")
+async def get_recommendation():
+    """
+    Get next task recommendation from the Architect Captain.
+    Returns recommendation with module, workflow, team preset, and reason.
+    """
+    from src.services.architect_captain import ArchitectCaptain
+    from dataclasses import asdict
+
+    rec = ArchitectCaptain.recommend_next()
+    if rec is None:
+        return {"has_recommendation": False, "message": "No actionable modules found"}
+
+    return {
+        "has_recommendation": True,
+        **asdict(rec),
+    }
+
+
+@router.post("/captain/accept")
+async def accept_recommendation(module_id: str = ""):
+    """
+    Accept the current recommendation. Returns dispatch-ready context.
+    If module_id is empty, accepts the top recommendation.
+    """
+    from src.services.architect_captain import ArchitectCaptain
+    from dataclasses import asdict
+
+    rec = ArchitectCaptain.recommend_next()
+    if rec is None:
+        raise HTTPException(status_code=404, detail="No recommendation available")
+
+    if module_id and module_id != rec.module_id:
+        # User wants a different module — re-recommend for that specific one
+        # For now, just accept whatever is recommended
+        pass
+
+    result = ArchitectCaptain.accept_recommendation(rec)
+    return result
+
+
+@router.post("/captain/reject")
+async def reject_recommendation():
+    """
+    Reject the current recommendation. Returns alternatives.
+    """
+    from src.services.architect_captain import ArchitectCaptain
+
+    rec = ArchitectCaptain.recommend_next()
+    if rec is None:
+        raise HTTPException(status_code=404, detail="No recommendation available")
+
+    result = ArchitectCaptain.reject_recommendation(rec)
+    return result
+
+
+@router.get("/captain/progress")
+async def get_project_progress():
+    """
+    Get overall project progress (modules completed, active, pending).
+    """
+    from src.services.architect_captain import ArchitectCaptain
+    return ArchitectCaptain.get_progress()
