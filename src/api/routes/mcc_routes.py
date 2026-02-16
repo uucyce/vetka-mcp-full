@@ -1,12 +1,14 @@
 """
 MARKER_153.1B: MCC REST API Routes.
 MARKER_153.2B: Sandbox management — status, recreate, delete.
+MARKER_153.4F: Roadmap + Workflow + Prefetch endpoints.
 
 Endpoints for Mycelium Command Center initialization, state persistence,
-project setup, and sandbox lifecycle management.
+project setup, sandbox lifecycle, roadmap generation, workflow templates,
+and architect prefetch.
 
 @phase 153
-@wave 1-2
+@wave 1-4
 @status active
 """
 
@@ -14,7 +16,7 @@ import os
 import shutil
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 from src.services.project_config import ProjectConfig, SessionState
 
@@ -357,3 +359,85 @@ async def update_quota(quota_gb: int):
         raise HTTPException(status_code=500, detail="Failed to save config")
 
     return {"ok": True, "quota_gb": quota_gb, "status": config.get_sandbox_status()}
+
+
+# ──────────────────────────────────────────────────────────────
+# MARKER_153.4F: Roadmap, Workflow Templates, Prefetch
+# ──────────────────────────────────────────────────────────────
+
+@router.get("/roadmap")
+async def get_roadmap():
+    """
+    Get the project roadmap DAG.
+    Returns the saved roadmap or generates one if absent.
+    """
+    from src.services.roadmap_generator import RoadmapDAG, RoadmapGenerator
+
+    config = ProjectConfig.load()
+    if config is None:
+        raise HTTPException(status_code=404, detail="No project configured")
+
+    dag = RoadmapDAG.load()
+    if dag is None:
+        # Auto-generate on first request
+        dag = await RoadmapGenerator.analyze_project(config)
+
+    return dag.to_frontend_format()
+
+
+@router.post("/roadmap/generate")
+async def generate_roadmap():
+    """Regenerate roadmap from current sandbox state."""
+    from src.services.roadmap_generator import RoadmapGenerator
+
+    config = ProjectConfig.load()
+    if config is None:
+        raise HTTPException(status_code=404, detail="No project configured")
+
+    if not config.sandbox_exists():
+        raise HTTPException(status_code=400, detail="Sandbox not found. Create sandbox first.")
+
+    dag = await RoadmapGenerator.analyze_project(config)
+    return {"ok": True, "node_count": len(dag.nodes), "edge_count": len(dag.edges)}
+
+
+@router.get("/workflows")
+async def list_workflows():
+    """List all available workflow templates."""
+    from src.services.architect_prefetch import WorkflowTemplateLibrary
+    return {"templates": WorkflowTemplateLibrary.list_templates()}
+
+
+@router.get("/workflows/{workflow_key}")
+async def get_workflow(workflow_key: str):
+    """Get a specific workflow template by key."""
+    from src.services.architect_prefetch import WorkflowTemplateLibrary
+    tpl = WorkflowTemplateLibrary.get_template(workflow_key)
+    if tpl is None:
+        raise HTTPException(status_code=404, detail=f"Workflow template '{workflow_key}' not found")
+    return tpl
+
+
+class PrefetchRequest(BaseModel):
+    task_description: str
+    task_type: str = ""
+    complexity: int = 5
+
+
+@router.post("/prefetch")
+async def run_prefetch(req: PrefetchRequest):
+    """
+    Run the Architect Prefetch Pipeline.
+    Returns context for pipeline injection.
+    """
+    from src.services.architect_prefetch import ArchitectPrefetch
+    from dataclasses import asdict
+
+    config = ProjectConfig.load()
+    ctx = ArchitectPrefetch.prepare(
+        task_description=req.task_description,
+        task_type=req.task_type,
+        complexity=req.complexity,
+        config=config,
+    )
+    return asdict(ctx)

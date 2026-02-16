@@ -1,0 +1,49 @@
+{
+  "id": "docs_update_v1",
+  "name": "Docs Update (Scout → Coder[docs-mode])",
+  "description": "Minimal pipeline for documentation updates. No verifier needed — docs are soft changes.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-02-16T00:00:00Z",
+    "author": "vetka-system",
+    "phase": "153",
+    "complexity_range": [1, 2],
+    "task_types": ["docs", "readme", "comment", "jsdoc"]
+  },
+  "nodes": [
+    {
+      "id": "scout",
+      "type": "agent",
+      "label": "Scout (Find Docs)",
+      "position": { "x": 100, "y": 200 },
+      "data": {
+        "role": "scout",
+        "description": "Find existing documentation, README, comments, JSDoc/docstrings",
+        "outputs": ["relevant_files", "doc_sections"]
+      }
+    },
+    {
+      "id": "coder",
+      "type": "agent",
+      "label": "Coder (Write Docs)",
+      "position": { "x": 300, "y": 200 },
+      "data": {
+        "role": "coder",
+        "mode": "docs",
+        "description": "Write or update documentation based on existing code patterns",
+        "outputs": ["doc_changes"]
+      }
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "label": "Docs Ready",
+      "position": { "x": 500, "y": 200 },
+      "data": {}
+    }
+  ],
+  "edges": [
+    { "id": "e-scout-coder", "source": "scout", "target": "coder" },
+    { "id": "e-coder-out", "source": "coder", "target": "output" }
+  ]
+}

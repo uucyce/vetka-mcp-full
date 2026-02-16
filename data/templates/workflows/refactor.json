@@ -1,0 +1,85 @@
+{
+  "id": "refactor_v1",
+  "name": "Refactor (Deep Scout → Architect → Parallel Coders → Verify)",
+  "description": "For structural refactoring. Deep codebase scan, careful planning, parallel coding across files, thorough verification.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-02-16T00:00:00Z",
+    "author": "vetka-system",
+    "phase": "153",
+    "complexity_range": [4, 8],
+    "task_types": ["refactor", "restructure", "migrate"]
+  },
+  "nodes": [
+    {
+      "id": "scout",
+      "type": "agent",
+      "label": "Scout (Deep Scan)",
+      "position": { "x": 100, "y": 200 },
+      "data": {
+        "role": "scout",
+        "description": "Deep codebase scan: all related files, imports, dependencies, markers",
+        "outputs": ["relevant_files", "marker_map", "dependency_graph"]
+      }
+    },
+    {
+      "id": "architect",
+      "type": "agent",
+      "label": "Architect (Plan Refactor)",
+      "position": { "x": 300, "y": 200 },
+      "data": {
+        "role": "architect",
+        "description": "Plan refactoring steps. Identify breaking changes. Order by dependency.",
+        "outputs": ["subtasks", "breaking_changes", "migration_steps"]
+      }
+    },
+    {
+      "id": "coder_parallel",
+      "type": "parallel",
+      "label": "Coders (Parallel)",
+      "position": { "x": 500, "y": 200 },
+      "data": {
+        "role": "coder",
+        "description": "Multiple coders work on independent files in parallel",
+        "parallel_strategy": "per_subtask",
+        "outputs": ["code_changes"]
+      }
+    },
+    {
+      "id": "verifier",
+      "type": "agent",
+      "label": "Verifier (Integration Check)",
+      "position": { "x": 700, "y": 200 },
+      "data": {
+        "role": "verifier",
+        "description": "Verify all changes are consistent. Check imports, types, no circular deps.",
+        "outputs": ["passed", "confidence", "issues"]
+      }
+    },
+    {
+      "id": "retry",
+      "type": "condition",
+      "label": "Retry?",
+      "position": { "x": 700, "y": 350 },
+      "data": {
+        "condition": "verifier.passed == false && retry_count < 2",
+        "description": "Retry failed subtasks with verifier feedback"
+      }
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "label": "Result",
+      "position": { "x": 900, "y": 200 },
+      "data": {}
+    }
+  ],
+  "edges": [
+    { "id": "e-scout-arch", "source": "scout", "target": "architect" },
+    { "id": "e-arch-coder", "source": "architect", "target": "coder_parallel" },
+    { "id": "e-coder-ver", "source": "coder_parallel", "target": "verifier" },
+    { "id": "e-ver-out", "source": "verifier", "target": "output" },
+    { "id": "e-ver-retry", "source": "verifier", "target": "retry", "type": "feedback" },
+    { "id": "e-retry-coder", "source": "retry", "target": "coder_parallel", "type": "feedback" }
+  ]
+}

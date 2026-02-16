@@ -1,0 +1,61 @@
+{
+  "id": "test_only_v1",
+  "name": "Test Only (Scout → Coder[test-mode] → Verify)",
+  "description": "Write tests for existing code. Scout finds implementation, Coder generates tests, Verifier checks coverage.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-02-16T00:00:00Z",
+    "author": "vetka-system",
+    "phase": "153",
+    "complexity_range": [2, 5],
+    "task_types": ["test", "coverage", "e2e"]
+  },
+  "nodes": [
+    {
+      "id": "scout",
+      "type": "agent",
+      "label": "Scout (Find Impl)",
+      "position": { "x": 100, "y": 200 },
+      "data": {
+        "role": "scout",
+        "description": "Find implementation files, existing test patterns, test infrastructure",
+        "outputs": ["relevant_files", "test_patterns", "test_framework"]
+      }
+    },
+    {
+      "id": "coder",
+      "type": "agent",
+      "label": "Coder (Write Tests)",
+      "position": { "x": 300, "y": 200 },
+      "data": {
+        "role": "coder",
+        "mode": "test",
+        "description": "Generate comprehensive tests following project test patterns",
+        "outputs": ["test_files"]
+      }
+    },
+    {
+      "id": "verifier",
+      "type": "agent",
+      "label": "Verifier (Coverage)",
+      "position": { "x": 500, "y": 200 },
+      "data": {
+        "role": "verifier",
+        "description": "Verify tests are valid, cover edge cases, follow project conventions",
+        "outputs": ["passed", "confidence", "coverage_notes"]
+      }
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "label": "Tests Ready",
+      "position": { "x": 700, "y": 200 },
+      "data": {}
+    }
+  ],
+  "edges": [
+    { "id": "e-scout-coder", "source": "scout", "target": "coder" },
+    { "id": "e-coder-ver", "source": "coder", "target": "verifier" },
+    { "id": "e-ver-out", "source": "verifier", "target": "output" }
+  ]
+}
