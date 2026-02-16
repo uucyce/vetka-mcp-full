@@ -45,6 +45,7 @@ Node Structure:
 import os
 import json
 import hashlib
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
@@ -388,6 +389,36 @@ def build_artifact_edges(
 
     # Build chat_id -> chat_node mapping
     chat_map = {node['id']: node for node in chat_nodes}
+    artifact_by_name = {node.get("name", ""): node for node in artifact_nodes}
+
+    def _extract_reference_names(file_path: Path) -> List[str]:
+        """Extract referenced file names from markdown/text artifacts."""
+        if not file_path.exists() or not file_path.is_file():
+            return []
+        if file_path.suffix.lower() not in {".md", ".txt", ".rst", ".adoc"}:
+            return []
+        try:
+            text = file_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return []
+
+        refs: List[str] = []
+        # Markdown links: [label](target)
+        refs.extend(re.findall(r"\[[^\]]+\]\(([^)]+)\)", text))
+        # Wiki links: [[target]]
+        refs.extend(re.findall(r"\[\[([^\]]+)\]\]", text))
+        # Bare relative paths with known extensions
+        refs.extend(re.findall(r"([A-Za-z0-9_./-]+\.(?:md|txt|json|csv|py|js|ts|tsx|pdf|png|jpg|jpeg))", text))
+
+        names: List[str] = []
+        for ref in refs:
+            candidate = (ref or "").strip().split("#")[0].split("?")[0]
+            if not candidate:
+                continue
+            name = Path(candidate).name
+            if name:
+                names.append(name)
+        return names
 
     for artifact in artifact_nodes:
         parent_id = artifact.get('parent_id')
@@ -405,6 +436,32 @@ def build_artifact_edges(
                 }
             }
             edges.append(edge)
+
+        # MARKER_153.IMPL.G10_ARTIFACT_REF_EDGES:
+        # Add explicit artifact->artifact reference edges from document link parsing.
+        file_path = artifact.get("metadata", {}).get("file_path")
+        if file_path:
+            ref_names = _extract_reference_names(Path(file_path))
+            for ref_name in ref_names:
+                target_artifact = artifact_by_name.get(ref_name)
+                if not target_artifact:
+                    continue
+                if target_artifact["id"] == artifact["id"]:
+                    continue
+                edges.append(
+                    {
+                        "from": artifact["id"],
+                        "to": target_artifact["id"],
+                        "semantics": "reference",
+                        "metadata": {
+                            "type": "reference",
+                            "style": "dashed",
+                            "color": "#3b82f6",
+                            "opacity": 0.45,
+                            "evidence": ref_name,
+                        },
+                    }
+                )
 
     print(f"[ARTIFACT_SCAN] Built {len(edges)} artifact edges")
 
