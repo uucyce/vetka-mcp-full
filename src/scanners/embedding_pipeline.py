@@ -424,6 +424,7 @@ class EmbeddingPipeline:
             'timestamp': time.time(),
             'modality': ocr_metadata.get('modality', 'document' if extension in ocr_extensions else ('media' if extension in av_extensions else 'text')),
             'media_chunks': media_chunks[:32],
+            'extraction_version': 'phase153_mm_v1',
         }
 
         # Save to Qdrant (legacy - vetka_elisya collection)
@@ -442,6 +443,7 @@ class EmbeddingPipeline:
                 'extension': file_data.get('extension', ''),
                 'depth': file_data.get('depth', 0),
                 'media_chunks': media_chunks[:32],
+                'extraction_version': 'phase153_mm_v1',
                 **ocr_metadata  # Include OCR/transcript metadata if present
             }
 

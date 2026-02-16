@@ -339,8 +339,8 @@ This section tracks what is already implemented after RECON, with code-level sta
   - Files: `src/elisya/provider_registry.py`, `src/api/handlers/user_message_handler.py`, `client/src/hooks/useSocket.ts`
 
 - `G14` Stream tooling reality gap: **PARTIAL**
-  - Transparency fixed (`stream_meta`) and pre-stream tool execution pass is now active.
-  - Remaining: iterative tool loops during token streaming.
+  - Chat noise removed (`stream_meta` moved out of chat UI; stream path cleaned).
+  - Remaining: true tool execution loop for streaming path.
 
 - `G15` BM25 escaping gap: **IMPLEMENTED**
   - Added newline/backslash normalization + robust quote escaping.
@@ -361,4 +361,4 @@ This section tracks what is already implemented after RECON, with code-level sta
 2. `G09/G12` full universal multimodal scanner chain (audio/video chunk extraction + temporal relation persistence).  
    Status: **PARTIAL IMPLEMENTED** (artifact temporal edges + multimodal ingest + AV extraction contracts), long-media indexing strategy still pending.
 3. `G14` add true streaming tool execution loop (not only advisory telemetry).  
-   Status: **PARTIAL IMPLEMENTED** (pre-stream tool execution pass live).
+   Status: **PARTIAL IMPLEMENTED** (chat cleanup done; execution loop still pending).

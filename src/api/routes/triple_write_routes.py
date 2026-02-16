@@ -326,6 +326,7 @@ async def triple_write_reindex(req: ReindexRequest):
                         'modality': policy.get('category'),
                         'ingest_mode': 'multimodal' if req.multimodal else 'text_only',
                         'media_chunks': media_chunks[:32],
+                        'extraction_version': 'phase153_mm_v1',
                     }
 
                     # Get embedding

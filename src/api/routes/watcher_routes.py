@@ -794,6 +794,7 @@ async def index_single_file(req: IndexFileRequest, request: Request):
                 'content': content[:500],  # Preview
                 'content_hash': updater._get_content_hash(file_obj),
                 'media_chunks': media_chunks[:32],
+                'extraction_version': 'phase153_mm_v1',
                 'updated_at': time_module.time(),
                 'deleted': False
             }
@@ -825,6 +826,7 @@ async def index_single_file(req: IndexFileRequest, request: Request):
                     'deleted': False,
                     'content': content[:500],
                     'media_chunks': media_chunks[:32],
+                    'extraction_version': 'phase153_mm_v1',
                     'content_hash': updater._get_content_hash(file_obj),
                     'updated_at': time_module.time(),
                 }
