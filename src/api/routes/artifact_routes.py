@@ -5,7 +5,7 @@
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from src.api.handlers.artifact_routes import (
@@ -15,6 +15,7 @@ from src.api.handlers.artifact_routes import (
     save_search_result_artifact,
     save_webpage_artifact,
 )
+from src.services.artifact_scanner import set_artifact_favorite
 
 
 router = APIRouter(prefix="/api/artifacts", tags=["artifacts"])
@@ -22,6 +23,9 @@ router = APIRouter(prefix="/api/artifacts", tags=["artifacts"])
 
 class ArtifactDecisionRequest(BaseModel):
     reason: Optional[str] = None
+
+class ArtifactFavoriteRequest(BaseModel):
+    is_favorite: bool
 
 
 class SaveWebpageRequest(BaseModel):
@@ -65,6 +69,72 @@ async def reject_artifact_endpoint(artifact_id: str, body: ArtifactDecisionReque
         artifact_id=artifact_id,
         reason=body.reason or "Rejected via API",
     )
+
+
+@router.put("/{artifact_id}/favorite")
+async def favorite_artifact_endpoint(artifact_id: str, body: ArtifactFavoriteRequest, request: Request):
+    result = set_artifact_favorite(
+        artifact_id=artifact_id,
+        is_favorite=body.is_favorite,
+    )
+    if not result.get("success"):
+        return result
+
+    # MARKER_137.6F: Optional CAM memory sync for favorited artifacts.
+    try:
+        flask_config = getattr(request.app.state, "flask_config", {}) if request and request.app else {}
+        if bool(flask_config.get("ELISYA_ENABLED", False)) and body.is_favorite:
+            from src.orchestration.cam_event_handler import emit_cam_event
+            await emit_cam_event(
+                "artifact_created",
+                {
+                    "path": f"artifact_favorites/{artifact_id}",
+                    "content": f"Favorite artifact: {artifact_id}",
+                    "source_agent": "artifact_routes",
+                },
+                source="artifact_routes",
+            )
+    except Exception:
+        pass
+
+    # MARKER_137.6F: ENGRAM user preference sync (non-critical).
+    try:
+        from src.memory.engram_user_memory import get_engram_user_memory
+
+        engram = get_engram_user_memory()
+        user_id = (
+            request.headers.get("x-user-id")
+            or request.headers.get("x-session-user")
+            or request.headers.get("x-session-id")
+            or "danila"
+        ).strip() or "danila"
+
+        highlights = engram.get_preference(user_id, "project_highlights", "highlights")
+        if not isinstance(highlights, dict):
+            highlights = {}
+
+        favorites = highlights.get("favorite_artifacts", [])
+        if not isinstance(favorites, list):
+            favorites = []
+
+        if body.is_favorite:
+            if artifact_id not in favorites:
+                favorites.append(artifact_id)
+        else:
+            favorites = [aid for aid in favorites if aid != artifact_id]
+
+        highlights["favorite_artifacts"] = favorites[-500:]
+        engram.set_preference(
+            user_id,
+            "project_highlights",
+            "highlights",
+            highlights,
+            confidence=0.85 if body.is_favorite else 0.72,
+        )
+    except Exception:
+        pass
+
+    return result
 
 
 @router.post("/save-webpage")

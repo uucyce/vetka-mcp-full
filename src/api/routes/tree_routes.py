@@ -23,6 +23,8 @@ Phase History:
 """
 
 import os
+import json
+from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -31,6 +33,34 @@ from datetime import datetime
 
 
 router = APIRouter(prefix="/api/tree", tags=["tree"])
+NODE_FAVORITES_FILE = Path("data/node_favorites.json")
+
+
+def _load_node_favorites() -> Dict[str, Any]:
+    if not NODE_FAVORITES_FILE.exists():
+        return {"favorites": {}, "updated_at": ""}
+    try:
+        data = json.loads(NODE_FAVORITES_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {"favorites": {}, "updated_at": ""}
+        favorites = data.get("favorites", {})
+        if not isinstance(favorites, dict):
+            favorites = {}
+        return {"favorites": favorites, "updated_at": data.get("updated_at", "")}
+    except Exception:
+        return {"favorites": {}, "updated_at": ""}
+
+
+def _save_node_favorites(data: Dict[str, Any]) -> bool:
+    try:
+        NODE_FAVORITES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        NODE_FAVORITES_FILE.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return True
+    except Exception:
+        return False
 
 
 # Module-level cache for semantic DAG (computed once per session)
@@ -62,6 +92,11 @@ class KnowledgeGraphRequest(BaseModel):
     min_cluster_size: Optional[int] = 3
     similarity_threshold: Optional[float] = 0.7
     file_positions: Optional[Dict[str, Any]] = {}
+
+
+class NodeFavoriteRequest(BaseModel):
+    path: str
+    is_favorite: bool
 
 
 # ============================================================
@@ -230,6 +265,8 @@ async def get_tree_data(
             set_last_branch_count,
         )
         from src.orchestration.cam_engine import calculate_surprise_metrics_for_tree
+
+        node_favorites = _load_node_favorites().get("favorites", {})
 
         # ═══════════════════════════════════════════════════════════════════
         # STEP 1: Get ALL scanned files from Qdrant
@@ -493,7 +530,8 @@ async def get_tree_data(
                 'metadata': {
                     'path': folder_path,
                     'depth': folder['depth'],
-                    'file_count': len(files_by_folder.get(folder_path, []))
+                    'file_count': len(files_by_folder.get(folder_path, [])),
+                    'is_favorite': bool(node_favorites.get(folder_path, False)),
                 },
                 'visual_hints': {
                     'layout_hint': {
@@ -543,7 +581,8 @@ async def get_tree_data(
                         'modified_time': file_data['modified_time'],
                         'content_preview': file_data.get('content', ''),
                         'qdrant_id': file_data['id'],
-                        'is_ghost': is_ghost  # Phase 90.11: Deleted from disk
+                        'is_ghost': is_ghost,  # Phase 90.11: Deleted from disk
+                        'is_favorite': bool(node_favorites.get(file_data['path'], False)),
                     },
                     'visual_hints': {
                         'layout_hint': {
@@ -774,6 +813,10 @@ async def get_tree_data(
                     # Get heat score (0.0-1.0)
                     node['heatScore'] = heat_scores.get(dir_path, 0.0)
 
+                    # MARKER_137.6C: Favorites keep persistent visual glow.
+                    if bool(node.get('metadata', {}).get('is_favorite', False)):
+                        node['heatScore'] = max(float(node.get('heatScore', 0.0)), 0.95)
+
             heat_count = sum(1 for n in nodes if n.get('heatScore', 0) > 0)
             if heat_count > 0:
                 print(f"[HEAT] Phase 119.2: Injected heat scores into {heat_count} nodes")
@@ -815,6 +858,87 @@ async def get_tree_data(
         import traceback
         traceback.print_exc()
         return {'error': str(e), 'tree': {'nodes': [], 'edges': []}}
+
+
+@router.get("/favorites")
+async def get_node_favorites():
+    data = _load_node_favorites()
+    favorites = data.get("favorites", {})
+    return {
+        "success": True,
+        "favorites": favorites,
+        "count": len([v for v in favorites.values() if v]),
+    }
+
+
+@router.put("/favorite")
+async def set_node_favorite(body: NodeFavoriteRequest, request: Request):
+    path = (body.path or "").strip()
+    if not path:
+        raise HTTPException(status_code=400, detail="path is required")
+
+    data = _load_node_favorites()
+    favorites = data.setdefault("favorites", {})
+    favorites[path] = bool(body.is_favorite)
+    data["updated_at"] = datetime.now().isoformat()
+
+    if not _save_node_favorites(data):
+        raise HTTPException(status_code=500, detail="Failed to persist node favorites")
+
+    # MARKER_137.6F: Optional CAM sync for favorited nodes.
+    try:
+        flask_config = getattr(request.app.state, "flask_config", {}) if request and request.app else {}
+        if bool(flask_config.get("ELISYA_ENABLED", False)) and body.is_favorite:
+            from src.orchestration.cam_event_handler import emit_cam_event
+            await emit_cam_event(
+                "file_uploaded",
+                {
+                    "path": path,
+                    "content": f"Favorite node path: {path}",
+                },
+                source="tree_routes",
+            )
+    except Exception:
+        pass
+
+    # MARKER_137.6F: ENGRAM user preference sync (non-critical).
+    try:
+        from src.memory.engram_user_memory import get_engram_user_memory
+
+        engram = get_engram_user_memory()
+        user_id = (
+            request.headers.get("x-user-id")
+            or request.headers.get("x-session-user")
+            or request.headers.get("x-session-id")
+            or "danila"
+        ).strip() or "danila"
+
+        highlights = engram.get_preference(user_id, "project_highlights", "highlights")
+        if not isinstance(highlights, dict):
+            highlights = {}
+
+        favorites = highlights.get("favorite_nodes", [])
+        if not isinstance(favorites, list):
+            favorites = []
+
+        if body.is_favorite:
+            if path not in favorites:
+                favorites.append(path)
+        else:
+            favorites = [p for p in favorites if p != path]
+
+        highlights["favorite_nodes"] = favorites[-2000:]
+        engram.set_preference(
+            user_id,
+            "project_highlights",
+            "highlights",
+            highlights,
+            confidence=0.82 if body.is_favorite else 0.7,
+        )
+    except Exception:
+        pass
+
+    return {"success": True, "path": path, "is_favorite": bool(body.is_favorite)}
 
 
 @router.post("/clear-semantic-cache")

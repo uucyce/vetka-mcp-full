@@ -44,6 +44,10 @@ export interface TreeNode {
     decay_factor?: number;
     last_activity?: string;
     context_type?: string;
+    is_favorite?: boolean;
+    path?: string;
+    artifact_id?: string;
+    [key: string]: any;
   };
 }
 

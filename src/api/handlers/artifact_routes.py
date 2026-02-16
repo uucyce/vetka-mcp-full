@@ -35,6 +35,7 @@ def _normalize_artifact_list(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 "file_path": meta.get("file_path", ""),
                 "size_bytes": meta.get("size_bytes", 0),
                 "modified_at": meta.get("modified_at"),
+                "is_favorite": bool(meta.get("is_favorite", False)),
             }
         )
     return out

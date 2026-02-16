@@ -28,6 +28,7 @@ interface Chat {
   file_path: string;
   display_name?: string;  // Phase 74: Custom chat name
   context_type?: string;  // Phase 74: "file" | "folder" | "group" | "topic"
+  chat_kind?: 'solo' | 'team'; // MARKER_137.4L: Explicit UX kind
   items?: string[];       // Phase 74: File paths for groups
   topic?: string;         // Phase 74: Topic for file-less chats
   is_favorite?: boolean;  // MARKER_137.3: Favorite chat pin
@@ -250,6 +251,30 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return (b.updated_at || '').localeCompare(a.updated_at || '');
   });
 
+  // MARKER_137.4I: Conservative dedup for legacy split history display.
+  const dedupedChats = sortedChats.filter((chat, idx, arr) => {
+    const chatName = (chat.display_name || chat.file_name || '').trim().toLowerCase();
+    if (!chatName) return true;
+    const chatTs = new Date(chat.updated_at || 0).getTime();
+
+    for (let i = 0; i < idx; i++) {
+      const prev = arr[i];
+      const prevName = (prev.display_name || prev.file_name || '').trim().toLowerCase();
+      if (!prevName || prevName !== chatName) continue;
+      if ((prev.context_type || 'file') !== (chat.context_type || 'file')) continue;
+      if ((prev.message_count ?? -1) !== (chat.message_count ?? -1)) continue;
+
+      const prevTs = new Date(prev.updated_at || 0).getTime();
+      const diffSec = Math.abs(prevTs - chatTs) / 1000;
+      if (diffSec <= 90) {
+        // Keep selected chat if one of duplicates is active.
+        if (currentChatId === chat.id) return true;
+        return false;
+      }
+    }
+    return true;
+  });
+
   const formatDate = (dateString: string): string => {
     try {
       const date = new Date(dateString);
@@ -394,13 +419,13 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
         {/* MARKER_129.2B: Skeleton loading */}
         {loading && <ChatSkeleton />}
 
-        {!loading && filteredChats.length === 0 && (
+        {!loading && dedupedChats.length === 0 && (
           <div className="chat-sidebar-empty">
             {chats.length === 0 ? 'No chats yet' : 'No matches found'}
           </div>
         )}
 
-        {!loading && sortedChats.map((chat) => (
+        {!loading && dedupedChats.map((chat) => (
           <div
             key={chat.id}
             className={`chat-sidebar-item ${
@@ -411,7 +436,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             <div className="chat-sidebar-item-content">
               <div className="chat-sidebar-item-name">
                 {/* MARKER_137.4E: Primary distinction is Team vs Solo chat, not file/folder context */}
-                {chat.context_type === 'group' ? (
+                {chat.chat_kind === 'team' ? (
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     {/* Team icon: robot + human (aligned with existing ChatPanel semantics) */}
                     <rect x="3" y="6" width="10" height="8" rx="1.5" />
@@ -453,7 +478,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 onClick={(e) => handleToggleFavorite(e, chat)}
                 title={chat.is_favorite ? 'Remove favorite' : 'Add favorite'}
               >
-                {chat.is_favorite ? '★' : '☆'}
+                <svg className="chat-sidebar-favorite-star" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 3.7l2.6 5.2 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" />
+                </svg>
               </button>
               <div className="chat-sidebar-item-actions">
               <button

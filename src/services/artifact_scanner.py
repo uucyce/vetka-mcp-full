@@ -150,7 +150,8 @@ def _load_staging_links() -> Dict[str, Dict]:
                         'group_id': artifact_data.get('group_id'),
                         'source_chat_id': artifact_data.get('source_chat_id'),
                         'status': artifact_data.get('status', 'done'),
-                        'artifact_id': artifact_id
+                        'artifact_id': artifact_id,
+                        'is_favorite': bool(artifact_data.get('is_favorite', False)),
                     }
 
         elif 'items' in staging:
@@ -162,7 +163,8 @@ def _load_staging_links() -> Dict[str, Dict]:
                         'source_message_id': item.get('source_message_id'),
                         'group_id': item.get('group_id'),
                         'source_chat_id': item.get('source_chat_id'),
-                        'status': item.get('status', 'done')
+                        'status': item.get('status', 'done'),
+                        'is_favorite': bool(item.get('is_favorite', False)),
                     }
 
     except Exception as e:
@@ -295,6 +297,7 @@ def scan_artifacts() -> List[Dict]:
         source_chat_id = staging_info.get('source_chat_id') or staging_info.get('group_id')
         source_message_id = staging_info.get('source_message_id')
         status = staging_info.get('status', 'done')
+        is_favorite = bool(staging_info.get('is_favorite', False))
 
         # Generate artifact ID
         artifact_id = _generate_artifact_id(file_path.name)
@@ -325,7 +328,9 @@ def scan_artifacts() -> List[Dict]:
                 "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
                 "source_message_id": source_message_id,
                 "source_chat_id": source_chat_id,
+                "artifact_id": artifact_id,
                 "status": status,
+                "is_favorite": is_favorite,
                 "extension": file_path.suffix
             },
             "visual_hints": {
@@ -549,3 +554,47 @@ def reject_artifact(artifact_id: str, reason: str = "Rejected via API") -> Dict:
         status="rejected",
         reason=reason,
     )
+
+
+def set_artifact_favorite(artifact_id: str, is_favorite: bool) -> Dict:
+    """
+    Toggle favorite flag for artifact in staging persistence.
+    """
+    filename = _resolve_artifact_filename(artifact_id)
+    if not filename:
+        return {"success": False, "error": f"Artifact not found: {artifact_id}", "artifact_id": artifact_id}
+
+    now_iso = datetime.now().isoformat()
+    data = _load_staging_data()
+    artifacts = data.setdefault("artifacts", {})
+
+    target_key = None
+    if artifact_id in artifacts:
+        target_key = artifact_id
+    else:
+        for key, item in artifacts.items():
+            if item.get("filename") == filename:
+                target_key = key
+                break
+
+    if target_key is None:
+        target_key = artifact_id
+        artifacts[target_key] = {"filename": filename, "created_at": now_iso}
+
+    artifacts[target_key]["filename"] = filename
+    artifacts[target_key]["is_favorite"] = bool(is_favorite)
+    artifacts[target_key]["updated_at"] = now_iso
+    if is_favorite:
+        artifacts[target_key]["favorited_at"] = now_iso
+    else:
+        artifacts[target_key].pop("favorited_at", None)
+
+    if not _save_staging_data(data):
+        return {"success": False, "error": "Failed to persist favorite", "artifact_id": artifact_id}
+
+    return {
+        "success": True,
+        "artifact_id": target_key,
+        "filename": filename,
+        "is_favorite": bool(is_favorite),
+    }

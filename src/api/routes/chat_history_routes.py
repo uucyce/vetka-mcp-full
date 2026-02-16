@@ -18,6 +18,7 @@ Endpoints:
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
+from datetime import datetime
 from src.chat.chat_history_manager import get_chat_history_manager
 
 
@@ -47,6 +48,7 @@ class ChatResponse(BaseModel):
     context_type: Optional[str] = None  # Phase 74: "file" | "folder" | "group" | "topic"
     items: Optional[List[str]] = None   # Phase 74: File paths for groups
     topic: Optional[str] = None         # Phase 74: Topic for file-less chats
+    chat_kind: Optional[str] = None     # MARKER_137.4L: "solo" | "team"
     is_favorite: Optional[bool] = False # MARKER_137.3: Favorites support
     created_at: str
     updated_at: str
@@ -103,6 +105,7 @@ async def list_chats(
                 context_type=chat.get("context_type", "file"),  # Phase 74
                 items=chat.get("items"),                     # Phase 74
                 topic=chat.get("topic"),                     # Phase 74
+                chat_kind=manager.infer_chat_kind(chat),     # MARKER_137.4L
                 is_favorite=chat.get("is_favorite", False),  # MARKER_137.3
                 created_at=chat["created_at"],
                 updated_at=chat["updated_at"],
@@ -163,6 +166,7 @@ async def get_chat(chat_id: str, request: Request):
             "topic": chat.get("topic"),                         # Phase 74.3
             "group_id": chat.get("group_id"),                   # Phase 80.5
             "pinned_file_ids": chat.get("pinned_file_ids", []), # Phase 100.2
+            "chat_kind": manager.infer_chat_kind(chat),         # MARKER_137.4L
             "is_favorite": chat.get("is_favorite", False),      # MARKER_137.3
             "created_at": chat["created_at"],
             "updated_at": chat["updated_at"],
@@ -399,6 +403,44 @@ async def set_chat_favorite(chat_id: str, data: FavoriteRequest, request: Reques
                 # Non-critical: favorite toggle must remain available without CAM.
                 pass
 
+        # MARKER_137.5A: ENGRAM user-preference sync (non-blocking and optional).
+        try:
+            from src.memory.engram_user_memory import get_engram_user_memory
+            engram = get_engram_user_memory()
+            user_id = (
+                request.headers.get("x-user-id")
+                or request.headers.get("x-session-user")
+                or request.headers.get("x-session-id")
+                or "danila"
+            ).strip() or "danila"
+
+            highlights = engram.get_preference(user_id, "project_highlights", "highlights")
+            if not isinstance(highlights, dict):
+                highlights = {}
+
+            favorites = highlights.get("favorite_chats", [])
+            if not isinstance(favorites, list):
+                favorites = []
+
+            if data.is_favorite:
+                if chat_id not in favorites:
+                    favorites.append(chat_id)
+            else:
+                favorites = [cid for cid in favorites if cid != chat_id]
+
+            highlights["favorite_chats"] = favorites[-200:]
+            highlights["favorite_chats_updated_at"] = datetime.now().isoformat()
+            engram.set_preference(
+                user_id,
+                "project_highlights",
+                "highlights",
+                highlights,
+                confidence=0.9 if data.is_favorite else 0.75,
+            )
+        except Exception:
+            # Non-critical: favorite must persist even if ENGRAM layer is unavailable.
+            pass
+
         return {
             "success": True,
             "chat_id": chat_id,
@@ -453,6 +495,7 @@ async def get_chats_for_file(file_path: str, request: Request):
                 id=chat["id"],
                 file_path=chat["file_path"],
                 file_name=chat["file_name"],
+                chat_kind=manager.infer_chat_kind(chat),
                 is_favorite=chat.get("is_favorite", False),
                 created_at=chat["created_at"],
                 updated_at=chat["updated_at"],
@@ -514,6 +557,7 @@ async def get_linked_chats(path: str, request: Request):
                     "id": chat["id"],
                     "display_name": chat.get("display_name") or chat.get("file_name", "Chat"),
                     "context_type": chat.get("context_type", "file"),
+                    "chat_kind": manager.infer_chat_kind(chat),
                     "message_count": len(chat.get("messages", [])),
                     "last_activity": chat.get("updated_at"),
                 })
@@ -614,15 +658,21 @@ async def search_chats(query: str, request: Request, chat_id: Optional[str] = No
                     "file_name": chat.get("file_name", ""),
                     "display_name": chat.get("display_name"),
                     "context_type": chat.get("context_type", "file"),
+                    "chat_kind": manager.infer_chat_kind(chat),
                     "is_favorite": chat.get("is_favorite", False),
                     "created_at": chat.get("created_at", ""),
                     "updated_at": chat.get("updated_at", ""),
                     "message_count": len(chat.get("messages", [])),
                     "match_count": 0,
                     "match_snippet": snippet[:180],
+                    "rank_score": 0.0,
                 }
 
             hit_index[cid]["match_count"] += 1
+            hit_index[cid]["rank_score"] = max(
+                float(hit_index[cid].get("rank_score", 0.0)),
+                float(item.get("rank_score", 0.0)),
+            )
             # Keep the shortest useful snippet as preview
             if snippet and (
                 not hit_index[cid].get("match_snippet")
@@ -633,6 +683,7 @@ async def search_chats(query: str, request: Request, chat_id: Optional[str] = No
         matched_chats = list(hit_index.values())
         matched_chats.sort(
             key=lambda c: (
+                float(c.get("rank_score", 0.0)),
                 int(c.get("match_count", 0)),
                 str(c.get("updated_at", "")),
             ),

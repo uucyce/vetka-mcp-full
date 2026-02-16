@@ -195,6 +195,9 @@ interface FileCardProps {
     decay_factor?: number;
     last_activity?: string;
     context_type?: string;
+    is_favorite?: boolean;
+    path?: string;
+    artifact_id?: string;
   };
   visual_hints?: {
     color?: string;
@@ -247,6 +250,7 @@ function FileCardComponent({
   const [isHoveredDebounced, setIsHoveredDebounced] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [isFavorite, setIsFavorite] = useState<boolean>(Boolean(metadata?.is_favorite));
 
   // Phase 62: LOD state
   // MARKER_111.21_USEFRAME: Phase 112.3 - Use prop if provided, else internal state
@@ -267,6 +271,42 @@ function FileCardComponent({
   const grabMode = useStore((state) => state.grabMode);
   // Phase 118.2: Camera command for double-click zoom
   const setCameraCommand = useStore((state) => state.setCameraCommand);
+
+  useEffect(() => {
+    setIsFavorite(Boolean(metadata?.is_favorite));
+  }, [metadata?.is_favorite]);
+
+  const toggleFavorite = useCallback(async (e: any) => {
+    e.stopPropagation();
+    const nextValue = !isFavorite;
+
+    try {
+      if (type === 'artifact') {
+        const targetArtifactId = artifactId || metadata?.artifact_id || id;
+        const resp = await fetch(`/api/artifacts/${encodeURIComponent(targetArtifactId)}/favorite`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_favorite: nextValue }),
+        });
+        if (!resp.ok) return;
+      } else if (type === 'file' || type === 'folder') {
+        const targetPath = metadata?.path || path;
+        const resp = await fetch('/api/tree/favorite', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: targetPath, is_favorite: nextValue }),
+        });
+        if (!resp.ok) return;
+      } else {
+        return;
+      }
+
+      setIsFavorite(nextValue);
+      window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
+    } catch (err) {
+      console.error('[FileCard] Failed to toggle favorite:', err);
+    }
+  }, [isFavorite, type, artifactId, metadata?.artifact_id, metadata?.path, id, path]);
 
   const dragPlane = useRef(new THREE.Plane());
   const dragOffset = useRef(new THREE.Vector3());
@@ -1021,12 +1061,13 @@ function FileCardComponent({
 
   // MARKER_123.8B: Phase 123.8 - Glow sprite with radial gradient (Grok research)
   // Scale: 1.35x-2.05x card size based on heatScore (balanced)
-  const glowScale = 1.35 + heatScore * 0.7;
+  const effectiveHeatScore = Math.max(heatScore, isFavorite ? 0.95 : 0);
+  const glowScale = 1.35 + effectiveHeatScore * 0.7;
 
   return (
     <group>
       {/* MARKER_123.8C: Phase 123.8 - Radial gradient glow sprite with AdditiveBlending */}
-      {heatScore > 0.1 && (
+      {effectiveHeatScore > 0.1 && (
         <sprite
           position={[position[0], position[1], position[2] - 0.3]}
           scale={[cardSize[0] * glowScale, cardSize[1] * glowScale, 1]}
@@ -1036,7 +1077,7 @@ function FileCardComponent({
             transparent
             blending={THREE.AdditiveBlending}
             depthWrite={false}
-            opacity={Math.min(0.6, heatScore * 0.75)}
+            opacity={Math.min(0.6, effectiveHeatScore * 0.75)}
           />
         </sprite>
       )}
@@ -1088,6 +1129,35 @@ function FileCardComponent({
       {/* TODO_CAM_PIN: Add pin-to-CAM button on file card hover (like favorites/bookmarks)
           When clicked: POST /api/cam/pin with { file_path, metadata }
           Visual feedback: highlight pin icon or show "Added to CAM" toast */}
+
+      {(type === 'file' || type === 'folder' || type === 'artifact') && (isHoveredDebounced || isFavorite) && (
+        <Html
+          position={[position[0] + cardSize[0] / 2 - 1.0, position[1] + cardSize[1] / 2 - 0.8, position[2]]}
+          style={{ pointerEvents: 'auto' }}
+          zIndexRange={[100, 0]}
+        >
+          <button
+            onClick={toggleFavorite}
+            title={isFavorite ? 'Remove favorite' : 'Add favorite'}
+            style={{
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              border: '1px solid rgba(255,255,255,0.35)',
+              background: 'rgba(0,0,0,0.65)',
+              color: '#fff',
+              display: 'grid',
+              placeItems: 'center',
+              cursor: 'pointer',
+              boxShadow: isFavorite ? '0 0 10px rgba(255,255,255,0.9)' : 'none',
+            }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 3.7l2.6 5.2 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill={isFavorite ? 'currentColor' : 'none'} />
+            </svg>
+          </button>
+        </Html>
+      )}
 
       {/* Phase 61.1: Hover Preview - shows on 300ms hover (isHoveredDebounced) */}
       {type === 'file' && isHoveredDebounced && isPreviewableFile(name) && (

@@ -559,6 +559,54 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     // Phase 68.2: Support for file loading
     file?: { path: string; name: string; extension?: string };
   } | null>(null);
+  const [artifactFavorite, setArtifactFavorite] = useState(false);
+
+  const activeArtifactPath = useMemo(() => {
+    if (!artifactData) return '';
+    if (artifactData.file?.path) return artifactData.file.path;
+    return '';
+  }, [artifactData]);
+
+  useEffect(() => {
+    const loadArtifactFavorite = async () => {
+      if (!artifactData) {
+        setArtifactFavorite(false);
+        return;
+      }
+      if (!activeArtifactPath) {
+        setArtifactFavorite(false);
+        return;
+      }
+
+      try {
+        const resp = await fetch('/api/tree/favorites');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const map = data.favorites || {};
+        setArtifactFavorite(Boolean(map[activeArtifactPath]));
+      } catch {
+        // no-op
+      }
+    };
+    loadArtifactFavorite();
+  }, [artifactData, activeArtifactPath]);
+
+  const toggleArtifactFavorite = useCallback(async () => {
+    if (!activeArtifactPath) return;
+    const next = !artifactFavorite;
+    try {
+      const resp = await fetch('/api/tree/favorite', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: activeArtifactPath, is_favorite: next }),
+      });
+      if (!resp.ok) return;
+      setArtifactFavorite(next);
+      window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
+    } catch (err) {
+      console.error('[ChatPanel] Artifact favorite toggle failed:', err);
+    }
+  }, [activeArtifactPath, artifactFavorite]);
 
   // Handle model selection from directory (solo chat mode)
   // Phase 60.4: This is only called when NOT in group mode
@@ -2881,6 +2929,31 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         onClose={() => setArtifactData(null)}
         defaultWidth={700}
         defaultHeight={500}
+        headerActions={
+          artifactData?.file ? (
+            <button
+              onClick={toggleArtifactFavorite}
+              onMouseDown={(e) => e.stopPropagation()}
+              title={artifactFavorite ? 'Remove favorite' : 'Add favorite'}
+              style={{
+                width: 24,
+                height: 24,
+                display: 'grid',
+                placeItems: 'center',
+                borderRadius: 6,
+                border: '1px solid #3a3a3a',
+                background: 'rgba(255,255,255,0.04)',
+                color: '#f0f0f0',
+                cursor: 'pointer',
+                boxShadow: artifactFavorite ? '0 0 14px rgba(255,255,255,0.9)' : 'none',
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
+                <path d="M12 3.7l2.6 5.2 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill={artifactFavorite ? 'currentColor' : 'none'} />
+              </svg>
+            </button>
+          ) : null
+        }
       >
         <ArtifactPanel
           file={artifactData?.file}

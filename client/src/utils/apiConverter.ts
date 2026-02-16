@@ -97,6 +97,12 @@ export function convertApiNode(apiNode: VetkaApiNode): TreeNode {
       : undefined,
     isGhost,  // Phase 90.11
     opacity,  // Phase 90.11
+    metadata: {
+      ...metadata,
+      path: metadata.path || apiNode.id,
+      is_favorite: Boolean((metadata as any).is_favorite ?? false),
+      artifact_id: (metadata as any).artifact_id,
+    },
   };
 }
 

@@ -34,6 +34,7 @@ def test_scan_artifacts_reads_files_and_staging_links(monkeypatch, tmp_path):
                         "source_chat_id": "chat123",
                         "source_message_id": "msg1",
                         "status": "done",
+                        "is_favorite": True,
                     }
                 }
             }
@@ -50,6 +51,7 @@ def test_scan_artifacts_reads_files_and_staging_links(monkeypatch, tmp_path):
     assert dev["metadata"]["language"] == "python"
     assert dev["parent_id"] == "chat_chat123"
     assert dev["metadata"]["source_message_id"] == "msg1"
+    assert dev["metadata"]["is_favorite"] is True
     assert dev["visual_hints"]["color"] == scanner.ARTIFACT_COLORS["code"]
 
 
@@ -97,3 +99,20 @@ def test_update_artifact_positions_offsets_from_parent():
     assert first["expected_z"] == 5
     assert second["expected_x"] == 15
     assert second["expected_y"] == 18
+
+
+def test_set_artifact_favorite_persists_flag(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    scanner.ARTIFACTS_DIR.mkdir(parents=True)
+    scanner.STAGING_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    (scanner.ARTIFACTS_DIR / "fav_note.md").write_text("hello", encoding="utf-8")
+    artifact_id = scanner._generate_artifact_id("fav_note.md")
+
+    result = scanner.set_artifact_favorite(artifact_id, True)
+    assert result["success"] is True
+    assert result["is_favorite"] is True
+
+    data = json.loads(scanner.STAGING_FILE.read_text(encoding="utf-8"))
+    key = result["artifact_id"]
+    assert data["artifacts"][key]["is_favorite"] is True

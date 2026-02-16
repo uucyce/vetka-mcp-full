@@ -40,6 +40,7 @@ MARKER_CHAT_STRUCTURE: Chat history data model
 import json
 import copy
 import shutil
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
@@ -61,8 +62,62 @@ class ChatHistoryManager:
         self.history_file = Path(history_file)
         self.history_file.parent.mkdir(parents=True, exist_ok=True)
         self.history = self._load()
+        self._ensure_chat_integrity()
         # MARKER_109_13: Thread lock for race condition prevention in get_or_create_chat
         self._lock = threading.Lock()
+
+    def _ensure_chat_integrity(self) -> bool:
+        """
+        Normalize legacy chat records after loading from disk.
+
+        MARKER_137.4L:
+        - ensure metadata dict exists
+        - backfill chat_kind (solo|team) for correct sidebar icon rendering
+        - normalize missing list fields to avoid None checks across API/UI
+        """
+        changed = False
+        chats = self.history.get("chats", {})
+        if not isinstance(chats, dict):
+            self.history["chats"] = {}
+            return True
+
+        for chat in chats.values():
+            if not isinstance(chat, dict):
+                continue
+
+            if not isinstance(chat.get("metadata"), dict):
+                chat["metadata"] = {}
+                changed = True
+
+            if not isinstance(chat.get("items"), list):
+                chat["items"] = chat.get("items") or []
+                changed = True
+
+            if not isinstance(chat.get("pinned_file_ids"), list):
+                chat["pinned_file_ids"] = chat.get("pinned_file_ids") or []
+                changed = True
+
+            metadata = chat.get("metadata", {})
+            if chat.get("group_id") and not metadata.get("group_id"):
+                metadata["group_id"] = chat.get("group_id")
+                changed = True
+
+            if "auto_display_name" not in metadata:
+                metadata["auto_display_name"] = self._is_generated_chat_name(chat.get("display_name"))
+                changed = True
+
+            inferred_kind = self.infer_chat_kind(chat)
+            if metadata.get("chat_kind") != inferred_kind:
+                metadata["chat_kind"] = inferred_kind
+                changed = True
+
+        return changed
+
+    def _is_generated_chat_name(self, value: Optional[str]) -> bool:
+        """Detect auto-generated chat names like 'Chat 17:21'."""
+        if not value:
+            return False
+        return bool(re.match(r"^Chat \d{1,2}:\d{2}$", value.strip()))
 
     def _load(self) -> Dict[str, Any]:
         """Load history from JSON file or create new structure."""
@@ -231,8 +286,14 @@ class ChatHistoryManager:
 
             if display_name:
                 normalized_name = display_name.strip()
-                if normalized_name and existing_chat.get("display_name") != normalized_name:
+                metadata = existing_chat.setdefault("metadata", {})
+                auto_display_name = bool(metadata.get("auto_display_name", False))
+                current_name = str(existing_chat.get("display_name") or "").strip()
+                if normalized_name and (
+                    not current_name or auto_display_name
+                ) and current_name != normalized_name:
                     existing_chat["display_name"] = normalized_name
+                    metadata["auto_display_name"] = False
                     changed = True
 
             if file_path and file_path not in ('unknown', 'root', '', None):
@@ -304,7 +365,10 @@ class ChatHistoryManager:
                 stored_path = chat.get("file_path", "")
                 if stored_path in ('unknown', 'root', '', None):
                     # Only reuse if NOT renamed (no display_name)
-                    if not chat.get("display_name"):
+                    display_name = chat.get("display_name")
+                    metadata = chat.get("metadata", {}) or {}
+                    auto_display_name = bool(metadata.get("auto_display_name", False))
+                    if (not display_name) or auto_display_name:
                         # Phase 74.7: Match context_type for groups
                         stored_type = chat.get("context_type", "file")
                         # Group chats only match with group chats
@@ -367,6 +431,7 @@ class ChatHistoryManager:
         chat_metadata = {}
         if group_id:
             chat_metadata["group_id"] = group_id
+        chat_metadata["auto_display_name"] = not bool(display_name and display_name.strip())
 
         self.history["chats"][chat_id] = {
             "id": chat_id,
@@ -538,6 +603,8 @@ class ChatHistoryManager:
         """
         if chat_id in self.history["chats"]:
             self.history["chats"][chat_id]["display_name"] = new_name
+            metadata = self.history["chats"][chat_id].setdefault("metadata", {})
+            metadata["auto_display_name"] = False
             self.history["chats"][chat_id]["updated_at"] = datetime.now().isoformat()
             self._save()
             print(f"[ChatHistory] Renamed chat {chat_id} to '{new_name}'")
@@ -645,43 +712,73 @@ class ChatHistoryManager:
             pass
         return datetime.min
 
+    def infer_chat_kind(self, chat: Dict[str, Any]) -> str:
+        """
+        Infer chat kind for UX-level distinction (solo vs team).
+
+        MARKER_137.4L:
+        Team chat must be role-based by design (group mechanics), not inferred from text.
+        """
+        metadata = chat.get("metadata", {}) or {}
+
+        if metadata.get("group_id") or chat.get("group_id"):
+            return "team"
+
+        roles_meta = metadata.get("roles")
+        if isinstance(roles_meta, (dict, list)) and len(roles_meta) > 0:
+            return "team"
+
+        items = chat.get("items") or []
+        if isinstance(items, list):
+            role_tokens = {
+                "pm", "dev", "qa", "architect", "researcher", "hostess",
+                "doctor", "dragon", "opus", "watcher", "synthesizer",
+            }
+            for item in items:
+                token = str(item or "").strip().lower()
+                if not token:
+                    continue
+                if token.startswith("@"):
+                    return "team"
+                if token in role_tokens:
+                    return "team"
+
+        return "solo"
+
     def find_fragmented_chat_candidates(self, max_gap_seconds: int = 90) -> List[Dict[str, Any]]:
         """
         Find likely legacy split chats (user and assistant in separate chats).
 
-        Rules (safe/narrow):
-        - context_type == group
-        - file_path in {'unknown', 'root', ''}
-        - same normalized display_name
-        - each chat has exactly 1 message
-        - one chat has user message, another has assistant/agent message
-        - created_at delta <= max_gap_seconds
+        MARKER_137.4J:
+        Widen candidate detection safely for legacy data:
+        - same normalized display_name (or fallback file_name)
+        - short time delta
+        - compatible contexts/items/pins
+        - role complementarity weighted (user-heavy + assistant-heavy)
         """
         chats = self.history.get("chats", {})
         groups: Dict[str, List[tuple]] = {}
 
         for chat_id, chat in chats.items():
-            context_type = chat.get("context_type", "file")
-            file_path = (chat.get("file_path") or "").strip().lower()
-            display_name = (chat.get("display_name") or "").strip()
-            messages = chat.get("messages", [])
-
-            if context_type != "group":
+            messages = chat.get("messages", []) or []
+            if not messages:
                 continue
-            if file_path not in {"unknown", "root", ""}:
-                continue
-            if not display_name:
-                continue
-            if len(messages) != 1:
+            if len(messages) > 12:
+                # Avoid merging long, likely real separate conversations.
                 continue
 
-            key = display_name.strip().lower()
+            display_name = (chat.get("display_name") or "").strip().lower()
+            file_name = (chat.get("file_name") or "").strip().lower()
+            key = display_name or file_name
+            if not key:
+                continue
+
             groups.setdefault(key, []).append((chat_id, chat))
 
         candidates: List[Dict[str, Any]] = []
         used_ids = set()
 
-        for _, bucket in groups.items():
+        for key, bucket in groups.items():
             if len(bucket) < 2:
                 continue
 
@@ -692,51 +789,99 @@ class ChatHistoryManager:
                 ),
             )
 
+            pair_scores: List[Dict[str, Any]] = []
             for i in range(len(bucket_sorted)):
                 first_id, first_chat = bucket_sorted[i]
                 if first_id in used_ids:
                     continue
-                first_msg = (first_chat.get("messages") or [{}])[0]
-                first_role = (first_msg.get("role") or "").lower()
                 first_ts = self._parse_iso_datetime(
                     first_chat.get("created_at") or first_chat.get("updated_at") or ""
                 )
+                first_messages = first_chat.get("messages", []) or []
+                first_roles = {str(m.get("role", "")).lower() for m in first_messages}
 
                 for j in range(i + 1, len(bucket_sorted)):
                     second_id, second_chat = bucket_sorted[j]
                     if second_id in used_ids:
                         continue
 
-                    second_msg = (second_chat.get("messages") or [{}])[0]
-                    second_role = (second_msg.get("role") or "").lower()
                     second_ts = self._parse_iso_datetime(
                         second_chat.get("created_at") or second_chat.get("updated_at") or ""
                     )
+                    second_messages = second_chat.get("messages", []) or []
+                    second_roles = {str(m.get("role", "")).lower() for m in second_messages}
 
                     delta_seconds = abs((second_ts - first_ts).total_seconds())
                     if delta_seconds > max_gap_seconds:
                         continue
 
-                    roles = {first_role, second_role}
-                    if "user" not in roles:
-                        continue
-                    if not ({"assistant", "agent", "system"} & roles):
+                    score = 0
+                    reasons: List[str] = []
+
+                    user_first = "user" in first_roles
+                    user_second = "user" in second_roles
+                    assistant_first = bool({"assistant", "agent", "system"} & first_roles)
+                    assistant_second = bool({"assistant", "agent", "system"} & second_roles)
+
+                    if (user_first and assistant_second) or (user_second and assistant_first):
+                        score += 2
+                        reasons.append("complementary_roles")
+
+                    if first_chat.get("context_type") == second_chat.get("context_type"):
+                        score += 1
+                        reasons.append("same_context")
+
+                    first_items = set(first_chat.get("items", []) or [])
+                    second_items = set(second_chat.get("items", []) or [])
+                    if not first_items or not second_items or (first_items & second_items):
+                        score += 1
+                        reasons.append("compatible_items")
+
+                    first_pins = set(first_chat.get("pinned_file_ids", []) or [])
+                    second_pins = set(second_chat.get("pinned_file_ids", []) or [])
+                    if not first_pins or not second_pins or (first_pins & second_pins):
+                        score += 1
+                        reasons.append("compatible_pins")
+
+                    if abs(len(first_messages) - len(second_messages)) <= 4:
+                        score += 1
+                        reasons.append("message_balance")
+
+                    if score < 3:
                         continue
 
-                    if first_role == "user":
+                    primary_id, secondary_id = first_id, second_id
+                    if len(first_messages) < len(second_messages):
+                        primary_id, secondary_id = second_id, first_id
+                    if user_first and assistant_second:
                         primary_id, secondary_id = first_id, second_id
-                    else:
+                    elif user_second and assistant_first:
                         primary_id, secondary_id = second_id, first_id
 
-                    candidates.append({
+                    pair_scores.append({
                         "primary_id": primary_id,
                         "secondary_id": secondary_id,
-                        "display_name": first_chat.get("display_name") or second_chat.get("display_name"),
+                        "display_name": first_chat.get("display_name") or second_chat.get("display_name") or key,
                         "delta_seconds": delta_seconds,
+                        "score": score,
+                        "reasons": reasons,
                     })
-                    used_ids.add(primary_id)
-                    used_ids.add(secondary_id)
-                    break
+
+            pair_scores.sort(
+                key=lambda c: (
+                    int(c.get("score", 0)),
+                    -float(c.get("delta_seconds", max_gap_seconds + 1)),
+                ),
+                reverse=True,
+            )
+            for candidate in pair_scores:
+                primary_id = candidate["primary_id"]
+                secondary_id = candidate["secondary_id"]
+                if primary_id in used_ids or secondary_id in used_ids:
+                    continue
+                used_ids.add(primary_id)
+                used_ids.add(secondary_id)
+                candidates.append(candidate)
 
         return candidates
 
@@ -831,20 +976,99 @@ class ChatHistoryManager:
         Returns:
             List of matching messages with chat context
         """
-        results = []
-        query_lower = query.lower()
+        results: List[Dict[str, Any]] = []
+        query_norm = (query or "").strip().lower()
+        if not query_norm:
+            return results
 
-        chats_to_search = {chat_id: self.history["chats"][chat_id]} if chat_id else self.history["chats"]
+        terms = [t for t in re.split(r"\s+", query_norm) if t]
+
+        chats_map = self.history.get("chats", {})
+        if chat_id:
+            chat_obj = chats_map.get(chat_id)
+            chats_to_search = {chat_id: chat_obj} if chat_obj else {}
+        else:
+            chats_to_search = chats_map
+
+        now = datetime.now()
 
         for cid, chat in chats_to_search.items():
-            for message in chat.get("messages", []):
-                if query_lower in message.get("content", "").lower() or query_lower in message.get("text", "").lower():
-                    results.append({
-                        "chat_id": cid,
-                        "chat_name": chat.get("file_name"),
-                        "message": message
-                    })
+            if not chat:
+                continue
 
+            title = str(chat.get("display_name") or chat.get("file_name") or "").strip().lower()
+            title_score = 0.0
+            if title == query_norm:
+                title_score = 1.0
+            elif title.startswith(query_norm):
+                title_score = 0.85
+            elif query_norm in title:
+                title_score = 0.7
+            elif terms and all(t in title for t in terms):
+                title_score = 0.6
+
+            updated_dt = self._parse_iso_datetime(chat.get("updated_at", ""))
+            hours_since = max(0.0, (now - updated_dt).total_seconds() / 3600.0)
+            recency_score = max(0.0, 1.0 - min(hours_since / 168.0, 1.0))
+            favorite_boost = 0.2 if bool(chat.get("is_favorite", False)) else 0.0
+
+            msg_candidates: List[Dict[str, Any]] = []
+            for message in chat.get("messages", []) or []:
+                content = str(message.get("content", "") or message.get("text", "")).strip()
+                if not content:
+                    continue
+                content_l = content.lower()
+
+                if query_norm in content_l:
+                    msg_score = 0.9
+                elif terms and all(t in content_l for t in terms):
+                    msg_score = 0.75
+                elif terms and any(t in content_l for t in terms):
+                    msg_score = 0.55
+                else:
+                    continue
+
+                combined = (0.55 * msg_score) + (0.25 * title_score) + (0.15 * recency_score) + (0.05 * favorite_boost)
+                msg_candidates.append({
+                    "chat_id": cid,
+                    "chat_name": chat.get("display_name") or chat.get("file_name"),
+                    "message": message,
+                    "rank_score": round(combined, 6),
+                    "message_score": msg_score,
+                    "title_score": title_score,
+                    "recency_score": recency_score,
+                    "favorite_boost": favorite_boost,
+                })
+
+            if not msg_candidates and title_score > 0:
+                placeholder_message = {
+                    "id": f"title_hit_{cid}",
+                    "role": "system",
+                    "content": chat.get("display_name") or chat.get("file_name") or "",
+                    "timestamp": chat.get("updated_at", ""),
+                }
+                combined = (0.55 * 0.4) + (0.25 * title_score) + (0.15 * recency_score) + (0.05 * favorite_boost)
+                msg_candidates.append({
+                    "chat_id": cid,
+                    "chat_name": chat.get("display_name") or chat.get("file_name"),
+                    "message": placeholder_message,
+                    "rank_score": round(combined, 6),
+                    "message_score": 0.4,
+                    "title_score": title_score,
+                    "recency_score": recency_score,
+                    "favorite_boost": favorite_boost,
+                })
+
+            msg_candidates.sort(key=lambda x: x.get("rank_score", 0.0), reverse=True)
+            results.extend(msg_candidates[:3])
+
+        results.sort(
+            key=lambda x: (
+                float(x.get("rank_score", 0.0)),
+                str((x.get("message") or {}).get("timestamp", "")),
+            ),
+            reverse=True,
+        )
         return results
 
     def export_chat(self, chat_id: str) -> Optional[str]:

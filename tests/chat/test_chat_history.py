@@ -203,6 +203,21 @@ class TestChatIdPriority:
         chats = manager.get_all_chats()
         assert len(chats) == 1
 
+    def test_existing_custom_name_not_overwritten_by_runtime_display_hint(self, manager):
+        chat_id = manager.get_or_create_chat("/tmp/source.py", display_name="My Stable Name")
+        manager.rename_chat(chat_id, "My Custom Name")
+
+        reused = manager.get_or_create_chat(
+            "/tmp/source.py",
+            context_type="file",
+            display_name="derived_from_last_message_text",
+            chat_id=chat_id,
+        )
+        assert reused == chat_id
+        chat = manager.get_chat(chat_id)
+        assert chat is not None
+        assert chat.get("display_name") == "My Custom Name"
+
 
 class TestLegacyFragmentMerge:
     """Test safe merge of legacy split chats."""
@@ -251,6 +266,30 @@ class TestLegacyFragmentMerge:
         assert "node_a" in merged_chat.get("pinned_file_ids", [])
         assert manager.get_chat(assistant_id) is None
 
+    def test_merge_fragmented_chats_handles_multi_message_pairs(self, manager):
+        user_id = manager.get_or_create_chat(
+            "unknown", context_type="group", display_name="Chat 13:00", chat_id="chat-user-1300"
+        )
+        assistant_id = manager.get_or_create_chat(
+            "unknown", context_type="group", display_name="Chat 13:00 temp", chat_id="chat-assistant-1300"
+        )
+        manager.rename_chat(assistant_id, "Chat 13:00")
+
+        manager.add_message(user_id, {"role": "user", "content": "first question"})
+        manager.add_message(user_id, {"role": "user", "content": "second question"})
+        manager.add_message(assistant_id, {"role": "assistant", "content": "first answer"})
+        manager.add_message(assistant_id, {"role": "assistant", "content": "second answer"})
+
+        report = manager.merge_fragmented_chats(dry_run=False, max_gap_seconds=3600, backup_suffix="test_multi")
+        assert report["merged"] == 1
+        if report["backup_file"] and os.path.exists(report["backup_file"]):
+            os.unlink(report["backup_file"])
+
+        merged_chat = manager.get_chat(user_id)
+        assert merged_chat is not None
+        assert len(merged_chat.get("messages", [])) == 4
+        assert manager.get_chat(assistant_id) is None
+
 
 class TestGroupChat:
     """Test group chat with items list."""
@@ -296,6 +335,40 @@ class TestGroupChat:
         manager.update_chat_items(chat_id, ["/path/single.py"])
         # Should keep original type since only 1 item
         assert manager.get_chat(chat_id)["context_type"] == "file"
+
+
+class TestChatKindInference:
+    def test_role_based_group_is_team(self, manager):
+        chat_id = manager.get_or_create_chat(
+            "unknown",
+            context_type="group",
+            display_name="Team Chat",
+            items=["@PM", "@Dev", "@QA"],
+        )
+        chat = manager.get_chat(chat_id)
+        assert chat is not None
+        assert manager.infer_chat_kind(chat) == "team"
+
+    def test_regular_file_chat_is_solo(self, manager):
+        chat_id = manager.get_or_create_chat("/path/solo.py", context_type="file")
+        chat = manager.get_chat(chat_id)
+        assert chat is not None
+        assert manager.infer_chat_kind(chat) == "solo"
+
+
+class TestChatSearchRanking:
+    def test_search_ranks_favorite_higher_for_same_content(self, manager):
+        a = manager.get_or_create_chat("/test/a.py")
+        b = manager.get_or_create_chat("/test/b.py")
+
+        manager.add_message(a, {"role": "user", "content": "alpha release plan"})
+        manager.add_message(b, {"role": "user", "content": "alpha release plan"})
+        manager.set_favorite(b, True)
+
+        results = manager.search_messages("alpha release")
+        assert len(results) >= 2
+        first_chat_id = results[0]["chat_id"]
+        assert first_chat_id == b
 
 
 class TestTopicChat:

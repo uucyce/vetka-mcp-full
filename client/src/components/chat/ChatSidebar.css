@@ -182,6 +182,19 @@
   color: #fff;
 }
 
+.chat-sidebar-favorite-star {
+  display: block;
+}
+
+.chat-sidebar-item-favorite .chat-sidebar-favorite-star path {
+  fill: transparent;
+}
+
+.chat-sidebar-item-favorite.active .chat-sidebar-favorite-star path {
+  fill: #fff;
+  stroke: #fff;
+}
+
 .chat-sidebar-item-edit,
 .chat-sidebar-item-delete {
   background: none;
