@@ -97,6 +97,10 @@ class ChatHistoryManager:
                 chat["pinned_file_ids"] = chat.get("pinned_file_ids") or []
                 changed = True
 
+            if not isinstance(chat.get("pinned_paths"), list):
+                chat["pinned_paths"] = chat.get("pinned_paths") or []
+                changed = True
+
             metadata = chat.get("metadata", {})
             if chat.get("group_id") and not metadata.get("group_id"):
                 metadata["group_id"] = chat.get("group_id")
@@ -442,6 +446,7 @@ class ChatHistoryManager:
             "items": items or [],          # Phase 74: File paths for groups
             "topic": topic,                # Phase 74: Topic for file-less chats
             "pinned_file_ids": [],         # Phase 100.2: Persistent pinned files
+            "pinned_paths": [],            # MARKER_137.2F2: Stable pin paths for id remap after restart
             "is_favorite": False,          # MARKER_137.3: Favorite chats support
             "metadata": chat_metadata,     # MARKER_109_13: Stable keys (group_id, etc.)
             "created_at": now,
@@ -638,7 +643,12 @@ class ChatHistoryManager:
             return True
         return False
 
-    def update_pinned_files(self, chat_id: str, pinned_file_ids: List[str]) -> bool:
+    def update_pinned_files(
+        self,
+        chat_id: str,
+        pinned_file_ids: List[str],
+        pinned_paths: Optional[List[str]] = None,
+    ) -> bool:
         """
         Update pinned file IDs for a chat.
 
@@ -655,10 +665,13 @@ class ChatHistoryManager:
         if chat_id in self.history["chats"]:
             chat = self.history["chats"][chat_id]
             existing_pins = chat.get("pinned_file_ids", [])
+            existing_paths = chat.get("pinned_paths", [])
+            normalized_paths = [str(p or "").strip() for p in (pinned_paths or []) if str(p or "").strip()]
 
-            # Only update if pins changed
-            if set(existing_pins) != set(pinned_file_ids):
+            # Only update if pins or stable paths changed
+            if set(existing_pins) != set(pinned_file_ids) or set(existing_paths) != set(normalized_paths):
                 chat["pinned_file_ids"] = pinned_file_ids
+                chat["pinned_paths"] = normalized_paths
                 chat["updated_at"] = datetime.now().isoformat()
                 self._save()
                 print(f"[ChatHistory] Updated pinned files for chat {chat_id}: {len(pinned_file_ids)} files")
@@ -679,6 +692,12 @@ class ChatHistoryManager:
         """
         if chat_id in self.history["chats"]:
             return self.history["chats"][chat_id].get("pinned_file_ids", [])
+        return []
+
+    def get_pinned_paths(self, chat_id: str) -> List[str]:
+        """Get stable pinned file paths for fallback remap."""
+        if chat_id in self.history["chats"]:
+            return self.history["chats"][chat_id].get("pinned_paths", [])
         return []
 
     def set_favorite(self, chat_id: str, is_favorite: bool) -> bool:
@@ -941,6 +960,9 @@ class ChatHistoryManager:
             primary_pins = set(primary.get("pinned_file_ids", []) or [])
             secondary_pins = set(secondary.get("pinned_file_ids", []) or [])
             primary["pinned_file_ids"] = sorted(primary_pins | secondary_pins)
+            primary_paths = set(primary.get("pinned_paths", []) or [])
+            secondary_paths = set(secondary.get("pinned_paths", []) or [])
+            primary["pinned_paths"] = sorted(primary_paths | secondary_paths)
 
             primary["is_favorite"] = bool(primary.get("is_favorite", False) or secondary.get("is_favorite", False))
 

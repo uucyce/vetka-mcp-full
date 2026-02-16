@@ -185,7 +185,9 @@ export function ArtifactWindow({ isOpen, onClose, file: propFile, rawContent, ap
     }
   }, [artifactId, basename, currentPath, isFavorite, title]);
 
-  const headerFavoriteAction = (
+  const shouldShowFavoriteAction = !isFileMode || isInVetka;
+
+  const headerFavoriteAction = shouldShowFavoriteAction ? (
     <button
       onClick={handleToggleFavorite}
       onMouseDown={(e) => e.stopPropagation()}
@@ -207,7 +209,7 @@ export function ArtifactWindow({ isOpen, onClose, file: propFile, rawContent, ap
         <path d="M12 3.7l2.6 5.2 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill={isFavorite ? 'currentColor' : 'none'} />
       </svg>
     </button>
-  );
+  ) : null;
 
   const headerVetkaAction = isFileMode && !isInVetka ? (
     <button

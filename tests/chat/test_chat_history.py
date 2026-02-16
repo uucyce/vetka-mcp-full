@@ -157,6 +157,22 @@ class TestChatFavorites:
         assert manager.set_favorite("missing-chat-id", True) is False
 
 
+class TestPinnedPersistence:
+    """Pinned files persistence with stable path fallback."""
+
+    def test_update_pinned_files_persists_ids_and_paths(self, manager):
+        chat_id = manager.get_or_create_chat("/test/pins.py")
+
+        assert manager.update_pinned_files(chat_id, ["node_1", "node_2"], ["/a.py", "/b.py"]) is True
+        chat = manager.get_chat(chat_id)
+        assert chat is not None
+        assert sorted(chat.get("pinned_file_ids", [])) == ["node_1", "node_2"]
+        assert sorted(chat.get("pinned_paths", [])) == ["/a.py", "/b.py"]
+
+    def test_get_pinned_paths_empty_for_unknown_chat(self, manager):
+        assert manager.get_pinned_paths("missing-chat-id") == []
+
+
 class TestChatSearch:
     """Test message search behavior used by chat history sidebar."""
 
@@ -250,7 +266,7 @@ class TestLegacyFragmentMerge:
 
         manager.add_message(user_id, {"role": "user", "content": "question"})
         manager.add_message(assistant_id, {"role": "assistant", "content": "answer"})
-        manager.update_pinned_files(assistant_id, ["node_a"])
+        manager.update_pinned_files(assistant_id, ["node_a"], ["/tmp/a.py"])
         manager.set_favorite(assistant_id, True)
 
         report = manager.merge_fragmented_chats(dry_run=False, max_gap_seconds=3600, backup_suffix="test")
@@ -264,6 +280,7 @@ class TestLegacyFragmentMerge:
         assert len(merged_chat.get("messages", [])) == 2
         assert merged_chat.get("is_favorite") is True
         assert "node_a" in merged_chat.get("pinned_file_ids", [])
+        assert "/tmp/a.py" in merged_chat.get("pinned_paths", [])
         assert manager.get_chat(assistant_id) is None
 
     def test_merge_fragmented_chats_handles_multi_message_pairs(self, manager):

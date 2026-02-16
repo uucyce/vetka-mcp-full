@@ -64,12 +64,15 @@ export async function getConversationHistory(conversationId: string): Promise<an
 /**
  * Save pinned file IDs to backend for persistence across reload.
  */
-export async function savePinnedFiles(chatId: string, pinnedFileIds: string[]): Promise<boolean> {
+export async function savePinnedFiles(chatId: string, pinnedFileIds: string[], pinnedPaths?: string[]): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE}/chats/${chatId}/pinned`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pinned_file_ids: pinnedFileIds }),
+      body: JSON.stringify({
+        pinned_file_ids: pinnedFileIds,
+        pinned_paths: Array.isArray(pinnedPaths) ? pinnedPaths : [],
+      }),
     });
 
     if (!response.ok) {

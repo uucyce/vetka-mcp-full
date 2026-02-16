@@ -9,7 +9,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { X, Reply } from 'lucide-react';
+import { X, Reply, Loader2 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
@@ -130,9 +130,66 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   // Phase 57.3: Active group ID for group chat mode
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
 
+  const normalizeFsPath = useCallback((value: string) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const withoutScheme = raw.replace(/^file:\/\//, '');
+    let decoded = withoutScheme;
+    try {
+      decoded = decodeURIComponent(withoutScheme);
+    } catch {
+      // Keep original when path is not URI-encoded.
+    }
+    return decoded.replace(/\\/g, '/').replace(/\/+$/, '');
+  }, []);
+
   // Phase 108: Inline rename mode (Tauri doesn't support prompt())
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+
+  const resolvePinnedNodeIds = useCallback((ids: string[], paths: string[]) => {
+    const nextIds: string[] = [];
+    const seen = new Set<string>();
+
+    const pushId = (id: string) => {
+      if (!id || seen.has(id) || !nodes[id]) return;
+      seen.add(id);
+      nextIds.push(id);
+    };
+
+    (ids || []).forEach(pushId);
+
+    if ((paths || []).length === 0) return nextIds;
+
+    const normalizedPathToNodeId = new Map<string, string>();
+    Object.entries(nodes).forEach(([nodeId, node]: [string, any]) => {
+      const p = normalizeFsPath(String(node?.path || ''));
+      if (p && !normalizedPathToNodeId.has(p)) {
+        normalizedPathToNodeId.set(p, nodeId);
+      }
+    });
+
+    for (const p of paths || []) {
+      const normalized = normalizeFsPath(String(p || ''));
+      if (!normalized) continue;
+
+      const exact = normalizedPathToNodeId.get(normalized);
+      if (exact) {
+        pushId(exact);
+        continue;
+      }
+
+      const suffix = `/${normalized}`;
+      for (const [nodePath, nodeId] of normalizedPathToNodeId.entries()) {
+        if (nodePath.endsWith(suffix) || normalized.endsWith(`/${nodePath}`)) {
+          pushId(nodeId);
+          break;
+        }
+      }
+    }
+
+    return nextIds;
+  }, [nodes, normalizeFsPath]);
 
   // Phase 80.30: Extract unique models from solo chat messages for @mention
   // MARKER_94.7_SOLO_MODELS: Extract models from chat history for mention popup
@@ -560,11 +617,43 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     file?: { path: string; name: string; extension?: string };
   } | null>(null);
   const [artifactFavorite, setArtifactFavorite] = useState(false);
+  const [artifactIndexing, setArtifactIndexing] = useState(false);
+  const [artifactLocallyIndexedPath, setArtifactLocallyIndexedPath] = useState<string | null>(null);
 
   const activeArtifactPath = useMemo(() => {
     if (!artifactData) return '';
     if (artifactData.file?.path) return artifactData.file.path;
     return '';
+  }, [artifactData]);
+
+  const normalizedArtifactPath = useMemo(
+    () => normalizeFsPath(activeArtifactPath),
+    [activeArtifactPath, normalizeFsPath]
+  );
+
+  useEffect(() => {
+    if (!normalizedArtifactPath) return;
+    if (artifactLocallyIndexedPath && artifactLocallyIndexedPath !== normalizedArtifactPath) {
+      setArtifactLocallyIndexedPath(null);
+    }
+  }, [normalizedArtifactPath, artifactLocallyIndexedPath]);
+
+  const isArtifactInVetka = useMemo(() => {
+    if (!normalizedArtifactPath) return false;
+    if (artifactLocallyIndexedPath && artifactLocallyIndexedPath === normalizedArtifactPath) return true;
+    return Object.values(nodes).some((node: any) => {
+      const nodePath = normalizeFsPath(String(node?.path || ''));
+      return nodePath === normalizedArtifactPath
+        || nodePath.endsWith(`/${normalizedArtifactPath}`)
+        || normalizedArtifactPath.endsWith(`/${nodePath}`);
+    });
+  }, [normalizedArtifactPath, artifactLocallyIndexedPath, nodes, normalizeFsPath]);
+
+  useEffect(() => {
+    if (!artifactData) {
+      setArtifactIndexing(false);
+      setArtifactLocallyIndexedPath(null);
+    }
   }, [artifactData]);
 
   useEffect(() => {
@@ -573,7 +662,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         setArtifactFavorite(false);
         return;
       }
-      if (!activeArtifactPath) {
+      if (!normalizedArtifactPath || !isArtifactInVetka) {
         setArtifactFavorite(false);
         return;
       }
@@ -583,22 +672,25 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         if (!resp.ok) return;
         const data = await resp.json();
         const map = data.favorites || {};
-        setArtifactFavorite(Boolean(map[activeArtifactPath]));
+        const isFav = Object.entries(map).some(([path, value]) => (
+          Boolean(value) && normalizeFsPath(String(path || '')) === normalizedArtifactPath
+        ));
+        setArtifactFavorite(isFav);
       } catch {
         // no-op
       }
     };
     loadArtifactFavorite();
-  }, [artifactData, activeArtifactPath]);
+  }, [artifactData, normalizedArtifactPath, isArtifactInVetka, normalizeFsPath]);
 
   const toggleArtifactFavorite = useCallback(async () => {
-    if (!activeArtifactPath) return;
+    if (!normalizedArtifactPath || !isArtifactInVetka) return;
     const next = !artifactFavorite;
     try {
       const resp = await fetch('/api/tree/favorite', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: activeArtifactPath, is_favorite: next }),
+        body: JSON.stringify({ path: normalizedArtifactPath, is_favorite: next }),
       });
       if (!resp.ok) return;
       setArtifactFavorite(next);
@@ -606,7 +698,29 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     } catch (err) {
       console.error('[ChatPanel] Artifact favorite toggle failed:', err);
     }
-  }, [activeArtifactPath, artifactFavorite]);
+  }, [normalizedArtifactPath, isArtifactInVetka, artifactFavorite]);
+
+  const addArtifactToVetka = useCallback(async () => {
+    if (!normalizedArtifactPath || artifactIndexing || isArtifactInVetka) return;
+    setArtifactIndexing(true);
+    try {
+      const response = await fetch('/api/watcher/index-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: normalizedArtifactPath }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.detail || data?.error || `HTTP ${response.status}`);
+      }
+      setArtifactLocallyIndexedPath(normalizedArtifactPath);
+      window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
+    } catch (err) {
+      console.error('[ChatPanel] Add artifact to VETKA failed:', err);
+    } finally {
+      setArtifactIndexing(false);
+    }
+  }, [normalizedArtifactPath, artifactIndexing, isArtifactInVetka]);
 
   // Handle model selection from directory (solo chat mode)
   // Phase 60.4: This is only called when NOT in group mode
@@ -1116,9 +1230,6 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   // Phase 100.2: Load pinned files from backend instead of clearing
   const handleSelectChat = useCallback(async (chatId: string, filePath: string, fileName: string) => {
     isHydratingChatPinsRef.current = true;
-    setCurrentChatId(chatId);
-    // FIX_109.4: Update store for useSocket access
-    setStoreChatId(chatId);
     setLeftPanel('none');
 
     try {
@@ -1127,8 +1238,15 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         const data = await response.json();
         // console.log(`[ChatPanel] Loaded chat ${fileName} with ${data.messages?.length || 0} messages`);
 
-        // Phase 100.2: Load pinned files from backend (replaces clearPinnedFiles)
-        const savedPins = data.pinned_file_ids || [];
+        // Switch active chat only after successful backend load.
+        setCurrentChatId(chatId);
+        setStoreChatId(chatId);
+
+        // Phase 100.2 + MARKER_137.2F2: Restore pins by ids + path fallback.
+        const savedPins = resolvePinnedNodeIds(
+          data.pinned_file_ids || [],
+          data.pinned_paths || [],
+        );
         setPinnedFiles(savedPins);
         // console.log(`[ChatPanel] Loaded ${savedPins.length} pinned files for chat ${chatId}`);
 
@@ -1246,7 +1364,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         isHydratingChatPinsRef.current = false;
       }, 0);
     }
-  }, [addChatMessage, clearChat, setPinnedFiles, setCameraCommand, joinGroup, setActiveGroupId]);
+  }, [addChatMessage, clearChat, setPinnedFiles, setCameraCommand, joinGroup, setActiveGroupId, resolvePinnedNodeIds, setStoreChatId]);
 
   // Phase 100.2: Auto-save pinned files when they change
   // Uses debounce to avoid excessive API calls
@@ -1257,12 +1375,15 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     // Debounce save by 500ms
     const timeoutId = setTimeout(() => {
       if (isHydratingChatPinsRef.current) return;
-      savePinnedFiles(currentChatId, pinnedFileIds);
+      const pinnedPaths = pinnedFileIds
+        .map((id) => normalizeFsPath(String(nodes[id]?.path || '')))
+        .filter(Boolean);
+      savePinnedFiles(currentChatId, pinnedFileIds, pinnedPaths);
       // console.log(`[ChatPanel] Auto-saved ${pinnedFileIds.length} pinned files for chat ${currentChatId}`);
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [currentChatId, pinnedFileIds]);
+  }, [currentChatId, pinnedFileIds, nodes, normalizeFsPath]);
 
   // MARKER_136.W3B: Fetch linked chats when pinned files change
   useEffect(() => {
@@ -2931,27 +3052,62 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         defaultHeight={500}
         headerActions={
           artifactData?.file ? (
-            <button
-              onClick={toggleArtifactFavorite}
-              onMouseDown={(e) => e.stopPropagation()}
-              title={artifactFavorite ? 'Remove favorite' : 'Add favorite'}
-              style={{
-                width: 24,
-                height: 24,
-                display: 'grid',
-                placeItems: 'center',
-                borderRadius: 6,
-                border: '1px solid #3a3a3a',
-                background: 'rgba(255,255,255,0.04)',
-                color: '#f0f0f0',
-                cursor: 'pointer',
-                boxShadow: artifactFavorite ? '0 0 14px rgba(255,255,255,0.9)' : 'none',
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
-                <path d="M12 3.7l2.6 5.2 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill={artifactFavorite ? 'currentColor' : 'none'} />
-              </svg>
-            </button>
+            <>
+              {isArtifactInVetka ? (
+                <button
+                  onClick={toggleArtifactFavorite}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  title={artifactFavorite ? 'Remove favorite' : 'Add favorite'}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    display: 'grid',
+                    placeItems: 'center',
+                    borderRadius: 6,
+                    border: '1px solid #3a3a3a',
+                    background: 'rgba(255,255,255,0.04)',
+                    color: '#f0f0f0',
+                    cursor: 'pointer',
+                    boxShadow: artifactFavorite ? '0 0 14px rgba(255,255,255,0.9)' : 'none',
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
+                    <path d="M12 3.7l2.6 5.2 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill={artifactFavorite ? 'currentColor' : 'none'} />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  onClick={addArtifactToVetka}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  disabled={artifactIndexing}
+                  title={artifactIndexing ? 'Adding to VETKA...' : 'Add to VETKA'}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    display: 'grid',
+                    placeItems: 'center',
+                    borderRadius: 6,
+                    border: '1px solid #3a3a3a',
+                    background: 'rgba(255,255,255,0.04)',
+                    color: '#f0f0f0',
+                    cursor: artifactIndexing ? 'wait' : 'pointer',
+                    boxShadow: artifactIndexing ? 'none' : '0 0 14px rgba(255,255,255,0.32)',
+                    opacity: artifactIndexing ? 0.45 : 1,
+                  }}
+                >
+                  {artifactIndexing ? (
+                    <Loader2 size={13} className="animate-spin" />
+                  ) : (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
+                      <circle cx="12" cy="12" r="9" />
+                      <line x1="12" y1="6" x2="12" y2="18" />
+                      <path d="M12 12 L8 7" />
+                      <path d="M12 12 L16 7" />
+                    </svg>
+                  )}
+                </button>
+              )}
+            </>
           ) : null
         }
       >

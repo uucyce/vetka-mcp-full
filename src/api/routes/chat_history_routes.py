@@ -166,6 +166,7 @@ async def get_chat(chat_id: str, request: Request):
             "topic": chat.get("topic"),                         # Phase 74.3
             "group_id": chat.get("group_id"),                   # Phase 80.5
             "pinned_file_ids": chat.get("pinned_file_ids", []), # Phase 100.2
+            "pinned_paths": chat.get("pinned_paths", []),       # MARKER_137.2F2
             "chat_kind": manager.infer_chat_kind(chat),         # MARKER_137.4L
             "is_favorite": chat.get("is_favorite", False),      # MARKER_137.3
             "created_at": chat["created_at"],
@@ -293,6 +294,7 @@ async def rename_chat(chat_id: str, data: RenameRequest, request: Request):
 class PinnedFilesRequest(BaseModel):
     """Request to update pinned files for a chat."""
     pinned_file_ids: List[str]
+    pinned_paths: Optional[List[str]] = None
 
 
 class FavoriteRequest(BaseModel):
@@ -322,7 +324,7 @@ async def update_pinned_files(chat_id: str, data: PinnedFilesRequest, request: R
     """
     try:
         manager = get_chat_history_manager()
-        success = manager.update_pinned_files(chat_id, data.pinned_file_ids)
+        success = manager.update_pinned_files(chat_id, data.pinned_file_ids, data.pinned_paths or [])
 
         if not success:
             raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
@@ -330,7 +332,8 @@ async def update_pinned_files(chat_id: str, data: PinnedFilesRequest, request: R
         return {
             "success": True,
             "chat_id": chat_id,
-            "pinned_count": len(data.pinned_file_ids)
+            "pinned_count": len(data.pinned_file_ids),
+            "pinned_paths_count": len(data.pinned_paths or []),
         }
 
     except HTTPException:
@@ -356,10 +359,12 @@ async def get_pinned_files(chat_id: str, request: Request):
     try:
         manager = get_chat_history_manager()
         pinned_ids = manager.get_pinned_files(chat_id)
+        pinned_paths = manager.get_pinned_paths(chat_id)
 
         return {
             "chat_id": chat_id,
-            "pinned_file_ids": pinned_ids
+            "pinned_file_ids": pinned_ids,
+            "pinned_paths": pinned_paths,
         }
 
     except Exception as e:
@@ -600,9 +605,12 @@ async def link_file_to_chat(chat_id: str, request: Request):
 
         # Add file path to pinned_file_ids if not already there
         pinned = chat.get("pinned_file_ids", [])
+        pinned_paths = chat.get("pinned_paths", [])
         if file_path not in pinned:
             pinned.append(file_path)
-            manager.update_pinned_files(chat_id, pinned)
+        if file_path not in pinned_paths:
+            pinned_paths.append(file_path)
+        manager.update_pinned_files(chat_id, pinned, pinned_paths)
 
         return {
             "success": True,
