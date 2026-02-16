@@ -163,6 +163,12 @@ export function MyceliumCommandCenter() {
     }
   }, []);
 
+  // MARKER_153.1C: Initialize MCC — load project config + session state on mount
+  const initMCC = useMCCStore(s => s.initMCC);
+  useEffect(() => {
+    initMCC();
+  }, [initMCC]);
+
   // MARKER_143.P3: Refetch DAG when selectedTaskId changes
   useEffect(() => {
     fetchDAG(selectedTaskId);
@@ -370,43 +376,6 @@ export function MyceliumCommandCenter() {
     }
   }, [editMode, toggleEditMode, dagEditor, pushStreamEvent]);
 
-  // MARKER_144.7: Handle Architect-proposed DAG changes (from ArchitectChat)
-  const handleAcceptArchitectChanges = useCallback((changes: {
-    addNodes?: Array<{ type: string; label: string }>;
-    removeNodes?: string[];
-    addEdges?: Array<{ source: string; target: string; type: string }>;
-  }) => {
-    if (!editMode) {
-      // Auto-enter edit mode when accepting changes
-      toggleEditMode();
-    }
-    // Add proposed nodes
-    if (changes.addNodes) {
-      const startY = effectiveNodes.length * 120;
-      changes.addNodes.forEach((node, i) => {
-        dagEditor.addNode(
-          (node.type as DAGNodeType) || 'task',
-          { x: 200, y: startY + i * 120 },
-          node.label,
-        );
-      });
-    }
-    // Remove proposed nodes
-    if (changes.removeNodes) {
-      changes.removeNodes.forEach(id => dagEditor.removeNode(id));
-    }
-    // Add proposed edges
-    if (changes.addEdges) {
-      changes.addEdges.forEach(edge => {
-        dagEditor.addEdge(edge.source, edge.target, (edge.type || 'structural') as EdgeType);
-      });
-    }
-    pushStreamEvent({
-      role: 'architect',
-      message: `DAG changes applied: +${changes.addNodes?.length || 0} nodes, +${changes.addEdges?.length || 0} edges`,
-    });
-  }, [editMode, toggleEditMode, effectiveNodes, dagEditor, pushStreamEvent]);
-
   // MARKER_151.7B: Stream panel auto-visibility follows running tasks.
   const runningCount = summary?.by_status?.running ?? stats?.runningTasks ?? 0;
   useEffect(() => {
@@ -551,26 +520,33 @@ export function MyceliumCommandCenter() {
           <span style={{ color: NOLAN_PALETTE.statusDone }}>{summary?.by_status?.done ?? stats?.completedTasks ?? 0}d</span>
         </div>
 
-        <button
-          onClick={!executing ? handleExecute : undefined}
-          data-onboarding="execute-button"
-          style={{
-            background: 'rgba(78,205,196,0.15)',
-            border: '1px solid #4ecdc4',
-            borderRadius: 3,
-            padding: '3px 9px',
-            color: executing ? '#7aa7a5' : '#c6ffff',
-            fontSize: 10,
-            cursor: executing ? 'wait' : 'pointer',
-            fontFamily: 'monospace',
-            fontWeight: 600,
-            opacity: executing ? 0.8 : 1,
-          }}
-          onMouseEnter={ttExecute.onMouseEnter}
-          title={ttExecute.title}
-        >
-          {executing ? '...' : '▶ Execute'}
-        </button>
+        {/* MARKER_152.W3B3: Execute disabled when nothing to execute */}
+        {(() => {
+          const canExecute = effectiveNodes.length > 0 || tasks.some(t => t.status === 'pending');
+          const isDisabled = executing || !canExecute;
+          return (
+            <button
+              onClick={!isDisabled ? handleExecute : undefined}
+              data-onboarding="execute-button"
+              style={{
+                background: canExecute ? 'rgba(78,205,196,0.15)' : 'rgba(255,255,255,0.03)',
+                border: canExecute ? '1px solid #4ecdc4' : `1px solid ${NOLAN_PALETTE.borderDim}`,
+                borderRadius: 3,
+                padding: '3px 9px',
+                color: !canExecute ? '#555' : executing ? '#7aa7a5' : '#c6ffff',
+                fontSize: 10,
+                cursor: isDisabled ? (executing ? 'wait' : 'not-allowed') : 'pointer',
+                fontFamily: 'monospace',
+                fontWeight: 600,
+                opacity: isDisabled ? 0.5 : 1,
+              }}
+              onMouseEnter={ttExecute.onMouseEnter}
+              title={!canExecute ? 'Load or create a workflow first' : ttExecute.title}
+            >
+              {executing ? '...' : '▶ Execute'}
+            </button>
+          );
+        })()}
 
         {/* Left panel toggle */}
         <button
@@ -622,7 +598,7 @@ export function MyceliumCommandCenter() {
         )}
       </div>
 
-      {/* ═══ MARKER_144.6: Workflow Toolbar — only renders controls when editMode=true ═══ */}
+      {/* ═══ MARKER_144.6: Workflow Toolbar ═══ */}
       <WorkflowToolbar
         workflowId={dagEditor.workflowId}
         workflowName={dagEditor.workflowName}
@@ -641,6 +617,7 @@ export function MyceliumCommandCenter() {
         editMode={editMode}
         onGenerate={handleGeneratedWorkflow}
         onImport={handleGeneratedWorkflow}
+        nodeCount={effectiveNodes.length}
       />
 
       {/* ═══ MAIN THREE-COLUMN LAYOUT ═══ */}
@@ -654,7 +631,7 @@ export function MyceliumCommandCenter() {
               minHeight: 0,
             }}
           >
-            <MCCTaskList onAcceptArchitectChanges={handleAcceptArchitectChanges} />
+            <MCCTaskList />
           </div>
         )}
 

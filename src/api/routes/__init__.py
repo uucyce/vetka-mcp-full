@@ -81,6 +81,9 @@ from .architect_chat_routes import router as architect_chat_router
 # MARKER_152.2: Pipeline Analytics — stats dashboard, drill-down, trends, cost
 from .analytics_routes import router as analytics_router
 
+# MARKER_153.1B: MCC — Mycelium Command Center init, state, project setup
+from .mcc_routes import router as mcc_router
+
 
 def get_all_routers() -> List[APIRouter]:
     """
@@ -122,6 +125,7 @@ def get_all_routers() -> List[APIRouter]:
         workflow_template_router,  # /api/workflows/* (Phase 144 - workflow template CRUD)
         architect_chat_router,  # /api/architect/* (Phase 144.12 - Architect Chat)
         analytics_router,  # /api/analytics/* (Phase 152 - Pipeline analytics dashboard)
+        mcc_router,  # /api/mcc/* (Phase 153 - MCC init, state, project setup)
     ]
 
 
@@ -201,4 +205,5 @@ __all__ = [
     "workflow_template_router",
     "architect_chat_router",
     "analytics_router",
+    "mcc_router",
 ]

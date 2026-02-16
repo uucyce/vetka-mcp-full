@@ -48,6 +48,9 @@ export interface PresetConfig {
 
 // ── Store ──
 
+// MARKER_153.1C: Navigation level type for Matryoshka drill-down
+export type NavLevel = 'roadmap' | 'tasks' | 'workflow' | 'running' | 'results';
+
 interface MCCState {
   // Task board
   tasks: TaskData[];
@@ -76,6 +79,14 @@ interface MCCState {
   // MARKER_144.6: Edit mode for DAG workflow editor
   editMode: boolean;
 
+  // MARKER_153.1C: Navigation state (Matryoshka levels)
+  navLevel: NavLevel;
+  navRoadmapNodeId: string;
+  navTaskId: string;
+  navHistory: NavLevel[];
+  hasProject: boolean;
+  projectConfig: Record<string, any> | null;
+
   // Actions
   fetchTasks: () => Promise<void>;
   addTask: (title: string, preset: string, phaseType: string, tags: string[], selectedKey?: any) => Promise<string | null>;
@@ -102,9 +113,31 @@ interface MCCState {
     planned_tasks?: any[];
     error?: string;
   }>;
+  // MARKER_153.1C: Navigation actions
+  initMCC: () => Promise<void>;
+  drillDown: (level: NavLevel, context?: { roadmapNodeId?: string; taskId?: string }) => void;
+  goBack: () => void;
 }
 
 const MAX_STREAM_EVENTS = 30;
+
+// MARKER_153.1C: Debounced state persist to server
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+const _persistState = (state: { level: NavLevel; roadmapNodeId: string; taskId: string; history: NavLevel[] }) => {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    fetch(`${API_BASE}/mcc/state`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        level: state.level,
+        roadmap_node_id: state.roadmapNodeId,
+        task_id: state.taskId,
+        history: state.history,
+      }),
+    }).catch(() => {}); // Silent fail — state is also in memory
+  }, 500);
+};
 
 export const useMCCStore = create<MCCState>((set, get) => ({
   // Initial state
@@ -118,7 +151,15 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   heartbeat: null,
   activeAgents: [],
   streamEvents: [],
-  editMode: false,
+  editMode: true, // MARKER_151.3A: Edit mode ON by default
+
+  // MARKER_153.1C: Navigation initial state
+  navLevel: 'roadmap' as NavLevel,
+  navRoadmapNodeId: '',
+  navTaskId: '',
+  navHistory: [] as NavLevel[],
+  hasProject: false,
+  projectConfig: null,
 
   // ── Fetch tasks + agents + heartbeat ──
   fetchTasks: async () => {
@@ -335,5 +376,65 @@ export const useMCCStore = create<MCCState>((set, get) => ({
     } catch (err) {
       console.error('[MCC] Priority change failed:', err);
     }
+  },
+
+  // ── MARKER_153.1C: Init MCC — load project config + session state ──
+  initMCC: async () => {
+    try {
+      const res = await fetch(`${API_BASE}/mcc/init`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (data.has_project && data.session_state) {
+        set({
+          hasProject: true,
+          projectConfig: data.project_config,
+          navLevel: (data.session_state.level || 'roadmap') as NavLevel,
+          navRoadmapNodeId: data.session_state.roadmap_node_id || '',
+          navTaskId: data.session_state.task_id || '',
+          navHistory: data.session_state.history || [],
+        });
+      } else {
+        set({ hasProject: false, projectConfig: null });
+      }
+    } catch (err) {
+      console.error('[MCC] Init failed:', err);
+    }
+  },
+
+  // ── MARKER_153.1C: Drill down into next level ──
+  drillDown: (level, context) => {
+    const prev = get();
+    const newState = {
+      navLevel: level,
+      navRoadmapNodeId: context?.roadmapNodeId ?? prev.navRoadmapNodeId,
+      navTaskId: context?.taskId ?? prev.navTaskId,
+      navHistory: [...prev.navHistory, prev.navLevel],
+    };
+    set(newState);
+    _persistState({
+      level: newState.navLevel,
+      roadmapNodeId: newState.navRoadmapNodeId,
+      taskId: newState.navTaskId,
+      history: newState.navHistory,
+    });
+  },
+
+  // ── MARKER_153.1C: Go back one level ──
+  goBack: () => {
+    const prev = get();
+    const history = [...prev.navHistory];
+    const prevLevel = history.pop() || 'roadmap';
+    const newState = {
+      navLevel: prevLevel as NavLevel,
+      navHistory: history,
+    };
+    set(newState);
+    _persistState({
+      level: newState.navLevel,
+      roadmapNodeId: prev.navRoadmapNodeId,
+      taskId: prev.navTaskId,
+      history: newState.navHistory,
+    });
   },
 }));
