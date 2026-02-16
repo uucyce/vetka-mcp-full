@@ -16,6 +16,7 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
+  ConnectionLineType,
   type Node,
   type Edge,
   type Connection,
@@ -67,6 +68,10 @@ interface DAGViewProps {
   onEdgesDelete?: (edges: Edge[]) => void;
   // MARKER_144.3: Context menu callback
   onContextMenu?: (event: React.MouseEvent, target: { kind: 'canvas' | 'node' | 'edge'; id?: string; position: { x: number; y: number } }) => void;
+  // MARKER_151.3B: ComfyUI-style node picker trigger
+  onPaneDoubleClick?: (position: { x: number; y: number }) => void;
+  // MARKER_153.5D: Node double-click for Matryoshka drill-down
+  onNodeDoubleClick?: (nodeId: string) => void;
 }
 
 export function DAGView({
@@ -84,6 +89,9 @@ export function DAGView({
   onEdgesDelete,
   // MARKER_144.3: Context menu
   onContextMenu,
+  onPaneDoubleClick,
+  // MARKER_153.5D: Node double-click drill-down
+  onNodeDoubleClick,
 }: DAGViewProps) {
   // If no data provided, use test data
   const { nodes: inputNodes, edges: inputEdges } = useMemo(() => {
@@ -212,6 +220,14 @@ export function DAGView({
     [onNodeSelect, selectedNode]
   );
 
+  // MARKER_153.5D: Handle node double-click — Matryoshka drill-down
+  const handleNodeDoubleClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      onNodeDoubleClick?.(node.id);
+    },
+    [onNodeDoubleClick]
+  );
+
   // Handle edge click
   const onEdgeClick = useCallback(
     (_: React.MouseEvent, edge: Edge) => {
@@ -221,10 +237,13 @@ export function DAGView({
   );
 
   // Handle pane click (deselect)
-  const onPaneClick = useCallback(() => {
+  const onPaneClick = useCallback((event: React.MouseEvent) => {
     onNodeSelect?.(null);
     onEdgeSelect?.(null);
-  }, [onNodeSelect, onEdgeSelect]);
+    if (editMode && event.detail === 2) {
+      onPaneDoubleClick?.({ x: event.clientX, y: event.clientY });
+    }
+  }, [editMode, onNodeSelect, onEdgeSelect, onPaneDoubleClick]);
 
   // MARKER_144.3: Right-click handlers for context menu (only in edit mode)
   const handleNodeContextMenu = useCallback(
@@ -281,6 +300,7 @@ export function DAGView({
         onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        onNodeDoubleClick={onNodeDoubleClick ? handleNodeDoubleClick : undefined}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
@@ -292,6 +312,10 @@ export function DAGView({
         nodesConnectable={editMode}
         elementsSelectable={true}
         proOptions={{ hideAttribution: true }}
+        // MARKER_151.2C: Orthogonal edge routing for new connections
+        connectionLineType={ConnectionLineType.Step}
+        defaultEdgeOptions={{ type: 'step' }}
+        connectionLineStyle={{ stroke: '#4ecdc4', strokeWidth: 2 }}
         // MARKER_144.2: Edit mode handlers (no-op when editMode=false)
         onConnect={editMode ? onConnect : undefined}
         onNodesDelete={editMode ? onNodesDelete : undefined}
@@ -382,6 +406,23 @@ export function DAGView({
         }
         .react-flow__controls button svg {
           fill: ${NOLAN_PALETTE.textMuted} !important;
+        }
+
+        /* MARKER_151.4A: Always-visible handles + clearer drag affordance */
+        .react-flow__handle {
+          opacity: 1 !important;
+          width: 9px !important;
+          height: 9px !important;
+          border: 1px solid #101010 !important;
+          background: #6a6a6a !important;
+        }
+
+        .react-flow__handle-connecting {
+          background: #ff6b6b !important;
+        }
+
+        .react-flow__handle-valid {
+          background: #4ecdc4 !important;
         }
       `}</style>
     </div>

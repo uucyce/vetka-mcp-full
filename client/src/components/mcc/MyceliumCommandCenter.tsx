@@ -23,9 +23,11 @@ import { DAGContextMenu, type ContextMenuTarget } from './DAGContextMenu';
 import { NodePicker } from './NodePicker';
 import { OnboardingOverlay } from './OnboardingOverlay';
 import { OnboardingModal } from './OnboardingModal';
+import { MCCBreadcrumb } from './MCCBreadcrumb';
 import { useMCCStore } from '../../store/useMCCStore';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useLimitedTooltip } from '../../hooks/useLimitedTooltip';
+import { useRoadmapDAG } from '../../hooks/useRoadmapDAG';
 import { NOLAN_PALETTE, createTestDAGData } from '../../utils/dagLayout';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
 import { useDAGEditor } from '../../hooks/useDAGEditor';
@@ -167,14 +169,27 @@ export function MyceliumCommandCenter() {
   // MARKER_153.1C: Initialize MCC — load project config + session state on mount
   const initMCC = useMCCStore(s => s.initMCC);
   const hasProject = useMCCStore(s => s.hasProject);
+  const navLevel = useMCCStore(s => s.navLevel);
+  const drillDown = useMCCStore(s => s.drillDown);
+  const goBack = useMCCStore(s => s.goBack);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [mccReady, setMccReady] = useState(false);
+
+  // MARKER_153.5B: Roadmap DAG data hook
+  const roadmap = useRoadmapDAG();
 
   useEffect(() => {
     initMCC().then(() => {
       setMccReady(true);
     });
   }, [initMCC]);
+
+  // MARKER_153.5B: Fetch roadmap when MCC is ready and project exists
+  useEffect(() => {
+    if (mccReady && hasProject) {
+      roadmap.fetchRoadmap();
+    }
+  }, [mccReady, hasProject]);
 
   // MARKER_153.3B: Show onboarding modal when no project configured
   useEffect(() => {
@@ -242,15 +257,20 @@ export function MyceliumCommandCenter() {
     };
   }, [fetchDAG, pushStreamEvent, selectedTaskId]);
 
-  // MARKER_143.P4C: Effective nodes/edges — use test data when API returns empty
-  // This ensures selectedNodeData can find clicked nodes even with test DAG.
+  // MARKER_153.5F: Level-aware effective nodes/edges
+  // At roadmap level → show roadmap DAG. At workflow/running → show workflow DAG.
   const { effectiveNodes, effectiveEdges } = useMemo(() => {
+    if (navLevel === 'roadmap' && roadmap.nodes.length > 0) {
+      return { effectiveNodes: roadmap.nodes, effectiveEdges: roadmap.edges };
+    }
+    // Workflow / tasks / running / results levels — use workflow DAG data
     if (dagNodes.length > 0) {
       return { effectiveNodes: dagNodes, effectiveEdges: dagEdges };
     }
+    // Fallback: test DAG data when nothing loaded
     const testData = createTestDAGData();
     return { effectiveNodes: testData.nodes, effectiveEdges: testData.edges };
-  }, [dagNodes, dagEdges]);
+  }, [navLevel, roadmap.nodes, roadmap.edges, dagNodes, dagEdges]);
 
   // MARKER_144.2: DAG Editor hook — manages workflow editing state
   // Uses effectiveNodes/effectiveEdges as initial data, provides mutators
@@ -324,6 +344,43 @@ export function MyceliumCommandCenter() {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [editMode, dagEditor]);
+
+  // MARKER_153.5C: Global keyboard shortcuts — Esc=goBack, Enter=drillDown
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      // Skip when typing in inputs
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        goBack();
+      }
+      if (e.key === 'Enter' && navLevel === 'roadmap' && selectedNode) {
+        e.preventDefault();
+        handleRoadmapNodeDrill(selectedNode);
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [goBack, navLevel, selectedNode]);
+
+  // MARKER_153.5D: Handle roadmap node click → drill into tasks level
+  const handleRoadmapNodeDrill = useCallback((nodeId: string) => {
+    drillDown('tasks', { roadmapNodeId: nodeId });
+  }, [drillDown]);
+
+  // MARKER_153.5E: Handle node click based on current level
+  const handleLevelAwareNodeSelect = useCallback((nodeId: string | null) => {
+    setSelectedNode(nodeId);
+  }, []);
+
+  const handleLevelAwareNodeDoubleClick = useCallback((nodeId: string) => {
+    if (navLevel === 'roadmap') {
+      handleRoadmapNodeDrill(nodeId);
+    }
+    // Other levels: workflow level uses existing DAG editor behavior
+  }, [navLevel, handleRoadmapNodeDrill]);
 
   // Selected node data for detail panel
   const selectedNodeData = useMemo(() => {
@@ -612,7 +669,12 @@ export function MyceliumCommandCenter() {
         )}
       </div>
 
-      {/* ═══ MARKER_144.6: Workflow Toolbar ═══ */}
+      {/* ═══ MARKER_153.5A: Breadcrumb Bar — navigation path ═══ */}
+      <MCCBreadcrumb />
+
+      {/* ═══ MARKER_144.6: Workflow Toolbar — only at workflow/running levels ═══ */}
+      {(navLevel === 'workflow' || navLevel === 'running' || navLevel === 'results' ||
+        navLevel === 'tasks') && (
       <WorkflowToolbar
         workflowId={dagEditor.workflowId}
         workflowName={dagEditor.workflowName}
@@ -633,6 +695,7 @@ export function MyceliumCommandCenter() {
         onImport={handleGeneratedWorkflow}
         nodeCount={effectiveNodes.length}
       />
+      )}
 
       {/* ═══ MAIN THREE-COLUMN LAYOUT ═══ */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
@@ -695,9 +758,9 @@ export function MyceliumCommandCenter() {
             </div>
           )}
 
-          {/* DAG View */}
+          {/* DAG View — level-aware rendering */}
           <div style={{ flex: 1, minHeight: 0 }}>
-            {loading ? (
+            {(loading || roadmap.loading) ? (
               <div
                 style={{
                   display: 'flex',
@@ -708,22 +771,49 @@ export function MyceliumCommandCenter() {
                   fontSize: 11,
                 }}
               >
-                Loading DAG...
+                {navLevel === 'roadmap' ? 'Loading Roadmap...' : 'Loading DAG...'}
               </div>
             ) : (
               <DAGView
                 dagNodes={effectiveNodes}
                 dagEdges={effectiveEdges}
                 selectedNode={selectedNode}
-                onNodeSelect={setSelectedNode}
+                onNodeSelect={handleLevelAwareNodeSelect}
                 onEdgeSelect={handleEdgeSelect}
-                editMode={editMode}
-                onConnect={dagEditor.handleConnect}
-                onNodesDelete={(deletedNodes) => deletedNodes.forEach(n => dagEditor.removeNode(n.id))}
-                onEdgesDelete={(deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))}
-                onContextMenu={handleContextMenu}
-                onPaneDoubleClick={handlePaneDoubleClick}
+                editMode={navLevel === 'roadmap' ? false : editMode}
+                onConnect={navLevel === 'roadmap' ? undefined : dagEditor.handleConnect}
+                onNodesDelete={navLevel === 'roadmap' ? undefined : (deletedNodes) => deletedNodes.forEach(n => dagEditor.removeNode(n.id))}
+                onEdgesDelete={navLevel === 'roadmap' ? undefined : (deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))}
+                onContextMenu={navLevel === 'roadmap' ? undefined : handleContextMenu}
+                onPaneDoubleClick={navLevel === 'roadmap'
+                  ? undefined
+                  : handlePaneDoubleClick
+                }
+                onNodeDoubleClick={handleLevelAwareNodeDoubleClick}
               />
+            )}
+
+            {/* MARKER_153.5G: Double-click hint at roadmap level */}
+            {navLevel === 'roadmap' && effectiveNodes.length > 0 && selectedNode && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: showStream ? 110 : 10,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  background: 'rgba(0,0,0,0.85)',
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 4,
+                  padding: '4px 12px',
+                  fontSize: 9,
+                  color: '#aaa',
+                  fontFamily: 'monospace',
+                  zIndex: 10,
+                  pointerEvents: 'none',
+                }}
+              >
+                Press <span style={{ color: NOLAN_PALETTE.textAccent, fontWeight: 600 }}>Enter</span> or double-click to drill into module
+              </div>
             )}
           </div>
 
