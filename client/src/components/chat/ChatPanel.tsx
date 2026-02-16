@@ -10,7 +10,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { X, Reply, Loader2 } from 'lucide-react';
-import { useStore } from '../../store/useStore';
+import { useStore, type TreeNode } from '../../store/useStore';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { WorkflowProgress } from './WorkflowProgress';
@@ -88,6 +88,12 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     return saved ? Math.max(380, Number(saved)) : 420;
   });
   const [isResizing, setIsResizing] = useState(false);
+  // MARKER_PIN_UI_2: Resizable pinned files list (scanner-like UX for large pin sets)
+  const [pinnedPanelHeight, setPinnedPanelHeight] = useState(() => {
+    const saved = localStorage.getItem('vetka_pinned_panel_height');
+    return saved ? Math.max(120, Math.min(360, Number(saved))) : 164;
+  });
+  const [isPinnedPanelResizing, setIsPinnedPanelResizing] = useState(false);
 
   // Phase 81.1: Chat position (left or right side)
   const [chatPosition, setChatPosition] = useState<'left' | 'right'>(() => {
@@ -118,6 +124,15 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     display_name: string;
     message_count: number;
   }>>([]);
+  const pinnedEntries = useMemo(() => (
+    pinnedFileIds
+      .map((id) => {
+        const node = nodes[id];
+        if (!node) return null;
+        return { id, node };
+      })
+      .filter((entry): entry is { id: string; node: TreeNode } => Boolean(entry))
+  ), [pinnedFileIds, nodes]);
 
   // Phase 54.3: Scanner/Chat tab state
   // Phase 56.6: Added 'group' tab
@@ -1122,6 +1137,35 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     }
   }, [nodes, togglePinFile]);
 
+  // MARKER_PIN_UI_5: Canonical path -> nodeId resolver for scanner + chat pin actions.
+  const resolveNodeIdByPath = useCallback((path: string) => {
+    if (!path) return null;
+    return Object.keys(nodes).find(id => nodes[id]?.path === path) || null;
+  }, [nodes]);
+
+  // MARKER_PIN_UI_3: Shared pinned file actions (fly/select/open/unpin)
+  const handlePinnedFileClick = useCallback((nodeId: string) => {
+    const node = nodes[nodeId];
+    if (!node?.path) return;
+    selectNode(nodeId);
+    setCameraCommand({ target: node.path, zoom: 'close', highlight: true });
+  }, [nodes, selectNode, setCameraCommand]);
+
+  const handleOpenPinnedArtifact = useCallback((nodeId: string) => {
+    const node = nodes[nodeId];
+    if (!node?.path) return;
+    const name = node.name || 'file';
+    const ext = name.includes('.') ? name.split('.').pop() : undefined;
+    setArtifactData({
+      title: name,
+      file: {
+        path: node.path,
+        name,
+        extension: ext,
+      },
+    });
+  }, [nodes, setArtifactData]);
+
   // Phase 74.3: Rename chat from header
   // MARKER_GROUP_RENAME_UI: Phase 108.5 - Support group chat renaming
   // Phase 108: Changed from prompt() to inline edit (Tauri compatibility)
@@ -1597,6 +1641,33 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isResizing, leftPanel, chatWidth, chatPosition]);
+
+  // MARKER_PIN_UI_2: Vertical resize for pinned list area (same behavior family as scanner panel).
+  useEffect(() => {
+    if (!isPinnedPanelResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const headerHeight = 56; // approximate fixed height of pinned block header
+      const panelTop = messagesContainerRef.current
+        ? messagesContainerRef.current.getBoundingClientRect().top
+        : 0;
+      const nextHeight = e.clientY - panelTop - headerHeight;
+      const clamped = Math.max(120, Math.min(360, nextHeight));
+      setPinnedPanelHeight(clamped);
+    };
+
+    const handleMouseUp = () => {
+      setIsPinnedPanelResizing(false);
+      localStorage.setItem('vetka_pinned_panel_height', String(pinnedPanelHeight));
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isPinnedPanelResizing, pinnedPanelHeight]);
 
   // Phase 81.1: Toggle chat position
   const toggleChatPosition = () => {
@@ -2715,97 +2786,204 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         )}
 
         {/* Phase 68.2: Pinned context - AFTER search bar */}
-        {(activeTab === 'chat' || activeTab === 'group') && pinnedFileIds.length > 0 && (
+        {(activeTab === 'chat' || activeTab === 'group') && pinnedEntries.length > 0 && (
           <div style={{
-            padding: '6px 12px',
             background: '#0f0f0f',
             borderBottom: '1px solid #222',
+            display: 'flex',
+            flexDirection: 'column',
           }}>
             <div style={{
+              padding: '8px 12px 6px 12px',
               display: 'flex',
-              flexWrap: 'wrap',
-              gap: 6,
               alignItems: 'center',
+              gap: 8,
             }}>
-              {/* Pin icon */}
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="2" style={{ flexShrink: 0 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" style={{ flexShrink: 0 }}>
                 <path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
               </svg>
+              <span style={{
+                fontSize: 10,
+                color: '#666',
+                letterSpacing: 0.4,
+                textTransform: 'uppercase',
+                fontWeight: 500,
+              }}>
+                Pinned context ({pinnedEntries.length})
+              </span>
+              {pinnedEntries.length > 1 && (
+                <button
+                  onClick={clearPinnedFiles}
+                  title="Clear all pins"
+                  style={{
+                    marginLeft: 'auto',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#666',
+                    cursor: 'pointer',
+                    padding: '2px 4px',
+                    borderRadius: 4,
+                    fontSize: 10,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = '#bbb';
+                    e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = '#666';
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  clear
+                </button>
+              )}
+            </div>
 
-              {/* Pinned files */}
-              {pinnedFileIds.slice(0, 8).map(id => {
-                const node = nodes[id];
-                if (!node) return null;
-                return (
-                  <div
-                    key={id}
-                    onClick={() => selectNode(id)}
+            <div style={{
+              height: pinnedPanelHeight,
+              minHeight: 120,
+              maxHeight: 360,
+              overflowY: 'auto',
+              padding: '0 10px 6px 10px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 3,
+            }}>
+              {pinnedEntries.map(({ id, node }) => (
+                <div
+                  key={id}
+                  onClick={() => handlePinnedFileClick(id)}
+                  title={node.path}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '7px 10px',
+                    background: '#111',
+                    border: '1px solid #222',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                    color: '#888',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#151515';
+                    e.currentTarget.style.borderColor = '#333';
+                    e.currentTarget.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#111';
+                    e.currentTarget.style.borderColor = '#222';
+                    e.currentTarget.style.color = '#888';
+                  }}
+                >
+                  <span style={{ display: 'flex', color: '#aaa', opacity: 0.85 }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  </span>
+                  <span style={{
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontSize: 11,
+                  }}>
+                    {node.name}
+                  </span>
+                  <span style={{
+                    fontSize: 10,
+                    color: '#666',
+                    maxWidth: 180,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}>
+                    {node.path}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenPinnedArtifact(id);
+                    }}
+                    title="Open artifact"
                     style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#666',
+                      cursor: 'pointer',
+                      padding: 4,
+                      borderRadius: 4,
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 4,
-                      padding: '2px 8px',
-                      background: '#1a1a1a',
-                      border: '1px solid #333',
-                      borderRadius: 4,
-                      fontSize: 11,
-                      color: '#888',
-                      cursor: 'pointer',
+                      justifyContent: 'center',
+                      flexShrink: 0,
                     }}
-                    title={node.path}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                      e.currentTarget.style.color = '#bbb';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = '#666';
+                    }}
                   >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                       <polyline points="14 2 14 8 20 8" />
                     </svg>
-                    <span style={{ maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {node.name}
-                    </span>
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#555"
-                      strokeWidth="2"
-                      style={{ cursor: 'pointer', marginLeft: 2 }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        togglePinFile(id);
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.stroke = '#fff')}
-                      onMouseLeave={(e) => (e.currentTarget.style.stroke = '#555')}
-                    >
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePinFile(id);
+                    }}
+                    title="Unpin"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#666',
+                      cursor: 'pointer',
+                      padding: 4,
+                      borderRadius: 4,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                      e.currentTarget.style.color = '#bbb';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = '#666';
+                    }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <line x1="18" y1="6" x2="6" y2="18" />
                       <line x1="6" y1="6" x2="18" y2="18" />
                     </svg>
-                  </div>
-                );
-              })}
+                  </button>
+                </div>
+              ))}
+            </div>
 
-              {pinnedFileIds.length > 8 && (
-                <span style={{ fontSize: 10, color: '#555' }}>+{pinnedFileIds.length - 8}</span>
-              )}
-
-              {pinnedFileIds.length > 1 && (
-                <span title="Clear all">
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#555"
-                    strokeWidth="2"
-                    style={{ cursor: 'pointer', marginLeft: 'auto' }}
-                    onClick={clearPinnedFiles}
-                    onMouseEnter={(e) => (e.currentTarget.style.stroke = '#fff')}
-                    onMouseLeave={(e) => (e.currentTarget.style.stroke = '#555')}
-                  >
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  </svg>
-                </span>
-              )}
+            <div
+              onMouseDown={() => setIsPinnedPanelResizing(true)}
+              title="Drag to resize pinned files list"
+              style={{
+                height: 10,
+                cursor: 'ns-resize',
+                borderTop: '1px solid #202020',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#555',
+              }}
+            >
+              <div style={{ width: 34, height: 3, borderRadius: 2, background: '#2c2c2c' }} />
             </div>
           </div>
         )}
@@ -2850,14 +3028,16 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           <ScanPanel
             onFileClick={(path) => {
               console.log('[ChatPanel] Phase 92.5: onFileClick triggered, sending camera command to:', path);
-              selectNode(path);
+              const nodeId = resolveNodeIdByPath(path);
+              if (nodeId) {
+                selectNode(nodeId);
+              }
               setCameraCommand({ target: path, zoom: 'close', highlight: true });
             }}
             // Phase 92.5: Pin file to chat context (same as search)
             onFilePin={(path) => {
               console.log('[ChatPanel] Phase 92.5: onFilePin triggered for:', path);
-              // Find node by path and toggle pin
-              const nodeId = Object.keys(nodes).find(id => nodes[id]?.path === path);
+              const nodeId = resolveNodeIdByPath(path);
               if (nodeId) {
                 togglePinFile(nodeId);
               } else {
