@@ -975,19 +975,12 @@ export function useSocket() {
       }
     });
 
+    // MARKER_152.CLEANUP: stream_meta telemetry removed — was polluting chat with debug messages
+    // stream_meta events are now only logged to console for debugging, not shown in chat
     socket.on('stream_meta', (data) => {
-      const metaText = `[stream:${data.stage}] ${data.message}`;
-      const message: ChatMessage = {
-        id: crypto.randomUUID(),
-        role: 'system',
-        content: metaText,
-        type: 'text',
-        timestamp: new Date().toISOString(),
-        metadata: {
-          model: typeof data.data?.['model'] === 'string' ? String(data.data['model']) : undefined,
-        },
-      };
-      addChatMessage(message);
+      if (import.meta.env.DEV) {
+        console.debug(`[stream:${data.stage}] ${data.message}`);
+      }
     });
 
     socket.on('stream_end', (data) => {

@@ -1736,23 +1736,8 @@ async def call_model_v2_stream(
     import httpx
 
     registry = get_registry()
-    stream_event_cb: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = kwargs.pop(
-        "stream_event_cb", None
-    )
-
-    async def emit_stream_event(stage: str, message: str, **event_data: Any) -> None:
-        if not stream_event_cb:
-            return
-        try:
-            await stream_event_cb(
-                {
-                    "stage": stage,
-                    "message": message,
-                    "data": event_data or {},
-                }
-            )
-        except Exception as cb_err:
-            logger.debug(f"[STREAM_V2] stream_event_cb failed: {cb_err}")
+    # MARKER_152.CLEANUP: Removed stream_event_cb telemetry — was noise in chat
+    kwargs.pop("stream_event_cb", None)  # Ignore if caller still passes it
 
     # Auto-detect provider if not specified
     # Phase 111.9: Use source for routing
@@ -1763,190 +1748,46 @@ async def call_model_v2_stream(
     token_history = deque(maxlen=100)
     stream_start = time_module.time()
     max_duration = kwargs.get("stream_timeout", 300)  # 5 min default
-    loop_threshold = 0.99  # Phase 100.1: Effectively DISABLED - user request (false positives on JSON/code)
+    loop_threshold = 0.99  # Phase 100.1: Effectively DISABLED (false positives on JSON/code)
     # MARKER_93.2_END
 
+    # Helper: guard against timeout and repetition loops
+    def _check_stream_guards() -> Optional[str]:
+        """Returns stop message if stream should halt, None otherwise."""
+        if time_module.time() - stream_start > max_duration:
+            print(f"[STREAM_V2] Timeout after {max_duration}s")
+            return "\n\n[Stream stopped: timeout]"
+        if len(token_history) >= 50 and _detect_loop(token_history, loop_threshold):
+            print(f"[STREAM_V2] Loop detected")
+            return "\n\n[Stream stopped: repetition detected]"
+        return None
+
     print(f"[STREAM_V2] Starting stream: model={model}, provider={provider.value}")
-    await emit_stream_event("start", "stream initialized", model=model, provider=provider.value)
 
     try:
+        # Select stream source based on provider
         if provider == Provider.OLLAMA:
-            # Ollama streaming
-            await emit_stream_event("provider_route", "routing to ollama stream", provider="ollama")
-            async for token in _stream_ollama(
-                messages, model, registry, stream_event_cb=stream_event_cb, **kwargs
-            ):
-                # Apply anti-loop detection
-                if time_module.time() - stream_start > max_duration:
-                    print(f"[STREAM_V2] Timeout after {max_duration}s")
-                    await emit_stream_event("timeout", "stream timeout reached", timeout_s=max_duration)
-                    yield "\n\n[Stream stopped: timeout]"
-                    break
-
-                token_history.append(token)
-
-                # Check for loops every 50 tokens
-                if len(token_history) >= 50:
-                    if _detect_loop(token_history, loop_threshold):
-                        print(f"[STREAM_V2] Loop detected")
-                        await emit_stream_event("loop_guard", "repetition loop detected")
-                        yield "\n\n[Stream stopped: repetition detected]"
-                        break
-
-                yield token
+            token_source = _stream_ollama(messages, model, registry, **kwargs)
 
         elif provider == Provider.OPENROUTER:
-            # OpenRouter SSE streaming
-            await emit_stream_event(
-                "provider_route", "routing to openrouter stream", provider="openrouter"
-            )
-            async for token in _stream_openrouter(
-                messages, model, registry, stream_event_cb=stream_event_cb, **kwargs
-            ):
-                if time_module.time() - stream_start > max_duration:
-                    print(f"[STREAM_V2] Timeout after {max_duration}s")
-                    await emit_stream_event("timeout", "stream timeout reached", timeout_s=max_duration)
-                    yield "\n\n[Stream stopped: timeout]"
-                    break
-
-                token_history.append(token)
-
-                if len(token_history) >= 50:
-                    if _detect_loop(token_history, loop_threshold):
-                        print(f"[STREAM_V2] Loop detected")
-                        await emit_stream_event("loop_guard", "repetition loop detected")
-                        yield "\n\n[Stream stopped: repetition detected]"
-                        break
-
-                yield token
+            token_source = _stream_openrouter(messages, model, registry, **kwargs)
 
         elif provider == Provider.XAI:
-            # MARKER_94.1_FIX: Direct xAI streaming (not via OpenRouter)
-            # x.ai API now supports streaming, use it directly
             clean_model = model.replace("xai/", "").replace("x-ai/", "")
             print(f"[STREAM_V2] XAI direct: {model} -> {clean_model}")
-            await emit_stream_event(
-                "provider_route",
-                "routing to xai direct stream",
-                provider="xai",
-                clean_model=clean_model,
-            )
-
-            async for token in _stream_xai_direct(
-                messages, clean_model, stream_event_cb=stream_event_cb, **kwargs
-            ):
-                if time_module.time() - stream_start > max_duration:
-                    print(f"[STREAM_V2] Timeout after {max_duration}s")
-                    await emit_stream_event("timeout", "stream timeout reached", timeout_s=max_duration)
-                    yield "\n\n[Stream stopped: timeout]"
-                    break
-
-                token_history.append(token)
-
-                if len(token_history) >= 50:
-                    if _detect_loop(token_history, loop_threshold):
-                        print(f"[STREAM_V2] Loop detected")
-                        await emit_stream_event("loop_guard", "repetition loop detected")
-                        yield "\n\n[Stream stopped: repetition detected]"
-                        break
-
-                yield token
+            token_source = _stream_xai_direct(messages, clean_model, **kwargs)
 
         elif provider == Provider.OPENAI:
-            # MARKER_93.10: OpenAI streaming via OpenRouter
-            # OpenRouter supports OpenAI models with streaming
-            # Model format: openai/gpt-5.2 stays as openai/gpt-5.2
             print(f"[STREAM_V2] OpenAI via OpenRouter: {model}")
-            await emit_stream_event(
-                "provider_route",
-                "routing openai model via openrouter",
-                provider="openrouter",
-                model=model,
-            )
-
-            async for token in _stream_openrouter(
-                messages, model, registry, stream_event_cb=stream_event_cb, **kwargs
-            ):
-                if time_module.time() - stream_start > max_duration:
-                    print(f"[STREAM_V2] Timeout after {max_duration}s")
-                    await emit_stream_event("timeout", "stream timeout reached", timeout_s=max_duration)
-                    yield "\n\n[Stream stopped: timeout]"
-                    break
-
-                token_history.append(token)
-
-                if len(token_history) >= 50:
-                    if _detect_loop(token_history, loop_threshold):
-                        print(f"[STREAM_V2] Loop detected")
-                        await emit_stream_event("loop_guard", "repetition loop detected")
-                        yield "\n\n[Stream stopped: repetition detected]"
-                        break
-
-                yield token
+            token_source = _stream_openrouter(messages, model, registry, **kwargs)
 
         elif provider == Provider.ANTHROPIC:
-            # MARKER_93.10: Anthropic streaming via OpenRouter
             print(f"[STREAM_V2] Anthropic via OpenRouter: {model}")
-            await emit_stream_event(
-                "provider_route",
-                "routing anthropic model via openrouter",
-                provider="openrouter",
-                model=model,
-            )
-
-            async for token in _stream_openrouter(
-                messages, model, registry, stream_event_cb=stream_event_cb, **kwargs
-            ):
-                if time_module.time() - stream_start > max_duration:
-                    print(f"[STREAM_V2] Timeout after {max_duration}s")
-                    await emit_stream_event("timeout", "stream timeout reached", timeout_s=max_duration)
-                    yield "\n\n[Stream stopped: timeout]"
-                    break
-
-                token_history.append(token)
-
-                if len(token_history) >= 50:
-                    if _detect_loop(token_history, loop_threshold):
-                        print(f"[STREAM_V2] Loop detected")
-                        await emit_stream_event("loop_guard", "repetition loop detected")
-                        yield "\n\n[Stream stopped: repetition detected]"
-                        break
-
-                yield token
+            token_source = _stream_openrouter(messages, model, registry, **kwargs)
 
         elif provider.value in ("poe", "polza", "mistral", "perplexity", "nanogpt"):
-            # Phase 111.10: OpenAI-compatible provider streaming
-            # Use OpenAICompatibleProvider.stream() method
-            print(f"[STREAM_V2] OpenAI-compatible provider: {provider.value}")
-            await emit_stream_event(
-                "provider_route",
-                "routing to openai-compatible stream",
-                provider=provider.value,
-            )
-
-            async for token in _stream_openai_compatible(
-                messages,
-                model,
-                provider.value,
-                stream_event_cb=stream_event_cb,
-                **kwargs,
-            ):
-                if time_module.time() - stream_start > max_duration:
-                    print(f"[STREAM_V2] Timeout after {max_duration}s")
-                    await emit_stream_event("timeout", "stream timeout reached", timeout_s=max_duration)
-                    yield "\n\n[Stream stopped: timeout]"
-                    break
-
-                token_history.append(token)
-
-                if len(token_history) >= 50:
-                    if _detect_loop(token_history, loop_threshold):
-                        print(f"[STREAM_V2] Loop detected")
-                        await emit_stream_event("loop_guard", "repetition loop detected")
-                        yield "\n\n[Stream stopped: repetition detected]"
-                        break
-
-                yield token
+            print(f"[STREAM_V2] OpenAI-compatible: {provider.value}")
+            token_source = _stream_openai_compatible(messages, model, provider.value, **kwargs)
 
         else:
             # Fallback: non-streaming call, yield result at once
@@ -1955,11 +1796,20 @@ async def call_model_v2_stream(
             )
             content = result.get("message", {}).get("content", "")
             yield content
+            return
+
+        # Unified token loop with guards
+        async for token in token_source:
+            token_history.append(token)
+            stop_msg = _check_stream_guards()
+            if stop_msg:
+                yield stop_msg
+                break
+            yield token
 
     except Exception as e:
         err_detail = str(e) or type(e).__name__
         print(f"[STREAM_V2 ERROR] {type(e).__name__}: {err_detail}")
-        await emit_stream_event("error", "stream failed", error_type=type(e).__name__, detail=err_detail)
         yield f"\n[STREAM ERROR]: {type(e).__name__}: {err_detail}"
 
 
@@ -2004,17 +1854,7 @@ async def _stream_openai_compatible(
     from src.elisya.api_key_detector import get_provider_base_url
 
     km = get_key_manager()
-    stream_event_cb: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = kwargs.pop(
-        "stream_event_cb", None
-    )
-
-    async def emit_stream_event(stage: str, message: str, **event_data: Any) -> None:
-        if not stream_event_cb:
-            return
-        try:
-            await stream_event_cb({"stage": stage, "message": message, "data": event_data or {}})
-        except Exception:
-            return
+    kwargs.pop("stream_event_cb", None)  # MARKER_152.CLEANUP
 
     api_key = km.get_key(provider_name)
     base_url = get_provider_base_url(provider_name)
@@ -2051,23 +1891,10 @@ async def _stream_openai_compatible(
     for attempt in range(max_retries):
         if attempt > 0:
             print(f"[STREAM_{provider_name.upper()}] Retry {attempt}/{max_retries - 1} after: {type(last_error).__name__}: {last_error}")
-            await emit_stream_event(
-                "retry",
-                f"retrying {provider_name} stream",
-                attempt=attempt + 1,
-                max_retries=max_retries,
-                error_type=type(last_error).__name__,
-            )
             import asyncio as _asyncio
             await _asyncio.sleep(1.0)  # Brief pause before retry
 
         print(f"[STREAM_{provider_name.upper()}] Starting stream: {url} (attempt {attempt + 1}/{max_retries})")
-        await emit_stream_event(
-            "attempt_start",
-            f"starting {provider_name} stream attempt",
-            attempt=attempt + 1,
-            max_retries=max_retries,
-        )
 
         try:
             async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
@@ -2082,11 +1909,6 @@ async def _stream_openai_compatible(
                             if len(error_text) > 500:
                                 break
                         yield f"[STREAM ERROR]: {provider_name} API error {response.status_code}: {error_text[:500]}"
-                        await emit_stream_event(
-                            "http_error",
-                            f"{provider_name} stream http error",
-                            status_code=response.status_code,
-                        )
                         return
 
                     async for line in response.aiter_lines():
@@ -2103,12 +1925,10 @@ async def _stream_openai_compatible(
                             except json.JSONDecodeError:
                                 continue
                     # Stream completed successfully — exit retry loop
-                    await emit_stream_event("complete", f"{provider_name} stream complete")
                     return
 
         except httpx.TimeoutException:
             yield f"[STREAM ERROR]: {provider_name} request timeout (attempt {attempt + 1})"
-            await emit_stream_event("timeout", f"{provider_name} stream timeout", attempt=attempt + 1)
             return  # Timeout = don't retry (already waited 120s)
         except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ConnectError) as e:
             # MARKER_152.FIX1: Transient connection errors — retry
@@ -2117,23 +1937,12 @@ async def _stream_openai_compatible(
             print(f"[STREAM_{provider_name.upper()}] Connection error (retryable): {type(e).__name__}: {err_detail}")
             if attempt == max_retries - 1:
                 yield f"[STREAM ERROR]: {provider_name} connection failed after {max_retries} attempts: {type(e).__name__}: {err_detail}"
-                await emit_stream_event(
-                    "connection_failed",
-                    f"{provider_name} stream connection failed",
-                    max_retries=max_retries,
-                    error_type=type(e).__name__,
-                )
                 return
             continue  # Retry
         except Exception as e:
             err_detail = str(e) or type(e).__name__
             print(f"[STREAM_{provider_name.upper()}] Unexpected error: {type(e).__name__}: {err_detail}")
             yield f"[STREAM ERROR]: {provider_name} error ({type(e).__name__}): {err_detail}"
-            await emit_stream_event(
-                "unexpected_error",
-                f"{provider_name} stream unexpected error",
-                error_type=type(e).__name__,
-            )
             return
 
 
@@ -2149,9 +1958,7 @@ async def _stream_ollama(
     import ollama
     import asyncio
 
-    stream_event_cb: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = kwargs.pop(
-        "stream_event_cb", None
-    )
+    kwargs.pop("stream_event_cb", None)  # MARKER_152.CLEANUP
 
     provider_instance = registry.get(Provider.OLLAMA)
     if not provider_instance:
@@ -2173,10 +1980,6 @@ async def _stream_ollama(
         print(f"[STREAM_OLLAMA] Using fallback model: {clean_model}")
 
     print(f"[STREAM_OLLAMA] Starting stream: {clean_model}")
-    if stream_event_cb:
-        await stream_event_cb(
-            {"stage": "attempt_start", "message": "starting ollama stream", "data": {"model": clean_model}}
-        )
 
     params = {
         "model": clean_model,
@@ -2201,16 +2004,10 @@ async def _stream_ollama(
                     yield content
             if chunk.get("done"):
                 print(f"[STREAM_OLLAMA] Complete")
-                if stream_event_cb:
-                    await stream_event_cb({"stage": "complete", "message": "ollama stream complete", "data": {}})
                 break
 
     except Exception as e:
         print(f"[STREAM_OLLAMA ERROR] {e}")
-        if stream_event_cb:
-            await stream_event_cb(
-                {"stage": "error", "message": "ollama stream error", "data": {"detail": str(e)[:300]}}
-            )
         yield f"\n[STREAM ERROR]: {str(e)}"
 
 
@@ -2226,9 +2023,7 @@ async def _stream_xai_direct(
     """
     import httpx
     import json
-    stream_event_cb: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = kwargs.pop(
-        "stream_event_cb", None
-    )
+    kwargs.pop("stream_event_cb", None)  # MARKER_152.CLEANUP
 
     from src.orchestration.services.api_key_service import APIKeyService
     from src.utils.unified_key_manager import get_key_manager, ProviderType
@@ -2240,10 +2035,6 @@ async def _stream_xai_direct(
         return
 
     print(f"[STREAM_XAI] Starting direct stream: {model}")
-    if stream_event_cb:
-        await stream_event_cb(
-            {"stage": "attempt_start", "message": "starting xai stream", "data": {"model": model}}
-        )
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -2268,10 +2059,6 @@ async def _stream_xai_direct(
                 # Handle 403 with key rotation
                 if response.status_code == 403:
                     print(f"[STREAM_XAI] 403 Forbidden, trying key rotation...")
-                    if stream_event_cb:
-                        await stream_event_cb(
-                            {"stage": "retry", "message": "xai key rotated after 403", "data": {"status_code": 403}}
-                        )
                     km = get_key_manager()
                     for record in km.keys.get(ProviderType.XAI, []):
                         if record.key == api_key:
@@ -2312,10 +2099,6 @@ async def _stream_xai_direct(
 
                     # Phase 111.10.1: All keys exhausted - NO FALLBACK
                     print(f"[STREAM_XAI] All keys exhausted - NO FALLBACK")
-                    if stream_event_cb:
-                        await stream_event_cb(
-                            {"stage": "error", "message": "xai keys exhausted", "data": {"status_code": 403}}
-                        )
                     yield "❌ XAI API keys exhausted. Please select a different provider."
                     return
 
@@ -2331,8 +2114,6 @@ async def _stream_xai_direct(
                     data_str = line[6:]  # Remove "data: " prefix
                     if data_str == "[DONE]":
                         print(f"[STREAM_XAI] Complete")
-                        if stream_event_cb:
-                            await stream_event_cb({"stage": "complete", "message": "xai stream complete", "data": {}})
                         return
 
                     try:
@@ -2346,10 +2127,6 @@ async def _stream_xai_direct(
 
         except Exception as e:
             print(f"[STREAM_XAI ERROR] {e}")
-            if stream_event_cb:
-                await stream_event_cb(
-                    {"stage": "error", "message": "xai stream error", "data": {"detail": str(e)[:300]}}
-                )
             yield f"\n[STREAM ERROR]: {str(e)}"
 
 
@@ -2365,9 +2142,7 @@ async def _stream_openrouter(
     """
     import httpx
     import json
-    stream_event_cb: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = kwargs.pop(
-        "stream_event_cb", None
-    )
+    kwargs.pop("stream_event_cb", None)  # MARKER_152.CLEANUP
 
     from src.utils.unified_key_manager import get_key_manager
 
@@ -2384,14 +2159,6 @@ async def _stream_openrouter(
         print(
             f"[STREAM_OPENROUTER] Starting stream: {model} (key: ****{api_key[-4:]}, attempt {attempt + 1}/{max_retries})"
         )
-        if stream_event_cb:
-            await stream_event_cb(
-                {
-                    "stage": "attempt_start",
-                    "message": "starting openrouter stream attempt",
-                    "data": {"attempt": attempt + 1, "max_retries": max_retries},
-                }
-            )
 
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -2435,14 +2202,6 @@ async def _stream_openrouter(
                                 )
                                 break
                         km.rotate_to_next()
-                        if stream_event_cb:
-                            await stream_event_cb(
-                                {
-                                    "stage": "retry",
-                                    "message": "openrouter key rotated",
-                                    "data": {"status_code": response.status_code, "attempt": attempt + 1},
-                                }
-                            )
                         continue  # Retry with next key
 
                     if response.status_code != 200:
@@ -2457,10 +2216,6 @@ async def _stream_openrouter(
                         data_str = line[6:]  # Remove "data: " prefix
                         if data_str == "[DONE]":
                             print(f"[STREAM_OPENROUTER] Complete")
-                            if stream_event_cb:
-                                await stream_event_cb(
-                                    {"stage": "complete", "message": "openrouter stream complete", "data": {}}
-                                )
                             break
 
                         try:
@@ -2477,10 +2232,6 @@ async def _stream_openrouter(
 
             except Exception as e:
                 print(f"[STREAM_OPENROUTER ERROR] {e}")
-                if stream_event_cb:
-                    await stream_event_cb(
-                        {"stage": "error", "message": "openrouter stream error", "data": {"detail": str(e)[:300]}}
-                    )
                 yield f"\n[STREAM ERROR]: {str(e)}"
                 return
 

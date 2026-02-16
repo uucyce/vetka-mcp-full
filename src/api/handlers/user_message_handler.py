@@ -709,19 +709,10 @@ def register_user_message_handler(sio, app=None):
                     # Phase 111.9: Use model_source for multi-provider routing
                     from src.elisya.provider_registry import ProviderRegistry
                     detected_provider = ProviderRegistry.detect_provider(requested_model, source=model_source)
-                    await sio.emit(
-                        "stream_meta",
-                        {
-                            "id": msg_id,
-                            "stage": "provider_selected",
-                            "message": f"provider selected: {detected_provider.value}",
-                            "data": {"provider": detected_provider.value, "model": requested_model},
-                        },
-                        to=sid,
-                    )
 
-                    # MARKER_114.8_STREAM_PREFETCH: System prompt with pre-fetched search results
-                    # Replaces MARKER_114.7 static tool hint with REAL data from HybridSearch
+                    # MARKER_152.CLEANUP: Removed stream_meta telemetry + preflight tool exec
+                    # (MARKER_153.IMPL.G14_STREAM_TOOL_EXEC removed — caused double LLM call + chat noise)
+                    # Clean system prompt with pre-fetched context only
                     stream_system_prompt = "You are a VETKA AI agent with access to project context.\n\n"
 
                     if prefetch_context:
@@ -733,178 +724,22 @@ def register_user_message_handler(sio, app=None):
                         )
 
                     stream_system_prompt += (
-                        "Tool catalog (planning only in stream mode): vetka_search_semantic, "
-                        "vetka_camera_focus, get_tree_context, search_codebase, vetka_edit_artifact.\n"
-                        "When responding, reference the pre-fetched results above. "
-                        "Do not claim tools were executed in this stream path; suggest specific tool calls instead."
+                        "When responding, reference the pre-fetched codebase results above if relevant. "
+                        "Provide clear, helpful answers based on the project context."
                     )
-                    await sio.emit(
-                        "stream_meta",
-                        {
-                            "id": msg_id,
-                            "stage": "tool_context",
-                            "message": (
-                                "stream mode: tools are available for planning context only; "
-                                "tool execution loop is not active in token stream path"
-                            ),
-                            "data": {
-                                "tools": [
-                                    "vetka_search_semantic",
-                                    "vetka_camera_focus",
-                                    "get_tree_context",
-                                    "search_codebase",
-                                    "vetka_edit_artifact",
-                                ]
-                            },
-                        },
-                        to=sid,
-                    )
-
-                    # MARKER_153.IMPL.G14_STREAM_TOOL_EXEC:
-                    # Pre-stream tool execution loop for providers supporting tool calls.
-                    tool_execution_context = ""
-                    try:
-                        from src.agents.tools import get_tools_for_agent
-                        from src.tools import SafeToolExecutor, ToolCall
-
-                        model_tools = get_tools_for_agent("Dev")
-                        preflight_messages = [
-                            {
-                                "role": "system",
-                                "content": (
-                                    "Decide if tools are needed before final answer. "
-                                    "If needed, call tools with precise arguments. "
-                                    "If not needed, answer with plain text 'NO_TOOLS'."
-                                ),
-                            },
-                            {"role": "user", "content": model_prompt},
-                        ]
-
-                        preflight = await call_model_v2(
-                            messages=preflight_messages,
-                            model=requested_model,
-                            provider=detected_provider,
-                            source=model_source,
-                            temperature=0.1,
-                            tools=model_tools,
-                            max_tokens=400,
-                        )
-                        pf_message = preflight.get("message", {}) if isinstance(preflight, dict) else {}
-                        pf_tool_calls = pf_message.get("tool_calls", []) if isinstance(pf_message, dict) else []
-
-                        if pf_tool_calls:
-                            await sio.emit(
-                                "stream_meta",
-                                {
-                                    "id": msg_id,
-                                    "stage": "tool_exec_start",
-                                    "message": f"executing {len(pf_tool_calls)} pre-stream tool call(s)",
-                                    "data": {"count": len(pf_tool_calls)},
-                                },
-                                to=sid,
-                            )
-                            executor = SafeToolExecutor()
-                            tool_lines = []
-                            for tc in pf_tool_calls:
-                                tool_name = "unknown"
-                                tool_args = {}
-                                try:
-                                    if isinstance(tc, dict):
-                                        func = tc.get("function", {})
-                                        tool_name = func.get("name", "unknown")
-                                        raw_args = func.get("arguments", {})
-                                        if isinstance(raw_args, str):
-                                            try:
-                                                tool_args = json.loads(raw_args)
-                                            except Exception:
-                                                tool_args = {}
-                                        elif isinstance(raw_args, dict):
-                                            tool_args = raw_args
-                                    else:
-                                        tool_name = tc.function.name
-                                        raw_args = tc.function.arguments
-                                        if isinstance(raw_args, str):
-                                            try:
-                                                tool_args = json.loads(raw_args)
-                                            except Exception:
-                                                tool_args = {}
-                                        elif isinstance(raw_args, dict):
-                                            tool_args = raw_args
-
-                                    call = ToolCall(
-                                        tool_name=tool_name,
-                                        arguments=tool_args,
-                                        agent_type="Dev",
-                                        call_id=f"stream_preflight_{tool_name}",
-                                    )
-                                    result = await executor.execute(call)
-                                    if result.success:
-                                        msg = str(result.result)[:400]
-                                        tool_lines.append(f"- {tool_name}({tool_args}) => {msg}")
-                                        await sio.emit(
-                                            "stream_meta",
-                                            {
-                                                "id": msg_id,
-                                                "stage": "tool_exec_ok",
-                                                "message": f"{tool_name} executed",
-                                                "data": {"tool": tool_name},
-                                            },
-                                            to=sid,
-                                        )
-                                    else:
-                                        tool_lines.append(f"- {tool_name}({tool_args}) => ERROR: {result.error}")
-                                except Exception as tool_exec_err:
-                                    tool_lines.append(f"- {tool_name} => ERROR: {str(tool_exec_err)[:200]}")
-
-                            if tool_lines:
-                                tool_execution_context = (
-                                    "\n\n## Executed Tool Results (Pre-Stream)\n"
-                                    + "\n".join(tool_lines)
-                                    + "\nUse these real tool outputs in your response."
-                                )
-                        else:
-                            await sio.emit(
-                                "stream_meta",
-                                {
-                                    "id": msg_id,
-                                    "stage": "tool_exec_skip",
-                                    "message": "pre-stream tool pass: no tools requested",
-                                    "data": {},
-                                },
-                                to=sid,
-                            )
-                    except Exception as tool_preflight_err:
-                        await sio.emit(
-                            "stream_meta",
-                            {
-                                "id": msg_id,
-                                "stage": "tool_exec_error",
-                                "message": f"pre-stream tool pass failed: {str(tool_preflight_err)[:140]}",
-                                "data": {},
-                            },
-                            to=sid,
-                        )
-
-                    if tool_execution_context:
-                        stream_system_prompt += tool_execution_context
 
                     stream_messages = [
                         {"role": "system", "content": stream_system_prompt},
                         {"role": "user", "content": model_prompt},
                     ]
 
-                    # Use unified streaming
+                    # Use unified streaming (MARKER_152.CLEANUP: removed stream_event_cb noise)
                     async for token in call_model_v2_stream(
-                        messages=stream_messages,  # MARKER_114.7: includes system prompt
+                        messages=stream_messages,
                         model=requested_model,
                         provider=detected_provider,
-                        source=model_source,  # Phase 111.9
+                        source=model_source,
                         temperature=0.7,
-                        stream_event_cb=lambda event: sio.emit(
-                            "stream_meta",
-                            {"id": msg_id, **event},
-                            to=sid,
-                        ),
                     ):
                         if token:
                             full_response += token
