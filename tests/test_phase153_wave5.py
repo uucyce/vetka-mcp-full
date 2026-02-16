@@ -164,14 +164,21 @@ class TestMCCIntegration:
         assert "roadmap.edges" in code
 
     def test_mcc_keyboard_escape_goback(self):
-        """Esc key should trigger goBack."""
-        code = _read("client/src/components/mcc/MyceliumCommandCenter.tsx")
-        assert "'Escape'" in code or '"Escape"' in code
+        """Esc key should trigger goBack (via useKeyboardShortcuts hook)."""
+        mcc = _read("client/src/components/mcc/MyceliumCommandCenter.tsx")
+        # MCC delegates to useKeyboardShortcuts hook
+        assert "useKeyboardShortcuts" in mcc
+        # Hook handles Escape globally
+        hook = _read("client/src/hooks/useKeyboardShortcuts.ts")
+        assert "'Escape'" in hook or '"Escape"' in hook
 
     def test_mcc_keyboard_enter_drill(self):
-        """Enter key at roadmap level should drill down."""
-        code = _read("client/src/components/mcc/MyceliumCommandCenter.tsx")
-        assert "'Enter'" in code or '"Enter"' in code
+        """Enter key at roadmap level should drill down (via useKeyboardShortcuts hook)."""
+        mcc = _read("client/src/components/mcc/MyceliumCommandCenter.tsx")
+        assert "onDrillNode:" in mcc
+        # Hook handles Enter per level
+        hook = _read("client/src/hooks/useKeyboardShortcuts.ts")
+        assert "Enter" in hook
 
     def test_mcc_workflow_toolbar_conditional(self):
         """WorkflowToolbar should NOT show at roadmap level."""

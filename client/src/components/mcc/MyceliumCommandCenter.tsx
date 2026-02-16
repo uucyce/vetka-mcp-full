@@ -24,10 +24,14 @@ import { NodePicker } from './NodePicker';
 import { OnboardingOverlay } from './OnboardingOverlay';
 import { OnboardingModal } from './OnboardingModal';
 import { MCCBreadcrumb } from './MCCBreadcrumb';
+import { RailsActionBar } from './RailsActionBar';
+import { ToastContainer } from './ToastContainer';
 import { useMCCStore } from '../../store/useMCCStore';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useLimitedTooltip } from '../../hooks/useLimitedTooltip';
 import { useRoadmapDAG } from '../../hooks/useRoadmapDAG';
+import { useToast } from '../../hooks/useToast';
+import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { NOLAN_PALETTE, createTestDAGData } from '../../utils/dagLayout';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
 import { useDAGEditor } from '../../hooks/useDAGEditor';
@@ -177,6 +181,9 @@ export function MyceliumCommandCenter() {
 
   // MARKER_153.5B: Roadmap DAG data hook
   const roadmap = useRoadmapDAG();
+
+  // MARKER_153.6C: Toast notifications for pipeline/system events
+  const { toasts, addToast, dismissToast } = useToast();
 
   useEffect(() => {
     initMCC().then(() => {
@@ -345,26 +352,6 @@ export function MyceliumCommandCenter() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [editMode, dagEditor]);
 
-  // MARKER_153.5C: Global keyboard shortcuts — Esc=goBack, Enter=drillDown
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      // Skip when typing in inputs
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        goBack();
-      }
-      if (e.key === 'Enter' && navLevel === 'roadmap' && selectedNode) {
-        e.preventDefault();
-        handleRoadmapNodeDrill(selectedNode);
-      }
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [goBack, navLevel, selectedNode]);
-
   // MARKER_153.5D: Handle roadmap node click → drill into tasks level
   const handleRoadmapNodeDrill = useCallback((nodeId: string) => {
     drillDown('tasks', { roadmapNodeId: nodeId });
@@ -508,6 +495,16 @@ export function MyceliumCommandCenter() {
       setExecuting(false);
     }
   }, [dagEditor, executeWorkflow]);
+
+  // MARKER_153.6B: Level-aware keyboard shortcuts via hook (replaces basic Esc/Enter)
+  useKeyboardShortcuts({
+    onDrillNode: selectedNode ? () => handleRoadmapNodeDrill(selectedNode) : undefined,
+    onDrillTask: () => drillDown('workflow'),
+    onExecute: handleExecute,
+    onToggleEdit: () => toggleEditMode(),
+    onExpandStream: () => setShowStream(!showStream),
+    // onStop, onApply, onReject — wired when pipeline control is available
+  });
 
   const ttTeam = useLimitedTooltip('mcc_team', 'Select AI team preset (Dragon Bronze/Silver/Gold)');
   const ttSandbox = useLimitedTooltip('mcc_sandbox', 'Choose working directory for agent file writes');
@@ -817,6 +814,15 @@ export function MyceliumCommandCenter() {
             )}
           </div>
 
+          {/* MARKER_153.6A: RailsActionBar — context-aware bottom bar */}
+          <RailsActionBar
+            selectedNode={selectedNode}
+            onExecute={handleExecute}
+            onRegenerate={roadmap.regenerateRoadmap}
+            onToggleEdit={toggleEditMode}
+            onExpandStream={() => setShowStream(!showStream)}
+          />
+
           {/* Stream Panel — collapsible bottom */}
           {showStream && <StreamPanel maxEvents={8} />}
         </div>
@@ -956,6 +962,9 @@ export function MyceliumCommandCenter() {
       {showOnboarding && (
         <OnboardingModal onComplete={() => setShowOnboarding(false)} />
       )}
+
+      {/* MARKER_153.6D: Toast notifications — top-right overlay */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }
