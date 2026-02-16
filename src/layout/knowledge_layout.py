@@ -2662,6 +2662,55 @@ def build_knowledge_graph_from_qdrant(
         }
 
     # 5. Convert to serializable format
+    # MARKER_153.IMPL.G11_CLASSIFY_EDGE_WIRING: propagate visual edge classification
+    # into final payload so frontend can render edge style/color consistently.
+    file_to_tag: Dict[str, Optional[str]] = {}
+    for tag_id, tag in tags.items():
+        for file_id in tag.files:
+            file_to_tag[file_id] = tag_id
+
+    def _edge_temporal_days(source_id: str, target_id: str) -> int:
+        src_meta = file_metadata.get(source_id, {}) if file_metadata else {}
+        tgt_meta = file_metadata.get(target_id, {}) if file_metadata else {}
+        src_t = src_meta.get("created_time") or src_meta.get("modified_time")
+        tgt_t = tgt_meta.get("created_time") or tgt_meta.get("modified_time")
+        if src_t is None or tgt_t is None:
+            return 0
+        try:
+            delta = abs(float(tgt_t) - float(src_t))
+            return int(delta / 86400)
+        except Exception:
+            return 0
+
+    serialized_edges: List[Dict[str, Any]] = []
+    for edge in edges:
+        src_tag = file_to_tag.get(edge.source)
+        tgt_tag = file_to_tag.get(edge.target)
+        temporal_days = _edge_temporal_days(edge.source, edge.target)
+        classification = classify_edge(
+            source_id=edge.source,
+            target_id=edge.target,
+            source_tag=src_tag,
+            target_tag=tgt_tag,
+            edge_type=edge.edge_type,
+            is_chat_history=(edge.edge_type == "chat_history"),
+            temporal_distance_days=temporal_days,
+        )
+        serialized_edges.append(
+            {
+                "source": edge.source,
+                "target": edge.target,
+                "type": edge.edge_type,
+                "weight": edge.weight,
+                "style": classification.get("style", "solid"),
+                "color": classification.get("color", "#888888"),
+                "opacity": classification.get("opacity", 0.8),
+                "width": classification.get("width", 1.0),
+                "visual_type": classification.get("type", "LOCAL"),
+                "description": classification.get("description", ""),
+            }
+        )
+
     result = {
         'tags': {
             tag_id: {
@@ -2677,15 +2726,7 @@ def build_knowledge_graph_from_qdrant(
             }
             for tag_id, tag in tags.items()
         },
-        'edges': [
-            {
-                'source': edge.source,
-                'target': edge.target,
-                'type': edge.edge_type,
-                'weight': edge.weight
-            }
-            for edge in edges
-        ],
+        'edges': serialized_edges,
         'positions': positions,
         'knowledge_levels': knowledge_levels,
         'chain_edges': chain_edges,  # Chain edges for stem rendering

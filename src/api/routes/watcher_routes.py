@@ -18,9 +18,12 @@ Endpoints:
 """
 
 import os
+import base64
+import hashlib
+import mimetypes
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 from src.scanners.file_watcher import get_watcher, get_spam_detector, SKIP_PATTERNS
 from src.scanners.qdrant_updater import get_qdrant_updater
@@ -51,6 +54,8 @@ class BrowserFileInfo(BaseModel):
     size: int
     type: str
     lastModified: int
+    contentBase64: Optional[str] = None
+    contentHash: Optional[str] = None
 
 
 class AddFromBrowserRequest(BaseModel):
@@ -58,6 +63,7 @@ class AddFromBrowserRequest(BaseModel):
     rootName: str
     files: List[BrowserFileInfo]
     timestamp: Optional[int] = None
+    mode: Literal["metadata_only", "content_small"] = "metadata_only"
 
 
 class IndexFileRequest(BaseModel):
@@ -394,6 +400,7 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
     """
     root_name = req.rootName
     files = req.files
+    mode = req.mode
 
     if not root_name:
         raise HTTPException(status_code=400, detail="No rootName provided")
@@ -438,8 +445,32 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
                 ext_parts = file_info.name.rsplit('.', 1)
                 extension = f".{ext_parts[1].lower()}" if len(ext_parts) > 1 else ""
 
-                # Create embedding from filename and path (no content available from browser)
-                embed_text = f"File: {file_info.name}\nPath: {file_info.relativePath}\nType: {file_info.type}"
+                content_preview = f"[Browser file metadata only: {file_info.name}]"
+                if mode == "content_small" and file_info.contentBase64:
+                    try:
+                        raw = base64.b64decode(file_info.contentBase64, validate=True)
+                        if len(raw) > 1_000_000:
+                            raise ValueError("contentBase64 too large (>1MB)")
+                        decoded = raw.decode("utf-8", errors="replace")
+                        if decoded.strip():
+                            content_preview = decoded[:4000]
+                        else:
+                            digest = file_info.contentHash or hashlib.sha256(raw).hexdigest()
+                            content_preview = (
+                                f"[Binary browser content: mime={file_info.type or 'application/octet-stream'} "
+                                f"size={len(raw)} sha256={digest[:16]}]"
+                            )
+                    except Exception as decode_err:
+                        errors.append(f"{file_info.relativePath}: invalid contentBase64 ({decode_err})")
+
+                # Create embedding from filename/path and optional small content payload.
+                embed_text = (
+                    f"File: {file_info.name}\n"
+                    f"Path: {file_info.relativePath}\n"
+                    f"Type: {file_info.type}\n"
+                    f"Mode: {mode}\n\n"
+                    f"{content_preview[:4000]}"
+                )
                 embedding = updater._get_embedding(embed_text)
 
                 if embedding:
@@ -463,7 +494,9 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
                             'last_modified': file_info.lastModified,
                             'updated_at': time_module.time(),
                             'deleted': False,
-                            'content': f"[Browser file: {file_info.name}]"  # Placeholder content
+                            'content': content_preview[:500],
+                            'ingest_mode': mode,
+                            'content_hash': file_info.contentHash,
                         }
                     )
 
@@ -473,7 +506,13 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
                     try:
                         from src.orchestration.triple_write_manager import get_triple_write_manager
                         tw = get_triple_write_manager()
-                        browser_content = f"[Browser file: {file_info.name}]\nPath: {file_info.relativePath}\nType: {file_info.type}\nSize: {file_info.size} bytes"
+                        browser_content = (
+                            f"{content_preview[:2000]}\n\n"
+                            f"Path: {file_info.relativePath}\n"
+                            f"Type: {file_info.type}\n"
+                            f"Size: {file_info.size} bytes\n"
+                            f"Ingest mode: {mode}"
+                        )
                         tw_result = tw.write_file(
                             file_path=virtual_path,
                             content=browser_content,
@@ -484,7 +523,8 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
                                 'extension': extension,
                                 'depth': virtual_path.count('/'),
                                 'source': 'browser_scanner',
-                                'mime_type': file_info.type
+                                'mime_type': file_info.type,
+                                'ingest_mode': mode,
                             }
                         )
                         if tw_result.get('qdrant'):
@@ -545,6 +585,7 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
         'indexed_count': indexed_count,
         'total_files': len(files),
         'root_name': root_name,
+        'mode': mode,
         'errors': errors[:10] if errors else []  # Return first 10 errors
     }
 
@@ -626,12 +667,25 @@ async def index_single_file(req: IndexFileRequest, request: Request):
         # Use QdrantIncrementalUpdater for proper indexing with embedding
         updater = get_qdrant_updater(qdrant_client=qdrant_client)
 
-        # Read file content
+        # Read file content with binary-aware fallback
         file_obj = Path(file_path)
-        try:
+        mime_type, _ = mimetypes.guess_type(str(file_obj))
+        mime_type = mime_type or "application/octet-stream"
+        is_text_like = mime_type.startswith("text/") or file_obj.suffix.lower() in {
+            ".md", ".txt", ".json", ".yaml", ".yml", ".py", ".js", ".ts", ".tsx", ".html", ".css"
+        }
+        if is_text_like:
             content = file_obj.read_text(encoding='utf-8', errors='replace')
-        except Exception:
-            content = "[Binary file]"
+        else:
+            raw = file_obj.read_bytes()
+            digest = hashlib.sha256(raw).hexdigest()
+            content = (
+                f"[Binary file summary]\n"
+                f"mime={mime_type}\n"
+                f"size_bytes={len(raw)}\n"
+                f"sha256={digest}\n"
+                f"path={file_path}"
+            )
 
         # Generate point ID from path
         point_id = uuid.uuid5(uuid.NAMESPACE_DNS, file_path).int & 0x7FFFFFFFFFFFFFFF
@@ -660,6 +714,7 @@ async def index_single_file(req: IndexFileRequest, request: Request):
                 'extension': file_obj.suffix.lower(),
                 'parent_folder': str(file_obj.parent),
                 'size_bytes': stat.st_size,
+                'mime_type': mime_type,
                 'created_time': stat.st_ctime,
                 'modified_time': stat.st_mtime,
                 'content': content[:500],  # Preview
@@ -688,6 +743,7 @@ async def index_single_file(req: IndexFileRequest, request: Request):
                     'mtime': stat.st_mtime,
                     'created_time': stat.st_ctime,
                     'modified_time': stat.st_mtime,
+                    'mime_type': mime_type,
                     'extension': file_obj.suffix.lower(),
                     'depth': file_path.count('/'),
                     'source': 'drag_drop_resolved',
