@@ -22,6 +22,7 @@ import { WorkflowToolbar } from './WorkflowToolbar';
 import { DAGContextMenu, type ContextMenuTarget } from './DAGContextMenu';
 import { NodePicker } from './NodePicker';
 import { OnboardingOverlay } from './OnboardingOverlay';
+import { OnboardingModal } from './OnboardingModal';
 import { useMCCStore } from '../../store/useMCCStore';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useLimitedTooltip } from '../../hooks/useLimitedTooltip';
@@ -165,9 +166,22 @@ export function MyceliumCommandCenter() {
 
   // MARKER_153.1C: Initialize MCC — load project config + session state on mount
   const initMCC = useMCCStore(s => s.initMCC);
+  const hasProject = useMCCStore(s => s.hasProject);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [mccReady, setMccReady] = useState(false);
+
   useEffect(() => {
-    initMCC();
+    initMCC().then(() => {
+      setMccReady(true);
+    });
   }, [initMCC]);
+
+  // MARKER_153.3B: Show onboarding modal when no project configured
+  useEffect(() => {
+    if (mccReady && !hasProject) {
+      setShowOnboarding(true);
+    }
+  }, [mccReady, hasProject]);
 
   // MARKER_143.P3: Refetch DAG when selectedTaskId changes
   useEffect(() => {
@@ -846,6 +860,11 @@ export function MyceliumCommandCenter() {
           onAdvance={onboardingAdvance}
           onDismiss={onboardingDismiss}
         />
+      )}
+
+      {/* MARKER_153.3B: Project setup wizard — shows when no project configured */}
+      {showOnboarding && (
+        <OnboardingModal onComplete={() => setShowOnboarding(false)} />
       )}
     </div>
   );
