@@ -96,6 +96,8 @@ SUPPORTED_EXTENSIONS = {
 SPAM_THRESHOLD = 50       # Events per window to trigger mute
 SPAM_WINDOW_SECONDS = 10  # Sliding window duration
 SPAM_COOLDOWN = 300       # Seconds before un-muting (5 min)
+REGULAR_SPAM_THRESHOLD = 300  # Higher threshold for regular user directories
+REGULAR_SPAM_COOLDOWN = 30    # Short cooldown for burst protection
 
 
 class SpamDetector:
@@ -103,16 +105,19 @@ class SpamDetector:
     Tracks event frequency per parent directory.
     When a dir exceeds threshold, auto-mutes it and emits alert.
 
-    IMPORTANT: Only mutes HIDDEN directories (starting with dot: .playgrounds, .claude, etc.)
-    Regular user directories (src/, client/, docs/) are NEVER muted — even with 1000 events.
-    This prevents false-positive muting during legitimate bulk scans (adding a large folder).
+    Hidden directories are muted aggressively. Regular user directories can be
+    short-muted only on extreme bursts (higher threshold + shorter cooldown).
     """
 
     def __init__(self, threshold: int = SPAM_THRESHOLD, window: float = SPAM_WINDOW_SECONDS,
-                 cooldown: float = SPAM_COOLDOWN):
+                 cooldown: float = SPAM_COOLDOWN,
+                 regular_threshold: int = REGULAR_SPAM_THRESHOLD,
+                 regular_cooldown: float = REGULAR_SPAM_COOLDOWN):
         self.threshold = threshold
         self.window = window
         self.cooldown = cooldown
+        self.regular_threshold = regular_threshold
+        self.regular_cooldown = regular_cooldown
         self._counters: Dict[str, List[float]] = defaultdict(list)  # dir -> [timestamps]
         self._muted: Dict[str, float] = {}  # dir -> mute_until timestamp
         self._alert_callback: Optional[Callable] = None
@@ -127,19 +132,26 @@ class SpamDetector:
         Record an event for a file. Returns True if event should proceed,
         False if the directory is muted (spam detected).
 
-        SAFETY: Only hidden directories (dotdirs) can be muted.
-        Regular directories always return True, even under heavy load.
-        This prevents bulk scans (adding a folder with 100+ files) from
-        being incorrectly classified as spam.
+        SAFETY:
+        - Hidden directories (dotdirs) have strict mute thresholds.
+        - Regular directories have a much higher threshold and short cooldown
+          to protect event loop under extreme bursts without long lockout.
         """
-        # Extract dir key — returns None for regular (non-dot) directories
-        dir_key = self._extract_dir_key(file_path)
-
-        # MARKER_146.5_SAFE: Regular directories are NEVER spam-checked.
-        # Only hidden directories (.playgrounds, .claude, .cache, etc.)
-        # can be auto-muted. This ensures legitimate bulk scans pass through.
-        if dir_key is None:
-            return True  # Regular directory — always allow
+        # Hidden dirs use strict throttling, regular dirs use soft burst protection.
+        hidden_dir_key = self._extract_dir_key(file_path)
+        if hidden_dir_key is not None:
+            dir_key = hidden_dir_key
+            threshold = self.threshold
+            cooldown = self.cooldown
+            suggested_skip = self._suggest_skip_pattern(dir_key)
+        else:
+            regular_dir_key = self._extract_regular_dir_key(file_path)
+            if regular_dir_key is None:
+                return True
+            dir_key = regular_dir_key
+            threshold = self.regular_threshold
+            cooldown = self.regular_cooldown
+            suggested_skip = regular_dir_key
 
         now = time.time()
 
@@ -161,16 +173,15 @@ class SpamDetector:
 
             # Check threshold
             count = len(self._counters[dir_key])
-            if count >= self.threshold:
+            if count >= threshold:
                 # SPAM DETECTED — auto-mute
-                self._muted[dir_key] = now + self.cooldown
+                self._muted[dir_key] = now + cooldown
                 self._counters[dir_key] = []  # Reset counter
 
-                suggested_skip = self._suggest_skip_pattern(dir_key)
                 print(f"\n{'='*60}")
                 print(f"[Watcher] 🚨 SPAM DETECTED: {dir_key}")
-                print(f"[Watcher]    {count} events in {self.window}s (threshold: {self.threshold})")
-                print(f"[Watcher]    Auto-muted for {self.cooldown}s")
+                print(f"[Watcher]    {count} events in {self.window}s (threshold: {threshold})")
+                print(f"[Watcher]    Auto-muted for {cooldown}s")
                 print(f"[Watcher]    💡 Suggested skip pattern: '{suggested_skip}'")
                 print(f"[Watcher]    Add to SKIP_PATTERNS in file_watcher.py to permanently block")
                 print(f"{'='*60}\n")
@@ -224,6 +235,22 @@ class SpamDetector:
         # No dotdir found → this is a regular user directory.
         # Return None to signal "do not spam-check this path".
         return None
+
+    def _extract_regular_dir_key(self, file_path: str) -> Optional[str]:
+        """Extract a coarse key for regular (non-hidden) directories."""
+        path = Path(file_path)
+        parent = path.parent
+        if not parent:
+            return None
+        try:
+            rel_parent = parent.resolve().relative_to(Path.cwd().resolve())
+            rel_parts = rel_parent.parts
+            if rel_parts:
+                keep = min(2, len(rel_parts))
+                return str(Path(*rel_parts[:keep]))
+        except Exception:
+            pass
+        return str(parent)
 
     def _suggest_skip_pattern(self, dir_key: str) -> str:
         """

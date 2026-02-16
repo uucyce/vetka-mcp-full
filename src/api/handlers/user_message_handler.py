@@ -709,6 +709,16 @@ def register_user_message_handler(sio, app=None):
                     # Phase 111.9: Use model_source for multi-provider routing
                     from src.elisya.provider_registry import ProviderRegistry
                     detected_provider = ProviderRegistry.detect_provider(requested_model, source=model_source)
+                    await sio.emit(
+                        "stream_meta",
+                        {
+                            "id": msg_id,
+                            "stage": "provider_selected",
+                            "message": f"provider selected: {detected_provider.value}",
+                            "data": {"provider": detected_provider.value, "model": requested_model},
+                        },
+                        to=sid,
+                    )
 
                     # MARKER_114.8_STREAM_PREFETCH: System prompt with pre-fetched search results
                     # Replaces MARKER_114.7 static tool hint with REAL data from HybridSearch
@@ -723,10 +733,31 @@ def register_user_message_handler(sio, app=None):
                         )
 
                     stream_system_prompt += (
-                        "Available tools: vetka_search_semantic, vetka_camera_focus, "
-                        "get_tree_context, search_codebase, vetka_edit_artifact.\n"
+                        "Tool catalog (planning only in stream mode): vetka_search_semantic, "
+                        "vetka_camera_focus, get_tree_context, search_codebase, vetka_edit_artifact.\n"
                         "When responding, reference the pre-fetched results above. "
-                        "If you need additional context, suggest using the available tools."
+                        "Do not claim tools were executed in this stream path; suggest specific tool calls instead."
+                    )
+                    await sio.emit(
+                        "stream_meta",
+                        {
+                            "id": msg_id,
+                            "stage": "tool_context",
+                            "message": (
+                                "stream mode: tools are available for planning context only; "
+                                "tool execution loop is not active in token stream path"
+                            ),
+                            "data": {
+                                "tools": [
+                                    "vetka_search_semantic",
+                                    "vetka_camera_focus",
+                                    "get_tree_context",
+                                    "search_codebase",
+                                    "vetka_edit_artifact",
+                                ]
+                            },
+                        },
+                        to=sid,
                     )
 
                     stream_messages = [
@@ -741,6 +772,11 @@ def register_user_message_handler(sio, app=None):
                         provider=detected_provider,
                         source=model_source,  # Phase 111.9
                         temperature=0.7,
+                        stream_event_cb=lambda event: sio.emit(
+                            "stream_meta",
+                            {"id": msg_id, **event},
+                            to=sid,
+                        ),
                     ):
                         if token:
                             full_response += token

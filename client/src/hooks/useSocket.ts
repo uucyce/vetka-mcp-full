@@ -78,6 +78,12 @@ interface ServerToClientEvents {
   // Phase 46: Streaming events
   stream_start: (data: { id: string; agent: string; model: string }) => void;
   stream_token: (data: { id: string; token: string }) => void;
+  stream_meta: (data: {
+    id: string;
+    stage: string;
+    message: string;
+    data?: Record<string, unknown>;
+  }) => void;
   stream_end: (data: {
     id: string;
     full_message: string;
@@ -967,6 +973,21 @@ export function useSocket() {
           flushTokenBuffer();
         });
       }
+    });
+
+    socket.on('stream_meta', (data) => {
+      const metaText = `[stream:${data.stage}] ${data.message}`;
+      const message: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: metaText,
+        type: 'text',
+        timestamp: new Date().toISOString(),
+        metadata: {
+          model: typeof data.data?.['model'] === 'string' ? String(data.data['model']) : undefined,
+        },
+      };
+      addChatMessage(message);
     });
 
     socket.on('stream_end', (data) => {

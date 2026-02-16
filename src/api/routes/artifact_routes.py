@@ -3,6 +3,8 @@
 """REST routes for artifacts panel (list + approve/reject + content)."""
 
 from pathlib import Path
+import base64
+import mimetypes
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -15,6 +17,7 @@ from src.api.handlers.artifact_routes import (
     save_search_result_artifact,
     save_webpage_artifact,
 )
+from src.scanners.qdrant_updater import get_qdrant_updater
 from src.services.artifact_scanner import set_artifact_favorite
 
 
@@ -138,8 +141,8 @@ async def favorite_artifact_endpoint(artifact_id: str, body: ArtifactFavoriteReq
 
 
 @router.post("/save-webpage")
-async def save_webpage_endpoint(body: SaveWebpageRequest):
-    return await save_webpage_artifact(
+async def save_webpage_endpoint(body: SaveWebpageRequest, request: Request):
+    result = await save_webpage_artifact(
         url=body.url,
         title=body.title or "",
         snippet=body.snippet or "",
@@ -149,6 +152,25 @@ async def save_webpage_endpoint(body: SaveWebpageRequest):
         file_name=body.file_name or "",
         target_node_path=body.target_node_path or "",
     )
+    # MARKER_153.IMPL.G16_WEB_SAVE_INDEX_BRIDGE:
+    # After saving webpage artifact to disk, index it into semantic storage
+    # so tree visibility and retrieval path stay aligned.
+    try:
+        if result.get("success") and result.get("file_path"):
+            qdrant_manager = getattr(request.app.state, "qdrant_manager", None)
+            qdrant_client = getattr(qdrant_manager, "client", None) if qdrant_manager else None
+            if qdrant_client:
+                updater = get_qdrant_updater(qdrant_client=qdrant_client, enable_triple_write=True)
+                indexed = updater.update_file(Path(str(result["file_path"])))
+                result["indexed"] = bool(indexed)
+            else:
+                result["indexed"] = False
+                result["index_error"] = "qdrant_client_not_available"
+    except Exception as idx_err:
+        result["indexed"] = False
+        result["index_error"] = str(idx_err)[:200]
+
+    return result
 
 
 @router.post("/save-search-result")
@@ -213,17 +235,37 @@ async def get_artifact_content(artifact_id: str):
         }
 
     try:
-        content = p.read_text(encoding="utf-8", errors="replace")
         max_size = 10000  # 10KB limit for UI display
-        truncated = len(content) > max_size
-        if truncated:
-            content = content[:max_size]
+        mime_type, _ = mimetypes.guess_type(str(p))
+        mime_type = mime_type or "application/octet-stream"
 
+        if mime_type.startswith("text/") or p.suffix.lower() in {".md", ".txt", ".json", ".yaml", ".yml", ".py", ".js", ".ts", ".tsx"}:
+            content = p.read_text(encoding="utf-8", errors="replace")
+            truncated = len(content) > max_size
+            if truncated:
+                content = content[:max_size]
+            return {
+                "success": True,
+                "artifact_id": artifact_id,
+                "file_path": str(p),
+                "content": content,
+                "encoding": "utf-8",
+                "mimeType": mime_type,
+                "size": p.stat().st_size,
+                "truncated": truncated,
+            }
+
+        raw = p.read_bytes()
+        truncated = len(raw) > max_size
+        if truncated:
+            raw = raw[:max_size]
         return {
             "success": True,
             "artifact_id": artifact_id,
             "file_path": str(p),
-            "content": content,
+            "content": base64.b64encode(raw).decode("ascii"),
+            "encoding": "base64",
+            "mimeType": mime_type,
             "size": p.stat().st_size,
             "truncated": truncated,
         }
