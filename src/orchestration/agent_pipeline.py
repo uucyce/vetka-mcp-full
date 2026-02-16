@@ -1188,6 +1188,47 @@ Respond with implementation plan or code."""
             "subtask_idx": subtask_idx,
         })
 
+    # MARKER_152.12: Fetch pinned files context for pipeline injection
+    async def _fetch_pinned_context(self) -> str:
+        """Fetch pinned files from VETKA REST API and format as compact context.
+
+        Pinned files represent user-selected focus areas in the 3D tree.
+        Injected into Architect (planning awareness) and Coder (file context).
+
+        Returns:
+            Compact string with pinned file paths and reasons, or empty string.
+        """
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get("http://localhost:5001/api/cam/pinned")
+                if resp.status_code != 200:
+                    return ""
+                data = resp.json()
+                pinned = data.get("pinned", [])
+                if not pinned:
+                    return ""
+                # Compact format: max 5 files, path + reason
+                lines = []
+                for pin in pinned[:5]:
+                    fp = pin.get("file_path", "")
+                    reason = pin.get("reason", "")
+                    # Make path relative for compactness
+                    if "/vetka_live_03/" in fp:
+                        fp = fp.split("/vetka_live_03/")[-1]
+                    line = f"  📌 {fp}"
+                    if reason:
+                        line += f" — {reason[:60]}"
+                    lines.append(line)
+                extra = len(pinned) - 5
+                header = f"[Pinned Files — {len(pinned)} user-focused files]"
+                if extra > 0:
+                    header += f" (+{extra} more)"
+                return header + "\n" + "\n".join(lines)
+        except Exception as e:
+            logger.debug(f"[Pipeline] Pinned files fetch skipped: {e}")
+            return ""
+
     # MARKER_104_ELISION_PROMPTS_START: Context compression method
     def _compress_context(self, context: Any, level: int = None) -> tuple:
         """
@@ -2180,6 +2221,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             scout_context, initial_research = await self._parallel_recon(task, phase_type)
             # MARKER_122.5C: Store scout context for subtask injection
             self._scout_context = scout_context
+
+            # MARKER_152.12A: Fetch pinned files context (non-blocking, skip on fail)
+            self._pinned_context = ""
+            try:
+                self._pinned_context = await self._fetch_pinned_context()
+                if self._pinned_context:
+                    pinned_count = self._pinned_context.count("📌")
+                    await self._emit_progress("@mycelium", f"📌 Loaded {pinned_count} pinned files for context")
+            except Exception as pin_err:
+                logger.debug(f"[Pipeline] Pinned context skipped: {pin_err}")
+            # MARKER_152.12A_END
             if scout_context:
                 await self._emit_progress(
                     "@scout",
@@ -3089,6 +3141,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if feedback_context:
             user_content += f"\n\n{feedback_context[:600]}"
         # MARKER_135.FB_LOOP_B_END
+        # MARKER_152.12B: Inject pinned files so Architect knows user focus areas
+        pinned_ctx = getattr(self, '_pinned_context', '')
+        if pinned_ctx:
+            user_content += f"\n\n{pinned_ctx}"
+        # MARKER_152.12B_END
         # MARKER_151.14B: Inject team performance summary for Architect awareness
         team_perf = await self._get_team_performance_summary()
         if team_perf:
@@ -3461,6 +3518,12 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                             scout_str += f"\n  📍 {mid}: {f_path}:{line} [{action}] — {desc}"
                     scout_str += "\n\nUse vetka_read_file(file_path, marker='MARKER_SCOUT_X') to jump to each location."
                 context_parts.append(f"Scout report:\n{scout_str}")
+
+        # MARKER_152.12C: Inject pinned files context for coder awareness
+        pinned_ctx = getattr(self, '_pinned_context', '')
+        if pinned_ctx:
+            context_parts.append(pinned_ctx)
+        # MARKER_152.12C_END
 
         context_str = "\n\n".join(context_parts) if context_parts else "No additional context."
 

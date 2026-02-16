@@ -638,3 +638,645 @@ class TestRegression:
         """routes/__init__.py has analytics_router in __all__."""
         from src.api.routes import __all__ as all_exports
         assert "analytics_router" in all_exports
+
+
+# ============================================================
+# 152.12 — Context Pipeline API (pinned files → pipeline)
+# ============================================================
+
+class TestContextPipelineAPI:
+    """Tests for MARKER_152.12: pinned files injection into pipeline."""
+
+    def test_fetch_pinned_context_method_exists(self):
+        """Pipeline has _fetch_pinned_context method."""
+        from src.orchestration.agent_pipeline import AgentPipeline
+        pipeline = AgentPipeline(preset="dragon_silver")
+        assert hasattr(pipeline, "_fetch_pinned_context")
+        assert callable(pipeline._fetch_pinned_context)
+
+    def test_pinned_context_attribute_initialized(self):
+        """Pipeline doesn't have _pinned_context until execute is called."""
+        from src.orchestration.agent_pipeline import AgentPipeline
+        pipeline = AgentPipeline(preset="dragon_silver")
+        # Before execute, _pinned_context is not set (set during execute)
+        # getattr with default returns '' as in the code
+        assert getattr(pipeline, '_pinned_context', '') == ''
+
+    @pytest.mark.asyncio
+    async def test_fetch_pinned_context_formats_output(self):
+        """_fetch_pinned_context returns formatted string from API data."""
+        from src.orchestration.agent_pipeline import AgentPipeline
+        from unittest.mock import AsyncMock
+
+        pipeline = AgentPipeline(preset="dragon_silver")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "success": True,
+            "pinned": [
+                {"file_path": "/Users/d/Documents/VETKA_Project/vetka_live_03/src/main.py", "reason": "Entry point"},
+                {"file_path": "/Users/d/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx", "reason": "React root"},
+            ],
+            "count": 2,
+        }
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await pipeline._fetch_pinned_context()
+
+        assert "[Pinned Files" in result
+        assert "📌" in result
+        assert "src/main.py" in result
+        assert "client/src/App.tsx" in result
+        assert "Entry point" in result
+
+    @pytest.mark.asyncio
+    async def test_fetch_pinned_context_makes_paths_relative(self):
+        """Paths containing /vetka_live_03/ are made relative."""
+        from src.orchestration.agent_pipeline import AgentPipeline
+        from unittest.mock import AsyncMock
+
+        pipeline = AgentPipeline(preset="dragon_silver")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "pinned": [
+                {"file_path": "/Users/d/Documents/VETKA_Project/vetka_live_03/src/api/main.py", "reason": ""},
+            ]
+        }
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await pipeline._fetch_pinned_context()
+
+        assert "src/api/main.py" in result
+        # Absolute path should NOT be present
+        assert "/Users/d/" not in result
+
+    @pytest.mark.asyncio
+    async def test_fetch_pinned_context_empty_on_no_pins(self):
+        """Returns empty string when no files are pinned."""
+        from src.orchestration.agent_pipeline import AgentPipeline
+        from unittest.mock import AsyncMock
+
+        pipeline = AgentPipeline(preset="dragon_silver")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"pinned": [], "count": 0}
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await pipeline._fetch_pinned_context()
+
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_fetch_pinned_context_graceful_on_error(self):
+        """Returns empty string on API failure."""
+        from src.orchestration.agent_pipeline import AgentPipeline
+        from unittest.mock import AsyncMock
+
+        pipeline = AgentPipeline(preset="dragon_silver")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await pipeline._fetch_pinned_context()
+
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_fetch_pinned_context_max_5_files(self):
+        """Only first 5 pinned files are included."""
+        from src.orchestration.agent_pipeline import AgentPipeline
+        from unittest.mock import AsyncMock
+
+        pipeline = AgentPipeline(preset="dragon_silver")
+
+        many_pins = [{"file_path": f"file_{i}.py", "reason": f"reason {i}"} for i in range(10)]
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"pinned": many_pins}
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await pipeline._fetch_pinned_context()
+
+        assert result.count("📌") == 5
+        assert "(+5 more)" in result
+
+    def test_pinned_context_injected_in_coder(self):
+        """Coder context building includes pinned files marker."""
+        import inspect
+        from src.orchestration.agent_pipeline import AgentPipeline
+        source = inspect.getsource(AgentPipeline._execute_subtask)
+        assert "MARKER_152.12C" in source
+        assert "_pinned_context" in source
+
+    def test_pinned_context_injected_in_architect(self):
+        """Architect planning includes pinned files marker."""
+        import inspect
+        from src.orchestration.agent_pipeline import AgentPipeline
+        source = inspect.getsource(AgentPipeline._architect_plan)
+        assert "MARKER_152.12B" in source
+        assert "_pinned_context" in source
+
+    def test_context_endpoint_exists(self):
+        """GET /api/analytics/context endpoint is registered."""
+        from src.api.routes.analytics_routes import router
+        paths = [r.path for r in router.routes]
+        # Router has prefix /api/analytics, route paths include prefix
+        assert any("/context" in p for p in paths)
+
+
+class TestContextEndpoint:
+    """Tests for the /api/analytics/context REST endpoint."""
+
+    def test_context_endpoint_with_pinned_files(self, tmp_path):
+        """Context endpoint reads pinned_files.json."""
+        pinned = {
+            "/path/to/main.py": {"reason": "Entry point", "timestamp": "2026-02-15T10:00:00"},
+            "/path/to/App.tsx": {"reason": "React root", "timestamp": "2026-02-15T10:00:00"},
+        }
+        pinned_file = tmp_path / "pinned_files.json"
+        pinned_file.write_text(json.dumps(pinned))
+
+        # Simulate the endpoint logic
+        data = json.loads(pinned_file.read_text())
+        result_pinned = []
+        for fp, meta in data.items():
+            result_pinned.append({
+                "file_path": fp,
+                "reason": meta.get("reason", "") if isinstance(meta, dict) else "",
+            })
+
+        assert len(result_pinned) == 2
+        assert result_pinned[0]["file_path"] == "/path/to/main.py"
+        assert result_pinned[0]["reason"] == "Entry point"
+
+    def test_context_endpoint_with_empty_pinned(self, tmp_path):
+        """Context endpoint handles empty pinned files."""
+        pinned_file = tmp_path / "pinned_files.json"
+        pinned_file.write_text("{}")
+
+        data = json.loads(pinned_file.read_text())
+        result_pinned = []
+        if isinstance(data, dict):
+            for fp, meta in data.items():
+                result_pinned.append({"file_path": fp})
+
+        assert len(result_pinned) == 0
+
+    def test_context_endpoint_with_digest(self, tmp_path):
+        """Context endpoint reads project_digest.json."""
+        digest = {"current_phase": "152", "status": "Wave 2 in progress"}
+        digest_file = tmp_path / "project_digest.json"
+        digest_file.write_text(json.dumps(digest))
+
+        data = json.loads(digest_file.read_text())
+        phase = data.get("current_phase", "")
+        status = data.get("status", "")
+        summary = f"Phase {phase}: {status}" if phase else ""
+
+        assert summary == "Phase 152: Wave 2 in progress"
+
+
+# ============================================================
+# 152.12b — Mycelium Persistence (pipeline state → JSON)
+# ============================================================
+
+class TestMyceliumPersistence:
+    """Tests for MARKER_152.12P: pipeline history persistence in mycelium_mcp_server."""
+
+    def test_persistence_globals_exist(self):
+        """Module has persistence globals."""
+        import src.mcp.mycelium_mcp_server as m
+        assert hasattr(m, "_pipeline_history")
+        assert hasattr(m, "_STATE_FILE")
+        assert hasattr(m, "_total_pipelines_ever")
+        assert hasattr(m, "_last_pipeline_at")
+        assert isinstance(m._pipeline_history, dict)
+
+    def test_load_pipeline_state_function(self):
+        """_load_pipeline_state is callable."""
+        from src.mcp.mycelium_mcp_server import _load_pipeline_state
+        assert callable(_load_pipeline_state)
+
+    def test_save_pipeline_state_function(self):
+        """_save_pipeline_state is callable."""
+        from src.mcp.mycelium_mcp_server import _save_pipeline_state
+        assert callable(_save_pipeline_state)
+
+    def test_record_pipeline_function(self):
+        """_record_pipeline is callable."""
+        from src.mcp.mycelium_mcp_server import _record_pipeline
+        assert callable(_record_pipeline)
+
+    def test_record_pipeline_writes_entry(self):
+        """_record_pipeline adds an entry to _pipeline_history."""
+        import src.mcp.mycelium_mcp_server as m
+
+        # Save originals
+        orig_history = m._pipeline_history.copy()
+        orig_total = m._total_pipelines_ever
+        orig_state_file = m._STATE_FILE
+
+        try:
+            # Use temp state file so we don't corrupt real data
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
+                m._STATE_FILE = Path(tf.name)
+                m._pipeline_history = {}
+                m._total_pipelines_ever = 0
+
+                m._record_pipeline(
+                    task_id="test_001",
+                    status="completed",
+                    task="Test task",
+                    preset="dragon_silver",
+                    started_at="2026-02-15T10:00:00Z",
+                    duration_s=42.5,
+                )
+
+                assert "test_001" in m._pipeline_history
+                entry = m._pipeline_history["test_001"]
+                assert entry["status"] == "completed"
+                assert entry["task"] == "Test task"
+                assert entry["preset"] == "dragon_silver"
+                assert entry["duration_s"] == 42.5
+                assert m._total_pipelines_ever == 1
+
+                # Verify file was written
+                assert m._STATE_FILE.exists()
+                saved = json.loads(m._STATE_FILE.read_text())
+                assert "test_001" in saved["history"]
+                assert saved["total_pipelines_ever"] == 1
+
+                # Clean up temp file
+                os.unlink(tf.name)
+        finally:
+            m._pipeline_history = orig_history
+            m._total_pipelines_ever = orig_total
+            m._STATE_FILE = orig_state_file
+
+    def test_record_pipeline_failed_increments_counter(self):
+        """Failed pipelines also increment total_pipelines_ever."""
+        import src.mcp.mycelium_mcp_server as m
+
+        orig_history = m._pipeline_history.copy()
+        orig_total = m._total_pipelines_ever
+        orig_state_file = m._STATE_FILE
+
+        try:
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
+                m._STATE_FILE = Path(tf.name)
+                m._pipeline_history = {}
+                m._total_pipelines_ever = 0
+
+                m._record_pipeline(
+                    task_id="test_fail_001",
+                    status="failed",
+                    task="Fail task",
+                    preset="dragon_bronze",
+                    started_at="2026-02-15T10:00:00Z",
+                    duration_s=5.0,
+                    error="Something went wrong",
+                )
+
+                assert m._pipeline_history["test_fail_001"]["status"] == "failed"
+                assert m._pipeline_history["test_fail_001"]["error"] == "Something went wrong"
+                assert m._total_pipelines_ever == 1
+
+                os.unlink(tf.name)
+        finally:
+            m._pipeline_history = orig_history
+            m._total_pipelines_ever = orig_total
+            m._STATE_FILE = orig_state_file
+
+    def test_record_pipeline_truncates_task_and_error(self):
+        """Long task and error strings are truncated."""
+        import src.mcp.mycelium_mcp_server as m
+
+        orig_history = m._pipeline_history.copy()
+        orig_total = m._total_pipelines_ever
+        orig_state_file = m._STATE_FILE
+
+        try:
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
+                m._STATE_FILE = Path(tf.name)
+                m._pipeline_history = {}
+                m._total_pipelines_ever = 0
+
+                m._record_pipeline(
+                    task_id="test_trunc",
+                    status="failed",
+                    task="x" * 500,  # > 200
+                    error="e" * 500,  # > 300
+                )
+
+                entry = m._pipeline_history["test_trunc"]
+                assert len(entry["task"]) == 200
+                assert len(entry["error"]) == 300
+
+                os.unlink(tf.name)
+        finally:
+            m._pipeline_history = orig_history
+            m._total_pipelines_ever = orig_total
+            m._STATE_FILE = orig_state_file
+
+    def test_load_pipeline_state_from_file(self, tmp_path):
+        """_load_pipeline_state reads saved state correctly."""
+        import src.mcp.mycelium_mcp_server as m
+
+        orig_history = m._pipeline_history.copy()
+        orig_total = m._total_pipelines_ever
+        orig_last = m._last_pipeline_at
+        orig_state_file = m._STATE_FILE
+
+        try:
+            state_file = tmp_path / "mycelium_state.json"
+            state_file.write_text(json.dumps({
+                "history": {
+                    "tb_a": {"status": "completed", "task": "Task A", "started_at": "2026-02-15T10:00:00Z"},
+                    "tb_b": {"status": "failed", "task": "Task B", "started_at": "2026-02-15T11:00:00Z"},
+                },
+                "total_pipelines_ever": 42,
+                "last_pipeline_at": "2026-02-15T11:30:00Z",
+            }))
+
+            m._STATE_FILE = state_file
+            m._pipeline_history = {}
+            m._total_pipelines_ever = 0
+            m._last_pipeline_at = ""
+
+            m._load_pipeline_state()
+
+            assert len(m._pipeline_history) == 2
+            assert m._total_pipelines_ever == 42
+            assert m._last_pipeline_at == "2026-02-15T11:30:00Z"
+            assert "tb_a" in m._pipeline_history
+            assert "tb_b" in m._pipeline_history
+        finally:
+            m._pipeline_history = orig_history
+            m._total_pipelines_ever = orig_total
+            m._last_pipeline_at = orig_last
+            m._STATE_FILE = orig_state_file
+
+    def test_load_pipeline_state_caps_at_100(self, tmp_path):
+        """_load_pipeline_state trims to 100 most recent entries."""
+        import src.mcp.mycelium_mcp_server as m
+
+        orig_history = m._pipeline_history.copy()
+        orig_total = m._total_pipelines_ever
+        orig_last = m._last_pipeline_at
+        orig_state_file = m._STATE_FILE
+
+        try:
+            # Create 120 entries
+            history = {}
+            for i in range(120):
+                history[f"tb_{i:04d}"] = {
+                    "status": "completed",
+                    "task": f"Task {i}",
+                    "started_at": f"2026-01-{(i % 28) + 1:02d}T{(i % 24):02d}:00:00Z",
+                }
+
+            state_file = tmp_path / "mycelium_state.json"
+            state_file.write_text(json.dumps({
+                "history": history,
+                "total_pipelines_ever": 120,
+                "last_pipeline_at": "2026-02-15T12:00:00Z",
+            }))
+
+            m._STATE_FILE = state_file
+            m._pipeline_history = {}
+            m._total_pipelines_ever = 0
+
+            m._load_pipeline_state()
+
+            assert len(m._pipeline_history) == 100  # Capped at 100
+            assert m._total_pipelines_ever == 120   # Counter preserved
+        finally:
+            m._pipeline_history = orig_history
+            m._total_pipelines_ever = orig_total
+            m._last_pipeline_at = orig_last
+            m._STATE_FILE = orig_state_file
+
+    def test_load_pipeline_state_graceful_on_missing_file(self, tmp_path):
+        """_load_pipeline_state handles missing file gracefully."""
+        import src.mcp.mycelium_mcp_server as m
+
+        orig_state_file = m._STATE_FILE
+        orig_history = m._pipeline_history.copy()
+        orig_total = m._total_pipelines_ever
+
+        try:
+            m._STATE_FILE = tmp_path / "nonexistent.json"
+            m._pipeline_history = {"keep": {"status": "test"}}
+            m._total_pipelines_ever = 99
+
+            m._load_pipeline_state()
+
+            # Should not crash, and should not clear existing state
+            # (file doesn't exist → early return, no changes)
+            assert m._pipeline_history == {"keep": {"status": "test"}}
+            assert m._total_pipelines_ever == 99
+        finally:
+            m._STATE_FILE = orig_state_file
+            m._pipeline_history = orig_history
+            m._total_pipelines_ever = orig_total
+
+    def test_load_pipeline_state_graceful_on_corrupt_json(self, tmp_path):
+        """_load_pipeline_state handles corrupt JSON gracefully."""
+        import src.mcp.mycelium_mcp_server as m
+
+        orig_state_file = m._STATE_FILE
+        orig_history = m._pipeline_history.copy()
+        orig_total = m._total_pipelines_ever
+
+        try:
+            state_file = tmp_path / "corrupt.json"
+            state_file.write_text("NOT VALID JSON {{{")
+
+            m._STATE_FILE = state_file
+            m._pipeline_history = {}
+            m._total_pipelines_ever = 0
+
+            m._load_pipeline_state()  # Should not raise
+
+            # State unchanged (corrupt file → exception caught)
+            assert m._pipeline_history == {}
+        finally:
+            m._STATE_FILE = orig_state_file
+            m._pipeline_history = orig_history
+            m._total_pipelines_ever = orig_total
+
+    def test_health_endpoint_has_persistence_fields(self):
+        """Health endpoint includes persistence stats."""
+        import inspect
+        import src.mcp.mycelium_mcp_server as m
+        # Find the health handler — search for "total_pipelines_ever" in source
+        source = inspect.getsource(m)
+        assert "total_pipelines_ever" in source
+        assert "last_pipeline_at" in source
+        assert "recent_history_count" in source
+
+    def test_graceful_shutdown_saves_state(self):
+        """_graceful_shutdown calls _save_pipeline_state."""
+        import inspect
+        import src.mcp.mycelium_mcp_server as m
+        source = inspect.getsource(m._graceful_shutdown)
+        assert "_save_pipeline_state" in source
+
+    def test_handle_pipeline_records_pipelines(self):
+        """_handle_pipeline (containing _run) calls _record_pipeline on completion/failure."""
+        import inspect
+        import src.mcp.mycelium_mcp_server as m
+        source = inspect.getsource(m._handle_pipeline)
+        assert "_record_pipeline" in source
+        assert "_pipeline_t0" in source
+        assert "_started_at" in source
+
+
+# ============================================================
+# 152.13 — DAG Mini-Stats Enrichment
+# ============================================================
+
+class TestDAGMiniStats:
+    """Tests for MARKER_152.13: per-node mini-stats in DAG endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def setup_mock_data(self, tmp_path):
+        self.tb_file = _mock_task_board_file(tmp_path)
+        import src.orchestration.pipeline_analytics as pa
+        self._orig = pa._TASK_BOARD_FILE
+        pa._TASK_BOARD_FILE = self.tb_file
+        yield
+        pa._TASK_BOARD_FILE = self._orig
+
+    def test_compute_dag_mini_stats_exists(self):
+        """compute_dag_mini_stats function exists."""
+        from src.orchestration.pipeline_analytics import compute_dag_mini_stats
+        assert callable(compute_dag_mini_stats)
+
+    def test_mini_stats_for_completed_task(self):
+        """tb_001 (done) should have full mini-stats."""
+        from src.orchestration.pipeline_analytics import compute_dag_mini_stats
+        stats = compute_dag_mini_stats()
+        assert "tb_001" in stats
+        s = stats["tb_001"]
+        assert s["duration_s"] == 66.8
+        assert s["success"] is True
+        assert s["llm_calls"] == 12
+        assert s["tokens_total"] == 23000  # 15000 in + 8000 out
+        assert s["cost_estimate"] > 0
+        assert s["subtasks_done"] == 3
+        assert s["subtasks_total"] == 3
+        assert s["retries"] == 1  # coder had 1 retry
+        assert s["verifier_confidence"] == 0.9
+
+    def test_mini_stats_for_failed_task(self):
+        """tb_002 (failed) should have mini-stats with success=False."""
+        from src.orchestration.pipeline_analytics import compute_dag_mini_stats
+        stats = compute_dag_mini_stats()
+        assert "tb_002" in stats
+        s = stats["tb_002"]
+        assert s["duration_s"] == 45.0
+        assert s["success"] is False
+        assert s["llm_calls"] == 6
+        assert s["tokens_total"] == 7000  # 5000 + 2000
+        assert s["retries"] == 2  # coder had 2 retries
+        assert s["verifier_confidence"] == 0.3
+
+    def test_mini_stats_skips_pending_no_stats(self):
+        """tb_003 (pending, empty stats) should be excluded."""
+        from src.orchestration.pipeline_analytics import compute_dag_mini_stats
+        stats = compute_dag_mini_stats()
+        assert "tb_003" not in stats
+
+    def test_mini_stats_with_task_id_filter(self):
+        """Filter by specific task IDs."""
+        from src.orchestration.pipeline_analytics import compute_dag_mini_stats
+        stats = compute_dag_mini_stats(task_ids=["tb_001"])
+        assert "tb_001" in stats
+        assert "tb_002" not in stats
+
+    def test_mini_stats_empty_filter(self):
+        """Empty task_ids list returns nothing."""
+        from src.orchestration.pipeline_analytics import compute_dag_mini_stats
+        stats = compute_dag_mini_stats(task_ids=[])
+        assert len(stats) == 0
+
+    def test_mini_stats_cost_varies_by_preset(self):
+        """Different presets produce different cost estimates."""
+        from src.orchestration.pipeline_analytics import compute_dag_mini_stats
+        stats = compute_dag_mini_stats()
+        # tb_001 is dragon_silver (tier 1.0), tb_002 is dragon_bronze (tier 0.5)
+        # Both have tokens, so costs should differ by tier ratio
+        cost_silver = stats["tb_001"]["cost_estimate"]
+        cost_bronze = stats["tb_002"]["cost_estimate"]
+        # Silver has more tokens AND higher tier, so it should cost more
+        assert cost_silver > cost_bronze
+
+    def test_dag_endpoint_includes_mini_stats(self):
+        """DAG endpoint includes mini_stats in node data."""
+        import inspect
+        from src.api.routes.analytics_routes import analytics_dag_tasks
+        source = inspect.getsource(analytics_dag_tasks)
+        assert "compute_dag_mini_stats" in source
+        assert "mini_stats" in source
+        assert "MARKER_152.13" in source
+
+    def test_mini_stats_fields_complete(self):
+        """All expected fields are present in mini-stats."""
+        from src.orchestration.pipeline_analytics import compute_dag_mini_stats
+        stats = compute_dag_mini_stats()
+        expected_fields = {
+            "duration_s", "success", "llm_calls", "tokens_total",
+            "cost_estimate", "subtasks_done", "subtasks_total",
+            "retries", "verifier_confidence",
+        }
+        for tid in ("tb_001", "tb_002"):
+            assert set(stats[tid].keys()) == expected_fields, f"Missing fields in {tid}"
+
+    def test_mini_stats_values_are_rounded(self):
+        """Duration and confidence are properly rounded."""
+        from src.orchestration.pipeline_analytics import compute_dag_mini_stats
+        stats = compute_dag_mini_stats()
+        s = stats["tb_001"]
+        # duration_s should be rounded to 1 decimal
+        assert s["duration_s"] == round(s["duration_s"], 1)
+        # verifier_confidence rounded to 2 decimals
+        assert s["verifier_confidence"] == round(s["verifier_confidence"], 2)

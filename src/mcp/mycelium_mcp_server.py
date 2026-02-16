@@ -76,6 +76,70 @@ _active_pipelines: Dict[str, asyncio.Task] = {}
 _http_client = None
 _ws_broadcaster = None
 
+# MARKER_152.12P: Pipeline history persistence (survive restart)
+_pipeline_history: Dict[str, Dict] = {}  # task_id → {status, task, preset, started_at, completed_at, duration_s, error}
+_STATE_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "mycelium_state.json"
+_total_pipelines_ever: int = 0
+_last_pipeline_at: str = ""
+
+
+def _load_pipeline_state():
+    """Load pipeline history from JSON on startup."""
+    global _pipeline_history, _total_pipelines_ever, _last_pipeline_at
+    try:
+        if _STATE_FILE.exists():
+            data = json.loads(_STATE_FILE.read_text())
+            _pipeline_history = data.get("history", {})
+            _total_pipelines_ever = data.get("total_pipelines_ever", 0)
+            _last_pipeline_at = data.get("last_pipeline_at", "")
+            # Keep only last 100 entries to prevent unbounded growth
+            if len(_pipeline_history) > 100:
+                sorted_entries = sorted(
+                    _pipeline_history.items(),
+                    key=lambda x: x[1].get("started_at", ""),
+                    reverse=True
+                )
+                _pipeline_history = dict(sorted_entries[:100])
+            logger.info(f"[Mycelium] Loaded {len(_pipeline_history)} pipeline records, total_ever={_total_pipelines_ever}")
+    except Exception as e:
+        logger.debug(f"[Mycelium] State load skipped: {e}")
+
+
+def _save_pipeline_state():
+    """Persist pipeline history to JSON."""
+    try:
+        _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _STATE_FILE.write_text(json.dumps({
+            "history": _pipeline_history,
+            "total_pipelines_ever": _total_pipelines_ever,
+            "last_pipeline_at": _last_pipeline_at,
+            "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }, indent=2, default=str))
+    except Exception as e:
+        logger.debug(f"[Mycelium] State save failed: {e}")
+
+
+def _record_pipeline(task_id: str, status: str, task: str = "", preset: str = "",
+                     started_at: str = "", duration_s: float = 0, error: str = ""):
+    """Record pipeline result in history and save to disk."""
+    global _total_pipelines_ever, _last_pipeline_at
+    _pipeline_history[task_id] = {
+        "status": status,
+        "task": task[:200],
+        "preset": preset,
+        "started_at": started_at,
+        "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "duration_s": round(duration_s, 1),
+        "error": error[:300] if error else "",
+    }
+    _total_pipelines_ever += 1 if status in ("completed", "failed") else 0
+    _last_pipeline_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    _save_pipeline_state()
+
+
+# Load state on module import
+_load_pipeline_state()
+
 
 # ============================================================
 # Lazy component init
@@ -452,6 +516,8 @@ async def _handle_pipeline(arguments: Dict[str, Any]) -> str:
         http_client = await _get_http_client()
         ws_broadcaster = await _get_ws_broadcaster()
         _write_breadcrumb("started", f"http_client={'yes' if http_client else 'no'}, ws={'yes' if ws_broadcaster else 'no'}")
+        _pipeline_t0 = _time.time()  # MARKER_152.12P: Track start time for duration
+        _started_at = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
         try:
             # MARKER_146.PLAYGROUND_PIPELINE: Resolve playground root for path scoping
             playground_root = None
@@ -510,9 +576,17 @@ async def _handle_pipeline(arguments: Dict[str, Any]) -> str:
             if http_client:
                 await http_client.notify_board_update("pipeline_complete", f"Pipeline {task_id} completed")
 
+            # MARKER_152.12P: Record successful pipeline in persistent history
+            _record_pipeline(task_id, "completed", task=task, preset=preset,
+                             started_at=_started_at, duration_s=_time.time() - _pipeline_t0)
+
         except Exception as e:
             logger.error(f"Pipeline {task_id} failed: {e}", exc_info=True)
             _write_breadcrumb("failed", f"{type(e).__name__}: {e}")
+            # MARKER_152.12P: Record failed pipeline in persistent history
+            _record_pipeline(task_id, "failed", task=task, preset=preset,
+                             started_at=_started_at, duration_s=_time.time() - _pipeline_t0,
+                             error=str(e))
             if ws_broadcaster:
                 await ws_broadcaster.broadcast({
                     "type": "pipeline_failed",
@@ -690,7 +764,11 @@ async def _handle_health(arguments: Dict[str, Any]) -> str:
         "pipeline_ids": list(_active_pipelines.keys()),
         "vetka_connected": vetka_ok,
         "websocket": ws_status,
-        "version": "129.6",
+        "version": "152.12",
+        # MARKER_152.12P: Persistent pipeline stats
+        "total_pipelines_ever": _total_pipelines_ever,
+        "last_pipeline_at": _last_pipeline_at,
+        "recent_history_count": len(_pipeline_history),
     })
 
 
@@ -886,6 +964,10 @@ async def _graceful_shutdown():
     if _http_client:
         await _http_client.stop()
         logger.info("HTTP client stopped")
+
+    # MARKER_152.12P: Persist state before exit
+    _save_pipeline_state()
+    logger.info(f"Pipeline state saved ({len(_pipeline_history)} records)")
 
     logger.info("Shutdown complete")
 

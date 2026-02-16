@@ -208,12 +208,12 @@ GET /api/analytics/task/{task_id}
 ```
 
 ### Requirements
-1. **Modal/Overlay** — triggered by clicking task in TaskCard or MCCTaskList
+1. **Modal/Overlay** — triggered by clicking task in MCCTaskList (NOT TaskCard — it's dead UI)
 2. **Timeline** — horizontal bars using Recharts BarChart or custom div bars
 3. **PieChart** — token distribution
 4. **Close button** — Escape key closes
 5. **Place in:** `client/src/components/panels/TaskDrillDown.tsx`
-6. **Integration:** Import in TaskCard — add 📊 button that opens drill-down
+6. **Integration:** Import in `MCCTaskList.tsx` — add 📊 button that opens drill-down (RECON confirmed TaskCard is unused)
 
 ### Timeline events format
 - If `timeline_events[0]` has `offset_s` → use REAL timestamped events (152.4)
@@ -240,8 +240,8 @@ npx tsc --noEmit client/src/components/panels/TaskDrillDown.tsx
 - `client/src/components/panels/TaskDrillDown.tsx` — NEW
 
 ## Files to modify (carefully)
-- `client/src/components/panels/DevPanel.tsx` — import StatsDashboard into Stats tab
-- `client/src/components/panels/TaskCard.tsx` — add 📊 button for drill-down
+- `client/src/components/panels/DevPanel.tsx` — import StatsDashboard into Stats tab (expanded mode only, keep PipelineStats compact)
+- `client/src/components/mcc/MCCTaskList.tsx` — add 📊 button for drill-down (NOT TaskCard.tsx — dead UI per RECON)
 
 ## Commit convention
 Commit as: `feat(152.5-6): Stats Dashboard + Task Drill-Down Modal`

@@ -555,6 +555,79 @@ def _build_task_timeline(agent_stats: Dict, pipeline_stats: Dict) -> List[Dict]:
 
 
 # ============================================================
+# MARKER_152.13: DAG Mini-Stats per Task Node
+# ============================================================
+
+PRESET_COST_TIER_DAG = {
+    "dragon_bronze": 0.5, "dragon_silver": 1.0, "dragon_gold": 2.5,
+    "titan_lite": 0.3, "titan_core": 1.0, "titan_prime": 2.0,
+}
+
+
+def compute_dag_mini_stats(task_ids: Optional[List[str]] = None) -> Dict[str, Dict]:
+    """Compute mini-stats for DAG node enrichment.
+
+    MARKER_152.13: Per-node duration, success%, llm_calls, tokens, cost.
+    Keeps it lightweight — only fields useful for DAG node tooltips/badges.
+
+    Args:
+        task_ids: Optional filter — only compute for these task IDs. None = all.
+
+    Returns:
+        {
+            "tb_001": {
+                "duration_s": 66.8,
+                "success": true,
+                "llm_calls": 12,
+                "tokens_total": 23000,
+                "cost_estimate": 0.023,
+                "subtasks_done": 3,
+                "subtasks_total": 3,
+                "retries": 1,
+                "verifier_confidence": 0.9,
+            },
+            ...
+        }
+    """
+    tasks = _load_task_board()
+    result = {}
+
+    for tid, task in tasks.items():
+        if task_ids is not None and tid not in task_ids:
+            continue
+
+        stats = task.get("stats", {})
+        if not stats:
+            # No pipeline stats recorded — skip (pending/queued tasks)
+            continue
+
+        tokens_in = stats.get("tokens_in", 0)
+        tokens_out = stats.get("tokens_out", 0)
+        total_tokens = tokens_in + tokens_out
+
+        preset = stats.get("preset", task.get("preset", "dragon_silver"))
+        tier = PRESET_COST_TIER_DAG.get(preset, 1.0)
+        cost = (total_tokens / 1000) * 0.001 * tier
+
+        agent_stats = stats.get("agent_stats", {})
+        retries = sum(v.get("retries", 0) for v in agent_stats.values())
+
+        result[tid] = {
+            "duration_s": round(stats.get("duration_s", 0), 1),
+            "success": stats.get("success", False),
+            "llm_calls": stats.get("llm_calls", 0),
+            "tokens_total": total_tokens,
+            "cost_estimate": round(cost, 4),
+            "subtasks_done": stats.get("subtasks_completed", 0),
+            "subtasks_total": stats.get("subtasks_total", 0),
+            "retries": retries,
+            "verifier_confidence": round(stats.get("verifier_avg_confidence", 0), 2),
+        }
+
+    return result
+
+
+# ============================================================
 # MARKER_152.1G: Summary Dashboard
 # ============================================================
 

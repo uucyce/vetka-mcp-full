@@ -174,6 +174,55 @@ async def analytics_tasks_by_chat(
 
 
 # ============================================================
+# MARKER_152.12D: Pipeline Context Summary
+# ============================================================
+
+@router.get("/context")
+async def analytics_context():
+    """Assembled pipeline context: pinned files + recent digest.
+
+    Returns everything a pipeline needs for context injection.
+    Used by: StatsDashboard context panel, pipeline pre-flight check.
+    """
+    import json
+    from pathlib import Path as PathLib
+    _PROJECT_ROOT = PathLib(__file__).resolve().parent.parent.parent.parent
+
+    result = {"pinned_files": [], "digest_summary": "", "pinned_count": 0}
+
+    # 1. Pinned files
+    try:
+        pinned_path = _PROJECT_ROOT / "data" / "pinned_files.json"
+        if pinned_path.exists():
+            pinned_data = json.loads(pinned_path.read_text())
+            if isinstance(pinned_data, dict):
+                for fp, meta in pinned_data.items():
+                    result["pinned_files"].append({
+                        "file_path": fp,
+                        "reason": meta.get("reason", "") if isinstance(meta, dict) else "",
+                        "timestamp": meta.get("timestamp", "") if isinstance(meta, dict) else "",
+                    })
+            elif isinstance(pinned_data, list):
+                result["pinned_files"] = pinned_data[:20]
+            result["pinned_count"] = len(result["pinned_files"])
+    except Exception:
+        pass
+
+    # 2. Project digest headline
+    try:
+        digest_path = _PROJECT_ROOT / "data" / "project_digest.json"
+        if digest_path.exists():
+            digest = json.loads(digest_path.read_text())
+            phase = digest.get("current_phase", "")
+            status = digest.get("status", "")
+            result["digest_summary"] = f"Phase {phase}: {status}" if phase else ""
+    except Exception:
+        pass
+
+    return {"success": True, "data": result}
+
+
+# ============================================================
 # MARKER_152.9A: Task DAG — Nodes + Edges for ReactFlow
 # ============================================================
 
@@ -185,6 +234,7 @@ async def analytics_dag_tasks(
     """Task DAG nodes + edges for ReactFlow visualization.
 
     Converts TaskBoard dependencies into ReactFlow-compatible nodes/edges.
+    MARKER_152.13: Enriched with per-node mini-stats (duration, success%, cost).
     Used by: Task DAG panel in MCC (152.9).
     """
     import json
@@ -218,20 +268,30 @@ async def analytics_dag_tasks(
 
         task_ids = {tid for tid, _ in sorted_tasks}
 
+        # MARKER_152.13: Fetch mini-stats for all visible nodes
+        from src.orchestration.pipeline_analytics import compute_dag_mini_stats
+        mini_stats = compute_dag_mini_stats(task_ids=list(task_ids))
+
         for idx, (tid, task) in enumerate(sorted_tasks):
             status = task.get("status", "pending")
+            node_data = {
+                "label": task.get("title", tid)[:60],
+                "status": status,
+                "preset": task.get("preset", ""),
+                "phase_type": task.get("phase_type", ""),
+                "priority": task.get("priority", 3),
+                "color": STATUS_COLORS.get(status, "#94a3b8"),
+            }
+
+            # MARKER_152.13: Merge mini-stats if available
+            if tid in mini_stats:
+                node_data["mini_stats"] = mini_stats[tid]
+
             nodes.append({
                 "id": tid,
                 "type": "taskNode",
                 "position": {"x": (idx % 5) * 280, "y": (idx // 5) * 120},
-                "data": {
-                    "label": task.get("title", tid)[:60],
-                    "status": status,
-                    "preset": task.get("preset", ""),
-                    "phase_type": task.get("phase_type", ""),
-                    "priority": task.get("priority", 3),
-                    "color": STATUS_COLORS.get(status, "#94a3b8"),
-                },
+                "data": node_data,
             })
 
             # Build edges from dependencies
