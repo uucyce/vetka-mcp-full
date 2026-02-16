@@ -264,6 +264,7 @@ async def triple_write_reindex(req: ReindexRequest):
                 rel_path = os.path.relpath(fpath, PROJECT_ROOT)
 
                 try:
+                    media_chunks = []
                     # Read content (text / OCR / media summary)
                     if ext in TEXT_EXTENSIONS:
                         with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
@@ -282,15 +283,33 @@ async def triple_write_reindex(req: ReindexRequest):
                         mime_type, _ = mimetypes.guess_type(fpath)
                         mime_type = mime_type or 'application/octet-stream'
                         size_bytes = os.path.getsize(fpath)
-                        with open(fpath, 'rb') as fb:
-                            digest = hashlib.sha256(fb.read()).hexdigest()
-                        content = (
-                            f"[Media file summary]\n"
-                            f"path={rel_path}\n"
-                            f"mime={mime_type}\n"
-                            f"size_bytes={size_bytes}\n"
-                            f"sha256={digest}"
-                        )
+                        try:
+                            from src.voice.stt_engine import WhisperSTT
+                            stt = WhisperSTT(model_name="base")
+                            tr = stt.transcribe(fpath)
+                            t_text = (tr.get("text") or "").strip()
+                            segments = tr.get("segments", []) or []
+                            if t_text:
+                                content = t_text
+                                for seg in segments[:128]:
+                                    media_chunks.append({
+                                        "start_sec": float(seg.get("start", 0.0) or 0.0),
+                                        "end_sec": float(seg.get("end", 0.0) or 0.0),
+                                        "text": str(seg.get("text", "") or ""),
+                                        "confidence": float(tr.get("confidence", 0.0) or 0.0),
+                                    })
+                            else:
+                                raise ValueError("empty transcript")
+                        except Exception:
+                            with open(fpath, 'rb') as fb:
+                                digest = hashlib.sha256(fb.read()).hexdigest()
+                            content = (
+                                f"[Media file summary]\n"
+                                f"path={rel_path}\n"
+                                f"mime={mime_type}\n"
+                                f"size_bytes={size_bytes}\n"
+                                f"sha256={digest}"
+                            )
 
                     # Skip very large or empty files
                     if len(content) < 10 or len(content) > 100000:
@@ -306,6 +325,7 @@ async def triple_write_reindex(req: ReindexRequest):
                         'mime_type': policy.get('mime_type') or mimetypes.guess_type(fpath)[0] or 'application/octet-stream',
                         'modality': policy.get('category'),
                         'ingest_mode': 'multimodal' if req.multimodal else 'text_only',
+                        'media_chunks': media_chunks[:32],
                     }
 
                     # Get embedding

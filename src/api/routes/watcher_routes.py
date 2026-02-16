@@ -723,15 +723,29 @@ async def index_single_file(req: IndexFileRequest, request: Request):
             if ocr_text:
                 content = ocr_text
             else:
-                raw = file_obj.read_bytes()
-                digest = hashlib.sha256(raw).hexdigest()
-                content = (
-                    f"[Binary file summary]\n"
-                    f"mime={mime_type}\n"
-                    f"size_bytes={len(raw)}\n"
-                    f"sha256={digest}\n"
-                    f"path={file_path}"
-                )
+                # AV transcription route for audio/video
+                av_text = ""
+                if file_obj.suffix.lower() in {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".mp4", ".mov", ".mkv", ".avi", ".webm"}:
+                    try:
+                        from src.voice.stt_engine import WhisperSTT
+                        stt = WhisperSTT(model_name="base")
+                        tr = stt.transcribe(str(file_obj))
+                        av_text = (tr.get("text") or "").strip()
+                    except Exception as av_err:
+                        print(f"[Watcher] AV transcription error for {file_obj.name}: {av_err}")
+
+                if av_text:
+                    content = av_text[:8000]
+                else:
+                    raw = file_obj.read_bytes()
+                    digest = hashlib.sha256(raw).hexdigest()
+                    content = (
+                        f"[Binary file summary]\n"
+                        f"mime={mime_type}\n"
+                        f"size_bytes={len(raw)}\n"
+                        f"sha256={digest}\n"
+                        f"path={file_path}"
+                    )
 
         # Generate point ID from path
         point_id = uuid.uuid5(uuid.NAMESPACE_DNS, file_path).int & 0x7FFFFFFFFFFFFFFF
