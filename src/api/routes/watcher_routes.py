@@ -705,6 +705,7 @@ async def index_single_file(req: IndexFileRequest, request: Request):
         is_text_like = mime_type.startswith("text/") or file_obj.suffix.lower() in {
             ".md", ".txt", ".json", ".yaml", ".yml", ".py", ".js", ".ts", ".tsx", ".html", ".css"
         }
+        media_chunks = []
         if is_text_like:
             content = file_obj.read_text(encoding='utf-8', errors='replace')
         else:
@@ -731,6 +732,19 @@ async def index_single_file(req: IndexFileRequest, request: Request):
                         stt = WhisperSTT(model_name="base")
                         tr = stt.transcribe(str(file_obj))
                         av_text = (tr.get("text") or "").strip()
+                        segments = tr.get("segments", []) or []
+                        for seg in segments[:128]:
+                            try:
+                                media_chunks.append(
+                                    {
+                                        "start_sec": float(seg.get("start", 0.0) or 0.0),
+                                        "end_sec": float(seg.get("end", 0.0) or 0.0),
+                                        "text": str(seg.get("text", "") or ""),
+                                        "confidence": float(tr.get("confidence", 0.0) or 0.0),
+                                    }
+                                )
+                            except Exception:
+                                continue
                     except Exception as av_err:
                         print(f"[Watcher] AV transcription error for {file_obj.name}: {av_err}")
 
@@ -779,6 +793,7 @@ async def index_single_file(req: IndexFileRequest, request: Request):
                 'modified_time': stat.st_mtime,
                 'content': content[:500],  # Preview
                 'content_hash': updater._get_content_hash(file_obj),
+                'media_chunks': media_chunks[:32],
                 'updated_at': time_module.time(),
                 'deleted': False
             }
@@ -809,6 +824,7 @@ async def index_single_file(req: IndexFileRequest, request: Request):
                     'source': 'drag_drop_resolved',
                     'deleted': False,
                     'content': content[:500],
+                    'media_chunks': media_chunks[:32],
                     'content_hash': updater._get_content_hash(file_obj),
                     'updated_at': time_module.time(),
                 }

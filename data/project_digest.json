@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-16T23:48:26.956418+00:00",
+  "last_updated": "2026-02-16T23:52:08.222494+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 150,
@@ -39,9 +39,9 @@
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "running",
+      "status": "error: HTTPConnectionPool(host='127.0.0.1', port=5001): R",
       "port": 5001,
-      "tools_count": 15
+      "tools_count": 0
     },
     "api_keys": {
       "total": 30,
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "phase152-fix-stream-favorites",
-    "commit": "6e3a4f8d",
+    "commit": "6b1050bc",
     "dirty": true
   }
 }
