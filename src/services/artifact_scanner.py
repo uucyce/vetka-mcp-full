@@ -463,6 +463,51 @@ def build_artifact_edges(
                     }
                 )
 
+    # MARKER_153.IMPL.G12_TEMPORAL_ARTIFACT_EDGES:
+    # Add temporal chain edges within each parent chat group to encode creation order.
+    grouped: Dict[str, List[Dict]] = {}
+    for artifact in artifact_nodes:
+        group_key = artifact.get("parent_id") or "__global__"
+        grouped.setdefault(group_key, []).append(artifact)
+
+    for group_key, group_items in grouped.items():
+        def _created_ts(node: Dict) -> float:
+            raw = node.get("metadata", {}).get("created_at")
+            if not raw:
+                return 0.0
+            try:
+                return datetime.fromisoformat(str(raw)).timestamp()
+            except Exception:
+                return 0.0
+
+        ordered = sorted(group_items, key=_created_ts)
+        for i in range(1, len(ordered)):
+            src = ordered[i - 1]
+            tgt = ordered[i]
+            src_ts = _created_ts(src)
+            tgt_ts = _created_ts(tgt)
+            if src_ts <= 0 or tgt_ts <= 0:
+                continue
+            delta_sec = max(0, int(tgt_ts - src_ts))
+            # Very large gaps are weak links; keep but lower weight/opacity.
+            weak = delta_sec > 7 * 24 * 3600
+            edges.append(
+                {
+                    "from": src["id"],
+                    "to": tgt["id"],
+                    "semantics": "temporal",
+                    "metadata": {
+                        "type": "temporal",
+                        "style": "dotted",
+                        "color": "#f59e0b",
+                        "opacity": 0.2 if weak else 0.38,
+                        "weight": 0.4 if weak else 0.72,
+                        "timestamp_delta_sec": delta_sec,
+                        "evidence": f"created_at order in group {group_key}",
+                    },
+                }
+            )
+
     print(f"[ARTIFACT_SCAN] Built {len(edges)} artifact edges")
 
     return edges

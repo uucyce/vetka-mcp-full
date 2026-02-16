@@ -355,7 +355,8 @@ This section tracks what is already implemented after RECON, with code-level sta
 
 ### Remaining priorities
 
-1. `G01` finalize unified extension/MIME policy with explicit allow/deny + size limits.
-2. `G08` complete frontend media render policy.
-3. `G09/G12` full universal multimodal scanner chain (audio/video chunk extraction + temporal relation persistence).
-4. `G14` add true streaming tool execution loop (not only advisory telemetry).
+1. `G01` finalize unified extension/MIME policy with explicit allow/deny + size limits.  
+   Status: **PARTIAL IMPLEMENTED** (`src/scanners/mime_policy.py` + watcher/reindex integration).
+2. `G09/G12` full universal multimodal scanner chain (audio/video chunk extraction + temporal relation persistence).  
+   Status: **PARTIAL IMPLEMENTED** (artifact temporal edges + multimodal ingest), chunk-level AV extraction still pending.
+3. `G14` add true streaming tool execution loop (not only advisory telemetry).

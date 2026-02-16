@@ -29,6 +29,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from src.scanners.mime_policy import validate_ingest_target
 
 
 router = APIRouter(prefix="/api/triple-write", tags=["triple_write"])
@@ -248,6 +249,12 @@ async def triple_write_reindex(req: ReindexRequest):
 
                 # Extension gate
                 ext = os.path.splitext(fname)[1].lower()
+                size_bytes = os.path.getsize(fpath)
+                policy_allowed, policy = validate_ingest_target(fpath, size_bytes)
+                if not policy_allowed:
+                    skipped += 1
+                    continue
+
                 allowed = ext in TEXT_EXTENSIONS or (req.multimodal and (ext in OCR_EXTENSIONS or ext in MEDIA_EXTENSIONS))
                 if not allowed:
                     skipped += 1
@@ -296,7 +303,8 @@ async def triple_write_reindex(req: ReindexRequest):
                         'size': stat.st_size,
                         'mtime': datetime.fromtimestamp(stat.st_mtime).isoformat(),
                         'extension': ext,
-                        'mime_type': mimetypes.guess_type(fpath)[0] or 'application/octet-stream',
+                        'mime_type': policy.get('mime_type') or mimetypes.guess_type(fpath)[0] or 'application/octet-stream',
+                        'modality': policy.get('category'),
                         'ingest_mode': 'multimodal' if req.multimodal else 'text_only',
                     }
 

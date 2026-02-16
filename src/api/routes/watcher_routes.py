@@ -27,6 +27,7 @@ from typing import Optional, List, Literal
 
 from src.scanners.file_watcher import get_watcher, get_spam_detector, SKIP_PATTERNS
 from src.scanners.qdrant_updater import get_qdrant_updater
+from src.scanners.mime_policy import validate_ingest_target
 
 
 router = APIRouter(prefix="/api/watcher", tags=["watcher"])
@@ -429,6 +430,17 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
 
         for file_info in files:
             try:
+                allowed, policy = validate_ingest_target(
+                    file_info.relativePath or file_info.name,
+                    int(file_info.size or 0),
+                    file_info.type or None,
+                )
+                if not allowed:
+                    errors.append(
+                        f"{file_info.relativePath}: {policy.get('code')} ({policy.get('message')})"
+                    )
+                    continue
+
                 # Phase 54.5: Use 'scanned_file' type so tree_routes can find them
                 # Browser files use virtual paths: browser://root/relative/path
                 virtual_path = f"browser://{root_name}/{file_info.relativePath}"
@@ -652,6 +664,25 @@ async def index_single_file(req: IndexFileRequest, request: Request):
     if os.path.isdir(file_path):
         # For directories, use the /add endpoint logic
         raise HTTPException(status_code=400, detail="Use /add endpoint for directories")
+
+    file_stat = os.stat(file_path)
+    allowed, policy = validate_ingest_target(file_path, int(file_stat.st_size))
+    if not allowed:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": policy.get("code", "INGEST_POLICY_BLOCK"),
+                    "message": policy.get("message", "Ingest policy blocked file"),
+                    "details": {
+                        "path": file_path,
+                        "extension": policy.get("extension"),
+                        "category": policy.get("category"),
+                        "mime_type": policy.get("mime_type"),
+                    },
+                }
+            },
+        )
 
     # Get Qdrant client from app state
     qdrant_manager = getattr(request.app.state, 'qdrant_manager', None)
