@@ -770,3 +770,62 @@ async def get_model_categories():
             'success': False,
             'error': str(e)
         }
+
+
+# ============================================================
+# MARKER_152.FIX3: FAVORITES (Keys & Models)
+# ============================================================
+
+import json as _json
+from pathlib import Path as _Path
+
+_FAVORITES_PATH = _Path("data/favorites.json")
+
+
+def _read_favorites() -> dict:
+    if _FAVORITES_PATH.exists():
+        try:
+            return _json.loads(_FAVORITES_PATH.read_text())
+        except Exception:
+            pass
+    return {"keys": [], "models": [], "updated_at": ""}
+
+
+def _write_favorites(data: dict) -> None:
+    from datetime import datetime, timezone
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    _FAVORITES_PATH.write_text(_json.dumps(data, indent=2, ensure_ascii=False))
+
+
+@router.get("/favorites")
+async def get_favorites():
+    """Get starred keys and models."""
+    return _read_favorites()
+
+
+class FavoritesUpdate(BaseModel):
+    keys: list = []
+    models: list = []
+
+
+@router.put("/favorites")
+async def put_favorites(body: FavoritesUpdate):
+    """Save starred keys and models."""
+    data = {"keys": body.keys, "models": body.models}
+    _write_favorites(data)
+
+    # MARKER_152.FIX3_ENGRAM: Fire-and-forget write to ENGRAM
+    try:
+        from src.memory.engram_user_memory import get_engram_user_memory
+        engram = get_engram_user_memory()
+        if engram:
+            engram.set_preference("danila", "tool_usage_patterns", "favorite_keys", body.keys, confidence=0.9)
+            engram.set_preference("danila", "tool_usage_patterns", "favorite_models", body.models, confidence=0.9)
+    except Exception as e:
+        print(f"[FAVORITES] ENGRAM write failed (non-fatal): {e}")
+
+    return {"success": True, **data}
+
+
+# MARKER_152.FIX3_TEAM: Future — per-role favorites for group chat benchmarking
+# MARKER_152.FIX3_BENCH: Future — benchmark tracking per starred model

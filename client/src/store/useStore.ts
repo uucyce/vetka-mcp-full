@@ -206,6 +206,15 @@ interface TreeState {
   selectedKey: { provider: string; key_masked: string } | null;
   setSelectedKey: (key: { provider: string; key_masked: string } | null) => void;
   clearSelectedKey: () => void;
+
+  // MARKER_152.FIX3: Starred keys & models (persisted to data/favorites.json)
+  favoriteKeys: string[];       // ["polza:pza_****9PUM"]
+  favoriteModels: string[];     // ["x-ai/grok-4.1-fast"]
+  setFavoriteKeys: (keys: string[]) => void;
+  setFavoriteModels: (models: string[]) => void;
+  toggleFavoriteKey: (key: string) => void;
+  toggleFavoriteModel: (modelId: string) => void;
+  loadFavorites: () => Promise<void>;
 }
 
 // Phase 113.1: Persistent Spatial Memory
@@ -254,6 +263,46 @@ export const useStore = create<TreeState>((set, get) => ({
   selectedKey: null,
   setSelectedKey: (key) => set({ selectedKey: key }),
   clearSelectedKey: () => set({ selectedKey: null }),
+
+  // MARKER_152.FIX3: Starred keys & models
+  favoriteKeys: [],
+  favoriteModels: [],
+  setFavoriteKeys: (keys) => set({ favoriteKeys: keys }),
+  setFavoriteModels: (models) => set({ favoriteModels: models }),
+  toggleFavoriteKey: (key) => {
+    const current = get().favoriteKeys;
+    const next = current.includes(key)
+      ? current.filter(k => k !== key)
+      : [...current, key];
+    set({ favoriteKeys: next });
+    // Persist to backend
+    fetch('/api/favorites', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys: next, models: get().favoriteModels }),
+    }).catch(() => {});
+  },
+  toggleFavoriteModel: (modelId) => {
+    const current = get().favoriteModels;
+    const next = current.includes(modelId)
+      ? current.filter(m => m !== modelId)
+      : [...current, modelId];
+    set({ favoriteModels: next });
+    fetch('/api/favorites', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys: get().favoriteKeys, models: next }),
+    }).catch(() => {});
+  },
+  loadFavorites: async () => {
+    try {
+      const res = await fetch('/api/favorites');
+      if (res.ok) {
+        const data = await res.json();
+        set({ favoriteKeys: data.keys || [], favoriteModels: data.models || [] });
+      }
+    } catch {}
+  },
 
   setNodes: (nodesList) => set({
     nodes: Object.fromEntries(nodesList.map(n => [n.id, n])),

@@ -1374,6 +1374,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           setActiveGroupId(null);
 
           // Regular chat - load from chat history
+          // MARKER_152.FIX2: Include model + model_source in loaded messages
           for (const msg of data.messages || []) {
             addChatMessage({
               id: msg.id || crypto.randomUUID(),
@@ -1382,8 +1383,21 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
               agent: msg.agent,
               type: msg.role === 'user' ? 'text' : 'text',
               timestamp: msg.timestamp || new Date().toISOString(),
+              metadata: {
+                model: msg.model || undefined,
+                model_source: msg.model_source || undefined,
+                model_provider: msg.model_provider || undefined,
+              },
             });
           }
+        }
+
+        // MARKER_152.FIX2: Restore last used model+source so Reply and new messages
+        // use the same provider (e.g. Grok via Polza) after server restart
+        if (data.last_model) {
+          setSelectedModel(data.last_model);
+          setSelectedModelSource(data.last_model_source || null);
+          console.log(`[ChatPanel] Restored model: ${data.last_model} source: ${data.last_model_source || 'auto'}`);
         }
 
         // Phase 52.2: Focus camera on the file

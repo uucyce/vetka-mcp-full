@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { X, Search, Phone, Zap, DollarSign, Crown, Cpu, Bot, Home, Key, ChevronDown, ChevronUp, ChevronRight, Mic, Volume2, Terminal, Eye, Layers, RefreshCw } from 'lucide-react';
+import { useStore } from '../store/useStore';
 
 interface Model {
   id: string;
@@ -183,6 +184,20 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
   // Phase 112: Source filter - filter models by provider/source
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
 
+  // MARKER_152.FIX3: Starred keys & models from store
+  const favoriteKeys = useStore(s => s.favoriteKeys);
+  const favoriteModels = useStore(s => s.favoriteModels);
+  const toggleFavoriteKey = useStore(s => s.toggleFavoriteKey);
+  const toggleFavoriteModel = useStore(s => s.toggleFavoriteModel);
+  const loadFavorites = useStore(s => s.loadFavorites);
+
+  // MARKER_152.FIX3: Load favorites on mount + auto-filter starred keys
+  useEffect(() => {
+    if (isOpen) {
+      loadFavorites();
+    }
+  }, [isOpen, loadFavorites]);
+
   // Fetch models when opened (cloud, local, and MCP agents)
   useEffect(() => {
     if (isOpen && models.length === 0) {
@@ -300,38 +315,48 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
     return [...localModels, ...mcpAgents, ...models];
   }, [localModels, mcpAgents, models]);
 
+  // MARKER_152.FIX3: Helper — check if model matches a key filter
+  const matchesKeyFilter = useCallback((m: Model, sf: string): boolean => {
+    const mapping = KEY_TO_MODEL_FILTER[sf.toLowerCase()];
+    if (mapping) {
+      if (mapping.sources?.includes(m.source || '')) return true;
+      if (mapping.providers?.includes(m.provider?.toLowerCase() || '')) return true;
+      if (mapping.idPrefixes?.some(prefix =>
+        m.id?.toLowerCase().startsWith(prefix.toLowerCase())
+      )) return true;
+      return false;
+    }
+    return m.source === sf ||
+           m.provider?.toLowerCase() === sf ||
+           m.source_display?.toLowerCase() === sf ||
+           m.id?.toLowerCase().includes(sf);
+  }, []);
+
+  // MARKER_152.FIX3: Extract provider names from starred keys (e.g. "polza:pza_****9PUM" → "polza")
+  const starredProviders = useMemo(() => {
+    return favoriteKeys.map(k => k.split(':')[0].toLowerCase());
+  }, [favoriteKeys]);
+
   // Filter models - Phase 48.1: Fixed premium threshold ($1/1M = 0.000001 per token)
   // Phase 112: Added sourceFilter for filtering by provider/source
+  // MARKER_152.FIX3: + starred keys compound filter + starred models sort to top
   const filteredModels = useMemo(() => {
-    return allModels.filter(m => {
+    const filtered = allModels.filter(m => {
       // Search filter
       const matchSearch = !search ||
         m.name.toLowerCase().includes(search.toLowerCase()) ||
         m.id.toLowerCase().includes(search.toLowerCase()) ||
         m.provider.toLowerCase().includes(search.toLowerCase());
 
-      // Phase 112.5: Source filter using KEY_TO_MODEL_FILTER mapping
-      // Fixes mismatch between key names (MISTRAL, POE) and model source/provider fields
-      const matchSource = !sourceFilter || (() => {
-        const sf = sourceFilter.toLowerCase();
-        const mapping = KEY_TO_MODEL_FILTER[sf];
-
-        if (mapping) {
-          // Check by mapping rules
-          if (mapping.sources?.includes(m.source || '')) return true;
-          if (mapping.providers?.includes(m.provider?.toLowerCase() || '')) return true;
-          if (mapping.idPrefixes?.some(prefix =>
-            m.id?.toLowerCase().startsWith(prefix.toLowerCase())
-          )) return true;
-          return false;
-        }
-
-        // Fallback for unknown providers - check everywhere
-        return m.source === sf ||
-               m.provider?.toLowerCase() === sf ||
-               m.source_display?.toLowerCase() === sf ||
-               m.id?.toLowerCase().includes(sf);
-      })();
+      // Phase 112.5 + MARKER_152.FIX3: Source filter
+      // Priority: manual sourceFilter > starred keys auto-filter
+      let matchSource = true;
+      if (sourceFilter) {
+        matchSource = matchesKeyFilter(m, sourceFilter);
+      } else if (starredProviders.length > 0) {
+        // Auto-filter: show models from ANY starred provider
+        matchSource = starredProviders.some(sp => matchesKeyFilter(m, sp));
+      }
 
       // Price/type filter
       const pricePerToken = parseFloat(m.pricing?.prompt || '0');
@@ -347,16 +372,22 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
       } else if (filter === 'premium') {
         matchPrice = pricePerMillion >= 1.0 && !m.isLocal && m.type !== 'voice';
       } else if (filter === 'voice') {
-        // Phase 60.5: Voice filter - show TTS/STT models
         matchPrice = m.type === 'voice';
       } else if (filter === 'mcp') {
-        // Phase 80.3: MCP Agents filter
         matchPrice = m.type === 'mcp_agent';
       }
 
       return matchSearch && matchPrice && matchSource;
     });
-  }, [allModels, search, filter, sourceFilter]);
+
+    // MARKER_152.FIX3: Starred models sort to top
+    if (favoriteModels.length > 0) {
+      const starred = filtered.filter(m => favoriteModels.includes(m.id));
+      const unstarred = filtered.filter(m => !favoriteModels.includes(m.id));
+      return [...starred, ...unstarred];
+    }
+    return filtered;
+  }, [allModels, search, filter, sourceFilter, starredProviders, favoriteModels, matchesKeyFilter]);
 
   // Handle model selection
   // Phase 111.9: Pass model.source for multi-provider routing
@@ -868,6 +899,9 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
               (e.currentTarget as HTMLElement).style.borderLeft = '2px solid transparent';
             }}
           >
+            {/* MARKER_152.FIX3: Flex wrapper for star on right */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
             {/* Model name */}
             <div style={{
               display: 'flex',
@@ -1027,6 +1061,34 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
                 </span>
               )}
             </div>
+            </div>{/* end content wrapper */}
+            {/* MARKER_152.FIX3: Star button for favorite model (right side, matching ChatSidebar) */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleFavoriteModel(model.id);
+              }}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '4px',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                marginTop: 2,
+              }}
+              title={favoriteModels.includes(model.id) ? 'Remove from favorites' : 'Star model (sort to top)'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24"
+                fill={favoriteModels.includes(model.id) ? '#fff' : 'none'}
+                stroke={favoriteModels.includes(model.id) ? '#fff' : '#444'}
+                strokeWidth="1.5"
+              >
+                <path d="M12 3.7l2.6 5.2 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" />
+              </svg>
+            </button>
+            </div>{/* end flex wrapper */}
           </div>
         ))}
 
@@ -1317,13 +1379,49 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
                   </button>
                 </div>
               )}
+              {/* MARKER_152.FIX3: Starred keys auto-filter indicator */}
+              {!sourceFilter && starredProviders.length > 0 && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '5px 10px',
+                  marginBottom: 8,
+                  background: '#111118',
+                  borderRadius: 4,
+                  fontSize: 10,
+                  border: '1px solid #222'
+                }}>
+                  <span style={{ color: '#889' }}>
+                    ★ Showing: <strong>{starredProviders.join(', ')}</strong>
+                  </span>
+                </div>
+              )}
 
-              {/* Flatten all provider keys into single list */}
-              {providers.filter(p => !p.isLocal).flatMap(provider => {
-                const providerName = provider.provider.toLowerCase().trim();
-                const isSelected = sourceFilter === providerName;
+              {/* Flatten all provider keys into single list — MARKER_152.FIX3: starred keys first */}
+              {(() => {
+                // Build flat list of all key items, then sort starred to top
+                const allKeyItems = providers.filter(p => !p.isLocal).flatMap(provider =>
+                  provider.keys.map((apiKey, idx) => ({
+                    provider,
+                    apiKey,
+                    idx,
+                    providerName: provider.provider.toLowerCase().trim(),
+                    favKeyId: `${provider.provider.toLowerCase().trim()}:${apiKey.key}`,
+                  }))
+                );
+                // Sort: starred first
+                allKeyItems.sort((a, b) => {
+                  const aStarred = favoriteKeys.includes(a.favKeyId) ? 0 : 1;
+                  const bStarred = favoriteKeys.includes(b.favKeyId) ? 0 : 1;
+                  return aStarred - bStarred;
+                });
 
-                return provider.keys.map((apiKey, idx) => (
+                return allKeyItems.map(({ provider, apiKey, idx, providerName, favKeyId }) => {
+                  const isSelected = sourceFilter === providerName;
+                  const isStarredKey = favoriteKeys.includes(favKeyId);
+
+                  return (
                   <div
                     key={`${provider.provider}-${apiKey.id}-${idx}`}
                     onClick={(e) => {
@@ -1341,20 +1439,20 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
                       justifyContent: 'space-between',
                       padding: '8px 10px',
                       marginBottom: 4,
-                      background: isSelected ? '#1a1a2a' : '#0a0a0a',
+                      background: isStarredKey ? '#1a1a20' : isSelected ? '#1a1a2a' : '#0a0a0a',
                       borderRadius: 4,
                       fontSize: 11,
-                      borderLeft: isSelected ? '2px solid #68a' : '2px solid #444',
+                      borderLeft: isStarredKey ? '2px solid #9ab' : isSelected ? '2px solid #68a' : '2px solid #444',
                       cursor: 'pointer',
                       transition: 'all 0.15s'
                     }}
                     onMouseEnter={(e) => {
-                      if (!isSelected) {
+                      if (!isSelected && !isStarredKey) {
                         (e.currentTarget as HTMLElement).style.background = '#111';
                       }
                     }}
                     onMouseLeave={(e) => {
-                      if (!isSelected) {
+                      if (!isSelected && !isStarredKey) {
                         (e.currentTarget as HTMLElement).style.background = '#0a0a0a';
                       }
                     }}
@@ -1432,6 +1530,32 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
                         </div>
                       )}
                     </div>
+                    {/* MARKER_152.FIX3: Star button for favorite key (right side, matching ChatSidebar) */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleFavoriteKey(favKeyId);
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        marginLeft: 6,
+                        flexShrink: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                      title={isStarredKey ? 'Remove from favorites' : 'Add to favorites (auto-filter)'}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24"
+                        fill={isStarredKey ? '#fff' : 'none'}
+                        stroke={isStarredKey ? '#fff' : '#555'}
+                        strokeWidth="1.5"
+                      >
+                        <path d="M12 3.7l2.6 5.2 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" />
+                      </svg>
+                    </button>
                     {/* Delete button */}
                     <button
                       onClick={(e) => {
@@ -1461,8 +1585,9 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
                       ×
                     </button>
                   </div>
-                ));
-              })}
+                );
+                });
+              })()}
 
               {/* No keys message */}
               {providers.filter(p => !p.isLocal).every(p => p.keys.length === 0) && (

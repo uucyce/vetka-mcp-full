@@ -1886,8 +1886,9 @@ async def call_model_v2_stream(
             yield content
 
     except Exception as e:
-        print(f"[STREAM_V2 ERROR] {e}")
-        yield f"\n[STREAM ERROR]: {str(e)}"
+        err_detail = str(e) or type(e).__name__
+        print(f"[STREAM_V2 ERROR] {type(e).__name__}: {err_detail}")
+        yield f"\n[STREAM ERROR]: {type(e).__name__}: {err_detail}"
 
 
 def _detect_loop(token_history: deque, threshold: float) -> bool:
@@ -1959,40 +1960,66 @@ async def _stream_openai_compatible(
         if v is not None and k not in ("stream_timeout",):
             payload[k] = v
 
-    print(f"[STREAM_{provider_name.upper()}] Starting stream: {url}")
+    # MARKER_152.FIX1: Retry logic for transient connection errors
+    max_retries = 2
+    last_error = None
 
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
-            async with client.stream(
-                "POST", url, headers=headers, json=payload
-            ) as response:
-                # Phase 111.10: Accept both 200 and 201
-                if response.status_code not in (200, 201):
-                    error_text = ""
-                    async for chunk in response.aiter_text():
-                        error_text += chunk
-                        if len(error_text) > 500:
-                            break
-                    yield f"[STREAM ERROR]: {provider_name} API error {response.status_code}: {error_text[:500]}"
+    for attempt in range(max_retries):
+        if attempt > 0:
+            print(f"[STREAM_{provider_name.upper()}] Retry {attempt}/{max_retries - 1} after: {type(last_error).__name__}: {last_error}")
+            import asyncio as _asyncio
+            await _asyncio.sleep(1.0)  # Brief pause before retry
+
+        print(f"[STREAM_{provider_name.upper()}] Starting stream: {url} (attempt {attempt + 1}/{max_retries})")
+
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+                async with client.stream(
+                    "POST", url, headers=headers, json=payload
+                ) as response:
+                    # Phase 111.10: Accept both 200 and 201
+                    if response.status_code not in (200, 201):
+                        error_text = ""
+                        async for chunk in response.aiter_text():
+                            error_text += chunk
+                            if len(error_text) > 500:
+                                break
+                        yield f"[STREAM ERROR]: {provider_name} API error {response.status_code}: {error_text[:500]}"
+                        return
+
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    yield content
+                            except json.JSONDecodeError:
+                                continue
+                    # Stream completed successfully — exit retry loop
                     return
 
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data_str)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                yield content
-                        except json.JSONDecodeError:
-                            continue
-    except httpx.TimeoutException:
-        yield f"[STREAM ERROR]: {provider_name} request timeout"
-    except Exception as e:
-        yield f"[STREAM ERROR]: {provider_name} error: {str(e)}"
+        except httpx.TimeoutException:
+            yield f"[STREAM ERROR]: {provider_name} request timeout (attempt {attempt + 1})"
+            return  # Timeout = don't retry (already waited 120s)
+        except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ConnectError) as e:
+            # MARKER_152.FIX1: Transient connection errors — retry
+            last_error = e
+            err_detail = str(e) or type(e).__name__
+            print(f"[STREAM_{provider_name.upper()}] Connection error (retryable): {type(e).__name__}: {err_detail}")
+            if attempt == max_retries - 1:
+                yield f"[STREAM ERROR]: {provider_name} connection failed after {max_retries} attempts: {type(e).__name__}: {err_detail}"
+                return
+            continue  # Retry
+        except Exception as e:
+            err_detail = str(e) or type(e).__name__
+            print(f"[STREAM_{provider_name.upper()}] Unexpected error: {type(e).__name__}: {err_detail}")
+            yield f"[STREAM ERROR]: {provider_name} error ({type(e).__name__}): {err_detail}"
+            return
 
 
 async def _stream_ollama(

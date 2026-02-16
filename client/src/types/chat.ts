@@ -17,6 +17,7 @@ export interface ChatMessage {
   metadata?: {
     model?: string;
     model_source?: string;  // Phase 111.10.2: Provider source for Reply routing
+    model_provider?: string; // MARKER_152.FIX2: Provider type for display (polza, xai, etc.)
     duration?: number;
     tokens?: number;
     score?: number;

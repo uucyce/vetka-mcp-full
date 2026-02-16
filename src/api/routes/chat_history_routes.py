@@ -62,6 +62,8 @@ class MessageResponse(BaseModel):
     content: Optional[str] = None
     agent: Optional[str] = None
     model: Optional[str] = None
+    model_source: Optional[str] = None      # MARKER_152.FIX2: Provider routing (polza, xai, openrouter)
+    model_provider: Optional[str] = None    # MARKER_152.FIX2: Provider type for display
     timestamp: str
 
 
@@ -153,8 +155,19 @@ async def get_chat(chat_id: str, request: Request):
                 content=msg.get("content") or msg.get("text") or "",
                 agent=msg.get("agent"),
                 model=msg.get("model"),
+                model_source=msg.get("model_source"),          # MARKER_152.FIX2
+                model_provider=msg.get("model_provider"),      # MARKER_152.FIX2
                 timestamp=msg.get("timestamp", "")
             ))
+
+        # MARKER_152.FIX2: Extract last used model+source from most recent assistant message
+        last_model = None
+        last_model_source = None
+        for msg in reversed(chat.get("messages", [])):
+            if msg.get("role") == "assistant" and msg.get("model"):
+                last_model = msg["model"]
+                last_model_source = msg.get("model_source")
+                break
 
         return {
             "id": chat["id"],
@@ -169,6 +182,8 @@ async def get_chat(chat_id: str, request: Request):
             "pinned_paths": chat.get("pinned_paths", []),       # MARKER_137.2F2
             "chat_kind": manager.infer_chat_kind(chat),         # MARKER_137.4L
             "is_favorite": chat.get("is_favorite", False),      # MARKER_137.3
+            "last_model": last_model,                           # MARKER_152.FIX2: Restore model on chat load
+            "last_model_source": last_model_source,             # MARKER_152.FIX2: Restore provider on chat load
             "created_at": chat["created_at"],
             "updated_at": chat["updated_at"],
             "messages": messages
@@ -302,6 +317,17 @@ class FavoriteRequest(BaseModel):
     is_favorite: bool
 
 
+class PinHistoryResponse(BaseModel):
+    """Pin timeline event entry for a chat."""
+    event_id: str
+    chat_id: str
+    timestamp: str
+    action: str
+    node_ids: List[str]
+    paths: List[str]
+    message_id: Optional[str] = None
+
+
 class MergeFragmentedChatsRequest(BaseModel):
     """Request to merge legacy fragmented chats."""
     dry_run: bool = True
@@ -369,6 +395,44 @@ async def get_pinned_files(chat_id: str, request: Request):
 
     except Exception as e:
         print(f"[ChatHistory] Error getting pinned files for {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chats/{chat_id}/pins/history", response_model=Dict[str, Any])
+async def get_pin_history(chat_id: str, request: Request, limit: int = 200):
+    """
+    Get pin/unpin timeline for a chat.
+
+    MARKER_CHAT_HUB_3A: Pin history for navigation to former pins/artifacts.
+    """
+    try:
+        manager = get_chat_history_manager()
+        if not manager.get_chat(chat_id):
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        events = manager.get_pin_events(chat_id, limit=limit)
+        normalized_events = []
+        for event in events:
+            normalized_events.append(
+                PinHistoryResponse(
+                    event_id=str(event.get("event_id", "")),
+                    chat_id=str(event.get("chat_id", chat_id)),
+                    timestamp=str(event.get("timestamp", "")),
+                    action=str(event.get("action", "")),
+                    node_ids=list(event.get("node_ids", []) or []),
+                    paths=list(event.get("paths", []) or []),
+                    message_id=event.get("message_id"),
+                )
+            )
+        return {
+            "chat_id": chat_id,
+            "events": normalized_events,
+            "count": len(normalized_events),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error getting pin history for {chat_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -623,6 +687,34 @@ async def link_file_to_chat(chat_id: str, request: Request):
         raise
     except Exception as e:
         print(f"[ChatHistory] Error linking file to {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chats/{chat_id}/artifacts", response_model=Dict[str, Any])
+async def get_chat_artifact_links(chat_id: str, request: Request):
+    """
+    Get artifact links attached to a chat.
+
+    MARKER_CHAT_HUB_4A: Unified chat->artifact registry read API.
+    """
+    try:
+        manager = get_chat_history_manager()
+        if not manager.get_chat(chat_id):
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        from src.services.chat_artifact_registry import get_chat_artifact_registry
+
+        registry = get_chat_artifact_registry()
+        links = registry.get_by_chat(chat_id)
+        return {
+            "chat_id": chat_id,
+            "artifacts": links,
+            "count": len(links),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error loading artifact links for {chat_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
