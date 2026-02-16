@@ -125,3 +125,42 @@ def test_set_artifact_favorite_persists_flag(monkeypatch, tmp_path):
     data = json.loads(scanner.STAGING_FILE.read_text(encoding="utf-8"))
     key = result["artifact_id"]
     assert data["artifacts"][key]["is_favorite"] is True
+
+
+def test_build_artifact_edges_adds_reference_and_temporal_edges(tmp_path):
+    a_path = tmp_path / "a.md"
+    b_path = tmp_path / "b.md"
+    a_path.write_text("[ref](b.md)\n", encoding="utf-8")
+    b_path.write_text("content", encoding="utf-8")
+
+    artifacts = [
+        {
+            "id": "artifact_a",
+            "name": "a.md",
+            "parent_id": "chat_x",
+            "metadata": {"file_path": str(a_path), "created_at": "2026-01-01T00:00:00"},
+            "visual_hints": {"color": "#10b981"},
+        },
+        {
+            "id": "artifact_b",
+            "name": "b.md",
+            "parent_id": "chat_x",
+            "metadata": {"file_path": str(b_path), "created_at": "2026-01-01T00:00:10"},
+            "visual_hints": {"color": "#10b981"},
+        },
+    ]
+    chat_nodes = [{"id": "chat_x"}]
+
+    edges = scanner.build_artifact_edges(artifacts, chat_nodes)
+
+    # Chat->artifact links
+    artifact_edges = [e for e in edges if e.get("semantics") == "artifact"]
+    assert len(artifact_edges) == 2
+
+    # Reference edge parsed from markdown link
+    reference_edges = [e for e in edges if e.get("semantics") == "reference"]
+    assert any(e["from"] == "artifact_a" and e["to"] == "artifact_b" for e in reference_edges)
+
+    # Temporal chain edge within group
+    temporal_edges = [e for e in edges if e.get("semantics") == "temporal"]
+    assert any(e["from"] == "artifact_a" and e["to"] == "artifact_b" for e in temporal_edges)

@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-16T23:52:08.222494+00:00",
+  "last_updated": "2026-02-16T23:52:58.721528+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 150,
@@ -29,7 +29,7 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2699,
+      "points": 2700,
       "vectors": "none",
       "hnsw_status": "active"
     },
@@ -39,9 +39,9 @@
       "hierarchy": "enabled"
     },
     "mcp_server": {
-      "status": "error: HTTPConnectionPool(host='127.0.0.1', port=5001): R",
+      "status": "running",
       "port": 5001,
-      "tools_count": 0
+      "tools_count": 15
     },
     "api_keys": {
       "total": 30,
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "phase152-fix-stream-favorites",
-    "commit": "6b1050bc",
+    "commit": "45952797",
     "dirty": true
   }
 }
