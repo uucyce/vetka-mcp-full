@@ -1,5 +1,6 @@
 {
   "enabled": false,
-  "interval": 3600,
-  "updated_at": "2026-02-11T14:32:38.479565"
+  "interval": 86400,
+  "monitor_all": true,
+  "updated_at": "2026-02-15T17:02:12.755027"
 }

@@ -4,17 +4,17 @@
       "provider": "test",
       "key_masked": "test****test",
       "model": "gpt-4o",
-      "tokens_in": 1200,
-      "tokens_out": 600,
-      "cost_usd": 0.009,
+      "tokens_in": 1900,
+      "tokens_out": 950,
+      "cost_usd": 0.014250000000000004,
       "balance_usd": null,
       "balance_limit": null,
       "is_free_tier": false,
       "exhausted": false,
-      "last_used": 1770691697.3608818,
+      "last_used": 1771164368.993778,
       "last_balance_check": 0.0,
       "created_at": 1770644447.491818,
-      "call_count": 12
+      "call_count": 19
     },
     "openrouter:sk-o****b296": {
       "provider": "openrouter",
@@ -28,7 +28,7 @@
       "is_free_tier": true,
       "exhausted": true,
       "last_used": 0.0,
-      "last_balance_check": 1770819703.5358899,
+      "last_balance_check": 1771282445.440981,
       "created_at": 1770648466.981327,
       "call_count": 0
     },
@@ -435,18 +435,18 @@
     "polza:pza_****9PUM": {
       "provider": "polza",
       "key_masked": "pza_****9PUM",
-      "model": "z-ai/glm-4.7-flash",
-      "tokens_in": 464445,
-      "tokens_out": 467665,
-      "cost_usd": 3.0016949999999976,
+      "model": "qwen/qwen3-max",
+      "tokens_in": 666275,
+      "tokens_out": 584926,
+      "cost_usd": 3.7772309999999956,
       "balance_usd": null,
       "balance_limit": null,
       "is_free_tier": false,
       "exhausted": false,
-      "last_used": 1770820358.424146,
+      "last_used": 1771188697.335545,
       "last_balance_check": 0.0,
       "created_at": 1770648789.31645,
-      "call_count": 528
+      "call_count": 691
     },
     "poe:kwod****uLqo": {
       "provider": "poe",
@@ -625,5 +625,5 @@
       "call_count": 0
     }
   },
-  "updated_at": 1770820358.4242392
+  "updated_at": 1771282445.441064
 }

@@ -455,15 +455,20 @@ export function MCCDetailPanel({
         </div>
       )}
 
-      {/* MARKER_151.9: Compact stats preview (same component as Stats tab) */}
-      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}` }}>
-        <PipelineStats tasks={tasks} mode="compact" />
-      </div>
+      {/* MARKER_152.W3B2: Contextual bottom panels — show only when relevant to current mode */}
+      {/* Stats compact: overview + task modes (not dag_node — already returned early above) */}
+      {(mode === 'overview' || mode === 'task_info' || mode === 'task_results' || mode === 'task_running') && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}` }}>
+          <PipelineStats tasks={tasks} mode="compact" />
+        </div>
+      )}
 
-      {/* MARKER_151.8: Compact architect chat (same component as Architect tab) */}
-      <div data-onboarding="architect-chat" style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`, minHeight: 230, maxHeight: 320 }}>
-        <ArchitectChat mode="compact" />
-      </div>
+      {/* Architect chat compact: only overview + task_info (user is thinking/planning) */}
+      {(mode === 'overview' || mode === 'task_info') && (
+        <div data-onboarding="architect-chat" style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`, minHeight: 230, maxHeight: 320 }}>
+          <ArchitectChat mode="compact" />
+        </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,7 @@
 import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { useSearch } from '../../hooks/useSearch';
 import { useStore } from '../../store/useStore';
+import { buildViewportContext } from '../../utils/viewport';
 import type { SearchResult } from '../../types/chat';
 
 const API_BASE = 'http://localhost:5001/api';
@@ -160,6 +161,12 @@ function getTypeIcon(type: string) {
 
 type SortMode = 'relevance' | 'name' | 'type' | 'date' | 'size';
 type SearchModeType = 'hybrid' | 'semantic' | 'keyword' | 'filename';
+type ProviderHealth = Record<string, {
+  key_present?: boolean;
+  sdk_installed?: boolean;
+  available?: boolean;
+  error?: string | null;
+}>;
 
 // Phase 69.4: Format bytes helper (Finder-style)
 function formatBytes(bytes: number): string {
@@ -201,6 +208,14 @@ const SEARCH_MODE_DESCRIPTIONS: Record<SearchModeType, string> = {
 // Phase 68.3: Search context paths
 type SearchContext = 'vetka' | 'web' | 'file' | 'cloud' | 'social';
 
+const CONTEXT_MODE_FALLBACK: Record<SearchContext, SearchModeType[]> = {
+  vetka: ['hybrid', 'semantic', 'keyword', 'filename'],
+  web: ['hybrid', 'keyword'],
+  file: ['keyword', 'filename'],
+  cloud: ['keyword'],
+  social: ['keyword'],
+};
+
 // SVG icon components for each context
 const CONTEXT_ICONS: Record<SearchContext, () => React.ReactElement> = {
   vetka: VetkaIcon,
@@ -233,6 +248,12 @@ export function UnifiedSearchBar({
   contextPrefix = 'vetka/',
   compact = false
 }: Props) {
+  // Phase 68.3: Search context state
+  const [searchContext, setSearchContext] = useState<SearchContext>('vetka');
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextSupportedModes, setContextSupportedModes] = useState<SearchModeType[]>(CONTEXT_MODE_FALLBACK.vetka);
+  const [providerHealth, setProviderHealth] = useState<ProviderHealth>({});
+
   const {
     query,
     setQuery,
@@ -248,7 +269,11 @@ export function UnifiedSearchBar({
     displayLimit,
     loadMore,
     hasMore
-  } = useSearch({ debounceMs: 300, defaultLimit: 100 }); // Fetch up to 100, paginate in UI
+  } = useSearch({
+    debounceMs: 300,
+    defaultLimit: 100,
+    autoSearch: searchContext === 'vetka',
+  }); // Fetch up to 100, paginate in UI
 
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -267,13 +292,12 @@ export function UnifiedSearchBar({
   const [sortAscending, setSortAscending] = useState(false); // false = descending (default)
   const [showSortMenu, setShowSortMenu] = useState(false);
 
-  // Phase 68.3: Search context state
-  const [searchContext, setSearchContext] = useState<SearchContext>('vetka');
-  const [showContextMenu, setShowContextMenu] = useState(false);
-
   // MARKER_137.S1_3: Unified backend results for web/file contexts
   const [unifiedResults, setUnifiedResults] = useState<SearchResult[]>([]);
   const [unifiedLoading, setUnifiedLoading] = useState(false);
+  const [unifiedError, setUnifiedError] = useState<string | null>(null);
+  const [unifiedTotal, setUnifiedTotal] = useState(0);
+  const [unifiedSearchTime, setUnifiedSearchTime] = useState(0);
   const unifiedDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Phase 68.3: Selected file path display
@@ -282,6 +306,7 @@ export function UnifiedSearchBar({
   // Get pinned files from store to show visual state
   const pinnedFileIds = useStore((s) => s.pinnedFileIds);
   const nodes = useStore((s) => s.nodes);
+  const cameraRef = useStore((s) => s.cameraRef);
 
   // Check if a result is pinned
   const isPinned = useCallback((result: SearchResult) => {
@@ -289,13 +314,22 @@ export function UnifiedSearchBar({
     return nodeId ? pinnedFileIds.includes(nodeId) : false;
   }, [nodes, pinnedFileIds]);
 
-  // MARKER_137.S1_3: Use unified results for web/file, WebSocket results for vetka
+  // MARKER_142.BUG_FALLBACK_LEAK: Never fallback to VETKA socket results outside vetka context
   const activeResults = React.useMemo(() => {
-    if (searchContext !== 'vetka' && unifiedResults.length > 0) {
+    if (searchContext !== 'vetka') {
       return unifiedResults;
     }
     return results;
   }, [searchContext, unifiedResults, results]);
+
+  const activeIsSearching = searchContext === 'vetka' ? isSearching : unifiedLoading;
+  const activeError = searchContext === 'vetka' ? error : unifiedError;
+  const activeTotalResults = searchContext === 'vetka' ? totalResults : unifiedTotal;
+  const activeSearchTime = searchContext === 'vetka' ? searchTime : unifiedSearchTime;
+  const hasMoreActive = searchContext === 'vetka'
+    ? hasMore
+    : activeResults.length > displayLimit;
+  const webHasAnyProvider = Object.values(providerHealth).some((p) => p?.available);
 
   // Sort results and apply display limit (pagination)
   const sortedResults = React.useMemo(() => {
@@ -416,10 +450,57 @@ export function UnifiedSearchBar({
     setPreviewPosition(null);
   }, []);
 
+  // MARKER_142.IMPL_STEP_2_CAPABILITIES: Load context capabilities from backend
+  useEffect(() => {
+    let cancelled = false;
+    const fallbackModes = CONTEXT_MODE_FALLBACK[searchContext] || CONTEXT_MODE_FALLBACK.vetka;
+
+    const loadCapabilities = async () => {
+      try {
+        const endpoint = searchContext === 'file'
+          ? `${API_BASE}/search/file/capabilities`
+          : `${API_BASE}/search/capabilities?context=${encodeURIComponent(searchContext)}`;
+        const res = await fetch(endpoint);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const backendModes = Array.isArray(data?.supported_modes) ? data.supported_modes : [];
+        const validModes = backendModes.filter((m: string): m is SearchModeType =>
+          ['hybrid', 'semantic', 'keyword', 'filename'].includes(m)
+        );
+        if (!cancelled) {
+          setContextSupportedModes(validModes.length > 0 ? validModes : fallbackModes);
+          const health = (data?.provider_health && typeof data.provider_health === 'object')
+            ? data.provider_health as ProviderHealth
+            : {};
+          setProviderHealth(health);
+        }
+      } catch {
+        if (!cancelled) {
+          setContextSupportedModes(fallbackModes);
+          setProviderHealth({});
+        }
+      }
+    };
+
+    loadCapabilities();
+    return () => { cancelled = true; };
+  }, [searchContext]);
+
+  // Keep active mode valid for current context
+  useEffect(() => {
+    if (contextSupportedModes.length === 0) return;
+    if (!contextSupportedModes.includes(searchMode)) {
+      setSearchMode(contextSupportedModes[0]);
+    }
+  }, [contextSupportedModes, searchMode, setSearchMode]);
+
   // MARKER_137.S1_3: Call unified backend for web/file contexts
   useEffect(() => {
     if (searchContext === 'vetka' || !query.trim()) {
       setUnifiedResults([]);
+      setUnifiedError(null);
+      setUnifiedTotal(0);
+      setUnifiedSearchTime(0);
       return;
     }
 
@@ -429,51 +510,101 @@ export function UnifiedSearchBar({
     }
 
     setUnifiedLoading(true);
+    setUnifiedError(null);
 
     unifiedDebounceRef.current = setTimeout(async () => {
       try {
-        // Map context to unified sources
-        const sourcesMap: Record<SearchContext, string[]> = {
-          vetka: ['semantic'],
-          web: ['web'],
-          file: ['file'],
-          cloud: [], // not implemented
-          social: ['social'],
-        };
-        const sources = sourcesMap[searchContext] || ['file', 'semantic'];
-
-        const res = await fetch(`${API_BASE}/search/unified`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: query.trim(), limit: 20, sources }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          const items = data.results || [];
-          // Convert to SearchResult format
-          const converted: SearchResult[] = items.map((item: any, idx: number) => {
-            const source = String(item.source || '');
-            const rawPath = String(item.url || item.title || '');
-            // MARKER_139.S1_2_UNIFIED_ARTIFACT_FIX: /api/files/read expects project-relative path, not file:// URL
-            const normalizedPath = source === 'file' && rawPath.startsWith('file://')
-              ? rawPath.replace(/^file:\/\//, '')
-              : rawPath;
-
-            return {
-              id: `unified-${source}-${idx}-${rawPath || item.title || 'result'}`,
-              name: item.title?.split('/').pop() || item.title || 'Result',
-              path: normalizedPath,
-              type: source === 'web' ? 'doc' : 'code',
-              relevance: item.score || 0.5,
-              preview: item.snippet,
-              source,
-            };
+        const mode = contextSupportedModes.includes(searchMode)
+          ? searchMode
+          : (contextSupportedModes[0] || 'keyword');
+        let data: any;
+        if (searchContext === 'file') {
+          // MARKER_150.FILE_API_SURFACE: file/ context uses dedicated file search endpoint.
+          const fileMode = 'filename';
+          const fileRes = await fetch(`${API_BASE}/search/file`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: query.trim(),
+              limit: 20,
+              mode: fileMode,
+            }),
           });
-          setUnifiedResults(converted);
+          data = await fileRes.json();
+          if (!fileRes.ok || data?.success === false) {
+            throw new Error(data?.error || `HTTP ${fileRes.status}`);
+          }
+          data = {
+            ...data,
+            mode: fileMode,
+            count: typeof data?.count === 'number' ? data.count : (Array.isArray(data?.results) ? data.results.length : 0),
+          };
+        } else {
+          const viewportContext = cameraRef ? buildViewportContext(nodes, pinnedFileIds, cameraRef) : undefined;
+          // Map context to unified sources
+          const sourcesMap: Record<SearchContext, string[]> = {
+            vetka: ['semantic'],
+            web: ['web'],
+            file: ['file'],
+            cloud: [], // not implemented
+            social: ['social'],
+          };
+          const sources = sourcesMap[searchContext] || ['file', 'semantic'];
+          const res = await fetch(`${API_BASE}/search/unified`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: query.trim(),
+              limit: 20,
+              sources,
+              mode,
+              // MARKER_146.STEP1_CONTEXTUAL_RETRIEVAL_REST: Pass always-on viewport context for web/file contextual rerank.
+              viewport_context: viewportContext,
+            }),
+          });
+          data = await res.json();
+          if (!res.ok || data?.success === false) {
+            throw new Error(data?.error || `HTTP ${res.status}`);
+          }
+        }
+
+        const items = data.results || [];
+        // Convert to SearchResult format
+        const converted: SearchResult[] = items.map((item: any, idx: number) => {
+          const source = String(item.source || '');
+          const rawPath = String(item.path || item.url || item.title || '');
+          // MARKER_139.S1_2_UNIFIED_ARTIFACT_FIX: /api/files/read expects project-relative path, not file:// URL
+          const normalizedPath = source === 'file' && rawPath.startsWith('file://')
+            ? rawPath.replace(/^file:\/\//, '')
+            : rawPath;
+
+          return {
+            id: `unified-${source}-${idx}-${rawPath || item.title || 'result'}`,
+            name: item.title?.split('/').pop() || item.title || 'Result',
+            path: normalizedPath,
+            type: source === 'web' ? 'doc' : 'code',
+            relevance: item.score || 0.5,
+            preview: item.snippet,
+            source,
+          };
+        });
+        setUnifiedResults(converted);
+        setUnifiedTotal(typeof data.count === 'number' ? data.count : converted.length);
+        setUnifiedSearchTime(typeof data.took_ms === 'number' ? data.took_ms : 0);
+
+        const sourceErrors = data?.source_errors || {};
+        if (Object.keys(sourceErrors).length > 0 && converted.length === 0) {
+          const combined = Object.entries(sourceErrors)
+            .map(([src, msg]) => `${src}: ${msg}`)
+            .join(' | ');
+          setUnifiedError(combined);
         }
       } catch (err) {
         console.error('[UnifiedSearchBar] Unified search error:', err);
+        setUnifiedResults([]);
+        setUnifiedTotal(0);
+        setUnifiedSearchTime(0);
+        setUnifiedError((err as Error).message || 'Unified search failed');
       } finally {
         setUnifiedLoading(false);
       }
@@ -484,7 +615,7 @@ export function UnifiedSearchBar({
         clearTimeout(unifiedDebounceRef.current);
       }
     };
-  }, [query, searchContext]);
+  }, [query, searchContext, searchMode, contextSupportedModes, cameraRef, nodes, pinnedFileIds]);
 
   // Focus input on mount if not compact
   useEffect(() => {
@@ -609,7 +740,7 @@ export function UnifiedSearchBar({
     resultRight: {
       display: 'flex',
       alignItems: 'center',
-      gap: '6px',
+      gap: '4px',
       flexShrink: 0,
     },
     resultRelevance: {
@@ -703,8 +834,8 @@ export function UnifiedSearchBar({
       {/* Search Input */}
       <div style={{ ...styles.inputWrapper, ...(isFocused ? styles.inputWrapperFocused : {}), position: 'relative' }}>
         {/* MARKER_137.S1_3: Show loading for either WebSocket or unified search */}
-        <span style={{ color: (isSearching || unifiedLoading) ? '#888' : '#555' }}>
-          {(isSearching || unifiedLoading) ? <LoadingSpinner /> : <SearchIcon />}
+        <span style={{ color: activeIsSearching ? '#888' : '#555' }}>
+          {activeIsSearching ? <LoadingSpinner /> : <SearchIcon />}
         </span>
 
         {/* Phase 68.3: Clickable context prefix */}
@@ -884,12 +1015,18 @@ export function UnifiedSearchBar({
       )}
 
       {/* Connection status */}
-      {!isConnected && (
+      {!isConnected && searchContext === 'vetka' && (
         <div style={styles.disconnected}>Connecting to server...</div>
       )}
 
+      {searchContext === 'web' && Object.keys(providerHealth).length > 0 && !webHasAnyProvider && (
+        <div style={styles.error}>
+          Web provider unavailable: configure Tavily or Serper key
+        </div>
+      )}
+
       {/* Error */}
-      {error && <div style={styles.error}>{error}</div>}
+      {activeError && <div style={styles.error}>{activeError}</div>}
 
       {/* Phase 68.3: Search mode + sort controls - single row, no wrap */}
       {query && (
@@ -900,25 +1037,25 @@ export function UnifiedSearchBar({
           marginTop: '6px',
           position: 'relative',
         }}>
-          {/* Phase 95: Active mode indicator badge */}
-          <span style={{
-            fontSize: '9px',
-            color: '#fff',
-            background: '#444',
-            padding: '3px 6px',
-            borderRadius: '3px',
-            fontWeight: 600,
-            letterSpacing: '0.5px',
-            flexShrink: 0,
-          }} title={`Active mode: ${SEARCH_MODE_LABELS[searchMode]}`}>
-            {searchMode === 'hybrid' && 'HYB'}
-            {searchMode === 'semantic' && 'SEM'}
-            {searchMode === 'keyword' && 'KEY'}
-            {searchMode === 'filename' && 'FILE'}
-          </span>
-
-          {/* Mode buttons - ultra compact with abbreviations */}
-          {(['hybrid', 'semantic', 'keyword', 'filename'] as SearchModeType[]).map((mode) => {
+          {/* Phase 95: Active mode indicator + mode buttons (hidden in /file context) */}
+          {searchContext !== 'file' && (
+            <span style={{
+              fontSize: '9px',
+              color: '#fff',
+              background: '#444',
+              padding: '3px 6px',
+              borderRadius: '3px',
+              fontWeight: 600,
+              letterSpacing: '0.5px',
+              flexShrink: 0,
+            }} title={`Active mode: ${SEARCH_MODE_LABELS[searchMode]}`}>
+              {searchMode === 'hybrid' && 'HYB'}
+              {searchMode === 'semantic' && 'SEM'}
+              {searchMode === 'keyword' && 'KEY'}
+              {searchMode === 'filename' && 'FILE'}
+            </span>
+          )}
+          {searchContext !== 'file' && contextSupportedModes.map((mode) => {
             // Short labels for compact display
             const shortLabels: Record<SearchModeType, string> = {
               hybrid: 'HYB',
@@ -968,15 +1105,15 @@ export function UnifiedSearchBar({
           })}
 
           {/* Separator */}
-          <span style={{ color: '#333', margin: '0 2px' }}>|</span>
+          {searchContext !== 'file' && <span style={{ color: '#333', margin: '0 2px' }}>|</span>}
 
           {/* Stats - compact */}
           <span style={{ fontSize: '10px', color: '#555', whiteSpace: 'nowrap', flexShrink: 0 }}>
-            {isSearching ? '...' : `${totalResults}`}
+            {activeIsSearching ? '...' : `${activeTotalResults}`}
           </span>
 
-          {searchTime > 0 && (
-            <span style={{ fontSize: '9px', color: '#444', whiteSpace: 'nowrap', flexShrink: 0 }}>{searchTime}ms</span>
+          {activeSearchTime > 0 && (
+            <span style={{ fontSize: '9px', color: '#444', whiteSpace: 'nowrap', flexShrink: 0 }}>{activeSearchTime}ms</span>
           )}
 
           {selectedIds.size > 0 && (
@@ -1104,6 +1241,8 @@ export function UnifiedSearchBar({
           {sortedResults.map((result, index) => {
             const isSelected = selectedIds.has(result.id);
             const pinned = isPinned(result);
+            const isWebRow = String(result.source || '').startsWith('web') || /^https?:\/\//i.test(result.path);
+            const isFileRow = searchContext === 'file';
 
             return (
               <div
@@ -1126,14 +1265,43 @@ export function UnifiedSearchBar({
                 <div style={styles.resultLeft}>
                   <span style={styles.resultTypeIcon}>{getTypeIcon(result.type)}</span>
                   <div style={styles.resultInfo}>
-                    <div style={styles.resultName}>{result.name}</div>
-                    <div style={styles.resultPath}>{result.path}</div>
+                    <div
+                      style={{
+                        ...styles.resultName,
+                        ...((isWebRow || isFileRow) ? {
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical' as const,
+                          whiteSpace: 'normal' as const,
+                          lineHeight: 1.25,
+                          overflow: 'hidden',
+                        } : {}),
+                      }}
+                    >
+                      {result.name}
+                    </div>
+                    <div
+                      style={{
+                        ...styles.resultPath,
+                        ...((isWebRow || isFileRow) ? {
+                          display: '-webkit-box',
+                          WebkitLineClamp: isFileRow ? 2 : 1,
+                          WebkitBoxOrient: 'vertical' as const,
+                          whiteSpace: 'normal' as const,
+                          overflowWrap: 'anywhere' as const,
+                          lineHeight: 1.25,
+                          marginTop: '3px',
+                        } : {}),
+                      }}
+                    >
+                      {result.path}
+                    </div>
                   </div>
                 </div>
 
                 <div style={styles.resultRight}>
                   {/* Phase 95: Source badge display */}
-                  {result.source && (
+                  {result.source && !isWebRow && !isFileRow && (
                     <span style={{
                       fontSize: '8px',
                       color: '#888',
@@ -1152,21 +1320,25 @@ export function UnifiedSearchBar({
                     </span>
                   )}
 
-                  {/* Phase 69.4: Always show size + date (Finder-style) */}
-                  <span style={{ color: '#666', fontSize: '10px', minWidth: '55px', textAlign: 'right' as const }}>
-                    {formatBytes(result.size || 0)}
-                  </span>
-                  <span style={{ color: '#666', fontSize: '10px', minWidth: '60px', textAlign: 'right' as const }}>
-                    {formatDate(result.modified_time || 0)}
-                  </span>
+                  {/* MARKER_144.IMPL_STEP_3_READABILITY_FIX: compact web rows, keep metadata on vetka/file */}
+                  {!isWebRow && (
+                    <span style={{ color: '#666', fontSize: '10px', minWidth: '55px', textAlign: 'right' as const }}>
+                      {formatBytes(result.size || 0)}
+                    </span>
+                  )}
+                  {!isWebRow && (
+                    <span style={{ color: '#666', fontSize: '10px', minWidth: '60px', textAlign: 'right' as const }}>
+                      {formatDate(result.modified_time || 0)}
+                    </span>
+                  )}
 
                   {/* Show relevance % or type based on sort mode */}
-                  {(sortMode === 'relevance' || sortMode === 'name') && (
+                  {(sortMode === 'relevance' || sortMode === 'name') && !isWebRow && (
                     <span style={styles.resultRelevance}>
                       {Math.round(result.relevance * 100)}%
                     </span>
                   )}
-                  {sortMode === 'type' && (
+                  {sortMode === 'type' && !isWebRow && (
                     <span style={{ ...styles.resultRelevance, fontFamily: 'monospace', minWidth: '40px' }}>
                       .{result.name.split('.').pop() || '?'}
                     </span>
@@ -1212,7 +1384,7 @@ export function UnifiedSearchBar({
       )}
 
       {/* Load more button */}
-      {hasMore && sortedResults.length > 0 && (
+      {hasMoreActive && sortedResults.length > 0 && (
         <button
           onClick={loadMore}
           style={{
@@ -1236,12 +1408,12 @@ export function UnifiedSearchBar({
             e.currentTarget.style.color = '#888';
           }}
         >
-          Load more ({results.length - displayLimit} remaining)
+          Load more ({Math.max(activeResults.length - displayLimit, 0)} remaining)
         </button>
       )}
 
       {/* No results message */}
-      {query && !isSearching && sortedResults.length === 0 && !error && (
+      {query && !activeIsSearching && sortedResults.length === 0 && !activeError && (
         <div style={styles.error}>No results found</div>
       )}
 

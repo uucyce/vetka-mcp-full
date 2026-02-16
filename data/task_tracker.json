@@ -239,6 +239,570 @@
         "llm_calls": 10,
         "preset": "dragon_silver"
       }
+    },
+    {
+      "task_id": "task_1770826207",
+      "title": "Create a Python utility file src/utils/string_helpers.py with 3 functions: slugify(text) converts text to URL-friendly slug using regex, truncate(text, max_len=100) truncates with '...' ellipsis, and ",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-11T19:15:03",
+      "stats": {
+        "duration_s": 295.6,
+        "llm_calls": 14,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771081002",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-14T17:56:43",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771081010",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-14T17:56:50",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771081130",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-14T17:58:50",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771081136",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-14T17:58:56",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771081627",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-14T18:07:07",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771081627",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-14T18:07:07",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771084763",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-14T18:59:24",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771084764",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-14T18:59:24",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771086038",
+      "title": "Add a star/favorite toggle button component for chat messages. Create a React component StarToggle.tsx in src/components/chat/ that: 1) Uses useState for toggle state, 2) Renders a \u2b50/\u2606 button, 3) Call",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-14T19:28:21",
+      "stats": {
+        "duration_s": 461.6,
+        "llm_calls": 6,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771086738",
+      "title": "Create a simple Python utility file at src/utils/favorite_utils.py with a FavoriteStore class that has add_favorite(item_id), remove_favorite(item_id), list_favorites() methods using a dictionary. Als",
+      "status": "done",
+      "source": "dragon_dragon_silver",
+      "completed_at": "2026-02-14T19:43:04",
+      "stats": {
+        "duration_s": 646.2,
+        "llm_calls": 10,
+        "preset": "dragon_silver"
+      }
+    },
+    {
+      "task_id": "task_1771093463",
+      "title": "Create HeartbeatChip.tsx React component in client/src/components/mcc/HeartbeatChip.tsx\n\nREQUIREMENTS:\n- Compact chip (24px height) showing heartbeat status: \"ON 47s\" (green pulse) or \"OFF\" (gray)\n- C",
+      "status": "done",
+      "source": "dragon_dragon_silver",
+      "completed_at": "2026-02-14T21:30:05",
+      "stats": {
+        "duration_s": 341.5,
+        "llm_calls": 12,
+        "preset": "dragon_silver"
+      }
+    },
+    {
+      "task_id": "task_1771103661",
+      "title": "Create NEW file: client/src/components/mcc/PlaygroundBadge.tsx\n\nTASK: Build a PlaygroundBadge chip component for the MCC header bar.\n\nREQUIREMENTS:\n1. Small pill-shaped chip (same style as HeartbeatCh",
+      "status": "done",
+      "source": "dragon_dragon_silver",
+      "completed_at": "2026-02-15T00:17:28",
+      "stats": {
+        "duration_s": 186.7,
+        "llm_calls": 9,
+        "preset": "dragon_silver"
+      }
+    },
+    {
+      "task_id": "task_1771156213",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T14:50:13",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771156213",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T14:50:13",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771156250",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T14:50:50",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771156250",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T14:50:50",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771156296",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T14:51:36",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771156296",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T14:51:36",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771156355",
+      "title": "S1.2 Unified Search: wire web provider (Tavily) into federated router\n\nConnect vetka_web_search (Tavily API) as 'web' source in unified_search.py. Currently returns stub. Wire real web results with sc",
+      "status": "done",
+      "source": "dragon_dragon_silver",
+      "completed_at": "2026-02-15T14:59:39",
+      "stats": {
+        "duration_s": 423.9,
+        "llm_calls": 9,
+        "preset": "dragon_silver"
+      }
+    },
+    {
+      "task_id": "task_1771156973",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T15:02:54",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771156974",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T15:02:54",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771158005",
+      "title": "C-149.1: Fix BUG-1 Scanner Duplicates (CRITICAL)\n\n3D tree shows 2-3x duplicate files. Scanner creates multiple Qdrant entries for same path. Fix: dedup on insert (check exists by path, update not inse",
+      "status": "done",
+      "source": "dragon_dragon_silver",
+      "completed_at": "2026-02-15T15:23:22",
+      "stats": {
+        "duration_s": 196.8,
+        "llm_calls": 7,
+        "preset": "dragon_silver"
+      }
+    },
+    {
+      "task_id": "task_1771158369",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T15:26:09",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771158369",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T15:26:09",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771158566",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T15:29:26",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771158566",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T15:29:26",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771159274",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T15:41:14",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771159274",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T15:41:14",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771159474",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T15:44:34",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771159474",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T15:44:34",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771160219",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T15:56:59",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771160219",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T15:56:59",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771163060",
+      "title": "S1.5 Artifact panel: connect ArtifactViewer to Codex API endpoints\n\nWire Cursor's ArtifactViewer component to GET /api/artifacts, POST approve/reject. Show real artifacts from pipeline output. Files: ",
+      "status": "done",
+      "source": "dragon_dragon_silver",
+      "completed_at": "2026-02-15T16:52:40",
+      "stats": {
+        "duration_s": 500.0,
+        "llm_calls": 17,
+        "preset": "dragon_silver"
+      }
+    },
+    {
+      "task_id": "task_1771163673",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T16:54:33",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771163673",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T16:54:33",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771163722",
+      "title": "D-149.2: PlaygroundBadge component for MCC header\n\nCreate PlaygroundBadge.tsx in client/src/components/mcc/. Shows PG:N count. Click opens dropdown of active playgrounds. Glow green when review_ready.",
+      "status": "done",
+      "source": "dragon_dragon_silver",
+      "completed_at": "2026-02-15T16:57:28",
+      "stats": {
+        "duration_s": 125.6,
+        "llm_calls": 6,
+        "preset": "dragon_silver"
+      }
+    },
+    {
+      "task_id": "task_1771163848",
+      "title": "build new API endpoint",
+      "status": "done",
+      "source": "dragon_titan_lite",
+      "completed_at": "2026-02-15T16:59:27",
+      "stats": {
+        "duration_s": 118.4,
+        "llm_calls": 5,
+        "preset": "titan_lite"
+      }
+    },
+    {
+      "task_id": "task_1771163976",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T16:59:36",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771163984",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T16:59:44",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771164055",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T17:00:56",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771164056",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T17:00:56",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771164368",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T17:06:08",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771164368",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T17:06:08",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771188163",
+      "title": "D-149.1: HeartbeatChip component for MCC header\n\nCreate HeartbeatChip.tsx in client/src/components/mcc/. Shows ON/OFF + tick count. Click toggles via POST /api/debug/heartbeat/settings. Nolan monochro",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T23:48:43",
+      "stats": {
+        "duration_s": 360.7,
+        "llm_calls": 12,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771188761",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T23:52:41",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771188761",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-15T23:52:41",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
     }
   ],
   "in_progress": [

@@ -30,6 +30,9 @@ class _FakeStore:
     def set_token(self, provider_id: str, token: str, token_type: str = "oauth_access"):
         self.saved[provider_id] = {"access_token": token, "token_type": token_type}
 
+    def get_oauth_bundle(self, provider_id: str):
+        return self.saved.get(provider_id)
+
     def clear_token(self, provider_id: str):
         self.saved.pop(provider_id, None)
 
@@ -49,6 +52,16 @@ class _FakeStateService:
             "connected": True,
             "account_label": account_label or provider_id,
             "capabilities": {"read": True, "write": False, "offline_access": True, "webhooks": False},
+            "status": "connected",
+        }
+
+    def mark_scan(self, provider_id: str, scanned_count: int):
+        return {
+            "id": provider_id,
+            "source": "cloud",
+            "display_name": provider_id,
+            "connected": True,
+            "last_scan_count": scanned_count,
             "status": "connected",
         }
 
@@ -203,3 +216,69 @@ def test_resolve_oauth_credentials_prefers_secure_store(monkeypatch):
     )
     assert cid == "cid-store"
     assert sec == "secret-store"
+
+
+def test_connector_tree_google_drive(monkeypatch):
+    fake_store = _FakeStore()
+    fake_store.saved["google_drive"] = {"access_token": "acc"}
+    monkeypatch.setattr(cr, "get_connectors_secure_store", lambda: fake_store)
+    monkeypatch.setattr(cr, "_provider_index", lambda: {
+        "google_drive": {
+            "id": "google_drive",
+            "connected": True,
+            "provider_class": "google",
+        }
+    })
+    monkeypatch.setattr(cr, "_google_drive_tree", lambda token: {"provider": "google_drive", "total_nodes": 1, "folders": 1, "files": 0, "tree": [{"id": "n1", "name": "A", "type": "folder", "path": "/Drive/A", "children": []}], "truncated": False})
+
+    response = asyncio.run(cr.connector_tree("google_drive"))
+    assert response["success"] is True
+    assert response["total_nodes"] == 1
+
+
+def test_scan_provider_google_requires_selection(monkeypatch):
+    class _Queue:
+        def enqueue(self, provider_id: str, source: str, metadata=None):
+            return {"job_id": "j1", "provider_id": provider_id, "source": source, "metadata": metadata or {}}
+
+        def list(self, limit: int = 50):
+            return []
+
+    fake_store = _FakeStore()
+    fake_store.saved["google_drive"] = {"access_token": "acc"}
+    fake_state = _FakeStateService()
+    monkeypatch.setattr(cr, "get_connectors_secure_store", lambda: fake_store)
+    monkeypatch.setattr(cr, "get_connectors_state_service", lambda: fake_state)
+    monkeypatch.setattr(cr, "get_connectors_ingestion_queue_service", lambda: _Queue())
+    monkeypatch.setattr(cr, "_provider_index", lambda: {
+        "google_drive": {
+            "id": "google_drive",
+            "connected": True,
+            "provider_class": "google",
+            "source": "cloud",
+            "display_name": "Google Drive",
+            "capabilities": {"read": True, "write": False, "offline_access": True, "webhooks": False},
+        }
+    })
+
+    class _AppState:
+        socketio = None
+
+    class _Req:
+        app = type("A", (), {"state": _AppState()})()
+
+    try:
+        asyncio.run(cr.scan_provider("google_drive", _Req(), cr.ConnectorScanRequest()))
+        assert False, "Expected HTTPException for missing selection"
+    except cr.HTTPException as exc:
+        assert exc.status_code == 400
+
+    response = asyncio.run(
+        cr.scan_provider(
+            "google_drive",
+            _Req(),
+            cr.ConnectorScanRequest(selected_ids=["folder1", "file2"]),
+        )
+    )
+    assert response["success"] is True
+    assert response["scanned_count"] == 2

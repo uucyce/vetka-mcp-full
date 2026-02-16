@@ -35,6 +35,8 @@ interface WorkflowToolbarProps {
   onGenerate?: (workflow: any) => void;
   // MARKER_144.8/9: Import/Export
   onImport?: (workflow: any) => void;
+  // MARKER_152.W3B1: Contextual button visibility
+  nodeCount?: number;
 }
 
 const btnStyle: React.CSSProperties = {
@@ -86,6 +88,7 @@ function WorkflowToolbarComponent({
   editMode,
   onGenerate,
   onImport,
+  nodeCount,
 }: WorkflowToolbarProps) {
   const [showLoadMenu, setShowLoadMenu] = useState(false);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
@@ -93,6 +96,12 @@ function WorkflowToolbarComponent({
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const activePreset = useMCCStore(s => s.activePreset);
+
+  // MARKER_152.W3B1: Inline input states (replacing browser prompt())
+  const [showNameInput, setShowNameInput] = useState(false);
+  const [nameValue, setNameValue] = useState('');
+  const [showGenerateInput, setShowGenerateInput] = useState(false);
+  const [generateValue, setGenerateValue] = useState('');
 
   // Load workflows list when menu opens
   useEffect(() => {
@@ -109,17 +118,25 @@ function WorkflowToolbarComponent({
     }
   }, [validationMsg]);
 
-  const handleSave = useCallback(async () => {
+  // MARKER_152.W3B1: Save — uses inline input instead of prompt() for untitled workflows
+  const doSave = useCallback(async (name: string) => {
+    setShowNameInput(false);
     setSaving(true);
-    const name = workflowName === 'Untitled Workflow'
-      ? prompt('Workflow name:', 'My Workflow') || 'My Workflow'
-      : workflowName;
     onSetName(name);
     const id = await onSave(name);
     setSaving(false);
     if (id) setValidationMsg(`Saved: ${name}`);
     else setValidationMsg('Save failed');
-  }, [onSave, workflowName, onSetName]);
+  }, [onSave, onSetName]);
+
+  const handleSave = useCallback(() => {
+    if (!workflowName || workflowName === 'Untitled Workflow') {
+      setNameValue(workflowName || '');
+      setShowNameInput(true);
+      return;
+    }
+    doSave(workflowName);
+  }, [workflowName, doSave]);
 
   const handleValidate = useCallback(async () => {
     const result = await onValidate();
@@ -135,10 +152,11 @@ function WorkflowToolbarComponent({
     setShowLoadMenu(false);
   }, [onLoad]);
 
-  // MARKER_144.7: Generate workflow from natural language description
-  const handleGenerate = useCallback(async () => {
-    const description = prompt('Describe the workflow to generate:');
-    if (!description?.trim()) return;
+  // MARKER_152.W3B1: Generate workflow — inline input replaces prompt()
+  const doGenerate = useCallback(async (description: string) => {
+    setShowGenerateInput(false);
+    setGenerateValue('');
+    if (!description.trim()) return;
     setGenerating(true);
     setValidationMsg('Generating...');
     try {
@@ -301,6 +319,48 @@ function WorkflowToolbarComponent({
             {saving ? '...' : 'Save'}
           </button>
 
+          {/* MARKER_152.W3B1: Inline name input for Save (replaces prompt()) */}
+          {showNameInput && (
+            <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+              <input
+                autoFocus
+                value={nameValue}
+                onChange={e => setNameValue(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && nameValue.trim()) doSave(nameValue.trim());
+                  if (e.key === 'Escape') setShowNameInput(false);
+                }}
+                placeholder="workflow name..."
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${NOLAN_PALETTE.border}`,
+                  borderRadius: 2,
+                  color: '#e0e0e0',
+                  padding: '3px 6px',
+                  fontSize: 10,
+                  fontFamily: 'monospace',
+                  outline: 'none',
+                  width: 140,
+                }}
+              />
+              <button
+                onClick={() => nameValue.trim() && doSave(nameValue.trim())}
+                style={{
+                  background: 'rgba(78,205,196,0.12)',
+                  border: '1px solid rgba(78,205,196,0.3)',
+                  borderRadius: 2,
+                  color: '#4ecdc4',
+                  padding: '3px 6px',
+                  fontSize: 9,
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                }}
+              >
+                ✓
+              </button>
+            </div>
+          )}
+
           {/* Load dropdown */}
           <div style={{ position: 'relative' }}>
             <button
@@ -376,22 +436,68 @@ function WorkflowToolbarComponent({
 
           <div style={separatorStyle} />
 
-          {/* Validate */}
-          <button style={btnStyle} onClick={handleValidate} title="Validate workflow">
-            Validate ✓
-          </button>
+          {/* MARKER_152.W3B1: Validate — only show when workflow has nodes */}
+          {(nodeCount ?? 0) > 0 && (
+            <button style={btnStyle} onClick={handleValidate} title="Validate workflow">
+              Validate ✓
+            </button>
+          )}
 
-          {/* MARKER_144.7: AI Generate */}
-          <button
-            style={generating ? btnDisabledStyle : {
-              ...btnStyle,
-              background: 'rgba(255,255,255,0.03)',
-            }}
-            onClick={!generating ? handleGenerate : undefined}
-            title="AI: generate workflow from description"
-          >
-            {generating ? '...' : '✦ Generate'}
-          </button>
+          {/* MARKER_152.W3B1: Generate — hide when editing unsaved workflow (dirty state) */}
+          {!isDirty && !showGenerateInput && (
+            <button
+              style={generating ? btnDisabledStyle : {
+                ...btnStyle,
+                background: 'rgba(255,255,255,0.03)',
+              }}
+              onClick={!generating ? () => setShowGenerateInput(true) : undefined}
+              title="AI: generate workflow from description"
+            >
+              {generating ? '...' : '✦ Generate'}
+            </button>
+          )}
+
+          {/* MARKER_152.W3B1: Inline generate input (replaces prompt()) */}
+          {showGenerateInput && (
+            <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+              <input
+                autoFocus
+                value={generateValue}
+                onChange={e => setGenerateValue(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && generateValue.trim()) doGenerate(generateValue.trim());
+                  if (e.key === 'Escape') setShowGenerateInput(false);
+                }}
+                placeholder="describe workflow..."
+                style={{
+                  background: 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${NOLAN_PALETTE.border}`,
+                  borderRadius: 2,
+                  color: '#e0e0e0',
+                  padding: '3px 6px',
+                  fontSize: 10,
+                  fontFamily: 'monospace',
+                  outline: 'none',
+                  width: 200,
+                }}
+              />
+              <button
+                onClick={() => generateValue.trim() && doGenerate(generateValue.trim())}
+                style={{
+                  background: 'rgba(78,205,196,0.12)',
+                  border: '1px solid rgba(78,205,196,0.3)',
+                  borderRadius: 2,
+                  color: '#4ecdc4',
+                  padding: '3px 6px',
+                  fontSize: 9,
+                  fontFamily: 'monospace',
+                  cursor: 'pointer',
+                }}
+              >
+                ✓
+              </button>
+            </div>
+          )}
 
           {/* MARKER_144.8: Import */}
           <button

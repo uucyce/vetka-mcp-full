@@ -643,6 +643,300 @@
   color: #555;
 }
 
+/* ============== CONNECTORS PANEL (Phase 147.2) ============== */
+
+.connectors-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.connectors-header {
+  font-size: 11px;
+  color: #8c8c8c;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.connectors-secure {
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0.2px;
+  border: 1px solid #303030;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.connectors-secure.on {
+  color: #c7c7c7;
+  border-color: #505050;
+}
+
+.connectors-secure.off {
+  color: #8e8e8e;
+}
+
+.connectors-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #888;
+  font-size: 12px;
+}
+
+.connectors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.connector-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #111;
+  border: 1px solid #252525;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.connector-meta {
+  min-width: 0;
+}
+
+.connector-name {
+  color: #dedede;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.connector-sub {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+.connector-status {
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid #3a3a3a;
+  color: #999;
+}
+
+.connector-status.connected {
+  border-color: #555;
+  color: #d0d0d0;
+}
+
+.connector-status.disconnected {
+  border-color: #313131;
+  color: #7b7b7b;
+}
+
+.connector-last {
+  color: #6e6e6e;
+  align-self: center;
+}
+
+.connector-token {
+  color: #7f7f7f;
+  align-self: center;
+}
+
+.connector-refresh {
+  color: #6f6f6f;
+  align-self: center;
+}
+
+.connector-policy {
+  color: #9a9a9a;
+  align-self: center;
+  border: 1px solid #373737;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+.connector-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.connector-btn {
+  height: 28px;
+  padding: 0 10px;
+  background: #1d1d1d;
+  border: 1px solid #3a3a3a;
+  color: #ddd;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.connector-btn:hover:not(:disabled) {
+  background: #262626;
+  border-color: #515151;
+}
+
+.connector-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.connector-btn.ghost {
+  background: #121212;
+  border-color: #2e2e2e;
+  color: #9d9d9d;
+}
+
+.connector-capabilities {
+  margin-left: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.connector-capabilities span {
+  font-size: 10px;
+  color: #8f8f8f;
+  border: 1px solid #333;
+  border-radius: 999px;
+  padding: 2px 6px;
+}
+
+.connector-modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+}
+
+.connector-modal {
+  width: min(520px, calc(100% - 24px));
+  background: #0f0f0f;
+  border: 1px solid #2f2f2f;
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.connector-modal-title {
+  color: #e5e5e5;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.connector-methods {
+  display: flex;
+  gap: 8px;
+}
+
+.connector-method-btn {
+  height: 30px;
+  padding: 0 10px;
+  background: #121212;
+  border: 1px solid #303030;
+  color: #a9a9a9;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.connector-method-btn.active {
+  border-color: #5b5b5b;
+  color: #f1f1f1;
+  background: #1a1a1a;
+}
+
+.connector-auth-input {
+  height: 34px;
+  border: 1px solid #313131;
+  border-radius: 6px;
+  background: #101010;
+  color: #d7d7d7;
+  padding: 0 10px;
+  font-size: 12px;
+  outline: none;
+}
+
+.connector-auth-input:focus {
+  border-color: #5d5d5d;
+}
+
+.connector-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.connector-tree-modal {
+  width: min(760px, calc(100% - 24px));
+}
+
+.connector-tree-list {
+  max-height: 52vh;
+  overflow: auto;
+  border: 1px solid #222;
+  border-radius: 8px;
+  background: #0c0c0c;
+  padding: 8px 0;
+}
+
+.connector-tree-row {
+  display: block;
+}
+
+.connector-tree-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.connector-tree-label:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.connector-tree-type {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  min-width: 34px;
+  opacity: 0.8;
+}
+
+.connector-tree-type.folder {
+  color: #b8c0cc;
+}
+
+.connector-tree-type.file {
+  color: #8c96a6;
+}
+
+.connector-tree-name {
+  color: #e3e6ec;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ============== RESIZE HANDLE (Phase 92.8: Instant response, no transition lag) ============== */
 
 .scan-resize-handle {

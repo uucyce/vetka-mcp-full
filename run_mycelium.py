@@ -247,8 +247,21 @@ async def start_http_server():
     app.middlewares.append(cors_middleware)
 
     # --- Routes ---
+    async def _check_vetka_connection() -> bool:
+        """Lazy VETKA health check — called only when someone requests health."""
+        global _vetka_connected
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                resp = await client.get("http://localhost:5001/api/health")
+                _vetka_connected = resp.status_code == 200
+        except Exception:
+            _vetka_connected = False
+        return _vetka_connected
+
     async def handle_health(request):
         ws = _ws_broadcaster.get_status() if _ws_broadcaster else None
+        await _check_vetka_connection()
         return web.json_response({
             "server": "mycelium_standalone",
             "uptime_seconds": round(time.time() - _start_time, 1),
@@ -450,26 +463,11 @@ async def main():
     # Start HTTP server
     http_runner = await start_http_server()
 
-    # VETKA watchdog — periodically check if VETKA backend is alive
-    async def _vetka_watchdog():
-        global _vetka_connected
-        import httpx
-        while True:
-            try:
-                async with httpx.AsyncClient(timeout=3.0) as client:
-                    resp = await client.get("http://localhost:5001/api/system/health")
-                    _vetka_connected = resp.status_code == 200
-            except Exception:
-                _vetka_connected = False
-            if _vetka_connected:
-                logger.debug("VETKA connected")
-            await asyncio.sleep(15)
-
-    watchdog_task = asyncio.create_task(_vetka_watchdog())
+    # VETKA connection check — lazy, only when health is requested (no polling)
+    # _vetka_connected is updated on-demand in handle_health via _check_vetka_connection()
 
     # Wait for shutdown
     await shutdown_event.wait()
-    watchdog_task.cancel()
 
     # Cleanup
     logger.info("Shutting down...")

@@ -1,0 +1,82 @@
+{
+  "providers": [
+    {
+      "id": "dropbox",
+      "source": "cloud",
+      "display_name": "Dropbox",
+      "connected": true,
+      "account_label": "dropbox",
+      "last_sync_at": "2026-02-13T21:00:09.335438+00:00",
+      "last_scan_count": 61,
+      "last_scan_at": null,
+      "updated_at": "2026-02-13T21:00:09.335438+00:00"
+    },
+    {
+      "id": "github",
+      "source": "social",
+      "display_name": "GitHub",
+      "connected": false,
+      "account_label": null,
+      "last_sync_at": null,
+      "last_scan_count": 0,
+      "last_scan_at": null,
+      "updated_at": null
+    },
+    {
+      "id": "gmail",
+      "source": "cloud",
+      "display_name": "Gmail",
+      "connected": true,
+      "account_label": "gmail",
+      "last_sync_at": "2026-02-13T23:39:07.278247+00:00",
+      "last_scan_count": 47,
+      "last_scan_at": "2026-02-13T23:39:07.278247+00:00",
+      "updated_at": "2026-02-14T13:01:53.747357+00:00"
+    },
+    {
+      "id": "google_drive",
+      "source": "cloud",
+      "display_name": "Google Drive",
+      "connected": false,
+      "account_label": null,
+      "last_sync_at": null,
+      "last_scan_count": 0,
+      "last_scan_at": null,
+      "updated_at": null
+    },
+    {
+      "id": "linkedin",
+      "source": "social",
+      "display_name": "LinkedIn",
+      "connected": false,
+      "account_label": null,
+      "last_sync_at": null,
+      "last_scan_count": 0,
+      "last_scan_at": null,
+      "updated_at": null
+    },
+    {
+      "id": "telegram",
+      "source": "social",
+      "display_name": "Telegram",
+      "connected": false,
+      "account_label": null,
+      "last_sync_at": null,
+      "last_scan_count": 0,
+      "last_scan_at": null,
+      "updated_at": null
+    },
+    {
+      "id": "x",
+      "source": "social",
+      "display_name": "X",
+      "connected": false,
+      "account_label": null,
+      "last_sync_at": null,
+      "last_scan_count": 0,
+      "last_scan_at": null,
+      "updated_at": null
+    }
+  ],
+  "updated_at": "2026-02-14T13:01:53.747379+00:00"
+}

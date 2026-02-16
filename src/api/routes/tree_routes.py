@@ -24,6 +24,7 @@ Phase History:
 
 import os
 import json
+import hashlib
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import FileResponse
@@ -61,6 +62,11 @@ def _save_node_favorites(data: Dict[str, Any]) -> bool:
         return True
     except Exception:
         return False
+
+
+def _stable_folder_node_id(folder_path: str) -> str:
+    digest = hashlib.md5((folder_path or "").encode("utf-8")).hexdigest()[:8]
+    return f"folder_{digest}"
 
 
 # Module-level cache for semantic DAG (computed once per session)
@@ -180,6 +186,7 @@ def calculate_decay(updated_at_str: Optional[str]) -> float:
 async def get_tree_data(
     mode: str = Query("directory", description="Layout mode: directory, semantic, or both"),
     source: str = Query("vetka_elisya", description="Qdrant collection: vetka_elisya or vetka_tree"),
+    chat_filter: str = Query("active", description="Chat node filter: active, favorite, all"),
     request: Request = None
 ):
     """
@@ -514,11 +521,11 @@ async def get_tree_data(
 
         # Folder nodes
         for folder_path, folder in folders.items():
-            folder_id = f"folder_{abs(hash(folder_path)) % 100000000}"
+            folder_id = _stable_folder_node_id(folder_path)
             pos = positions.get(folder_path, {'x': 0, 'y': 0})
 
             if folder['parent_path']:
-                parent_id = f"folder_{abs(hash(folder['parent_path'])) % 100000000}"
+                parent_id = _stable_folder_node_id(folder['parent_path'])
             else:
                 parent_id = root_id
 
@@ -551,7 +558,7 @@ async def get_tree_data(
 
         # File nodes
         for folder_path, folder_files in files_by_folder.items():
-            folder_id = f"folder_{abs(hash(folder_path)) % 100000000}"
+            folder_id = _stable_folder_node_id(folder_path)
 
             for file_data in folder_files:
                 pos = positions.get(file_data['id'], {'x': 0, 'y': 0})
@@ -620,7 +627,33 @@ async def get_tree_data(
             from src.layout.knowledge_layout import calculate_chat_positions
 
             chat_manager = get_chat_history_manager()
-            all_chats = chat_manager.get_all_chats(limit=100, load_from_end=True)
+            all_chats = chat_manager.get_all_chats(limit=300, load_from_end=True)
+
+            filter_mode = (chat_filter or "active").strip().lower()
+            now_dt = datetime.now()
+
+            def _is_active_chat(chat: Dict[str, Any]) -> bool:
+                if bool(chat.get("is_favorite", False)):
+                    return True
+                msg_count = len(chat.get("messages", []) or [])
+                if msg_count >= 10:
+                    return True
+                updated_raw = str(chat.get("updated_at", "") or "")
+                if not updated_raw:
+                    return False
+                try:
+                    updated = datetime.fromisoformat(updated_raw.replace("Z", "+00:00"))
+                except Exception:
+                    return False
+                age_sec = abs((now_dt - updated.replace(tzinfo=None)).total_seconds())
+                return age_sec <= (7 * 24 * 3600)
+
+            if filter_mode == "favorite":
+                all_chats = [c for c in all_chats if bool(c.get("is_favorite", False))]
+            elif filter_mode == "all":
+                pass
+            else:
+                all_chats = [c for c in all_chats if _is_active_chat(c)]
 
             # Create a mapping from file_path to file node id
             file_path_to_node_id = {}

@@ -37,10 +37,10 @@ export function WatcherMicroStatus() {
     } catch { /* silent */ }
   }, []);
 
+  // MARKER_145.CLEANUP: Fetch on mount only — no polling.
+  // Was 30s. This is a tiny status indicator, no real-time need.
   useEffect(() => {
     fetchStats();
-    const interval = setInterval(fetchStats, 30000);
-    return () => clearInterval(interval);
   }, [fetchStats]);
 
   // Close popover on click outside

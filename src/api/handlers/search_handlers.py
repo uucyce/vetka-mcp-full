@@ -61,6 +61,7 @@ def register_search_handlers(sio, app=None):
         limit = min(data.get('limit', 50), 200)  # Increased cap to 200
         mode = data.get('mode', 'hybrid')
         filters = data.get('filters', {})
+        viewport_context = data.get('viewport_context')
 
         # FIX_96.3: Mode-aware score thresholds
         # Different search modes return scores in different ranges:
@@ -118,6 +119,27 @@ def register_search_handlers(sio, app=None):
 
             # Transform results to frontend format
             raw_results = response.get('results', [])
+            # MARKER_146.STEP1_CONTEXTUAL_RETRIEVAL_SOCKET: Viewport-aware rerank for vetka socket search.
+            if viewport_context:
+                try:
+                    from src.search.contextual_retrieval import contextual_rerank
+
+                    normalized_rows = [
+                        {
+                            "source": str(r.get("source", response.get("mode", "hybrid"))),
+                            "title": str(r.get("path", "") or r.get("name", "") or r.get("id", "")),
+                            "snippet": str(r.get("content", "")),
+                            "score": float(r.get("rrf_score") or r.get("score") or 0.0),
+                            "url": str(r.get("path", "")),
+                            "_raw": r,
+                        }
+                        for r in raw_results
+                    ]
+                    reranked = contextual_rerank(normalized_rows, viewport_context=viewport_context)
+                    raw_results = [row.get("_raw", {}) for row in reranked]
+                except Exception as rerank_err:
+                    logger.debug(f"[SEARCH] contextual rerank skipped: {rerank_err}")
+
             formatted_results = []
             filtered_count = 0  # Track how many were filtered by score
 

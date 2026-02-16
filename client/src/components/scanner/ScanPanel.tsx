@@ -67,6 +67,18 @@ interface ConnectorProvider {
   last_scan_at?: string | null;
   last_scan_count?: number;
 }
+
+interface ConnectorTreeNode {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  path: string;
+  mime_type?: string;
+  size?: number;
+  modified?: string | null;
+  children?: ConnectorTreeNode[];
+}
+
 type ConnectorAuthMethod = 'oauth' | 'api_key' | 'link';
 const resolveAuthMethods = (provider: ConnectorProvider | null): ConnectorAuthMethod[] => {
   if (!provider) return ['oauth'];
@@ -276,6 +288,10 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
   const [connectorProviders, setConnectorProviders] = useState<ConnectorProvider[]>([]);
   const [connectorsLoading, setConnectorsLoading] = useState(false);
   const [connectorBusy, setConnectorBusy] = useState<Record<string, 'connect' | 'scan' | 'disconnect' | null>>({});
+  const [connectorTreeLoading, setConnectorTreeLoading] = useState<Record<string, boolean>>({});
+  const [connectorTrees, setConnectorTrees] = useState<Record<string, ConnectorTreeNode[]>>({});
+  const [connectorTreeModalProvider, setConnectorTreeModalProvider] = useState<ConnectorProvider | null>(null);
+  const [selectedTreeIdsByProvider, setSelectedTreeIdsByProvider] = useState<Record<string, string[]>>({});
   const [secureStorageEnabled, setSecureStorageEnabled] = useState(false);
   const [connectModalProvider, setConnectModalProvider] = useState<ConnectorProvider | null>(null);
   const [connectAuthMethod, setConnectAuthMethod] = useState<ConnectorAuthMethod>('oauth');
@@ -402,7 +418,8 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
 
   const runConnectorAction = useCallback(async (
     providerId: string,
-    action: 'scan' | 'disconnect'
+    action: 'scan' | 'disconnect',
+    payload?: Record<string, unknown>
   ) => {
     setConnectorBusy((prev) => ({ ...prev, [providerId]: action }));
     try {
@@ -410,6 +427,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: payload ? JSON.stringify(payload) : undefined,
       });
       const result = await response.json();
       if (!response.ok || !result?.success) {
@@ -426,11 +444,41 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       }
     } catch (err) {
       console.error(`[ScanPanel] Connector ${action} failed:`, err);
-      alert(`Connector ${action} failed`);
+      const msg = err instanceof Error ? err.message : `${action} failed`;
+      alert(`Connector ${action} failed: ${msg}`);
     } finally {
       setConnectorBusy((prev) => ({ ...prev, [providerId]: null }));
     }
   }, [currentSource.id, loadConnectors, onEvent]);
+
+  const openConnectorTree = useCallback(async (provider: ConnectorProvider) => {
+    const providerId = provider.id;
+    setConnectorTreeLoading((prev) => ({ ...prev, [providerId]: true }));
+    try {
+      const response = await fetch(`${API_BASE}/connectors/${encodeURIComponent(providerId)}/tree`);
+      const result = await response.json();
+      if (!response.ok || !result?.success || !Array.isArray(result?.tree)) {
+        throw new Error(result?.detail || result?.error || `HTTP ${response.status}`);
+      }
+      setConnectorTrees((prev) => ({ ...prev, [providerId]: result.tree as ConnectorTreeNode[] }));
+      setConnectorTreeModalProvider(provider);
+      setSelectedTreeIdsByProvider((prev) => ({ ...prev, [providerId]: prev[providerId] || [] }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load tree';
+      alert(`Tree load failed: ${msg}`);
+    } finally {
+      setConnectorTreeLoading((prev) => ({ ...prev, [providerId]: false }));
+    }
+  }, []);
+
+  const toggleTreeSelection = useCallback((providerId: string, nodeId: string) => {
+    setSelectedTreeIdsByProvider((prev) => {
+      const current = prev[providerId] || [];
+      const has = current.includes(nodeId);
+      const next = has ? current.filter((id) => id !== nodeId) : [...current, nodeId];
+      return { ...prev, [providerId]: next };
+    });
+  }, []);
 
   const openConnectModal = useCallback((provider: ConnectorProvider) => {
     const methods = resolveAuthMethods(provider);
@@ -1029,6 +1077,31 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
     return parts[parts.length - 1] || path;
   };
 
+  const renderConnectorTree = (providerId: string, nodes: ConnectorTreeNode[], depth = 0): React.ReactNode => {
+    const selectedIds = selectedTreeIdsByProvider[providerId] || [];
+    return nodes.map((node) => {
+      const checked = selectedIds.includes(node.id);
+      return (
+        <div key={`${providerId}-${node.id}`} className="connector-tree-row" style={{ paddingLeft: `${12 + depth * 16}px` }}>
+          <label className="connector-tree-label">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => toggleTreeSelection(providerId, node.id)}
+            />
+            <span className={`connector-tree-type ${node.type}`}>{node.type === 'folder' ? 'DIR' : 'FILE'}</span>
+            <span className="connector-tree-name" title={node.path}>{node.name}</span>
+          </label>
+          {Array.isArray(node.children) && node.children.length > 0 ? (
+            <div className="connector-tree-children">
+              {renderConnectorTree(providerId, node.children, depth + 1)}
+            </div>
+          ) : null}
+        </div>
+      );
+    });
+  };
+
   // ============== RENDER ==============
 
   if (!isVisible) return null;
@@ -1257,6 +1330,8 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
                     const isBusy = Boolean(busyAction);
                     const isConnected = provider.connected && (provider.status || 'pending') === 'connected';
                     const needsAuth = !isConnected || !provider.token_present;
+                    const isGoogleDrive = provider.id === 'google_drive' || provider.provider_class === 'google';
+                    const selectedIds = selectedTreeIdsByProvider[provider.id] || [];
                     return (
                       <div key={provider.id} className="connector-card">
                         <div className="connector-meta">
@@ -1297,10 +1372,28 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
                             </button>
                           ) : (
                             <>
+                              {isGoogleDrive && (
+                                <button
+                                  className="connector-btn ghost"
+                                  disabled={isBusy || Boolean(connectorTreeLoading[provider.id])}
+                                  onClick={() => void openConnectorTree(provider)}
+                                  title="Browse Google Drive tree"
+                                >
+                                  {connectorTreeLoading[provider.id] ? 'Loading...' : 'Browse'}
+                                </button>
+                              )}
                               <button
                                 className="connector-btn"
                                 disabled={isBusy}
-                                onClick={() => void runConnectorAction(provider.id, 'scan')}
+                                onClick={() =>
+                                  void runConnectorAction(
+                                    provider.id,
+                                    'scan',
+                                    isGoogleDrive
+                                      ? { selected_ids: selectedIds }
+                                      : undefined
+                                  )
+                                }
                                 title={`Scan ${provider.display_name}`}
                               >
                                 {busyAction === 'scan' ? 'Scanning...' : 'Scan'}
@@ -1320,6 +1413,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
                           <div className="connector-capabilities">
                             {provider.capabilities.offline_access && <span>Offline</span>}
                             {provider.capabilities.webhooks && <span>Webhooks</span>}
+                            {isGoogleDrive && selectedIds.length > 0 && <span>{selectedIds.length} selected</span>}
                           </div>
                         ) : null}
                       </div>
@@ -1432,6 +1526,37 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
                 </>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {connectorTreeModalProvider && (
+        <div className="connector-modal-overlay" onClick={() => setConnectorTreeModalProvider(null)}>
+          <div className="connector-modal connector-tree-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="connector-modal-title">
+              {connectorTreeModalProvider.display_name} — Select folders/files to scan
+            </div>
+            <div className="connector-tree-list">
+              {connectorTrees[connectorTreeModalProvider.id]?.length
+                ? renderConnectorTree(connectorTreeModalProvider.id, connectorTrees[connectorTreeModalProvider.id])
+                : <div className="connector-sub">No files found or access is limited.</div>}
+            </div>
+            <div className="connector-modal-actions">
+              <button
+                className="connector-btn ghost"
+                onClick={() => setConnectorTreeModalProvider(null)}
+              >
+                Close
+              </button>
+              <button
+                className="connector-btn"
+                onClick={() => {
+                  setConnectorTreeModalProvider(null);
+                }}
+              >
+                Use Selection
+              </button>
+            </div>
           </div>
         </div>
       )}

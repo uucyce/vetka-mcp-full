@@ -1,0 +1,29 @@
+{
+  "project_id": "fake_project_b9c3cf3d",
+  "generated_at": "2026-02-16T20:19:41.060285+00:00",
+  "generator": "static",
+  "nodes": [
+    {
+      "id": "core",
+      "label": "Core / Backend",
+      "layer": "core",
+      "status": "active",
+      "description": "Core backend logic and API",
+      "file_patterns": []
+    },
+    {
+      "id": "features",
+      "label": "Features",
+      "layer": "feature",
+      "status": "pending",
+      "description": "Project features and functionality",
+      "file_patterns": []
+    }
+  ],
+  "edges": [
+    {
+      "source": "core",
+      "target": "features"
+    }
+  ]
+}

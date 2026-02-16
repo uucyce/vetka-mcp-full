@@ -1,0 +1,18 @@
+{
+  "run_id": "task_1771103661",
+  "task": "Create NEW file: client/src/components/mcc/PlaygroundBadge.tsx\n\nTASK: Build a PlaygroundBadge chip component for the MCC header bar.\n\nREQUIREMENTS:\n1. Small pill-shaped chip (same style as HeartbeatCh",
+  "summary": "Completed 5/5 subtasks",
+  "quality_score": 0.93,
+  "issues_found": [],
+  "improvements_for_next_run": [],
+  "files_created": [],
+  "tokens_used": 22127,
+  "duration_s": 186.7,
+  "preset": "dragon_silver",
+  "status": "done",
+  "subtasks_total": 5,
+  "subtasks_completed": 5,
+  "retries": 1,
+  "tier_upgrades": 0,
+  "saved_at": "2026-02-14T21:17:28Z"
+}

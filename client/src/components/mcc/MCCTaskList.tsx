@@ -11,7 +11,6 @@ import { useMCCStore } from '../../store/useMCCStore';
 import { useStore } from '../../store/useStore';
 import { useDevPanelStore } from '../../store/useDevPanelStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
-import { ArchitectChat } from './ArchitectChat';
 import { TaskFilterBar } from '../panels/TaskFilterBar';
 import { TaskEditor } from '../panels/TaskEditor';
 import { TaskDrillDown } from '../panels/TaskDrillDown';
@@ -39,16 +38,7 @@ function fmtInterval(s: number): string {
   return `${Math.floor(s / 3600)}h`;
 }
 
-interface MCCTaskListProps {
-  /** MARKER_144.7: Callback when Architect proposes DAG changes user accepts */
-  onAcceptArchitectChanges?: (changes: {
-    addNodes?: Array<{ type: string; label: string }>;
-    removeNodes?: string[];
-    addEdges?: Array<{ source: string; target: string; type: string }>;
-  }) => void;
-}
-
-export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {}) {
+export function MCCTaskList() {
   const {
     tasks, tasksLoading, fetchTasks, addTask, dispatchTask,
     dispatchNext, cancelTask, selectedTaskId, selectTask,
@@ -419,13 +409,6 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
           );
         })}
       </div>
-
-      {/* MARKER_144.12: Architect Chat — collaborative dialog */}
-      <ArchitectChat
-        selectedNodeId={selectedTaskId}
-        workflowContext={{ nodeCount: tasks.length, edgeCount: 0 }}
-        onAcceptChanges={onAcceptArchitectChanges}
-      />
 
       {/* Footer: dispatch + heartbeat */}
       <div style={{ borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`, padding: '6px 8px' }}>

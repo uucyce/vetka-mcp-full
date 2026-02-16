@@ -1,0 +1,231 @@
+{
+  "cached_at": 1771188637.092288,
+  "profile_count": 25,
+  "profiles": {
+    "gpt-4o": {
+      "context_length": 128000,
+      "output_tokens_per_second": 80.0,
+      "input_tokens_per_second": 150.0,
+      "ttft_ms": 500.0,
+      "provider": "openai",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080716.461007
+    },
+    "gpt-4o-mini": {
+      "context_length": 128000,
+      "output_tokens_per_second": 120.0,
+      "input_tokens_per_second": 250.0,
+      "ttft_ms": 300.0,
+      "provider": "openai",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080716.9624069
+    },
+    "claude-sonnet-4-20250514": {
+      "context_length": 200000,
+      "output_tokens_per_second": 70.0,
+      "input_tokens_per_second": 130.0,
+      "ttft_ms": 700.0,
+      "provider": "anthropic",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080717.4640808
+    },
+    "claude-opus-4-20250514": {
+      "context_length": 200000,
+      "output_tokens_per_second": 40.0,
+      "input_tokens_per_second": 100.0,
+      "ttft_ms": 1200.0,
+      "provider": "anthropic",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080717.966103
+    },
+    "qwen3-235b-a22b": {
+      "context_length": 131072,
+      "output_tokens_per_second": 30.0,
+      "input_tokens_per_second": 80.0,
+      "ttft_ms": 1000.0,
+      "provider": "polza",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080720.0914629
+    },
+    "qwen3-coder": {
+      "context_length": 131072,
+      "output_tokens_per_second": 55.0,
+      "input_tokens_per_second": 120.0,
+      "ttft_ms": 600.0,
+      "provider": "polza",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080720.982243
+    },
+    "qwen3-coder-flash": {
+      "context_length": 131072,
+      "output_tokens_per_second": 85.0,
+      "input_tokens_per_second": 180.0,
+      "ttft_ms": 400.0,
+      "provider": "polza",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080722.733164
+    },
+    "qwen3-30b-a3b": {
+      "context_length": 131072,
+      "output_tokens_per_second": 70.0,
+      "input_tokens_per_second": 150.0,
+      "ttft_ms": 500.0,
+      "provider": "polza",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080724.515261
+    },
+    "grok-4.1-fast": {
+      "context_length": 131072,
+      "output_tokens_per_second": 90.0,
+      "input_tokens_per_second": 200.0,
+      "ttft_ms": 400.0,
+      "provider": "xai",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080734.165691
+    },
+    "kimi-k2.5": {
+      "context_length": 131072,
+      "output_tokens_per_second": 50.0,
+      "input_tokens_per_second": 120.0,
+      "ttft_ms": 700.0,
+      "provider": "polza",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080734.667409
+    },
+    "kimi-k2": {
+      "context_length": 131072,
+      "output_tokens_per_second": 45.0,
+      "input_tokens_per_second": 110.0,
+      "ttft_ms": 750.0,
+      "provider": "polza",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080735.169129
+    },
+    "glm-4.7-flash": {
+      "context_length": 131072,
+      "output_tokens_per_second": 80.0,
+      "input_tokens_per_second": 180.0,
+      "ttft_ms": 400.0,
+      "provider": "polza",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080736.328557
+    },
+    "mimo-v2-flash": {
+      "context_length": 131072,
+      "output_tokens_per_second": 90.0,
+      "input_tokens_per_second": 200.0,
+      "ttft_ms": 350.0,
+      "provider": "polza",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080737.627792
+    },
+    "deepseek-r1": {
+      "context_length": 128000,
+      "output_tokens_per_second": 95.0,
+      "input_tokens_per_second": 200.0,
+      "ttft_ms": 500.0,
+      "provider": "deepseek",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080738.723705
+    },
+    "deepseek-v3": {
+      "context_length": 128000,
+      "output_tokens_per_second": 80.0,
+      "input_tokens_per_second": 180.0,
+      "ttft_ms": 600.0,
+      "provider": "deepseek",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080739.8039942
+    },
+    "gemini-2.0-flash": {
+      "context_length": 1048576,
+      "output_tokens_per_second": 100.0,
+      "input_tokens_per_second": 300.0,
+      "ttft_ms": 400.0,
+      "provider": "google",
+      "source": "hardcoded_defaults",
+      "updated_at": 1771080740.967264
+    },
+    "llama-4-maverick": {
+      "context_length": 128000,
+      "output_tokens_per_second": 35.0,
+      "input_tokens_per_second": 90.0,
+      "ttft_ms": 800.0,
+      "provider": "unknown",
+      "source": "generic_fallback",
+      "updated_at": 1771080742.255601
+    },
+    "nonexistent-model-xyz": {
+      "context_length": 128000,
+      "output_tokens_per_second": 35.0,
+      "input_tokens_per_second": 90.0,
+      "ttft_ms": 800.0,
+      "provider": "unknown",
+      "source": "generic_fallback",
+      "updated_at": 1771080846.39596
+    },
+    "totally-unknown-model": {
+      "context_length": 128000,
+      "output_tokens_per_second": 35.0,
+      "input_tokens_per_second": 90.0,
+      "ttft_ms": 800.0,
+      "provider": "unknown",
+      "source": "generic_fallback",
+      "updated_at": 1771080846.402878
+    },
+    "scout": {
+      "context_length": 128000,
+      "output_tokens_per_second": 35.0,
+      "input_tokens_per_second": 90.0,
+      "ttft_ms": 800.0,
+      "provider": "unknown",
+      "source": "generic_fallback",
+      "updated_at": 1771081002.820735
+    },
+    "broken-model": {
+      "context_length": 128000,
+      "output_tokens_per_second": 35.0,
+      "input_tokens_per_second": 90.0,
+      "ttft_ms": 800.0,
+      "provider": "unknown",
+      "source": "generic_fallback",
+      "updated_at": 1771081592.1426618
+    },
+    "gemini-3-pro-preview": {
+      "context_length": 128000,
+      "output_tokens_per_second": 35.0,
+      "input_tokens_per_second": 90.0,
+      "ttft_ms": 800.0,
+      "provider": "unknown",
+      "source": "generic_fallback",
+      "updated_at": 1771163866.929475
+    },
+    "claude-haiku-4.5": {
+      "context_length": 128000,
+      "output_tokens_per_second": 35.0,
+      "input_tokens_per_second": 90.0,
+      "ttft_ms": 800.0,
+      "provider": "unknown",
+      "source": "generic_fallback",
+      "updated_at": 1771163911.39273
+    },
+    "claude-sonnet-4.5": {
+      "context_length": 128000,
+      "output_tokens_per_second": 35.0,
+      "input_tokens_per_second": 90.0,
+      "ttft_ms": 800.0,
+      "provider": "unknown",
+      "source": "generic_fallback",
+      "updated_at": 1771188588.102858
+    },
+    "qwen3-max": {
+      "context_length": 128000,
+      "output_tokens_per_second": 35.0,
+      "input_tokens_per_second": 90.0,
+      "ttft_ms": 800.0,
+      "provider": "unknown",
+      "source": "generic_fallback",
+      "updated_at": 1771188637.092187
+    }
+  }
+}

@@ -397,9 +397,9 @@ export default function App() {
         }
       }
 
-      if (indexedFiles > 0 || addedFolders > 0) {
-        window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
-      }
+      // MARKER_136.TREE_REFRESH_DEDUP_APP:
+      // Do not dispatch manual tree refresh here.
+      // Index/add flows already emit socket events consumed by useSocket reload path.
 
       // MARKER_136.CAM_TRIGGER_CONDITIONAL: folder -> folder focus, file -> file focus
       const firstReal = realItems[0];

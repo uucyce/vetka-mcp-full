@@ -178,7 +178,11 @@ def run_unified_search(
     query: str,
     limit: int = 20,
     sources: Optional[List[str]] = None,
+    mode: Optional[str] = None,  # kept for route compatibility
+    viewport_context: Optional[dict] = None,  # kept for route compatibility
 ) -> Dict[str, Any]:
+    _ = mode
+    _ = viewport_context
     selected_sources = sources or ["file", "semantic", "web", "social"]
     selected_sources = [s for s in selected_sources if s in {"file", "semantic", "web", "social"}]
 
@@ -219,4 +223,34 @@ def run_unified_search(
         "sources": selected_sources,
         "count": len(merged),
         "took_ms": int((time.time() - started) * 1000),
+    }
+
+
+def get_search_capabilities(context: str = "vetka") -> Dict[str, Any]:
+    """
+    Route-level capabilities contract used by UnifiedSearchBar.
+    """
+    ctx = (context or "vetka").strip().lower()
+    if ctx == "web":
+        tavily_ready = bool(os.getenv("TAVILY_API_KEY"))
+        return {
+            "success": True,
+            "context": "web",
+            "supported_modes": ["hybrid", "keyword"],
+            "provider_health": {
+                "tavily": {"available": tavily_ready},
+            },
+        }
+    if ctx == "file":
+        return {
+            "success": True,
+            "context": "file",
+            "supported_modes": ["keyword", "filename"],
+            "provider_health": {},
+        }
+    return {
+        "success": True,
+        "context": "vetka",
+        "supported_modes": ["hybrid", "semantic", "keyword", "filename"],
+        "provider_health": {},
     }

@@ -1,0 +1,353 @@
+{
+  "events": [
+    {
+      "event_id": "1a86ecb9-d517-43d7-ac09-1724c2f7ccfb",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:36:52.993421",
+      "action": "add",
+      "node_ids": [
+        "b32da097-3696-59f4-941f-5ab8211e6f21"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/153_ph/CODEX_REPORT_phase153_grok_research_requests_gap_matrix.md"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "c501c418-b7bc-4e13-89db-66ffd50b9f43",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:37:31.305728",
+      "action": "add",
+      "node_ids": [
+        "83bdd8f0-6583-5e39-8bf9-2dabf950e814"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners/local_scanner.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "521a63a3-5be1-4d3a-9314-af5662cd707e",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:38:02.210602",
+      "action": "add",
+      "node_ids": [
+        "c515d35b-380f-579d-88b1-3b2bd20f60c4"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners/file_watcher.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "1918b532-bfad-4c95-b9bc-c51ea1242e33",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:38:20.783812",
+      "action": "add",
+      "node_ids": [
+        "a9633b89-9de2-550f-aaa3-34395661530f"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/watcher_routes.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "371ac015-458d-4035-b83f-0888989f6e4e",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:38:36.103553",
+      "action": "add",
+      "node_ids": [
+        "1ec7c0dc-24da-576f-adf8-2d30c8506bfc"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/artifact_scanner.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "8d774de9-69fe-43da-b579-10974ed3311a",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:39:12.806069",
+      "action": "add",
+      "node_ids": [
+        "e354da16-e8ef-58d1-948d-7acb1403a73d"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners/embedding_pipeline.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "4c3a5fb4-5eff-439c-a235-0cc0b0f3f968",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:39:28.870781",
+      "action": "add",
+      "node_ids": [
+        "4edfb2c8-d387-5662-b5c6-05ae9a9d72bc"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners/qdrant_updater.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "13882ff3-1f31-4c4c-be20-b077968b2c32",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:39:43.083915",
+      "action": "add",
+      "node_ids": [
+        "b2524bc3-9fb7-5e11-92bc-1715b94cb806"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/triple_write_routes.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "92830d3c-bc9e-49c9-9cf7-cd3531d1fadf",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:40:22.293135",
+      "action": "add",
+      "node_ids": [
+        "707d178b-1f75-5322-8a41-e825863cc8c8"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/qdrant_batch_manager.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "1969f51c-1d37-4d85-9bad-439f5cc1800d",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:40:56.883120",
+      "action": "add",
+      "node_ids": [
+        "55c63575-de92-5e0b-8ca1-2e3aed2d8f97"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/qdrant_client.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "20fb25b2-644f-4ece-9a59-1fb6ec061d9a",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:41:09.733240",
+      "action": "add",
+      "node_ids": [
+        "098f7aa0-d0a8-5407-b007-38da49b57092"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/files_routes.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "ce88a34c-1dfe-4cc1-acca-a67fe54c44fd",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:41:54.274515",
+      "action": "add",
+      "node_ids": [
+        "94182204-798a-5d00-93d2-c24374c0e223"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/utils/fileTypes.ts"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "c5e0bcfc-9989-4327-950a-bfa71abbb4cf",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:41:55.081019",
+      "action": "add",
+      "node_ids": [
+        "255203ca-902b-5328-99d2-9558b8b11930"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/app/artifact-panel/src/utils/fileTypes.ts"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "d482419d-2a25-4901-be42-1e249da7c798",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:42:26.967312",
+      "action": "add",
+      "node_ids": [
+        "b6433ee3-b2fd-5ca9-81df-df125751fd19"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "70253b26-f913-4ba5-9aa1-791d82c5bb03",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:42:27.542164",
+      "action": "add",
+      "node_ids": [
+        "a6325104-6bc5-5abe-bc6a-f63ef2a9856c"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/app/artifact-panel/src/components/ArtifactPanel.tsx"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "73bf2a49-0a14-4047-90ea-c486ca3f39f0",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:42:45.531930",
+      "action": "add",
+      "node_ids": [
+        "37ff209f-b03c-5cbb-b249-a3eaa9e2b1d4"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners/base_scanner.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "54307f35-ab34-4557-8bdc-893a32edc067",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:42:57.690685",
+      "action": "add",
+      "node_ids": [
+        "ca9aa786-5d43-5b3d-b1ee-8e501169cd30"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners/python_scanner.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "a0808eec-9bda-4338-84e5-63de5d631216",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:47:52.026900",
+      "action": "add",
+      "node_ids": [
+        "f3be76d0-7f18-56a0-bcca-f9b57eae385c"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph_Knowledge level_from_Phase 72/input_matrix_idea.txt"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "a9e460b3-964d-49ed-ada9-51dc08717a4b",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-16T23:53:42.581049",
+      "action": "add",
+      "node_ids": [
+        "ecd9eacc-0556-5ba1-b06d-fe31767c6d53"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph_Knowledge level_from_Phase 72/MCP_modules_GROK.txt"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "8b351cb8-d40a-43fa-9ee6-a205bb6d5093",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-17T01:01:17.893155",
+      "action": "add",
+      "node_ids": [
+        "57baa690-337b-5069-8f73-282062e54ae4"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactViewer.ts"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "b8bf3c83-5d79-46cf-80db-f5503ef6a614",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-17T01:37:54.095479",
+      "action": "remove",
+      "node_ids": [
+        "098f7aa0-d0a8-5407-b007-38da49b57092",
+        "1ec7c0dc-24da-576f-adf8-2d30c8506bfc",
+        "255203ca-902b-5328-99d2-9558b8b11930",
+        "37ff209f-b03c-5cbb-b249-a3eaa9e2b1d4",
+        "4edfb2c8-d387-5662-b5c6-05ae9a9d72bc",
+        "55c63575-de92-5e0b-8ca1-2e3aed2d8f97",
+        "57baa690-337b-5069-8f73-282062e54ae4",
+        "707d178b-1f75-5322-8a41-e825863cc8c8",
+        "83bdd8f0-6583-5e39-8bf9-2dabf950e814",
+        "94182204-798a-5d00-93d2-c24374c0e223",
+        "a6325104-6bc5-5abe-bc6a-f63ef2a9856c",
+        "a9633b89-9de2-550f-aaa3-34395661530f",
+        "b2524bc3-9fb7-5e11-92bc-1715b94cb806",
+        "b32da097-3696-59f4-941f-5ab8211e6f21",
+        "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+        "c515d35b-380f-579d-88b1-3b2bd20f60c4",
+        "ca9aa786-5d43-5b3d-b1ee-8e501169cd30",
+        "e354da16-e8ef-58d1-948d-7acb1403a73d",
+        "ecd9eacc-0556-5ba1-b06d-fe31767c6d53",
+        "f3be76d0-7f18-56a0-bcca-f9b57eae385c"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/app/artifact-panel/src/components/ArtifactPanel.tsx",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/app/artifact-panel/src/utils/fileTypes.ts",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactViewer.ts",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/utils/fileTypes.ts",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph_Knowledge level_from_Phase 72/MCP_modules_GROK.txt",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph_Knowledge level_from_Phase 72/input_matrix_idea.txt",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/153_ph/CODEX_REPORT_phase153_grok_research_requests_gap_matrix.md",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/files_routes.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/triple_write_routes.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/watcher_routes.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/qdrant_batch_manager.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/memory/qdrant_client.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners/base_scanner.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners/embedding_pipeline.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners/file_watcher.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners/local_scanner.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners/python_scanner.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners/qdrant_updater.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/artifact_scanner.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "141eb5f2-bfdc-4a5e-b549-cc2756dd71e6",
+      "chat_id": "39b21ae2-98b9-440f-af11-1280fb3b1487",
+      "timestamp": "2026-02-17T01:38:11.568152",
+      "action": "remove",
+      "node_ids": [
+        "0944e42c-b861-5c6a-8404-e488e919a8c4",
+        "2200d9d4-1cbf-5342-828e-66f45d2b1f8f",
+        "4799bbe6-2f25-5998-af67-049530348f46",
+        "590b9ec0-9be2-50f3-9e0b-0a00e14940c6",
+        "8d55136d-f2f2-53c4-a286-98afc0b1d29a",
+        "901db421-f2aa-5a02-a892-519cf84ebdb9",
+        "980d3da3-b3dc-59e7-8925-a69ab0528b8e"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/101_ph_eval_reactions/chat_into_vetka_grok.txt",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/handlers/chat_handler.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/chat_history_routes.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/chat_routes.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/chat/chat_manager.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/chat/chat_registry.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/utils/chat_utils.py"
+      ],
+      "message_id": null
+    },
+    {
+      "event_id": "ca258c05-2f7c-435d-8ec1-70bdde5f1535",
+      "chat_id": "0eaa0e15-ec69-44ae-882c-1e9a31c23e4e",
+      "timestamp": "2026-02-17T01:59:46.328925",
+      "action": "add",
+      "node_ids": [
+        "ebe1f0f4-a869-5e93-bf9b-3edcba3da2d9"
+      ],
+      "paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/153_ph/CODEX_RECON_phase153_gap_closure_independent_report.md"
+      ],
+      "message_id": null
+    }
+  ]
+}

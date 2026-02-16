@@ -1,8 +1,127 @@
 {
-  "cached_at": "2026-02-11T16:01:31.425994",
+  "cached_at": "2026-02-16T03:01:58.113669",
   "source": "mixed",
-  "count": 1586,
+  "count": 1591,
   "models": [
+    {
+      "id": "minimax/minimax-m2.5",
+      "canonical_slug": "minimax/minimax-m2.5-20260211",
+      "hugging_face_id": "MiniMaxAI/MiniMax-M2.5",
+      "name": "MiniMax: MiniMax M2.5",
+      "created": 1770908502,
+      "description": "MiniMax-M2.5 is a SOTA large language model designed for real-world productivity. Trained in a diverse range of complex real-world digital working environments, M2.5 builds upon the coding expertise of M2.1 to extend into general office work, reaching fluency in generating and operating Word, Excel, and Powerpoint files, context switching between diverse software environments, and working across different agent and human teams. Scoring 80.2% on SWE-Bench Verified, 51.3% on Multi-SWE-Bench, and 76.3% on BrowseComp, M2.5 is also more token efficient than previous generations, having been trained to optimize its actions and output through planning.",
+      "context_length": 196608,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.0000002",
+        "completion": "0.000001"
+      },
+      "top_provider": {
+        "context_length": 196608,
+        "max_completion_tokens": 131072,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "frequency_penalty",
+        "include_reasoning",
+        "logit_bias",
+        "logprobs",
+        "max_tokens",
+        "presence_penalty",
+        "reasoning",
+        "repetition_penalty",
+        "response_format",
+        "seed",
+        "stop",
+        "structured_outputs",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_k",
+        "top_logprobs",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "frequency_penalty": null
+      },
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "minimax",
+      "_compound_key": "minimax/minimax-m2.5@openrouter"
+    },
+    {
+      "id": "z-ai/glm-5",
+      "canonical_slug": "z-ai/glm-5-20260211",
+      "hugging_face_id": "zai-org/GLM-5",
+      "name": "Z.ai: GLM 5",
+      "created": 1770829182,
+      "description": "GLM-5 is Z.ai\u2019s flagship open-source foundation model engineered for complex systems design and long-horizon agent workflows. Built for expert developers, it delivers production-grade performance on large-scale programming tasks, rivaling leading closed-source models. With advanced agentic planning, deep backend reasoning, and iterative self-correction, GLM-5 moves beyond code generation to full-system construction and autonomous execution.",
+      "context_length": 204800,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Other",
+        "instruct_type": null
+      },
+      "pricing": {
+        "prompt": "0.00000075",
+        "completion": "0.00000255"
+      },
+      "top_provider": {
+        "context_length": 204800,
+        "max_completion_tokens": 131072,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "frequency_penalty",
+        "include_reasoning",
+        "logit_bias",
+        "logprobs",
+        "max_tokens",
+        "min_p",
+        "presence_penalty",
+        "reasoning",
+        "repetition_penalty",
+        "response_format",
+        "seed",
+        "stop",
+        "structured_outputs",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_k",
+        "top_logprobs",
+        "top_p"
+      ],
+      "default_parameters": {
+        "temperature": 1,
+        "top_p": 0.95,
+        "frequency_penalty": null
+      },
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "z-ai",
+      "_compound_key": "z-ai/glm-5@openrouter"
+    },
     {
       "id": "qwen/qwen3-max-thinking",
       "canonical_slug": "qwen/qwen3-max-thinking-20260123",
@@ -28,7 +147,7 @@
       },
       "top_provider": {
         "context_length": 262144,
-        "max_completion_tokens": 32768,
+        "max_completion_tokens": 65536,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -108,59 +227,6 @@
       "source": "openrouter",
       "provider": "openrouter",
       "_compound_key": "openrouter/aurora-alpha@openrouter"
-    },
-    {
-      "id": "openrouter/pony-alpha",
-      "canonical_slug": "openrouter/pony-alpha",
-      "hugging_face_id": "",
-      "name": "Pony Alpha",
-      "created": 1770393855,
-      "description": "Pony is a cutting-edge foundation model with strong performance in coding, agentic workflows, reasoning, and roleplay, making it well suited for hands-on coding and real-world use.\n\n**Note:** All prompts and completions for this model are logged by the provider and may be used to improve the model.",
-      "context_length": 200000,
-      "architecture": {
-        "modality": "text->text",
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ],
-        "tokenizer": "Other",
-        "instruct_type": null
-      },
-      "pricing": {
-        "prompt": "0",
-        "completion": "0",
-        "request": "0",
-        "image": "0",
-        "web_search": "0",
-        "internal_reasoning": "0"
-      },
-      "top_provider": {
-        "context_length": 200000,
-        "max_completion_tokens": 131000,
-        "is_moderated": false
-      },
-      "per_request_limits": null,
-      "supported_parameters": [
-        "include_reasoning",
-        "max_tokens",
-        "reasoning",
-        "response_format",
-        "structured_outputs",
-        "temperature",
-        "tools",
-        "top_p"
-      ],
-      "default_parameters": {
-        "temperature": 1,
-        "top_p": 0.95,
-        "frequency_penalty": null
-      },
-      "expiration_date": null,
-      "source": "openrouter",
-      "provider": "openrouter",
-      "_compound_key": "openrouter/pony-alpha@openrouter"
     },
     {
       "id": "anthropic/claude-opus-4.6",
@@ -460,7 +526,11 @@
       },
       "pricing": {
         "prompt": "0",
-        "completion": "0"
+        "completion": "0",
+        "request": "0",
+        "image": "0",
+        "web_search": "0",
+        "internal_reasoning": "0"
       },
       "top_provider": {
         "context_length": 131000,
@@ -509,12 +579,12 @@
       },
       "pricing": {
         "prompt": "0.00000045",
-        "completion": "0.00000225",
-        "input_cache_read": "0.000000070000002"
+        "completion": "0.00000044",
+        "input_cache_read": "0.0000001125"
       },
       "top_provider": {
         "context_length": 262144,
-        "max_completion_tokens": null,
+        "max_completion_tokens": 65535,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -525,8 +595,10 @@
         "logprobs",
         "max_tokens",
         "min_p",
+        "parallel_tool_calls",
         "presence_penalty",
         "reasoning",
+        "reasoning_effort",
         "repetition_penalty",
         "response_format",
         "seed",
@@ -922,7 +994,7 @@
       "id": "z-ai/glm-4.7-flash",
       "canonical_slug": "z-ai/glm-4.7-flash-20260119",
       "hugging_face_id": "zai-org/GLM-4.7-Flash",
-      "name": "Z.AI: GLM 4.7 Flash",
+      "name": "Z.ai: GLM 4.7 Flash",
       "created": 1768833913,
       "description": "As a 30B-class SOTA model, GLM-4.7-Flash offers a new option that balances performance and efficiency. It is further optimized for agentic coding use cases, strengthening coding capabilities, long-horizon task planning, and tool collaboration, and has achieved leading performance among open-source models of the same size on several current public benchmark leaderboards.",
       "context_length": 202752,
@@ -1009,20 +1081,14 @@
       },
       "per_request_limits": null,
       "supported_parameters": [
-        "frequency_penalty",
         "include_reasoning",
-        "logit_bias",
-        "logprobs",
         "max_tokens",
-        "presence_penalty",
         "reasoning",
         "response_format",
         "seed",
-        "stop",
         "structured_outputs",
         "tool_choice",
-        "tools",
-        "top_logprobs"
+        "tools"
       ],
       "default_parameters": {
         "temperature": null,
@@ -1327,9 +1393,9 @@
       "id": "z-ai/glm-4.7",
       "canonical_slug": "z-ai/glm-4.7-20251222",
       "hugging_face_id": "zai-org/GLM-4.7",
-      "name": "Z.AI: GLM 4.7",
+      "name": "Z.ai: GLM 4.7",
       "created": 1766378014,
-      "description": "GLM-4.7 is Z.AI\u2019s latest flagship model, featuring upgrades in two key areas: enhanced programming capabilities and more stable multi-step reasoning/execution. It demonstrates significant improvements in executing complex agent tasks while delivering more natural conversational experiences and superior front-end aesthetics.",
+      "description": "GLM-4.7 is Z.ai\u2019s latest flagship model, featuring upgrades in two key areas: enhanced programming capabilities and more stable multi-step reasoning/execution. It demonstrates significant improvements in executing complex agent tasks while delivering more natural conversational experiences and superior front-end aesthetics.",
       "context_length": 202752,
       "architecture": {
         "modality": "text->text",
@@ -1985,7 +2051,7 @@
       "id": "z-ai/glm-4.6v",
       "canonical_slug": "z-ai/glm-4.6-20251208",
       "hugging_face_id": "zai-org/GLM-4.6V",
-      "name": "Z.AI: GLM 4.6V",
+      "name": "Z.ai: GLM 4.6V",
       "created": 1765207462,
       "description": "GLM-4.6V is a large multimodal model designed for high-fidelity visual understanding and long-context reasoning across images, documents, and mixed media. It supports up to 128K tokens, processes complex page layouts and charts directly as visual inputs, and integrates native multimodal function calling to connect perception with downstream tool execution. The model also enables interleaved image-text generation and UI reconstruction workflows, including screenshot-to-HTML synthesis and iterative visual editing.",
       "context_length": 131072,
@@ -2606,21 +2672,15 @@
       },
       "per_request_limits": null,
       "supported_parameters": [
-        "frequency_penalty",
         "include_reasoning",
-        "logit_bias",
         "max_tokens",
-        "min_p",
-        "presence_penalty",
         "reasoning",
-        "repetition_penalty",
         "response_format",
         "stop",
         "structured_outputs",
         "temperature",
         "tool_choice",
         "tools",
-        "top_k",
         "top_p"
       ],
       "default_parameters": {
@@ -2806,62 +2866,6 @@
       "source": "openrouter",
       "provider": "prime-intellect",
       "_compound_key": "prime-intellect/intellect-3@openrouter"
-    },
-    {
-      "id": "tngtech/tng-r1t-chimera:free",
-      "canonical_slug": "tngtech/tng-r1t-chimera",
-      "hugging_face_id": null,
-      "name": "TNG: R1T Chimera (free)",
-      "created": 1764184161,
-      "description": "TNG-R1T-Chimera is an experimental LLM with a faible for creative storytelling and character interaction. It is a derivate of the original TNG/DeepSeek-R1T-Chimera released in April 2025 and is available exclusively via Chutes and OpenRouter.\n\nCharacteristics and improvements include:\n\nWe think that it has a creative and pleasant personality.\nIt has a preliminary EQ-Bench3 value of about 1305.\nIt is quite a bit more intelligent than the original, albeit a slightly slower.\nIt is much more think-token consistent, i.e. reasoning and answer blocks are properly delineated.\nTool calling is much improved.\n\nTNG Tech, the model authors, ask that users follow the careful guidelines that Microsoft has created for their \"MAI-DS-R1\" DeepSeek-based model. These guidelines are available on Hugging Face (https://huggingface.co/microsoft/MAI-DS-R1).",
-      "context_length": 163840,
-      "architecture": {
-        "modality": "text->text",
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ],
-        "tokenizer": "Other",
-        "instruct_type": null
-      },
-      "pricing": {
-        "prompt": "0",
-        "completion": "0"
-      },
-      "top_provider": {
-        "context_length": 163840,
-        "max_completion_tokens": 65536,
-        "is_moderated": false
-      },
-      "per_request_limits": null,
-      "supported_parameters": [
-        "frequency_penalty",
-        "include_reasoning",
-        "max_tokens",
-        "presence_penalty",
-        "reasoning",
-        "repetition_penalty",
-        "response_format",
-        "seed",
-        "stop",
-        "structured_outputs",
-        "temperature",
-        "tool_choice",
-        "tools",
-        "top_k",
-        "top_p"
-      ],
-      "default_parameters": {
-        "temperature": null,
-        "top_p": null,
-        "frequency_penalty": null
-      },
-      "expiration_date": null,
-      "source": "openrouter",
-      "provider": "tngtech",
-      "_compound_key": "tngtech/tng-r1t-chimera:free@openrouter"
     },
     {
       "id": "tngtech/tng-r1t-chimera",
@@ -4111,7 +4115,7 @@
       "name": "Qwen: Qwen3 VL 32B Instruct",
       "created": 1761231332,
       "description": "Qwen3-VL-32B-Instruct is a large-scale multimodal vision-language model designed for high-precision understanding and reasoning across text, images, and video. With 32 billion parameters, it combines deep visual perception with advanced text comprehension, enabling fine-grained spatial reasoning, document and scene analysis, and long-horizon video understanding.Robust OCR in 32 languages, and enhanced multimodal fusion through Interleaved-MRoPE and DeepStack architectures. Optimized for agentic interaction and visual tool use, Qwen3-VL-32B delivers state-of-the-art performance for complex real-world multimodal tasks.",
-      "context_length": 262144,
+      "context_length": 131072,
       "architecture": {
         "modality": "text+image->text",
         "input_modalities": [
@@ -4125,12 +4129,12 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0.0000005",
-        "completion": "0.0000015"
+        "prompt": "0.000000104",
+        "completion": "0.000000416"
       },
       "top_provider": {
-        "context_length": 262144,
-        "max_completion_tokens": null,
+        "context_length": 131072,
+        "max_completion_tokens": 32768,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -4142,9 +4146,12 @@
         "presence_penalty",
         "repetition_penalty",
         "response_format",
+        "seed",
         "stop",
         "structured_outputs",
         "temperature",
+        "tool_choice",
+        "tools",
         "top_k",
         "top_p"
       ],
@@ -4153,7 +4160,7 @@
         "top_p": null,
         "frequency_penalty": null
       },
-      "expiration_date": null,
+      "expiration_date": "2026-02-25",
       "capabilities": [
         "vision"
       ],
@@ -4458,8 +4465,8 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0.00000018",
-        "completion": "0.0000021"
+        "prompt": "0.000000117",
+        "completion": "0.000001365"
       },
       "top_provider": {
         "context_length": 131072,
@@ -4929,8 +4936,12 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0.0000002",
-        "completion": "0.000001"
+        "prompt": "0",
+        "completion": "0",
+        "request": "0",
+        "image": "0",
+        "web_search": "0",
+        "internal_reasoning": "0"
       },
       "top_provider": {
         "context_length": 131072,
@@ -4974,7 +4985,7 @@
       "name": "Qwen: Qwen3 VL 30B A3B Instruct",
       "created": 1759794476,
       "description": "Qwen3-VL-30B-A3B-Instruct is a multimodal model that unifies strong text generation with visual understanding for images and videos. Its Instruct variant optimizes instruction-following for general multimodal tasks. It excels in perception of real-world/synthetic categories, 2D/3D spatial grounding, and long-form visual comprehension, achieving competitive multimodal benchmark results. For agentic use, it handles multi-image multi-turn instructions, video timeline alignments, GUI automation, and visual coding from sketches to debugged UI. Text performance matches flagship Qwen3 models, suiting document AI, OCR, UI assistance, spatial tasks, and agent research.",
-      "context_length": 262144,
+      "context_length": 131072,
       "architecture": {
         "modality": "text+image->text",
         "input_modalities": [
@@ -4988,20 +4999,17 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0.00000015",
-        "completion": "0.0000006",
-        "input_cache_read": "0.000000075"
+        "prompt": "0.00000013",
+        "completion": "0.00000052"
       },
       "top_provider": {
-        "context_length": 262144,
-        "max_completion_tokens": null,
+        "context_length": 131072,
+        "max_completion_tokens": 32768,
         "is_moderated": false
       },
       "per_request_limits": null,
       "supported_parameters": [
         "frequency_penalty",
-        "logit_bias",
-        "logprobs",
         "max_tokens",
         "min_p",
         "presence_penalty",
@@ -5014,7 +5022,6 @@
         "tool_choice",
         "tools",
         "top_k",
-        "top_logprobs",
         "top_p"
       ],
       "default_parameters": {
@@ -5089,7 +5096,7 @@
       "id": "z-ai/glm-4.6",
       "canonical_slug": "z-ai/glm-4.6",
       "hugging_face_id": "",
-      "name": "Z.AI: GLM 4.6",
+      "name": "Z.ai: GLM 4.6",
       "created": 1759235576,
       "description": "Compared with GLM-4.5, this generation brings several key improvements:\n\nLonger context window: The context window has been expanded from 128K to 200K tokens, enabling the model to handle more complex agentic tasks.\nSuperior coding performance: The model achieves higher scores on code benchmarks and demonstrates better real-world performance in applications such as Claude Code\u3001Cline\u3001Roo Code and Kilo Code, including improvements in generating visually polished front-end pages.\nAdvanced reasoning: GLM-4.6 shows a clear improvement in reasoning performance and supports tool use during inference, leading to stronger overall capability.\nMore capable agents: GLM-4.6 exhibits stronger performance in tool using and search-based agents, and integrates more effectively within agent frameworks.\nRefined writing: Better aligns with human preferences in style and readability, and performs more naturally in role-playing scenarios.",
       "context_length": 202752,
@@ -5119,7 +5126,6 @@
         "frequency_penalty",
         "include_reasoning",
         "logit_bias",
-        "logprobs",
         "max_tokens",
         "min_p",
         "presence_penalty",
@@ -5132,9 +5138,7 @@
         "temperature",
         "tool_choice",
         "tools",
-        "top_a",
         "top_k",
-        "top_logprobs",
         "top_p"
       ],
       "default_parameters": {
@@ -5151,7 +5155,7 @@
       "id": "z-ai/glm-4.6:exacto",
       "canonical_slug": "z-ai/glm-4.6",
       "hugging_face_id": "",
-      "name": "Z.AI: GLM 4.6 (exacto)",
+      "name": "Z.ai: GLM 4.6 (exacto)",
       "created": 1759235576,
       "description": "Compared with GLM-4.5, this generation brings several key improvements:\n\nLonger context window: The context window has been expanded from 128K to 200K tokens, enabling the model to handle more complex agentic tasks.\nSuperior coding performance: The model achieves higher scores on code benchmarks and demonstrates better real-world performance in applications such as Claude Code\u3001Cline\u3001Roo Code and Kilo Code, including improvements in generating visually polished front-end pages.\nAdvanced reasoning: GLM-4.6 shows a clear improvement in reasoning performance and supports tool use during inference, leading to stronger overall capability.\nMore capable agents: GLM-4.6 exhibits stronger performance in tool using and search-based agents, and integrates more effectively within agent frameworks.\nRefined writing: Better aligns with human preferences in style and readability, and performs more naturally in role-playing scenarios.",
       "context_length": 204800,
@@ -5556,7 +5560,7 @@
       "name": "Qwen: Qwen3 VL 235B A22B Thinking",
       "created": 1758668690,
       "description": "Qwen3-VL-235B-A22B Thinking is a multimodal model that unifies strong text generation with visual understanding across images and video. The Thinking model is optimized for multimodal reasoning in STEM and math. The series emphasizes robust perception (recognition of diverse real-world and synthetic categories), spatial understanding (2D/3D grounding), and long-form visual comprehension, with competitive results on public multimodal benchmarks for both perception and reasoning.\n\nBeyond analysis, Qwen3-VL supports agentic interaction and tool use: it can follow complex instructions over multi-image, multi-turn dialogues; align text to video timelines for precise temporal queries; and operate GUI elements for automation tasks. The models also enable visual coding workflows, turning sketches or mockups into code and assisting with UI debugging, while maintaining strong text-only performance comparable to the flagship Qwen3 language models. This makes Qwen3-VL suitable for production scenarios spanning document AI, multilingual OCR, software/UI assistance, spatial/embodied tasks, and research on vision-language agents.",
-      "context_length": 262144,
+      "context_length": 131072,
       "architecture": {
         "modality": "text+image->text",
         "input_modalities": [
@@ -5570,12 +5574,16 @@
         "instruct_type": null
       },
       "pricing": {
-        "prompt": "0.00000045",
-        "completion": "0.0000035"
+        "prompt": "0",
+        "completion": "0",
+        "request": "0",
+        "image": "0",
+        "web_search": "0",
+        "internal_reasoning": "0"
       },
       "top_provider": {
-        "context_length": 262144,
-        "max_completion_tokens": 262144,
+        "context_length": 131072,
+        "max_completion_tokens": 32768,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -5643,7 +5651,6 @@
       "supported_parameters": [
         "frequency_penalty",
         "logit_bias",
-        "logprobs",
         "max_tokens",
         "min_p",
         "presence_penalty",
@@ -5656,7 +5663,6 @@
         "tool_choice",
         "tools",
         "top_k",
-        "top_logprobs",
         "top_p"
       ],
       "default_parameters": {
@@ -7146,7 +7152,7 @@
       "id": "z-ai/glm-4.5v",
       "canonical_slug": "z-ai/glm-4.5v",
       "hugging_face_id": "zai-org/GLM-4.5V",
-      "name": "Z.AI: GLM 4.5V",
+      "name": "Z.ai: GLM 4.5V",
       "created": 1754922288,
       "description": "GLM-4.5V is a vision-language foundation model for multimodal agent applications. Built on a Mixture-of-Experts (MoE) architecture with 106B parameters and 12B activated parameters, it achieves state-of-the-art results in video understanding, image Q&A, OCR, and document parsing, with strong gains in front-end web coding, grounding, and spatial reasoning. It offers a hybrid inference mode: a \"thinking mode\" for deep reasoning and a \"non-thinking mode\" for fast responses. Reasoning behavior can be toggled via the `reasoning` `enabled` boolean. [Learn more in our docs](https://openrouter.ai/docs/use-cases/reasoning-tokens#enable-reasoning-with-default-config)",
       "context_length": 65536,
@@ -7945,7 +7951,7 @@
       "id": "z-ai/glm-4.5",
       "canonical_slug": "z-ai/glm-4.5",
       "hugging_face_id": "zai-org/GLM-4.5",
-      "name": "Z.AI: GLM 4.5",
+      "name": "Z.ai: GLM 4.5",
       "created": 1753471347,
       "description": "GLM-4.5 is our latest flagship foundation model, purpose-built for agent-based applications. It leverages a Mixture-of-Experts (MoE) architecture and supports a context length of up to 128k tokens. GLM-4.5 delivers significantly enhanced capabilities in reasoning, code generation, and agent alignment. It supports a hybrid inference mode with two options, a \"thinking mode\" designed for complex reasoning and tool use, and a \"non-thinking mode\" optimized for instant responses. Users can control the reasoning behaviour with the `reasoning` `enabled` boolean. [Learn more in our docs](https://openrouter.ai/docs/use-cases/reasoning-tokens#enable-reasoning-with-default-config)",
       "context_length": 131072,
@@ -8002,7 +8008,7 @@
       "id": "z-ai/glm-4.5-air:free",
       "canonical_slug": "z-ai/glm-4.5-air",
       "hugging_face_id": "zai-org/GLM-4.5-Air",
-      "name": "Z.AI: GLM 4.5 Air (free)",
+      "name": "Z.ai: GLM 4.5 Air (free)",
       "created": 1753471258,
       "description": "GLM-4.5-Air is the lightweight variant of our latest flagship model family, also purpose-built for agent-centric applications. Like GLM-4.5, it adopts the Mixture-of-Experts (MoE) architecture but with a more compact parameter size. GLM-4.5-Air also supports hybrid inference modes, offering a \"thinking mode\" for advanced reasoning and tool use, and a \"non-thinking mode\" for real-time interaction. Users can control the reasoning behaviour with the `reasoning` `enabled` boolean. [Learn more in our docs](https://openrouter.ai/docs/use-cases/reasoning-tokens#enable-reasoning-with-default-config)",
       "context_length": 131072,
@@ -8050,7 +8056,7 @@
       "id": "z-ai/glm-4.5-air",
       "canonical_slug": "z-ai/glm-4.5-air",
       "hugging_face_id": "zai-org/GLM-4.5-Air",
-      "name": "Z.AI: GLM 4.5 Air",
+      "name": "Z.ai: GLM 4.5 Air",
       "created": 1753471258,
       "description": "GLM-4.5-Air is the lightweight variant of our latest flagship model family, also purpose-built for agent-centric applications. Like GLM-4.5, it adopts the Mixture-of-Experts (MoE) architecture but with a more compact parameter size. GLM-4.5-Air also supports hybrid inference modes, offering a \"thinking mode\" for advanced reasoning and tool use, and a \"non-thinking mode\" for real-time interaction. Users can control the reasoning behaviour with the `reasoning` `enabled` boolean. [Learn more in our docs](https://openrouter.ai/docs/use-cases/reasoning-tokens#enable-reasoning-with-default-config)",
       "context_length": 131072,
@@ -8110,7 +8116,7 @@
       "name": "Qwen: Qwen3 235B A22B Thinking 2507",
       "created": 1753449557,
       "description": "Qwen3-235B-A22B-Thinking-2507 is a high-performance, open-weight Mixture-of-Experts (MoE) language model optimized for complex reasoning tasks. It activates 22B of its 235B parameters per forward pass and natively supports up to 262,144 tokens of context. This \"thinking-only\" variant enhances structured logical reasoning, mathematics, science, and long-form generation, showing strong benchmark performance across AIME, SuperGPQA, LiveCodeBench, and MMLU-Redux. It enforces a special reasoning mode (</think>) and is designed for high-token outputs (up to 81,920 tokens) in challenging domains.\n\nThe model is instruction-tuned and excels at step-by-step reasoning, tool use, agentic workflows, and multilingual tasks. This release represents the most capable open-source variant in the Qwen3-235B series, surpassing many closed models in structured reasoning use cases.",
-      "context_length": 262144,
+      "context_length": 131072,
       "architecture": {
         "modality": "text->text",
         "input_modalities": [
@@ -8123,13 +8129,16 @@
         "instruct_type": "qwen3"
       },
       "pricing": {
-        "prompt": "0.00000011",
-        "completion": "0.0000006",
-        "input_cache_read": "0.000000055"
+        "prompt": "0",
+        "completion": "0",
+        "request": "0",
+        "image": "0",
+        "web_search": "0",
+        "internal_reasoning": "0"
       },
       "top_provider": {
-        "context_length": 262144,
-        "max_completion_tokens": 262144,
+        "context_length": 131072,
+        "max_completion_tokens": null,
         "is_moderated": false
       },
       "per_request_limits": null,
@@ -8166,7 +8175,7 @@
       "id": "z-ai/glm-4-32b",
       "canonical_slug": "z-ai/glm-4-32b-0414",
       "hugging_face_id": "",
-      "name": "Z.AI: GLM 4 32B ",
+      "name": "Z.ai: GLM 4 32B ",
       "created": 1753376617,
       "description": "GLM 4 32B is a cost-effective foundation language model.\n\nIt can efficiently perform complex tasks and has significantly enhanced capabilities in tool use, online search, and code-related intelligent tasks.\n\nIt is made by the same lab behind the thudm models.",
       "context_length": 128000,
@@ -8287,11 +8296,9 @@
       "supported_parameters": [
         "frequency_penalty",
         "logit_bias",
-        "logprobs",
         "max_tokens",
         "min_p",
         "presence_penalty",
-        "reasoning",
         "repetition_penalty",
         "response_format",
         "seed",
@@ -8301,7 +8308,6 @@
         "tool_choice",
         "tools",
         "top_k",
-        "top_logprobs",
         "top_p"
       ],
       "default_parameters": {},
@@ -8925,54 +8931,6 @@
       "_compound_key": "tencent/hunyuan-a13b-instruct@openrouter"
     },
     {
-      "id": "tngtech/deepseek-r1t2-chimera:free",
-      "canonical_slug": "tngtech/deepseek-r1t2-chimera",
-      "hugging_face_id": "tngtech/DeepSeek-TNG-R1T2-Chimera",
-      "name": "TNG: DeepSeek R1T2 Chimera (free)",
-      "created": 1751986985,
-      "description": "DeepSeek-TNG-R1T2-Chimera is the second-generation Chimera model from TNG Tech. It is a 671 B-parameter mixture-of-experts text-generation model assembled from DeepSeek-AI\u2019s R1-0528, R1, and V3-0324 checkpoints with an Assembly-of-Experts merge. The tri-parent design yields strong reasoning performance while running roughly 20 % faster than the original R1 and more than 2\u00d7 faster than R1-0528 under vLLM, giving a favorable cost-to-intelligence trade-off. The checkpoint supports contexts up to 60 k tokens in standard use (tested to ~130 k) and maintains consistent <think> token behaviour, making it suitable for long-context analysis, dialogue and other open-ended generation tasks.",
-      "context_length": 163840,
-      "architecture": {
-        "modality": "text->text",
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ],
-        "tokenizer": "DeepSeek",
-        "instruct_type": null
-      },
-      "pricing": {
-        "prompt": "0",
-        "completion": "0"
-      },
-      "top_provider": {
-        "context_length": 163840,
-        "max_completion_tokens": null,
-        "is_moderated": false
-      },
-      "per_request_limits": null,
-      "supported_parameters": [
-        "frequency_penalty",
-        "include_reasoning",
-        "max_tokens",
-        "presence_penalty",
-        "reasoning",
-        "repetition_penalty",
-        "seed",
-        "stop",
-        "temperature",
-        "top_k",
-        "top_p"
-      ],
-      "default_parameters": {},
-      "expiration_date": null,
-      "source": "openrouter",
-      "provider": "tngtech",
-      "_compound_key": "tngtech/deepseek-r1t2-chimera:free@openrouter"
-    },
-    {
       "id": "tngtech/deepseek-r1t2-chimera",
       "canonical_slug": "tngtech/deepseek-r1t2-chimera",
       "hugging_face_id": "tngtech/DeepSeek-TNG-R1T2-Chimera",
@@ -9368,7 +9326,11 @@
         "top_k",
         "top_p"
       ],
-      "default_parameters": {},
+      "default_parameters": {
+        "temperature": null,
+        "top_p": null,
+        "frequency_penalty": null
+      },
       "expiration_date": null,
       "source": "openrouter",
       "provider": "minimax",
@@ -10521,6 +10483,53 @@
       "_compound_key": "qwen/qwen3-4b:free@openrouter"
     },
     {
+      "id": "qwen/qwen3-4b",
+      "canonical_slug": "qwen/qwen3-4b-04-28",
+      "hugging_face_id": "Qwen/Qwen3-4B",
+      "name": "Qwen: Qwen3 4B",
+      "created": 1746031104,
+      "description": "Qwen3-4B is a 4 billion parameter dense language model from the Qwen3 series, designed to support both general-purpose and reasoning-intensive tasks. It introduces a dual-mode architecture\u2014thinking and non-thinking\u2014allowing dynamic switching between high-precision logical reasoning and efficient dialogue generation. This makes it well-suited for multi-turn chat, instruction following, and complex agent workflows.",
+      "context_length": 131072,
+      "architecture": {
+        "modality": "text->text",
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "tokenizer": "Qwen3",
+        "instruct_type": "qwen3"
+      },
+      "pricing": {
+        "prompt": "0.0000000715",
+        "completion": "0.000000273"
+      },
+      "top_provider": {
+        "context_length": 131072,
+        "max_completion_tokens": 8192,
+        "is_moderated": false
+      },
+      "per_request_limits": null,
+      "supported_parameters": [
+        "include_reasoning",
+        "max_tokens",
+        "presence_penalty",
+        "reasoning",
+        "response_format",
+        "seed",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_p"
+      ],
+      "default_parameters": {},
+      "expiration_date": null,
+      "source": "openrouter",
+      "provider": "qwen",
+      "_compound_key": "qwen/qwen3-4b@openrouter"
+    },
+    {
       "id": "meta-llama/llama-guard-4-12b",
       "canonical_slug": "meta-llama/llama-guard-4-12b",
       "hugging_face_id": "meta-llama/Llama-Guard-4-12B",
@@ -10664,8 +10673,10 @@
       "supported_parameters": [
         "include_reasoning",
         "max_tokens",
+        "presence_penalty",
         "reasoning",
         "response_format",
+        "seed",
         "structured_outputs",
         "temperature",
         "tool_choice",
@@ -10799,7 +10810,7 @@
       "name": "Qwen: Qwen3 235B A22B",
       "created": 1745875757,
       "description": "Qwen3-235B-A22B is a 235B parameter mixture-of-experts (MoE) model developed by Qwen, activating 22B parameters per forward pass. It supports seamless switching between a \"thinking\" mode for complex reasoning, math, and code tasks, and a \"non-thinking\" mode for general conversational efficiency. The model demonstrates strong reasoning ability, multilingual support (100+ languages and dialects), advanced instruction-following, and agent tool-calling capabilities. It natively handles a 32K token context window and extends up to 131K tokens using YaRN-based scaling.",
-      "context_length": 131072,
+      "context_length": 40960,
       "architecture": {
         "modality": "text->text",
         "input_modalities": [
@@ -10812,21 +10823,19 @@
         "instruct_type": "qwen3"
       },
       "pricing": {
-        "prompt": "0.00000022",
-        "completion": "0.00000088",
-        "input_cache_read": "0.00000011"
+        "prompt": "0.0000003",
+        "completion": "0.0000012",
+        "input_cache_read": "0.00000015"
       },
       "top_provider": {
-        "context_length": 131072,
-        "max_completion_tokens": null,
+        "context_length": 40960,
+        "max_completion_tokens": 40960,
         "is_moderated": false
       },
       "per_request_limits": null,
       "supported_parameters": [
         "frequency_penalty",
         "include_reasoning",
-        "logit_bias",
-        "logprobs",
         "max_tokens",
         "presence_penalty",
         "reasoning",
@@ -10839,7 +10848,6 @@
         "tool_choice",
         "tools",
         "top_k",
-        "top_logprobs",
         "top_p"
       ],
       "default_parameters": {},
@@ -10847,54 +10855,6 @@
       "source": "openrouter",
       "provider": "qwen",
       "_compound_key": "qwen/qwen3-235b-a22b@openrouter"
-    },
-    {
-      "id": "tngtech/deepseek-r1t-chimera:free",
-      "canonical_slug": "tngtech/deepseek-r1t-chimera",
-      "hugging_face_id": "tngtech/DeepSeek-R1T-Chimera",
-      "name": "TNG: DeepSeek R1T Chimera (free)",
-      "created": 1745760875,
-      "description": "DeepSeek-R1T-Chimera is created by merging DeepSeek-R1 and DeepSeek-V3 (0324), combining the reasoning capabilities of R1 with the token efficiency improvements of V3. It is based on a DeepSeek-MoE Transformer architecture and is optimized for general text generation tasks.\n\nThe model merges pretrained weights from both source models to balance performance across reasoning, efficiency, and instruction-following tasks. It is released under the MIT license and intended for research and commercial use.",
-      "context_length": 163840,
-      "architecture": {
-        "modality": "text->text",
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ],
-        "tokenizer": "DeepSeek",
-        "instruct_type": null
-      },
-      "pricing": {
-        "prompt": "0",
-        "completion": "0"
-      },
-      "top_provider": {
-        "context_length": 163840,
-        "max_completion_tokens": null,
-        "is_moderated": false
-      },
-      "per_request_limits": null,
-      "supported_parameters": [
-        "frequency_penalty",
-        "include_reasoning",
-        "max_tokens",
-        "presence_penalty",
-        "reasoning",
-        "repetition_penalty",
-        "seed",
-        "stop",
-        "temperature",
-        "top_k",
-        "top_p"
-      ],
-      "default_parameters": {},
-      "expiration_date": null,
-      "source": "openrouter",
-      "provider": "tngtech",
-      "_compound_key": "tngtech/deepseek-r1t-chimera:free@openrouter"
     },
     {
       "id": "tngtech/deepseek-r1t-chimera",
@@ -11701,8 +11661,6 @@
       "per_request_limits": null,
       "supported_parameters": [
         "frequency_penalty",
-        "logit_bias",
-        "logprobs",
         "max_tokens",
         "min_p",
         "presence_penalty",
@@ -11713,7 +11671,6 @@
         "structured_outputs",
         "temperature",
         "top_k",
-        "top_logprobs",
         "top_p"
       ],
       "default_parameters": {},
@@ -13361,7 +13318,6 @@
         "frequency_penalty",
         "logit_bias",
         "max_tokens",
-        "min_p",
         "presence_penalty",
         "repetition_penalty",
         "response_format",
@@ -13811,7 +13767,11 @@
         "temperature",
         "top_p"
       ],
-      "default_parameters": {},
+      "default_parameters": {
+        "temperature": null,
+        "top_p": null,
+        "frequency_penalty": null
+      },
       "expiration_date": null,
       "capabilities": [
         "vision"
@@ -14867,106 +14827,6 @@
       "_compound_key": "anthropic/claude-3.5-sonnet@openrouter"
     },
     {
-      "id": "mistralai/ministral-8b",
-      "canonical_slug": "mistralai/ministral-8b",
-      "hugging_face_id": null,
-      "name": "Mistral: Ministral 8B",
-      "created": 1729123200,
-      "description": "Ministral 8B is an 8B parameter model featuring a unique interleaved sliding-window attention pattern for faster, memory-efficient inference. Designed for edge use cases, it supports up to 128k context length and excels in knowledge and reasoning tasks. It outperforms peers in the sub-10B category, making it perfect for low-latency, privacy-first applications.",
-      "context_length": 131072,
-      "architecture": {
-        "modality": "text->text",
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ],
-        "tokenizer": "Mistral",
-        "instruct_type": null
-      },
-      "pricing": {
-        "prompt": "0.0000001",
-        "completion": "0.0000001"
-      },
-      "top_provider": {
-        "context_length": 131072,
-        "max_completion_tokens": null,
-        "is_moderated": false
-      },
-      "per_request_limits": null,
-      "supported_parameters": [
-        "frequency_penalty",
-        "max_tokens",
-        "presence_penalty",
-        "response_format",
-        "seed",
-        "stop",
-        "structured_outputs",
-        "temperature",
-        "tool_choice",
-        "tools",
-        "top_p"
-      ],
-      "default_parameters": {
-        "temperature": 0.3
-      },
-      "expiration_date": null,
-      "source": "openrouter",
-      "provider": "mistralai",
-      "_compound_key": "mistralai/ministral-8b@openrouter"
-    },
-    {
-      "id": "mistralai/ministral-3b",
-      "canonical_slug": "mistralai/ministral-3b",
-      "hugging_face_id": null,
-      "name": "Mistral: Ministral 3B",
-      "created": 1729123200,
-      "description": "Ministral 3B is a 3B parameter model optimized for on-device and edge computing. It excels in knowledge, commonsense reasoning, and function-calling, outperforming larger models like Mistral 7B on most benchmarks. Supporting up to 128k context length, it\u2019s ideal for orchestrating agentic workflows and specialist tasks with efficient inference.",
-      "context_length": 131072,
-      "architecture": {
-        "modality": "text->text",
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ],
-        "tokenizer": "Mistral",
-        "instruct_type": null
-      },
-      "pricing": {
-        "prompt": "0.00000004",
-        "completion": "0.00000004"
-      },
-      "top_provider": {
-        "context_length": 131072,
-        "max_completion_tokens": null,
-        "is_moderated": false
-      },
-      "per_request_limits": null,
-      "supported_parameters": [
-        "frequency_penalty",
-        "max_tokens",
-        "presence_penalty",
-        "response_format",
-        "seed",
-        "stop",
-        "structured_outputs",
-        "temperature",
-        "tool_choice",
-        "tools",
-        "top_p"
-      ],
-      "default_parameters": {
-        "temperature": 0.3
-      },
-      "expiration_date": null,
-      "source": "openrouter",
-      "provider": "mistralai",
-      "_compound_key": "mistralai/ministral-3b@openrouter"
-    },
-    {
       "id": "qwen/qwen-2.5-7b-instruct",
       "canonical_slug": "qwen/qwen-2.5-7b-instruct",
       "hugging_face_id": "Qwen/Qwen2.5-7B-Instruct",
@@ -15491,64 +15351,6 @@
       "source": "openrouter",
       "provider": "neversleep",
       "_compound_key": "neversleep/llama-3.1-lumimaid-8b@openrouter"
-    },
-    {
-      "id": "mistralai/pixtral-12b",
-      "canonical_slug": "mistralai/pixtral-12b",
-      "hugging_face_id": "mistralai/Pixtral-12B-2409",
-      "name": "Mistral: Pixtral 12B",
-      "created": 1725926400,
-      "description": "The first multi-modal, text+image-to-text model from Mistral AI. Its weights were launched via torrent: https://x.com/mistralai/status/1833758285167722836.",
-      "context_length": 32768,
-      "architecture": {
-        "modality": "text+image->text",
-        "input_modalities": [
-          "text",
-          "image"
-        ],
-        "output_modalities": [
-          "text"
-        ],
-        "tokenizer": "Mistral",
-        "instruct_type": null
-      },
-      "pricing": {
-        "prompt": "0.0000001",
-        "completion": "0.0000001"
-      },
-      "top_provider": {
-        "context_length": 32768,
-        "max_completion_tokens": null,
-        "is_moderated": false
-      },
-      "per_request_limits": null,
-      "supported_parameters": [
-        "frequency_penalty",
-        "logit_bias",
-        "max_tokens",
-        "min_p",
-        "presence_penalty",
-        "repetition_penalty",
-        "response_format",
-        "seed",
-        "stop",
-        "structured_outputs",
-        "temperature",
-        "tool_choice",
-        "tools",
-        "top_k",
-        "top_p"
-      ],
-      "default_parameters": {
-        "temperature": 0.3
-      },
-      "expiration_date": null,
-      "capabilities": [
-        "vision"
-      ],
-      "source": "openrouter",
-      "provider": "mistralai",
-      "_compound_key": "mistralai/pixtral-12b@openrouter"
     },
     {
       "id": "cohere/command-r-08-2024",
@@ -16751,7 +16553,7 @@
         "top_p"
       ],
       "default_parameters": {},
-      "expiration_date": null,
+      "expiration_date": "2026-02-25",
       "source": "openrouter",
       "provider": "meta-llama",
       "_compound_key": "meta-llama/llama-guard-2-8b@openrouter"
@@ -17084,7 +16886,7 @@
       "name": "WizardLM-2 8x22B",
       "created": 1713225600,
       "description": "WizardLM-2 8x22B is Microsoft AI's most advanced Wizard model. It demonstrates highly competitive performance compared to leading proprietary models, and it consistently outperforms all existing state-of-the-art opensource models.\n\nIt is an instruct finetune of [Mixtral 8x22B](/models/mistralai/mixtral-8x22b).\n\nTo read more about the model release, [click here](https://wizardlm.github.io/WizardLM2/).\n\n#moe",
-      "context_length": 65536,
+      "context_length": 65535,
       "architecture": {
         "modality": "text->text",
         "input_modalities": [
@@ -17097,22 +16899,20 @@
         "instruct_type": "vicuna"
       },
       "pricing": {
-        "prompt": "0.00000048",
-        "completion": "0.00000048"
+        "prompt": "0.00000062",
+        "completion": "0.00000062"
       },
       "top_provider": {
-        "context_length": 65536,
-        "max_completion_tokens": 16384,
+        "context_length": 65535,
+        "max_completion_tokens": 8000,
         "is_moderated": false
       },
       "per_request_limits": null,
       "supported_parameters": [
         "frequency_penalty",
         "max_tokens",
-        "min_p",
         "presence_penalty",
         "repetition_penalty",
-        "response_format",
         "seed",
         "stop",
         "temperature",
@@ -17381,56 +17181,6 @@
       "source": "openrouter",
       "provider": "openai",
       "_compound_key": "openai/gpt-4-turbo-preview@openrouter"
-    },
-    {
-      "id": "mistralai/mistral-tiny",
-      "canonical_slug": "mistralai/mistral-tiny",
-      "hugging_face_id": null,
-      "name": "Mistral Tiny",
-      "created": 1704844800,
-      "description": "Note: This model is being deprecated. Recommended replacement is the newer [Ministral 8B](/mistral/ministral-8b)\n\nThis model is currently powered by Mistral-7B-v0.2, and incorporates a \"better\" fine-tuning than [Mistral 7B](/models/mistralai/mistral-7b-instruct-v0.1), inspired by community work. It's best used for large batch processing tasks where cost is a significant factor but reasoning capabilities are not crucial.",
-      "context_length": 32768,
-      "architecture": {
-        "modality": "text->text",
-        "input_modalities": [
-          "text"
-        ],
-        "output_modalities": [
-          "text"
-        ],
-        "tokenizer": "Mistral",
-        "instruct_type": null
-      },
-      "pricing": {
-        "prompt": "0.00000025",
-        "completion": "0.00000025"
-      },
-      "top_provider": {
-        "context_length": 32768,
-        "max_completion_tokens": null,
-        "is_moderated": false
-      },
-      "per_request_limits": null,
-      "supported_parameters": [
-        "frequency_penalty",
-        "max_tokens",
-        "presence_penalty",
-        "response_format",
-        "seed",
-        "stop",
-        "structured_outputs",
-        "temperature",
-        "tool_choice",
-        "tools",
-        "top_p"
-      ],
-      "default_parameters": {
-        "temperature": 0.3
-      },
-      "expiration_date": null,
-      "source": "openrouter",
-      "provider": "mistralai",
-      "_compound_key": "mistralai/mistral-tiny@openrouter"
     },
     {
       "id": "mistralai/mistral-7b-instruct-v0.2",
@@ -18227,19 +17977,6 @@
       "_compound_key": "google/gemini-2.0-flash@gemini_direct"
     },
     {
-      "id": "google/gemini-2.0-flash-exp-image-generation",
-      "name": "Gemini 2.0 Flash (Image Generation) Experimental",
-      "description": "Gemini 2.0 Flash (Image Generation) Experimental",
-      "context_length": 1048576,
-      "pricing": {
-        "prompt": "0.00015",
-        "completion": "0.0006"
-      },
-      "provider": "google",
-      "source": "gemini_direct",
-      "_compound_key": "google/gemini-2.0-flash-exp-image-generation@gemini_direct"
-    },
-    {
       "id": "google/gemini-2.0-flash-lite",
       "name": "Gemini 2.0 Flash-Lite",
       "description": "Gemini 2.0 Flash-Lite",
@@ -18602,6 +18339,36 @@
       "provider": "google",
       "source": "gemini_direct",
       "_compound_key": "google/gemini-2.5-flash-native-audio-preview-12-2025@gemini_direct"
+    },
+    {
+      "id": "minimax/minimax-m2.5",
+      "name": "MiniMax: MiniMax M2.5 (Polza)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "polza",
+      "source": "polza",
+      "source_display": "Polza",
+      "owned_by": "polza",
+      "_compound_key": "minimax/minimax-m2.5@polza"
+    },
+    {
+      "id": "z-ai/glm-5",
+      "name": "Z.ai: GLM 5 (Polza)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "polza",
+      "source": "polza",
+      "source_display": "Polza",
+      "owned_by": "polza",
+      "_compound_key": "z-ai/glm-5@polza"
     },
     {
       "id": "anthropic/claude-opus-4.6",
@@ -23717,25 +23484,6 @@
       "_compound_key": "gemini-3-pro@poe"
     },
     {
-      "id": "gpt-5.2-pro",
-      "name": "gpt-5.2-pro (Poe)",
-      "description": "A powerful reasoning model that is ideal for your most complex, highest difficulty tasks. On x-high reasoning effort, scores a 90.5% on ARC-AGI-1 benchmark, an incredibly difficult problem-solving benchmark where humans score 100%. Note: the model can take up to 30 minutes to think through a problem and is quite expensive. Supports 400k tokens of context and native vision.\n\nOptional parameters:\nTo instruct the bot to use more reasoning effort, add --reasoning_effort to the end of your message with one of \"medium\", \"high\" or \"Xhigh\" (default: \"medium\")\nUse `--web_search true` to enable web search and real-time information access, this is disabled by default.\nUse `--verbosity` to control response details at the end of your message with one of \"low\", medium\", or \"high\" (default: medium)",
-      "context_length": 400000,
-      "pricing": {
-        "prompt": "0.000019",
-        "completion": "0.00015",
-        "image": null,
-        "request": null,
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "OpenAI",
-      "_compound_key": "gpt-5.2-pro@poe"
-    },
-    {
       "id": "gpt-5.2",
       "name": "gpt-5.2 (Poe)",
       "description": "GPT-5.2 is a state-of-the-art AI model from OpenAI designed for real work across writing, analysis, coding, and problem solving. It handles long contexts and multi-step tasks better than earlier versions, and it\u2019s tuned to give accurate responses with fewer errors. Supports 400k tokens of context, and native vision.\n\nOptional parameters:\nTo instruct the bot to use more reasoning effort, add --reasoning_effort to the end of your message with one of \"low\", \"medium\", \"high\", or \"Xhigh\" (default: \"None\")\nUse `--web_search true` to enable web search and real-time information access, this is disabled by default.\nUse `--verbosity` to control response details at the end of your message with one of \"low\", medium\", \"high\" (default: medium)",
@@ -23753,6 +23501,30 @@
       "source_display": "Poe",
       "owned_by": "OpenAI",
       "_compound_key": "gpt-5.2@poe"
+    },
+    {
+      "id": "glm-5",
+      "name": "glm-5 (Poe)",
+      "description": "GLM-5 is an open-source foundation model engineered for complex system engineering and long-horizon Agent tasks, delivering reliable productivity for top-tier programmers. Transcending the boundary from \"writing code\" to \"building systems,\" it moves beyond traditional snippet generation to offer senior-architect-level planning and execution capabilities. By rejecting the \"frontend-heavy, logic-light\" approach, GLM-5 demonstrates exceptional reasoning and self-healing abilities in backend refactoring, complex algorithm implementation, and deep debugging\u2014autonomously analyzing logs and iteratively fixing persistent bugs until the system runs. As the first open-source model featuring Opus-class style and system engineering depth, GLM-5 provides extreme logic density alongside the freedom of local deployment and high cost-effectiveness, making it the ideal choice for large-scale backend development and automated Agent construction.\n\nFile Support: Text, Markdown and PDF files\nContext window: 205k tokens",
+      "context_length": null,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Novita AI",
+      "_compound_key": "glm-5@poe"
+    },
+    {
+      "id": "kimi-k2.5",
+      "name": "kimi-k2.5 (Poe)",
+      "description": "Kimi K2.5 is the latest flagship iteration of Moonshot AI's large language model series, representing a significant leap in multimodal and agentic capabilities. It features a native multimodal architecture supporting both visual and text inputs, alongside versatile thinking and non-thinking modes. This model maintains the substantial 256k token context window found in the K2 series but achieves new open-source state-of-the-art (SoTA) performance across general intelligence, coding, and visual understanding benchmarks. Kimi K2.5 delivers a breakthrough in frontend development, enabling the generation of fully functional, aesthetically polished interactive interfaces with complex dynamic layouts directly from natural language. Optimized for complex problem-solving, it excels in multi-step tool invocation, logical reasoning, and full-stack code synthesis.\n\nOptional parameters:\nUse `--enable_thinking true` to enable thinking about the response before giving a final answer. This is disabled by default.\nUse `--temperature` and set number from 0 to 2 to control randomness in the response. Lower values make the output more focused and deterministic. This is set to 0.7 by default\nUse `--max_output_tokens` and set number from 1 to 262144 to set number of tokens to generate in response. This is set to 262144 by default.",
+      "context_length": null,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Novita AI",
+      "_compound_key": "kimi-k2.5@poe"
     },
     {
       "id": "claude-sonnet-4.5",
@@ -23774,23 +23546,16 @@
       "_compound_key": "claude-sonnet-4.5@poe"
     },
     {
-      "id": "grok-4",
-      "name": "grok-4 (Poe)",
-      "description": "Grok 4 is xAI's latest and most intelligent language model. It features state-of-the-art capabilities in coding, reasoning, and answering questions. It excels at handling complex and multi-step tasks. Reasoning traces are not available via the xAI API.",
-      "context_length": 256000,
-      "pricing": {
-        "prompt": "0.0000030",
-        "completion": "0.000015",
-        "image": null,
-        "request": null,
-        "input_cache_read": "0.00000075",
-        "input_cache_write": null
-      },
+      "id": "minimax-m2.5",
+      "name": "minimax-m2.5 (Poe)",
+      "description": "Minimax-M2.5 is a SOTA large language model designed for real-world productivity. Trained in a diverse range of complex real-world digital working environments, M2.5 builds upon the coding expertise of M2.1 to extend into general office work, reaching fluency in generating and operating Word, Excel, and Powerpoint files, context switching between diverse software environments, and working across different agent and human teams. Scoring 80.2% on SWE-Bench Verified, 51.3% on Multi-SWE-Bench, and 76.3% on BrowseComp, M2.5 is also more token efficient than previous generations, having been trained to optimize its actions and output through planning.\n\nFile Support: Text, Markdown and PDF files\nContext window: 205k tokens\n\nOptional parameters:\nUse `--enable_thinking true` to enable thinking about the response before giving a final answer. This is disabled by default.\nUse `--temperature` and set number from 0 to 2 to control randomness in the response. Lower values make the output more focused and deterministic. This is set to 0.7 by default\nUse `--max_output_tokens` and set number from 1 to 131100 to set number of tokens to generate in response. This is set to 131100 by default.",
+      "context_length": null,
+      "pricing": null,
       "provider": "poe",
       "source": "poe",
       "source_display": "Poe",
-      "owned_by": "XAI",
-      "_compound_key": "grok-4@poe"
+      "owned_by": "Novita AI",
+      "_compound_key": "minimax-m2.5@poe"
     },
     {
       "id": "claude-haiku-4.5",
@@ -23812,47 +23577,16 @@
       "_compound_key": "claude-haiku-4.5@poe"
     },
     {
-      "id": "glm-4.7",
-      "name": "glm-4.7 (Poe)",
-      "description": "World\u2019s fastest inference for GLM 4.7 with Cerebras. GLM 4.7 is a high\u2011performance AI model designed for advanced reasoning, superior coding, and effective tool use. It supports structured outputs, parallel tool calling, and real\u2011time streaming responses. Optimized for agentic coding and automation tasks, the model delivers strong real\u2011world performance with a context window of up to 131K tokens and output up to 40K tokens. This model is an incredible update to GLM4.6.\nFor more information see: https://inference-docs.cerebras.ai/models/zai-glm-47",
-      "context_length": null,
+      "id": "grok-4.1-fast-reasoning",
+      "name": "grok-4.1-fast-reasoning (Poe)",
+      "description": "Grok-4.1-Fast-Reasoning is a high-performance version of xAI\u2019s Grok\u202f4.1\u202fFast, the company\u2019s best agentic tool\u2011calling model. It works great in real-world use cases like customer support, deep research, and advanced analytical reasoning. Equipped with 2M\u2011token context window, this model processes vast information seamlessly, delivering coherent, context\u2011aware, and deeply reasoned insights at exceptional speed.",
+      "context_length": 2000000,
       "pricing": null,
       "provider": "poe",
       "source": "poe",
       "source_display": "Poe",
-      "owned_by": "CerebrasAI",
-      "_compound_key": "glm-4.7@poe"
-    },
-    {
-      "id": "claude-opus-4.5",
-      "name": "claude-opus-4.5 (Poe)",
-      "description": "Claude Opus 4.5 from Anthropic, supports customizable thinking budget (up to 64k tokens) and 200k context window.\nTo instruct the bot to use more thinking effort, add --thinking_budget and a number ranging from 0 to 63999 to the end of your message.",
-      "context_length": 196608,
-      "pricing": {
-        "prompt": "0.0000043",
-        "completion": "0.000021",
-        "image": null,
-        "request": null,
-        "input_cache_read": "0.00000043",
-        "input_cache_write": "0.0000053"
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Anthropic",
-      "_compound_key": "claude-opus-4.5@poe"
-    },
-    {
-      "id": "grok-imagine-image",
-      "name": "grok-imagine-image (Poe)",
-      "description": "Create creative and artistic images with Grok Imagine Image. Supports text-to-image and image-editing (single image of jpeg/png/webp format). Set aspect ratio via parameter controls.",
-      "context_length": null,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "fal",
-      "_compound_key": "grok-imagine-image@poe"
+      "owned_by": "XAI",
+      "_compound_key": "grok-4.1-fast-reasoning@poe"
     },
     {
       "id": "qwen3-max-thinking",
@@ -23867,16 +23601,16 @@
       "_compound_key": "qwen3-max-thinking@poe"
     },
     {
-      "id": "grok-imagine-video",
-      "name": "grok-imagine-video (Poe)",
-      "description": "Create artistic and creative videos with Grok Imagine Video. Supports text to video, image to video (single jpeg/png/webp attachment), and video editing (single mp4 video attachment). Check parameter controls for all supported controls (resolution, video duration, and aspect_ratio).",
+      "id": "grok-imagine-image",
+      "name": "grok-imagine-image (Poe)",
+      "description": "Create creative and artistic images with Grok Imagine Image. Supports text-to-image and image-editing (single image of jpeg/png/webp format). Set aspect ratio via parameter controls.",
       "context_length": null,
       "pricing": null,
       "provider": "poe",
       "source": "poe",
       "source_display": "Poe",
       "owned_by": "fal",
-      "_compound_key": "grok-imagine-video@poe"
+      "_compound_key": "grok-imagine-image@poe"
     },
     {
       "id": "runway-gen-4.5",
@@ -23891,6 +23625,18 @@
       "_compound_key": "runway-gen-4.5@poe"
     },
     {
+      "id": "grok-imagine-video",
+      "name": "grok-imagine-video (Poe)",
+      "description": "Create artistic and creative videos with Grok Imagine Video. Supports text to video, image to video (single jpeg/png/webp attachment), and video editing (single mp4 video attachment). Check parameter controls for all supported controls (resolution, video duration, and aspect_ratio).",
+      "context_length": null,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "fal",
+      "_compound_key": "grok-imagine-video@poe"
+    },
+    {
       "id": "qwen3-coder-next",
       "name": "qwen3-coder-next (Poe)",
       "description": "Qwen3-Coder-Next is an open-weight language model specifically engineered for coding agents and local development environments. This highly efficient model delivers exceptional performance with only 3B activated parameters out of 80B total parameters, achieving results comparable to models with 10-20x more active parameters while maintaining remarkable cost-effectiveness for agent deployment. Through its sophisticated training methodology, Qwen3-Coder-Next excels in advanced agentic capabilities including long-horizon reasoning, complex tool usage, and robust recovery from execution failures, ensuring reliable performance across dynamic coding tasks. The model's versatility is further enhanced by its 256k context length and adaptability to various scaffold templates, enabling seamless integration with diverse CLI/IDE platforms such as Claude Code, Qwen Code, Qoder, Kilo, Trae, and Cline, making it an ideal solution for comprehensive development environments.\n\nFile Support: Text, Markdown and PDF files\nContext window: 262k tokens",
@@ -23901,111 +23647,6 @@
       "source_display": "Poe",
       "owned_by": "Novita AI",
       "_compound_key": "qwen3-coder-next@poe"
-    },
-    {
-      "id": "minimax-m2.1",
-      "name": "minimax-m2.1 (Poe)",
-      "description": "MiniMax M2.1 is a cutting-edge AI model designed to revolutionize how developers build software. With enhanced multi-language programming support, it excels in generating high-quality code across popular languages like Rust, Java, Golang, C++, Kotlin, Objective-C, TypeScript, and JavaScript.\n\nKey improvements include:\n\n22% faster response times and 30% lower token consumption for efficient workflows.\nSeamless integration with leading development frameworks (Claude Code, Droid Factory AI, BlackBox, etc.).\nFull-stack development capabilities, from mobile (Android/iOS) to web and 3D interactive prototyping.\nOptimized performance-to-cost ratio, making AI-assisted development more accessible.\nWhether you're a software engineer, app developer, or tech innovator, M2.1 empowers smarter coding with industry-leading AI.\n\nFile Support: Text, Markdown and PDF files\nContext window: 205k tokens",
-      "context_length": null,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Novita AI",
-      "_compound_key": "minimax-m2.1@poe"
-    },
-    {
-      "id": "gemini-2.5-flash",
-      "name": "gemini-2.5-flash (Poe)",
-      "description": "Gemini 2.5 Flash builds upon the popular foundation of Google's 2.0 Flash, this new version delivers a major upgrade in reasoning capabilities, search capabilities, and image/video understanding while still prioritizing speed and cost. Supports 1M tokens of input context. Serves the latest `gemini-2.5-flash-preview-09-2025` snapshot.\n\nTo instruct the bot to use more thinking effort, add --thinking_budget and a number ranging from 0 to 24,576 to the end of your message.\nTo use web search and real-time information access, add `--web_search true` to enable and add `--web_search false` to disable (default setting).",
-      "context_length": 1065535,
-      "pricing": {
-        "prompt": "0.00000021",
-        "completion": "0.0000018",
-        "image": null,
-        "request": null,
-        "input_cache_read": "0.000000021",
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Google",
-      "_compound_key": "gemini-2.5-flash@poe"
-    },
-    {
-      "id": "gemini-2.5-pro",
-      "name": "gemini-2.5-pro (Poe)",
-      "description": "Gemini 2.5 Pro is Google's advanced model with frontier performance on various key benchmarks; supports web search and 1 million tokens of input context.\nTo instruct the bot to use more thinking effort, add --thinking_budget and a number ranging from 0 to 32,768 to the end of your message. \nUse `--web_search true` to enable web search and real-time information access, this is disabled by default.",
-      "context_length": 1065535,
-      "pricing": {
-        "prompt": "0.00000087",
-        "completion": "0.0000070",
-        "image": null,
-        "request": null,
-        "input_cache_read": "0.000000087",
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Google",
-      "_compound_key": "gemini-2.5-pro@poe"
-    },
-    {
-      "id": "kimi-k2.5",
-      "name": "kimi-k2.5 (Poe)",
-      "description": "Kimi K2.5 is the latest flagship iteration of Moonshot AI's large language model series, representing a significant leap in multimodal and agentic capabilities. It features a native multimodal architecture supporting both visual and text inputs, alongside versatile thinking and non-thinking modes. This model maintains the substantial 256k token context window found in the K2 series but achieves new open-source state-of-the-art (SoTA) performance across general intelligence, coding, and visual understanding benchmarks. Kimi K2.5 delivers a breakthrough in frontend development, enabling the generation of fully functional, aesthetically polished interactive interfaces with complex dynamic layouts directly from natural language. Optimized for complex problem-solving, it excels in multi-step tool invocation, logical reasoning, and full-stack code synthesis.\nOptional parameters:\nUse `--enable_thinking true` to enable thinking about the response before giving a final answer. This is disabled by default.\nUse `--temperature` and set number from 0 to 2 to control randomness in the response. Lower values make the output more focused and deterministic. This is set to 0.7 by default\nUse `--max_output_tokens` and set number from 1 to 262144 to set number of tokens to generate in response. This is set to 262144 by default.\n",
-      "context_length": null,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Novita AI",
-      "_compound_key": "kimi-k2.5@poe"
-    },
-    {
-      "id": "kling-omni",
-      "name": "kling-omni (Poe)",
-      "description": "Bot for Kling Omni Image-to-Video inference. Send one image for image-to-video generation and two images for first-to-last frame video generation. Set duration with `--duration`, to either 5 or 10 seconds.\n\nAccepted file type: jpeg, png, webp, heic, heif. \nThis bot does not accept video files.\n\nNote: Prompt is required after attaching images to generate video.",
-      "context_length": null,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "fal",
-      "_compound_key": "kling-omni@poe"
-    },
-    {
-      "id": "deepseek-r1",
-      "name": "deepseek-r1 (Poe)",
-      "description": "Top open-source reasoning LLM rivaling OpenAI's o1 model; delivers top-tier performance across math, code, and reasoning tasks at a fraction of the cost. All data you provide this bot will not be used in training, and is sent only to Together AI, a US-based company. Supports 164k tokens of input context and 33k tokens of output context. Uses the latest May 28th snapshot (DeepSeek-R1-0528).",
-      "context_length": 160000,
-      "pricing": {
-        "prompt": null,
-        "completion": null,
-        "image": null,
-        "request": "0.018",
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Together AI",
-      "_compound_key": "deepseek-r1@poe"
-    },
-    {
-      "id": "manus",
-      "name": "manus (Poe)",
-      "description": "Manus is an autonomous AI agent that executes tasks. It can take a high-level prompt, break it into subtasks, interact with tools/APIs, and deliver end-to-end results (like reports, code, websites, images, and more) without you managing each step.\n\nNotes: \n- In Agent mode, responses may take several minutes to complete. \n- Sometimes, files that Manus has created are incorrectly uploaded to the Poe message. In such cases, please check the Manus chat for the file. \n\nParameter controls available:\n1. Task Mode\n- Default: '--task_mode adaptive' (smart routing: may choose Chat or Agent)\n- Conversational single turn:' --task_mode chat' (fixed price)\n- Autonomous multi-step: '--task_mode agent'\n2. Agent Profile\n- Default: '--agent_profile manus-1.6' (standard tasks)\n- Lower usage: '--agent_profile manus-1.6-lite' (speed/savings)\n- Maximum capability: '--agent_profile manus-1.6-max' (complex reasoning)",
-      "context_length": null,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Empirio Labs AI",
-      "_compound_key": "manus@poe"
     },
     {
       "id": "kimi-k2.5-fw",
@@ -24027,78 +23668,16 @@
       "_compound_key": "kimi-k2.5-fw@poe"
     },
     {
-      "id": "glm-4.7-n",
-      "name": "glm-4.7-n (Poe)",
-      "description": "GLM-4.7 is Z.AI's latest flagship model, with major upgrades focused on advanced coding capabilities and more reliable multi-step reasoning and execution. It shows clear gains in complex agent workflows, while delivering a more natural conversational experience and stronger front-end design sensibility.\n\nFile Support: Text, Markdown and PDF files\nContext window: 205k tokens\n\nOptional parameters:\nUse `--enable_thinking true` to enable thinking about the response before giving a final answer. This is disabled by default.\nUse `--temperature` and set number from 0 to 2 to control randomness in the response. Lower values make the output more focused and deterministic. This is set to 0.7 by default\nUse `--max_output_tokens` and set number from 1 to 131072 to set number of tokens to generate in response. This is set to 131072 by default.",
-      "context_length": null,
+      "id": "grok-4.1-fast-non-reasoning",
+      "name": "grok-4.1-fast-non-reasoning (Poe)",
+      "description": "Grok-4.1-Fast-Non-Reasoning is a streamlined companion to Grok\u202f4.1\u202fFast, xAI\u2019s best agentic tool\u2011calling model. It has 2M context window and high responsiveness but is optimized for non\u2011reasoning tasks \u2014 excelling at text generation, summarization, and automated workflows that demand speed and efficiency over deep logic. Ideal for high-throughput use cases like customer support automation, bulk content creation, and fast conversational responses.",
+      "context_length": 2000000,
       "pricing": null,
       "provider": "poe",
       "source": "poe",
       "source_display": "Poe",
-      "owned_by": "Novita AI",
-      "_compound_key": "glm-4.7-n@poe"
-    },
-    {
-      "id": "glm-4.7-flash",
-      "name": "glm-4.7-flash (Poe)",
-      "description": "GLM-4.7-Flash, a state-of-the-art model in the 30B class, delivers a compelling balance of high performance and efficiency. Tailored for Agentic Coding, it strengthens coding proficiency, long-horizon planning, and tool synergy, securing top-tier results on public benchmarks among similarly sized open-source models. It excels in complex agent tasks with superior instruction following for tool use, while significantly elevating the frontend aesthetics and completion efficiency of long-range workflows in Artifacts and Agentic Coding.\n\nFile Support: Text, Markdown and PDF files\nContext window: 200k tokens\n\nOptional Parameters:\nOptional parameters:\nUse `--enable_thinking true` to enable thinking about the response before giving a final answer. This is disabled by default.\nUse `--temperature` and set number from 0 to 2 to control randomness in the response. Lower values make the output more focused and deterministic. This is set to 0.7 by default\nUse `--max_output_tokens` and set number from 1 to 65500 to set number of tokens to generate in response. This is set to 65500 by default.",
-      "context_length": null,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Novita AI",
-      "_compound_key": "glm-4.7-flash@poe"
-    },
-    {
-      "id": "gpt-5.1-instant",
-      "name": "gpt-5.1-instant (Poe)",
-      "description": "OpenAI\u2019s most flagship model optimized for conversational intelligence. It excels at natural dialogue, contextual memory, and adaptive tone, making it perfect for interactive agents, tutoring, and customer support. It balances speed, reliability, and empathy for seamless real\u2011time communication. Supports 128k tokens of input context.\nUse `--web_search true` to enable web search and real-time information access, this is disabled by default.",
-      "context_length": 128000,
-      "pricing": {
-        "prompt": "0.0000011",
-        "completion": "0.0000090",
-        "image": null,
-        "request": null,
-        "input_cache_read": "0.00000011",
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "OpenAI",
-      "_compound_key": "gpt-5.1-instant@poe"
-    },
-    {
-      "id": "gpt-5.1",
-      "name": "gpt-5.1 (Poe)",
-      "description": "OpenAI\u2019s flagship general\u2011purpose model, built for advanced reasoning, comprehension, and creativity. It delivers robust performance across text and code, with significant improvements in factual accuracy, long\u2011context understanding, and multilingual fluency. Ideal for research, content creation, analysis, and problem\u2011solving in any domain. Supports 400k of input context window.\n\nOptional parameters:\nTo instruct the bot to use more reasoning effort, add --reasoning_effort to the end of your message with one of \"low\", \"medium\", or \"high\" (default: \"None\")\nUse `--web_search true` to enable web search and real-time information access, this is disabled by default.\nUse `--verbosity` to control response details at the end of your message with one of \"low\", medium\", or \"high\" (default: medium)",
-      "context_length": 400000,
-      "pricing": {
-        "prompt": "0.0000011",
-        "completion": "0.0000090",
-        "image": null,
-        "request": null,
-        "input_cache_read": "0.00000011",
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "OpenAI",
-      "_compound_key": "gpt-5.1@poe"
-    },
-    {
-      "id": "gpt-image-1.5",
-      "name": "gpt-image-1.5 (Poe)",
-      "description": "OpenAI's frontier image generation model in ChatGPT as of December 2025, offering exceptional prompt adherence, world knowledge, precise edits, facial preservation, level of detail, and overall quality with improved latency/generation times. It supports editing, restyling, and combining images attached to the latest user query. For a conversational image generation and editing experience use: https://poe.com/GPT-5.2\n\nOptional Parameters:\nSet aspect ratio, with options 3:2, 1:1 and 2:3. \nSet quality to low, medium and high. Default is set to high.\nEnable use mask by toggling it on or by typing 'use_mask' in the prompt. This option is turned off by default.\nDisable high fidelity by toggling it off or by typing 'use_high_fidelity'. This option is turned on by default.",
-      "context_length": 128000,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "OpenAI",
-      "_compound_key": "gpt-image-1.5@poe"
+      "owned_by": "XAI",
+      "_compound_key": "grok-4.1-fast-non-reasoning@poe"
     },
     {
       "id": "kimi-k2-thinking",
@@ -24144,6 +23723,211 @@
       "_compound_key": "deepseek-v3.2@poe"
     },
     {
+      "id": "deepseek-r1",
+      "name": "deepseek-r1 (Poe)",
+      "description": "Top open-source reasoning LLM rivaling OpenAI's o1 model; delivers top-tier performance across math, code, and reasoning tasks at a fraction of the cost. All data you provide this bot will not be used in training, and is sent only to Together AI, a US-based company. Supports 164k tokens of input context and 33k tokens of output context. Uses the latest May 28th snapshot (DeepSeek-R1-0528).",
+      "context_length": 160000,
+      "pricing": {
+        "prompt": null,
+        "completion": null,
+        "image": null,
+        "request": "0.018",
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Together AI",
+      "_compound_key": "deepseek-r1@poe"
+    },
+    {
+      "id": "grok-4",
+      "name": "grok-4 (Poe)",
+      "description": "Grok 4 is xAI's latest and most intelligent language model. It features state-of-the-art capabilities in coding, reasoning, and answering questions. It excels at handling complex and multi-step tasks. Reasoning traces are not available via the xAI API.",
+      "context_length": 256000,
+      "pricing": {
+        "prompt": "0.0000030",
+        "completion": "0.000015",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.00000075",
+        "input_cache_write": null
+      },
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "XAI",
+      "_compound_key": "grok-4@poe"
+    },
+    {
+      "id": "gpt-image-1.5",
+      "name": "gpt-image-1.5 (Poe)",
+      "description": "OpenAI's frontier image generation model in ChatGPT as of December 2025, offering exceptional prompt adherence, world knowledge, precise edits, facial preservation, level of detail, and overall quality with improved latency/generation times. It supports editing, restyling, and combining images attached to the latest user query. For a conversational image generation and editing experience use: https://poe.com/GPT-5.2\n\nOptional Parameters:\nSet aspect ratio, with options 3:2, 1:1 and 2:3. \nSet quality to low, medium and high. Default is set to high.\nEnable use mask by toggling it on or by typing 'use_mask' in the prompt. This option is turned off by default.\nDisable high fidelity by toggling it off or by typing 'use_high_fidelity'. This option is turned on by default.",
+      "context_length": 128000,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "OpenAI",
+      "_compound_key": "gpt-image-1.5@poe"
+    },
+    {
+      "id": "claude-code",
+      "name": "claude-code (Poe)",
+      "description": "A powerful assistant that can read, write, and analyze files across many formats.  It can also delegate to other Poe bots to handle complex, multi-step tasks.\n\nBuilt on the Claude Agent SDK from Anthropic.",
+      "context_length": null,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Poe Tools",
+      "_compound_key": "claude-code@poe"
+    },
+    {
+      "id": "manus",
+      "name": "manus (Poe)",
+      "description": "Manus is an autonomous AI agent that executes tasks. It can take a high-level prompt, break it into subtasks, interact with tools/APIs, and deliver end-to-end results (like reports, code, websites, images, and more) without you managing each step.\n\nNotes: \n- In Agent mode, responses may take several minutes to complete. \n- Sometimes, files that Manus has created are incorrectly uploaded to the Poe message. In such cases, please check the Manus chat for the file. \n\nParameter controls available:\n1. Task Mode\n- Default: '--task_mode adaptive' (smart routing: may choose Chat or Agent)\n- Conversational single turn:' --task_mode chat' (fixed price)\n- Autonomous multi-step: '--task_mode agent'\n2. Agent Profile\n- Default: '--agent_profile manus-1.6' (standard tasks)\n- Lower usage: '--agent_profile manus-1.6-lite' (speed/savings)\n- Maximum capability: '--agent_profile manus-1.6-max' (complex reasoning)",
+      "context_length": null,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Empirio Labs AI",
+      "_compound_key": "manus@poe"
+    },
+    {
+      "id": "minimax-m2.1",
+      "name": "minimax-m2.1 (Poe)",
+      "description": "MiniMax M2.1 is a cutting-edge AI model designed to revolutionize how developers build software. With enhanced multi-language programming support, it excels in generating high-quality code across popular languages like Rust, Java, Golang, C++, Kotlin, Objective-C, TypeScript, and JavaScript.\n\nKey improvements include:\n\n22% faster response times and 30% lower token consumption for efficient workflows.\nSeamless integration with leading development frameworks (Claude Code, Droid Factory AI, BlackBox, etc.).\nFull-stack development capabilities, from mobile (Android/iOS) to web and 3D interactive prototyping.\nOptimized performance-to-cost ratio, making AI-assisted development more accessible.\nWhether you're a software engineer, app developer, or tech innovator, M2.1 empowers smarter coding with industry-leading AI.\n\nFile Support: Text, Markdown and PDF files\nContext window: 205k tokens",
+      "context_length": null,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Novita AI",
+      "_compound_key": "minimax-m2.1@poe"
+    },
+    {
+      "id": "claude-opus-4.5",
+      "name": "claude-opus-4.5 (Poe)",
+      "description": "Claude Opus 4.5 from Anthropic, supports customizable thinking budget (up to 64k tokens) and 200k context window.\nTo instruct the bot to use more thinking effort, add --thinking_budget and a number ranging from 0 to 63999 to the end of your message.",
+      "context_length": 196608,
+      "pricing": {
+        "prompt": "0.0000043",
+        "completion": "0.000021",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.00000043",
+        "input_cache_write": "0.0000053"
+      },
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Anthropic",
+      "_compound_key": "claude-opus-4.5@poe"
+    },
+    {
+      "id": "gemini-2.5-flash",
+      "name": "gemini-2.5-flash (Poe)",
+      "description": "Gemini 2.5 Flash builds upon the popular foundation of Google's 2.0 Flash, this new version delivers a major upgrade in reasoning capabilities, search capabilities, and image/video understanding while still prioritizing speed and cost. Supports 1M tokens of input context. Serves the latest `gemini-2.5-flash-preview-09-2025` snapshot.\n\nTo instruct the bot to use more thinking effort, add --thinking_budget and a number ranging from 0 to 24,576 to the end of your message.\nTo use web search and real-time information access, add `--web_search true` to enable and add `--web_search false` to disable (default setting).",
+      "context_length": 1065535,
+      "pricing": {
+        "prompt": "0.00000021",
+        "completion": "0.0000018",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.000000021",
+        "input_cache_write": null
+      },
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Google",
+      "_compound_key": "gemini-2.5-flash@poe"
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "name": "gemini-2.5-pro (Poe)",
+      "description": "Gemini 2.5 Pro is Google's advanced model with frontier performance on various key benchmarks; supports web search and 1 million tokens of input context.\nTo instruct the bot to use more thinking effort, add --thinking_budget and a number ranging from 0 to 32,768 to the end of your message. \nUse `--web_search true` to enable web search and real-time information access, this is disabled by default.",
+      "context_length": 1065535,
+      "pricing": {
+        "prompt": "0.00000087",
+        "completion": "0.0000070",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.000000087",
+        "input_cache_write": null
+      },
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Google",
+      "_compound_key": "gemini-2.5-pro@poe"
+    },
+    {
+      "id": "gpt-5.2-pro",
+      "name": "gpt-5.2-pro (Poe)",
+      "description": "A powerful reasoning model that is ideal for your most complex, highest difficulty tasks. On x-high reasoning effort, scores a 90.5% on ARC-AGI-1 benchmark, an incredibly difficult problem-solving benchmark where humans score 100%. Note: the model can take up to 30 minutes to think through a problem and is quite expensive. Supports 400k tokens of context and native vision.\n\nOptional parameters:\nTo instruct the bot to use more reasoning effort, add --reasoning_effort to the end of your message with one of \"medium\", \"high\" or \"Xhigh\" (default: \"medium\")\nUse `--web_search true` to enable web search and real-time information access, this is disabled by default.\nUse `--verbosity` to control response details at the end of your message with one of \"low\", medium\", or \"high\" (default: medium)",
+      "context_length": 400000,
+      "pricing": {
+        "prompt": "0.000019",
+        "completion": "0.00015",
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "OpenAI",
+      "_compound_key": "gpt-5.2-pro@poe"
+    },
+    {
+      "id": "kling-omni",
+      "name": "kling-omni (Poe)",
+      "description": "Bot for Kling Omni Image-to-Video inference. Send one image for image-to-video generation and two images for first-to-last frame video generation. Set duration with `--duration`, to either 5 or 10 seconds.\n\nAccepted file type: jpeg, png, webp, heic, heif. \nThis bot does not accept video files.\n\nNote: Prompt is required after attaching images to generate video.",
+      "context_length": null,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "fal",
+      "_compound_key": "kling-omni@poe"
+    },
+    {
+      "id": "glm-4.7-flash",
+      "name": "glm-4.7-flash (Poe)",
+      "description": "GLM-4.7-Flash, a state-of-the-art model in the 30B class, delivers a compelling balance of high performance and efficiency. Tailored for Agentic Coding, it strengthens coding proficiency, long-horizon planning, and tool synergy, securing top-tier results on public benchmarks among similarly sized open-source models. It excels in complex agent tasks with superior instruction following for tool use, while significantly elevating the frontend aesthetics and completion efficiency of long-range workflows in Artifacts and Agentic Coding.\n\nFile Support: Text, Markdown and PDF files\nContext window: 200k tokens\n\nOptional Parameters:\nOptional parameters:\nUse `--enable_thinking true` to enable thinking about the response before giving a final answer. This is disabled by default.\nUse `--temperature` and set number from 0 to 2 to control randomness in the response. Lower values make the output more focused and deterministic. This is set to 0.7 by default\nUse `--max_output_tokens` and set number from 1 to 65500 to set number of tokens to generate in response. This is set to 65500 by default.",
+      "context_length": null,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Novita AI",
+      "_compound_key": "glm-4.7-flash@poe"
+    },
+    {
+      "id": "gpt-5.1-instant",
+      "name": "gpt-5.1-instant (Poe)",
+      "description": "OpenAI\u2019s most flagship model optimized for conversational intelligence. It excels at natural dialogue, contextual memory, and adaptive tone, making it perfect for interactive agents, tutoring, and customer support. It balances speed, reliability, and empathy for seamless real\u2011time communication. Supports 128k tokens of input context.\nUse `--web_search true` to enable web search and real-time information access, this is disabled by default.",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0000011",
+        "completion": "0.0000090",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.00000011",
+        "input_cache_write": null
+      },
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "OpenAI",
+      "_compound_key": "gpt-5.1-instant@poe"
+    },
+    {
       "id": "gpt-5.1-codex",
       "name": "gpt-5.1-codex (Poe)",
       "description": "GPT\u20115.1\u2011Codex extends GPT\u20115.1\u2019s capabilities for software development. It understands complex codebases, provides accurate completions, explains algorithms, and assists with debugging across modern programming languages. Designed for developers, it elevates productivity and supports full\u2011stack coding workflows with precision. Supports 400k tokens of input context.\n\nOptional parameters:\nTo instruct the bot to use more reasoning effort, add --reasoning_effort to the end of your message with one of \"low\", \"medium\", or \"high\"",
@@ -24161,6 +23945,49 @@
       "source_display": "Poe",
       "owned_by": "OpenAI",
       "_compound_key": "gpt-5.1-codex@poe"
+    },
+    {
+      "id": "elevenlabs-v3",
+      "name": "elevenlabs-v3 (Poe)",
+      "description": "ElevenLabs v3 is a cutting-edge text-to-speech model that brings scripts to life with remarkable realism and performance-level control. Unlike traditional TTS systems, it allows creators to shape the emotional tone, pacing, and soundscape of their audio through the use of inline audio tags. These tags are enclosed in square brackets and act as stage directions\u2014guiding how a line is spoken or what sound effects are inserted\u2014without being spoken aloud. This enables rich, expressive narration and dialogue for applications like audiobooks, games, podcasts, and interactive media. Whether you\u2019re aiming for a tense whisper, a sarcastic remark, or a dramatic soundscape full of explosions and ambient effects, v3 gives you granular control directly in the text prompt. This bot will also run text-to-speech on PDF attachments / URL links.\n\nExamples of voice delivery tags include:\n* [whispers] I have to tell you a secret. \n* [angry] That was *never* the plan.\n* [sarcastic] Oh, sure. That\u2019ll totally work.\n* and [laughs] You're hilarious.\n\nExamples of sound effect tags are:\n* [gunshot] Get down!\n* [applause] Thank you, everyone.\n* and [explosion] What was that?!\n\nThese can also be combined.\n\nMultiple speakers can be supported via the parameter control. Dialogue for multiple speakers must follow the format, e.g. for 3 speakers:\n\nSpeaker 1: [dialogue]\nSpeaker 2: [dialogue]\nSpeaker 3: [dialogue]\nSpeaker 1: [dialogue]\nSpeaker 2: [dialogue]\n--speaker_count 3 --voice_1 [voice_1] --voice_2 [voice_2] --voice_3 [voice_3]\n\nThe following voices are supported:\nAlexandra - Conversational & Real\nAmy - Young & Natural\nArabella - Mature Female Narrator\nAustin - Good Ol' Texas Boy\nBlondie - Warm & Conversational\nBradford - British Male Storyteller\nCallum - Gravelly Yet Unsettling\nCharlotte - Raspy & Sensual\nChris - Down-to-Earth\nCoco Li - Shanghainese Female\nGaming - Unreal Tonemanagement 2003\nHarry - Animated Warrior\nHayato - Soothing Zen Male\nHope - Upbeat & Clear\nJames - Husky & Engaging\nJames Gao - Calm Chinese Voice\nJane - Professional Audiobook Reader\nJessica - Playful American Female\nJuniper - Grounded Female Professional\nKaro Yang - Youthful Asian Male\nKuon - Acute Fantastic Female\nLaura - Quirky Female Voice\nLiam - Warm, Energetic Youth\nMonika Sogam - Indian-English Accent\nNichalia Schwartz - Engaging Female American\nPriyanka Sogam - Late-Night Radio\nReginald - Brooding, Intense Villain\nShanShan - Young, Energetic Female\nXiao Bai - Shrill & Annoying\n\nPrompt input cannot exceed 5,000 characters.",
+      "context_length": 128000,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "ElevenLabs",
+      "_compound_key": "elevenlabs-v3@poe"
+    },
+    {
+      "id": "glm-4.7-n",
+      "name": "glm-4.7-n (Poe)",
+      "description": "GLM-4.7 is Z.AI's latest flagship model, with major upgrades focused on advanced coding capabilities and more reliable multi-step reasoning and execution. It shows clear gains in complex agent workflows, while delivering a more natural conversational experience and stronger front-end design sensibility.\n\nFile Support: Text, Markdown and PDF files\nContext window: 205k tokens\n\nOptional parameters:\nUse `--enable_thinking true` to enable thinking about the response before giving a final answer. This is disabled by default.\nUse `--temperature` and set number from 0 to 2 to control randomness in the response. Lower values make the output more focused and deterministic. This is set to 0.7 by default\nUse `--max_output_tokens` and set number from 1 to 131072 to set number of tokens to generate in response. This is set to 131072 by default.",
+      "context_length": null,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "Novita AI",
+      "_compound_key": "glm-4.7-n@poe"
+    },
+    {
+      "id": "gpt-5.1",
+      "name": "gpt-5.1 (Poe)",
+      "description": "OpenAI\u2019s flagship general\u2011purpose model, built for advanced reasoning, comprehension, and creativity. It delivers robust performance across text and code, with significant improvements in factual accuracy, long\u2011context understanding, and multilingual fluency. Ideal for research, content creation, analysis, and problem\u2011solving in any domain. Supports 400k of input context window.\n\nOptional parameters:\nTo instruct the bot to use more reasoning effort, add --reasoning_effort to the end of your message with one of \"low\", \"medium\", or \"high\" (default: \"None\")\nUse `--web_search true` to enable web search and real-time information access, this is disabled by default.\nUse `--verbosity` to control response details at the end of your message with one of \"low\", medium\", or \"high\" (default: medium)",
+      "context_length": 400000,
+      "pricing": {
+        "prompt": "0.0000011",
+        "completion": "0.0000090",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.00000011",
+        "input_cache_write": null
+      },
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "OpenAI",
+      "_compound_key": "gpt-5.1@poe"
     },
     {
       "id": "gpt-5-pro",
@@ -24218,30 +24045,6 @@
       "source_display": "Poe",
       "owned_by": "Anthropic",
       "_compound_key": "claude-opus-4.1@poe"
-    },
-    {
-      "id": "claude-code",
-      "name": "claude-code (Poe)",
-      "description": "A powerful assistant that can read, write, and analyze files across many formats.  It can also delegate to other Poe bots to handle complex, multi-step tasks.\n\nBuilt on the Claude Agent SDK from Anthropic.",
-      "context_length": null,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Poe Tools",
-      "_compound_key": "claude-code@poe"
-    },
-    {
-      "id": "grok-4.1-fast-reasoning",
-      "name": "grok-4.1-fast-reasoning (Poe)",
-      "description": "Grok-4.1-Fast-Reasoning is a high-performance version of xAI\u2019s Grok\u202f4.1\u202fFast, the company\u2019s best agentic tool\u2011calling model. It works great in real-world use cases like customer support, deep research, and advanced analytical reasoning. Equipped with 2M\u2011token context window, this model processes vast information seamlessly, delivering coherent, context\u2011aware, and deeply reasoned insights at exceptional speed.",
-      "context_length": 2000000,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "XAI",
-      "_compound_key": "grok-4.1-fast-reasoning@poe"
     },
     {
       "id": "glm-4.6",
@@ -24306,18 +24109,6 @@
       "_compound_key": "glm-4.6v@poe"
     },
     {
-      "id": "gpt-4o",
-      "name": "gpt-4o (Poe)",
-      "description": "OpenAI's GPT-4o answers user prompts in a natural, engaging & tailored writing with strong overall world knowledge. Uses GPT-Image-1 to create and edit images conversationally. For fine-grained image generation control (e.g. image quality), use https://poe.com/GPT-Image-1. Supports context window of 128k tokens.\nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2",
-      "context_length": 128000,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "OpenAI",
-      "_compound_key": "gpt-4o@poe"
-    },
-    {
       "id": "nano-banana-pro",
       "name": "nano-banana-pro (Poe)",
       "description": "Nano Banana Pro (Gemini 3 Pro Image Preview) can make detailed, context-rich visuals, precisely edit or restyle input images with exceptional fidelity, and even generate legible text in images in multiple languages.\n\nOptional parameters:\n`--aspect_ratio` (options: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9): Aspect ratio of the output image\n`--web_search true` to enable web search and real-time information access, this is disabled by default.\n`--image_only` (defaults: False): Determines whether to only generate image output\n`--image_size` (options: 1K, 2K, 4K): Resolution of image\n\nNote: Simply enabling --image_only will not result in an image unless the prompt is phrased specifically for image generation, but it does guarantee that only a single image (or none) will be produced.",
@@ -24354,18 +24145,6 @@
       "source_display": "Poe",
       "owned_by": "Google",
       "_compound_key": "nano-banana@poe"
-    },
-    {
-      "id": "grok-4.1-fast-non-reasoning",
-      "name": "grok-4.1-fast-non-reasoning (Poe)",
-      "description": "Grok-4.1-Fast-Non-Reasoning is a streamlined companion to Grok\u202f4.1\u202fFast, xAI\u2019s best agentic tool\u2011calling model. It has 2M context window and high responsiveness but is optimized for non\u2011reasoning tasks \u2014 excelling at text generation, summarization, and automated workflows that demand speed and efficiency over deep logic. Ideal for high-throughput use cases like customer support automation, bulk content creation, and fast conversational responses.",
-      "context_length": 2000000,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "XAI",
-      "_compound_key": "grok-4.1-fast-non-reasoning@poe"
     },
     {
       "id": "gpt-5",
@@ -24423,25 +24202,6 @@
       "source_display": "Poe",
       "owned_by": "OpenAI",
       "_compound_key": "gpt-5-mini@poe"
-    },
-    {
-      "id": "o3-pro",
-      "name": "o3-pro (Poe)",
-      "description": "o3-pro is a well-rounded and powerful model across domains, with more capability than https://poe.com/o3 at the cost of higher price and lower speed. It is especially capable at math, science, coding, visual reasoning tasks, technical writing, and instruction-following. Use it to think through multi-step problems that involve analysis across text, code, and images. \n\nTo instruct the bot to use more reasoning effort, add --reasoning_effort to the end of your message with one of \"low\", \"medium\", or \"high\".",
-      "context_length": 200000,
-      "pricing": {
-        "prompt": "0.000018",
-        "completion": "0.000072",
-        "image": null,
-        "request": null,
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "OpenAI",
-      "_compound_key": "o3-pro@poe"
     },
     {
       "id": "gemini-2.5-flash-lite",
@@ -24764,25 +24524,6 @@
       "_compound_key": "exa-research@poe"
     },
     {
-      "id": "deepseek-v3.2-fw",
-      "name": "deepseek-v3.2-fw (Poe)",
-      "description": "Model from DeepSeek that harmonizes high computational efficiency with superior reasoning and agent performance.\n\nFile Support: Image (JPG, JPEG, PNG, HEIC), Other File Types (PDF, PYTHON, XLSX)\n",
-      "context_length": null,
-      "pricing": {
-        "prompt": null,
-        "completion": null,
-        "image": null,
-        "request": "0.0053",
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Fireworks AI",
-      "_compound_key": "deepseek-v3.2-fw@poe"
-    },
-    {
       "id": "nova-lite-2",
       "name": "nova-lite-2 (Poe)",
       "description": "Amazon Nova 2 Lite is a fast, cost-effective multimodal reasoning model from Amazon that can process text, images, documents, and video, designed for everyday workloads like chatbots, document processing, and business automation. It offers a 1 million token context window, enabling very large, complex inputs in a single request, including long documents and extended video clips (~90 minutes).\n\nNote: Video file uploads are limited to ~1GB. Also note that reasoning traces are not exposed from AWS.\n\nSupported file types: JPEG, PNG, GIF, WEBP, PDF, DOCX, TXT, MP4, MOV, MKV, WebM, FLV, MPEG, MPG, WMV, 3GP\n\nParameter controls available:\n'--enable_reasoning true/false' - Enable step-by-step reasoning (default: true).\n'--reasoning_effort low/medium/high' - Specify the reasoning effort level (default: medium).",
@@ -24952,25 +24693,6 @@
       "_compound_key": "kimi-k2-instruct@poe"
     },
     {
-      "id": "deepseek-v3.1",
-      "name": "deepseek-v3.1 (Poe)",
-      "description": "Latest Update: Terminus Enhancement\n\nThis model has been updated with the Terminus release, addressing key user-reported issues while maintaining all original capabilities:\n- Language consistency: Reduced instances of mixed Chinese-English text and abnormal characters\n- Enhanced agent capabilities: Optimized performance of the Code Agent and Search Agent\n\nCore Capabilities\n\nDeepSeek-V3.1 is a hybrid model supporting both thinking mode and non-thinking mode, built upon the original V3 base checkpoint through a two-phase long context extension approach.\n\nTechnical Specifications\n\nContext Window: 128k tokens\nFile Support: PDF, DOC, and XLSX files\nFile Restrictions: Does not accept audio and video files",
-      "context_length": null,
-      "pricing": {
-        "prompt": null,
-        "completion": null,
-        "image": null,
-        "request": "0.0078",
-        "input_cache_read": null,
-        "input_cache_write": null
-      },
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Fireworks AI",
-      "_compound_key": "deepseek-v3.1@poe"
-    },
-    {
       "id": "pika-v1.5-effects",
       "name": "pika-v1.5-effects (Poe)",
       "description": "Apply surprising, mind blowing effects to your photo with Pika-v1.5 Effects. Attach an image and be amazed by the effects like \"cakeify,\" \"crush\" and \"crumble\", open the parameter controls shelf for a full list of effects.\n\nFull list of effects:\nCake-ify, Crumble, Crush, Decapitate, Deflate, Dissolve, Explode, Eye-pop, Inflate, Levitate, Melt, Peel, Poke, Squish, Ta-da, Tear\n\nOptional parameters:\nUse \"--seed\" for reproducible result. Default value: random\nUse `--negative_prompt` to set the negative prompt.",
@@ -25097,6 +24819,37 @@
       "_compound_key": "o4-mini@poe"
     },
     {
+      "id": "gpt-4o",
+      "name": "gpt-4o (Poe)",
+      "description": "OpenAI's GPT-4o answers user prompts in a natural, engaging & tailored writing with strong overall world knowledge. Uses GPT-Image-1 to create and edit images conversationally. For fine-grained image generation control (e.g. image quality), use https://poe.com/GPT-Image-1. Supports context window of 128k tokens.\nSupport for this model will be dropped on February 17th. Check out the newest version of this bot here: https://poe.com/GPT-5.2",
+      "context_length": 128000,
+      "pricing": null,
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "OpenAI",
+      "_compound_key": "gpt-4o@poe"
+    },
+    {
+      "id": "o3-pro",
+      "name": "o3-pro (Poe)",
+      "description": "o3-pro is a well-rounded and powerful model across domains, with more capability than https://poe.com/o3 at the cost of higher price and lower speed. It is especially capable at math, science, coding, visual reasoning tasks, technical writing, and instruction-following. Use it to think through multi-step problems that involve analysis across text, code, and images. \n\nTo instruct the bot to use more reasoning effort, add --reasoning_effort to the end of your message with one of \"low\", \"medium\", or \"high\".",
+      "context_length": 200000,
+      "pricing": {
+        "prompt": "0.000018",
+        "completion": "0.000072",
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "provider": "poe",
+      "source": "poe",
+      "source_display": "Poe",
+      "owned_by": "OpenAI",
+      "_compound_key": "o3-pro@poe"
+    },
+    {
       "id": "gemini-deep-research",
       "name": "gemini-deep-research (Poe)",
       "description": "Gemini Deep Research plans, executes, and synthesizes complex, multi-step investigations by querying the web and other data to produce detailed, structured reports. Offers best in the world performance on Google's newly released DeepSearchQA benchmark as of December 2025. Be sure to give your entire research request in the initial prompt and include as much detail as you can!\n\nuse --interaction_id flag if you want to continue discussion in previous research task.",
@@ -25214,18 +24967,6 @@
       "source_display": "Poe",
       "owned_by": "OpenAI",
       "_compound_key": "o3-deep-research@poe"
-    },
-    {
-      "id": "elevenlabs-v3",
-      "name": "elevenlabs-v3 (Poe)",
-      "description": "ElevenLabs v3 is a cutting-edge text-to-speech model that brings scripts to life with remarkable realism and performance-level control. Unlike traditional TTS systems, it allows creators to shape the emotional tone, pacing, and soundscape of their audio through the use of inline audio tags. These tags are enclosed in square brackets and act as stage directions\u2014guiding how a line is spoken or what sound effects are inserted\u2014without being spoken aloud. This enables rich, expressive narration and dialogue for applications like audiobooks, games, podcasts, and interactive media. Whether you\u2019re aiming for a tense whisper, a sarcastic remark, or a dramatic soundscape full of explosions and ambient effects, v3 gives you granular control directly in the text prompt. This bot will also run text-to-speech on PDF attachments / URL links.\n\nExamples of voice delivery tags include:\n* [whispers] I have to tell you a secret. \n* [angry] That was *never* the plan.\n* [sarcastic] Oh, sure. That\u2019ll totally work.\n* and [laughs] You're hilarious.\n\nExamples of sound effect tags are:\n* [gunshot] Get down!\n* [applause] Thank you, everyone.\n* and [explosion] What was that?!\n\nThese can also be combined.\n\nMultiple speakers can be supported via the parameter control. Dialogue for multiple speakers must follow the format, e.g. for 3 speakers:\n\nSpeaker 1: [dialogue]\nSpeaker 2: [dialogue]\nSpeaker 3: [dialogue]\nSpeaker 1: [dialogue]\nSpeaker 2: [dialogue]\n--speaker_count 3 --voice_1 [voice_1] --voice_2 [voice_2] --voice_3 [voice_3]\n\nThe following voices are supported:\nAlexandra - Conversational & Real\nAmy - Young & Natural\nArabella - Mature Female Narrator\nAustin - Good Ol' Texas Boy\nBlondie - Warm & Conversational\nBradford - British Male Storyteller\nCallum - Gravelly Yet Unsettling\nCharlotte - Raspy & Sensual\nChris - Down-to-Earth\nCoco Li - Shanghainese Female\nGaming - Unreal Tonemanagement 2003\nHarry - Animated Warrior\nHayato - Soothing Zen Male\nHope - Upbeat & Clear\nJames - Husky & Engaging\nJames Gao - Calm Chinese Voice\nJane - Professional Audiobook Reader\nJessica - Playful American Female\nJuniper - Grounded Female Professional\nKaro Yang - Youthful Asian Male\nKuon - Acute Fantastic Female\nLaura - Quirky Female Voice\nLiam - Warm, Energetic Youth\nMonika Sogam - Indian-English Accent\nNichalia Schwartz - Engaging Female American\nPriyanka Sogam - Late-Night Radio\nReginald - Brooding, Intense Villain\nShanShan - Young, Energetic Female\nXiao Bai - Shrill & Annoying\n\nPrompt input cannot exceed 5,000 characters.",
-      "context_length": 128000,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "ElevenLabs",
-      "_compound_key": "elevenlabs-v3@poe"
     },
     {
       "id": "deepseek-v3",
@@ -25651,18 +25392,6 @@
       "_compound_key": "qwen-3-235b-2507-t@poe"
     },
     {
-      "id": "qwen3-235b-2507-cs",
-      "name": "qwen3-235b-2507-cs (Poe)",
-      "description": "World's fastest inference with Qwen3 235B Instruct (2507) model with Cerebras. It is optimized for general-purpose text generation, including instruction following, logical reasoning, math, code, and tool usage.",
-      "context_length": null,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "CerebrasAI",
-      "_compound_key": "qwen3-235b-2507-cs@poe"
-    },
-    {
       "id": "qwen3-coder-480b-t",
       "name": "qwen3-coder-480b-t (Poe)",
       "description": "Qwen3\u2011Coder\u2011480B is a state of the art mixture\u2011of\u2011experts (MoE) code\u2011specialized language model with 480\u202fbillion total parameters and 35\u202fbillion activated parameters. Qwen3\u2011Coder delivers exceptional performance across code generation, function calling, tool use, and long\u2011context reasoning. It natively supports up to 262,144\u2011token context windows, making it ideal for large repository and multi\u2011file coding tasks.",
@@ -25860,7 +25589,7 @@
     {
       "id": "qwen3-max-preview",
       "name": "qwen3-max-preview (Poe)",
-      "description": "A preview version of the Max model in the Tongyi Qianwen 3 series, achieving an effective integration of thinking and non-thinking modes. In thinking mode, there is a significant enhancement in capabilities such as intelligent agent programming, common-sense reasoning, and reasoning across mathematics, science, and general domains.\nThis model is served by Alibaba Cloud Int. from Singapore.\n\nNotes:\n- Audio/Video files are not supported. \n- Max Context Window: 252k \n\nUse '-- enable_thinking true/false' to enable/disable Deep Thinking accordingly.",
+      "description": "Qwen3-Max-Preview shows substantial gains over the 2.5 series in overall capability, with significant enhancements in Chinese-English text understanding, complex instruction following, handling of subjective open-ended tasks, multilingual ability, and tool invocation; model knowledge hallucinations are reduced.\n\nParameter controls available:\n1. Thinking Mode\n   - Default: enabled (deep thinking on)\n   - To disable: `--enable_thinking false`\n2. Code Interpreter\n   - Default: disabled\n   - To enable: `--enable_code_interpreter true`\n   - Lets the model write and execute Python code for calculations, data analysis, and visualizations",
       "context_length": null,
       "pricing": null,
       "provider": "poe",
@@ -26051,9 +25780,9 @@
       "_compound_key": "deepseek-prover-v2@poe"
     },
     {
-      "id": "deepseek-r1-fw",
-      "name": "deepseek-r1-fw (Poe)",
-      "description": "State-of-the-art large reasoning model problem solving, math, and coding performance at a fraction of the cost; explains its chain of thought. All data you provide this bot will not be used in training, and is sent only to Fireworks AI, a US-based company. Supports 164k tokens of input context and 164k tokens of output context. Uses the latest May 28th, 2025 snapshot.",
+      "id": "deepseek-v3.2-fw",
+      "name": "deepseek-v3.2-fw (Poe)",
+      "description": "Model from DeepSeek that harmonizes high computational efficiency with superior reasoning and agent performance.\n\nFile Support: Image (JPG, JPEG, PNG, HEIC), Other File Types (PDF, PYTHON, XLSX)",
       "context_length": 160000,
       "pricing": {
         "prompt": null,
@@ -26067,7 +25796,7 @@
       "source": "poe",
       "source_display": "Poe",
       "owned_by": "Fireworks AI",
-      "_compound_key": "deepseek-r1-fw@poe"
+      "_compound_key": "deepseek-v3.2-fw@poe"
     },
     {
       "id": "deepseek-r1-di",
@@ -26462,18 +26191,6 @@
       "_compound_key": "elevenlabs-v2.5-turbo@poe"
     },
     {
-      "id": "sonic-2.0",
-      "name": "sonic-2.0 (Poe)",
-      "description": "Generates audio based on your prompt using the latest Cartesia's Sonic 2.0 text-to-speech model in your voice of choice (see below)\n\nAdd --voice [Voice Name] to the end of a message to customize the voice used or to handle different language inputs (e.g. \u4f60\u597d --voice Chinese Commercial Woman). All of Cartesia's voices are supported on Poe. \n\nThe following voices are supported covering 15 languages (English, French, German, Spanish, Portuguese, Chinese, Japanese, Hindi, Italian, Korean, Dutch, Polish, Russian, Swedish, Turkish):\n\n\nHere's the alphabetical list of all the top voice names:\n\n\"1920's Radioman\"\nAadhya\nAdele\nAlabama Man\nAlina\nAmerican Voiceover Man\nAnanya\nAnna\nAnnouncer Man\nApoorva\nASMR Lady\nAustralian Customer Support Man\nAustralian Man\nAustralian Narrator Lady\nAustralian Salesman\nAustralian Woman\nBarbershop Man\nBrenda\nBritish Customer Support Lady\nBritish Lady\nBritish Reading Lady\nBrooke\nCalifornia Girl\nCalm French Woman\nCalm Lady\nCamille\nCarson\nCasper\nCathy\nChongz\nClassy British Man\nCommercial Lady\nCommercial Man\nConfident British Man\nConnie\nCorinne\nCustomer Support Lady\nCustomer Support Man\nDallas\nDave\nDavid\nDevansh\nElena\nEllen\nEthan\nFemale Nurse\nFlorence\nFrancesca\nFrench Conversational Lady\nFrench Narrator Lady\nFrench Narrator Man\nFriendly Australian Man\nFriendly French Man\nFriendly Reading Man\nFriendly Sidekick\nGerman Conversational Woman\nGerman Conversation Man\nGerman Reporter Man\nGerman Woman\nGrace\nGriffin\nHappy Carson\nHelpful French Lady\nHelpful Woman\nHindi Calm Man\nHinglish Speaking Woman\nIndian Lady\nIndian Man\nIsabel\nIshan\nJacqueline\nJanvi\nJapanese Male Conversational\nJoan of Ark\nJohn\nJordan\nKatie\nKeith\nKenneth\nKentucky Man\nKorean Support Woman\nLaidback Woman\nLena\nLily Whisper\nLittle Gaming Girl\nLittle Narrator Girl\nLiv\nLukas\nLuke\nMadame Mischief\nMadison\nMaria\nMateo\nMexican Man\nMexican Woman\nMia\nMiddle Eastern Woman\nMidwestern Man\nMidwestern Woman\nMovieman\nNathan\nNewslady\nNewsman\nNew York Man\nNico\nNonfiction Man\nOlivia\nOrion\nPeninsular Spanish Narrator Lady\nPleasant Brazilian Lady\nPleasant Man\nPolite Man\nPrincess\nProfessional Woman\nRebecca\nReflective Woman\nRonald\nRussian Storyteller Man\nSalesman\nSamantha Angry\nSamantha Happy\nSarah\nSarah Curious\nSavannah\nSilas\nSophie\nSouthern Man\nSouthern Woman\nSpanish Narrator Woman\nSpanish Reporter Woman\nSpanish-speaking Reporter Man\nSportsman\nStacy\nStern French Man\nSteve\nStoryteller Lady\nSweet Lady\nTatiana\nTaylor\nTeacher Lady\nThe Merchant\nTutorial Man\nWise Guide Man\nWise Lady\nWise Man\nWizardman\nYogaman\nYoung Shy Japanese Woman\nZia.\nSupports 10k characters.",
-      "context_length": null,
-      "pricing": null,
-      "provider": "poe",
-      "source": "poe",
-      "source_display": "Poe",
-      "owned_by": "Cartesia AI",
-      "_compound_key": "sonic-2.0@poe"
-    },
-    {
       "id": "gemini-2.5-flash-tts",
       "name": "gemini-2.5-flash-tts (Poe)",
       "description": "Gemini\u20112.5\u2011Flash\u2011TTS is Google\u2019s low\u2010latency text\u2011to\u2011speech model that converts text input into audio output, supporting both single\u2011 and multi\u2011speaker voices with controllable style, accent, and expressive tone \u2014 ideal for applications like podcasts, audiobooks, and conversational voice systems.\nThis bot does not accept attachments.\n\nParameter controls available:\n1. Voice & Style Configuration\n   - Basic Settings\n     - `--mode single` (default) for single speaker or `--mode multi` for conversation\n     - `--language [code]` (e.g., en-US, fr-FR, ja-JP; default: en-US)\n     - `--output_format [MP3|WAV|OGG]` (default: MP3)\n     - Single speaker: `--voice [voice_name]` (default: Charon)\n     - Multi-speaker: `--voice [voice_name]` (primary speaker, default: Charon), `--voice2 [voice_name]` (secondary speaker, default: Kore)\n     - Multi-speaker: `--speaker1_name [name]` (default: Speaker1), `--speaker2_name [name]` (default: Speaker2)\n   - Style Instructions\n     - `--style_prompt [text]` for tone/emotion (e.g., \"Cheerful tone\", \"Slow British accent\")\n2. Limitations\n   - Text and style prompt limited to 4000 bytes each\n   - Multi-speaker requires `SpeakerName: text` format\n\nAvailable voices: Zephyr (Bright), Puck (Upbeat), Charon (Informative), Kore (Firm), Fenrir (Excitable), Leda (Youthful), Orus (Firm), Aoede (Breezy), Callirrhoe (Easy-going), Autonoe (Bright), Enceladus (Breathy), Iapetus (Clear), Umbriel (Easy-going), Algieba (Smooth), Despina (Smooth), Erinome (Clear), Algenib (Gravelly), Rasalgethi (Informative), Laomedeia (Upbeat), Achernar (Soft), Alnilam (Firm), Schedar (Even), Gacrux (Mature), Pulcherrima (Forward), Achird (Friendly), Zubenelgenubi (Casual), Vindemiatrix (Gentle), Sadachbia (Lively), Sadaltager (Knowledgeable), Sulafat (Warm)\n\nAvailable languages: English (US, en-US), Arabic (Egyptian, ar-EG), Bengali (Bangladesh, bn-BD), Dutch (Netherlands, nl-NL), French (France, fr-FR), German (Germany, de-DE), Hindi (India, hi-IN), Indonesian (Indonesia, id-ID), Italian (Italy, it-IT), Japanese (Japan, ja-JP), Korean (Korea, ko-KR), Marathi (India, mr-IN), Polish (Poland, pl-PL), Portuguese (Brazil, pt-BR), Romanian (Romania, ro-RO), Russian (Russia, ru-RU), Spanish (US, es-US), Tamil (India, ta-IN), Telugu (India, te-IN), Thai (Thailand, th-TH), Turkish (Turkey, tr-TR), Ukrainian (Ukraine, uk-UA), Vietnamese (Vietnam, vi-VN)",
@@ -26727,7 +26444,7 @@
     {
       "id": "svi-2.0-pro",
       "name": "svi-2.0-pro (Poe)",
-      "description": "Stable Video Infinity 2.0 Pro, powered by WAN 2.2, generates seamlessly extending, theoretically infinite-length videos from still images while maintaining consistent character IDs. It uses advanced temporal coherence and generative scene expansion to maintain visual consistency, allowing endless, smooth motion and evolving visuals without looping or abrupt transitions.\n\nThis model is hosted by EmpirioLabs.ai and is exclusive to the Poe platform.\n\nLearn more: https://stable-video-infinity.github.io/homepage/\n\nNotes: \n- Generations may take upwards of 45 minutes depending on the selected length.\n- If you are experiencing issues with slow motion, try adjusting the prompt to describe more consecutive motion per segment (ex. A knight stands in the rain, water dripping from his helmet as he clenches his fist, looks up toward the castle gates, takes a steadying breath, then turns and marches forward.).\n- Supported image upload file types: .jpg, .jpeg, .png, .webp, .heic, .heif, .bmp, .tiff, .tif\n\nParameter controls available:\n1. Video Settings\n- `--resolution [832x480|480x832|720x1280|1280x720]`: Controls output dimensions (Default: 832x480)\n- `--duration [18-121.5]`: Estimated video length in seconds (Step 4.5)\n  - For 480p: Max 121.5s\n  - For 720p: Max 40.5s\n\n2. Advanced\n- `--cfg [1.0-2.0]`: Prompt adherence strength (Default: 1.0)\n- `--negative_prompt [text]`: Standard negative prompt included by default (e.g. \"vibrant tone, overexposed...\")\n\n3. Text-to-Video Settings\n- `--t2v_quality [fast|quality]`: Generation mode for text-to-video (Default: fast)",
+      "description": "Stable Video Infinity 2.0 Pro, powered by WAN 2.2, generates seamlessly extending, theoretically infinite-length videos from still images while maintaining consistent character IDs. It uses advanced temporal coherence and generative scene expansion to maintain visual consistency, allowing endless, smooth motion and evolving visuals without looping or abrupt transitions.\n\nThis model is hosted by EmpirioLabs.ai and is exclusive to the Poe platform.\n\nLearn more: https://stable-video-infinity.github.io/homepage/\n\nNotes: \n- Generations may take upwards of 45 minutes depending on the selected length.\n- If you are experiencing issues with slow motion, try adjusting the prompt to describe more consecutive motion per segment (ex. A knight stands in the rain, water dripping from his helmet as he clenches his fist, looks up toward the castle gates, takes a steadying breath, then turns and marches forward.).\n- Supported image upload file types: .jpg, .jpeg, .png, .webp, .heic, .heif, .bmp, .tiff, .tif\n\nParameter controls available:\n1. Video Settings\n- `--resolution [832x480|480x832|720x1280|1280x720]`: Controls output dimensions (Default: 832x480)\n- `--duration [18-121.5]`: Estimated video length in seconds (Step 4.5)\n  - For 480p: Max 121.5s\n  - For 720p: Max 40.5s\n\n2. Advanced\n- `--cfg [1.0-2.0]`: Prompt adherence strength (Default: 1.0)\n- `--negative_prompt [text]`: Standard negative prompt included by default (e.g. \"vibrant tone, overexposed...\")\n\n3. Text-to-Video Settings\n- `--t2v_quality [fast|quality]`: Generation mode for text-to-video (Default: quality)",
       "context_length": null,
       "pricing": null,
       "provider": "poe",
@@ -30942,6 +30659,74 @@
       "_compound_key": "doubao-seed-code-preview-latest@nanogpt"
     },
     {
+      "id": "doubao-seed-2-0-code-preview-260215",
+      "name": "doubao-seed-2-0-code-preview-260215 (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1771027200,
+      "_compound_key": "doubao-seed-2-0-code-preview-260215@nanogpt"
+    },
+    {
+      "id": "doubao-seed-2-0-lite-260215",
+      "name": "doubao-seed-2-0-lite-260215 (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1771027200,
+      "_compound_key": "doubao-seed-2-0-lite-260215@nanogpt"
+    },
+    {
+      "id": "doubao-seed-2-0-mini-260215",
+      "name": "doubao-seed-2-0-mini-260215 (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1771027200,
+      "_compound_key": "doubao-seed-2-0-mini-260215@nanogpt"
+    },
+    {
+      "id": "doubao-seed-2-0-pro-260215",
+      "name": "doubao-seed-2-0-pro-260215 (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1771027200,
+      "_compound_key": "doubao-seed-2-0-pro-260215@nanogpt"
+    },
+    {
       "id": "doubao-1.5-pro-256k",
       "name": "doubao-1.5-pro-256k (NanoGPT)",
       "description": "",
@@ -31299,6 +31084,40 @@
       "_compound_key": "minimax/minimax-01@nanogpt"
     },
     {
+      "id": "minimax/minimax-m2.5",
+      "name": "minimax-m2.5 (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1770854400,
+      "_compound_key": "minimax/minimax-m2.5@nanogpt"
+    },
+    {
+      "id": "minimax/minimax-m2.5-official",
+      "name": "minimax-m2.5-official (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1770854400,
+      "_compound_key": "minimax/minimax-m2.5-official@nanogpt"
+    },
+    {
       "id": "allenai/olmo-3-32b-think",
       "name": "olmo-3-32b-think (NanoGPT)",
       "description": "",
@@ -31348,6 +31167,23 @@
       "object": "model",
       "created": 1769299200,
       "_compound_key": "allenai/olmo-3.1-32b-instruct@nanogpt"
+    },
+    {
+      "id": "allenai/molmo-2-8b",
+      "name": "molmo-2-8b (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1771027200,
+      "_compound_key": "allenai/molmo-2-8b@nanogpt"
     },
     {
       "id": "qwen/qwen3-32b",
@@ -31977,6 +31813,74 @@
       "object": "model",
       "created": 1766361600,
       "_compound_key": "zai-org/glm-4.7-original:thinking@nanogpt"
+    },
+    {
+      "id": "zai-org/glm-5",
+      "name": "glm-5 (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1770768000,
+      "_compound_key": "zai-org/glm-5@nanogpt"
+    },
+    {
+      "id": "zai-org/glm-5:thinking",
+      "name": "glm-5:thinking (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1770768000,
+      "_compound_key": "zai-org/glm-5:thinking@nanogpt"
+    },
+    {
+      "id": "zai-org/glm-5-original",
+      "name": "glm-5-original (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1770768000,
+      "_compound_key": "zai-org/glm-5-original@nanogpt"
+    },
+    {
+      "id": "zai-org/glm-5-original:thinking",
+      "name": "glm-5-original:thinking (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1770768000,
+      "_compound_key": "zai-org/glm-5-original:thinking@nanogpt"
     },
     {
       "id": "zai-org/glm-4.7-flash-original",
@@ -37383,6 +37287,23 @@
       "object": "model",
       "created": 1769644800,
       "_compound_key": "TEE/glm-4.7@nanogpt"
+    },
+    {
+      "id": "TEE/glm-5",
+      "name": "glm-5 (NanoGPT)",
+      "description": "",
+      "context_length": 128000,
+      "pricing": {
+        "prompt": "0.0001",
+        "completion": "0.0003"
+      },
+      "provider": "nanogpt",
+      "source": "nanogpt",
+      "source_display": "NanoGPT",
+      "owned_by": "organization-owner",
+      "object": "model",
+      "created": 1770768000,
+      "_compound_key": "TEE/glm-5@nanogpt"
     },
     {
       "id": "venice-uncensored:web",

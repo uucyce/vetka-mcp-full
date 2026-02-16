@@ -1,0 +1,8 @@
+{
+  "task_id": "myc_ff7b373f",
+  "status": "completed",
+  "task": "Create NEW file: client/src/components/mcc/PlaygroundBadge.tsx\n\nTASK: Build a PlaygroundBadge chip component for the MCC header bar.\n\nREQUIREMENTS:\n1. Small pill-shaped chip (same style as HeartbeatCh",
+  "preset": "dragon_silver",
+  "detail": "{'task_id': 'task_1771103661', 'task': 'Create NEW file: client/src/components/mcc/PlaygroundBadge.tsx\\n\\nTASK: Build a PlaygroundBadge chip component for the MCC header bar.\\n\\nREQUIREMENTS:\\n1. Small pill-shaped chip (same style as HeartbeatChip: borderRadius 12, fontSize 10, monospace, #111 bg)\\n2. Shows active playground count: \"PG 2\" or \"PG 0\" when none active\\n3. Click opens dropdown showing list of active playgrounds with their IDs + ages\\n4. Each playground row shows: pg_id (truncated), ",
+  "ts": "2026-02-14T21:17:38Z"
+}

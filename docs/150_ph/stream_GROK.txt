@@ -1,0 +1,787 @@
+**Отличный вопрос.** Это одна из самых важных тем сейчас (февраль 2026).
+
+Ты хочешь **максимально прозрачный, управляемый стрим** агента — чтобы пользователь видел **в реальном времени**:
+- Что думает агент (reasoning / chain-of-thought)
+- Какие инструменты он вызывает
+- Какие параметры передаёт
+- Промежуточные результаты
+- Возможность **вмешаться** (approve/reject tool call, изменить параметры, остановить)
+
+Это именно то, что делает **Cursor Composer** и новый **Claude Computer Use / Artifacts** очень сильными.
+
+### Краткое сравнение реализаций (2026)
+
+| Продукт              | Тип стрима                  | Видимость инструментов | Управление (approve/reject) | Технология          | Качество стрима |
+|----------------------|-----------------------------|------------------------|-----------------------------|---------------------|-----------------|
+| **Cursor Composer**  | Полный JSON streaming       | Отличная (tool calls + args) | Да (Approve / Edit / Reject) | SSE + WebSocket     | ★★★★★          |
+| **VS Code + Continue.dev** | Streaming + tool calls     | Хорошая                | Частичное                   | SSE                 | ★★★★           |
+| **Claude Artifacts** | Structured streaming        | Очень хорошая          | Да (через UI)               | Server-Sent Events  | ★★★★★          |
+| **Aider**            | Terminal streaming          | Отличная               | Да (y/n)                    | Stdout streaming    | ★★★★           |
+
+**Cursor** сейчас лидирует по прозрачности и контролю.
+
+### Что нам нужно для VETKA / MYCELIUM
+
+Нам нужно **гибридное решение**, которое сочетает лучшее:
+
+1. **Mycelium** (агентный пайплайн) — должен стримить **всё**:
+   - Reasoning steps (chain-of-thought)
+   - Tool calls (название + аргументы)
+   - Промежуточные результаты
+   - Финальный ответ
+
+2. **Пользовательский контроль**:
+   - Approve / Reject tool call в реальном времени
+   - Edit arguments перед выполнением
+   - Stop / Pause / Resume
+
+3. **Технология**:
+   - **Server-Sent Events (SSE)** — основной канал (стабильный, легко обрабатывать)
+   - **WebSocket** — как fallback / для команд управления (approve/reject)
+
+### Рекомендуемая архитектура для VETKA (2026)
+
+**Core принцип:**
+Один **Streaming Event Bus** внутри Mycelium, который публикует события в формате:
+
+```json
+{
+  "type": "reasoning" | "tool_call" | "tool_result" | "final_answer" | "error",
+  "step_id": "step_7",
+  "model": "qwen3-235b",
+  "content": "...",
+  "tool_name": "vetka_search_code",
+  "tool_args": { ... },
+  "status": "pending" | "executing" | "done" | "rejected",
+  "timestamp": 1739...
+}
+```
+
+### Полная реализация (что нужно сделать)
+
+#### 1. Backend — Streaming в Mycelium
+
+В `agent_pipeline.py` добавь streaming:
+
+```python
+async def _stream_event(self, event_type: str, data: dict):
+    event = {
+        "type": event_type,
+        "step_id": f"step_{int(time.time()*1000)}",
+        "model": self._last_used_model,
+        "timestamp": time.time(),
+        **data
+    }
+    # Отправляем через существующий Mycelium WebSocket
+    await self.ws_broadcaster.broadcast({
+        "type": "agent_stream",
+        "data": event
+    })
+    
+    # Также можно отправлять в Socket.IO для веб-клиентов
+```
+
+Пример использования:
+
+```python
+await self._stream_event("reasoning", {"content": "Я думаю, нужно сначала проверить imports..."})
+
+await self._stream_event("tool_call", {
+    "tool_name": "vetka_read_file",
+    "tool_args": {"path": "src/main.py"},
+    "status": "pending"
+})
+
+# После выполнения инструмента
+await self._stream_event("tool_result", {
+    "tool_name": "vetka_read_file",
+    "result": "...",
+    "status": "done"
+})
+```
+
+#### 2. Frontend — Красивый стрим (как в Cursor)
+
+В `MyceliumCommandCenter.tsx` или отдельном `AgentStreamPanel.tsx`:
+
+- Использовать **SSE** (`EventSource`) или WebSocket
+- Отображать **Thinking bubbles**
+- Показывать **Tool Call cards** с кнопками **Approve / Edit / Reject**
+- Прогресс-бар выполнения
+
+### Что нам нужно реализовать в ближайшее время
+
+**Минимальный viable стрим (MVP):**
+
+1. `agent_stream` событие через существующий Mycelium WebSocket
+2. Frontend компонент, который слушает `agent_stream` и показывает:
+   - Reasoning (серый текст)
+   - Tool calls (карточки с именем инструмента и аргументами)
+   - Кнопки Approve / Reject
+3. Backend поддержка `pending → executing → done` для tool calls
+
+**Полный продвинутый стрим (как Cursor):**
+
+- Structured JSON streaming (не просто текст)
+- Возможность **прерывания** tool call
+- **Edit arguments** перед выполнением
+- **Multi-agent** видимость (кто что делает)
+- Timeline стрима
+
+Хочешь, я прямо сейчас дам:
+
+**Вариант A** — Полный код для **простого, но уже очень хорошего стрима** (reasoning + tool calls + approve/reject)
+
+**Вариант B** — Полную продвинутую архитектуру (structured streaming + edit tool calls)
+
+Скажи, какой вариант тебе нужнее сейчас. Я дам код сразу.
+
+Вот **полная продвинутая архитектура** для **structured streaming + edit tool calls** в VETKA / MYCELIUM.
+
+Это не просто «стрим текста», а полноценная **интерактивная система**, как в Cursor Composer + Claude Artifacts + Replit Agent (2026 уровень).
+
+### 1. Общая архитектура (2026 best practice)
+
+```
+Frontend (Tauri / React)
+  ↓↑ WebSocket (или SSE + отдельный WS для команд)
+Backend (FastAPI + Socket.IO / native WS)
+  ↓↑ Agent Execution Engine (Mycelium Pipeline)
+      ├── Reasoning Step (CoT)
+      ├── Tool Call Proposal
+      │     ↓
+      │   User Approval / Edit / Reject  ← WS команда от фронта
+      │     ↓
+      ├── Tool Execution (real или mock)
+      └── Final Answer / Partial Result
+```
+
+**Ключевые принципы:**
+- Всё — структурированные события (не просто текст)
+- Tool calls всегда в состоянии **pending** → ждут пользователя
+- Пользователь может **edit arguments** перед выполнением
+- Поддержка **multi-agent** (каждый агент имеет свой stream)
+- События атомарные и воспроизводимые (для replay / debug)
+
+### 2. Формат событий (структурированный JSON)
+
+Каждое событие — это объект с полями:
+
+```ts
+type AgentStreamEvent = {
+  event_id: string;               // уникальный uuid
+  agent_id?: string;              // если multi-agent
+  timestamp: number;
+  type: 
+    | "reasoning"                 // промежуточные мысли
+    | "tool_call_proposed"        // предложение вызвать инструмент
+    | "tool_call_edited"          // пользователь отредактировал
+    | "tool_call_executing"       // выполнение начато
+    | "tool_call_result"          // результат инструмента
+    | "tool_call_rejected"        // отклонено
+    | "partial_answer"            // промежуточный ответ
+    | "final_answer"              // финальный ответ
+    | "error";
+  
+  content?: string;               // текст reasoning / partial answer
+  tool_name?: string;
+  tool_args?: Record<string, any>;
+  tool_args_original?: Record<string, any>;  // до редактирования
+  tool_result?: any;
+  error_message?: string;
+  status?: "pending" | "approved" | "rejected" | "executing" | "done";
+}
+```
+
+### 3. Backend — Mycelium Pipeline (агентный движок)
+
+В `agent_pipeline.py` добавляем **structured streaming**:
+
+```python
+class AgentPipeline:
+    async def execute(self, task: str, ...):
+        async for event in self._stream_execution(task, ...):
+            await self.ws_broadcaster.broadcast({
+                "type": "agent_stream",
+                "data": event
+            })
+
+    async def _stream_execution(self, task: str, ...):
+        # Шаг 1: Начало
+        yield {
+            "type": "reasoning",
+            "content": "Начинаю анализ задачи...",
+            "status": "executing"
+        }
+
+        # Шаг 2: Chain-of-Thought
+        reasoning = await self._generate_reasoning(task)
+        yield {
+            "type": "reasoning",
+            "content": reasoning,
+            "status": "done"
+        }
+
+        # Шаг 3: Tool Call Proposal
+        tool_call = await self._propose_tool_call(reasoning)
+        if tool_call:
+            yield {
+                "type": "tool_call_proposed",
+                "tool_name": tool_call["name"],
+                "tool_args": tool_call["args"],
+                "status": "pending"
+            }
+
+            # Ждём ответа пользователя (approve/edit/reject)
+            decision = await self._wait_for_user_decision(tool_call["id"])
+            
+            if decision["action"] == "reject":
+                yield {"type": "tool_call_rejected", "reason": decision["reason"]}
+                return
+
+            elif decision["action"] == "edit":
+                tool_call["args"] = decision["edited_args"]
+                yield {
+                    "type": "tool_call_edited",
+                    "tool_args": tool_call["args"]
+                }
+
+            # Выполняем инструмент
+            yield {"type": "tool_call_executing", "tool_name": tool_call["name"]}
+            result = await self._execute_tool(tool_call)
+            yield {
+                "type": "tool_call_result",
+                "tool_result": result,
+                "status": "done"
+            }
+
+        # Шаг 4: Финальный ответ
+        final = await self._generate_final_answer(...)
+        yield {
+            "type": "final_answer",
+            "content": final,
+            "status": "done"
+        }
+```
+
+### 4. Backend — WebSocket для управления (approve/edit/reject)
+
+В `mycelium_ws_server.py` (или где у вас WS):
+
+```python
+@router.websocket("/ws/agent-control")
+async def agent_control_ws(websocket: WebSocket):
+    await websocket.accept()
+    pending_decisions: Dict[str, asyncio.Future] = {}
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            action = data["action"]
+            tool_call_id = data["tool_call_id"]
+
+            if action in ("approve", "reject", "edit"):
+                if tool_call_id in pending_decisions:
+                    future = pending_decisions.pop(tool_call_id)
+                    future.set_result(data)
+    finally:
+        await websocket.close()
+```
+
+Метод ожидания решения:
+
+```python
+async def _wait_for_user_decision(self, tool_call_id: str):
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    pending_decisions[tool_call_id] = future  # глобально или в сессии
+
+    try:
+        return await asyncio.wait_for(future, timeout=300)  # 5 мин
+    except asyncio.TimeoutError:
+        return {"action": "reject", "reason": "timeout"}
+```
+
+### 5. Frontend — React компонент (AgentStreamPanel)
+
+```tsx
+// AgentStreamPanel.tsx
+import { useEffect, useState } from 'react';
+import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
+
+type StreamEvent = {
+  type: string;
+  content?: string;
+  tool_name?: string;
+  tool_args?: Record<string, any>;
+  status?: string;
+  // ...
+};
+
+export default function AgentStreamPanel() {
+  const { socket } = useMyceliumSocket();
+  const [events, setEvents] = useState<StreamEvent[]>([]);
+  const [pendingToolCalls, setPendingToolCalls] = useState<Record<string, StreamEvent>>({});
+
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on('agent_stream', (event: StreamEvent) => {
+      setEvents(prev => [...prev, event]);
+
+      if (event.type === 'tool_call_proposed') {
+        setPendingToolCalls(prev => ({ ...prev, [event.event_id]: event }));
+      } else if (event.type === 'tool_call_result' || event.type === 'tool_call_rejected') {
+        setPendingToolCalls(prev => {
+          const next = { ...prev };
+          delete next[event.event_id];
+          return next;
+        });
+      }
+    });
+
+    return () => socket.off('agent_stream');
+  }, [socket]);
+
+  const handleDecision = (toolCallId: string, action: 'approve' | 'reject' | 'edit', editedArgs?: any) => {
+    socket.emit('agent_control', {
+      action,
+      tool_call_id: toolCallId,
+      edited_args: editedArgs
+    });
+  };
+
+  return (
+    <div className="agent-stream">
+      {events.map((e, i) => (
+        <div key={i} className={`event ${e.type}`}>
+          {e.type === 'reasoning' && <div className="thinking">{e.content}</div>}
+          {e.type === 'tool_call_proposed' && (
+            <div className="tool-call-card">
+              <h4>Tool: {e.tool_name}</h4>
+              <pre>{JSON.stringify(e.tool_args, null, 2)}</pre>
+              <div className="actions">
+                <button onClick={() => handleDecision(e.event_id, 'approve')}>Approve</button>
+                <button onClick={() => handleDecision(e.event_id, 'reject')}>Reject</button>
+                {/* Edit modal можно добавить */}
+              </div>
+            </div>
+          )}
+          {e.type === 'tool_call_result' && (
+            <div className="tool-result">Result: {JSON.stringify(e.tool_result)}</div>
+          )}
+        </div>
+      ))}
+
+      {Object.values(pendingToolCalls).length > 0 && (
+        <div className="waiting">Waiting for approval...</div>
+      )}
+    </div>
+  );
+}
+```
+
+### 6. Что дальше
+
+Это уже **полная продвинутая архитектура**, как в Cursor + Claude.
+
+**Следующие шаги (рекомендую):**
+
+1. Внедрить **structured streaming** в `agent_pipeline.py`
+2. Добавить **WebSocket control channel** для approve/edit/reject
+3. Сделать красивый **AgentStreamPanel** в MCC
+
+Хочешь, я сейчас дам:
+- Полный код `agent_stream` генератора (с примерами reasoning/tool call)
+- Подробный протокол WebSocket control
+- Или React-компонент с модальным редактированием аргументов?
+
+**Отлично!** Вот **полный, готовый к внедрению** код генератора `agent_stream` с примерами reasoning и tool call.
+
+Я сделал его в современном стиле 2026 года: структурированный, управляемый, с возможностью approve/edit/reject.
+
+---
+
+### Полный код: `src/orchestration/agent_pipeline.py` (фрагмент с streaming)
+
+Замените / добавьте в ваш `agent_pipeline.py` следующие части:
+
+```python
+"""
+Agent Pipeline — Fractal task orchestration with FULL STRUCTURED STREAMING
+MARKER_2026_STRUCTURED_STREAMING + TOOL_CALL_CONTROL
+"""
+
+import json
+import time
+import asyncio
+from typing import AsyncGenerator, Dict, Any, Literal
+import structlog
+
+from src.elisya.llm_model_registry import get_llm_registry, calculate_timeout
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+stream_logger = structlog.get_logger("agent_stream")   # Для отладки стрима
+
+class AgentPipeline:
+    # ... ваш существующий __init__ ...
+
+    # ===================================================================
+    # НОВЫЙ: Structured Streaming Generator
+    # ===================================================================
+
+    async def _stream_event(self, event_type: str, data: Dict[str, Any]):
+        """Единая точка отправки всех событий стрима"""
+        event = {
+            "event_id": f"evt_{int(time.time() * 1000000)}",
+            "timestamp": time.time(),
+            "agent_id": "dragon",                    # можно сделать multi-agent
+            "model": getattr(self, "_last_used_model", "unknown"),
+            "type": event_type,
+            **data
+        }
+
+        # 1. Отправляем в Mycelium WebSocket (для MCC)
+        if hasattr(self, "ws_broadcaster") and self.ws_broadcaster:
+            await self.ws_broadcaster.broadcast({
+                "type": "agent_stream",
+                "data": event
+            })
+
+        # 2. Логируем для Архитектора
+        stream_logger.info("agent_stream", **event)
+
+        return event
+
+    # ===================================================================
+    # ГЛАВНЫЙ ГЕНЕРАТОР СТРИМА (с примерами reasoning + tool call)
+    # ===================================================================
+
+    async def _stream_execution(self, task: str, phase_type: str = "research") -> AsyncGenerator[Dict, None]:
+        """Основной генератор структурированного стрима"""
+        
+        # ── 1. Начало выполнения ─────────────────────────────────────
+        yield await self._stream_event("reasoning", {
+            "content": f"Начинаю фазу **{phase_type}** для задачи:\n> {task[:120]}...",
+            "status": "executing"
+        })
+
+        # ── 2. Reasoning (Chain-of-Thought) ─────────────────────────
+        reasoning = await self._generate_reasoning(task, phase_type)
+        yield await self._stream_event("reasoning", {
+            "content": reasoning,
+            "status": "done"
+        })
+
+        # ── 3. Tool Call Proposal ───────────────────────────────────
+        tool_call = await self._propose_tool_call(reasoning, phase_type)
+        
+        if tool_call:
+            yield await self._stream_event("tool_call_proposed", {
+                "tool_name": tool_call["name"],
+                "tool_args": tool_call["args"],
+                "tool_args_original": tool_call["args"].copy(),  # для возможности edit
+                "status": "pending",
+                "description": tool_call.get("description", "")
+            })
+
+            # Ждём решения пользователя (approve / edit / reject)
+            decision = await self._wait_for_user_decision(tool_call["id"])
+
+            if decision["action"] == "reject":
+                yield await self._stream_event("tool_call_rejected", {
+                    "tool_name": tool_call["name"],
+                    "reason": decision.get("reason", "Пользователь отклонил")
+                })
+                return
+
+            elif decision["action"] == "edit":
+                tool_call["args"] = decision["edited_args"]
+                yield await self._stream_event("tool_call_edited", {
+                    "tool_name": tool_call["name"],
+                    "tool_args": tool_call["args"]
+                })
+
+            # ── 4. Выполнение инструмента ─────────────────────────────
+            yield await self._stream_event("tool_call_executing", {
+                "tool_name": tool_call["name"],
+                "status": "executing"
+            })
+
+            result = await self._execute_tool(tool_call)
+
+            yield await self._stream_event("tool_call_result", {
+                "tool_name": tool_call["name"],
+                "tool_result": result,
+                "status": "done"
+            })
+
+        # ── 5. Финальный ответ ───────────────────────────────────────
+        final_answer = await self._generate_final_answer(task, reasoning, tool_call)
+        yield await self._stream_event("final_answer", {
+            "content": final_answer,
+            "status": "done"
+        })
+
+    # ===================================================================
+    # Основной метод execute — теперь использует streaming
+    # ===================================================================
+
+    async def execute(self, task: str, phase_type: str = "research", **kwargs):
+        """Запуск стрима выполнения"""
+        async for event in self._stream_execution(task, phase_type):
+            # Здесь можно добавить дополнительные действия (логика, метрики и т.д.)
+            pass
+
+        # Возвращаем финальный результат (для совместимости)
+        return {"status": "completed", "task": task}
+```
+
+---
+
+### Примеры событий, которые будет видеть пользователь
+
+**1. Reasoning**
+```json
+{
+  "type": "reasoning",
+  "content": "Сначала нужно понять текущую архитектуру. Я вижу, что используется Zustand + React 19...",
+  "status": "done"
+}
+```
+
+**2. Tool Call Proposed (с возможностью edit)**
+```json
+{
+  "type": "tool_call_proposed",
+  "tool_name": "vetka_read_file",
+  "tool_args": { "path": "src/main.tsx", "marker": "MARKER_134" },
+  "status": "pending"
+}
+```
+
+**3. Tool Call Edited пользователем**
+```json
+{
+  "type": "tool_call_edited",
+  "tool_name": "vetka_read_file",
+  "tool_args": { "path": "src/components/DevPanel.tsx", "marker": "MARKER_135" }
+}
+```
+
+**4. Tool Result**
+```json
+{
+  "type": "tool_call_result",
+  "tool_name": "vetka_read_file",
+  "tool_result": { "content": "import React from 'react'; ...", "lines": 124 },
+  "status": "done"
+}
+```
+
+---
+
+### Что нужно сделать дальше (следующие шаги)
+
+1. **Внедрить** `_stream_event` и `_stream_execution` в `agent_pipeline.py`
+2. **Добавить** WebSocket handler для `agent_control` (approve/edit/reject)
+3. **Создать** React-компонент `AgentStreamPanel` с карточками tool calls и кнопками управления
+
+Хочешь, я сразу дам:
+- Полный код **WebSocket control** (approve/edit/reject)
+- Полный **React AgentStreamPanel** с модальным редактированием аргументов?
+
+Или сначала внедрим этот streaming generator и посмотрим, как он работает?
+
+Скажи — продолжаем. Это будет очень сильная фича.
+
+WebSocket control (approve/edit/reject)
+НЕОБХОДИМА АДАПТАЦИЯ С СУЩЕСТВУЮЩЕМ СТИЛЕМ 
+
+Вот **полная реализация WebSocket control** для approve/edit/reject tool calls.
+
+Я сделал её максимально простой, надёжной и готовой к интеграции в вашу текущую архитектуру (Mycelium WebSocket на порту 8082 + FastAPI).
+
+### 1. Backend — WebSocket для управления (approve/edit/reject)
+
+Добавьте этот код в ваш существующий WebSocket файл (например `src/mcp/mycelium_ws_server.py` или отдельный `src/mcp/agent_control_ws.py`).
+
+```python
+"""
+Agent Control WebSocket — approve/edit/reject tool calls in real-time
+MARKER_2026_AGENT_CONTROL_WS
+"""
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from typing import Dict, Any, Callable
+import asyncio
+import uuid
+import json
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+router = APIRouter()
+
+# Глобальный словарь ожидающих решений (tool_call_id → future)
+pending_decisions: Dict[str, asyncio.Future] = {}
+pending_locks = asyncio.Lock()
+
+@router.websocket("/ws/agent-control")
+async def agent_control_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    client_id = str(uuid.uuid4())[:8]
+    logger.info(f"Agent Control WS connected: {client_id}")
+
+    try:
+        while True:
+            raw_data = await websocket.receive_text()
+            try:
+                data = json.loads(raw_data)
+            except json.JSONDecodeError:
+                await websocket.send_json({"error": "Invalid JSON"})
+                continue
+
+            action = data.get("action")
+            tool_call_id = data.get("tool_call_id")
+
+            if not tool_call_id or action not in ("approve", "reject", "edit"):
+                await websocket.send_json({"error": "Missing tool_call_id or invalid action"})
+                continue
+
+            async with pending_locks:
+                if tool_call_id not in pending_decisions:
+                    await websocket.send_json({"error": "No pending decision for this tool_call_id"})
+                    continue
+
+                future = pending_decisions.pop(tool_call_id)
+
+            # Формируем решение
+            decision = {
+                "action": action,
+                "tool_call_id": tool_call_id,
+                "edited_args": data.get("edited_args") if action == "edit" else None,
+                "reason": data.get("reason") if action == "reject" else None
+            }
+
+            # Разрешаем future
+            if not future.done():
+                future.set_result(decision)
+
+            await websocket.send_json({
+                "success": True,
+                "message": f"Decision {action} accepted for {tool_call_id}"
+            })
+
+    except WebSocketDisconnect:
+        logger.info(f"Agent Control WS disconnected: {client_id}")
+    except Exception as e:
+        logger.error(f"Agent Control WS error: {e}")
+        await websocket.close(code=1011)
+```
+
+### 2. Интеграция в AgentPipeline (ждём решение пользователя)
+
+Добавьте этот метод в класс `AgentPipeline`:
+
+```python
+async def _wait_for_user_decision(self, tool_call_id: str, timeout_sec: int = 300) -> Dict:
+    """
+    Ждём решения пользователя по tool call (approve/edit/reject)
+    Возвращает словарь с action и edited_args (если edit)
+    """
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+
+    async with pending_locks:
+        pending_decisions[tool_call_id] = future
+
+    try:
+        decision = await asyncio.wait_for(future, timeout=timeout_sec)
+        return decision
+
+    except asyncio.TimeoutError:
+        async with pending_locks:
+            pending_decisions.pop(tool_call_id, None)
+        logger.warning(f"Timeout waiting for decision on tool_call {tool_call_id}")
+        return {"action": "reject", "reason": "User timeout (5 minutes)"}
+
+    except Exception as e:
+        async with pending_locks:
+            pending_decisions.pop(tool_call_id, None)
+        logger.error(f"Error in user decision wait: {e}")
+        return {"action": "reject", "reason": f"Internal error: {str(e)}"}
+```
+
+Используйте его в `_stream_execution`:
+
+```python
+# Внутри генератора, после "tool_call_proposed"
+decision = await self._wait_for_user_decision(tool_call["id"])
+
+if decision["action"] == "reject":
+    yield await self._stream_event("tool_call_rejected", {
+        "tool_name": tool_call["name"],
+        "reason": decision.get("reason", "Rejected by user")
+    })
+    return
+
+elif decision["action"] == "edit":
+    tool_call["args"] = decision["edited_args"]
+    yield await self._stream_event("tool_call_edited", {
+        "tool_name": tool_call["name"],
+        "tool_args": tool_call["args"]
+    })
+
+# Продолжаем выполнение...
+```
+
+### 3. Frontend — отправка решений (React + Socket.IO или native WS)
+
+Пример в `AgentStreamPanel.tsx`:
+
+```tsx
+// При клике на кнопку Approve / Reject / Edit
+const handleDecision = async (toolCallId: string, action: 'approve' | 'reject' | 'edit', editedArgs?: any) => {
+  if (!socket) return;
+
+  const payload = {
+    action,
+    tool_call_id: toolCallId,
+    ...(action === 'edit' && { edited_args: editedArgs }),
+    ...(action === 'reject' && { reason: 'User rejected' })
+  };
+
+  socket.emit('agent_control', payload);  // если Socket.IO
+
+  // Или native WebSocket:
+  // ws.send(JSON.stringify(payload));
+};
+```
+
+### 4. Как это будет выглядеть в UI
+
+- Пользователь видит:  
+  **Tool Call: vetka_read_file**  
+  **Args:** `{ "path": "src/main.tsx" }`  
+  Кнопки: **Approve** | **Edit** (открывает модалку с JSON-редактором) | **Reject**
+
+- После **Edit** → отправляется новый event "tool_call_edited"  
+- После **Approve** → сразу "tool_call_executing" → "tool_call_result"
+
+### 5. Дополнительные улучшения (рекомендую добавить позже)
+
+- **Модалка редактирования аргументов** (JSON Editor в React)
+- **Timeout для ожидания решения** (если пользователь не ответил — reject по умолчанию)
+- **Multi-user** поддержка (разные клиенты могут одобрять разные tool calls)
+- **Replay стрима** (для отладки / показа истории)
+
+Готово — это **полная продвинутая система**, как в Cursor.
+
+Хочешь, я сейчас дам:
+- Полный React-компонент с модалкой редактирования?
+- Тестовый сценарий (как проверить approve/edit/reject)?
+- Или сразу интегрировать это в MyceliumCommandCenter?
+
+Скажи — продолжаем. Это уже будет очень сильная фича. 🔥

@@ -1,67 +1,99 @@
 // file: client/src/App.tsx
-import React, { useEffect, useRef, useState } from 'react';
-import { Canvas } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
-import * as THREE from 'three';
 
-// MARKER_102.1_START
-const UnifiedSearchBar: React.FC<{ onSearch: (query: string) => void }> = ({ onSearch }) => {
-  const [query, setQuery] = useState('');
-  
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSearch(query);
-  };
+// MARKER_102.2_START
+const TopRightButtons = () => {
+  const { 
+    showChat, 
+    showArtifact, 
+    showMCC, 
+    toggleChat, 
+    toggleArtifact, 
+    toggleMCC 
+  } = useStore(s => ({
+    showChat: s.showChat,
+    showArtifact: s.showArtifact,
+    showMCC: s.showMCC,
+    toggleChat: s.toggleChat,
+    toggleArtifact: s.toggleArtifact,
+    toggleMCC: s.toggleMCC,
+  }));
 
   return (
-    <form 
-      onSubmit={handleSubmit}
+    <div 
       style={{
-        position: 'fixed',
+        position: 'absolute',
         top: '16px',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: '50vw',
-        minWidth: '400px',
-        zIndex: 1000,
+        right: '16px',
         display: 'flex',
-        backgroundColor: 'white',
-        borderRadius: '8px',
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-        overflow: 'hidden'
+        flexDirection: 'row',
+        gap: '8px',
+        zIndex: 1000,
       }}
     >
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search..."
+      <button
+        onClick={toggleChat}
         style={{
-          flex: 1,
-          padding: '12px 16px',
+          background: showChat ? 'rgba(59, 130, 246, 0.8)' : 'rgba(255, 255, 255, 0.8)',
           border: 'none',
-          outline: 'none',
-          fontSize: '16px'
-        }}
-      />
-      <button 
-        type="submit"
-        style={{
-          padding: '12px 20px',
-          backgroundColor: '#007AFF',
-          color: 'white',
-          border: 'none',
+          borderRadius: '8px',
+          padding: '8px',
           cursor: 'pointer',
-          fontWeight: '600'
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
         }}
       >
-        Search
+        <MessageSquare size={20} color={showChat ? 'white' : 'black'} />
       </button>
-    </form>
+      
+      <button
+        onClick={toggleArtifact}
+        style={{
+          background: showArtifact ? 'rgba(59, 130, 246, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+          border: 'none',
+          borderRadius: '8px',
+          padding: '8px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+        }}
+      >
+        <TerminalSquare size={20} color={showArtifact ? 'white' : 'black'} />
+      </button>
+      
+      <button
+        onClick={toggleMCC}
+        style={{
+          background: showMCC ? 'rgba(59, 130, 246, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+          border: 'none',
+          borderRadius: '8px',
+          padding: '8px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+        }}
+      >
+        <div style={{ 
+          width: 20, 
+          height: 20, 
+          backgroundColor: showMCC ? 'white' : 'black',
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '10px',
+          fontWeight: 'bold',
+          color: showMCC ? 'black' : 'white'
+        }}>
+          MCC
+        </div>
+      </button>
+    </div>
   );
 };
-// MARKER_102.1_END
-
-const App: React.FC = () => {
-  // ... rest of the component
-};
+// MARKER_102.2_END

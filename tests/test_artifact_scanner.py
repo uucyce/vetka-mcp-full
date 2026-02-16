@@ -8,6 +8,15 @@ def _patch_paths(monkeypatch, tmp_path):
     monkeypatch.setattr(scanner, "ARTIFACTS_DIR", tmp_path / "data" / "artifacts")
     monkeypatch.setattr(scanner, "VETKA_OUT_DIR", tmp_path / "src" / "vetka_out")
     monkeypatch.setattr(scanner, "STAGING_FILE", tmp_path / "data" / "staging.json")
+    class _DummyRegistry:
+        def __init__(self):
+            self.links = []
+
+        def link(self, chat_id, message_id, artifact):
+            self.links.append((chat_id, message_id, artifact))
+            return True
+
+    monkeypatch.setattr(scanner, "get_chat_artifact_registry", lambda: _DummyRegistry())
 
 
 def test_scan_artifacts_returns_empty_if_dir_missing(monkeypatch, tmp_path):

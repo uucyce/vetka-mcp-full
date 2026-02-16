@@ -107,12 +107,14 @@ export function layoutSugiyamaBT(
 ): { nodes: Node[]; edges: Edge[] } {
   // Create dagre graph
   const g = new dagre.graphlib.Graph();
+  // MARKER_151.2A: Tuned spacing for clean orthogonal edges
   g.setGraph({
-    rankdir: 'BT',     // Bottom-to-Top: root at bottom
-    ranksep: 80,       // Vertical spacing between layers
-    nodesep: 50,       // Horizontal spacing between nodes
-    marginx: 20,
-    marginy: 20,
+    rankdir: 'BT',     // Bottom-to-Top: root at bottom (VETKA tree metaphor)
+    ranksep: 120,      // Vertical spacing — was 80, more breathing room
+    nodesep: 80,       // Horizontal spacing — was 50, prevents edge crowding
+    edgesep: 20,       // Minimum edge separation — prevents overlapping paths
+    marginx: 30,
+    marginy: 30,
   });
   g.setDefaultEdgeLabel(() => ({}));
 
@@ -175,7 +177,7 @@ export function layoutSugiyamaBT(
     id: edge.id,
     source: edge.source,
     target: edge.target,
-    type: 'smoothstep',
+    type: 'step',       // MARKER_151.2B: Orthogonal routing — clean right-angle connections (was smoothstep)
     animated: edge.type === 'temporal' || edge.type === 'feedback' || edge.animated,
     style: {
       stroke: getEdgeColor(edge.type),

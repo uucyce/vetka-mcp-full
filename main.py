@@ -377,6 +377,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"[Startup] Socket.IO handler registration failed: {e}")
 
+    # MARKER_145.MODEL_UPDATER: On-demand model profile loading (no cron, no polling)
+    try:
+        from src.elisya.model_updater import start_model_updater
+        await start_model_updater()  # No-op, just logs readiness
+        logger.info("[Startup] LLM model registry ready (on-demand profile loading)")
+    except Exception as e:
+        logger.warning(f"[Startup] LLM model registry init failed: {e}")
+
     print("  VETKA FASTAPI READY")
     print("=" * 60 + "\n")
 
@@ -417,6 +425,13 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, "qdrant_batch_manager") and app.state.qdrant_batch_manager:
         await app.state.qdrant_batch_manager.stop()
         logger.info("[Shutdown] Qdrant batch manager stopped (flushed remaining)")
+
+    # MARKER_145.MODEL_UPDATER: Clear model profile session cache on shutdown
+    try:
+        from src.elisya.model_updater import stop_model_updater
+        await stop_model_updater()
+    except Exception:
+        pass
 
     # === PHASE 104: Stop TTS server ===
     try:

@@ -1,0 +1,8 @@
+{
+  "task_id": "myc_a867c4c0",
+  "status": "completed",
+  "task": "Add a star/favorite toggle button component for chat messages. Create a React component StarToggle.tsx in src/components/chat/ that: 1) Uses useState for toggle state, 2) Renders a \u2b50/\u2606 button, 3) Call",
+  "preset": "dragon_silver",
+  "detail": "{'task_id': 'task_1771086038', 'task': 'Add a star/favorite toggle button component for chat messages. Create a React component StarToggle.tsx in src/components/chat/ that: 1) Uses useState for toggle state, 2) Renders a \u2b50/\u2606 button, 3) Calls an API endpoint when toggled. Also create the API handler in src/api/handlers/favorites_handler.py with a POST endpoint.', 'phase_type': 'build', 'status': 'done', 'subtasks': [{'description': 'Create favorites_handler.py in src/api/handlers/ with a POST end",
+  "ts": "2026-02-14T16:28:31Z"
+}

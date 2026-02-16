@@ -1,0 +1,18 @@
+{
+  "run_id": "task_1771163722",
+  "task": "D-149.2: PlaygroundBadge component for MCC header\n\nCreate PlaygroundBadge.tsx in client/src/components/mcc/. Shows PG:N count. Click opens dropdown of active playgrounds. Glow green when review_ready.",
+  "summary": "Completed 3/3 subtasks",
+  "quality_score": 0.9499999999999998,
+  "issues_found": [],
+  "improvements_for_next_run": [],
+  "files_created": [],
+  "tokens_used": 11430,
+  "duration_s": 125.6,
+  "preset": "dragon_silver",
+  "status": "done",
+  "subtasks_total": 3,
+  "subtasks_completed": 3,
+  "retries": 0,
+  "tier_upgrades": 0,
+  "saved_at": "2026-02-15T13:57:28Z"
+}

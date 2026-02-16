@@ -64,10 +64,11 @@ export function WatcherStats() {
     }
   }, []);
 
-  // Fetch on mount and every 10s
+  // MARKER_145.CLEANUP: Fetch on mount + long fallback. Was 10s = 8,640 req/day.
+  // Watcher stats are low-priority monitoring — no real-time requirement.
   useEffect(() => {
     fetchStats();
-    const interval = setInterval(fetchStats, 10000);
+    const interval = setInterval(fetchStats, 120000);
     return () => clearInterval(interval);
   }, [fetchStats]);
 

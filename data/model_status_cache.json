@@ -82,10 +82,10 @@
   "x-ai/grok-4.1-fast": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770820208.7734652,
-    "last_error": 1770820132.732424,
+    "last_success": 1771188588.080446,
+    "last_error": 1771188539.7121038,
     "error_code": null,
-    "call_count": 132
+    "call_count": 151
   },
   "arcee-ai/trinity-mini:free": {
     "healthy": true,
@@ -146,10 +146,10 @@
   "z-ai/glm-4.7-flash": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770820358.423025,
+    "last_success": 1771188204.005627,
     "last_error": 1770684807.364314,
     "error_code": null,
-    "call_count": 293
+    "call_count": 376
   },
   "stepfun/step-3.5-flash:free": {
     "healthy": true,
@@ -282,10 +282,10 @@
   "qwen/qwen3-coder-flash": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770803945.665188,
-    "last_error": 1770667558.867619,
+    "last_success": 1771188509.421807,
+    "last_error": 1771086464.7909288,
     "error_code": null,
-    "call_count": 247
+    "call_count": 331
   },
   "deepseek/deepseek-v3.2": {
     "healthy": true,
@@ -298,34 +298,34 @@
   "moonshotai/kimi-k2.5": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770820327.588651,
-    "last_error": 1770690696.3681972,
+    "last_success": 1771188533.673323,
+    "last_error": 1771026792.817594,
     "error_code": null,
-    "call_count": 112
+    "call_count": 171
   },
   "qwen/qwen3-30b-a3b": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770803929.925235,
+    "last_success": 1771188380.266864,
     "last_error": null,
     "error_code": null,
-    "call_count": 30
+    "call_count": 32
   },
   "qwen/qwen3-coder": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770820352.185815,
-    "last_error": 1770820345.7268312,
+    "last_success": 1771163829.589013,
+    "last_error": 1771158343.193547,
     "error_code": null,
-    "call_count": 1083
+    "call_count": 1443
   },
   "xiaomi/mimo-v2-flash": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770803947.8145542,
+    "last_success": 1771188511.781771,
     "last_error": null,
     "error_code": null,
-    "call_count": 93
+    "call_count": 109
   },
   "anthropic/claude-opus-4.6": {
     "healthy": true,
@@ -337,43 +337,43 @@
   },
   "test/model": {
     "healthy": false,
-    "error_count": 210,
+    "error_count": 343,
     "last_success": null,
-    "last_error": 1770691696.747081,
+    "last_error": 1771188760.995154,
     "error_code": 400,
-    "call_count": 210
+    "call_count": 343
   },
   "google/gemini-3-pro-preview": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770729919.1121018,
+    "last_success": 1771188557.555464,
     "last_error": null,
     "error_code": null,
-    "call_count": 9
+    "call_count": 11
   },
   "anthropic/claude-sonnet-4.5": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770689372.616292,
-    "last_error": 1770687948.328344,
+    "last_success": 1771188732.177032,
+    "last_error": 1771188603.967699,
     "error_code": null,
-    "call_count": 76
+    "call_count": 89
   },
   "qwen/qwen3-max": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770689378.305241,
+    "last_success": 1771188697.331344,
     "last_error": null,
     "error_code": null,
-    "call_count": 15
+    "call_count": 17
   },
   "anthropic/claude-haiku-4.5": {
     "healthy": true,
     "error_count": 0,
-    "last_success": 1770729960.330229,
+    "last_success": 1771163967.067584,
     "last_error": null,
     "error_code": null,
-    "call_count": 1
+    "call_count": 3
   },
   "qwen3-coder": {
     "healthy": true,
@@ -387,6 +387,38 @@
     "healthy": true,
     "error_count": 0,
     "last_success": 1770808417.186978,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
+  },
+  "kimi-k2.5": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770824041.960549,
+    "last_error": 1770823975.037612,
+    "error_code": null,
+    "call_count": 7
+  },
+  "allenai/olmo-3.1-32b-think": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1770824909.1109738,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
+  },
+  "anthropic/claude-3-haiku": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1771026823.620372,
+    "last_error": null,
+    "error_code": null,
+    "call_count": 1
+  },
+  "minimax/minimax-m2.5": {
+    "healthy": true,
+    "error_count": 0,
+    "last_success": 1771273775.29548,
     "last_error": null,
     "error_code": null,
     "call_count": 1

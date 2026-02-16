@@ -1,3 +1,5 @@
+# file: src/mcp/tools/web_search_tool.py
+# MARKER_102.3_START
 """
 MARKER_119.7: Tavily web search tool for pipeline @researcher.
 
@@ -90,11 +92,21 @@ class WebSearchTool(BaseMCPTool):
                     "score": item.get("score", 0)
                 })
 
+            # Apply score normalization using RRF utilities
+            try:
+                from src.search.rrf_fusion import normalize_results
+                normalized_results = normalize_results(results, 'web')
+                logger.debug(f"[WebSearch] Normalized {len(results)} web results")
+            except Exception as norm_error:
+                logger.warning(f"[WebSearch] Failed to normalize results: {norm_error}")
+                # Fall back to original results if normalization fails
+                normalized_results = results
+
             return {
                 "success": True,
                 "result": {
                     "query": query,
-                    "results": results,
+                    "results": normalized_results,
                     "answer": response.get("answer", "")
                 }
             }
@@ -110,3 +122,4 @@ class WebSearchTool(BaseMCPTool):
 def register_web_search_tool(tool_list: list):
     """Register web search tool with a tool registry list."""
     tool_list.append(WebSearchTool())
+# MARKER_102.3_END

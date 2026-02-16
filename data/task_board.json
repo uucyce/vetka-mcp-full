@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0",
     "phase": "121",
-    "updated": "2026-02-11T17:28:52.781731"
+    "updated": "2026-02-15T23:51:04.193982"
   },
   "tasks": {
     "tb_1770577538_6": {
@@ -271,7 +271,7 @@
       "phase_type": "fix",
       "preset": null,
       "assigned_tier": null,
-      "status": "pending",
+      "status": "done",
       "source": "dragon_todo",
       "tags": [
         "frontend",
@@ -282,7 +282,7 @@
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157112",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-02-11T17:32:42.965299",
       "pipeline_task_id": null,
       "result_summary": null,
       "stats": null
@@ -296,7 +296,7 @@
       "phase_type": "fix",
       "preset": null,
       "assigned_tier": null,
-      "status": "pending",
+      "status": "done",
       "source": "dragon_todo",
       "tags": [
         "frontend",
@@ -307,7 +307,7 @@
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.157742",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-02-11T17:32:42.967701",
       "pipeline_task_id": null,
       "result_summary": null,
       "stats": null
@@ -980,7 +980,7 @@
       "phase_type": "build",
       "preset": null,
       "assigned_tier": null,
-      "status": "pending",
+      "status": "done",
       "source": "mcp",
       "tags": [
         "backend",
@@ -992,7 +992,7 @@
       "dependencies": [],
       "created_at": "2026-02-11T13:33:07.094653",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-02-11T17:32:42.968616",
       "pipeline_task_id": null,
       "result_summary": null,
       "stats": null,
@@ -1000,8 +1000,8 @@
       "assigned_to": null,
       "assigned_at": null,
       "agent_type": null,
-      "commit_hash": null,
-      "commit_message": null,
+      "commit_hash": "97c0f71c",
+      "commit_message": "Phase 137: MCC Final Fixes",
       "created_by": "unknown"
     },
     "tb_1770805991_9": {
@@ -1248,10 +1248,10 @@
       ],
       "dependencies": [],
       "created_at": "2026-02-11T14:27:46.274322",
-      "started_at": null,
-      "completed_at": "2026-02-11T15:39:58.009930",
+      "started_at": "2026-02-13T18:06:14.781879",
+      "completed_at": "2026-02-14T14:12:37.641855+00:00",
       "pipeline_task_id": null,
-      "result_summary": null,
+      "result_summary": "Completed Phase 136 - event-driven dispatch implemented",
       "stats": null,
       "result": null,
       "assigned_to": null,
@@ -1269,7 +1269,7 @@
       "complexity": "medium",
       "phase_type": "build",
       "preset": null,
-      "assigned_tier": null,
+      "assigned_tier": "dragon_silver",
       "status": "done",
       "source": "mcp",
       "tags": [
@@ -1279,275 +1279,23 @@
       ],
       "dependencies": [],
       "created_at": "2026-02-11T14:27:49.258740",
-      "started_at": null,
-      "completed_at": "2026-02-11T14:39:39.882989",
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null,
-      "result": null,
-      "assigned_to": null,
-      "assigned_at": null,
-      "agent_type": null,
-      "commit_hash": null,
-      "commit_message": null,
-      "created_by": "unknown"
-    },
-    "tb_1770809271_3": {
-      "id": "tb_1770809271_3",
-      "title": "S1.3 Unified Search: wire Cmd+K frontend to POST /api/search/unified",
-      "description": "Connect Cursor's CommandPalette component to Codex's unified search API. Show results grouped by source (file/semantic/web). Files: client/src/components/CommandPalette.tsx, client/src/utils/searchApi.ts",
-      "priority": 1,
-      "complexity": "medium",
-      "phase_type": "build",
-      "preset": null,
-      "assigned_tier": null,
-      "status": "done",
-      "source": "mcp",
-      "tags": [
-        "sprint1",
-        "cursor",
-        "search"
-      ],
-      "dependencies": [],
-      "created_at": "2026-02-11T14:27:51.607655",
-      "started_at": null,
-      "completed_at": "2026-02-11T15:41:38.214012",
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null,
-      "result": null,
-      "assigned_to": null,
-      "assigned_at": null,
-      "agent_type": null,
-      "commit_hash": null,
-      "commit_message": null,
-      "created_by": "unknown"
-    },
-    "tb_1770809274_4": {
-      "id": "tb_1770809274_4",
-      "title": "S1.4 MCC Stats: connect to real pipeline_history data",
-      "description": "Replace fake 100% bars with real data from pipeline_history.json. Show: total runs, success rate, avg duration, model usage breakdown. Files: client/src/components/devpanel/StatsPanel.tsx, src/api/routes/pipeline_routes.py",
-      "priority": 2,
-      "complexity": "medium",
-      "phase_type": "build",
-      "preset": null,
-      "assigned_tier": null,
-      "status": "done",
-      "source": "mcp",
-      "tags": [
-        "sprint1",
-        "cursor",
-        "mcc"
-      ],
-      "dependencies": [],
-      "created_at": "2026-02-11T14:27:54.347978",
-      "started_at": null,
-      "completed_at": "2026-02-11T15:41:39.359712",
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null,
-      "result": null,
-      "assigned_to": null,
-      "assigned_at": null,
-      "agent_type": null,
-      "commit_hash": null,
-      "commit_message": null,
-      "created_by": "unknown"
-    },
-    "tb_1770809276_5": {
-      "id": "tb_1770809276_5",
-      "title": "S1.5 Artifact panel: connect ArtifactViewer to Codex API endpoints",
-      "description": "Wire Cursor's ArtifactViewer component to GET /api/artifacts, POST approve/reject. Show real artifacts from pipeline output. Files: client/src/components/devpanel/ArtifactViewer.tsx",
-      "priority": 2,
-      "complexity": "low",
-      "phase_type": "build",
-      "preset": null,
-      "assigned_tier": null,
-      "status": "done",
-      "source": "mcp",
-      "tags": [
-        "sprint1",
-        "cursor",
-        "mcc"
-      ],
-      "dependencies": [],
-      "created_at": "2026-02-11T14:27:56.641680",
-      "started_at": null,
-      "completed_at": "2026-02-11T15:41:40.390637",
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null,
-      "result": null,
-      "assigned_to": null,
-      "assigned_at": null,
-      "agent_type": null,
-      "commit_hash": null,
-      "commit_message": null,
-      "created_by": "unknown"
-    },
-    "tb_1770809279_6": {
-      "id": "tb_1770809279_6",
-      "title": "S1.6 Tests: heartbeat daemon E2E + unified search integration",
-      "description": "Write tests: (1) heartbeat daemon starts/stops/processes tasks, (2) unified search routes return results from all providers, (3) auto-close on commit flow. Files: tests/test_heartbeat_daemon.py, tests/test_unified_search_e2e.py",
-      "priority": 2,
-      "complexity": "medium",
-      "phase_type": "build",
-      "preset": null,
-      "assigned_tier": null,
-      "status": "pending",
-      "source": "mcp",
-      "tags": [
-        "sprint1",
-        "codex",
-        "tests"
-      ],
-      "dependencies": [],
-      "created_at": "2026-02-11T14:27:59.398252",
-      "started_at": null,
-      "completed_at": null,
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null,
-      "result": null,
-      "assigned_to": null,
-      "assigned_at": null,
-      "agent_type": null,
-      "commit_hash": null,
-      "commit_message": null,
-      "created_by": "unknown"
-    },
-    "tb_1770815857_1": {
-      "id": "tb_1770815857_1",
-      "title": "S2.0 MCC Deep Fix: heartbeat dual panels, artifacts not working, full QA pass",
-      "description": "CRITICAL Cursor task. MCC DevPanel has multiple broken features:\\n1. Heartbeat: TWO interval panels still showing, cannot set interval properly, cannot enable/disable reliably\\n2. Artifacts panel: shows empty even though disk_artifact_service exists\\n3. Full QA: test every MCC tab (DAG, BOARD, STATS, ARCHITECT, ARTIFACTS, BALANCE, WATCHER) — report what works and what doesn't\\n4. Fix all broken functionality found\\n\\nFiles: client/src/components/devpanel/DevPanel.tsx and all sub-components",
-      "priority": 1,
-      "complexity": "high",
-      "phase_type": "fix",
-      "preset": null,
-      "assigned_tier": "dragon_silver",
-      "status": "failed",
-      "source": "mcp",
-      "tags": [
-        "sprint2",
-        "cursor",
-        "mcc",
-        "critical"
-      ],
-      "dependencies": [],
-      "created_at": "2026-02-11T16:17:37.399746",
-      "started_at": "2026-02-11T17:25:46.514822",
-      "completed_at": "2026-02-11T17:28:52.743236",
-      "pipeline_task_id": "task_1770819946",
-      "result_summary": "{\"subtasks_completed\": 0, \"subtasks_total\": 0, \"files_created\": [], \"stats\": {}, \"approval_status\": \"unknown\", \"success\": false}",
-      "stats": null,
-      "result": null,
-      "assigned_to": null,
-      "assigned_at": null,
-      "agent_type": null,
-      "commit_hash": null,
-      "commit_message": null,
-      "created_by": "unknown"
-    },
-    "tb_1770815857_2": {
-      "id": "tb_1770815857_2",
-      "title": "S2.1 UI Layout: center search bar, icons horizontal right, remove top-right labels",
-      "description": "Redesign top UI layout:\\n1. Search bar (UnifiedSearchBar): move to CENTER (position: fixed, top: 16px, left: 50%, transform: translateX(-50%), width: 50vw min 400px)\\n2. Three icon buttons (Chat, Artifact, MCC): move to horizontal row TOP-RIGHT (flex-direction: row, gap: 8px)\\n3. Remove small text labels in top-right corner (Nodes count etc — move to MCC STATS)\\n4. Ensure chat panel doesn't overlap icons when open\\n5. Add mic icon in search bar when input is empty (voice activation ready)\\n\\nFiles: client/src/App.tsx (lines 568-708), UnifiedSearchBar.tsx",
-      "priority": 1,
-      "complexity": "medium",
-      "phase_type": "build",
-      "preset": null,
-      "assigned_tier": null,
-      "status": "queued",
-      "source": "mcp",
-      "tags": [
-        "sprint2",
-        "cursor",
-        "ui",
-        "layout"
-      ],
-      "dependencies": [],
-      "created_at": "2026-02-11T16:17:37.435326",
-      "started_at": null,
-      "completed_at": null,
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null,
-      "result": null,
-      "assigned_to": null,
-      "assigned_at": null,
-      "agent_type": null,
-      "commit_hash": null,
-      "commit_message": null,
-      "created_by": "unknown"
-    },
-    "tb_1770815857_3": {
-      "id": "tb_1770815857_3",
-      "title": "S2.2 Jarvis MCP: dedicated non-blocking MCP server with Engram + workflow router",
-      "description": "Create MCP JARVIS — third MCP server for voice superagent.\\nArchitecture: Engram user memory + workflow router (per-request workflow selection) + tool access to VETKA.\\nJarvis is a superagent: multiple models work together per request.\\nMust NOT block during pipeline execution.\\nIntegrate with existing src/voice/ subsystem.\\n\\nNew files: src/mcp/jarvis_mcp_server.py, src/jarvis/workflow_router.py, src/jarvis/engram_bridge.py",
-      "priority": 1,
-      "complexity": "high",
-      "phase_type": "build",
-      "preset": null,
-      "assigned_tier": null,
-      "status": "done",
-      "source": "mcp",
-      "tags": [
-        "sprint2",
-        "codex",
-        "jarvis",
-        "mcp"
-      ],
-      "dependencies": [],
-      "created_at": "2026-02-11T16:17:37.445138",
-      "started_at": null,
-      "completed_at": "2026-02-11T17:25:07.858600",
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null,
-      "result": null,
-      "assigned_to": null,
-      "assigned_at": null,
-      "agent_type": null,
-      "commit_hash": null,
-      "commit_message": null,
-      "created_by": "unknown"
-    },
-    "tb_1770815857_4": {
-      "id": "tb_1770815857_4",
-      "title": "S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction",
-      "description": "Build low-latency voice pipeline for Jarvis:\\n1. Layer 1: Pre-generated filler audio bank (hmm, let me think, searching...) — instant playback <100ms\\n2. Layer 2: T9 prediction — generate first sentence from viewport context + first words WHILE user speaks\\n3. Layer 3: Full response — complete LLM answer → TTS, appended after Layer 2\\n4. Crossfade between layers for seamless audio\\n5. Use existing src/voice/tts_engine.py (Qwen TTS) + streaming_pipeline.py\\n\\nFiles: src/voice/jarvis_voice_pipeline.py, src/voice/filler_bank.py, data/voice/fillers/",
-      "priority": 1,
-      "complexity": "high",
-      "phase_type": "build",
-      "preset": null,
-      "assigned_tier": "dragon_silver",
-      "status": "done",
-      "source": "mcp",
-      "tags": [
-        "sprint2",
-        "dragon_gold",
-        "jarvis",
-        "voice"
-      ],
-      "dependencies": [],
-      "created_at": "2026-02-11T16:17:37.456192",
-      "started_at": "2026-02-11T16:18:37.616972",
-      "completed_at": "2026-02-11T16:25:08.001437",
-      "pipeline_task_id": "task_1770815917",
-      "result_summary": "{\"subtasks_completed\": 3, \"subtasks_total\": 3, \"files_created\": [], \"stats\": {\"preset\": \"dragon_silver\", \"league\": \"dragon\", \"phase_type\": \"build\", \"subtasks_total\": 3, \"subtasks_completed\": 3, \"success\": true, \"llm_calls\": 10, \"tokens_in\": 18534, \"tokens_out\": 13806, \"verifier_avg_confidence\": 0.3, \"completed_at\": 1770816307.484492, \"duration_s\": 389.8}, \"approval_status\": \"unknown\", \"success\": true}",
+      "started_at": "2026-02-15T14:52:35.744001",
+      "completed_at": "2026-02-15T14:59:39.686485",
+      "pipeline_task_id": "task_1771156355",
+      "result_summary": "{\"subtasks_completed\": 4, \"subtasks_total\": 4, \"files_created\": [], \"stats\": {\"preset\": \"dragon_silver\", \"league\": \"dragon\", \"phase_type\": \"build\", \"subtasks_total\": 4, \"subtasks_completed\": 4, \"success\": true, \"llm_calls\": 9, \"tokens_in\": 10534, \"tokens_out\": 7287, \"verifier_avg_confidence\": 0.9125, \"completed_at\": 1771156779.666323, \"duration_s\": 423.9}, \"approval_status\": \"unknown\", \"success\": true}",
       "stats": {
         "preset": "dragon_silver",
         "league": "dragon",
         "phase_type": "build",
-        "subtasks_total": 3,
-        "subtasks_completed": 3,
+        "subtasks_total": 4,
+        "subtasks_completed": 4,
         "success": true,
-        "llm_calls": 10,
-        "tokens_in": 18534,
-        "tokens_out": 13806,
-        "verifier_avg_confidence": 0.3,
-        "completed_at": 1770816307.484492,
-        "duration_s": 389.8
+        "llm_calls": 9,
+        "tokens_in": 10534,
+        "tokens_out": 7287,
+        "verifier_avg_confidence": 0.9125,
+        "completed_at": 1771156779.666323,
+        "duration_s": 423.9
       },
       "result": {
         "agents": {
@@ -1570,27 +1318,33 @@
           "verifier": {
             "status": "done",
             "model": "z-ai/glm-4.7-flash",
-            "confidence": 0.3
+            "confidence": 0.91
           }
         },
         "subtasks": [
           {
-            "description": "S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction\n\nBuild low-latency voi",
+            "description": "Import and initialize Tavily web search client in unified_search.py handler",
             "status": "done",
             "tokens_used": null,
-            "confidence": 0.3
+            "confidence": 0.95
           },
           {
-            "description": "S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction\n\nBuild low-latency voi",
+            "description": "Replace stub web search implementation with actual Tavily API query execution",
             "status": "done",
             "tokens_used": null,
-            "confidence": 0.3
+            "confidence": 0.85
           },
           {
-            "description": "S2.3 Jarvis Voice Pipeline: streaming TTS with filler phrases + T9 prediction\n\nBuild low-latency voi",
+            "description": "Apply score normalization to web results using existing RRF utilities (normalize_results from rrf_fu",
             "status": "done",
             "tokens_used": null,
-            "confidence": 0.3
+            "confidence": 0.95
+          },
+          {
+            "description": "Integrate normalized web results into federated router response merging logic",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
           }
         ]
       },
@@ -1601,27 +1355,26 @@
       "commit_message": null,
       "created_by": "unknown"
     },
-    "tb_1770815857_5": {
-      "id": "tb_1770815857_5",
-      "title": "S2.5 Model Directory: auto-detect ALL models (Polza voice, local Qwen TTS, Ollama)",
-      "description": "Fix Model Directory showing 'No models found':\\n1. Scan Polza API for ALL available models including voice/TTS/STT\\n2. Scan local Ollama for installed models\\n3. Detect local Qwen TTS server if running\\n4. Auto-categorize: text, voice, image, embedding\\n5. Remove hardcoded model lists — dynamic auto-detection\\n6. Show provider badges (Polza, Poe, OpenRouter, Local)\\n\\nFiles: client/src/components/ModelDirectory.tsx, src/api/routes/model_routes.py (or create)",
+    "tb_1770809271_3": {
+      "id": "tb_1770809271_3",
+      "title": "S1.3 Unified Search: wire Cmd+K frontend to POST /api/search/unified",
+      "description": "Connect Cursor's CommandPalette component to Codex's unified search API. Show results grouped by source (file/semantic/web). Files: client/src/components/CommandPalette.tsx, client/src/utils/searchApi.ts",
       "priority": 1,
       "complexity": "medium",
-      "phase_type": "fix",
+      "phase_type": "build",
       "preset": null,
       "assigned_tier": null,
-      "status": "done",
+      "status": "queued",
       "source": "mcp",
       "tags": [
-        "sprint2",
-        "codex",
-        "models",
-        "critical"
+        "sprint1",
+        "cursor",
+        "search"
       ],
       "dependencies": [],
-      "created_at": "2026-02-11T16:17:37.467447",
+      "created_at": "2026-02-11T14:27:51.607655",
       "started_at": null,
-      "completed_at": "2026-02-11T17:25:07.903880",
+      "completed_at": null,
       "pipeline_task_id": null,
       "result_summary": null,
       "stats": null,
@@ -1633,25 +1386,24 @@
       "commit_message": null,
       "created_by": "unknown"
     },
-    "tb_1770815857_6": {
-      "id": "tb_1770815857_6",
-      "title": "S2.6 Agent Voice IDs: permanent voice per agent + voice messages in chat",
-      "description": "Each agent gets persistent voice identity:\\n1. Config: data/agent_voice_config.json — voice_id, provider, speed per agent\\n2. Voice messages in chat: waveform bars like Telegram (agent avatar + wave + duration)\\n3. Auto-play in voice conversation mode\\n4. Emotional tone from LLM response sentiment → TTS parameters\\n5. Trigger rule: voice input → voice output, text input → text output\\n\\nFiles: src/voice/agent_voices.py, client/src/components/chat/VoiceMessage.tsx, data/agent_voice_config.json",
+    "tb_1770809274_4": {
+      "id": "tb_1770809274_4",
+      "title": "S1.4 MCC Stats: connect to real pipeline_history data",
+      "description": "Replace fake 100% bars with real data from pipeline_history.json. Show: total runs, success rate, avg duration, model usage breakdown. Files: client/src/components/devpanel/StatsPanel.tsx, src/api/routes/pipeline_routes.py",
       "priority": 2,
       "complexity": "medium",
       "phase_type": "build",
       "preset": null,
       "assigned_tier": null,
-      "status": "pending",
+      "status": "queued",
       "source": "mcp",
       "tags": [
-        "sprint2",
-        "dragon_silver",
-        "jarvis",
-        "voice"
+        "sprint1",
+        "cursor",
+        "mcc"
       ],
       "dependencies": [],
-      "created_at": "2026-02-11T16:17:37.476633",
+      "created_at": "2026-02-11T14:27:54.347978",
       "started_at": null,
       "completed_at": null,
       "pipeline_task_id": null,
@@ -1665,25 +1417,172 @@
       "commit_message": null,
       "created_by": "unknown"
     },
-    "tb_1770819946_1": {
-      "id": "tb_1770819946_1",
-      "title": "MCC STATS: normalize bar scale + switch to horizontal area charts",
-      "description": "STATS tab bars go to ceiling because Y-axis not normalized. Fix:\\n1. Normalize bar heights to max value in dataset (not 100%)\\n2. Consider switching token breakdown from vertical bars to horizontal area charts (smoother, better for timeline data)\\n3. BY PRESET section: make bars proportional to each other, not fixed width\\n4. Add hover tooltips with exact numbers\\n\\nFiles: client/src/components/panels/DevPanel.tsx (StatsPanel section)\\nMARKER_138.MCC_STATS_NORMALIZE",
-      "priority": 1,
-      "complexity": "medium",
-      "phase_type": "fix",
+    "tb_1770809276_5": {
+      "id": "tb_1770809276_5",
+      "title": "S1.5 Artifact panel: connect ArtifactViewer to Codex API endpoints",
+      "description": "Wire Cursor's ArtifactViewer component to GET /api/artifacts, POST approve/reject. Show real artifacts from pipeline output. Files: client/src/components/devpanel/ArtifactViewer.tsx",
+      "priority": 2,
+      "complexity": "low",
+      "phase_type": "build",
       "preset": null,
-      "assigned_tier": null,
-      "status": "pending",
+      "assigned_tier": "dragon_silver",
+      "status": "done",
       "source": "mcp",
       "tags": [
-        "sprint2",
-        "codex",
-        "mcc",
-        "frontend"
+        "sprint1",
+        "cursor",
+        "mcc"
       ],
       "dependencies": [],
-      "created_at": "2026-02-11T17:25:46.504612",
+      "created_at": "2026-02-11T14:27:56.641680",
+      "started_at": "2026-02-15T16:44:20.079905",
+      "completed_at": "2026-02-15T16:52:40.066577",
+      "pipeline_task_id": "task_1771163060",
+      "result_summary": "{\"subtasks_completed\": 13, \"subtasks_total\": 13, \"files_created\": [], \"stats\": {\"preset\": \"dragon_silver\", \"league\": \"dragon\", \"phase_type\": \"build\", \"subtasks_total\": 13, \"subtasks_completed\": 13, \"success\": true, \"llm_calls\": 17, \"tokens_in\": 21063, \"tokens_out\": 12212, \"verifier_avg_confidence\": 0.7923076923076923, \"completed_at\": 1771163560.0467682, \"duration_s\": 500.0}, \"approval_status\": \"unknown\", \"success\": true}",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "build",
+        "subtasks_total": 13,
+        "subtasks_completed": 13,
+        "success": true,
+        "llm_calls": 17,
+        "tokens_in": 21063,
+        "tokens_out": 12212,
+        "verifier_avg_confidence": 0.7923076923076923,
+        "completed_at": 1771163560.0467682,
+        "duration_s": 500.0
+      },
+      "result": {
+        "agents": {
+          "scout": {
+            "status": "done",
+            "model": "z-ai/glm-4.7-flash"
+          },
+          "architect": {
+            "status": "done",
+            "model": "moonshotai/kimi-k2.5"
+          },
+          "researcher": {
+            "status": "done",
+            "model": "x-ai/grok-4.1-fast"
+          },
+          "coder": {
+            "status": "done",
+            "model": "qwen/qwen3-coder"
+          },
+          "verifier": {
+            "status": "done",
+            "model": "z-ai/glm-4.7-flash",
+            "confidence": 0.79
+          }
+        },
+        "subtasks": [
+          {
+            "description": "Define TypeScript interfaces for Artifact data (id, content, status, etc.) and API responses in clie",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Implement useQuery hook to fetch artifacts from GET /api/artifacts endpoint with loading and error s",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Implement useMutation hooks for POST /api/artifacts/{id}/approve and POST /api/artifacts/{id}/reject",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
+          },
+          {
+            "description": "Update ArtifactViewer.tsx component to integrate useQuery and useMutation hooks, replacing mock data",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.3
+          },
+          {
+            "description": "Add loading skeletons and error boundary UI states to ArtifactViewer.tsx for API loading and error s",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.5
+          },
+          {
+            "description": "Create artifact API service module at client/src/services/artifactApi.ts with three functions: fetch",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Create custom React Query hook at client/src/hooks/useArtifacts.ts that imports the API functions fr",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Refactor client/src/components/devpanel/ArtifactViewer.tsx to integrate the useArtifacts hook. Repla",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.5
+          },
+          {
+            "description": "Add error handling to client/src/components/devpanel/ArtifactViewer.tsx using error states returned ",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Create artifact API service module at client/src/services/artifactApi.ts with three functions: fetch",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Create custom React Query hook at client/src/hooks/useArtifacts.ts that imports the API functions fr",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Refactor client/src/components/devpanel/ArtifactViewer.tsx to integrate the useArtifacts hook. Repla",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.5
+          },
+          {
+            "description": "Add error handling to client/src/components/devpanel/ArtifactViewer.tsx using error states returned ",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          }
+        ]
+      },
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1770809279_6": {
+      "id": "tb_1770809279_6",
+      "title": "S1.6 Tests: heartbeat daemon E2E + unified search integration",
+      "description": "Write tests: (1) heartbeat daemon starts/stops/processes tasks, (2) unified search routes return results from all providers, (3) auto-close on commit flow. Files: tests/test_heartbeat_daemon.py, tests/test_unified_search_e2e.py",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "queued",
+      "source": "mcp",
+      "tags": [
+        "sprint1",
+        "codex",
+        "tests"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-11T14:27:59.398252",
       "started_at": null,
       "completed_at": null,
       "pipeline_task_id": null,
@@ -1696,11 +1595,567 @@
       "commit_hash": null,
       "commit_message": null,
       "created_by": "unknown"
+    },
+    "tb_1771092046_1": {
+      "id": "tb_1771092046_1",
+      "title": "D-149.1: HeartbeatChip component for MCC header",
+      "description": "Create HeartbeatChip.tsx in client/src/components/mcc/. Shows ON/OFF + tick count. Click toggles via POST /api/debug/heartbeat/settings. Nolan monochrome style. Read MCCTaskList.tsx first for existing logic. Use Zustand NOT MobX.",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": "dragon_silver",
+      "assigned_tier": "dragon_bronze",
+      "status": "done",
+      "source": "mcp",
+      "tags": [
+        "phase149",
+        "dragon",
+        "frontend",
+        "mcc"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-14T21:00:46.037645",
+      "started_at": "2026-02-15T23:42:43.159633",
+      "completed_at": "2026-02-15T23:48:43.901508",
+      "pipeline_task_id": "task_1771188163",
+      "result_summary": "{\"subtasks_completed\": 8, \"subtasks_total\": 8, \"files_created\": [], \"stats\": {\"preset\": \"dragon_bronze\", \"league\": \"dragon\", \"phase_type\": \"build\", \"subtasks_total\": 8, \"subtasks_completed\": 8, \"success\": true, \"llm_calls\": 12, \"tokens_in\": 17217, \"tokens_out\": 6154, \"verifier_avg_confidence\": 0.8625, \"completed_at\": 1771188523.88208, \"duration_s\": 360.7, \"agent_stats\": {\"researcher\": {\"calls\": 1, \"tokens_in\": 1377, \"tokens_out\": 1588, \"duration_s\": 10.433956861495972, \"retries\": 0, \"success_count\": 1, \"fail_count\": 0}, \"scout\": {\"calls\": 1, \"tokens_in\": 2339, \"tokens_out\": 1000, \"duration_s\": 25.83393669128418, \"retries\": 0, \"success_count\": 1, \"fail_count\": 0}, \"architect\": {\"calls\": 2, \"tokens_in\": 2037, \"tokens_out\": 2422, \"duration_s\": 19.164024114608765, \"retries\": 0, \"success_count\": 2, \"fail_count\": 0}, \"coder\": {\"calls\": 8, \"tokens_in\": 0, \"tokens_out\": 0, \"duration_s\": 223.91983079910278, \"retries\": 3, \"success_count\": 8, \"fail_count\": 0}, \"verifier\": {\"calls\": 8, \"tokens_in\": 11464, \"tokens_out\": 1144, \"duration_s\": 28.4759738445282, \"retries\": 0, \"success_count\": 3, \"fail_count\": 5}}}, \"approval_status\": \"unknown\", \"success\": true}",
+      "stats": {
+        "preset": "dragon_bronze",
+        "league": "dragon",
+        "phase_type": "build",
+        "subtasks_total": 8,
+        "subtasks_completed": 8,
+        "success": true,
+        "llm_calls": 12,
+        "tokens_in": 17217,
+        "tokens_out": 6154,
+        "verifier_avg_confidence": 0.8625,
+        "completed_at": 1771188523.88208,
+        "duration_s": 360.7,
+        "agent_stats": {
+          "researcher": {
+            "calls": 1,
+            "tokens_in": 1377,
+            "tokens_out": 1588,
+            "duration_s": 10.433956861495972,
+            "retries": 0,
+            "success_count": 1,
+            "fail_count": 0
+          },
+          "scout": {
+            "calls": 1,
+            "tokens_in": 2339,
+            "tokens_out": 1000,
+            "duration_s": 25.83393669128418,
+            "retries": 0,
+            "success_count": 1,
+            "fail_count": 0
+          },
+          "architect": {
+            "calls": 2,
+            "tokens_in": 2037,
+            "tokens_out": 2422,
+            "duration_s": 19.164024114608765,
+            "retries": 0,
+            "success_count": 2,
+            "fail_count": 0
+          },
+          "coder": {
+            "calls": 8,
+            "tokens_in": 0,
+            "tokens_out": 0,
+            "duration_s": 223.91983079910278,
+            "retries": 3,
+            "success_count": 8,
+            "fail_count": 0
+          },
+          "verifier": {
+            "calls": 8,
+            "tokens_in": 11464,
+            "tokens_out": 1144,
+            "duration_s": 28.4759738445282,
+            "retries": 0,
+            "success_count": 3,
+            "fail_count": 5
+          }
+        }
+      },
+      "result": {
+        "agents": {
+          "scout": {
+            "status": "done",
+            "model": "xiaomi/mimo-v2-flash"
+          },
+          "architect": {
+            "status": "done",
+            "model": "qwen/qwen3-30b-a3b"
+          },
+          "researcher": {
+            "status": "done",
+            "model": "x-ai/grok-4.1-fast"
+          },
+          "coder": {
+            "status": "done",
+            "model": "qwen/qwen3-coder-flash"
+          },
+          "verifier": {
+            "status": "done",
+            "model": "xiaomi/mimo-v2-flash",
+            "confidence": 0.86
+          }
+        },
+        "subtasks": [
+          {
+            "description": "Read MCCTaskList.tsx to understand existing Zustand patterns and MCC component structure",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
+          },
+          {
+            "description": "Create HeartbeatChip.tsx in client/src/components/mcc/ with Zustand store for heartbeat state (isOn,",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.8
+          },
+          {
+            "description": "Define Zustand store for heartbeat state in client/src/components/mcc/HeartbeatChip.tsx",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.8
+          },
+          {
+            "description": "Implement component using Zustand store instead of local state (replace useState with store state/ac",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
+          },
+          {
+            "description": "Connect toggle action to POST /api/debug/heartbeat/settings endpoint",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
+          },
+          {
+            "description": "Define Zustand store for heartbeat state in client/src/components/mcc/HeartbeatChip.tsx",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.8
+          },
+          {
+            "description": "Implement component using Zustand store instead of local state (replace useState with store state/ac",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
+          },
+          {
+            "description": "Connect toggle action to POST /api/debug/heartbeat/settings endpoint",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
+          }
+        ]
+      },
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1771092046_2": {
+      "id": "tb_1771092046_2",
+      "title": "D-149.2: PlaygroundBadge component for MCC header",
+      "description": "Create PlaygroundBadge.tsx in client/src/components/mcc/. Shows PG:N count. Click opens dropdown of active playgrounds. Glow green when review_ready. Data from GET /api/debug/playground. Nolan monochrome. Use Zustand NOT MobX.",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": "dragon_silver",
+      "assigned_tier": "dragon_silver",
+      "status": "done",
+      "source": "mcp",
+      "tags": [
+        "phase149",
+        "dragon",
+        "frontend",
+        "mcc"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-14T21:00:46.070811",
+      "started_at": "2026-02-15T16:55:22.830106",
+      "completed_at": "2026-02-15T16:57:28.494915",
+      "pipeline_task_id": "task_1771163722",
+      "result_summary": "{\"subtasks_completed\": 3, \"subtasks_total\": 3, \"files_created\": [], \"stats\": {\"preset\": \"dragon_silver\", \"league\": \"dragon\", \"phase_type\": \"build\", \"subtasks_total\": 3, \"subtasks_completed\": 3, \"success\": true, \"llm_calls\": 6, \"tokens_in\": 6221, \"tokens_out\": 5209, \"verifier_avg_confidence\": 0.9499999999999998, \"completed_at\": 1771163848.467583, \"duration_s\": 125.6}, \"approval_status\": \"unknown\", \"success\": true}",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "build",
+        "subtasks_total": 3,
+        "subtasks_completed": 3,
+        "success": true,
+        "llm_calls": 6,
+        "tokens_in": 6221,
+        "tokens_out": 5209,
+        "verifier_avg_confidence": 0.9499999999999998,
+        "completed_at": 1771163848.467583,
+        "duration_s": 125.6
+      },
+      "result": {
+        "agents": {
+          "scout": {
+            "status": "done",
+            "model": "z-ai/glm-4.7-flash"
+          },
+          "architect": {
+            "status": "done",
+            "model": "moonshotai/kimi-k2.5"
+          },
+          "researcher": {
+            "status": "done",
+            "model": "x-ai/grok-4.1-fast"
+          },
+          "coder": {
+            "status": "done",
+            "model": "qwen/qwen3-coder"
+          },
+          "verifier": {
+            "status": "done",
+            "model": "z-ai/glm-4.7-flash",
+            "confidence": 0.95
+          }
+        },
+        "subtasks": [
+          {
+            "description": "Create usePlaygroundStore Zustand store with async fetch action for GET /api/debug/playground, stori",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Create PlaygroundBadge.tsx in client/src/components/mcc/ using shadcn/ui Badge component with Nolan ",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Export PlaygroundBadge from mcc components index file (client/src/components/mcc/index.ts or create ",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          }
+        ]
+      },
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1771092048_3": {
+      "id": "tb_1771092048_3",
+      "title": "D-149.3: Sandbox toggle in TaskCard dispatch",
+      "description": "Modify TaskCard.tsx. Run button becomes dropdown: Direct (current) or Sandbox (create playground first, then dispatch with playground_id). Show lock icon when sandbox. Show Review button when done. Read TaskCard.tsx FIRST.",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": "dragon_silver",
+      "assigned_tier": null,
+      "status": "queued",
+      "source": "mcp",
+      "tags": [
+        "phase149",
+        "dragon",
+        "frontend",
+        "taskcard"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-14T21:00:48.171742",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1771092050_4": {
+      "id": "tb_1771092050_4",
+      "title": "D-149.4: Wire HeartbeatChip + PlaygroundBadge into MCC header",
+      "description": "Import HeartbeatChip and PlaygroundBadge into MCC header component. Place right of LIVE badge. Remove old heartbeat toggle from MCCTaskList.tsx footer. Do NOT break existing layout.",
+      "priority": 3,
+      "complexity": "simple",
+      "phase_type": "build",
+      "preset": "dragon_silver",
+      "assigned_tier": null,
+      "status": "queued",
+      "source": "mcp",
+      "tags": [
+        "phase149",
+        "dragon",
+        "frontend",
+        "wiring"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-14T21:00:50.405478",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1771092078_5": {
+      "id": "tb_1771092078_5",
+      "title": "C-149.1: Fix BUG-1 Scanner Duplicates (CRITICAL)",
+      "description": "3D tree shows 2-3x duplicate files. Scanner creates multiple Qdrant entries for same path. Fix: dedup on insert (check exists by path, update not insert). See docs/149_ph/CODEX_BRIEF_149.md for details.",
+      "priority": 1,
+      "complexity": "hard",
+      "phase_type": "fix",
+      "preset": null,
+      "assigned_tier": "dragon_silver",
+      "status": "done",
+      "source": "mcp",
+      "tags": [
+        "phase149",
+        "codex",
+        "bug",
+        "scanner",
+        "critical"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-14T21:01:18.772699",
+      "started_at": "2026-02-15T15:20:05.667656",
+      "completed_at": "2026-02-15T15:23:22.456463",
+      "pipeline_task_id": "task_1771158005",
+      "result_summary": "{\"subtasks_completed\": 4, \"subtasks_total\": 4, \"files_created\": [], \"stats\": {\"preset\": \"dragon_silver\", \"league\": \"dragon\", \"phase_type\": \"fix\", \"subtasks_total\": 4, \"subtasks_completed\": 4, \"success\": true, \"llm_calls\": 7, \"tokens_in\": 7725, \"tokens_out\": 6466, \"verifier_avg_confidence\": 0.875, \"completed_at\": 1771158202.429107, \"duration_s\": 196.8}, \"approval_status\": \"unknown\", \"success\": true}",
+      "stats": {
+        "preset": "dragon_silver",
+        "league": "dragon",
+        "phase_type": "fix",
+        "subtasks_total": 4,
+        "subtasks_completed": 4,
+        "success": true,
+        "llm_calls": 7,
+        "tokens_in": 7725,
+        "tokens_out": 6466,
+        "verifier_avg_confidence": 0.875,
+        "completed_at": 1771158202.429107,
+        "duration_s": 196.8
+      },
+      "result": {
+        "agents": {
+          "scout": {
+            "status": "done",
+            "model": "z-ai/glm-4.7-flash"
+          },
+          "architect": {
+            "status": "done",
+            "model": "moonshotai/kimi-k2.5"
+          },
+          "researcher": {
+            "status": "done",
+            "model": "x-ai/grok-4.1-fast"
+          },
+          "coder": {
+            "status": "done",
+            "model": "qwen/qwen3-coder"
+          },
+          "verifier": {
+            "status": "done",
+            "model": "z-ai/glm-4.7-flash",
+            "confidence": 0.88
+          }
+        },
+        "subtasks": [
+          {
+            "description": "Configure Qdrant collection schema to index 'path' field as keyword type for exact-match filtering (",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Implement pre-insert existence check using Qdrant scroll API with filter on 'path' payload to detect",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.85
+          },
+          {
+            "description": "Replace insert logic with upsert pattern: if path exists, update existing point using retrieved poin",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
+          },
+          {
+            "description": "Test scanner execution to verify duplicate elimination: confirm 3D tree shows single entries per fil",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.8
+          }
+        ]
+      },
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1771092080_6": {
+      "id": "tb_1771092080_6",
+      "title": "C-149.2: Unified Search wire Tavily web provider",
+      "description": "Wire vetka_web_search (Tavily) as web source in unified_search.py. Score normalization 0-1. 5s timeout. Graceful fallback. See docs/149_ph/CODEX_BRIEF_149.md.",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "queued",
+      "source": "mcp",
+      "tags": [
+        "phase149",
+        "codex",
+        "search",
+        "tavily"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-14T21:01:20.981609",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "unknown"
+    },
+    "tb_1771156779_9": {
+      "id": "tb_1771156779_9",
+      "title": "build new API endpoint",
+      "description": "build new API endpoint",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": "titan_core",
+      "assigned_tier": "titan_lite",
+      "status": "done",
+      "source": "heartbeat_titan",
+      "tags": [
+        "titan"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-15T14:59:39.867813",
+      "started_at": "2026-02-15T16:57:28.718627",
+      "completed_at": "2026-02-15T16:59:27.178365",
+      "pipeline_task_id": "task_1771163848",
+      "result_summary": "{\"subtasks_completed\": 2, \"subtasks_total\": 2, \"files_created\": [], \"stats\": {\"preset\": \"titan_lite\", \"league\": \"titan\", \"phase_type\": \"build\", \"subtasks_total\": 2, \"subtasks_completed\": 2, \"success\": true, \"llm_calls\": 5, \"tokens_in\": 6332, \"tokens_out\": 3939, \"verifier_avg_confidence\": 0.885, \"completed_at\": 1771163967.160213, \"duration_s\": 118.4}, \"approval_status\": \"unknown\", \"success\": true}",
+      "stats": {
+        "preset": "titan_lite",
+        "league": "titan",
+        "phase_type": "build",
+        "subtasks_total": 2,
+        "subtasks_completed": 2,
+        "success": true,
+        "llm_calls": 5,
+        "tokens_in": 6332,
+        "tokens_out": 3939,
+        "verifier_avg_confidence": 0.885,
+        "completed_at": 1771163967.160213,
+        "duration_s": 118.4
+      },
+      "result": {
+        "agents": {
+          "scout": {
+            "status": "done",
+            "model": "z-ai/glm-4.7-flash"
+          },
+          "architect": {
+            "status": "done",
+            "model": "qwen/qwen3-30b-a3b"
+          },
+          "researcher": {
+            "status": "done",
+            "model": "x-ai/grok-4.1-fast"
+          },
+          "coder": {
+            "status": "done",
+            "model": "qwen/qwen3-coder-flash"
+          },
+          "verifier": {
+            "status": "done",
+            "model": "anthropic/claude-haiku-4.5",
+            "confidence": 0.89
+          }
+        },
+        "subtasks": [
+          {
+            "description": "Create the new API endpoint module (e.g., src/api/handlers/new_endpoint.py) using FastAPI APIRouter,",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.92
+          },
+          {
+            "description": "Create unit tests for the new endpoint in tests/api/handlers/ (e.g., tests/api/handlers/test_new_end",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.85
+          }
+        ]
+      },
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "heartbeat:titan"
+    },
+    "tb_1771188524_9": {
+      "id": "tb_1771188524_9",
+      "title": "build new API endpoint",
+      "description": "build new API endpoint",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": "titan_core",
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "heartbeat_titan",
+      "tags": [
+        "titan"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-15T23:48:44.082758",
+      "started_at": "2026-02-15T23:48:44.083671",
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": "Server restart - task reset",
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "heartbeat:titan"
     }
   },
   "settings": {
-    "max_concurrent": 2,
-    "auto_dispatch": true,
+    "max_concurrent": 1,
+    "auto_dispatch": false,
     "default_preset": "dragon_silver"
   }
 }

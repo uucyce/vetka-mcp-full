@@ -92,6 +92,11 @@ class OAuthClientCredentialsRequest(BaseModel):
     client_secret: str
 
 
+class ConnectorScanRequest(BaseModel):
+    selected_ids: Optional[List[str]] = None
+    selected_paths: Optional[List[str]] = None
+
+
 _oauth_pending: Dict[str, Dict[str, Any]] = {}
 
 
@@ -174,6 +179,116 @@ def _post_form(url: str, data: Dict[str, Any], headers: Optional[Dict[str, str]]
     except Exception:
         parsed_qs = urllib.parse.parse_qs(body)
         return {k: vals[0] for k, vals in parsed_qs.items() if vals}
+
+
+def _http_get_json(url: str, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    req = urllib.request.Request(url, headers=headers or {}, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=400, detail=f"Provider request failed: {detail[:300]}")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Provider request error: {exc}")
+    try:
+        return json.loads(body)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Provider returned invalid JSON")
+
+
+def _get_provider_access_token(provider_id: str) -> str:
+    secure_store = get_connectors_secure_store()
+    bundle = secure_store.get_oauth_bundle(provider_id)
+    if bundle and bundle.get("access_token"):
+        return str(bundle["access_token"])
+    token = secure_store.get_token(provider_id)
+    if token:
+        return token
+    raise HTTPException(status_code=400, detail=f"Provider auth required: {provider_id}")
+
+
+def _google_drive_tree(access_token: str, page_limit: int = 6) -> Dict[str, Any]:
+    fields = "nextPageToken,files(id,name,mimeType,parents,modifiedTime,size)"
+    q = urllib.parse.quote("trashed = false")
+    base = (
+        "https://www.googleapis.com/drive/v3/files"
+        f"?pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true&fields={urllib.parse.quote(fields)}&q={q}"
+    )
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    items: List[Dict[str, Any]] = []
+    page_token: Optional[str] = None
+    pages = 0
+
+    while pages < page_limit:
+        url = base
+        if page_token:
+            url = f"{url}&pageToken={urllib.parse.quote(page_token)}"
+        payload = _http_get_json(url, headers=headers)
+        batch = payload.get("files", [])
+        if isinstance(batch, list):
+            items.extend(batch)
+        page_token = payload.get("nextPageToken")
+        pages += 1
+        if not page_token:
+            break
+
+    nodes_by_id: Dict[str, Dict[str, Any]] = {}
+    children: Dict[str, List[str]] = {"root": []}
+
+    for row in items:
+        node_id = str(row.get("id", "")).strip()
+        if not node_id:
+            continue
+        mime = str(row.get("mimeType", ""))
+        is_folder = mime == "application/vnd.google-apps.folder"
+        node = {
+            "id": node_id,
+            "name": str(row.get("name", "Untitled")),
+            "type": "folder" if is_folder else "file",
+            "mime_type": mime,
+            "parents": [str(p) for p in row.get("parents", []) if str(p).strip()],
+            "size": int(row.get("size", 0) or 0),
+            "modified": row.get("modifiedTime"),
+        }
+        nodes_by_id[node_id] = node
+        children[node_id] = []
+
+    for node in nodes_by_id.values():
+        parent_ids = [pid for pid in node["parents"] if pid in nodes_by_id]
+        if not parent_ids:
+            children["root"].append(node["id"])
+        else:
+            for pid in parent_ids:
+                children.setdefault(pid, []).append(node["id"])
+
+    def build_subtree(node_id: str, parent_path: str) -> Dict[str, Any]:
+        node = nodes_by_id[node_id]
+        current_path = f"{parent_path}/{node['name']}" if parent_path else f"/{node['name']}"
+        child_nodes = [build_subtree(cid, current_path) for cid in sorted(children.get(node_id, []), key=lambda x: nodes_by_id[x]["name"].lower())]
+        return {
+            "id": node["id"],
+            "name": node["name"],
+            "type": node["type"],
+            "mime_type": node["mime_type"],
+            "path": current_path,
+            "size": node["size"],
+            "modified": node["modified"],
+            "children": child_nodes,
+        }
+
+    tree = [build_subtree(cid, "/Drive") for cid in sorted(children.get("root", []), key=lambda x: nodes_by_id[x]["name"].lower())]
+    folders_count = sum(1 for n in nodes_by_id.values() if n["type"] == "folder")
+    files_count = len(nodes_by_id) - folders_count
+    return {
+        "provider": "google_drive",
+        "total_nodes": len(nodes_by_id),
+        "folders": folders_count,
+        "files": files_count,
+        "tree": tree,
+        "truncated": bool(page_token),
+    }
 
 
 def _build_oauth_authorize_url(
@@ -363,6 +478,27 @@ async def connectors_registry(source: Optional[str] = Query(default=None)) -> di
         "source": source,
         "providers": entries,
         "count": len(entries),
+    }
+
+
+@router.get("/{provider_id}/tree")
+async def connector_tree(provider_id: str) -> dict:
+    provider = _provider_index().get(provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail=f"Unknown provider: {provider_id}")
+    if not provider.get("connected"):
+        raise HTTPException(status_code=400, detail=f"Provider not connected: {provider_id}")
+
+    provider_class = str(provider.get("provider_class") or provider_id).lower()
+    if provider_class not in {"google", "google_drive"}:
+        raise HTTPException(status_code=400, detail=f"Tree preview not implemented for provider: {provider_id}")
+
+    token = _get_provider_access_token(provider_id)
+    tree_payload = _google_drive_tree(token)
+    return {
+        "success": True,
+        "provider_id": provider_id,
+        **tree_payload,
     }
 
 
@@ -582,7 +718,7 @@ async def manual_auth(provider_id: str, body: ManualAuthRequest) -> dict:
 
 
 @router.post("/{provider_id}/scan")
-async def scan_provider(provider_id: str, request: Request) -> dict:
+async def scan_provider(provider_id: str, request: Request, body: Optional[ConnectorScanRequest] = None) -> dict:
     service = get_connectors_state_service()
     secure_store = get_connectors_secure_store()
     queue = get_connectors_ingestion_queue_service()
@@ -595,13 +731,27 @@ async def scan_provider(provider_id: str, request: Request) -> dict:
     if not secure_store.has_token(provider_id):
         raise HTTPException(status_code=400, detail=f"Provider auth required: {provider_id}")
 
-    scanned_count = 12 + (len(provider_id) % 9) * 7
+    selected_ids = [s for s in (body.selected_ids if body else []) or [] if str(s).strip()]
+    selected_paths = [s for s in (body.selected_paths if body else []) or [] if str(s).strip()]
+    provider_class = str(state.get("provider_class") or provider_id).lower()
+
+    if provider_class in {"google", "google_drive"}:
+        scanned_count = len(selected_ids) if selected_ids else (len(selected_paths) if selected_paths else 0)
+        if scanned_count <= 0:
+            raise HTTPException(status_code=400, detail="Select at least one Google Drive folder/file before scan")
+    else:
+        scanned_count = 12 + (len(provider_id) % 9) * 7
+
     updated = service.mark_scan(provider_id, scanned_count=scanned_count)
 
     job = queue.enqueue(
         provider_id=provider_id,
         source=str(state.get("source", "")),
-        metadata={"scanned_count": scanned_count},
+        metadata={
+            "scanned_count": scanned_count,
+            "selected_ids": selected_ids,
+            "selected_paths": selected_paths,
+        },
     )
 
     sio = getattr(request.app.state, "socketio", None)

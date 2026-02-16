@@ -6,6 +6,53 @@ Mycelium — система автоматического развития пр
 видит карту проекта, подтверждает план Архитектора, наблюдает работу агентов.
 Максимум 3 действия за раз. Всё связано. Нет оторванных элементов.
 
+---
+
+## Grok Architecture Synthesis (2026-02-16)
+
+MARKER_153.ARCH.GROK_SYNTHESIS.V1
+
+Источник синтеза: ответ Grok "VETKA Architecture Map: Universal Data Nodes + Modes + MCP Extensibility"
+с фокусом на связку `input_matrix_idea.txt` + `qdrant_batch_manager.py` + `artifact_scanner.py`.
+
+### Core Position
+
+1. Базовый VETKA должен поддерживать универсальный ingest/index/search для всех типов данных без обязательного MCP.
+2. MCP используется как расширение для heavy-mode операций (глубокий видео/аудио пайплайн, 3D/GPU, live finance и т.д.).
+3. Универсальная связь между узлами строится из трех источников:
+   - явные зависимости (import/reference/citation),
+   - временная причинность (A.created < B.created при достаточной semantic similarity),
+   - ссылочные отношения (B явно ссылается на A).
+
+### Node Modes and Y-axis
+
+1. Directed Mode: `Y = time` (time-only, источник внизу, производные выше).
+2. Knowledge Mode: `Y = f(time, knowledge_level)`.
+3. Переключение режимов: через node-folder submenu / toolbar переключатель.
+4. Статус для UI: Directed Mode как отдельный явный режим со статусом готовности.
+
+### Media-Aware Node Representation
+
+Для media-узлов акцент не на цвете, а на типовом визуале и preview:
+1. video: poster/thumbnail + playback overlay, zoom -> timeline scrub.
+2. audio: waveform + duration, zoom -> full waveform + transcript.
+3. script/doc: page preview + structured outline/tree.
+4. code: snippet preview + full editor on zoom.
+
+### Architecture Flow (Phase 72/153 alignment)
+
+1. Scanner layer (modular): CodeScanner, DocumentScanner, VideoScanner, AudioScanner, TemporalLinker.
+2. Batch persistence/indexing: QdrantBatch (messages/artifacts) с единым ingestion contract.
+3. Graph build/layout: dependency relations -> DAG/Sugiyama -> 3D canvas.
+4. Agent loop: Mycelium agents предлагают рост графа, пользователь утверждает.
+
+### Constraints Added to Phase 153
+
+1. Anti-fragmentation: core pipeline остается единым (no separate mode backends for MVP).
+2. Backward compatibility: текстовый pipeline не ломается при включении multimodal path.
+3. Extraction status must be explicit in payload: `metadata_only|extracted|failed|skipped`.
+4. Heavy MCP features отделяются от базового режима флагами и отдельным launcher path.
+
 ## Core Principles
 
 1. **Matryoshka (DAG-in-DAG)** — Один canvas. Zoom раскрывает вложенный уровень.

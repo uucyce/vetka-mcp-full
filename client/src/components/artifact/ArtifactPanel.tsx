@@ -17,6 +17,7 @@ import { Toolbar } from './Toolbar';
 import { Loader2 } from 'lucide-react';
 import { isTauri, openLiveWebWindow } from '../../config/tauri';
 import { useStore } from '../../store/useStore';
+import { buildViewportContext } from '../../utils/viewport';
 
 // Lazy load heavy viewers
 const CodeViewer = lazy(() => import('./viewers/CodeViewer').then(m => ({ default: m.CodeViewer })));
@@ -76,6 +77,10 @@ interface Props {
 
 export function ArtifactPanel({ file, rawContent, onClose, onContentChange, approvalLevel, artifactId }: Props) {
   const setActiveWebContext = useStore((state) => state.setActiveWebContext);
+  const nodes = useStore((state) => state.nodes);
+  const pinnedFileIds = useStore((state) => state.pinnedFileIds);
+  const cameraRef = useStore((state) => state.cameraRef);
+  const selectedId = useStore((state) => state.selectedId);
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -92,6 +97,25 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
 
   // MARKER_104_VISUAL - L2 approval state
   const [currentApprovalLevel, setCurrentApprovalLevel] = useState<ApprovalLevel | undefined>(approvalLevel);
+
+  // MARKER_145.VIEWPORT_SAVE_ANCHOR: Recommend nearest viewport node path as default save target.
+  const getRecommendedSaveNodePath = useCallback((): string => {
+    const selectedPath = selectedId ? nodes[selectedId]?.path : '';
+    if (!cameraRef) return selectedPath || '';
+
+    try {
+      const viewport = buildViewportContext(nodes, pinnedFileIds, cameraRef);
+      const ranked = [...viewport.pinned_nodes, ...viewport.viewport_nodes]
+        .filter((n) => n.type === 'file' || n.type === 'folder')
+        .sort((a, b) => {
+          if (a.is_center !== b.is_center) return a.is_center ? -1 : 1;
+          return a.distance_to_camera - b.distance_to_camera;
+        });
+      return ranked[0]?.path || selectedPath || '';
+    } catch {
+      return selectedPath || '';
+    }
+  }, [cameraRef, nodes, pinnedFileIds, selectedId]);
 
   // MARKER_104_VISUAL - Sync approvalLevel from props
   useEffect(() => {
@@ -466,7 +490,7 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                   href={rawContent.sourceUrl}
                   target="_blank"
                   rel="noreferrer"
-                  style={{ color: '#8ab4f8', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  style={{ color: '#c7c7c7', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                   title={rawContent.sourceUrl}
                 >
                   {rawContent.sourceUrl}
@@ -478,7 +502,11 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                     if (!rawContent.sourceUrl || openingNativeWeb) return;
                     setOpeningNativeWeb(true);
                     try {
-                      const opened = await openLiveWebWindow(rawContent.sourceUrl, rawContent.title || 'VETKA Live Web');
+                      const opened = await openLiveWebWindow(
+                        rawContent.sourceUrl,
+                        rawContent.title || 'VETKA Live Web',
+                        getRecommendedSaveNodePath(),
+                      );
                       if (opened) {
                         setActiveWebContext({
                           url: rawContent.sourceUrl,
@@ -495,9 +523,9 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                   }}
                   style={{
                     marginLeft: 'auto',
-                    border: '1px solid #2f3f57',
-                    background: '#111827',
-                    color: '#a6c8ff',
+                    border: '1px solid #333',
+                    background: '#111',
+                    color: '#cfcfcf',
                     fontSize: 10,
                     padding: '2px 8px',
                     borderRadius: 4,
@@ -516,6 +544,7 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                     setWebSaving(true);
                     setWebSaveNote('');
                     try {
+                      const targetNodePath = getRecommendedSaveNodePath();
                       // MARKER_128.9A_WEB_SAVE_UI: Save real webpage extraction into VETKA artifacts
                       const resp = await fetch('/api/artifacts/save-webpage', {
                         method: 'POST',
@@ -524,6 +553,9 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                           url: rawContent.sourceUrl,
                           title: rawContent.title || '',
                           snippet: rawContent.content || '',
+                          output_format: 'md',
+                          file_name: rawContent.title || '',
+                          target_node_path: targetNodePath,
                         }),
                       });
                       const data = await resp.json();
@@ -532,7 +564,8 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                       }
                       setWebMarkdown(data.markdown || markdownFallback);
                       setWebMode('md');
-                      setWebSaveNote(`Saved: ${data?.filename || 'artifact'}`);
+                      const where = data?.file_path || targetNodePath || 'default artifact dir';
+                      setWebSaveNote(`Saved: ${data?.filename || 'artifact'} -> ${where}`);
                       setActiveWebContext({
                         url: rawContent.sourceUrl,
                         title: data?.title || rawContent.title || 'Web page',
@@ -549,9 +582,9 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
                     }
                   }}
                   style={{
-                    border: '1px solid #2f3f57',
-                    background: '#132238',
-                    color: '#a6c8ff',
+                    border: '1px solid #333',
+                    background: '#111',
+                    color: '#cfcfcf',
                     fontSize: 10,
                     padding: '2px 8px',
                     borderRadius: 4,
@@ -588,7 +621,7 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
               )}
             </div>
             {!!webSaveNote && (
-              <div style={{ borderTop: '1px solid #222', padding: '6px 12px', fontSize: 11, color: '#8ab4f8' }}>
+              <div style={{ borderTop: '1px solid #222', padding: '6px 12px', fontSize: 11, color: '#bbb' }}>
                 {webSaveNote}
               </div>
             )}

@@ -59,6 +59,9 @@ fn main() {
             commands::get_system_info,
             commands::open_research_browser,
             commands::open_external_webview,
+            commands::open_direct_web_window,
+            commands::get_direct_web_save_context,
+            commands::save_webpage_from_direct_window,
             // Phase 100.2: Native file system
             file_system::read_file_native,
             file_system::write_file_native,
@@ -84,7 +87,7 @@ fn main() {
                     }
                 });
 
-                if let Ok(current) = app.deep_link().get_current() {
+                if let Ok(Some(current)) = app.deep_link().get_current() {
                     if !current.is_empty() {
                         let urls: Vec<String> = current.iter().map(|u| u.to_string()).collect();
                         if let Some(window) = app.get_webview_window("main") {

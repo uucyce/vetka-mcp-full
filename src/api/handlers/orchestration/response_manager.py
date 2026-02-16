@@ -66,7 +66,8 @@ class ResponseManager:
         responses: List[Dict[str, Any]],
         node_path: str,
         file_available: bool,
-        pinned_files: Optional[List[str]] = None
+        pinned_files: Optional[List[str]] = None,
+        chat_id: Optional[str] = None,
     ) -> None:
         """
         Emit all agent responses to client.
@@ -76,7 +77,10 @@ class ResponseManager:
             node_path: Path to the node
             file_available: Whether file context is available
             pinned_files: Optional list of pinned files
+            chat_id: Optional stable chat UUID to keep writes in one chat thread
         """
+        stable_chat_id = (chat_id or "").strip() or None
+
         for i, resp in enumerate(responses):
             if i > 0:
                 await asyncio.sleep(0.15)
@@ -121,14 +125,23 @@ class ResponseManager:
                 'model': resp['model'],
                 'text': resp['text'],
                 'node_id': resp['node_id']
-            }, pinned_files=pinned_files)
+            }, pinned_files=pinned_files, chat_id=stable_chat_id or resp.get("chat_id"))
 
             # Emit message_sent event for surprise calculation
             try:
                 chat_history = self.get_chat_history_manager()
-                chat_id = chat_history.get_or_create_chat(node_path)
+                resolved_chat_id = stable_chat_id or resp.get("chat_id")
+                if resolved_chat_id:
+                    existing = chat_history.get_chat(resolved_chat_id)
+                    if not existing:
+                        resolved_chat_id = chat_history.get_or_create_chat(
+                            node_path,
+                            chat_id=resolved_chat_id,
+                        )
+                else:
+                    resolved_chat_id = chat_history.get_or_create_chat(node_path)
                 await self.emit_cam_event("message_sent", {
-                    "chat_id": chat_id,
+                    "chat_id": resolved_chat_id,
                     "content": resp['text'],
                     "role": "assistant"
                 }, source=f"agent_chain_{resp['agent']}")

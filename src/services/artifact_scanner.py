@@ -48,6 +48,7 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
+from src.services.chat_artifact_registry import get_chat_artifact_registry
 
 
 # ============================================================
@@ -264,6 +265,7 @@ def scan_artifacts() -> List[Dict]:
 
     # Load staging.json for chat/message links
     staging_links = _load_staging_links()
+    registry = get_chat_artifact_registry()
     print(f"[ARTIFACT_SCAN] Loaded {len(staging_links)} staging links")
 
     # Scan all files in configured artifact directories
@@ -341,6 +343,24 @@ def scan_artifacts() -> List[Dict]:
         }
 
         artifacts.append(artifact_node)
+
+        # MARKER_CHAT_HUB_4A: Persist stable chat->artifact links for fast chat-centric lookup.
+        if source_chat_id:
+            try:
+                registry.link(
+                    chat_id=str(source_chat_id),
+                    message_id=source_message_id,
+                    artifact={
+                        "artifact_id": artifact_id,
+                        "file_path": str(file_path),
+                        "name": file_path.name,
+                        "source_agent": staging_info.get("source_agent"),
+                        "source_role": staging_info.get("source_role"),
+                        "status": status,
+                    },
+                )
+            except Exception as e:
+                print(f"[ARTIFACT_SCAN] Warning: failed to link artifact registry for {file_path.name}: {e}")
 
     print(
         f"[ARTIFACT_SCAN] Scanned {len(artifacts)} artifacts "

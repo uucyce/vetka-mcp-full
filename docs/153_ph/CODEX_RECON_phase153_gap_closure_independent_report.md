@@ -1,0 +1,215 @@
+# CODEX RECON REPORT: Full Gap Closure (Independent Audit)
+
+MARKER_153.RECON.FULL_GAP_CLOSURE.INDEPENDENT
+
+Date: 2026-02-17  
+Protocol: RECON + markers -> REPORT -> WAIT GO -> IMPL NARROW -> VERIFY  
+Status: REPORT READY, WAITING FOR GO
+
+## Scope
+
+Independent code-first audit to close ambiguity before implementation:
+1. Verify all known Phase 153/72 ingestion and relation gaps.
+2. Resolve pipeline relationship question:
+   - `/api/watcher/add-from-browser` vs unified `web/` save/import path.
+3. Identify additional operational gaps causing iterative regressions.
+
+---
+
+## Key Answer: Is `web/` Import Connected to `/add-from-browser`?
+
+MARKER_153.RECON.WEB_VS_BROWSER_PIPELINES
+
+Short answer: **they are different pipelines** with partial convergence only in tree rendering.
+
+### Pipeline A: Browser FileSystem metadata ingest
+- Entry: `/api/watcher/add-from-browser`  
+  `src/api/routes/watcher_routes.py:376`
+- Input: metadata only (`name`, `relativePath`, `size`, `type`, `lastModified`)  
+  `src/api/routes/watcher_routes.py:47`
+- Embedding source: filename/path/type placeholder text  
+  `src/api/routes/watcher_routes.py:441`
+- Stored content is placeholder  
+  `src/api/routes/watcher_routes.py:466`
+
+### Pipeline B: Unified search `web/` -> save webpage artifact
+- Search endpoint: `/api/search/unified` with source `web`  
+  `src/api/routes/unified_search_routes.py:129`, `src/api/handlers/unified_search.py:127`
+- Save endpoint: `/api/artifacts/save-webpage`  
+  `src/api/routes/artifact_routes.py:140`
+- Save behavior: writes `.md`/`.html` into `data/artifacts/...` (disk artifact), does not call watcher index route directly  
+  `src/api/handlers/artifact_routes.py:207`
+
+### Convergence point
+- Tree API builds artifact nodes by scanning artifact directories from disk (`scan_artifacts`), not from watcher browser metadata path.  
+  `src/api/routes/tree_routes.py:810`
+
+Conclusion:
+- `add-from-browser` != `save-webpage`.
+- They converge visually in tree only via artifact scan, not via a unified ingestion contract.
+
+---
+
+## Gap Closure Matrix (Code-verified)
+
+### G01. Extension/MIME gate for non-text ingest
+MARKER_153.RECON.G01
+- **Status**: OPEN
+- Evidence: watcher/local scanner extension gates are text/code-centric.  
+  `src/scanners/file_watcher.py:79`, `src/scanners/local_scanner.py:46`
+- Risk: media files are skipped before extraction path.
+
+### G02. Browser mixed payload contract
+MARKER_153.RECON.G02
+- **Status**: OPEN
+- Evidence: `/add-from-browser` accepts metadata only; no content-bearing payload field.  
+  `src/api/routes/watcher_routes.py:47`, `src/api/routes/watcher_routes.py:56`
+- Risk: browser imports cannot index real content semantically.
+
+### G03. `/index-file` binary placeholder fallback
+MARKER_153.RECON.G03
+- **Status**: OPEN
+- Evidence: binary path falls back to `"[Binary file]"`.  
+  `src/api/routes/watcher_routes.py:632`
+- Risk: non-text files are indexed as low-value placeholders.
+
+### G04. Artifact content API text-centric
+MARKER_153.RECON.G04
+- **Status**: OPEN
+- Evidence: artifact content route reads text with `read_text(...)` only.  
+  `src/api/routes/artifact_routes.py:216`
+- Note: `/api/files/read` supports base64 binary, but artifact content route does not reuse this model.
+
+### G05. OCR path routing inconsistency
+MARKER_153.RECON.G05
+- **Status**: OPEN
+- Evidence: OCR branch exists in embedding pipeline but input scanners/routes often don't route media there.  
+  `src/scanners/embedding_pipeline.py:306`, `src/scanners/local_scanner.py:46`, `src/scanners/qdrant_updater.py:280`
+
+### G06. Triple-write reindex text-only
+MARKER_153.RECON.G06
+- **Status**: OPEN
+- Evidence: hardcoded `TEXT_EXTENSIONS` in reindex.  
+  `src/api/routes/triple_write_routes.py:227`, `src/api/routes/triple_write_routes.py:245`
+
+### G07. Artifact batch indexing path drift
+MARKER_153.RECON.G07
+- **Status**: OPEN
+- Evidence:
+  - Queue method exists but no production call sites outside tests.  
+    `src/memory/qdrant_batch_manager.py:150`
+  - Collection map lookup for `artifacts` has fallback key, but base collection map does not define `artifacts`.  
+    `src/memory/qdrant_batch_manager.py:375`, `src/memory/qdrant_client.py:85`
+
+### G08. Frontend decode/render policy incomplete for binary/media
+MARKER_153.RECON.G08
+- **Status**: OPEN
+- Evidence:
+  - Backend returns `{encoding, mimeType}`.  
+    `src/api/routes/files_routes.py:152`
+  - Artifact viewer type model is narrow (`code|markdown|image|unknown`).  
+    `client/src/components/artifact/utils/fileTypes.ts:11`
+  - ArtifactPanel loads `data.content` without full modality branch by `encoding/mimeType`.  
+    `client/src/components/artifact/ArtifactPanel.tsx:245`
+
+### G09. Universal scanner architecture not implemented beyond Python
+MARKER_153.RECON.G09
+- **Status**: OPEN
+- Evidence: base abstractions exist; concrete non-Python scanners absent in active pipeline.  
+  `src/scanners/base_scanner.py:35`, `src/scanners/python_scanner.py:73`
+
+### G10. REF/CITATION/FOOTNOTE extraction missing in production path
+MARKER_153.RECON.G10
+- **Status**: OPEN
+- Evidence: dependency enum includes types, but no document extractor wiring for citation/footnote parsing in scanners.  
+  `src/scanners/dependency.py:42`
+
+### G11. `classify_edge` not wired into final knowledge graph payload
+MARKER_153.RECON.G11
+- **Status**: OPEN
+- Evidence:
+  - `classify_edge` exists in layout module.  
+    `src/layout/knowledge_layout.py:409`
+  - Final exported edges include only `{source,target,type,weight}` without style fields from `classify_edge`.  
+    `src/layout/knowledge_layout.py:2680`
+
+### G12. End-to-end universal relation pipeline (all modalities -> Qdrant -> graph)
+MARKER_153.RECON.G12
+- **Status**: OPEN
+- Evidence: current flows remain split (watcher metadata path, index-file text path, artifact disk scan path).
+
+---
+
+## Additional Gaps Discovered (Operational)
+
+### G13. Streaming transparency gap: terminal-only provider stream diagnostics
+MARKER_153.RECON.G13_STREAM_CHAT_GAP
+- **Status**: OPEN
+- Evidence:
+  - Provider stream emits diagnostic logs via `print` (`[STREAM_V2]`, provider retries) in backend.  
+    `src/elisya/provider_registry.py:1752`
+  - Chat socket currently streams only `stream_start/token/end`, not provider/tool decision telemetry.  
+    `src/api/handlers/user_message_handler.py:696`, `client/src/hooks/useSocket.ts:940`
+- Impact: user cannot see "thinking/tool choice/provider retry" inside Vetka chat, only in terminal logs.
+
+### G14. Tooling reality gap in direct streaming path
+MARKER_153.RECON.G14_STREAM_TOOL_EXEC_GAP
+- **Status**: OPEN
+- Evidence:
+  - Streaming path sends a prompt saying tools are available, but uses `call_model_v2_stream` token stream (no tool call execution loop in this path).  
+    `src/api/handlers/user_message_handler.py:725`, `src/api/handlers/user_message_handler.py:738`
+  - Tool execution exists in non-stream direct call branches only.  
+    `src/api/handlers/user_message_handler.py:1064`
+- Impact: model can claim tool-based validation without actual tool execution in streamed mode.
+
+### G15. BM25 GraphQL escaping gap (multiline query breakage)
+MARKER_153.RECON.G15_BM25_ESCAPE_GAP
+- **Status**: OPEN
+- Evidence:
+  - Weaviate BM25 string escaping handles quotes only, not newline/backslash normalization.  
+    `src/memory/weaviate_helper.py:251`
+  - Can produce GraphQL unterminated string on multiline user text (matches observed logs).
+
+### G16. Web save indexing gap (artifact saved, semantic index path non-unified)
+MARKER_153.RECON.G16_WEB_SAVE_INDEX_GAP
+- **Status**: OPEN
+- Evidence:
+  - `/save-webpage` persists file to disk and returns metadata, but route does not index that file through `/watcher/index-file` or equivalent ingestion contract.
+  - Tree visibility may still occur due to disk artifact scanner, creating mismatch between visual availability and semantic retrieval path.
+  - Save endpoints: `src/api/routes/artifact_routes.py:140`, persistence: `src/api/handlers/artifact_routes.py:207`, tree artifact scan: `src/api/routes/tree_routes.py:810`
+
+### G17. Watcher throughput/robustness gap under non-hidden high-volume dirs
+MARKER_153.RECON.G17_WATCHER_THROUGHPUT_GAP
+- **Status**: OPEN
+- Evidence:
+  - Spam auto-mute applies only to hidden dirs; regular dirs are never muted even at high event rates.  
+    `src/scanners/file_watcher.py:106`, `src/scanners/file_watcher.py:141`
+- Impact: with broad media ingest, event pressure on regular dirs can still overload processing pipeline.
+
+---
+
+## Dependency Order (to avoid correction loops)
+
+MARKER_153.RECON.DEPENDENCY_ORDER
+
+1. Freeze contracts first:
+   - extraction contract (modality/encoding/status)
+   - relation contract (explicit/temporal/reference)
+   - stream telemetry contract (provider/tool events)
+2. Unify ingest entrypoints (`/index-file`, `/add-from-browser`, web-save post-processing).
+3. Align storage semantics (Qdrant collections + triple-write + artifact batch path).
+4. Wire graph edge semantics (`classify_edge` integration).
+5. Scale controls (watcher backpressure + BM25 escaping + structured errors).
+
+Rationale: steps 2-5 depend on step 1 contracts; doing them earlier causes repeated rewrites.
+
+---
+
+## Final Research State
+
+MARKER_153.REPORT.WAIT_GO
+
+- Unknowns materially affecting architecture decisions: **none**.
+- Open items are now implementation gaps (not research gaps).
+- Recommendation: proceed only with IMPL NARROW in dependency order above.
+

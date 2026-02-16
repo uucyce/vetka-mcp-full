@@ -1,0 +1,4292 @@
+[
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/vibrant-wright/run_mycelium.py",
+    "file_id": "6e06d3d8-9a1e-5157-aee2-a35d7d55eb35",
+    "timestamp": "2026-02-13T15:22:40.033600",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/heartbeat_cursors.json",
+    "file_id": "40fc0d71-a7c1-5a94-a170-63f0f3be1785",
+    "timestamp": "2026-02-13T15:31:23.592160",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_web_context_tools_integration.md",
+    "file_id": "85e55b29-6bee-5873-b0b5-dd2d437dba60",
+    "timestamp": "2026-02-13T15:51:29.582206",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_web_context_tools_integration.md",
+    "file_id": "85e55b29-6bee-5873-b0b5-dd2d437dba60",
+    "timestamp": "2026-02-13T15:51:30.508261",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/store/useStore.ts",
+    "file_id": "0049aa99-c770-5208-8dbd-59b8d76764ae",
+    "timestamp": "2026-02-13T16:01:19.489754",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/store/useStore.ts",
+    "file_id": "0049aa99-c770-5208-8dbd-59b8d76764ae",
+    "timestamp": "2026-02-13T16:01:23.196378",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/store/useStore.ts",
+    "file_id": "0049aa99-c770-5208-8dbd-59b8d76764ae",
+    "timestamp": "2026-02-13T16:01:27.450188",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T16:01:40.255264",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T16:01:42.497434",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T16:01:44.965174",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T16:02:37.474320",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T16:02:42.940590",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T16:02:48.674775",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T16:02:54.394623",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSocket.ts",
+    "file_id": "a19be6fe-ca4b-5596-afac-ddc0da2ce93f",
+    "timestamp": "2026-02-13T16:03:01.858545",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSocket.ts",
+    "file_id": "a19be6fe-ca4b-5596-afac-ddc0da2ce93f",
+    "timestamp": "2026-02-13T16:03:08.379101",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSocket.ts",
+    "file_id": "a19be6fe-ca4b-5596-afac-ddc0da2ce93f",
+    "timestamp": "2026-02-13T16:03:14.987640",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/handlers/chat_handler.py",
+    "file_id": "980d3da3-b3dc-59e7-8925-a69ab0528b8e",
+    "timestamp": "2026-02-13T16:03:22.849882",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSocket.ts",
+    "file_id": "a19be6fe-ca4b-5596-afac-ddc0da2ce93f",
+    "timestamp": "2026-02-13T16:04:37.679607",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSocket.ts",
+    "file_id": "a19be6fe-ca4b-5596-afac-ddc0da2ce93f",
+    "timestamp": "2026-02-13T16:04:47.638235",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSocket.ts",
+    "file_id": "a19be6fe-ca4b-5596-afac-ddc0da2ce93f",
+    "timestamp": "2026-02-13T16:04:57.708548",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T16:05:07.441125",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T16:05:12.181835",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T16:05:17.048610",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_IMPL_web_context_tools_integration.md",
+    "file_id": "3de9e704-9245-5f8d-a9c8-534625261254",
+    "timestamp": "2026-02-13T16:05:33.399253",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_IMPL_web_context_tools_integration.md",
+    "file_id": "3de9e704-9245-5f8d-a9c8-534625261254",
+    "timestamp": "2026-02-13T16:05:33.587411",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/VETKA_STRATEGIC_PLAN_2026.md",
+    "file_id": "2c765980-74ce-59e0-a521-bd8efce7afda",
+    "timestamp": "2026-02-13T16:06:02.065105",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/137_ph_cursor/MCC_AUDIT_REPORT.md",
+    "file_id": "94f5365f-0c27-5619-acf8-82ac20174ffb",
+    "timestamp": "2026-02-13T16:06:07.274727",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/VETKA_STRATEGIC_PLAN_2026.md",
+    "file_id": "2c765980-74ce-59e0-a521-bd8efce7afda",
+    "timestamp": "2026-02-13T16:06:08.377997",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/137_ph_cursor/MCC_AUDIT_REPORT.md",
+    "file_id": "94f5365f-0c27-5619-acf8-82ac20174ffb",
+    "timestamp": "2026-02-13T16:06:15.463979",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T16:06:24.009647",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T16:06:24.132517",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T16:06:24.136494",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/mcp/mycelium_mcp_server.py",
+    "file_id": "f02c6c87-7f96-5319-aab4-2f888321943d",
+    "timestamp": "2026-02-13T16:06:24.617697",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/run_mycelium.py",
+    "file_id": "ed8cdef7-a48a-5aff-bac3-935bb706fdae",
+    "timestamp": "2026-02-13T16:06:37.233209",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/mcp/mycelium_mcp_server.py",
+    "file_id": "f02c6c87-7f96-5319-aab4-2f888321943d",
+    "timestamp": "2026-02-13T16:06:46.379861",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/mcp/mycelium_mcp_server.py",
+    "file_id": "f02c6c87-7f96-5319-aab4-2f888321943d",
+    "timestamp": "2026-02-13T16:06:54.931145",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T16:07:04.051207",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T16:07:13.185324",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T16:07:22.246751",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T16:07:31.226251",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T16:07:39.919946",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T16:07:48.688992",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T16:07:57.368121",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T16:08:06.095019",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/heartbeat_cursors.json",
+    "file_id": "40fc0d71-a7c1-5a94-a170-63f0f3be1785",
+    "timestamp": "2026-02-13T16:17:16.725284",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.pytest_cache/v/cache/lastfailed",
+    "file_id": "1c74846e-71db-5343-91b9-b2c8bbe67b00",
+    "timestamp": "2026-02-13T16:17:21.726133",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.pytest_cache/v/cache/nodeids",
+    "file_id": "ad42c4be-9c54-5393-9f6e-60e458b43abf",
+    "timestamp": "2026-02-13T16:17:22.143337",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.pytest_cache/v/cache/nodeids",
+    "file_id": "ad42c4be-9c54-5393-9f6e-60e458b43abf",
+    "timestamp": "2026-02-13T16:17:44.948711",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/vibrant-wright/tests/test_mycelium_standalone.py",
+    "file_id": "fecbdb91-1b13-5f48-af51-419a1ee6fe25",
+    "timestamp": "2026-02-13T16:18:18.896014",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/ArtifactViewer.tsx",
+    "file_id": "fea69d32-e8e0-5da1-89fc-f90a11152740",
+    "timestamp": "2026-02-13T16:39:59.795116",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/ArtifactViewer.tsx",
+    "file_id": "fea69d32-e8e0-5da1-89fc-f90a11152740",
+    "timestamp": "2026-02-13T16:40:06.111135",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/ArtifactViewer.tsx",
+    "file_id": "fea69d32-e8e0-5da1-89fc-f90a11152740",
+    "timestamp": "2026-02-13T16:40:12.453907",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/ArtifactViewer.tsx",
+    "file_id": "fea69d32-e8e0-5da1-89fc-f90a11152740",
+    "timestamp": "2026-02-13T16:40:18.782064",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/ArtifactViewer.tsx",
+    "file_id": "fea69d32-e8e0-5da1-89fc-f90a11152740",
+    "timestamp": "2026-02-13T16:40:24.893100",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/ArtifactViewer.tsx",
+    "file_id": "fea69d32-e8e0-5da1-89fc-f90a11152740",
+    "timestamp": "2026-02-13T16:40:30.806775",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/ArtifactViewer.tsx",
+    "file_id": "fea69d32-e8e0-5da1-89fc-f90a11152740",
+    "timestamp": "2026-02-13T16:40:36.751482",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/ArtifactViewer.tsx",
+    "file_id": "fea69d32-e8e0-5da1-89fc-f90a11152740",
+    "timestamp": "2026-02-13T16:40:42.681767",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/ArtifactViewer.tsx",
+    "file_id": "fea69d32-e8e0-5da1-89fc-f90a11152740",
+    "timestamp": "2026-02-13T16:40:48.630359",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/ArtifactViewer.tsx",
+    "file_id": "fea69d32-e8e0-5da1-89fc-f90a11152740",
+    "timestamp": "2026-02-13T16:40:54.554801",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/ArtifactViewer.tsx",
+    "file_id": "fea69d32-e8e0-5da1-89fc-f90a11152740",
+    "timestamp": "2026-02-13T16:41:00.465686",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/ArtifactViewer.tsx",
+    "file_id": "fea69d32-e8e0-5da1-89fc-f90a11152740",
+    "timestamp": "2026-02-13T16:41:06.391968",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.pytest_cache/v/cache/nodeids",
+    "file_id": "ad42c4be-9c54-5393-9f6e-60e458b43abf",
+    "timestamp": "2026-02-13T16:41:26.604291",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/heartbeat_cursors.json",
+    "file_id": "40fc0d71-a7c1-5a94-a170-63f0f3be1785",
+    "timestamp": "2026-02-13T16:41:32.470657",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.pytest_cache/v/cache/nodeids",
+    "file_id": "ad42c4be-9c54-5393-9f6e-60e458b43abf",
+    "timestamp": "2026-02-13T16:41:34.971037",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_universal_search_window.md",
+    "file_id": "3d5126e7-43ea-566e-ba6d-c0ff5a9bab53",
+    "timestamp": "2026-02-13T16:53:26.500272",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_universal_search_window.md",
+    "file_id": "3d5126e7-43ea-566e-ba6d-c0ff5a9bab53",
+    "timestamp": "2026-02-13T16:53:28.291668",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_IMPL_tb_1770809279_6.md",
+    "file_id": "98ab2758-d5a6-5b9c-9af1-a83a245b451b",
+    "timestamp": "2026-02-13T16:55:01.827612",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_tb_1770807539_1.md",
+    "file_id": "b565a61a-871f-5fb6-98ef-534c4023d6e1",
+    "timestamp": "2026-02-13T16:55:01.952184",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_tb_1770819946_1.md",
+    "file_id": "57cfd628-4687-55e2-9a7a-e93d50c62923",
+    "timestamp": "2026-02-13T16:55:02.125755",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/Research ReporGROK.txt",
+    "file_id": "c05ed0ac-d531-5f57-80a3-58ba64f06c2b",
+    "timestamp": "2026-02-13T16:55:03.418411",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_IMPL_tb_1770809269_2.md",
+    "file_id": "3070e429-75e8-5c74-9e1f-107316801a37",
+    "timestamp": "2026-02-13T16:55:03.579103",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_IMPL_tb_1770809269_2_web_preview.md",
+    "file_id": "b32633d7-55ea-5bc4-94d0-333a63704482",
+    "timestamp": "2026-02-13T16:55:03.740484",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_IMPL_web_context_tools_integration.md",
+    "file_id": "3de9e704-9245-5f8d-a9c8-534625261254",
+    "timestamp": "2026-02-13T16:55:03.967353",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_web_context_tools_integration.md",
+    "file_id": "85e55b29-6bee-5873-b0b5-dd2d437dba60",
+    "timestamp": "2026-02-13T16:55:04.870227",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_web_live_default_md_mode.md",
+    "file_id": "060de6a6-ff82-584c-9258-94f81b89f2b7",
+    "timestamp": "2026-02-13T16:55:05.058087",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_phase128_9_web_browser_save.md",
+    "file_id": "bd0f1b9b-4959-5308-86f7-7049564323c8",
+    "timestamp": "2026-02-13T16:55:05.173033",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_universal_search_window.md",
+    "file_id": "3d5126e7-43ea-566e-ba6d-c0ff5a9bab53",
+    "timestamp": "2026-02-13T16:55:05.193521",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_tb_1770809279_6.md",
+    "file_id": "ca79b9ad-ea44-5bfe-8c87-739faef372d2",
+    "timestamp": "2026-02-13T16:55:05.363666",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_tb_1770805979_6_tb_1770805971_5.md",
+    "file_id": "1aa06d00-f597-50b2-b42c-61664e1e1c9e",
+    "timestamp": "2026-02-13T16:55:05.800464",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_tb_1770809269_2_web_preview.md",
+    "file_id": "5f4123a6-859d-524f-bde6-28caf86b2107",
+    "timestamp": "2026-02-13T16:55:05.929989",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_tb_1770809269_2.md",
+    "file_id": "bc67d70c-bb25-50ff-bf81-16356e67dc6a",
+    "timestamp": "2026-02-13T16:55:06.141757",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_REPORT_136.md",
+    "file_id": "f9772192-0677-528e-beb0-db55b72ea34b",
+    "timestamp": "2026-02-13T16:55:06.741277",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_IMPL_web_live_default_md_mode.md",
+    "file_id": "18af66cb-ebcc-5c82-9804-ea601d4d3a95",
+    "timestamp": "2026-02-13T16:55:06.872717",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_IMPL_phase128_9_web_browser_save.md",
+    "file_id": "c14cc211-23ec-561d-9aca-e4c9ad5a3816",
+    "timestamp": "2026-02-13T16:55:07.022380",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:01:44.453423",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:01:46.637208",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:01:49.018020",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:01:51.690644",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:01:54.475877",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:01:54.476779",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:01:54.476862",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:01:54.476941",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:02:01.412473",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:02:01.413135",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:02:01.413200",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:02:01.413248",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:02:27.980785",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:02:27.981710",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:02:27.982364",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:02:27.982409",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:02:40.871331",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:02:40.873119",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:02:40.873390",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:02:40.875334",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_universal_search_window.md",
+    "file_id": "3d5126e7-43ea-566e-ba6d-c0ff5a9bab53",
+    "timestamp": "2026-02-13T17:03:05.431525",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_universal_search_window.md",
+    "file_id": "3d5126e7-43ea-566e-ba6d-c0ff5a9bab53",
+    "timestamp": "2026-02-13T17:03:07.009449",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_universal_search_window.md",
+    "file_id": "3d5126e7-43ea-566e-ba6d-c0ff5a9bab53",
+    "timestamp": "2026-02-13T17:03:08.690488",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSearch.ts",
+    "file_id": "2196420a-01d0-5f8c-a7c7-651cba5652cf",
+    "timestamp": "2026-02-13T17:03:29.409075",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSearch.ts",
+    "file_id": "2196420a-01d0-5f8c-a7c7-651cba5652cf",
+    "timestamp": "2026-02-13T17:03:34.200054",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSearch.ts",
+    "file_id": "2196420a-01d0-5f8c-a7c7-651cba5652cf",
+    "timestamp": "2026-02-13T17:03:39.286870",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T17:03:41.958382",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T17:03:44.354522",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T17:03:46.648061",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T17:03:48.974275",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:53:35.575473",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:53:37.778840",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:53:40.194649",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T17:53:42.983383",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_universal_search_window.md",
+    "file_id": "3d5126e7-43ea-566e-ba6d-c0ff5a9bab53",
+    "timestamp": "2026-02-13T17:53:45.442101",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_universal_search_window.md",
+    "file_id": "3d5126e7-43ea-566e-ba6d-c0ff5a9bab53",
+    "timestamp": "2026-02-13T17:53:47.484599",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_universal_search_window.md",
+    "file_id": "3d5126e7-43ea-566e-ba6d-c0ff5a9bab53",
+    "timestamp": "2026-02-13T17:53:49.591564",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.pytest_cache/v/cache/nodeids",
+    "file_id": "ad42c4be-9c54-5393-9f6e-60e458b43abf",
+    "timestamp": "2026-02-13T18:03:59.941416",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/heartbeat_cursors.json",
+    "file_id": "40fc0d71-a7c1-5a94-a170-63f0f3be1785",
+    "timestamp": "2026-02-13T18:06:14.704835",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/feedback/patterns.json",
+    "file_id": "9cfcc4e7-4fbf-5093-b4b1-657cabab455b",
+    "timestamp": "2026-02-13T18:07:04.255654",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/vetka_staging/blocked/main_BLOCKED.py",
+    "file_id": "dead47ad-c3c9-5812-9d5a-eb457ee4d6c8",
+    "timestamp": "2026-02-13T18:08:53.640387",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.pytest_cache/v/cache/lastfailed",
+    "file_id": "1c74846e-71db-5343-91b9-b2c8bbe67b00",
+    "timestamp": "2026-02-13T18:11:07.685703",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.pytest_cache/v/cache/nodeids",
+    "file_id": "ad42c4be-9c54-5393-9f6e-60e458b43abf",
+    "timestamp": "2026-02-13T18:11:08.448308",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T18:25:42.995210",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T18:25:45.283993",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T18:25:47.794263",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T18:25:50.601395",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_universal_search_window.md",
+    "file_id": "3d5126e7-43ea-566e-ba6d-c0ff5a9bab53",
+    "timestamp": "2026-02-13T18:25:57.112591",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_universal_search_window.md",
+    "file_id": "3d5126e7-43ea-566e-ba6d-c0ff5a9bab53",
+    "timestamp": "2026-02-13T18:25:58.924239",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_universal_search_window.md",
+    "file_id": "3d5126e7-43ea-566e-ba6d-c0ff5a9bab53",
+    "timestamp": "2026-02-13T18:26:00.693622",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.pytest_cache/v/cache/nodeids",
+    "file_id": "ad42c4be-9c54-5393-9f6e-60e458b43abf",
+    "timestamp": "2026-02-13T18:34:36.625132",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase137_native_web_browser.md",
+    "file_id": "d819b726-d41d-588d-bde6-171baf4220b7",
+    "timestamp": "2026-02-13T18:54:17.378924",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase137_native_web_browser.md",
+    "file_id": "d819b726-d41d-588d-bde6-171baf4220b7",
+    "timestamp": "2026-02-13T18:54:17.989009",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase137_native_web_browser.md",
+    "file_id": "d819b726-d41d-588d-bde6-171baf4220b7",
+    "timestamp": "2026-02-13T18:54:18.496586",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T18:56:04.059793",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T18:56:04.060450",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T18:56:04.060543",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T18:56:04.060579",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T18:56:20.811155",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T18:56:23.033150",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T18:56:25.301349",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T18:56:32.092461",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T18:56:34.115398",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T18:56:36.186181",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T18:56:38.353720",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase137_native_web_browser.md",
+    "file_id": "d819b726-d41d-588d-bde6-171baf4220b7",
+    "timestamp": "2026-02-13T18:57:18.159737",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase137_native_web_browser.md",
+    "file_id": "d819b726-d41d-588d-bde6-171baf4220b7",
+    "timestamp": "2026-02-13T18:57:18.825167",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase137_native_web_browser.md",
+    "file_id": "d819b726-d41d-588d-bde6-171baf4220b7",
+    "timestamp": "2026-02-13T18:57:19.454040",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T19:04:54.436104",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T19:05:01.690091",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T19:05:08.981304",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T19:05:16.188206",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T19:05:20.593139",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T19:05:25.048140",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T19:05:29.464455",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T19:05:33.980597",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_phase145_viewport_browser_save.md",
+    "file_id": "db948c81-cd36-5c8d-a0f4-2f97fc3c981c",
+    "timestamp": "2026-02-13T19:05:40.152564",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_phase145_viewport_browser_save.md",
+    "file_id": "db948c81-cd36-5c8d-a0f4-2f97fc3c981c",
+    "timestamp": "2026-02-13T19:05:40.537128",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_RECON_phase145_viewport_browser_save.md",
+    "file_id": "db948c81-cd36-5c8d-a0f4-2f97fc3c981c",
+    "timestamp": "2026-02-13T19:05:40.930551",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/search/contextual_retrieval.py",
+    "file_id": "c33d41ce-9f9d-5536-8934-b396ce5db733",
+    "timestamp": "2026-02-13T19:22:04.331735",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/search/contextual_retrieval.py",
+    "file_id": "c33d41ce-9f9d-5536-8934-b396ce5db733",
+    "timestamp": "2026-02-13T19:22:06.897570",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSocket.ts",
+    "file_id": "a19be6fe-ca4b-5596-afac-ddc0da2ce93f",
+    "timestamp": "2026-02-13T19:22:53.288070",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSocket.ts",
+    "file_id": "a19be6fe-ca4b-5596-afac-ddc0da2ce93f",
+    "timestamp": "2026-02-13T19:23:02.419986",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSocket.ts",
+    "file_id": "a19be6fe-ca4b-5596-afac-ddc0da2ce93f",
+    "timestamp": "2026-02-13T19:23:11.740700",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T19:23:16.015606",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T19:23:20.536134",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T19:23:25.056771",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T19:23:29.610448",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase146_contextual_browser_save.md",
+    "file_id": "02786dfe-add4-5764-be64-b77404d49364",
+    "timestamp": "2026-02-13T19:23:29.919894",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase146_contextual_browser_save.md",
+    "file_id": "02786dfe-add4-5764-be64-b77404d49364",
+    "timestamp": "2026-02-13T19:23:30.301804",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase146_contextual_browser_save.md",
+    "file_id": "02786dfe-add4-5764-be64-b77404d49364",
+    "timestamp": "2026-02-13T19:23:30.583989",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSocket.ts",
+    "file_id": "a19be6fe-ca4b-5596-afac-ddc0da2ce93f",
+    "timestamp": "2026-02-13T19:23:43.196899",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSocket.ts",
+    "file_id": "a19be6fe-ca4b-5596-afac-ddc0da2ce93f",
+    "timestamp": "2026-02-13T19:23:43.214259",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/hooks/useSocket.ts",
+    "file_id": "a19be6fe-ca4b-5596-afac-ddc0da2ce93f",
+    "timestamp": "2026-02-13T19:23:43.214611",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T19:28:37.776798",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T19:28:39.075413",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T19:28:40.666215",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T19:29:54.343933",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T19:30:03.620745",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T19:30:13.219232",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T19:30:22.735770",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T19:30:32.143027",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T19:30:41.690493",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T19:30:44.269566",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T19:30:46.907467",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T19:30:49.528594",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T19:30:53.828302",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T19:30:58.177432",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T19:31:02.524259",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T19:31:06.364766",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T19:31:10.144960",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T19:31:14.331012",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T19:31:18.087412",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T19:31:25.551010",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T19:31:32.690175",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T19:31:33.976484",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T19:31:33.977117",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T19:31:33.977578",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T19:31:40.090437",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T19:31:42.500211",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T19:31:42.501456",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T19:31:42.502698",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T19:31:42.503589",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/artifact/ArtifactPanel.tsx",
+    "file_id": "b6433ee3-b2fd-5ca9-81df-df125751fd19",
+    "timestamp": "2026-02-13T19:31:47.439404",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T19:32:01.156914",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T19:32:14.675654",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T19:32:28.538784",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/main.tsx",
+    "file_id": "6135005d-b855-5b5f-aace-ce7fdc12f3e6",
+    "timestamp": "2026-02-13T19:32:28.661453",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/main.tsx",
+    "file_id": "6135005d-b855-5b5f-aace-ce7fdc12f3e6",
+    "timestamp": "2026-02-13T19:32:28.849012",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/main.tsx",
+    "file_id": "6135005d-b855-5b5f-aace-ce7fdc12f3e6",
+    "timestamp": "2026-02-13T19:32:29.022657",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase146_contextual_browser_save.md",
+    "file_id": "02786dfe-add4-5764-be64-b77404d49364",
+    "timestamp": "2026-02-13T19:32:29.367389",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase146_contextual_browser_save.md",
+    "file_id": "02786dfe-add4-5764-be64-b77404d49364",
+    "timestamp": "2026-02-13T19:32:29.711430",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase146_contextual_browser_save.md",
+    "file_id": "02786dfe-add4-5764-be64-b77404d49364",
+    "timestamp": "2026-02-13T19:32:30.044106",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T19:32:44.028242",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T19:32:57.433779",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T19:33:11.258161",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T19:33:24.529133",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T19:33:37.539234",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T19:33:50.255283",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T19:40:51.953514",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T19:40:51.957961",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/App.tsx",
+    "file_id": "893e16fb-5e83-5c7b-8471-b14908bf8293",
+    "timestamp": "2026-02-13T19:40:51.958372",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T19:41:04.395692",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T19:41:04.396479",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T19:41:04.397104",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/chat/ChatPanel.tsx",
+    "file_id": "4634820f-e816-5b78-927d-48be1f34d31d",
+    "timestamp": "2026-02-13T19:41:04.397481",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/DevPanel.tsx",
+    "file_id": "b98f4fe7-74a4-5adb-94ca-dd265e2068ae",
+    "timestamp": "2026-02-13T19:46:58.117264",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/DevPanel.tsx",
+    "file_id": "b98f4fe7-74a4-5adb-94ca-dd265e2068ae",
+    "timestamp": "2026-02-13T19:47:07.002486",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/DevPanel.tsx",
+    "file_id": "b98f4fe7-74a4-5adb-94ca-dd265e2068ae",
+    "timestamp": "2026-02-13T19:47:15.943937",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/DevPanel.tsx",
+    "file_id": "b98f4fe7-74a4-5adb-94ca-dd265e2068ae",
+    "timestamp": "2026-02-13T19:47:24.943420",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/DevPanel.tsx",
+    "file_id": "b98f4fe7-74a4-5adb-94ca-dd265e2068ae",
+    "timestamp": "2026-02-13T19:49:18.510968",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/DevPanel.tsx",
+    "file_id": "b98f4fe7-74a4-5adb-94ca-dd265e2068ae",
+    "timestamp": "2026-02-13T19:49:27.612478",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/DevPanel.tsx",
+    "file_id": "b98f4fe7-74a4-5adb-94ca-dd265e2068ae",
+    "timestamp": "2026-02-13T19:49:36.659531",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/panels/DevPanel.tsx",
+    "file_id": "b98f4fe7-74a4-5adb-94ca-dd265e2068ae",
+    "timestamp": "2026-02-13T19:49:45.716002",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:30:56.055557",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:31:04.205559",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:31:12.425236",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:31:20.986875",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:31:29.543555",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:31:37.812848",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T21:35:07.627525",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/main.rs",
+    "file_id": "be52c9f0-402a-536a-a4a7-c77bbec5623d",
+    "timestamp": "2026-02-13T21:35:19.175199",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/main.rs",
+    "file_id": "be52c9f0-402a-536a-a4a7-c77bbec5623d",
+    "timestamp": "2026-02-13T21:35:21.602740",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/main.rs",
+    "file_id": "be52c9f0-402a-536a-a4a7-c77bbec5623d",
+    "timestamp": "2026-02-13T21:35:24.536233",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T21:35:36.261215",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T21:35:42.110436",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T21:35:48.118354",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/unified_search_routes.py",
+    "file_id": "52ed9fed-32cf-53b9-849d-9f99208991e1",
+    "timestamp": "2026-02-13T21:36:03.181333",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/unified_search_routes.py",
+    "file_id": "52ed9fed-32cf-53b9-849d-9f99208991e1",
+    "timestamp": "2026-02-13T21:36:05.118873",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/unified_search_routes.py",
+    "file_id": "52ed9fed-32cf-53b9-849d-9f99208991e1",
+    "timestamp": "2026-02-13T21:36:07.415648",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:36:19.452167",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:36:27.687034",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:36:35.979583",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T21:49:08.300840",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T21:49:10.805187",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T21:49:13.838561",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T21:49:34.672301",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T21:49:41.228235",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T21:49:47.908654",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:50:05.656792",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:50:12.014125",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:50:18.498400",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:50:25.860108",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:50:31.855486",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:50:37.953419",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:57:03.810250",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:57:09.446936",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T21:57:15.354318",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/artifacts/web_research/web_20260213_193520_blender-org-2026-02-13_4d767453.md",
+    "file_id": "cec9fda2-1f0c-52a7-9e4b-f53feaa066fc",
+    "timestamp": "2026-02-13T22:35:22.002436",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T22:50:20.812993",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T22:50:24.194740",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T22:50:28.080393",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/heartbeat_cursors.json",
+    "file_id": "40fc0d71-a7c1-5a94-a170-63f0f3be1785",
+    "timestamp": "2026-02-13T22:51:23.178439",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T22:52:51.692063",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T22:52:51.692904",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T22:52:51.692942",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:53:11.264999",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:53:16.694418",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:53:22.634519",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T22:54:24.426792",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T22:54:28.719168",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T22:54:33.314427",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/search/UnifiedSearchBar.tsx",
+    "file_id": "31125b38-f2c0-50f6-8a0a-01a70cb09a81",
+    "timestamp": "2026-02-13T22:54:37.937079",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:55:21.415666",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:55:30.469213",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:55:39.507876",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:55:48.295874",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:55:57.293434",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:56:06.360544",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:56:15.188318",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:56:24.034189",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:56:32.902120",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:56:44.267217",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:56:53.556056",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:56:58.220185",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:56:58.307789",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:56:58.307853",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:57:02.902129",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:57:47.516406",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:57:56.287178",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T22:58:05.140675",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T22:58:16.239180",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T22:58:26.594113",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/config/tauri.ts",
+    "file_id": "549b26be-03cb-57de-a54e-e5ee859bb874",
+    "timestamp": "2026-02-13T22:58:37.505821",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T22:58:48.730510",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T22:58:54.966051",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T22:59:01.329968",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/browser_GROK.txt",
+    "file_id": "eab9811d-5ac5-5bf6-b08c-0faa76a74737",
+    "timestamp": "2026-02-13T22:59:18.847837",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/browser_GROK.txt",
+    "file_id": "eab9811d-5ac5-5bf6-b08c-0faa76a74737",
+    "timestamp": "2026-02-13T22:59:20.004948",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/browser_GROK.txt",
+    "file_id": "eab9811d-5ac5-5bf6-b08c-0faa76a74737",
+    "timestamp": "2026-02-13T22:59:21.405079",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T22:59:57.780162",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T23:00:04.133431",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T23:00:10.612483",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T23:00:33.205557",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T23:00:39.108254",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T23:00:45.393994",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T23:01:06.816859",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T23:01:13.064973",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri/src/commands.rs",
+    "file_id": "19e5504e-0e4c-5efc-8426-b91ad78178a6",
+    "timestamp": "2026-02-13T23:01:19.244733",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/browser_GROK.txt",
+    "file_id": "eab9811d-5ac5-5bf6-b08c-0faa76a74737",
+    "timestamp": "2026-02-13T23:09:05.914774",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/browser_GROK.txt",
+    "file_id": "eab9811d-5ac5-5bf6-b08c-0faa76a74737",
+    "timestamp": "2026-02-13T23:09:08.864443",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/browser_GROK.txt",
+    "file_id": "eab9811d-5ac5-5bf6-b08c-0faa76a74737",
+    "timestamp": "2026-02-13T23:09:11.983962",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/browser_GROK.txt",
+    "file_id": "eab9811d-5ac5-5bf6-b08c-0faa76a74737",
+    "timestamp": "2026-02-13T23:09:20.154944",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/browser_GROK.txt",
+    "file_id": "eab9811d-5ac5-5bf6-b08c-0faa76a74737",
+    "timestamp": "2026-02-13T23:09:20.155506",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/browser_GROK.txt",
+    "file_id": "eab9811d-5ac5-5bf6-b08c-0faa76a74737",
+    "timestamp": "2026-02-13T23:09:20.156048",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T23:11:01.137383",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T23:11:09.338926",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/WebShellStandalone.tsx",
+    "file_id": "c333a17d-f955-5a31-acda-859f9ebd21dd",
+    "timestamp": "2026-02-13T23:11:17.922481",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_GO_NO_GO_phase147_vetka_browser.md",
+    "file_id": "4b93ee03-d067-5de7-bd97-e5cc0485d418",
+    "timestamp": "2026-02-13T23:16:12.217425",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_GO_NO_GO_phase147_vetka_browser.md",
+    "file_id": "4b93ee03-d067-5de7-bd97-e5cc0485d418",
+    "timestamp": "2026-02-13T23:16:13.090132",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_GO_NO_GO_phase147_vetka_browser.md",
+    "file_id": "4b93ee03-d067-5de7-bd97-e5cc0485d418",
+    "timestamp": "2026-02-13T23:16:13.918416",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_GO_NO_GO_phase147_vetka_browser.md",
+    "file_id": "4b93ee03-d067-5de7-bd97-e5cc0485d418",
+    "timestamp": "2026-02-13T23:17:57.378566",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_GO_NO_GO_phase147_vetka_browser.md",
+    "file_id": "4b93ee03-d067-5de7-bd97-e5cc0485d418",
+    "timestamp": "2026-02-13T23:17:57.379214",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_GO_NO_GO_phase147_vetka_browser.md",
+    "file_id": "4b93ee03-d067-5de7-bd97-e5cc0485d418",
+    "timestamp": "2026-02-13T23:17:57.379284",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/ui/Panel.tsx",
+    "file_id": "5a4477f7-b596-5198-8906-66b4c621690e",
+    "timestamp": "2026-02-13T23:20:46.583169",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/ui/Panel.tsx",
+    "file_id": "5a4477f7-b596-5198-8906-66b4c621690e",
+    "timestamp": "2026-02-13T23:20:51.645185",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/ui/Panel.tsx",
+    "file_id": "5a4477f7-b596-5198-8906-66b4c621690e",
+    "timestamp": "2026-02-13T23:20:55.779815",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/ui/Panel.tsx",
+    "file_id": "5a4477f7-b596-5198-8906-66b4c621690e",
+    "timestamp": "2026-02-13T23:20:59.830764",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase147_2_connectors_scanpanel.md",
+    "file_id": "5837748d-a566-581a-94b0-3f97fc096876",
+    "timestamp": "2026-02-13T23:34:52.311049",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase147_2_connectors_scanpanel.md",
+    "file_id": "5837748d-a566-581a-94b0-3f97fc096876",
+    "timestamp": "2026-02-13T23:34:52.507036",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_PLAN_phase147_2_connectors_scanpanel.md",
+    "file_id": "5837748d-a566-581a-94b0-3f97fc096876",
+    "timestamp": "2026-02-13T23:34:52.709701",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/connectors_state_service.py",
+    "file_id": "5d291c47-51db-5510-8a35-178cc9f7aa54",
+    "timestamp": "2026-02-13T23:35:29.206216",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/connectors_state_service.py",
+    "file_id": "5d291c47-51db-5510-8a35-178cc9f7aa54",
+    "timestamp": "2026-02-13T23:35:31.468368",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/connectors_state_service.py",
+    "file_id": "5d291c47-51db-5510-8a35-178cc9f7aa54",
+    "timestamp": "2026-02-13T23:35:34.391419",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/connectors_routes.py",
+    "file_id": "7b5e99bd-5047-5c74-81f9-2b3d2eb3c097",
+    "timestamp": "2026-02-13T23:35:58.097965",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/connectors_routes.py",
+    "file_id": "7b5e99bd-5047-5c74-81f9-2b3d2eb3c097",
+    "timestamp": "2026-02-13T23:35:58.696551",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/connectors_routes.py",
+    "file_id": "7b5e99bd-5047-5c74-81f9-2b3d2eb3c097",
+    "timestamp": "2026-02-13T23:35:59.265751",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:37:24.235219",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:37:27.420069",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:37:31.194910",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:37:35.196037",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:37:37.635865",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:37:37.698670",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:37:37.699242",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:37:37.699392",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:37:37.701392",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:37:38.933148",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:38:12.632250",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:38:12.632924",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:38:12.633219",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:38:12.646337",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:38:12.646436",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:38:43.325137",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:38:43.325662",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:38:43.325827",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:38:43.329457",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.tsx",
+    "file_id": "2702cf6e-c0ce-56f1-a99e-3dbe4ad99e21",
+    "timestamp": "2026-02-13T23:38:43.330842",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.css",
+    "file_id": "2e26f9b0-7a39-5efa-b2ba-0dfffb21b019",
+    "timestamp": "2026-02-13T23:39:23.973839",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.css",
+    "file_id": "2e26f9b0-7a39-5efa-b2ba-0dfffb21b019",
+    "timestamp": "2026-02-13T23:39:34.549773",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.css",
+    "file_id": "2e26f9b0-7a39-5efa-b2ba-0dfffb21b019",
+    "timestamp": "2026-02-13T23:39:45.150827",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.css",
+    "file_id": "2e26f9b0-7a39-5efa-b2ba-0dfffb21b019",
+    "timestamp": "2026-02-13T23:39:56.210989",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/scanner/ScanPanel.css",
+    "file_id": "2e26f9b0-7a39-5efa-b2ba-0dfffb21b019",
+    "timestamp": "2026-02-13T23:43:45.795149",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_IMPL_phase147_2_connectors_scanpanel.md",
+    "file_id": "b9bdd731-e1e7-554f-a195-88ac76e392a7",
+    "timestamp": "2026-02-13T23:44:11.825071",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_IMPL_phase147_2_connectors_scanpanel.md",
+    "file_id": "b9bdd731-e1e7-554f-a195-88ac76e392a7",
+    "timestamp": "2026-02-13T23:44:12.022734",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/136_ph/CODEX_IMPL_phase147_2_connectors_scanpanel.md",
+    "file_id": "b9bdd731-e1e7-554f-a195-88ac76e392a7",
+    "timestamp": "2026-02-13T23:44:12.244246",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/144_ph/GROK_VETKA Nodal Interop- n8n + ComfyUI Compatibility & JSON Converter Strategy (Phase 144- Ecosystem Bridge.txt",
+    "file_id": "08da6073-3433-5294-933d-b18e8894808e",
+    "timestamp": "2026-02-13T23:50:54.860851",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/144_ph/GROK_VETKA Nodal Interop- n8n + ComfyUI Compatibility & JSON Converter Strategy (Phase 144- Ecosystem Bridge.txt",
+    "file_id": "08da6073-3433-5294-933d-b18e8894808e",
+    "timestamp": "2026-02-13T23:50:56.326119",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/connectors_state.json",
+    "file_id": "3d4e9fc9-6b29-5d11-a4e3-155b0ed5c0d0",
+    "timestamp": "2026-02-13T23:56:05.744414",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/connectors_secure_store.py",
+    "file_id": "19d5e99a-46ac-5bc5-9b1a-25556f5c09e1",
+    "timestamp": "2026-02-13T23:59:08.764389",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/connectors_secure_store.py",
+    "file_id": "19d5e99a-46ac-5bc5-9b1a-25556f5c09e1",
+    "timestamp": "2026-02-13T23:59:11.109158",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/connectors_secure_store.py",
+    "file_id": "19d5e99a-46ac-5bc5-9b1a-25556f5c09e1",
+    "timestamp": "2026-02-13T23:59:13.951642",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/connectors_ingestion_service.py",
+    "file_id": "ffd0021e-3b21-56f7-997b-6814b69faea7",
+    "timestamp": "2026-02-13T23:59:39.046284",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/connectors_ingestion_service.py",
+    "file_id": "ffd0021e-3b21-56f7-997b-6814b69faea7",
+    "timestamp": "2026-02-13T23:59:39.659685",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/connectors_ingestion_service.py",
+    "file_id": "ffd0021e-3b21-56f7-997b-6814b69faea7",
+    "timestamp": "2026-02-13T23:59:40.235474",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  },
+  {
+    "operation": "index_file",
+    "file_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/connectors_state.json",
+    "file_id": "3d4e9fc9-6b29-5d11-a4e3-155b0ed5c0d0",
+    "timestamp": "2026-02-13T23:59:58.200400",
+    "results": {
+      "weaviate": true,
+      "qdrant": true,
+      "changelog": false
+    }
+  }
+]

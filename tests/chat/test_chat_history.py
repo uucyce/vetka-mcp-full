@@ -172,6 +172,17 @@ class TestPinnedPersistence:
     def test_get_pinned_paths_empty_for_unknown_chat(self, manager):
         assert manager.get_pinned_paths("missing-chat-id") == []
 
+    def test_pin_events_logged_for_add_and_remove(self, manager):
+        chat_id = manager.get_or_create_chat("/test/pin_events.py")
+        manager.update_pinned_files(chat_id, ["node_a"], ["/a.py"])
+        manager.update_pinned_files(chat_id, [], [])
+
+        events = manager.get_pin_events(chat_id, limit=10)
+        assert len(events) >= 2
+        actions = [event["action"] for event in events]
+        assert "add" in actions
+        assert "remove" in actions
+
 
 class TestChatSearch:
     """Test message search behavior used by chat history sidebar."""

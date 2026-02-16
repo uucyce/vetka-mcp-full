@@ -41,6 +41,8 @@ export function useTreeData() {
 
   // MARKER_110_FIX: Trigger for manual tree refresh (from DevPanel)
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  // MARKER_136.TREE_REFRESH_DEDUP_TREEHOOK: collapse bursty refresh events
+  const [lastRefreshEventTs, setLastRefreshEventTs] = useState(0);
 
   useEffect(() => {
     async function loadData() {
@@ -206,6 +208,10 @@ export function useTreeData() {
   // MARKER_110_FIX: Listen for tree refresh events from DevPanel
   useEffect(() => {
     const handleTreeRefresh = () => {
+      const now = Date.now();
+      // Ignore duplicated refresh events fired in quick succession.
+      if (now - lastRefreshEventTs < 350) return;
+      setLastRefreshEventTs(now);
       console.log('[useTreeData] Received vetka-tree-refresh-needed event, triggering refetch...');
       // Increment trigger to cause useEffect re-run
       setRefreshTrigger(prev => prev + 1);
@@ -215,7 +221,7 @@ export function useTreeData() {
     return () => {
       window.removeEventListener('vetka-tree-refresh-needed', handleTreeRefresh);
     };
-  }, []);
+  }, [lastRefreshEventTs]);
 
   return { nodes, isLoading, error };
 }
