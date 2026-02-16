@@ -48,6 +48,7 @@ interface FileData {
   path: string;
   content: string;
   mimeType: string;
+  encoding?: 'utf-8' | 'base64' | 'binary' | string;
   hasChanges: boolean;
   fileSize?: number;
 }
@@ -255,6 +256,7 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
         path,
         content: data.content,
         mimeType: data.mimeType || 'text/plain',
+        encoding: data.encoding || 'utf-8',
         hasChanges: false,
         fileSize: data.size,
       });
@@ -265,6 +267,7 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
         path,
         content: `// Could not load file: ${path}\n// Backend not available`,
         mimeType: 'text/plain',
+        encoding: 'utf-8',
         hasChanges: false,
       });
     } finally {
@@ -678,6 +681,9 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
     const filename = file.name;
     const fileType = getViewerType(filename);
     const fileUrl = `/api/files/raw?path=${encodeURIComponent(path)}`;
+    const mimeType = fileData.mimeType || 'application/octet-stream';
+    const isBase64 = fileData.encoding === 'base64';
+    const mediaSrc = isBase64 ? `data:${mimeType};base64,${content}` : fileUrl;
 
     if (/^https?:\/\//i.test(path)) {
       return <MarkdownViewer content={content} />;
@@ -732,10 +738,61 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
       case 'image':
         return (
           <Suspense fallback={<ViewerLoading />}>
-            <ImageViewer url={fileUrl} filename={filename} />
+            <ImageViewer url={mediaSrc} filename={filename} />
           </Suspense>
         );
+      case 'audio':
+        return (
+          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <audio controls style={{ width: '100%', maxWidth: 720 }}>
+              <source src={mediaSrc} type={mimeType} />
+            </audio>
+          </div>
+        );
+      case 'video':
+        return (
+          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <video controls style={{ width: '100%', maxHeight: '100%' }}>
+              <source src={mediaSrc} type={mimeType} />
+            </video>
+          </div>
+        );
+      case 'pdf':
+        return (
+          <iframe
+            title={filename}
+            src={mediaSrc}
+            style={{ width: '100%', height: '100%', border: 'none', background: '#111' }}
+          />
+        );
       default:
+        if (mimeType.startsWith('audio/')) {
+          return (
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+              <audio controls style={{ width: '100%', maxWidth: 720 }}>
+                <source src={mediaSrc} type={mimeType} />
+              </audio>
+            </div>
+          );
+        }
+        if (mimeType.startsWith('video/')) {
+          return (
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+              <video controls style={{ width: '100%', maxHeight: '100%' }}>
+                <source src={mediaSrc} type={mimeType} />
+              </video>
+            </div>
+          );
+        }
+        if (mimeType === 'application/pdf') {
+          return (
+            <iframe
+              title={filename}
+              src={mediaSrc}
+              style={{ width: '100%', height: '100%', border: 'none', background: '#111' }}
+            />
+          );
+        }
         return (
           <Suspense fallback={<ViewerLoading />}>
             <CodeViewer

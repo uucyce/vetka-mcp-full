@@ -321,9 +321,9 @@ This section tracks what is already implemented after RECON, with code-level sta
   - Batch artifact payload now carries modality + extension.
   - Files: `src/memory/qdrant_client.py`, `src/memory/qdrant_batch_manager.py`
 
-- `G08` Frontend decode/render policy: **PARTIAL**
-  - Backend now emits enough binary metadata for render policy.
-  - Remaining: frontend viewer branches for full media/pdf/audio rendering.
+- `G08` Frontend decode/render policy: **PARTIAL (CORE IMPLEMENTED)**
+  - `ArtifactPanel` now branches by `mimeType/encoding` and renders image/audio/video/pdf from base64 or raw URL.
+  - Remaining: dedicated advanced viewers/policies (e.g. richer PDF controls, timeline waveform UX).
 
 - `G10` REF/CITATION/FOOTNOTE extraction: **IMPLEMENTED (artifact-level references)**
   - Added document link parsing and artifact->artifact `reference` edges.
