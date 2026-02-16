@@ -154,6 +154,34 @@
   opacity: 1;
 }
 
+.chat-sidebar-item-actions-wrap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.chat-sidebar-item-favorite {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 14px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+  opacity: 1;
+}
+
+.chat-sidebar-item-favorite:hover {
+  color: #fff;
+}
+
+.chat-sidebar-item-favorite.active {
+  color: #fff;
+}
+
 .chat-sidebar-item-edit,
 .chat-sidebar-item-delete {
   background: none;

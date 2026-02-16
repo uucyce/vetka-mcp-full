@@ -25,6 +25,7 @@ import { UnifiedSearchBar } from '../search/UnifiedSearchBar';
 import type { ChatMessage, SearchResult } from '../../types/chat';
 import { savePinnedFiles, getChatsForFile } from '../../utils/chatApi';
 import { API_BASE } from '../../config/api.config';
+import { isTauri, openLiveWebWindow } from '../../config/tauri';
 
 // Phase 48.3: Reply target type
 // Phase 111.10.2: Added source for multi-provider routing
@@ -71,6 +72,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  // MARKER_137.2: Prevent pinned autosave race while loading/switching chats.
+  const isHydratingChatPinsRef = useRef(false);
 
   // MARKER_SCROLL_STATE: State tracking if user is at bottom of chat
   // Phase 107.3: Scroll-to-bottom button state
@@ -451,11 +454,10 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       pollCount++;
     };
 
-    // Poll every 3 seconds as fallback
-    const interval = setInterval(pollMessages, 3000);
-
-    // Also poll once immediately
+    // MARKER_145.CLEANUP: Poll every 120s as fallback only (was 3s = 28,800 req/day).
+    // Socket.IO is the primary message transport. Polling is for recovery only.
     pollMessages();
+    const interval = setInterval(pollMessages, 120000);
 
     return () => clearInterval(interval);
   }, [activeGroupId, chatMessages, addChatMessage]);
@@ -552,7 +554,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   const [artifactData, setArtifactData] = useState<{
     content?: string;
     title: string;
-    type?: 'text' | 'markdown' | 'code';
+    type?: 'text' | 'markdown' | 'code' | 'web';
+    sourceUrl?: string;
     // Phase 68.2: Support for file loading
     file?: { path: string; name: string; extension?: string };
   } | null>(null);
@@ -912,10 +915,31 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   }, [activeGroupId, isConnected, sendGroupMessage, setIsTyping]);
 
   // Phase 68: Search handlers
-  const handleSearchSelect = useCallback((result: SearchResult) => {
+  const handleSearchSelect = useCallback(async (result: SearchResult) => {
+    const source = String((result as any).source || '');
+    const isWeb = source.startsWith('web') || /^https?:\/\//i.test(result.path || '');
+
+    // MARKER_144.IMPL_STEP_2_WEB_RESULT_NATIVE_OPEN: Open web result in native Tauri browser.
+    if (isWeb) {
+      if (isTauri() && result.path) {
+        await openLiveWebWindow(result.path, result.name || 'VETKA Live Web', selectedNode?.path || '');
+        return;
+      }
+      setArtifactData({
+        title: result.name || 'Web result',
+        content: result.preview || '',
+        type: 'web',
+        sourceUrl: result.path || '',
+      });
+      return;
+    }
+
     // Select node in 3D tree
     if (result.path) {
-      selectNode(result.path);
+      const nodeId = Object.keys(nodes).find(id => nodes[id]?.path === result.path);
+      if (nodeId) {
+        selectNode(nodeId);
+      }
       // Focus camera on selected file
       setCameraCommand({
         target: result.path,
@@ -923,7 +947,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
         highlight: true
       });
     }
-  }, [selectNode, setCameraCommand]);
+  }, [nodes, selectedNode, selectNode, setCameraCommand, setArtifactData]);
 
   const handleSearchPin = useCallback((result: SearchResult) => {
     // Pin file to context using the path as ID
@@ -1043,6 +1067,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   // Phase 74.3: Store chat info for header display
   // Phase 100.2: Load pinned files from backend instead of clearing
   const handleSelectChat = useCallback(async (chatId: string, filePath: string, fileName: string) => {
+    isHydratingChatPinsRef.current = true;
     setCurrentChatId(chatId);
     // FIX_109.4: Update store for useSocket access
     setStoreChatId(chatId);
@@ -1167,6 +1192,11 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       }
     } catch (error) {
       console.error('[ChatPanel] Error loading chat history:', error);
+    } finally {
+      // Release guard after the current call stack so setPinnedFiles has been applied.
+      setTimeout(() => {
+        isHydratingChatPinsRef.current = false;
+      }, 0);
     }
   }, [addChatMessage, clearChat, setPinnedFiles, setCameraCommand, joinGroup, setActiveGroupId]);
 
@@ -1174,9 +1204,11 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   // Uses debounce to avoid excessive API calls
   useEffect(() => {
     if (!currentChatId) return;
+    if (isHydratingChatPinsRef.current) return;
 
     // Debounce save by 500ms
     const timeoutId = setTimeout(() => {
+      if (isHydratingChatPinsRef.current) return;
       savePinnedFiles(currentChatId, pinnedFileIds);
       // console.log(`[ChatPanel] Auto-saved ${pinnedFileIds.length} pinned files for chat ${currentChatId}`);
     }, 500);
@@ -2285,7 +2317,25 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           <UnifiedSearchBar
             onSelectResult={handleSearchSelect}
             onPinResult={handleSearchPin}
-            onOpenArtifact={(result) => {
+            onOpenArtifact={async (result) => {
+              // MARKER_142.IMPL_STEP_6_CHAT_PARITY: Keep web artifact behavior aligned with App.tsx
+              const source = String((result as any).source || '');
+              const isWeb = source.startsWith('web') || /^https?:\/\//i.test(result.path);
+              if (isWeb) {
+                if (isTauri() && result.path) {
+                  await openLiveWebWindow(result.path, result.name || 'VETKA Live Web', selectedNode?.path || '');
+                  return;
+                }
+                // Browser fallback (non-Tauri runtime only)
+                setArtifactData({
+                  title: result.name || 'Web result',
+                  content: result.preview || '',
+                  type: 'web',
+                  sourceUrl: result.path || '',
+                });
+                return;
+              }
+
               // Phase 68.2: Open artifact viewer with file from search
               const ext = result.name.includes('.') ? result.name.split('.').pop() : undefined;
               setArtifactData({
@@ -2837,7 +2887,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           rawContent={artifactData?.content ? {
             content: artifactData.content,
             title: artifactData.title,
-            type: artifactData.type
+            type: artifactData.type,
+            sourceUrl: artifactData.sourceUrl,
           } : null}
           onClose={() => setArtifactData(null)}
         />

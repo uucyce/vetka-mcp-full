@@ -438,6 +438,7 @@ def register_user_message_handler(sio, app=None):
                         node_path,
                         {"role": "user", "text": text, "node_id": node_id, "model_source": model_source},  # MARKER_115_BUG3
                         pinned_files=pinned_files,
+                        chat_id=client_chat_id,
                     )
 
                     # Phase 64.3: Use extracted helper for prompt building
@@ -519,6 +520,7 @@ def register_user_message_handler(sio, app=None):
                             "node_id": node_id,
                         },
                         pinned_files=pinned_files,
+                        chat_id=client_chat_id,
                     )
 
                     # Phase 51.4: Emit message_sent event for surprise calculation
@@ -621,6 +623,7 @@ def register_user_message_handler(sio, app=None):
                     node_path,
                     {"role": "user", "text": text, "node_id": node_id, "model_source": model_source},  # MARKER_115_BUG3
                     pinned_files=pinned_files,
+                    chat_id=client_chat_id,
                 )
 
                 # ============ PHASE 114.8.1: MGC-CACHED PRE-FETCH BEFORE STREAM ============
@@ -793,6 +796,7 @@ def register_user_message_handler(sio, app=None):
                         "node_id": node_id,
                     },
                     pinned_files=pinned_files,
+                    chat_id=client_chat_id,
                 )
 
                 # Phase 51.4: Emit message_sent event for surprise calculation
@@ -997,6 +1001,7 @@ def register_user_message_handler(sio, app=None):
                             "node_id": node_id,
                         },
                         pinned_files=pinned_files,
+                        chat_id=client_chat_id,
                     )
 
                     # Phase 64.3: Use extracted helper for prompt building
@@ -1257,6 +1262,7 @@ When user asks about code - USE vetka_search_semantic or read_code_file!"""
                             "node_id": node_id,
                         },
                         pinned_files=pinned_files,
+                        chat_id=client_chat_id,
                     )
 
                     # Phase 51.4: Emit message_sent event for surprise calculation
@@ -1319,6 +1325,7 @@ When user asks about code - USE vetka_search_semantic or read_code_file!"""
             node_path,
             {"role": "user", "text": text, "node_id": node_id, "model_source": model_source},  # MARKER_115_BUG3
             pinned_files=pinned_files,
+            chat_id=client_chat_id,
         )
 
         # Phase 51.4: Emit message_sent event for surprise calculation
@@ -2110,6 +2117,7 @@ Provide your {agent_name} analysis:
                     "node_id": resp["node_id"],
                 },
                 pinned_files=pinned_files,
+                chat_id=client_chat_id,
             )
 
             # Phase 51.4: Emit message_sent event for surprise calculation

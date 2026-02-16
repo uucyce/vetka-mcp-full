@@ -34,6 +34,7 @@ class CAMEventType(Enum):
     ARTIFACT_CREATED = "artifact_created"
     FILE_UPLOADED = "file_uploaded"
     MESSAGE_SENT = "message_sent"
+    CHAT_FAVORITED = "chat_favorited"
     WORKFLOW_COMPLETED = "workflow_completed"
     PERIODIC_MAINTENANCE = "periodic_maintenance"
 
@@ -116,6 +117,8 @@ class CAMEventHandler:
                 result = await self._handle_file_upload(event.payload)
             elif event.event_type == CAMEventType.MESSAGE_SENT:
                 result = await self._handle_message(event.payload)
+            elif event.event_type == CAMEventType.CHAT_FAVORITED:
+                result = await self._handle_chat_favorited(event.payload)
             elif event.event_type == CAMEventType.WORKFLOW_COMPLETED:
                 result = await self._handle_workflow_complete(event.payload)
             elif event.event_type == CAMEventType.PERIODIC_MAINTENANCE:
@@ -259,6 +262,44 @@ class CAMEventHandler:
         print(f"[CAM_EVENT] Workflow {workflow_id} completed, running maintenance...")
 
         return await self._run_maintenance()
+
+    async def _handle_chat_favorited(self, payload: Dict) -> Dict:
+        """
+        Handle chat_favorited event.
+
+        MARKER_137.3: Promote favorited chats as high-priority memory anchors.
+
+        Args:
+            payload: {chat_id: str, is_favorite: bool}
+
+        Returns:
+            Result dict with sync status
+        """
+        chat_id = str(payload.get("chat_id", "")).strip()
+        is_favorite = bool(payload.get("is_favorite", False))
+
+        if not chat_id:
+            return {"status": "skipped", "reason": "missing_chat_id"}
+
+        if not is_favorite:
+            # Unfavorite is intentionally lightweight for now.
+            return {"status": "demoted", "chat_id": chat_id}
+
+        metadata = {
+            "type": "chat_favorite",
+            "chat_id": chat_id,
+            "is_favorite": True,
+            "promoted_at": time.time(),
+            "content": f"Favorite chat anchor: {chat_id}",
+        }
+
+        artifact_path = f"chat_favorites/{chat_id}"
+        await self._cam_engine.handle_new_artifact(
+            artifact_path=artifact_path,
+            metadata=metadata
+        )
+
+        return {"status": "promoted", "chat_id": chat_id}
 
     async def _run_maintenance(self) -> Dict:
         """

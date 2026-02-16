@@ -39,6 +39,7 @@ MARKER_CHAT_STRUCTURE: Chat history data model
 
 import json
 import copy
+import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
@@ -210,6 +211,46 @@ class ChatHistoryManager:
         group_id: Optional[str]
     ) -> str:
         """Internal implementation (called with lock held)."""
+        # MARKER_137.4C: Priority 0 - if caller provided an existing chat_id, always reuse it.
+        # This prevents fallback matching (path/display_name/null-context) from splitting a live chat.
+        if chat_id and chat_id in self.history["chats"]:
+            existing_chat = self.history["chats"][chat_id]
+            changed = False
+
+            if context_type and existing_chat.get("context_type") != context_type:
+                existing_chat["context_type"] = context_type
+                changed = True
+
+            if isinstance(items, list) and items and existing_chat.get("items") != items:
+                existing_chat["items"] = items
+                changed = True
+
+            if topic and existing_chat.get("topic") != topic:
+                existing_chat["topic"] = topic
+                changed = True
+
+            if display_name:
+                normalized_name = display_name.strip()
+                if normalized_name and existing_chat.get("display_name") != normalized_name:
+                    existing_chat["display_name"] = normalized_name
+                    changed = True
+
+            if file_path and file_path not in ('unknown', 'root', '', None):
+                try:
+                    normalized_path = str(Path(file_path).resolve())
+                except Exception:
+                    normalized_path = file_path
+                if existing_chat.get("file_path") in ('unknown', 'root', '', None):
+                    existing_chat["file_path"] = normalized_path
+                    existing_chat["file_name"] = Path(normalized_path).name
+                    changed = True
+
+            if changed:
+                existing_chat["updated_at"] = datetime.now().isoformat()
+                self._save()
+
+            return chat_id
+
         # MARKER_109_13: Priority 1 - Search by group_id for group chats (stable key!)
         if group_id and context_type == "group":
             for existing_id, chat in self.history["chats"].items():
@@ -336,6 +377,7 @@ class ChatHistoryManager:
             "items": items or [],          # Phase 74: File paths for groups
             "topic": topic,                # Phase 74: Topic for file-less chats
             "pinned_file_ids": [],         # Phase 100.2: Persistent pinned files
+            "is_favorite": False,          # MARKER_137.3: Favorite chats support
             "metadata": chat_metadata,     # MARKER_109_13: Stable keys (group_id, etc.)
             "created_at": now,
             "updated_at": now,
@@ -571,6 +613,212 @@ class ChatHistoryManager:
         if chat_id in self.history["chats"]:
             return self.history["chats"][chat_id].get("pinned_file_ids", [])
         return []
+
+    def set_favorite(self, chat_id: str, is_favorite: bool) -> bool:
+        """
+        Set favorite status for a chat.
+
+        MARKER_137.3: Favorites in chat history with persistence.
+
+        Args:
+            chat_id: Chat UUID
+            is_favorite: Favorite flag
+
+        Returns:
+            True if successful
+        """
+        if chat_id in self.history["chats"]:
+            chat = self.history["chats"][chat_id]
+            if bool(chat.get("is_favorite", False)) != bool(is_favorite):
+                chat["is_favorite"] = bool(is_favorite)
+                chat["updated_at"] = datetime.now().isoformat()
+                self._save()
+            return True
+        return False
+
+    def _parse_iso_datetime(self, value: str) -> datetime:
+        """Parse ISO datetime with safe fallback."""
+        try:
+            if value:
+                return datetime.fromisoformat(value.replace("Z", ""))
+        except Exception:
+            pass
+        return datetime.min
+
+    def find_fragmented_chat_candidates(self, max_gap_seconds: int = 90) -> List[Dict[str, Any]]:
+        """
+        Find likely legacy split chats (user and assistant in separate chats).
+
+        Rules (safe/narrow):
+        - context_type == group
+        - file_path in {'unknown', 'root', ''}
+        - same normalized display_name
+        - each chat has exactly 1 message
+        - one chat has user message, another has assistant/agent message
+        - created_at delta <= max_gap_seconds
+        """
+        chats = self.history.get("chats", {})
+        groups: Dict[str, List[tuple]] = {}
+
+        for chat_id, chat in chats.items():
+            context_type = chat.get("context_type", "file")
+            file_path = (chat.get("file_path") or "").strip().lower()
+            display_name = (chat.get("display_name") or "").strip()
+            messages = chat.get("messages", [])
+
+            if context_type != "group":
+                continue
+            if file_path not in {"unknown", "root", ""}:
+                continue
+            if not display_name:
+                continue
+            if len(messages) != 1:
+                continue
+
+            key = display_name.strip().lower()
+            groups.setdefault(key, []).append((chat_id, chat))
+
+        candidates: List[Dict[str, Any]] = []
+        used_ids = set()
+
+        for _, bucket in groups.items():
+            if len(bucket) < 2:
+                continue
+
+            bucket_sorted = sorted(
+                bucket,
+                key=lambda item: self._parse_iso_datetime(
+                    item[1].get("created_at") or item[1].get("updated_at") or ""
+                ),
+            )
+
+            for i in range(len(bucket_sorted)):
+                first_id, first_chat = bucket_sorted[i]
+                if first_id in used_ids:
+                    continue
+                first_msg = (first_chat.get("messages") or [{}])[0]
+                first_role = (first_msg.get("role") or "").lower()
+                first_ts = self._parse_iso_datetime(
+                    first_chat.get("created_at") or first_chat.get("updated_at") or ""
+                )
+
+                for j in range(i + 1, len(bucket_sorted)):
+                    second_id, second_chat = bucket_sorted[j]
+                    if second_id in used_ids:
+                        continue
+
+                    second_msg = (second_chat.get("messages") or [{}])[0]
+                    second_role = (second_msg.get("role") or "").lower()
+                    second_ts = self._parse_iso_datetime(
+                        second_chat.get("created_at") or second_chat.get("updated_at") or ""
+                    )
+
+                    delta_seconds = abs((second_ts - first_ts).total_seconds())
+                    if delta_seconds > max_gap_seconds:
+                        continue
+
+                    roles = {first_role, second_role}
+                    if "user" not in roles:
+                        continue
+                    if not ({"assistant", "agent", "system"} & roles):
+                        continue
+
+                    if first_role == "user":
+                        primary_id, secondary_id = first_id, second_id
+                    else:
+                        primary_id, secondary_id = second_id, first_id
+
+                    candidates.append({
+                        "primary_id": primary_id,
+                        "secondary_id": secondary_id,
+                        "display_name": first_chat.get("display_name") or second_chat.get("display_name"),
+                        "delta_seconds": delta_seconds,
+                    })
+                    used_ids.add(primary_id)
+                    used_ids.add(secondary_id)
+                    break
+
+        return candidates
+
+    def merge_fragmented_chats(
+        self,
+        dry_run: bool = True,
+        max_gap_seconds: int = 90,
+        backup_suffix: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Merge legacy split chat pairs discovered by find_fragmented_chat_candidates().
+
+        When dry_run=False:
+        - creates backup copy of history file
+        - merges messages/pins/favorite flags
+        - removes secondary chats
+        """
+        candidates = self.find_fragmented_chat_candidates(max_gap_seconds=max_gap_seconds)
+        report: Dict[str, Any] = {
+            "dry_run": dry_run,
+            "max_gap_seconds": max_gap_seconds,
+            "candidates_found": len(candidates),
+            "merged": 0,
+            "backup_file": None,
+            "pairs": candidates,
+        }
+
+        if dry_run or not candidates:
+            return report
+
+        if self.history_file.exists():
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            suffix = backup_suffix or timestamp
+            backup_file = self.history_file.with_name(f"{self.history_file.stem}.backup_{suffix}{self.history_file.suffix}")
+            shutil.copy2(self.history_file, backup_file)
+            report["backup_file"] = str(backup_file)
+
+        chats = self.history.get("chats", {})
+        now = datetime.now().isoformat()
+
+        for item in candidates:
+            primary_id = item["primary_id"]
+            secondary_id = item["secondary_id"]
+            primary = chats.get(primary_id)
+            secondary = chats.get(secondary_id)
+            if not primary or not secondary:
+                continue
+
+            merged_messages = (primary.get("messages", []) or []) + (secondary.get("messages", []) or [])
+            merged_messages.sort(
+                key=lambda m: self._parse_iso_datetime(
+                    m.get("timestamp") or m.get("created_at") or ""
+                )
+            )
+            primary["messages"] = merged_messages
+
+            primary_pins = set(primary.get("pinned_file_ids", []) or [])
+            secondary_pins = set(secondary.get("pinned_file_ids", []) or [])
+            primary["pinned_file_ids"] = sorted(primary_pins | secondary_pins)
+
+            primary["is_favorite"] = bool(primary.get("is_favorite", False) or secondary.get("is_favorite", False))
+
+            if not primary.get("display_name") and secondary.get("display_name"):
+                primary["display_name"] = secondary.get("display_name")
+
+            primary["created_at"] = min(
+                primary.get("created_at", now),
+                secondary.get("created_at", now),
+            )
+            primary["updated_at"] = max(
+                primary.get("updated_at", now),
+                secondary.get("updated_at", now),
+                now,
+            )
+
+            del chats[secondary_id]
+            report["merged"] += 1
+
+        if report["merged"] > 0:
+            self._save()
+
+        return report
 
     def search_messages(self, query: str, chat_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """

@@ -133,6 +133,9 @@ class MentionHandler:
         node_id = data.get('node_id')
         node_path = data.get('node_path')
         pinned_files = data.get('pinned_files', [])
+        client_chat_id = data.get('chat_id')
+        client_display_name = data.get('display_name')
+        model_source = data.get('model_source')
         viewport_context = data.get('viewport_context', {})
         request_node_id = data.get('request_node_id', node_id)
         request_timestamp = data.get('request_timestamp', int(time.time() * 1000))
@@ -171,7 +174,16 @@ class MentionHandler:
             try:
                 # Load chat history
                 chat_history = get_chat_history_manager()
-                chat_id = chat_history.get_or_create_chat(node_path)
+                # MARKER_137.4C: Reuse stable chat_id from frontend to prevent split chats.
+                if client_chat_id:
+                    chat_id = chat_history.get_or_create_chat(
+                        'unknown',
+                        context_type='topic',
+                        display_name=client_display_name or clean_text[:40],
+                        chat_id=client_chat_id,
+                    )
+                else:
+                    chat_id = chat_history.get_or_create_chat(node_path)
                 history_messages = chat_history.get_chat_messages(chat_id)
                 history_context = format_history_for_prompt(history_messages, max_messages=10)
 
@@ -205,8 +217,9 @@ class MentionHandler:
                 save_chat_message(node_path, {
                     'role': 'user',
                     'text': text,  # Original text (with @mention)
-                    'node_id': node_id
-                }, pinned_files=pinned_files)
+                    'node_id': node_id,
+                    'model_source': model_source,
+                }, pinned_files=pinned_files, chat_id=chat_id)
 
                 # Build prompt with all context
                 model_prompt = build_model_prompt(
@@ -261,13 +274,12 @@ class MentionHandler:
                     'role': 'assistant',
                     'agent': model_to_use,
                     'text': response_text,
-                    'node_id': node_id
-                }, pinned_files=pinned_files)
+                    'node_id': node_id,
+                    'model_source': model_source,
+                }, pinned_files=pinned_files, chat_id=chat_id)
 
                 # Emit message_sent event for surprise calculation
                 try:
-                    chat_history = get_chat_history_manager()
-                    chat_id = chat_history.get_or_create_chat(node_path)
                     await emit_cam_event("message_sent", {
                         "chat_id": chat_id,
                         "content": response_text,

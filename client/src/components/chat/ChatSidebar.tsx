@@ -30,6 +30,7 @@ interface Chat {
   context_type?: string;  // Phase 74: "file" | "folder" | "group" | "topic"
   items?: string[];       // Phase 74: File paths for groups
   topic?: string;         // Phase 74: Topic for file-less chats
+  is_favorite?: boolean;  // MARKER_137.3: Favorite chat pin
   created_at: string;
   updated_at: string;
   message_count?: number;
@@ -74,11 +75,22 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [hasMore, setHasMore] = useState(true);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
+  const [searchMatchedChatIds, setSearchMatchedChatIds] = useState<string[] | null>(null);
   const LIMIT = 50;
 
   // MARKER_129.2C: IntersectionObserver for infinite scroll
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  const mergeChatsById = useCallback((base: Chat[], incoming: Chat[]): Chat[] => {
+    const map = new Map<string, Chat>();
+    base.forEach(c => map.set(c.id, c));
+    incoming.forEach(c => {
+      const prev = map.get(c.id);
+      map.set(c.id, { ...(prev || {}), ...c });
+    });
+    return Array.from(map.values());
+  }, []);
 
   // Load chats on component mount (auto-load on app startup)
   useEffect(() => {
@@ -131,10 +143,11 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       if (response.ok) {
         const data = await response.json();
 
+        const incoming = (data.chats || []) as Chat[];
         if (reset) {
-          setChats(data.chats || []);
+          setChats(mergeChatsById([], incoming));
         } else {
-          setChats(prev => [...prev, ...(data.chats || [])]);
+          setChats(prev => mergeChatsById(prev, incoming));
         }
 
         setTotal(data.total || 0);
@@ -152,6 +165,38 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       setLoadingMore(false);
     }
   };
+
+  // MARKER_137.4D: Search chat history by message content via existing backend endpoint.
+  useEffect(() => {
+    const query = search.trim();
+
+    if (!query) {
+      setSearchMatchedChatIds(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/chats/search/${encodeURIComponent(query)}`);
+        if (!response.ok) {
+          setSearchMatchedChatIds([]);
+          return;
+        }
+
+        const data = await response.json();
+        const matchedChats: Chat[] = data.chats || [];
+        const ids = matchedChats.map(c => c.id);
+        setSearchMatchedChatIds(ids);
+        if (matchedChats.length > 0) {
+          setChats(prev => mergeChatsById(prev, matchedChats));
+        }
+      } catch {
+        setSearchMatchedChatIds([]);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [search, mergeChatsById]);
 
   // MARKER_129.2C: Wrapped in useCallback for IntersectionObserver
   const loadMoreChats = useCallback(() => {
@@ -178,9 +223,32 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return () => observer.disconnect();
   }, [hasMore, loadingMore, loading, loadMoreChats]);
 
-  const filteredChats = chats.filter(chat =>
-    chat.file_name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredChats = chats.filter(chat => {
+    const query = search.trim();
+    if (!query) return true;
+
+    const needle = search.toLowerCase();
+    const byFile = chat.file_name.toLowerCase().includes(needle);
+    const byDisplay = (chat.display_name || '').toLowerCase().includes(needle);
+
+    // Prefer backend message-aware search when available, keep local fallback by title.
+    if (searchMatchedChatIds) {
+      const matched = searchMatchedChatIds.includes(chat.id);
+      return matched || byFile || byDisplay;
+    }
+    return byFile || byDisplay;
+  });
+
+  const sortedChats = [...filteredChats].sort((a, b) => {
+    const selectedA = currentChatId === a.id ? 1 : 0;
+    const selectedB = currentChatId === b.id ? 1 : 0;
+    if (selectedA !== selectedB) return selectedB - selectedA;
+
+    const favA = a.is_favorite ? 1 : 0;
+    const favB = b.is_favorite ? 1 : 0;
+    if (favA !== favB) return favB - favA;
+    return (b.updated_at || '').localeCompare(a.updated_at || '');
+  });
 
   const formatDate = (dateString: string): string => {
     try {
@@ -255,6 +323,38 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
   };
 
+  const handleToggleFavorite = async (e: React.MouseEvent, chat: Chat) => {
+    e.stopPropagation();
+
+    const nextValue = !chat.is_favorite;
+    try {
+      const response = await fetch(`/api/chats/${chat.id}/favorite`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_favorite: nextValue }),
+      });
+
+      if (!response.ok) {
+        console.error(`[ChatSidebar] Error toggling favorite: ${response.status}`);
+        return;
+      }
+
+      setChats(prev =>
+        prev.map(c => (c.id === chat.id ? { ...c, is_favorite: nextValue } : c))
+      );
+
+      window.dispatchEvent(new CustomEvent('chat-favorited', {
+        detail: { chatId: chat.id, is_favorite: nextValue }
+      }));
+    } catch (error) {
+      console.error('[ChatSidebar] Error toggling favorite:', error);
+    }
+  };
+
+  const handleSelectChatClick = (chat: Chat) => {
+    onSelectChat(chat.id, chat.file_path, chat.file_name);
+  };
+
   if (!isOpen) {
     return null;
   }
@@ -300,37 +400,33 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
           </div>
         )}
 
-        {!loading && filteredChats.map((chat) => (
+        {!loading && sortedChats.map((chat) => (
           <div
             key={chat.id}
             className={`chat-sidebar-item ${
               currentChatId === chat.id ? 'active' : ''
             }`}
-            onClick={() =>
-              onSelectChat(chat.id, chat.file_path, chat.file_name)
-            }
+            onClick={() => handleSelectChatClick(chat)}
           >
             <div className="chat-sidebar-item-content">
               <div className="chat-sidebar-item-name">
-                {/* Phase 74.3: Context-aware SVG icons */}
-                {chat.context_type === 'folder' ? (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-                  </svg>
-                ) : chat.context_type === 'group' ? (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                  </svg>
-                ) : chat.context_type === 'topic' ? (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                    <circle cx="12" cy="10" r="1" fill="currentColor"/><circle cx="8" cy="10" r="1" fill="currentColor"/><circle cx="16" cy="10" r="1" fill="currentColor"/>
+                {/* MARKER_137.4E: Primary distinction is Team vs Solo chat, not file/folder context */}
+                {chat.context_type === 'group' ? (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                    {/* Team icon: robot + human (aligned with existing ChatPanel semantics) */}
+                    <rect x="3" y="6" width="10" height="8" rx="1.5" />
+                    <circle cx="6" cy="10" r="1" fill="currentColor" />
+                    <circle cx="10" cy="10" r="1" fill="currentColor" />
+                    <line x1="6" y1="12.5" x2="10" y2="12.5" />
+                    <line x1="8" y1="6" x2="8" y2="4" />
+                    <circle cx="8" cy="3.5" r="0.5" fill="currentColor" />
+                    <circle cx="18" cy="7" r="2.5" />
+                    <path d="M14 20v-3a4 4 0 0 1 4-4h0a4 4 0 0 1 4 4v3" />
                   </svg>
                 ) : (
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
                   </svg>
                 )}
                 <span style={{ marginLeft: 6 }}>{chat.display_name || chat.file_name}</span>
@@ -351,7 +447,15 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
             {/* MARKER_EDIT_NAME_SIDEBAR: Edit Name button in sidebar history */}
             {/* Status: WORKING - handleRenameChat() -> PATCH /api/chats/{id} */}
             {/* Issue: NONE - This button is fully functional */}
-            <div className="chat-sidebar-item-actions">
+            <div className="chat-sidebar-item-actions-wrap">
+              <button
+                className={`chat-sidebar-item-favorite ${chat.is_favorite ? 'active' : ''}`}
+                onClick={(e) => handleToggleFavorite(e, chat)}
+                title={chat.is_favorite ? 'Remove favorite' : 'Add favorite'}
+              >
+                {chat.is_favorite ? '★' : '☆'}
+              </button>
+              <div className="chat-sidebar-item-actions">
               <button
                 className="chat-sidebar-item-edit"
                 onClick={(e) => handleRenameChat(e, chat)}
@@ -372,6 +476,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                 </svg>
               </button>
+              </div>
             </div>
           </div>
         ))}

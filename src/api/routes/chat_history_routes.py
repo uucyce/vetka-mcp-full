@@ -47,6 +47,7 @@ class ChatResponse(BaseModel):
     context_type: Optional[str] = None  # Phase 74: "file" | "folder" | "group" | "topic"
     items: Optional[List[str]] = None   # Phase 74: File paths for groups
     topic: Optional[str] = None         # Phase 74: Topic for file-less chats
+    is_favorite: Optional[bool] = False # MARKER_137.3: Favorites support
     created_at: str
     updated_at: str
     message_count: Optional[int] = None
@@ -102,6 +103,7 @@ async def list_chats(
                 context_type=chat.get("context_type", "file"),  # Phase 74
                 items=chat.get("items"),                     # Phase 74
                 topic=chat.get("topic"),                     # Phase 74
+                is_favorite=chat.get("is_favorite", False),  # MARKER_137.3
                 created_at=chat["created_at"],
                 updated_at=chat["updated_at"],
                 message_count=len(chat.get("messages", []))
@@ -161,6 +163,7 @@ async def get_chat(chat_id: str, request: Request):
             "topic": chat.get("topic"),                         # Phase 74.3
             "group_id": chat.get("group_id"),                   # Phase 80.5
             "pinned_file_ids": chat.get("pinned_file_ids", []), # Phase 100.2
+            "is_favorite": chat.get("is_favorite", False),      # MARKER_137.3
             "created_at": chat["created_at"],
             "updated_at": chat["updated_at"],
             "messages": messages
@@ -288,6 +291,17 @@ class PinnedFilesRequest(BaseModel):
     pinned_file_ids: List[str]
 
 
+class FavoriteRequest(BaseModel):
+    """Request to set favorite status for a chat."""
+    is_favorite: bool
+
+
+class MergeFragmentedChatsRequest(BaseModel):
+    """Request to merge legacy fragmented chats."""
+    dry_run: bool = True
+    max_gap_seconds: int = 90
+
+
 @router.put("/chats/{chat_id}/pinned")
 async def update_pinned_files(chat_id: str, data: PinnedFilesRequest, request: Request):
     """
@@ -349,6 +363,76 @@ async def get_pinned_files(chat_id: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.put("/chats/{chat_id}/favorite")
+async def set_chat_favorite(chat_id: str, data: FavoriteRequest, request: Request):
+    """
+    Set favorite status for a chat.
+
+    MARKER_137.3: Favorites with optional CAM/EnGRAM sync.
+
+    Args:
+        chat_id: Chat UUID
+        data: Request body with is_favorite flag
+
+    Returns:
+        Success status with updated favorite state
+    """
+    try:
+        manager = get_chat_history_manager()
+        success = manager.set_favorite(chat_id, data.is_favorite)
+
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Chat {chat_id} not found")
+
+        # Optional CAM sync with guard: do not fail endpoint if CAM is disabled/unavailable.
+        flask_config = getattr(request.app.state, "flask_config", {}) if request and request.app else {}
+        elisya_enabled = bool(flask_config.get("ELISYA_ENABLED", False))
+        if elisya_enabled:
+            try:
+                from src.orchestration.cam_event_handler import emit_cam_event
+                await emit_cam_event(
+                    "chat_favorited",
+                    {"chat_id": chat_id, "is_favorite": bool(data.is_favorite)},
+                    source="chat_history_routes"
+                )
+            except Exception:
+                # Non-critical: favorite toggle must remain available without CAM.
+                pass
+
+        return {
+            "success": True,
+            "chat_id": chat_id,
+            "is_favorite": bool(data.is_favorite),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ChatHistory] Error setting favorite for {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chats/maintenance/merge-fragmented")
+async def merge_fragmented_chats(data: MergeFragmentedChatsRequest, request: Request):
+    """
+    Merge legacy fragmented chats created by old split logic.
+
+    MARKER_137.4G:
+    - dry_run=True: return candidate pairs only
+    - dry_run=False: create backup + merge safe pairs
+    """
+    try:
+        manager = get_chat_history_manager()
+        report = manager.merge_fragmented_chats(
+            dry_run=bool(data.dry_run),
+            max_gap_seconds=max(1, int(data.max_gap_seconds)),
+        )
+        return {"success": True, **report}
+    except Exception as e:
+        print(f"[ChatHistory] Error merging fragmented chats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/chats/file/{file_path:path}")
 async def get_chats_for_file(file_path: str, request: Request):
     """
@@ -369,6 +453,7 @@ async def get_chats_for_file(file_path: str, request: Request):
                 id=chat["id"],
                 file_path=chat["file_path"],
                 file_name=chat["file_name"],
+                is_favorite=chat.get("is_favorite", False),
                 created_at=chat["created_at"],
                 updated_at=chat["updated_at"],
                 message_count=len(chat.get("messages", []))
@@ -505,10 +590,61 @@ async def search_chats(query: str, request: Request, chat_id: Optional[str] = No
         manager = get_chat_history_manager()
         results = manager.search_messages(query, chat_id)
 
+        # MARKER_137.4D: Aggregate message hits into unique chat cards for sidebar search UX.
+        hit_index: Dict[str, Dict[str, Any]] = {}
+        for item in results:
+            cid = item.get("chat_id")
+            if not cid:
+                continue
+            chat = manager.get_chat(cid)
+            if not chat:
+                continue
+
+            msg = item.get("message", {}) or {}
+            snippet = (
+                msg.get("content")
+                or msg.get("text")
+                or ""
+            )
+
+            if cid not in hit_index:
+                hit_index[cid] = {
+                    "id": cid,
+                    "file_path": chat.get("file_path", ""),
+                    "file_name": chat.get("file_name", ""),
+                    "display_name": chat.get("display_name"),
+                    "context_type": chat.get("context_type", "file"),
+                    "is_favorite": chat.get("is_favorite", False),
+                    "created_at": chat.get("created_at", ""),
+                    "updated_at": chat.get("updated_at", ""),
+                    "message_count": len(chat.get("messages", [])),
+                    "match_count": 0,
+                    "match_snippet": snippet[:180],
+                }
+
+            hit_index[cid]["match_count"] += 1
+            # Keep the shortest useful snippet as preview
+            if snippet and (
+                not hit_index[cid].get("match_snippet")
+                or len(snippet) < len(hit_index[cid].get("match_snippet", ""))
+            ):
+                hit_index[cid]["match_snippet"] = snippet[:180]
+
+        matched_chats = list(hit_index.values())
+        matched_chats.sort(
+            key=lambda c: (
+                int(c.get("match_count", 0)),
+                str(c.get("updated_at", "")),
+            ),
+            reverse=True,
+        )
+
         return {
             "query": query,
             "count": len(results),
-            "results": results
+            "results": results,
+            "chats": matched_chats,
+            "chats_count": len(matched_chats),
         }
 
     except Exception as e:

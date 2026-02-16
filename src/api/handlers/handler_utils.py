@@ -195,6 +195,7 @@ def save_chat_message(
     message: Dict[str, Any],
     pinned_files: Optional[list] = None,
     context_type: str = "file",
+    chat_id: Optional[str] = None,
 ) -> None:
     """
     Save chat message to history.
@@ -208,6 +209,8 @@ def save_chat_message(
         message: Message dict with role, text, content, agent, etc.
         pinned_files: Optional list of pinned file dicts for group context
         context_type: Type of context - "file", "folder", "group", or "topic"
+        chat_id: Optional stable chat UUID from frontend/session. When provided,
+            message is written to this chat to prevent chat fragmentation.
     """
     try:
         from pathlib import Path
@@ -230,14 +233,28 @@ def save_chat_message(
             context_type = "group"
             items = [pf.get("path", pf.get("name", "")) for pf in pinned_files]
 
-        # Get or create chat for this file (Phase 74: with extended params)
-        chat_id = manager.get_or_create_chat(
-            normalized_path, context_type=context_type, items=items
-        )
+        # MARKER_137.1: If a stable chat_id is provided, always prefer it.
+        # This prevents message writes from splitting across path/context-derived chats.
+        target_chat_id = chat_id
+        if target_chat_id:
+            existing_chat = manager.get_chat(target_chat_id)
+            if not existing_chat:
+                # Backward-compatible fallback: create chat with provided ID.
+                target_chat_id = manager.get_or_create_chat(
+                    normalized_path,
+                    context_type=context_type,
+                    items=items,
+                    chat_id=target_chat_id,
+                )
+        else:
+            # Legacy behavior for callers that don't provide chat_id.
+            target_chat_id = manager.get_or_create_chat(
+                normalized_path, context_type=context_type, items=items
+            )
 
         # Phase 74: Update items if chat exists but pinned files changed
         if items:
-            manager.update_chat_items(chat_id, items)
+            manager.update_chat_items(target_chat_id, items)
 
         # Normalize message format (text -> content)
         # MARKER_CHAT_HISTORY_ATTRIBUTION: Save model and provider attribution - IMPLEMENTED
@@ -253,9 +270,9 @@ def save_chat_message(
         }
 
         # Save to history
-        manager.add_message(chat_id, msg_to_save)
+        manager.add_message(target_chat_id, msg_to_save)
         print(
-            f"[ChatHistory] Saved {msg_to_save['role']} message to {normalized_path} (type={context_type})"
+            f"[ChatHistory] Saved {msg_to_save['role']} message to {normalized_path} (type={context_type}, chat_id={target_chat_id})"
         )
 
     except Exception as e:
