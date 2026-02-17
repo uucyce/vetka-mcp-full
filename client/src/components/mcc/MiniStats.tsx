@@ -32,6 +32,28 @@ interface SummaryData {
   }>;
 }
 
+// MARKER_154.14A_FIX: Normalize API response to match SummaryData interface
+function normalizeSummary(raw: any): SummaryData {
+  // API may wrap in { success, data } or return flat
+  const d = raw?.data || raw;
+  return {
+    total_pipelines: d.total_pipelines ?? d.total_runs ?? 0,
+    success_rate: d.success_rate ?? 0,
+    avg_duration_s: d.avg_duration_s ?? 0,
+    total_cost_usd: d.total_cost_usd ?? d.total_cost_estimate ?? 0,
+    total_llm_calls: d.total_llm_calls ?? 0,
+    total_tokens: d.total_tokens ?? 0,
+    by_preset: d.by_preset ?? d.tasks_by_preset ? Object.fromEntries(
+      Object.entries(d.tasks_by_preset || {}).map(([k, v]: [string, any]) => [
+        k,
+        typeof v === 'number'
+          ? { count: v, success_rate: 0, avg_duration_s: 0 }
+          : { count: v?.count ?? 0, success_rate: v?.success_rate ?? 0, avg_duration_s: v?.avg_duration_s ?? 0 },
+      ])
+    ) : undefined,
+  };
+}
+
 function useSummaryData() {
   const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,7 +63,8 @@ function useSummaryData() {
       const res = await fetch(`${API_BASE}/analytics/summary`);
       if (!res.ok) return;
       const json = await res.json();
-      setData(json);
+      // MARKER_154.14A_FIX: Normalize response (API wraps in {success, data})
+      setData(normalizeSummary(json));
     } catch {
       // API may not be available
     } finally {
@@ -103,22 +126,24 @@ function StatsCompact() {
     return `${Math.round(s / 60)}m`;
   };
 
-  const successColor = data.success_rate >= 70 ? '#8a8' : data.success_rate >= 50 ? '#aa8' : '#a66';
+  const rate = data.success_rate ?? 0;
+  const successColor = rate >= 70 ? '#8a8' : rate >= 50 ? '#aa8' : '#a66';
+  const cost = data.total_cost_usd ?? 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center', gap: 8 }}>
       <div style={{ display: 'flex', gap: 4 }}>
-        <StatBox label="Runs" value={data.total_pipelines} />
+        <StatBox label="Runs" value={data.total_pipelines ?? 0} />
         <StatBox
           label="Success"
           value={
-            <span style={{ color: successColor }}>{Math.round(data.success_rate)}%</span> as any
+            <span style={{ color: successColor }}>{Math.round(rate)}%</span> as any
           }
         />
       </div>
       <div style={{ display: 'flex', gap: 4 }}>
-        <StatBox label="Avg Time" value={formatDuration(data.avg_duration_s)} />
-        <StatBox label="Cost" value={`$${data.total_cost_usd.toFixed(2)}`} />
+        <StatBox label="Avg Time" value={formatDuration(data.avg_duration_s ?? 0)} />
+        <StatBox label="Cost" value={`$${cost.toFixed(2)}`} />
       </div>
     </div>
   );
@@ -144,10 +169,10 @@ function StatsExpanded() {
     <div style={{ padding: '12px 16px', fontFamily: 'monospace' }}>
       {/* Summary row */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-        <StatBox label="Total Runs" value={data.total_pipelines} />
-        <StatBox label="Success Rate" value={`${Math.round(data.success_rate)}%`} />
-        <StatBox label="Avg Duration" value={`${Math.round(data.avg_duration_s)}s`} />
-        <StatBox label="Total Cost" value={`$${data.total_cost_usd.toFixed(2)}`} />
+        <StatBox label="Total Runs" value={data.total_pipelines ?? 0} />
+        <StatBox label="Success Rate" value={`${Math.round(data.success_rate ?? 0)}%`} />
+        <StatBox label="Avg Duration" value={`${Math.round(data.avg_duration_s ?? 0)}s`} />
+        <StatBox label="Total Cost" value={`$${(data.total_cost_usd ?? 0).toFixed(2)}`} />
       </div>
 
       {/* Token stats */}
