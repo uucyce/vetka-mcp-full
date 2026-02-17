@@ -831,6 +831,13 @@ async def index_single_file(req: IndexFileRequest, request: Request):
                     'updated_at': time_module.time(),
                 }
             )
+            if media_chunks:
+                modality = 'audio' if file_obj.suffix.lower() in {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"} else 'video'
+                tw.write_media_chunks(
+                    file_path=file_path,
+                    media_chunks=media_chunks,
+                    modality=modality,
+                )
             if tw_result.get('qdrant'):
                 print(f"[Watcher] Indexed via TripleWrite: {file_path}")
             else:

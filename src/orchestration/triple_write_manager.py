@@ -335,6 +335,61 @@ class TripleWriteManager:
 
         return results
 
+    def write_media_chunks(
+        self,
+        file_path: str,
+        media_chunks: List[Dict[str, Any]],
+        modality: str = "media",
+    ) -> int:
+        """
+        Write media chunks as separate points to Qdrant for timestamp-level retrieval.
+
+        Returns number of chunks successfully upserted.
+        """
+        if not self.qdrant_client or not media_chunks:
+            return 0
+
+        points = []
+        for idx, chunk in enumerate(media_chunks[:256]):
+            text = str(chunk.get("text", "") or "").strip()
+            if len(text) < 2:
+                continue
+            try:
+                emb = self.get_embedding(text[:2000])
+            except Exception:
+                emb = None
+            if not emb or len(emb) != self.embedding_dim:
+                continue
+
+            chunk_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{file_path}#chunk:{idx}"))
+            point = PointStruct(
+                id=chunk_id,
+                vector=emb,
+                payload={
+                    "point_type": "media_chunk",
+                    "parent_file_path": file_path,
+                    "modality": modality,
+                    "chunk_index": idx,
+                    "start_sec": float(chunk.get("start_sec", 0.0) or 0.0),
+                    "end_sec": float(chunk.get("end_sec", 0.0) or 0.0),
+                    "text": text[:5000],
+                    "confidence": float(chunk.get("confidence", 0.0) or 0.0),
+                    "created_at": datetime.now().isoformat(),
+                    "extraction_version": "phase153_mm_v1",
+                },
+            )
+            points.append(point)
+
+        if not points:
+            return 0
+
+        try:
+            self.qdrant_client.upsert(collection_name="vetka_elisya", points=points)
+            return len(points)
+        except Exception as e:
+            logger.warning(f"[TripleWrite] write_media_chunks failed for {file_path}: {e}")
+            return 0
+
     def _write_weaviate_internal(
         self,
         file_id: str,

@@ -310,7 +310,8 @@ This section tracks what is already implemented after RECON, with code-level sta
   - OCR now explicitly used in `/index-file` for image/PDF.
   - Local scanner includes media files so embedding pipeline OCR path can process them.
   - Audio/video transcription path added in embedding pipeline with local Whisper fallback + chunk metadata.
-  - Remaining: production-grade long-media chunk persistence/search ranking.
+  - Long-media chunk persistence is now routed into Qdrant via TripleWrite `write_media_chunks`.
+  - Remaining: ranking strategy / retrieval API for chunk-first queries.
   - Files: `src/api/routes/watcher_routes.py`, `src/scanners/local_scanner.py`, `src/scanners/embedding_pipeline.py`
 
 - `G06` Triple-write reindex text-only: **IMPLEMENTED**
@@ -359,6 +360,6 @@ This section tracks what is already implemented after RECON, with code-level sta
 1. `G01` finalize unified extension/MIME policy with explicit allow/deny + size limits.  
    Status: **PARTIAL IMPLEMENTED** (`src/scanners/mime_policy.py` + watcher/reindex integration).
 2. `G09/G12` full universal multimodal scanner chain (audio/video chunk extraction + temporal relation persistence).  
-   Status: **PARTIAL IMPLEMENTED** (artifact temporal edges + multimodal ingest + AV extraction contracts), long-media indexing strategy still pending.
+   Status: **PARTIAL IMPLEMENTED** (artifact temporal edges + multimodal ingest + AV extraction contracts + chunk-level Qdrant writes), retrieval strategy still pending.
 3. `G14` add true streaming tool execution loop (not only advisory telemetry).  
    Status: **PARTIAL IMPLEMENTED** (chat cleanup done; execution loop still pending).

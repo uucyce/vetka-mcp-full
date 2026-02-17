@@ -453,6 +453,12 @@ class EmbeddingPipeline:
                 embedding=embedding,
                 metadata=tw_metadata
             )
+            if media_chunks:
+                tw.write_media_chunks(
+                    file_path=path,
+                    media_chunks=media_chunks,
+                    modality=ocr_metadata.get('modality', 'media'),
+                )
             # Log Triple Write results (non-blocking)
             tw_success = sum(tw_results.values())
             if tw_success < 3:

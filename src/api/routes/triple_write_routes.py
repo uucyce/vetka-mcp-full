@@ -339,6 +339,13 @@ async def triple_write_reindex(req: ReindexRequest):
                         embedding=embedding,
                         metadata=metadata
                     )
+                    if req.multimodal and media_chunks:
+                        modality = 'audio' if ext in {'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg'} else 'video'
+                        tw.write_media_chunks(
+                            file_path=rel_path,
+                            media_chunks=media_chunks,
+                            modality=modality,
+                        )
 
                     if any(results.values()):
                         indexed += 1
