@@ -771,11 +771,28 @@ def calculate_tree_layout(
     Y_PER_DEPTH = 80       # Компактный вертикальный шаг (было 300 - космос)
     X_SPACING = 25         # Компактный горизонтальный шаг
     FILE_Y_STEP = 15       # Маленький шаг между файлами в цепочке
+    # MARKER_153.IMPL.DIRECTED.Z_SEPARATION:
+    # Keep folders slightly deeper than files relative to camera spawn.
+    FOLDER_Z_BASE = -6.0
+    FOLDER_Z_PER_DEPTH = -1.5
+    FILE_Z_OFFSET = 3.0
 
     positions = {}
     subtree_widths = {}
 
     print(f"[TREE_LAYOUT] Starting classic tree layout for {len(folders)} folders")
+
+    def _file_sort_key(file_data: Dict) -> Tuple[float, float, str]:
+        """
+        Stable directed-time ordering key:
+        1) created_time (fallback modified_time) ascending
+        2) modified_time ascending
+        3) file name for deterministic order on equal timestamps
+        """
+        created_time = float(file_data.get('created_time') or 0)
+        modified_time = float(file_data.get('modified_time') or 0)
+        primary_time = created_time if created_time > 0 else modified_time
+        return (primary_time, modified_time, str(file_data.get('name', '')))
 
     # === ШАГ 1: Подсчитать ширину каждого поддерева ===
     def count_width(folder_path: str) -> int:
@@ -811,10 +828,11 @@ def calculate_tree_layout(
 
         # Позиция этой папки: строго над родителем
         folder_y = parent_y + Y_PER_DEPTH
+        folder_z = FOLDER_Z_BASE + (depth * FOLDER_Z_PER_DEPTH)
         positions[folder_path] = {
             'x': center_x,
             'y': folder_y,
-            'z': 0,
+            'z': folder_z,
             'angle': 0  # Не используется в tree layout
         }
 
@@ -849,10 +867,7 @@ def calculate_tree_layout(
         folder_files = files_by_folder.get(folder_path, [])
         if folder_files:
             # Сортировать по времени создания (старые внизу, новые вверху)
-            folder_files_sorted = sorted(
-                folder_files,
-                key=lambda f: f.get('created_time', 0)
-            )
+            folder_files_sorted = sorted(folder_files, key=_file_sort_key)
 
             for i, file_data in enumerate(folder_files_sorted):
                 file_id = file_data.get('id')
@@ -861,7 +876,7 @@ def calculate_tree_layout(
                     positions[file_id] = {
                         'x': center_x,
                         'y': folder_y + FILE_Y_STEP * (i + 1),
-                        'z': 0
+                        'z': folder_z + FILE_Z_OFFSET + (i * 0.03)
                     }
 
     # === ШАГ 3: Найти root папки ===
@@ -880,7 +895,8 @@ def calculate_tree_layout(
     if len(root_folders) == 1:
         # Единственный root - в центре
         root_path = root_folders[0]
-        positions[root_path] = {'x': 0, 'y': 0, 'z': 0, 'angle': 0}
+        root_z = FOLDER_Z_BASE
+        positions[root_path] = {'x': 0, 'y': 0, 'z': root_z, 'angle': 0}
 
         # Разместить детей root'а
         folder = folders.get(root_path)
@@ -900,14 +916,14 @@ def calculate_tree_layout(
         # Файлы в root папке
         root_files = files_by_folder.get(root_path, [])
         if root_files:
-            root_files_sorted = sorted(root_files, key=lambda f: f.get('created_time', 0))
+            root_files_sorted = sorted(root_files, key=_file_sort_key)
             for i, file_data in enumerate(root_files_sorted):
                 file_id = file_data.get('id')
                 if file_id:
                     positions[file_id] = {
                         'x': 0,
                         'y': FILE_Y_STEP * (i + 1),
-                        'z': 0
+                        'z': root_z + FILE_Z_OFFSET + (i * 0.03)
                     }
     else:
         # Несколько root деревьев - распределить горизонтально
@@ -919,7 +935,8 @@ def calculate_tree_layout(
             center = current_x + width / 2
 
             # Позиция root
-            positions[root_path] = {'x': center, 'y': 0, 'z': 0, 'angle': 0}
+            root_z = FOLDER_Z_BASE
+            positions[root_path] = {'x': center, 'y': 0, 'z': root_z, 'angle': 0}
 
             # Разместить детей
             folder = folders.get(root_path)
@@ -939,14 +956,14 @@ def calculate_tree_layout(
             # Файлы в root папке
             root_files = files_by_folder.get(root_path, [])
             if root_files:
-                root_files_sorted = sorted(root_files, key=lambda f: f.get('created_time', 0))
+                root_files_sorted = sorted(root_files, key=_file_sort_key)
                 for i, file_data in enumerate(root_files_sorted):
                     file_id = file_data.get('id')
                     if file_id:
                         positions[file_id] = {
                             'x': center,
                             'y': FILE_Y_STEP * (i + 1),
-                            'z': 0
+                            'z': root_z + FILE_Z_OFFSET + (i * 0.03)
                         }
 
             current_x += width

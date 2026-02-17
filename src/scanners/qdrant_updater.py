@@ -375,6 +375,7 @@ class QdrantIncrementalUpdater:
 
         # Prepare metadata
         stat = file_path.stat()
+        created_time = float(getattr(stat, 'st_birthtime', 0) or stat.st_ctime or stat.st_mtime)
         # FIX_101.4: Add parent_folder and depth for hierarchy building
         parent_folder = str(file_path.parent)
         depth = len(file_path.parts) - 1
@@ -387,6 +388,7 @@ class QdrantIncrementalUpdater:
             'extension': file_path.suffix.lower(),
             'mime_type': normalize_mime(str(file_path)),
             'size_bytes': stat.st_size,
+            'created_time': created_time,
             'modified_time': stat.st_mtime,
             'content_hash': self._get_content_hash(file_path),
             'content': content[:500],  # Preview only

@@ -348,12 +348,19 @@ async def get_tree_data(
 
             if parent_folder not in files_by_folder:
                 files_by_folder[parent_folder] = []
+            created_time = (
+                p.get('created_time')
+                or p.get('modified_time')
+                or p.get('updated_at')
+                or 0
+            )
+            modified_time = p.get('modified_time') or p.get('updated_at') or created_time or 0
             files_by_folder[parent_folder].append({
                 'id': str(point.id),
                 'name': file_name,
                 'path': file_path,
-                'created_time': p.get('created_time', 0),
-                'modified_time': p.get('modified_time', 0),
+                'created_time': created_time,
+                'modified_time': modified_time,
                 'extension': p.get('extension', ''),
                 'content': p.get('content', '')[:150] if p.get('content') else '',
                 'is_ghost': p.get('is_ghost', False)  # Phase 90.11: Ghost files (deleted from disk)
@@ -544,7 +551,7 @@ async def get_tree_data(
                     'layout_hint': {
                         'expected_x': pos.get('x', 0),
                         'expected_y': pos.get('y', 0),
-                        'expected_z': 0
+                        'expected_z': pos.get('z', 0)
                     },
                     'color': '#8B4513'
                 }
