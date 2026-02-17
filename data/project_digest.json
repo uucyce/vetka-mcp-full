@@ -1,17 +1,18 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-17T16:42:23.667489+00:00",
+  "last_updated": "2026-02-17T16:48:45.090333+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 154,
     "subphase": "0",
-    "name": "Wave 5 \u2014 FirstRunView + project init integration",
+    "name": "Wave 6 \u2014 polish, dead code cleanup, level-aware layout",
     "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 154.0 DONE! Wave 5 \u2014 FirstRunView + project init integration",
+    "headline": "Phase 154.0 DONE! Wave 6 \u2014 polish, dead code cleanup, level-aware layout",
     "key_achievements": [
+      "[cdf4f912] Phase 154.0: feat: Phase 154 Wave 6 \u2014 polish, dead code cleanup, level-aw",
       "[6e7ef7d6] Phase 154.0: feat: Phase 154 Wave 5 \u2014 FirstRunView + project init integra",
       "[dragon_dragon_bronze] fix task",
       "[dragon_dragon_bronze] test task",
@@ -20,8 +21,7 @@
       "[11cab6d3] Phase 154.0: feat: Phase 154 Wave 3 \u2014 action wiring + TaskEditPopup + Red",
       "[dragon_titan_core] build new API endpoint",
       "[898f22f7] Phase 154.0: feat: Phase 154 Waves 1+2 \u2014 Matryoshka DAG-in-DAG navigation",
-      "[dragon_dragon_bronze] fix task",
-      "[dragon_dragon_bronze] test task"
+      "[dragon_dragon_bronze] fix task"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -29,12 +29,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2728,
+      "points": 2731,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2690,
+      "points": 2693,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "phase152-fix-stream-favorites",
-    "commit": "6e7ef7d6",
+    "commit": "cdf4f912",
     "dirty": true
   }
 }

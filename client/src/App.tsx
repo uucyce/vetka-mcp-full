@@ -256,12 +256,6 @@ export default function App() {
   const setCameraCommand = useStore((state) => state.setCameraCommand);
   const togglePinFile = useStore((state) => state.togglePinFile);
   const allNodes = useStore((state) => state.nodes);
-  const showMediaChunks = useStore((state) => state.showMediaChunks);
-  const setShowMediaChunks = useStore((state) => state.setShowMediaChunks);
-  const filteredNodes = useMemo(
-    () => (showMediaChunks ? nodes : nodes.filter((n) => n.metadata?.artifact_type !== 'media_chunk')),
-    [nodes, showMediaChunks]
-  );
 
   const handleSearchSelect = useCallback(async (result: SearchResult) => {
     const source = String((result as any).source || '');
@@ -724,7 +718,7 @@ export default function App() {
         {/* Filters 2000+ nodes to only render those visible in camera */}
         {/* Expected improvement: 50-80% reduction in rendered components */}
         <FrustumCulledNodes
-          nodes={filteredNodes}
+          nodes={nodes}
           selectedId={selectedId}
           highlightedId={highlightedId}
           selectNode={selectNode}
@@ -755,28 +749,6 @@ export default function App() {
         isOpen={isDevPanelOpen}
         onClose={() => setIsDevPanelOpen(false)}
       />
-
-      <button
-        onClick={() => setShowMediaChunks(!showMediaChunks)}
-        style={{
-          position: 'fixed',
-          top: 16,
-          right: 16,
-          zIndex: 180,
-          height: 30,
-          padding: '0 10px',
-          borderRadius: 8,
-          border: showMediaChunks ? '1px solid #f59e0b' : '1px solid #374151',
-          background: showMediaChunks ? 'rgba(245, 158, 11, 0.14)' : 'rgba(17, 24, 39, 0.75)',
-          color: showMediaChunks ? '#fbbf24' : '#9ca3af',
-          fontSize: 11,
-          letterSpacing: 0.3,
-          cursor: 'pointer',
-        }}
-        title={showMediaChunks ? 'Hide media chunks' : 'Show media chunks'}
-      >
-        {showMediaChunks ? 'Chunks ON' : 'Chunks OFF'}
-      </button>
 
       {/* Phase 104: Jarvis Wave in center top */}
       <div style={{
