@@ -335,28 +335,6 @@ async def get_tree_data(
         folders = {}
         files_by_folder = {}
 
-        def _to_epoch_seconds(value: Any) -> float:
-            """Best-effort conversion for mixed timestamp payloads."""
-            if value is None:
-                return 0.0
-            if isinstance(value, (int, float)):
-                return float(value)
-            if isinstance(value, str):
-                raw = value.strip()
-                if not raw:
-                    return 0.0
-                # Numeric string
-                try:
-                    return float(raw)
-                except Exception:
-                    pass
-                # ISO datetime string
-                try:
-                    return datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
-                except Exception:
-                    return 0.0
-            return 0.0
-
         for point in all_files:
             p = point.payload or {}
             file_path = p.get('path', '')
@@ -370,14 +348,13 @@ async def get_tree_data(
 
             if parent_folder not in files_by_folder:
                 files_by_folder[parent_folder] = []
-            created_time_raw = (
+            created_time = (
                 p.get('created_time')
                 or p.get('modified_time')
                 or p.get('updated_at')
+                or 0
             )
-            modified_time_raw = p.get('modified_time') or p.get('updated_at') or created_time_raw
-            created_time = _to_epoch_seconds(created_time_raw)
-            modified_time = _to_epoch_seconds(modified_time_raw)
+            modified_time = p.get('modified_time') or p.get('updated_at') or created_time or 0
             files_by_folder[parent_folder].append({
                 'id': str(point.id),
                 'name': file_name,
