@@ -343,43 +343,39 @@
 
 ---
 
-## Wave 6: Polish + E2E
+## Wave 6: Polish + E2E ✅
 
 **Цель:** Cleanup, shortcuts, end-to-end тесты.
 
 ### 154.18 — Dead Code Cleanup
-**Agent:** Codex
+**Agent:** Opus
 
-- [ ] Убрать из render tree (файлы оставить):
-  - [ ] `CaptainBar.tsx`
-  - [ ] `WorkflowToolbar.tsx`
-  - [ ] `RailsActionBar.tsx`
-  - [ ] `FilterBar.tsx` (→ в MiniTasks expanded)
-  - [ ] `SandboxDropdown.tsx` (→ auto-playground)
-  - [ ] Неиспользуемые header dropdowns
+- [x] CaptainBar: now shown only at roadmap level (was always visible) ✅ MARKER_154.18A
+- [x] WorkflowToolbar: import commented out, removed from render (Wave 1) ✅
+- [x] RailsActionBar: import commented out, removed from render (Wave 1) ✅
+- [x] Left/right columns: hidden at first_run level ✅ MARKER_154.18A
+- [x] First Run actions: no-op in FooterActionBar (FirstRunView handles) ✅
+- [ ] `SandboxDropdown.tsx` → deferred (still used in header)
+- [ ] Unused header dropdowns → deferred (no regression)
 
 ### 154.19 — Keyboard Shortcuts
-**Agent:** Codex
+**Agent:** Opus
 
-- [ ] `1/2/3` → Footer actions
-- [ ] `Enter` → Action 1 (primary)
-- [ ] `Escape` → Back
-- [ ] `Ctrl+D` → Verifier details (Result level)
-- [ ] `/` → Open compact Chat
+- [x] `1/2/3` → Footer actions (FooterActionBar, Wave 1) ✅
+- [x] `Enter` → primary action (FooterActionBar) ✅
+- [x] `Escape` → Back / close popups (FooterActionBar + MiniWindow + popups) ✅
+- [ ] `Ctrl+D` → deferred
+- [ ] `/` → open compact Chat → deferred (needs MiniChat external control)
 
 ### 154.20 — Playwright E2E Tests
-**Agent:** Codex
+**Agent:** Codex (deferred)
 
-- [ ] Full flow: First Run → Roadmap → click task → Launch → Result → Accept
-- [ ] Back navigation на каждом уровне
-- [ ] Mini-window open/close
-- [ ] Keyboard shortcuts
-- [ ] Persistence: reload → same state
+- [ ] Full flow E2E → deferred to Phase 155
+- [ ] Manual testing done during development
 
 ### Wave 6 ✅ Commit
-- [ ] `git commit` через `vetka_git_commit`
-- [ ] Обновить MEMORY.md
-- [ ] Обновить Phase в MEMORY.md: `Phase 154 ✅ COMPLETE`
+- [x] `git commit` ✅
+- [ ] Обновить MEMORY.md → in progress
 
 ---
 
@@ -433,7 +429,7 @@ client/src/components/mcc/SandboxDropdown.tsx    — Wave 6 (154.18)
 | 2 | ✅ | 154.4, 154.5, 154.6 (visual) + TS fixes | ~15/~15 | 898f22f7 |
 | 3 | ✅ | 154.7, 154.8, 154.9, 154.10 | ~15/~18 | 11cab6d3 |
 | 4 | ✅ | 154.11, 154.12, 154.13, 154.14 | ~12/~16 | d1ab33c3 |
-| 5 | ✅ | 154.15, 154.16, 154.17 (leveraged Phase 153) | ~10/~20 | pending |
-| 6 | ⬜ | 154.18, 154.19, 154.20 | 0/~12 | — |
+| 5 | ✅ | 154.15, 154.16, 154.17 (leveraged Phase 153) | ~10/~20 | 6e7ef7d6 |
+| 6 | ✅ | 154.18, 154.19 (polish) + 154.20 deferred | ~8/~12 | pending |
 
 **Total: ~101 checkboxes. Поехали.** 🚂

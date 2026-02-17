@@ -702,8 +702,9 @@ export function MyceliumCommandCenter() {
 
       {/* ═══ MAIN THREE-COLUMN LAYOUT ═══ */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {/* LEFT COLUMN: Task List (220px) */}
-        {!leftCollapsed && (
+        {/* LEFT COLUMN: Task List (220px) — hidden at first_run level */}
+        {/* MARKER_154.18A: Hide side columns at first_run for clean welcome screen */}
+        {!leftCollapsed && navLevel !== 'first_run' && (
           <div
             style={{
               width: 220,
@@ -726,7 +727,8 @@ export function MyceliumCommandCenter() {
           }}
         >
           {/* MARKER_153.7D: Captain recommendation bar — roadmap level only */}
-          {!captainDismissed && (
+          {/* MARKER_154.18A: Show only at roadmap level (was always visible) */}
+          {!captainDismissed && navLevel === 'roadmap' && (
             <CaptainBar
               recommendation={captain.recommendation}
               progress={captain.progress}
@@ -919,11 +921,12 @@ export function MyceliumCommandCenter() {
                   // MARKER_154.10A: Open RedoFeedbackInput
                   setShowRedoInput(true);
                   break;
-                // First Run actions
+                // First Run actions — MARKER_154.16A: FirstRunView handles these directly
+                // FooterActionBar still shows at first_run but FirstRunView has own input flow
                 case 'selectFolder':
                 case 'enterUrl':
                 case 'describeText':
-                  setShowOnboarding(true);
+                  // No-op: FirstRunView handles project init flow
                   break;
                 // Gear actions
                 case 'regenerate':
@@ -1014,8 +1017,8 @@ export function MyceliumCommandCenter() {
           {showStream && <StreamPanel maxEvents={8} />}
         </div>
 
-        {/* RIGHT COLUMN: Detail Panel (240px) */}
-        {!rightCollapsed && (
+        {/* RIGHT COLUMN: Detail Panel (240px) — hidden at first_run level */}
+        {!rightCollapsed && navLevel !== 'first_run' && (
           <div
             style={{
               width: 240,
