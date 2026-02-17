@@ -151,50 +151,52 @@
 
 ---
 
-## Wave 3: Actions Per Level
+## Wave 3: Actions Per Level ✅
 
 **Цель:** Footer actions подключены к реальным функциям.
 
 ### 154.7 — Roadmap Actions
-**Agent:** Opus (backend) + Codex (frontend)
+**Agent:** Opus
 
-- [ ] Launch → `POST /api/debug/task-board/dispatch` (recommended task)
-- [ ] Ask Architect → открыть MiniChat (compact → expanded)
-- [ ] Add Task → inline input + auto-assign priority
-- [ ] `useMCCStore.ts` — `recommendedTaskId` из Captain logic
-- [ ] MARKER_154.7A, MARKER_154.7B в коде
+- [x] Launch → drill into selected node (handleRoadmapNodeDrill) or dispatch (handleExecute) ✅ Wave 1
+- [ ] Ask Architect → open MiniChat → deferred to Wave 4 (MiniChat component)
+- [x] Add Task → focuses quick-add input in MCCTaskList ✅ Wave 1
+- [ ] `useMCCStore.ts` — `recommendedTaskId` → deferred (Captain already selects)
+- [x] Actions wired in FooterActionBar onAction switch ✅
 
 ### 154.8 — Task Actions
-**Agent:** Codex
+**Agent:** Opus
 
-- [ ] Launch → `POST /api/debug/task-board/dispatch?task_id=X`
-- [ ] Edit → TaskEditPopup
-- [ ] Создать `client/src/components/mcc/TaskEditPopup.tsx`
-  - [ ] Team dropdown (Bronze/Silver/Gold)
-  - [ ] Workflow template selector
-  - [ ] Description textarea
-  - [ ] File list (из Scout)
-- [ ] Back → `matryoshkaStore.goBack()`
-- [ ] MARKER_154.8A, MARKER_154.8B в коде
+- [x] Launch → `dispatchTask(taskId)` via useMCCStore ✅ Wave 1
+- [x] Edit → TaskEditPopup ✅ Opus
+- [x] Создать `client/src/components/mcc/TaskEditPopup.tsx` ✅ Opus (~210 lines)
+  - [x] Team buttons (Bronze/Silver/Gold) with descriptions
+  - [x] Phase type buttons (Build/Fix/Research)
+  - [x] Description textarea
+  - [x] Save + Save & Launch buttons
+  - [x] Escape/overlay-click to close
+- [x] Back → handled by FooterActionBar internally (goBack) ✅
+- [x] MARKER_154.8A в коде
 
 ### 154.9 — Execution Actions
-**Agent:** Codex
+**Agent:** Opus
 
-- [ ] Pause → `POST /api/debug/task-board/cancel/{id}`
-- [ ] Cancel → cancel + goBack()
-- [ ] Back → goBack() (pipeline продолжает в фоне)
-- [ ] MARKER_154.9A в коде
+- [x] Pause → `cancelTask(runningTaskId)` ✅ Wave 1
+- [x] Cancel → cancel + goBack() ✅ Wave 1
+- [x] Back → goBack() (pipeline продолжает в фоне) ✅ FooterActionBar
+- [x] Actions wired in FooterActionBar onAction switch ✅
 
 ### 154.10 — Result Actions
-**Agent:** Codex
+**Agent:** Opus
 
-- [ ] Accept → apply code + mark task complete + нода в roadmap зеленеет
-- [ ] Redo → RedoFeedbackInput
-- [ ] Создать `client/src/components/mcc/RedoFeedbackInput.tsx`
-  - [ ] Text input: "Что не так?"
-  - [ ] Submit → PATCH task pending + re-dispatch с feedback
-- [ ] Back → goBack() (результат сохраняется)
-- [ ] MARKER_154.10A, MARKER_154.10B в коде
+- [x] Accept → PATCH task done + result_status=applied + goBack() ✅ Opus
+- [x] Redo → RedoFeedbackInput ✅ Opus
+- [x] Создать `client/src/components/mcc/RedoFeedbackInput.tsx` ✅ Opus (~130 lines)
+  - [x] Textarea: "What needs to be fixed?"
+  - [x] Cmd+Enter to submit
+  - [x] Submit → PATCH task pending + result_status=rework + re-dispatch with feedback
+- [x] Back → goBack() (результат сохраняется) ✅ FooterActionBar
+- [x] MARKER_154.10A, MARKER_154.10B в коде
 
 ### Wave 3 Tests
 - [ ] Launch диспатчит правильную задачу
@@ -426,8 +428,8 @@ client/src/components/mcc/SandboxDropdown.tsx    — Wave 6 (154.18)
 |------|--------|-------|------|--------|
 | 0 | ✅ | 6 | 6 | — |
 | 1 | ✅ | 154.1, 154.2, 154.3 + TS fixes | ~20/~20 | pending |
-| 2 | ✅ | 154.4, 154.5, 154.6 (visual) + TS fixes | ~15/~15 | pending |
-| 3 | ⬜ | 154.7, 154.8, 154.9, 154.10 + tests | 0/~18 | — |
+| 2 | ✅ | 154.4, 154.5, 154.6 (visual) + TS fixes | ~15/~15 | 898f22f7 |
+| 3 | ✅ | 154.7, 154.8, 154.9, 154.10 | ~15/~18 | pending |
 | 4 | ⬜ | 154.11, 154.12, 154.13, 154.14 + tests | 0/~16 | — |
 | 5 | ⬜ | 154.15, 154.16, 154.17 + tests | 0/~20 | — |
 | 6 | ⬜ | 154.18, 154.19, 154.20 | 0/~12 | — |

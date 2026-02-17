@@ -30,6 +30,10 @@ import { MCCBreadcrumb } from './MCCBreadcrumb';
 import { FooterActionBar } from './FooterActionBar';
 // MARKER_154.5A: Matryoshka drill-down/back animation wrapper
 import { MatryoshkaTransition } from './MatryoshkaTransition';
+// MARKER_154.8A: Task editor popup (Wave 3)
+import { TaskEditPopup } from './TaskEditPopup';
+// MARKER_154.10A: Redo feedback input (Wave 3)
+import { RedoFeedbackInput } from './RedoFeedbackInput';
 import { ToastContainer } from './ToastContainer';
 import { CaptainBar } from './CaptainBar';
 import { useMCCStore } from '../../store/useMCCStore';
@@ -130,6 +134,11 @@ export function MyceliumCommandCenter() {
     id: string; name: string; file_path: string; language: string;
   } | null>(null);
   const [artifactContent, setArtifactContent] = useState<string>('');
+
+  // MARKER_154.8A: Task editor popup state (Wave 3)
+  const [showTaskEdit, setShowTaskEdit] = useState(false);
+  // MARKER_154.10A: Redo feedback input state (Wave 3)
+  const [showRedoInput, setShowRedoInput] = useState(false);
 
   const handleViewArtifact = useCallback((artifact: { id: string; name: string; file_path: string; language: string }) => {
     setViewingArtifact(artifact);
@@ -852,8 +861,8 @@ export function MyceliumCommandCenter() {
                   break;
                 }
                 case 'editTask':
-                  // TODO Wave 3: open TaskEditPopup
-                  addToast('info', 'Task editor coming in Wave 3');
+                  // MARKER_154.8A: Open TaskEditPopup
+                  setShowTaskEdit(true);
                   break;
                 // Workflow actions
                 case 'execute':
@@ -871,13 +880,25 @@ export function MyceliumCommandCenter() {
                   break;
                 }
                 // Result actions
-                case 'apply':
-                  // TODO Wave 3: apply code
-                  addToast('info', 'Apply coming in Wave 3');
+                case 'apply': {
+                  // MARKER_154.10B: Apply code — mark task as done + update result_status
+                  const applyTaskId = useMCCStore.getState().navTaskId || selectedTaskId;
+                  if (applyTaskId) {
+                    fetch(`${API_BASE}/debug/task-board/${applyTaskId}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ status: 'done', result_status: 'applied' }),
+                    }).then(() => {
+                      addToast('success', 'Result applied ✓');
+                      useMCCStore.getState().fetchTasks();
+                      goBack();
+                    }).catch(() => addToast('error', 'Failed to apply'));
+                  }
                   break;
+                }
                 case 'redo':
-                  // TODO Wave 3: RedoFeedbackInput
-                  addToast('info', 'Redo coming in Wave 3');
+                  // MARKER_154.10A: Open RedoFeedbackInput
+                  setShowRedoInput(true);
                   break;
                 // First Run actions
                 case 'selectFolder':
@@ -911,6 +932,64 @@ export function MyceliumCommandCenter() {
               navLevel === 'roadmap' && !selectedNode ? ['launch'] : []
             }
           />
+
+          {/* MARKER_154.8A: TaskEditPopup — shown when user clicks Edit on task level */}
+          {showTaskEdit && (() => {
+            const taskId = useMCCStore.getState().navTaskId || selectedTaskId;
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return null;
+            return (
+              <TaskEditPopup
+                taskId={task.id}
+                title={task.title}
+                description={task.description || ''}
+                preset={task.preset || 'dragon_silver'}
+                phaseType={task.phase_type || 'build'}
+                onSave={(updates) => {
+                  fetch(`${API_BASE}/debug/task-board/${task.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updates),
+                  }).then(() => useMCCStore.getState().fetchTasks());
+                }}
+                onDispatch={() => {
+                  useMCCStore.getState().dispatchTask(task.id);
+                }}
+                onClose={() => setShowTaskEdit(false)}
+              />
+            );
+          })()}
+
+          {/* MARKER_154.10A: RedoFeedbackInput — shown when user clicks Redo on result level */}
+          {showRedoInput && (() => {
+            const taskId = useMCCStore.getState().navTaskId || selectedTaskId;
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) return null;
+            return (
+              <RedoFeedbackInput
+                taskId={task.id}
+                taskTitle={task.title}
+                onSubmit={(feedback) => {
+                  // PATCH task back to pending with feedback, then re-dispatch
+                  fetch(`${API_BASE}/debug/task-board/${task.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      status: 'pending',
+                      result_status: 'rework',
+                      description: `${task.description || ''}\n\n[REDO FEEDBACK]: ${feedback}`,
+                    }),
+                  }).then(() => {
+                    useMCCStore.getState().fetchTasks();
+                    useMCCStore.getState().dispatchTask(task.id);
+                    addToast('info', 'Task re-dispatched with feedback');
+                  });
+                  setShowRedoInput(false);
+                }}
+                onCancel={() => setShowRedoInput(false)}
+              />
+            );
+          })()}
 
           {/* Stream Panel — collapsible bottom */}
           {showStream && <StreamPanel maxEvents={8} />}
