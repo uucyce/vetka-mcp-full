@@ -198,13 +198,18 @@ interface FileCardProps {
     is_favorite?: boolean;
     path?: string;
     artifact_id?: string;
+    artifact_type?: string;
+    parent_file_path?: string;
+    start_sec?: number;
+    end_sec?: number;
+    [key: string]: any;
   };
   visual_hints?: {
     color?: string;
     opacity?: number;
   };
   // MARKER_108_ARTIFACT_VIZ: Phase 108.2 - Artifact metadata
-  artifactType?: 'code' | 'document' | 'image' | 'data';
+  artifactType?: 'code' | 'document' | 'image' | 'data' | 'media_chunk' | 'audio' | 'video';
   artifactStatus?: 'streaming' | 'done' | 'error' | 'pending' | 'approved' | 'rejected';
   artifactProgress?: number; // 0-100
   // Phase 90.11 + Phase 108.3: Node opacity
@@ -624,11 +629,14 @@ function FileCardComponent({
       // Artifact type icon at top-left
       ctx.font = '18px Arial';
       ctx.fillStyle = '#ffffff';
-      const iconMap = {
+      const iconMap: Record<string, string> = {
         code: '📄',
         document: '📝',
         image: '🖼️',
         data: '📊',
+        media_chunk: '⏱️',
+        audio: '🎧',
+        video: '🎬',
       };
       ctx.fillText(iconMap[artifactType] || '📄', 6, 22);
 
@@ -1003,18 +1011,34 @@ function FileCardComponent({
       }
 
       // MARKER_108_4_APPROVE_UI: Phase 108.4 - Artifact node click opens ArtifactPanel
-      if (type === 'artifact' && artifactId) {
+      if (type === 'artifact') {
+        // MARKER_153.IMPL.G12_MEDIA_CHUNK_CLICK:
+        // media_chunk nodes should open parent media file at chunk timestamp.
+        if (metadata?.artifact_type === 'media_chunk' && metadata?.parent_file_path) {
+          window.dispatchEvent(new CustomEvent('vetka-open-artifact', {
+            detail: {
+              artifactId: metadata?.source_artifact_id || artifactId || metadata?.artifact_id || id,
+              fileName: name,
+              filePath: metadata.parent_file_path,
+              artifactType: metadata?.artifact_type,
+              startSec: metadata?.start_sec,
+              endSec: metadata?.end_sec,
+            },
+          }));
+          return;
+        }
+
         // Dispatch custom event to open ArtifactPanel with this artifact
         window.dispatchEvent(new CustomEvent('vetka-open-artifact', {
           detail: {
-            artifactId,
+            artifactId: artifactId || metadata?.artifact_id || id,
             fileName: name,
-            filePath: path,
+            filePath: metadata?.file_path || path,
             status: artifactStatus,
-            artifactType,
+            artifactType: metadata?.artifact_type || artifactType,
           },
         }));
-        console.log('[FileCard] Phase 108.4: Opening artifact', artifactId, 'via event');
+        console.log('[FileCard] Phase 108.4: Opening artifact', artifactId || metadata?.artifact_id || id, 'via event');
         return;
       }
 

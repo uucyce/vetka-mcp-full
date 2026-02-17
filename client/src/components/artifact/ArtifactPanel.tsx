@@ -74,9 +74,11 @@ interface Props {
   approvalLevel?: ApprovalLevel;
   // Phase 104.9: Artifact ID for approval events
   artifactId?: string;
+  // Phase 153: Optional timestamp seek target for media artifacts
+  initialSeekSec?: number;
 }
 
-export function ArtifactPanel({ file, rawContent, onClose, onContentChange, approvalLevel, artifactId }: Props) {
+export function ArtifactPanel({ file, rawContent, onClose, onContentChange, approvalLevel, artifactId, initialSeekSec }: Props) {
   const setActiveWebContext = useStore((state) => state.setActiveWebContext);
   const nodes = useStore((state) => state.nodes);
   const pinnedFileIds = useStore((state) => state.pinnedFileIds);
@@ -91,6 +93,9 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
   const [webSaving, setWebSaving] = useState(false);
   const [webMarkdown, setWebMarkdown] = useState<string>('');
   const [webSaveNote, setWebSaveNote] = useState<string>('');
+  const [activeSeekSec, setActiveSeekSec] = useState<number | undefined>(initialSeekSec);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Phase 60.4: Editable raw content state
   const [editableContent, setEditableContent] = useState<string>('');
@@ -122,6 +127,10 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
   useEffect(() => {
     setCurrentApprovalLevel(approvalLevel);
   }, [approvalLevel]);
+
+  useEffect(() => {
+    setActiveSeekSec(initialSeekSec);
+  }, [initialSeekSec]);
 
   // MARKER_104_VISUAL - Listen for artifact-approval CustomEvent from useSocket.ts
   useEffect(() => {
@@ -283,6 +292,28 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
       setFileData(null);
     }
   }, [file?.path, loadFile]);
+
+  useEffect(() => {
+    if (activeSeekSec === undefined) return;
+    const seekTo = Math.max(0, activeSeekSec);
+    const media = videoRef.current || audioRef.current;
+    if (!media) return;
+
+    const applySeek = () => {
+      try {
+        media.currentTime = seekTo;
+      } catch {
+        // Ignore non-seekable state.
+      }
+    };
+
+    if (media.readyState >= 1) {
+      applySeek();
+    } else {
+      media.addEventListener('loadedmetadata', applySeek, { once: true });
+      return () => media.removeEventListener('loadedmetadata', applySeek);
+    }
+  }, [activeSeekSec, file?.path, fileData?.mimeType]);
 
   // Update content
   const updateContent = useCallback((content: string) => {
@@ -744,7 +775,7 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
       case 'audio':
         return (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <audio controls style={{ width: '100%', maxWidth: 720 }}>
+            <audio ref={audioRef} controls style={{ width: '100%', maxWidth: 720 }}>
               <source src={mediaSrc} type={mimeType} />
             </audio>
           </div>
@@ -752,7 +783,7 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
       case 'video':
         return (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <video controls style={{ width: '100%', maxHeight: '100%' }}>
+            <video ref={videoRef} controls style={{ width: '100%', maxHeight: '100%' }}>
               <source src={mediaSrc} type={mimeType} />
             </video>
           </div>
@@ -769,7 +800,7 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
         if (mimeType.startsWith('audio/')) {
           return (
             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-              <audio controls style={{ width: '100%', maxWidth: 720 }}>
+              <audio ref={audioRef} controls style={{ width: '100%', maxWidth: 720 }}>
                 <source src={mediaSrc} type={mimeType} />
               </audio>
             </div>
@@ -778,7 +809,7 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
         if (mimeType.startsWith('video/')) {
           return (
             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-              <video controls style={{ width: '100%', maxHeight: '100%' }}>
+              <video ref={videoRef} controls style={{ width: '100%', maxHeight: '100%' }}>
                 <source src={mediaSrc} type={mimeType} />
               </video>
             </div>
@@ -927,9 +958,24 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
 
       {/* File mode - Viewer */}
       {!isRawContentMode && fileData && (
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          {renderViewer()}
-        </div>
+        <>
+          {activeSeekSec !== undefined && (
+            <div
+              style={{
+                padding: '6px 12px',
+                borderBottom: '1px solid #232323',
+                fontSize: 11,
+                color: '#fbbf24',
+                background: 'rgba(245, 158, 11, 0.08)',
+              }}
+            >
+              timeline: t={activeSeekSec.toFixed(1)}s
+            </div>
+          )}
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            {renderViewer()}
+          </div>
+        </>
       )}
 
       {/* File mode - Toolbar */}

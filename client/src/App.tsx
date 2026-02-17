@@ -187,6 +187,9 @@ function FrustumCulledNodes({ nodes, selectedId, highlightedId, selectNode }: Fr
           children={node.children}
           depth={node.depth}
           metadata={node.metadata}
+          artifactId={node.type === 'artifact' ? (node.metadata?.artifact_id || node.id) : undefined}
+          artifactType={node.type === 'artifact' ? (node.metadata?.artifact_type || 'code') : undefined}
+          artifactStatus={node.type === 'artifact' ? (node.metadata?.status || 'done') : undefined}
           opacity={node.opacity}
           lodLevel={nodeLodLevels.get(node.id) ?? 4}
           showLabel={currentLabelSet.has(node.id)}
@@ -218,6 +221,7 @@ export default function App() {
     type?: 'text' | 'markdown' | 'code' | 'web';
     sourceUrl?: string;
   } | null>(null);
+  const [artifactSeekSec, setArtifactSeekSec] = useState<number | undefined>(undefined);
 
   const nodes = useStore((state) => Object.values(state.nodes));
   const selectedId = useStore((state) => state.selectedId);
@@ -252,6 +256,12 @@ export default function App() {
   const setCameraCommand = useStore((state) => state.setCameraCommand);
   const togglePinFile = useStore((state) => state.togglePinFile);
   const allNodes = useStore((state) => state.nodes);
+  const showMediaChunks = useStore((state) => state.showMediaChunks);
+  const setShowMediaChunks = useStore((state) => state.setShowMediaChunks);
+  const filteredNodes = useMemo(
+    () => (showMediaChunks ? nodes : nodes.filter((n) => n.metadata?.artifact_type !== 'media_chunk')),
+    [nodes, showMediaChunks]
+  );
 
   const handleSearchSelect = useCallback(async (result: SearchResult) => {
     const source = String((result as any).source || '');
@@ -271,6 +281,7 @@ export default function App() {
         content: result.preview || '',
         sourceUrl: result.path || '',
       });
+      setArtifactSeekSec(undefined);
       setIsArtifactOpen(true);
       return;
     }
@@ -527,16 +538,64 @@ export default function App() {
 
   // Phase 118.2: Listen for double-click artifact open requests from FileCard
   useEffect(() => {
-    const handleOpenArtifactFile = (e: CustomEvent) => {
-      const { path, name, extension } = e.detail;
+    const handleOpenArtifactFile = (evt: Event) => {
+      const e = evt as CustomEvent;
+      const { path, name, extension } = e.detail || {};
+      if (!path || !name) return;
       setArtifactFile({ path, name, extension });
       setArtifactContent(null);
+      setArtifactSeekSec(undefined);
       setIsArtifactOpen(true);
       console.log('[App] Phase 118.2: Opening artifact via double-click:', name);
     };
 
-    window.addEventListener('vetka-open-artifact-file', handleOpenArtifactFile as EventListener);
-    return () => window.removeEventListener('vetka-open-artifact-file', handleOpenArtifactFile as EventListener);
+    const handleOpenArtifact = async (detail: any) => {
+      const artifactId = detail.artifactId || '';
+      const startSec = typeof detail.startSec === 'number' ? detail.startSec : undefined;
+      let filePath = String(detail.filePath || '').trim();
+      let fileName = String(detail.fileName || '').trim();
+
+      if (!filePath && artifactId) {
+        try {
+          const resp = await fetch('/api/artifacts');
+          if (resp.ok) {
+            const data = await resp.json();
+            const list = Array.isArray(data?.artifacts) ? data.artifacts : [];
+            const match = list.find((a: any) => a.id === artifactId);
+            if (match?.file_path) {
+              filePath = String(match.file_path);
+              if (!fileName) fileName = String(match.name || '');
+            }
+          }
+        } catch {
+          // Keep handler resilient: fallback below if not resolved.
+        }
+      }
+
+      if (!filePath) return;
+      if (!fileName) {
+        const parts = filePath.replace(/\\/g, '/').split('/');
+        fileName = parts[parts.length - 1] || 'artifact';
+      }
+      const extension = fileName.includes('.') ? fileName.split('.').pop() : undefined;
+
+      setArtifactFile({ path: filePath, name: fileName, extension });
+      setArtifactContent(null);
+      setArtifactSeekSec(startSec);
+      setIsArtifactOpen(true);
+    };
+
+    const handleOpenArtifactEvent = (evt: Event) => {
+      const e = evt as CustomEvent;
+      void handleOpenArtifact(e.detail || {});
+    };
+
+    window.addEventListener('vetka-open-artifact-file', handleOpenArtifactFile);
+    window.addEventListener('vetka-open-artifact', handleOpenArtifactEvent);
+    return () => {
+      window.removeEventListener('vetka-open-artifact-file', handleOpenArtifactFile);
+      window.removeEventListener('vetka-open-artifact', handleOpenArtifactEvent);
+    };
   }, []);
 
   // Phase 65: G key for grab mode (Blender-style node movement)
@@ -665,7 +724,7 @@ export default function App() {
         {/* Filters 2000+ nodes to only render those visible in camera */}
         {/* Expected improvement: 50-80% reduction in rendered components */}
         <FrustumCulledNodes
-          nodes={nodes}
+          nodes={filteredNodes}
           selectedId={selectedId}
           highlightedId={highlightedId}
           selectNode={selectNode}
@@ -684,9 +743,11 @@ export default function App() {
           setIsArtifactOpen(false);
           setArtifactFile(null);
           setArtifactContent(null);
+          setArtifactSeekSec(undefined);
         }}
         file={artifactFile}
         rawContent={artifactContent}
+        initialSeekSec={artifactSeekSec}
       />
 
       {/* MARKER_109_DEVPANEL: Dev Panel */}
@@ -694,6 +755,28 @@ export default function App() {
         isOpen={isDevPanelOpen}
         onClose={() => setIsDevPanelOpen(false)}
       />
+
+      <button
+        onClick={() => setShowMediaChunks(!showMediaChunks)}
+        style={{
+          position: 'fixed',
+          top: 16,
+          right: 16,
+          zIndex: 180,
+          height: 30,
+          padding: '0 10px',
+          borderRadius: 8,
+          border: showMediaChunks ? '1px solid #f59e0b' : '1px solid #374151',
+          background: showMediaChunks ? 'rgba(245, 158, 11, 0.14)' : 'rgba(17, 24, 39, 0.75)',
+          color: showMediaChunks ? '#fbbf24' : '#9ca3af',
+          fontSize: 11,
+          letterSpacing: 0.3,
+          cursor: 'pointer',
+        }}
+        title={showMediaChunks ? 'Hide media chunks' : 'Show media chunks'}
+      >
+        {showMediaChunks ? 'Chunks ON' : 'Chunks OFF'}
+      </button>
 
       {/* Phase 104: Jarvis Wave in center top */}
       <div style={{
@@ -755,6 +838,7 @@ export default function App() {
                     content: result.preview || '',
                     sourceUrl: url,
                   });
+                  setArtifactSeekSec(undefined);
                   setIsArtifactOpen(true);
                   return;
                 }
@@ -770,6 +854,7 @@ export default function App() {
                   extension: ext
                 });
                 setArtifactContent(null);
+                setArtifactSeekSec(undefined);
                 setIsArtifactOpen(true);
               }}
               placeholder="Search..."

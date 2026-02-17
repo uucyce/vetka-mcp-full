@@ -19,6 +19,8 @@ import {
   convertChatNode,
   convertChatEdge,
   chatNodeToTreeNode,
+  convertArtifactNode,
+  convertArtifactEdge,
   VetkaApiResponse,
 } from '../utils/apiConverter';
 import { getDevPanelConfig } from '../utils/devConfig';
@@ -80,7 +82,9 @@ export function useTreeData() {
 
         // MARKER_108_CHAT_FRONTEND: Phase 108.2 - Process chat nodes
         let chatTreeNodes: TreeNode[] = [];
+        let artifactTreeNodes: TreeNode[] = [];
         const chatEdges: typeof edges = [];
+        const artifactEdges: typeof edges = [];
 
         if (response.chat_nodes && response.chat_nodes.length > 0) {
           console.log('[useTreeData] Processing chat nodes:', response.chat_nodes.length);
@@ -111,14 +115,40 @@ export function useTreeData() {
           console.log('[useTreeData] Chat edges:', chatEdges.length);
         }
 
+        // MARKER_153.IMPL.G09_ARTIFACT_TREE_FRONTEND:
+        // Merge artifact/media-chunk nodes and edges from backend tree API.
+        if (response.artifact_nodes && response.artifact_nodes.length > 0) {
+          artifactTreeNodes = response.artifact_nodes.map((apiArtifactNode) => convertArtifactNode(apiArtifactNode));
+          if (response.artifact_edges) {
+            response.artifact_edges.forEach((apiArtifactEdge, idx) => {
+              artifactEdges.push(convertArtifactEdge(apiArtifactEdge, idx));
+            });
+          }
+          console.log('[useTreeData] Converted artifact nodes:', artifactTreeNodes.length);
+          console.log('[useTreeData] Artifact edges:', artifactEdges.length);
+        }
+
         // Merge file tree nodes and chat nodes
         const allNodes = { ...convertedNodes };
         chatTreeNodes.forEach((chatNode) => {
           allNodes[chatNode.id] = chatNode;
         });
+        artifactTreeNodes.forEach((artifactNode) => {
+          allNodes[artifactNode.id] = artifactNode;
+        });
 
         // Merge edges
-        const allEdges = [...edges, ...chatEdges];
+        const allEdges = [...edges, ...chatEdges, ...artifactEdges];
+
+        // Ensure children arrays are complete for imported chat/artifact edges.
+        allEdges.forEach((edge) => {
+          const parentNode = allNodes[edge.source];
+          if (!parentNode) return;
+          if (!parentNode.children) parentNode.children = [];
+          if (!parentNode.children.includes(edge.target)) {
+            parentNode.children.push(edge.target);
+          }
+        });
 
         // MARKER_109_DEVPANEL: Threshold-based fallback for layout
         const config = getDevPanelConfig();

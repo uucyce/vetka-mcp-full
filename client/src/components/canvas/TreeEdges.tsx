@@ -19,6 +19,7 @@ export function TreeEdges() {
   const storeEdges = useStore((state) => state.edges);
   const selectedId = useStore((state) => state.selectedId);
   const highlightedId = useStore((state) => state.highlightedId);
+  const showMediaChunks = useStore((state) => state.showMediaChunks);
 
   // Phase 112: Frustum culling for edges
   const { camera } = useThree();
@@ -35,6 +36,7 @@ export function TreeEdges() {
       isHighlighted: boolean;
       isAgentHighlighted: boolean;
       isChatEdge: boolean;  // Phase 108.2: Track chat edges for blue coloring
+      edgeType?: string;
     }> = [];
 
     // If we have edges from store, use them
@@ -42,6 +44,12 @@ export function TreeEdges() {
       storeEdges.forEach((edge) => {
         const sourceNode = nodes[edge.source];
         const targetNode = nodes[edge.target];
+        const isMediaChunkEdge = edge.type === 'media_chunk' || edge.type === 'temporal_chunk';
+        const sourceIsMediaChunk = sourceNode?.metadata?.artifact_type === 'media_chunk';
+        const targetIsMediaChunk = targetNode?.metadata?.artifact_type === 'media_chunk';
+        if (!showMediaChunks && (isMediaChunkEdge || sourceIsMediaChunk || targetIsMediaChunk)) {
+          return;
+        }
 
         if (sourceNode && targetNode) {
           const isHighlighted = selectedId === edge.source || selectedId === edge.target;
@@ -56,14 +64,21 @@ export function TreeEdges() {
             isHighlighted,
             isAgentHighlighted,
             isChatEdge,
+            edgeType: edge.type,
           });
         }
       });
     } else {
       // Fallback: compute edges from parentId
       Object.values(nodes).forEach((node) => {
+        if (!showMediaChunks && node.metadata?.artifact_type === 'media_chunk') {
+          return;
+        }
         if (node.parentId && nodes[node.parentId]) {
           const parent = nodes[node.parentId];
+          if (!showMediaChunks && parent?.metadata?.artifact_type === 'media_chunk') {
+            return;
+          }
 
           const isHighlighted = selectedId === node.id || selectedId === parent.id;
           const isAgentHighlighted = highlightedId === node.id || highlightedId === parent.id;
@@ -77,13 +92,14 @@ export function TreeEdges() {
             isHighlighted,
             isAgentHighlighted,
             isChatEdge,
+            edgeType: undefined,
           });
         }
       });
     }
 
     return result;
-  }, [nodes, storeEdges, selectedId, highlightedId]);
+  }, [nodes, storeEdges, selectedId, highlightedId, showMediaChunks]);
 
   // Phase 112: Frustum culling for edges (check midpoint visibility)
   useFrame((state) => {
@@ -155,7 +171,15 @@ export function TreeEdges() {
         let opacity = 0.6;
 
         // MARKER_108_CHAT_EDGE: Phase 108.2 - Chat edge coloring
-        if (edge.isChatEdge) {
+        if (edge.edgeType === 'media_chunk') {
+          color = '#f59e0b';
+          opacity = 0.55;
+          lineWidth = 1.8;
+        } else if (edge.edgeType === 'temporal_chunk') {
+          color = '#fbbf24';
+          opacity = 0.45;
+          lineWidth = 1.5;
+        } else if (edge.isChatEdge) {
           color = '#4a9eff';  // Blue for chat edges
           opacity = 0.75;
           lineWidth = 2;

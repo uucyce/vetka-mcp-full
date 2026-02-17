@@ -46,9 +46,11 @@ interface Props {
   artifactId?: string;
   /** Phase 104.9: Callback for L2 content changes */
   onContentChange?: (content: string) => void;
+  /** Phase 153: Initial media seek timestamp (seconds) for audio/video artifacts */
+  initialSeekSec?: number;
 }
 
-export function ArtifactWindow({ isOpen, onClose, file: propFile, rawContent, approvalLevel, artifactId, onContentChange }: Props) {
+export function ArtifactWindow({ isOpen, onClose, file: propFile, rawContent, approvalLevel, artifactId, onContentChange, initialSeekSec }: Props) {
   const selectedId = useStore((state) => state.selectedId);
   const nodes = useStore((state) => state.nodes);
   const selectedNode = selectedId ? nodes[selectedId] : null;
@@ -261,6 +263,7 @@ export function ArtifactWindow({ isOpen, onClose, file: propFile, rawContent, ap
         approvalLevel={approvalLevel}
         artifactId={artifactId}
         onContentChange={onContentChange}
+        initialSeekSec={initialSeekSec}
       />
     </FloatingWindow>
   );

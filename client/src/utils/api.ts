@@ -49,6 +49,38 @@ export interface ChatEdgeAPI {
   metadata: { type: "chat"; color: string; opacity: number };
 }
 
+export interface ArtifactNodeAPI {
+  id: string;
+  type: "artifact";
+  name: string;
+  parent_id: string | null;
+  metadata: {
+    artifact_type?: string;
+    artifact_id?: string;
+    file_path?: string;
+    parent_file_path?: string;
+    source_artifact_id?: string;
+    start_sec?: number;
+    end_sec?: number;
+    chunk_text?: string;
+    status?: string;
+    extension?: string;
+    [key: string]: any;
+  };
+  visual_hints: {
+    layout_hint: { expected_x: number; expected_y: number; expected_z: number };
+    color: string;
+    opacity: number;
+  };
+}
+
+export interface ArtifactEdgeAPI {
+  from: string;
+  to: string;
+  semantics: string;
+  metadata?: { type?: string; [key: string]: any };
+}
+
 // API response can be either legacy or new VETKA format
 export interface ApiTreeResponse {
   success: boolean;
@@ -63,6 +95,8 @@ export interface ApiTreeResponse {
   // Phase 108.2: Chat nodes
   chat_nodes?: ChatNodeAPI[];
   chat_edges?: ChatEdgeAPI[];
+  artifact_nodes?: ArtifactNodeAPI[];
+  artifact_edges?: ArtifactEdgeAPI[];
   error?: string;
 }
 
@@ -80,6 +114,8 @@ export async function fetchTreeData(): Promise<ApiTreeResponse> {
       tree: data.tree,
       chat_nodes: data.chat_nodes,
       chat_edges: data.chat_edges,
+      artifact_nodes: data.artifact_nodes,
+      artifact_edges: data.artifact_edges,
     };
   } catch (error) {
     console.error('[API] fetchTreeData error:', error);

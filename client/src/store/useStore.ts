@@ -193,6 +193,9 @@ interface TreeState {
   // Phase 113.4: Label Championship — score-based label selection
   selectedLabelIds: string[];
   setSelectedLabels: (labelIds: string[]) => void;
+  // Phase 153: Toggle media chunk nodes/edges visibility in tree viewport
+  showMediaChunks: boolean;
+  setShowMediaChunks: (enabled: boolean) => void;
 
   // Phase 113.4: Persist positions toggle (DevPanel control)
   persistPositions: boolean;
@@ -257,6 +260,8 @@ export const useStore = create<TreeState>((set, get) => ({
 
   // Phase 113.4: Label Championship
   selectedLabelIds: [],
+  showMediaChunks: true,
+  setShowMediaChunks: (enabled) => set({ showMediaChunks: enabled }),
   persistPositions: false,  // OFF by default (Phase 113.3 lesson: persistence = risky without toggle)
 
   // MARKER_126.9B: Selected API key for pipeline dispatch
