@@ -18,13 +18,18 @@ import { StreamPanel } from './StreamPanel';
 import { HeartbeatChip } from './HeartbeatChip';
 import { SandboxDropdown } from './SandboxDropdown';
 import { KeyDropdown } from './KeyDropdown';
-import { WorkflowToolbar } from './WorkflowToolbar';
+// MARKER_154.3A: WorkflowToolbar removed from layout (kept for dagEditor reference)
+// import { WorkflowToolbar } from './WorkflowToolbar';
 import { DAGContextMenu, type ContextMenuTarget } from './DAGContextMenu';
 import { NodePicker } from './NodePicker';
 import { OnboardingOverlay } from './OnboardingOverlay';
 import { OnboardingModal } from './OnboardingModal';
 import { MCCBreadcrumb } from './MCCBreadcrumb';
-import { RailsActionBar } from './RailsActionBar';
+// MARKER_154.3A: RailsActionBar deprecated — replaced by FooterActionBar
+// import { RailsActionBar } from './RailsActionBar';
+import { FooterActionBar } from './FooterActionBar';
+// MARKER_154.5A: Matryoshka drill-down/back animation wrapper
+import { MatryoshkaTransition } from './MatryoshkaTransition';
 import { ToastContainer } from './ToastContainer';
 import { CaptainBar } from './CaptainBar';
 import { useMCCStore } from '../../store/useMCCStore';
@@ -37,7 +42,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { NOLAN_PALETTE, createTestDAGData } from '../../utils/dagLayout';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
 import { useDAGEditor } from '../../hooks/useDAGEditor';
-import type { DAGNode, DAGEdge, DAGStats, DAGNodeType, EdgeType } from '../../types/dag';
+import type { DAGNode, DAGEdge, DAGStats, DAGNodeType } from '../../types/dag';
 
 const API_BASE = 'http://localhost:5001/api';
 
@@ -416,11 +421,11 @@ export function MyceliumCommandCenter() {
   }, [selectedNode, fetchDAG, selectedTaskId]);
 
   // MARKER_144.7: Handle generated workflow — load into DAG editor
+  // MARKER_154.3A: Commented out — WorkflowToolbar removed. Will restore in Wave 4 for MiniChat.
+  /*
   const handleGeneratedWorkflow = useCallback(async (workflow: any) => {
     if (!workflow?.nodes?.length) return;
     if (!editMode) toggleEditMode();
-
-    // Save the generated workflow first, then load it via dagEditor.load
     try {
       const res = await fetch(`${API_BASE}/workflows`, {
         method: 'POST',
@@ -439,6 +444,7 @@ export function MyceliumCommandCenter() {
       console.error('[MCC] Failed to save generated workflow:', err);
     }
   }, [editMode, toggleEditMode, dagEditor, pushStreamEvent]);
+  */
 
   // MARKER_151.7B: Stream panel auto-visibility follows running tasks.
   const runningCount = summary?.by_status?.running ?? stats?.runningTasks ?? 0;
@@ -675,30 +681,9 @@ export function MyceliumCommandCenter() {
       {/* ═══ MARKER_153.5A: Breadcrumb Bar — navigation path ═══ */}
       <MCCBreadcrumb />
 
-      {/* ═══ MARKER_144.6: Workflow Toolbar — only at workflow/running levels ═══ */}
-      {(navLevel === 'workflow' || navLevel === 'running' || navLevel === 'results' ||
-        navLevel === 'tasks') && (
-      <WorkflowToolbar
-        workflowId={dagEditor.workflowId}
-        workflowName={dagEditor.workflowName}
-        isDirty={dagEditor.isDirty}
-        canUndo={dagEditor.canUndo}
-        canRedo={dagEditor.canRedo}
-        onNew={dagEditor.newWorkflow}
-        onSave={dagEditor.save}
-        onLoad={dagEditor.load}
-        onListWorkflows={dagEditor.listWorkflows}
-        onValidate={dagEditor.validate}
-        onUndo={dagEditor.undo}
-        onRedo={dagEditor.redo}
-        onSetName={dagEditor.setWorkflowName}
-        onToggleEdit={toggleEditMode}
-        editMode={editMode}
-        onGenerate={handleGeneratedWorkflow}
-        onImport={handleGeneratedWorkflow}
-        nodeCount={effectiveNodes.length}
-      />
-      )}
+      {/* ═══ MARKER_154.3A: WorkflowToolbar REMOVED from layout (Phase 154).
+            Actions moved to FooterActionBar + gear popup.
+            File kept for reference. ═══ */}
 
       {/* ═══ MAIN THREE-COLUMN LAYOUT ═══ */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
@@ -781,40 +766,42 @@ export function MyceliumCommandCenter() {
             </div>
           )}
 
-          {/* DAG View — level-aware rendering */}
-          <div style={{ flex: 1, minHeight: 0 }}>
-            {(loading || roadmap.loading) ? (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: '100%',
-                  color: NOLAN_PALETTE.textDim,
-                  fontSize: 11,
-                }}
-              >
-                {navLevel === 'roadmap' ? 'Loading Roadmap...' : 'Loading DAG...'}
-              </div>
-            ) : (
-              <DAGView
-                dagNodes={effectiveNodes}
-                dagEdges={effectiveEdges}
-                selectedNode={selectedNode}
-                onNodeSelect={handleLevelAwareNodeSelect}
-                onEdgeSelect={handleEdgeSelect}
-                editMode={navLevel === 'roadmap' ? false : editMode}
-                onConnect={navLevel === 'roadmap' ? undefined : dagEditor.handleConnect}
-                onNodesDelete={navLevel === 'roadmap' ? undefined : (deletedNodes) => deletedNodes.forEach(n => dagEditor.removeNode(n.id))}
-                onEdgesDelete={navLevel === 'roadmap' ? undefined : (deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))}
-                onContextMenu={navLevel === 'roadmap' ? undefined : handleContextMenu}
-                onPaneDoubleClick={navLevel === 'roadmap'
-                  ? undefined
-                  : handlePaneDoubleClick
-                }
-                onNodeDoubleClick={handleLevelAwareNodeDoubleClick}
-              />
-            )}
+          {/* DAG View — level-aware rendering + MARKER_154.5A transition */}
+          <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+            <MatryoshkaTransition navLevel={navLevel}>
+              {(loading || roadmap.loading) ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100%',
+                    color: NOLAN_PALETTE.textDim,
+                    fontSize: 11,
+                  }}
+                >
+                  {navLevel === 'roadmap' ? 'Loading Roadmap...' : 'Loading DAG...'}
+                </div>
+              ) : (
+                <DAGView
+                  dagNodes={effectiveNodes}
+                  dagEdges={effectiveEdges}
+                  selectedNode={selectedNode}
+                  onNodeSelect={handleLevelAwareNodeSelect}
+                  onEdgeSelect={handleEdgeSelect}
+                  editMode={navLevel === 'roadmap' ? false : editMode}
+                  onConnect={navLevel === 'roadmap' ? undefined : dagEditor.handleConnect}
+                  onNodesDelete={navLevel === 'roadmap' ? undefined : (deletedNodes) => deletedNodes.forEach(n => dagEditor.removeNode(n.id))}
+                  onEdgesDelete={navLevel === 'roadmap' ? undefined : (deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))}
+                  onContextMenu={navLevel === 'roadmap' ? undefined : handleContextMenu}
+                  onPaneDoubleClick={navLevel === 'roadmap'
+                    ? undefined
+                    : handlePaneDoubleClick
+                  }
+                  onNodeDoubleClick={handleLevelAwareNodeDoubleClick}
+                />
+              )}
+            </MatryoshkaTransition>
 
             {/* MARKER_153.5G: Double-click hint at roadmap level */}
             {navLevel === 'roadmap' && effectiveNodes.length > 0 && selectedNode && (
@@ -840,13 +827,89 @@ export function MyceliumCommandCenter() {
             )}
           </div>
 
-          {/* MARKER_153.6A: RailsActionBar — context-aware bottom bar */}
-          <RailsActionBar
-            selectedNode={selectedNode}
-            onExecute={handleExecute}
-            onRegenerate={roadmap.regenerateRoadmap}
-            onToggleEdit={toggleEditMode}
-            onExpandStream={() => setShowStream(!showStream)}
+          {/* MARKER_154.3A: FooterActionBar — unified 3-action bar per level.
+              Replaces RailsActionBar + CaptainBar + WorkflowToolbar actions. */}
+          <FooterActionBar
+            onAction={(action) => {
+              switch (action) {
+                // Roadmap actions
+                case 'launch':
+                  if (selectedNode) handleRoadmapNodeDrill(selectedNode);
+                  else handleExecute();
+                  break;
+                case 'askArchitect':
+                  // TODO Wave 4: open MiniChat
+                  addToast('info', 'Chat coming in Wave 4');
+                  break;
+                case 'addTask':
+                  // Focus task list quick-add (existing MCCTaskList input)
+                  document.querySelector<HTMLInputElement>('[data-testid="quick-add-input"]')?.focus();
+                  break;
+                // Task actions
+                case 'launchTask': {
+                  const taskId = useMCCStore.getState().navTaskId || selectedTaskId;
+                  if (taskId) useMCCStore.getState().dispatchTask(taskId);
+                  break;
+                }
+                case 'editTask':
+                  // TODO Wave 3: open TaskEditPopup
+                  addToast('info', 'Task editor coming in Wave 3');
+                  break;
+                // Workflow actions
+                case 'execute':
+                  handleExecute();
+                  break;
+                case 'toggleEdit':
+                  toggleEditMode();
+                  break;
+                // Running actions
+                case 'pause':
+                case 'cancel': {
+                  const runningTask = tasks.find(t => t.status === 'running');
+                  if (runningTask) useMCCStore.getState().cancelTask(runningTask.id);
+                  if (action === 'cancel') goBack();
+                  break;
+                }
+                // Result actions
+                case 'apply':
+                  // TODO Wave 3: apply code
+                  addToast('info', 'Apply coming in Wave 3');
+                  break;
+                case 'redo':
+                  // TODO Wave 3: RedoFeedbackInput
+                  addToast('info', 'Redo coming in Wave 3');
+                  break;
+                // First Run actions
+                case 'selectFolder':
+                case 'enterUrl':
+                case 'describeText':
+                  setShowOnboarding(true);
+                  break;
+                // Gear actions
+                case 'regenerate':
+                  roadmap.regenerateRoadmap?.();
+                  break;
+                case 'openSettings':
+                  addToast('info', 'Settings coming in future wave');
+                  break;
+                case 'openFilter':
+                  // TODO: focus filter
+                  break;
+                case 'saveWorkflow':
+                  dagEditor.save(dagEditor.workflowName);
+                  break;
+                case 'expandStream':
+                  setShowStream(!showStream);
+                  break;
+                case 'showDetails':
+                case 'showDiff':
+                  addToast('info', 'Details coming in Wave 3');
+                  break;
+              }
+            }}
+            disabledActions={
+              navLevel === 'roadmap' && !selectedNode ? ['launch'] : []
+            }
           />
 
           {/* Stream Panel — collapsible bottom */}

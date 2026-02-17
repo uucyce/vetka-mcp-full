@@ -9,7 +9,7 @@
  * @status active
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { DAGNode, DAGEdge } from '../types/dag';
 
 const API_BASE = 'http://localhost:5001/api';
@@ -24,12 +24,13 @@ const LAYER_STATUS_MAP: Record<string, string> = {
 };
 
 // Layer → node type mapping for xyflow rendering
+// MARKER_154.6A: All roadmap nodes use RoadmapTaskNode for unified rendering
 const LAYER_NODE_TYPE: Record<string, string> = {
-  core: 'task',
-  feature: 'agent',
-  enhancement: 'subtask',
-  test: 'subtask',
-  docs: 'proposal',
+  core: 'roadmap_task',
+  feature: 'roadmap_task',
+  enhancement: 'roadmap_task',
+  test: 'roadmap_task',
+  docs: 'roadmap_task',
 };
 
 interface RoadmapData {
@@ -44,16 +45,16 @@ interface RoadmapData {
  */
 function mapRoadmapNode(node: any, index: number): DAGNode {
   const layer = node.data?.layer || 'core';
+  // MARKER_154.6A: Roadmap-level DAGNode with extended fields for RoadmapTaskNode
   return {
     id: node.id,
     type: (LAYER_NODE_TYPE[layer] || 'task') as any,
     label: node.label || node.id,
     status: (node.data?.status || LAYER_STATUS_MAP[layer] || 'pending') as any,
     layer: layer,
+    taskId: node.data?.taskId || node.id,
     description: node.data?.description || '',
-    // Use positions from API or generate grid layout
-    // The API returns {x, y} positions that are sequential
-  };
+  } as DAGNode;
 }
 
 function mapRoadmapEdge(edge: any): DAGEdge {
@@ -62,6 +63,7 @@ function mapRoadmapEdge(edge: any): DAGEdge {
     source: edge.source,
     target: edge.target,
     type: 'dependency',
+    strength: 1.0,  // MARKER_154.6A: Roadmap dependency edges at full strength
   };
 }
 

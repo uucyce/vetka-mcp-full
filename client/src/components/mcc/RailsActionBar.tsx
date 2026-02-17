@@ -26,7 +26,13 @@ interface ActionDef {
 }
 
 // ── Level-specific actions (max 3 per level) ──
+// MARKER_154.3A: DEPRECATED — use LEVEL_CONFIG from useMCCStore instead
 const LEVEL_ACTIONS: Record<NavLevel, ActionDef[]> = {
+  first_run: [
+    { label: 'Folder', icon: '📁', action: 'selectFolder', shortcut: '1', primary: true },
+    { label: 'URL', icon: '🔗', action: 'enterUrl', shortcut: '2' },
+    { label: 'Text', icon: '📝', action: 'describeText', shortcut: '3' },
+  ],
   roadmap: [
     { label: 'Drill', icon: '▶', action: 'drillNode', shortcut: 'Enter', primary: true },
     { label: 'Regenerate', icon: '↻', action: 'regenerate' },

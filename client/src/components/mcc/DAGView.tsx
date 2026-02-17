@@ -33,6 +33,8 @@ import { ParallelNode } from './nodes/ParallelNode';
 import { LoopNode } from './nodes/LoopNode';
 import { TransformNode } from './nodes/TransformNode';
 import { GroupNode } from './nodes/GroupNode';
+// MARKER_154.6A: Roadmap-specific node type
+import { RoadmapTaskNode } from './nodes/RoadmapTaskNode';
 import { layoutSugiyamaBT, createTestDAGData, NOLAN_PALETTE } from '../../utils/dagLayout';
 import type { DAGNode, DAGEdge, NodeStatus } from '../../types/dag';
 
@@ -51,6 +53,8 @@ const nodeTypes = {
   loop: LoopNode,
   transform: TransformNode,
   group: GroupNode,
+  // MARKER_154.6A: Roadmap-level enhanced task node
+  roadmap_task: RoadmapTaskNode,
 } as const;
 
 interface DAGViewProps {
@@ -423,6 +427,11 @@ export function DAGView({
 
         .react-flow__handle-valid {
           background: #4ecdc4 !important;
+        }
+
+        /* MARKER_154.6A: Show double-click hint on roadmap node hover */
+        .react-flow__node:hover .roadmap-node-hint {
+          opacity: 1 !important;
         }
       `}</style>
     </div>

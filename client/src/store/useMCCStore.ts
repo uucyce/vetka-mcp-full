@@ -49,7 +49,80 @@ export interface PresetConfig {
 // ── Store ──
 
 // MARKER_153.1C: Navigation level type for Matryoshka drill-down
-export type NavLevel = 'roadmap' | 'tasks' | 'workflow' | 'running' | 'results';
+// MARKER_154.1B: Added 'first_run' level for Phase 154 Matryoshka simplification
+export type NavLevel = 'first_run' | 'roadmap' | 'tasks' | 'workflow' | 'running' | 'results';
+
+// ── MARKER_154.1B: Level Configuration (single source of truth) ──
+export interface ActionDef {
+  label: string;
+  icon: string;
+  action: string;
+  shortcut?: string;
+  primary?: boolean;
+}
+
+export interface LevelConfig {
+  label: string;
+  icon: string;
+  actions: ActionDef[];
+}
+
+export const LEVEL_CONFIG: Record<NavLevel, LevelConfig> = {
+  first_run: {
+    label: 'Welcome',
+    icon: '🚀',
+    actions: [
+      { label: 'Folder', icon: '📁', action: 'selectFolder', shortcut: '1', primary: true },
+      { label: 'URL', icon: '🔗', action: 'enterUrl', shortcut: '2' },
+      { label: 'Text', icon: '📝', action: 'describeText', shortcut: '3' },
+    ],
+  },
+  roadmap: {
+    label: 'Roadmap',
+    icon: '🗺',
+    actions: [
+      { label: 'Launch', icon: '▶', action: 'launch', shortcut: '1', primary: true },
+      { label: 'Ask', icon: '💬', action: 'askArchitect', shortcut: '2' },
+      { label: 'Add', icon: '+', action: 'addTask', shortcut: '3' },
+    ],
+  },
+  tasks: {
+    label: 'Tasks',
+    icon: '📋',
+    actions: [
+      { label: 'Launch', icon: '▶', action: 'launchTask', shortcut: '1', primary: true },
+      { label: 'Edit', icon: '✏', action: 'editTask', shortcut: '2' },
+      { label: 'Back', icon: '←', action: 'goBack', shortcut: 'Esc' },
+    ],
+  },
+  workflow: {
+    label: 'Workflow',
+    icon: '⚙',
+    actions: [
+      { label: 'Execute', icon: '▶', action: 'execute', shortcut: '1', primary: true },
+      { label: 'Edit', icon: '✏', action: 'toggleEdit', shortcut: '2' },
+      { label: 'Back', icon: '←', action: 'goBack', shortcut: 'Esc' },
+    ],
+  },
+  running: {
+    label: 'Running',
+    icon: '▶',
+    actions: [
+      { label: 'Pause', icon: '⏸', action: 'pause', shortcut: '1', primary: true },
+      { label: 'Cancel', icon: '⏹', action: 'cancel', shortcut: '2' },
+      { label: 'Back', icon: '←', action: 'goBack', shortcut: 'Esc' },
+    ],
+  },
+  results: {
+    label: 'Results',
+    icon: '📊',
+    actions: [
+      { label: 'Accept', icon: '✓', action: 'apply', shortcut: '1', primary: true },
+      { label: 'Redo', icon: '↻', action: 'redo', shortcut: '2' },
+      { label: 'Back', icon: '←', action: 'goBack', shortcut: 'Esc' },
+    ],
+  },
+};
 
 interface MCCState {
   // Task board
@@ -117,6 +190,8 @@ interface MCCState {
   initMCC: () => Promise<void>;
   drillDown: (level: NavLevel, context?: { roadmapNodeId?: string; taskId?: string }) => void;
   goBack: () => void;
+  // MARKER_154.1B: Direct level jump (no history push — used by breadcrumb clicks)
+  goToLevel: (level: NavLevel) => void;
 }
 
 const MAX_STREAM_EVENTS = 30;
@@ -379,10 +454,15 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   },
 
   // ── MARKER_153.1C: Init MCC — load project config + session state ──
+  // MARKER_154.1B: first_run level when no project configured
   initMCC: async () => {
     try {
       const res = await fetch(`${API_BASE}/mcc/init`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        // No backend → first_run
+        set({ hasProject: false, projectConfig: null, navLevel: 'first_run', navHistory: [] });
+        return;
+      }
       const data = await res.json();
 
       if (data.has_project && data.session_state) {
@@ -395,10 +475,12 @@ export const useMCCStore = create<MCCState>((set, get) => ({
           navHistory: data.session_state.history || [],
         });
       } else {
-        set({ hasProject: false, projectConfig: null });
+        // MARKER_154.1B: No project → first_run level
+        set({ hasProject: false, projectConfig: null, navLevel: 'first_run', navHistory: [] });
       }
     } catch (err) {
       console.error('[MCC] Init failed:', err);
+      set({ hasProject: false, projectConfig: null, navLevel: 'first_run', navHistory: [] });
     }
   },
 
@@ -428,6 +510,27 @@ export const useMCCStore = create<MCCState>((set, get) => ({
     const newState = {
       navLevel: prevLevel as NavLevel,
       navHistory: history,
+    };
+    set(newState);
+    _persistState({
+      level: newState.navLevel,
+      roadmapNodeId: prev.navRoadmapNodeId,
+      taskId: prev.navTaskId,
+      history: newState.navHistory,
+    });
+  },
+
+  // ── MARKER_154.1B: Direct level jump — resets history up to target ──
+  goToLevel: (level) => {
+    const prev = get();
+    // Find if the target level exists in history — trim history up to it
+    const histIdx = prev.navHistory.indexOf(level);
+    const newHistory = histIdx >= 0
+      ? prev.navHistory.slice(0, histIdx)
+      : []; // Jump to arbitrary level = reset history
+    const newState = {
+      navLevel: level,
+      navHistory: newHistory,
     };
     set(newState);
     _persistState({

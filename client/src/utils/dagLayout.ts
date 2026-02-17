@@ -24,6 +24,8 @@ const NODE_DIMENSIONS: Record<DAGNodeType, { width: number; height: number }> = 
   loop: { width: 120, height: 60 },         // Rounded with cycle icon
   transform: { width: 130, height: 50 },    // Trapezoid shape
   group: { width: 240, height: 160 },       // Large container
+  // MARKER_154.6A: Roadmap task node — wider for badge + progress bar
+  roadmap_task: { width: 180, height: 70 },
 };
 
 // MARKER_135.5A: Pure VETKA grayscale — like 3D tree on the right
@@ -154,6 +156,8 @@ export function layoutSugiyamaBT(
         model: node.model,
         taskId: node.taskId,
         layer: node.layer,
+        // MARKER_154.6A: Pass extra fields for RoadmapTaskNode rendering
+        description: node.description,
       },
     };
   });

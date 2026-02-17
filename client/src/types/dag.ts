@@ -8,8 +8,10 @@
 
 // Node types in the DAG
 // MARKER_144.4: Extended with workflow editor node types
+// MARKER_154.6A: Added 'roadmap_task' for Phase 154 Matryoshka roadmap level
 export type DAGNodeType = 'task' | 'agent' | 'subtask' | 'proposal'
-  | 'condition' | 'parallel' | 'loop' | 'transform' | 'group';
+  | 'condition' | 'parallel' | 'loop' | 'transform' | 'group'
+  | 'roadmap_task';
 
 // Agent roles in the pipeline
 export type AgentRole = 'scout' | 'architect' | 'researcher' | 'coder' | 'verifier';
@@ -19,8 +21,10 @@ export type NodeStatus = 'pending' | 'running' | 'done' | 'failed';
 
 // Edge types for different relationships
 // MARKER_144.4: Extended with workflow editor edge types
+// MARKER_154.6A: Added 'dependency' for roadmap-level inter-task relationships
 export type EdgeType = 'structural' | 'dataflow' | 'temporal'
-  | 'conditional' | 'parallel_fork' | 'parallel_join' | 'feedback';
+  | 'conditional' | 'parallel_fork' | 'parallel_join' | 'feedback'
+  | 'dependency';
 
 /**
  * DAG Node — represents any entity in the graph.

@@ -29,6 +29,8 @@ interface ShortcutHandlers {
  * Each key maps to a handler name from ShortcutHandlers.
  */
 const SHORTCUTS: Record<NavLevel, Record<string, keyof ShortcutHandlers>> = {
+  // MARKER_154.1B: first_run level — no keyboard shortcuts (FooterActionBar handles 1/2/3)
+  first_run: {},
   roadmap: {
     Enter: 'onDrillNode',
   },
