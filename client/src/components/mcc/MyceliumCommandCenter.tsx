@@ -38,6 +38,8 @@ import { RedoFeedbackInput } from './RedoFeedbackInput';
 import { MiniChat } from './MiniChat';
 import { MiniTasks } from './MiniTasks';
 import { MiniStats } from './MiniStats';
+// MARKER_154.16A: First Run view (Wave 5)
+import { FirstRunView } from './FirstRunView';
 import { ToastContainer } from './ToastContainer';
 import { CaptainBar } from './CaptainBar';
 import { useMCCStore } from '../../store/useMCCStore';
@@ -782,7 +784,10 @@ export function MyceliumCommandCenter() {
           {/* DAG View — level-aware rendering + MARKER_154.5A transition */}
           <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
             <MatryoshkaTransition navLevel={navLevel}>
-              {(loading || roadmap.loading) ? (
+              {/* MARKER_154.16A: First Run — show welcome screen instead of DAG */}
+              {navLevel === 'first_run' ? (
+                <FirstRunView />
+              ) : (loading || roadmap.loading) ? (
                 <div
                   style={{
                     display: 'flex',

@@ -1,17 +1,18 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-17T16:36:55.049392+00:00",
+  "last_updated": "2026-02-17T16:40:27.319797+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 154,
     "subphase": "0",
-    "name": "Wave 3 \u2014 action wiring + TaskEditPopup + RedoFeedbackInput",
+    "name": "Wave 4 \u2014 MiniWindow framework + Chat/Tasks/Stats overlays",
     "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 154.0 DONE! Wave 3 \u2014 action wiring + TaskEditPopup + RedoFeedbackInput",
+    "headline": "Phase 154.0 DONE! Wave 4 \u2014 MiniWindow framework + Chat/Tasks/Stats overlays",
     "key_achievements": [
+      "[d1ab33c3] Phase 154.0: feat: Phase 154 Wave 4 \u2014 MiniWindow framework + Chat/Tasks/S",
       "[11cab6d3] Phase 154.0: feat: Phase 154 Wave 3 \u2014 action wiring + TaskEditPopup + Red",
       "[dragon_titan_core] build new API endpoint",
       "[898f22f7] Phase 154.0: feat: Phase 154 Waves 1+2 \u2014 Matryoshka DAG-in-DAG navigation",
@@ -20,8 +21,7 @@
       "[dragon_dragon_bronze] D-149.1: HeartbeatChip component for MCC header\n\nCreate HeartbeatChip.tsx in cli",
       "[af34b83f] Phase 150.4: Phase 150.4-150.5: PatchApplier \u2192 Pipeline integration + PAT",
       "[2fdadd6f] Phase 150.3: Phase 150.3: Sparse Apply \u2014 PatchApplier for surgical code e",
-      "[dragon_dragon_bronze] fix task",
-      "[dragon_dragon_bronze] test task"
+      "[dragon_dragon_bronze] fix task"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -29,12 +29,12 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2722,
+      "points": 2725,
       "vectors": "none",
       "hnsw_status": "active"
     },
     "vetka_tree": {
-      "points": 2684,
+      "points": 2687,
       "vectors": "none",
       "hierarchy": "enabled"
     },
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "phase152-fix-stream-favorites",
-    "commit": "11cab6d3",
+    "commit": "d1ab33c3",
     "dirty": true
   }
 }
