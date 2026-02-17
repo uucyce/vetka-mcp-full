@@ -921,6 +921,15 @@ export function useSocket() {
 
     socket.on('chat_response', (data) => {
       // console.log('[Socket] chat_response:', data.agent || 'assistant');
+      const rawMessage = typeof data?.message === 'string' ? data.message : '';
+      // MARKER_153.IMPL.G14_STREAM_CHAT_GUARD:
+      // Never render internal stream telemetry in chat if backend regresses.
+      if (rawMessage.startsWith('[stream:')) {
+        if (import.meta.env.DEV) {
+          console.debug('[Socket] filtered stream telemetry from chat_response:', rawMessage);
+        }
+        return;
+      }
 
       const message: ChatMessage = {
         id: crypto.randomUUID(),
