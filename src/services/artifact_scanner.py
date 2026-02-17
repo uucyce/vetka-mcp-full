@@ -204,6 +204,12 @@ def _generate_artifact_id(filename: str) -> str:
     return f"artifact_{file_hash}"
 
 
+def _generate_media_chunk_id(parent_file_path: str, chunk_index: int, start_sec: float) -> str:
+    key = f"{parent_file_path}|{chunk_index}|{start_sec:.3f}"
+    digest = hashlib.md5(key.encode("utf-8")).hexdigest()[:10]
+    return f"artifact_chunk_{digest}"
+
+
 def _calculate_artifact_position(
     parent_position: Optional[Dict] = None,
     index: int = 0
@@ -523,6 +529,166 @@ def build_artifact_edges(
     print(f"[ARTIFACT_SCAN] Built {len(edges)} artifact edges")
 
     return edges
+
+
+def build_media_chunk_nodes_and_edges(
+    artifact_nodes: List[Dict],
+    max_chunks_per_artifact: int = 8,
+    total_limit: int = 1200,
+) -> Tuple[List[Dict], List[Dict]]:
+    """
+    Build graph nodes/edges for media transcript chunks persisted in Qdrant.
+
+    Returns:
+        (chunk_nodes, chunk_edges)
+    """
+    if not artifact_nodes:
+        return [], []
+
+    # Map artifact by file path (exact + basename fallback)
+    artifact_by_path: Dict[str, Dict] = {}
+    artifact_by_name: Dict[str, Dict] = {}
+    for art in artifact_nodes:
+        fpath = str(art.get("metadata", {}).get("file_path", "") or "")
+        if fpath:
+            artifact_by_path[fpath] = art
+            artifact_by_name[Path(fpath).name] = art
+
+    points = []
+    try:
+        from src.orchestration.triple_write_manager import get_triple_write_manager
+        tw = get_triple_write_manager()
+        if not tw.qdrant_client:
+            return [], []
+
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+        points, _ = tw.qdrant_client.scroll(
+            collection_name="vetka_elisya",
+            limit=max(1, int(total_limit)),
+            with_payload=True,
+            with_vectors=False,
+            scroll_filter=Filter(
+                must=[FieldCondition(key="point_type", match=MatchValue(value="media_chunk"))]
+            ),
+        )
+    except Exception as e:
+        print(f"[ARTIFACT_SCAN] Warning: media chunk graph build skipped: {e}")
+        return [], []
+
+    grouped: Dict[str, List[Dict]] = {}
+    for p in points or []:
+        payload = getattr(p, "payload", {}) or {}
+        parent_path = str(payload.get("parent_file_path", "") or "")
+        if not parent_path:
+            continue
+        artifact = artifact_by_path.get(parent_path) or artifact_by_name.get(Path(parent_path).name)
+        if not artifact:
+            continue
+        grouped.setdefault(artifact["id"], []).append(payload)
+
+    chunk_nodes: List[Dict] = []
+    chunk_edges: List[Dict] = []
+
+    for artifact in artifact_nodes:
+        artifact_id = artifact.get("id")
+        if not artifact_id:
+            continue
+        items = grouped.get(artifact_id, [])
+        if not items:
+            continue
+
+        def _start_sec(payload: Dict) -> float:
+            try:
+                return float(payload.get("start_sec", 0.0) or 0.0)
+            except Exception:
+                return 0.0
+
+        ordered = sorted(items, key=_start_sec)[:max_chunks_per_artifact]
+        parent_pos = artifact.get("visual_hints", {}).get("layout_hint", {})
+        base_x = float(parent_pos.get("expected_x", 0.0))
+        base_y = float(parent_pos.get("expected_y", 0.0))
+        base_z = float(parent_pos.get("expected_z", 0.0))
+
+        prev_chunk_id: Optional[str] = None
+        for idx, payload in enumerate(ordered):
+            start_sec = _start_sec(payload)
+            end_sec = float(payload.get("end_sec", start_sec) or start_sec)
+            chunk_index = int(payload.get("chunk_index", idx) or idx)
+            text = str(payload.get("text", "") or "")
+            modality = str(payload.get("modality", "media") or "media")
+            conf = float(payload.get("confidence", 0.0) or 0.0)
+            chunk_id = _generate_media_chunk_id(
+                str(payload.get("parent_file_path", "")),
+                chunk_index,
+                start_sec,
+            )
+
+            chunk_nodes.append(
+                {
+                    "id": chunk_id,
+                    "type": "artifact",
+                    "name": f"{artifact.get('name', 'media')} @ {start_sec:.1f}s",
+                    "parent_id": artifact_id,
+                    "metadata": {
+                        "artifact_type": "media_chunk",
+                        "language": modality,
+                        "source_artifact_id": artifact_id,
+                        "parent_file_path": payload.get("parent_file_path"),
+                        "chunk_index": chunk_index,
+                        "start_sec": start_sec,
+                        "end_sec": end_sec,
+                        "confidence": conf,
+                        "chunk_text": text[:1200],
+                        "extension": f".{modality}",
+                    },
+                    "visual_hints": {
+                        "layout_hint": {
+                            "expected_x": base_x + 2.0,
+                            "expected_y": base_y - 0.9 - (idx * 0.75),
+                            "expected_z": base_z,
+                        },
+                        "color": "#f59e0b" if modality in ("audio", "video") else "#60a5fa",
+                        "opacity": 0.82,
+                    },
+                }
+            )
+
+            chunk_edges.append(
+                {
+                    "from": artifact_id,
+                    "to": chunk_id,
+                    "semantics": "media_chunk",
+                    "metadata": {
+                        "type": "media_chunk",
+                        "style": "dotted",
+                        "color": "#f59e0b",
+                        "opacity": 0.42,
+                        "weight": max(0.2, min(1.0, conf if conf > 0 else 0.35)),
+                        "timestamp": {"start_sec": start_sec, "end_sec": end_sec},
+                    },
+                }
+            )
+
+            if prev_chunk_id:
+                chunk_edges.append(
+                    {
+                        "from": prev_chunk_id,
+                        "to": chunk_id,
+                        "semantics": "temporal_chunk",
+                        "metadata": {
+                            "type": "temporal_chunk",
+                            "style": "dashed",
+                            "color": "#fbbf24",
+                            "opacity": 0.28,
+                            "weight": 0.5,
+                        },
+                    }
+                )
+            prev_chunk_id = chunk_id
+
+    if chunk_nodes:
+        print(f"[ARTIFACT_SCAN] Built {len(chunk_nodes)} media chunk nodes, {len(chunk_edges)} chunk edges")
+    return chunk_nodes, chunk_edges
 
 
 def update_artifact_positions(

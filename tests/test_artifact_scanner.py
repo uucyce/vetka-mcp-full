@@ -177,3 +177,68 @@ def test_build_artifact_edges_adds_reference_and_temporal_edges(tmp_path):
     # Temporal chain edge within group
     temporal_edges = [e for e in edges if e.get("semantics") == "temporal"]
     assert any(e["from"] == "artifact_a" and e["to"] == "artifact_b" for e in temporal_edges)
+
+
+def test_build_media_chunk_nodes_and_edges_from_qdrant(monkeypatch):
+    artifact_nodes = [
+        {
+            "id": "artifact_audio",
+            "name": "call.wav",
+            "metadata": {"file_path": "/tmp/call.wav"},
+            "visual_hints": {"layout_hint": {"expected_x": 10, "expected_y": 20, "expected_z": 0}},
+        }
+    ]
+
+    class _Point:
+        def __init__(self, payload):
+            self.payload = payload
+
+    class _Qdrant:
+        def scroll(self, **kwargs):
+            return (
+                [
+                    _Point(
+                        {
+                            "point_type": "media_chunk",
+                            "parent_file_path": "/tmp/call.wav",
+                            "chunk_index": 0,
+                            "start_sec": 1.0,
+                            "end_sec": 2.0,
+                            "text": "hello",
+                            "modality": "audio",
+                            "confidence": 0.8,
+                        }
+                    ),
+                    _Point(
+                        {
+                            "point_type": "media_chunk",
+                            "parent_file_path": "/tmp/call.wav",
+                            "chunk_index": 1,
+                            "start_sec": 2.0,
+                            "end_sec": 3.5,
+                            "text": "world",
+                            "modality": "audio",
+                            "confidence": 0.9,
+                        }
+                    ),
+                ],
+                None,
+            )
+
+    class _TW:
+        qdrant_client = _Qdrant()
+
+    monkeypatch.setattr(
+        "src.orchestration.triple_write_manager.get_triple_write_manager",
+        lambda: _TW(),
+    )
+
+    chunk_nodes, chunk_edges = scanner.build_media_chunk_nodes_and_edges(
+        artifact_nodes, max_chunks_per_artifact=8
+    )
+    assert len(chunk_nodes) == 2
+    media_edges = [e for e in chunk_edges if e.get("semantics") == "media_chunk"]
+    temporal_chunk_edges = [e for e in chunk_edges if e.get("semantics") == "temporal_chunk"]
+    assert len(media_edges) == 2
+    assert len(temporal_chunk_edges) == 1
+    assert all(n.get("metadata", {}).get("artifact_type") == "media_chunk" for n in chunk_nodes)

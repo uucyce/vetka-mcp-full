@@ -804,7 +804,8 @@ async def get_tree_data(
             from src.services.artifact_scanner import (
                 scan_artifacts,
                 build_artifact_edges,
-                update_artifact_positions
+                update_artifact_positions,
+                build_media_chunk_nodes_and_edges,
             )
 
             # Scan artifacts directory
@@ -815,6 +816,14 @@ async def get_tree_data(
 
             # Build edges from chats to artifacts
             artifact_edges = build_artifact_edges(artifact_nodes, chat_nodes)
+
+            # MARKER_153.IMPL.G12_MEDIA_CHUNK_GRAPH:
+            # Extend artifact graph with timestamped media chunk nodes/edges from Qdrant.
+            chunk_nodes, chunk_edges = build_media_chunk_nodes_and_edges(artifact_nodes)
+            if chunk_nodes:
+                artifact_nodes.extend(chunk_nodes)
+            if chunk_edges:
+                artifact_edges.extend(chunk_edges)
 
             print(f"[ARTIFACT_SCAN] Built {len(artifact_nodes)} artifact nodes, {len(artifact_edges)} artifact edges")
 

@@ -363,7 +363,7 @@ This section tracks what is already implemented after RECON, with code-level sta
 1. `G01` finalize unified extension/MIME policy with explicit allow/deny + size limits.  
    Status: **PARTIAL IMPLEMENTED** (`src/scanners/mime_policy.py` + watcher/reindex + qdrant_updater + artifact_scan/save-index bridge integration).
 2. `G09/G12` full universal multimodal scanner chain (audio/video chunk extraction + temporal relation persistence).  
-   Status: **PARTIAL IMPLEMENTED** (artifact temporal edges + multimodal ingest + AV extraction contracts + chunk-level Qdrant writes + `/api/triple-write/media-chunks/search` retrieval).
-   Remaining: cross-route UX wiring and ranking calibration.
+   Status: **PARTIAL IMPLEMENTED** (artifact temporal edges + multimodal ingest + AV extraction contracts + chunk-level Qdrant writes + `/api/triple-write/media-chunks/search` retrieval + tree graph media chunk nodes/edges from Qdrant payload).
+   Remaining: dedicated frontend UX for chunk nodes/timeline interactions and ranking calibration.
 3. `G14` add true streaming tool execution loop (not only advisory telemetry).  
    Status: **PARTIAL IMPLEMENTED** (chat cleanup done; execution loop still pending).
