@@ -341,6 +341,7 @@ This section tracks what is already implemented after RECON, with code-level sta
 
 - `G14` Stream tooling reality gap: **PARTIAL**
   - Chat noise removed (`stream_meta` moved out of chat UI; stream path cleaned).
+  - Stream socket contract now explicitly marks `tool_execution_mode=disabled_stream` in `stream_start/stream_end` metadata.
   - Remaining: true tool execution loop for streaming path.
 
 - `G15` BM25 escaping gap: **IMPLEMENTED**

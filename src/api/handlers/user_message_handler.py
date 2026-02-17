@@ -464,6 +464,7 @@ def register_user_message_handler(sio, app=None):
                             "id": msg_id,
                             "agent": agent_short_name,
                             "model": requested_model,
+                            "tool_execution_mode": "disabled_stream",
                         },
                         to=sid,
                     )
@@ -700,6 +701,7 @@ def register_user_message_handler(sio, app=None):
                         "agent": agent_short_name,
                         "model": requested_model,
                         "model_source": model_source,  # Phase 111.10.2
+                        "tool_execution_mode": "disabled_stream",
                     },
                     to=sid,
                 )
@@ -725,7 +727,8 @@ def register_user_message_handler(sio, app=None):
 
                     stream_system_prompt += (
                         "When responding, reference the pre-fetched codebase results above if relevant. "
-                        "Provide clear, helpful answers based on the project context."
+                        "Provide clear, helpful answers based on the project context. "
+                        "Do not claim that tools were executed in this streamed response."
                     )
 
                     stream_messages = [
@@ -775,6 +778,7 @@ def register_user_message_handler(sio, app=None):
                             "tokens_input": len(model_prompt.split()),
                             "model": requested_model,
                             "agent": agent_short_name,
+                            "tool_execution_mode": "disabled_stream",
                         },
                     },
                     to=sid,
