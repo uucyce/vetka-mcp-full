@@ -777,6 +777,24 @@ def calculate_tree_layout(
 
     print(f"[TREE_LAYOUT] Starting classic tree layout for {len(folders)} folders")
 
+    def _time_key(file_data: dict):
+        """
+        Stable numeric time key for Directed Mode:
+        created_time -> modified_time -> 0, then filename for deterministic ties.
+        """
+        created = file_data.get('created_time', 0)
+        modified = file_data.get('modified_time', 0)
+        try:
+            created_f = float(created or 0)
+        except Exception:
+            created_f = 0.0
+        try:
+            modified_f = float(modified or 0)
+        except Exception:
+            modified_f = 0.0
+        primary = created_f if created_f > 0 else modified_f
+        return (primary, modified_f, str(file_data.get('name', '')))
+
     # === ШАГ 1: Подсчитать ширину каждого поддерева ===
     def count_width(folder_path: str) -> int:
         """
@@ -849,10 +867,7 @@ def calculate_tree_layout(
         folder_files = files_by_folder.get(folder_path, [])
         if folder_files:
             # Сортировать по времени создания (старые внизу, новые вверху)
-            folder_files_sorted = sorted(
-                folder_files,
-                key=lambda f: f.get('created_time', 0)
-            )
+            folder_files_sorted = sorted(folder_files, key=_time_key)
 
             for i, file_data in enumerate(folder_files_sorted):
                 file_id = file_data.get('id')
@@ -900,7 +915,7 @@ def calculate_tree_layout(
         # Файлы в root папке
         root_files = files_by_folder.get(root_path, [])
         if root_files:
-            root_files_sorted = sorted(root_files, key=lambda f: f.get('created_time', 0))
+            root_files_sorted = sorted(root_files, key=_time_key)
             for i, file_data in enumerate(root_files_sorted):
                 file_id = file_data.get('id')
                 if file_id:
@@ -939,7 +954,7 @@ def calculate_tree_layout(
             # Файлы в root папке
             root_files = files_by_folder.get(root_path, [])
             if root_files:
-                root_files_sorted = sorted(root_files, key=lambda f: f.get('created_time', 0))
+                root_files_sorted = sorted(root_files, key=_time_key)
                 for i, file_data in enumerate(root_files_sorted):
                     file_id = file_data.get('id')
                     if file_id:
