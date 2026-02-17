@@ -1,0 +1,240 @@
+/**
+ * MARKER_154.14A: MiniStats — compact statistics overlay in DAG canvas.
+ *
+ * Compact: 4 key numbers (runs, success%, avg duration, total cost).
+ * Expanded: full stats dashboard.
+ * Position: top-right.
+ * Data: GET /api/analytics/summary
+ *
+ * @phase 154
+ * @wave 4
+ * @status active
+ */
+
+import { useState, useEffect, useCallback } from 'react';
+import { MiniWindow } from './MiniWindow';
+import { NOLAN_PALETTE } from '../../utils/dagLayout';
+
+const API_BASE = 'http://localhost:5001/api';
+
+interface SummaryData {
+  total_pipelines: number;
+  success_rate: number;
+  avg_duration_s: number;
+  total_cost_usd: number;
+  total_llm_calls: number;
+  total_tokens: number;
+  // Optional per-team breakdown
+  by_preset?: Record<string, {
+    count: number;
+    success_rate: number;
+    avg_duration_s: number;
+  }>;
+}
+
+function useSummaryData() {
+  const [data, setData] = useState<SummaryData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetch_ = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/analytics/summary`);
+      if (!res.ok) return;
+      const json = await res.json();
+      setData(json);
+    } catch {
+      // API may not be available
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetch_();
+    const interval = setInterval(fetch_, 30000); // Refresh every 30s
+    return () => clearInterval(interval);
+  }, [fetch_]);
+
+  return { data, loading, refresh: fetch_ };
+}
+
+// Single stat box
+function StatBox({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
+  return (
+    <div style={{ textAlign: 'center', flex: 1 }}>
+      <div style={{
+        color: NOLAN_PALETTE.text,
+        fontSize: 14,
+        fontWeight: 700,
+        lineHeight: 1,
+      }}>
+        {value}
+        {unit && <span style={{ fontSize: 8, color: '#555', marginLeft: 1 }}>{unit}</span>}
+      </div>
+      <div style={{
+        color: '#555',
+        fontSize: 7,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginTop: 2,
+      }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+// Compact: 4 stat boxes
+function StatsCompact() {
+  const { data, loading } = useSummaryData();
+
+  if (loading || !data) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <span style={{ color: '#444', fontSize: 9 }}>
+          {loading ? 'Loading...' : 'No stats yet'}
+        </span>
+      </div>
+    );
+  }
+
+  const formatDuration = (s: number) => {
+    if (s < 60) return `${Math.round(s)}s`;
+    return `${Math.round(s / 60)}m`;
+  };
+
+  const successColor = data.success_rate >= 70 ? '#8a8' : data.success_rate >= 50 ? '#aa8' : '#a66';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <StatBox label="Runs" value={data.total_pipelines} />
+        <StatBox
+          label="Success"
+          value={
+            <span style={{ color: successColor }}>{Math.round(data.success_rate)}%</span> as any
+          }
+        />
+      </div>
+      <div style={{ display: 'flex', gap: 4 }}>
+        <StatBox label="Avg Time" value={formatDuration(data.avg_duration_s)} />
+        <StatBox label="Cost" value={`$${data.total_cost_usd.toFixed(2)}`} />
+      </div>
+    </div>
+  );
+}
+
+// Expanded: detailed stats
+function StatsExpanded() {
+  const { data, loading, refresh } = useSummaryData();
+
+  if (loading || !data) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <span style={{ color: '#444', fontSize: 11 }}>
+          {loading ? 'Loading stats...' : 'No analytics data available'}
+        </span>
+      </div>
+    );
+  }
+
+  const presets = data.by_preset ? Object.entries(data.by_preset) : [];
+
+  return (
+    <div style={{ padding: '12px 16px', fontFamily: 'monospace' }}>
+      {/* Summary row */}
+      <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
+        <StatBox label="Total Runs" value={data.total_pipelines} />
+        <StatBox label="Success Rate" value={`${Math.round(data.success_rate)}%`} />
+        <StatBox label="Avg Duration" value={`${Math.round(data.avg_duration_s)}s`} />
+        <StatBox label="Total Cost" value={`$${data.total_cost_usd.toFixed(2)}`} />
+      </div>
+
+      {/* Token stats */}
+      <div style={{
+        display: 'flex',
+        gap: 16,
+        marginBottom: 20,
+        padding: '8px 12px',
+        background: NOLAN_PALETTE.bg,
+        borderRadius: 6,
+      }}>
+        <StatBox label="LLM Calls" value={data.total_llm_calls} />
+        <StatBox label="Tokens" value={
+          data.total_tokens > 1000000 ? `${(data.total_tokens / 1000000).toFixed(1)}M` :
+          data.total_tokens > 1000 ? `${(data.total_tokens / 1000).toFixed(0)}K` :
+          data.total_tokens
+        } />
+      </div>
+
+      {/* Per-team breakdown */}
+      {presets.length > 0 && (
+        <>
+          <div style={{ color: NOLAN_PALETTE.textMuted, fontSize: 9, marginBottom: 8, textTransform: 'uppercase' }}>
+            Team Breakdown
+          </div>
+          {presets.map(([preset, stats]) => (
+            <div
+              key={preset}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '6px 0',
+                borderBottom: `1px solid ${NOLAN_PALETTE.border}`,
+              }}
+            >
+              <span style={{ color: NOLAN_PALETTE.textAccent, fontSize: 10, width: 100 }}>
+                {preset}
+              </span>
+              <span style={{ color: NOLAN_PALETTE.text, fontSize: 10 }}>
+                {stats.count} runs
+              </span>
+              <span style={{
+                color: stats.success_rate >= 70 ? '#8a8' : '#a66',
+                fontSize: 10,
+              }}>
+                {Math.round(stats.success_rate)}%
+              </span>
+              <span style={{ color: '#555', fontSize: 10 }}>
+                ~{Math.round(stats.avg_duration_s)}s
+              </span>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* Refresh button */}
+      <button
+        onClick={refresh}
+        style={{
+          marginTop: 16,
+          padding: '4px 12px',
+          background: NOLAN_PALETTE.bg,
+          border: `1px solid ${NOLAN_PALETTE.border}`,
+          borderRadius: 4,
+          color: NOLAN_PALETTE.textMuted,
+          fontSize: 9,
+          cursor: 'pointer',
+          fontFamily: 'monospace',
+        }}
+      >
+        ↻ Refresh
+      </button>
+    </div>
+  );
+}
+
+export function MiniStats() {
+  return (
+    <MiniWindow
+      title="Stats"
+      icon="📊"
+      position="top-right"
+      compactWidth={200}
+      compactHeight={120}
+      compactContent={<StatsCompact />}
+      expandedContent={<StatsExpanded />}
+    />
+  );
+}

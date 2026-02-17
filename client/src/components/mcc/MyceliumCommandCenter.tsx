@@ -34,6 +34,10 @@ import { MatryoshkaTransition } from './MatryoshkaTransition';
 import { TaskEditPopup } from './TaskEditPopup';
 // MARKER_154.10A: Redo feedback input (Wave 3)
 import { RedoFeedbackInput } from './RedoFeedbackInput';
+// MARKER_154.11A: Mini-windows (Wave 4)
+import { MiniChat } from './MiniChat';
+import { MiniTasks } from './MiniTasks';
+import { MiniStats } from './MiniStats';
 import { ToastContainer } from './ToastContainer';
 import { CaptainBar } from './CaptainBar';
 import { useMCCStore } from '../../store/useMCCStore';
@@ -812,6 +816,15 @@ export function MyceliumCommandCenter() {
               )}
             </MatryoshkaTransition>
 
+            {/* MARKER_154.11A: Mini-windows — floating overlays in DAG canvas */}
+            {navLevel !== 'first_run' && (
+              <>
+                <MiniChat />
+                <MiniTasks />
+                <MiniStats />
+              </>
+            )}
+
             {/* MARKER_153.5G: Double-click hint at roadmap level */}
             {navLevel === 'roadmap' && effectiveNodes.length > 0 && selectedNode && (
               <div
@@ -847,8 +860,9 @@ export function MyceliumCommandCenter() {
                   else handleExecute();
                   break;
                 case 'askArchitect':
-                  // TODO Wave 4: open MiniChat
-                  addToast('info', 'Chat coming in Wave 4');
+                  // MARKER_154.12A: Focus MiniChat input — user can then expand via ↗
+                  document.querySelector<HTMLInputElement>('.mini-chat-input')?.focus();
+                  addToast('info', 'Type in the chat window ↗');
                   break;
                 case 'addTask':
                   // Focus task list quick-add (existing MCCTaskList input)
