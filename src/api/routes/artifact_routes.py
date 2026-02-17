@@ -24,6 +24,29 @@ from src.services.artifact_scanner import set_artifact_favorite
 router = APIRouter(prefix="/api/artifacts", tags=["artifacts"])
 
 
+def _try_index_saved_artifact(result: dict, request: Request) -> dict:
+    """
+    Best-effort index bridge for saved artifacts.
+    Keeps API response stable and only augments with index status fields.
+    """
+    try:
+        if not result.get("success") or not result.get("file_path"):
+            return result
+        qdrant_manager = getattr(request.app.state, "qdrant_manager", None)
+        qdrant_client = getattr(qdrant_manager, "client", None) if qdrant_manager else None
+        if not qdrant_client:
+            result["indexed"] = False
+            result["index_error"] = "qdrant_client_not_available"
+            return result
+        updater = get_qdrant_updater(qdrant_client=qdrant_client, enable_triple_write=True)
+        indexed = updater.update_file(Path(str(result["file_path"])))
+        result["indexed"] = bool(indexed)
+    except Exception as idx_err:
+        result["indexed"] = False
+        result["index_error"] = str(idx_err)[:200]
+    return result
+
+
 class ArtifactDecisionRequest(BaseModel):
     reason: Optional[str] = None
 
@@ -152,30 +175,13 @@ async def save_webpage_endpoint(body: SaveWebpageRequest, request: Request):
         file_name=body.file_name or "",
         target_node_path=body.target_node_path or "",
     )
-    # MARKER_153.IMPL.G16_WEB_SAVE_INDEX_BRIDGE:
-    # After saving webpage artifact to disk, index it into semantic storage
-    # so tree visibility and retrieval path stay aligned.
-    try:
-        if result.get("success") and result.get("file_path"):
-            qdrant_manager = getattr(request.app.state, "qdrant_manager", None)
-            qdrant_client = getattr(qdrant_manager, "client", None) if qdrant_manager else None
-            if qdrant_client:
-                updater = get_qdrant_updater(qdrant_client=qdrant_client, enable_triple_write=True)
-                indexed = updater.update_file(Path(str(result["file_path"])))
-                result["indexed"] = bool(indexed)
-            else:
-                result["indexed"] = False
-                result["index_error"] = "qdrant_client_not_available"
-    except Exception as idx_err:
-        result["indexed"] = False
-        result["index_error"] = str(idx_err)[:200]
-
-    return result
+    # MARKER_153.IMPL.G16_WEB_SAVE_INDEX_BRIDGE
+    return _try_index_saved_artifact(result, request)
 
 
 @router.post("/save-search-result")
-async def save_search_result_endpoint(body: SaveSearchResultRequest):
-    return await save_search_result_artifact(
+async def save_search_result_endpoint(body: SaveSearchResultRequest, request: Request):
+    result = await save_search_result_artifact(
         source=body.source,
         path=body.path or "",
         url=body.url or "",
@@ -185,6 +191,8 @@ async def save_search_result_endpoint(body: SaveSearchResultRequest):
         file_name=body.file_name or "",
         target_node_path=body.target_node_path or "",
     )
+    # MARKER_153.IMPL.G16_SEARCH_SAVE_INDEX_BRIDGE
+    return _try_index_saved_artifact(result, request)
 
 
 # MARKER_141.ARTIFACT_CONTENT: Read artifact content by ID
