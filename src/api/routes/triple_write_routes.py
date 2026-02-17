@@ -28,7 +28,7 @@ import hashlib
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from src.scanners.mime_policy import validate_ingest_target
 
 
@@ -47,6 +47,13 @@ class ReindexRequest(BaseModel):
     path: Optional[str] = "src"
     limit: Optional[int] = 500
     multimodal: Optional[bool] = False
+
+
+class MediaChunksSearchRequest(BaseModel):
+    query: str
+    limit: Optional[int] = 20
+    modality: Optional[str] = None
+    parent_file_path: Optional[str] = None
 
 
 # ============================================================
@@ -131,7 +138,7 @@ async def check_coherence(depth: str = "basic"):
                 # Get 5 random samples from Qdrant
                 from qdrant_client.models import ScrollRequest
                 scroll_result = tw.qdrant_client.scroll(
-                    collection_name='vetka_files',
+                    collection_name='vetka_elisya',
                     limit=5,
                     with_payload=True,
                     with_vectors=False
@@ -249,6 +256,7 @@ async def triple_write_reindex(req: ReindexRequest):
 
                 # Extension gate
                 ext = os.path.splitext(fname)[1].lower()
+                fpath = os.path.join(root, fname)
                 size_bytes = os.path.getsize(fpath)
                 policy_allowed, policy = validate_ingest_target(fpath, size_bytes)
                 if not policy_allowed:
@@ -260,7 +268,6 @@ async def triple_write_reindex(req: ReindexRequest):
                     skipped += 1
                     continue
 
-                fpath = os.path.join(root, fname)
                 rel_path = os.path.relpath(fpath, PROJECT_ROOT)
 
                 try:
@@ -371,3 +378,31 @@ async def triple_write_reindex(req: ReindexRequest):
     except Exception as e:
         import traceback
         raise HTTPException(status_code=500, detail={'error': str(e), 'traceback': traceback.format_exc()})
+
+
+@router.post("/media-chunks/search")
+async def search_media_chunks(req: MediaChunksSearchRequest):
+    """
+    G12 retrieval bridge: semantic search over timestamped media chunk points.
+    """
+    query = (req.query or "").strip()
+    if len(query) < 2:
+        raise HTTPException(status_code=400, detail="query must be at least 2 chars")
+
+    try:
+        from src.orchestration.triple_write_manager import get_triple_write_manager
+        tw = get_triple_write_manager()
+        items: List[dict] = tw.search_media_chunks(
+            query=query,
+            limit=int(req.limit or 20),
+            modality=(req.modality or None),
+            parent_file_path=(req.parent_file_path or None),
+        )
+        return {
+            "success": True,
+            "query": query,
+            "count": len(items),
+            "items": items,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

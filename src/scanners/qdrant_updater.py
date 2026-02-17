@@ -23,6 +23,7 @@ import uuid
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Callable, Tuple, TYPE_CHECKING
+from src.scanners.mime_policy import validate_ingest_target, normalize_mime, classify_extension
 
 # FIX_95.9: Proper logging instead of print statements
 logger = logging.getLogger(__name__)
@@ -339,6 +340,21 @@ class QdrantIncrementalUpdater:
             # File was deleted - soft delete
             return self.soft_delete(file_path)
 
+        try:
+            stat_pre = file_path.stat()
+            allowed, policy = validate_ingest_target(str(file_path), int(stat_pre.st_size))
+            if not allowed:
+                logger.info(
+                    "[QdrantUpdater] Ingest policy skipped %s: %s",
+                    file_path.name,
+                    policy.get("code", "INGEST_POLICY_BLOCK"),
+                )
+                self.skipped_count += 1
+                return False
+        except Exception:
+            # Policy should be non-fatal for updater.
+            pass
+
         # Check if changed
         changed, existing = self._file_changed(file_path)
 
@@ -369,6 +385,7 @@ class QdrantIncrementalUpdater:
             'path': str(file_path),
             'name': file_path.name,
             'extension': file_path.suffix.lower(),
+            'mime_type': normalize_mime(str(file_path)),
             'size_bytes': stat.st_size,
             'modified_time': stat.st_mtime,
             'content_hash': self._get_content_hash(file_path),
@@ -377,7 +394,9 @@ class QdrantIncrementalUpdater:
             'deleted': False,
             # FIX_101.4: Hierarchy fields for tree building
             'parent_folder': parent_folder,
-            'depth': depth
+            'depth': depth,
+            'modality': classify_extension(str(file_path))[1],
+            'extraction_version': 'phase153_mm_v1',
         }
 
         # FIX_95.9: Try TripleWrite first for coherent writes across all stores

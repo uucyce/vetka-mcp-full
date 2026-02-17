@@ -349,6 +349,7 @@ This section tracks what is already implemented after RECON, with code-level sta
 
 - `G16` Web save indexing gap: **IMPLEMENTED**
   - `/api/artifacts/save-webpage` now triggers semantic indexing bridge.
+  - `/api/artifacts/save-search-result` now uses the same indexing bridge.
   - File: `src/api/routes/artifact_routes.py`
 
 - `G17` Watcher throughput gap: **IMPLEMENTED**
@@ -360,6 +361,7 @@ This section tracks what is already implemented after RECON, with code-level sta
 1. `G01` finalize unified extension/MIME policy with explicit allow/deny + size limits.  
    Status: **PARTIAL IMPLEMENTED** (`src/scanners/mime_policy.py` + watcher/reindex integration).
 2. `G09/G12` full universal multimodal scanner chain (audio/video chunk extraction + temporal relation persistence).  
-   Status: **PARTIAL IMPLEMENTED** (artifact temporal edges + multimodal ingest + AV extraction contracts + chunk-level Qdrant writes), retrieval strategy still pending.
+   Status: **PARTIAL IMPLEMENTED** (artifact temporal edges + multimodal ingest + AV extraction contracts + chunk-level Qdrant writes + `/api/triple-write/media-chunks/search` retrieval).
+   Remaining: cross-route UX wiring and ranking calibration.
 3. `G14` add true streaming tool execution loop (not only advisory telemetry).  
    Status: **PARTIAL IMPLEMENTED** (chat cleanup done; execution loop still pending).

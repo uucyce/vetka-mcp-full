@@ -50,6 +50,8 @@ try:
 except ImportError:
     QDRANT_AVAILABLE = False
 
+QDRANT_COLLECTION = "vetka_elisya"
+
 
 class TripleWriteManager:
     """
@@ -384,11 +386,74 @@ class TripleWriteManager:
             return 0
 
         try:
-            self.qdrant_client.upsert(collection_name="vetka_elisya", points=points)
+            self.qdrant_client.upsert(collection_name=QDRANT_COLLECTION, points=points)
             return len(points)
         except Exception as e:
             logger.warning(f"[TripleWrite] write_media_chunks failed for {file_path}: {e}")
             return 0
+
+    def search_media_chunks(
+        self,
+        query: str,
+        limit: int = 20,
+        modality: Optional[str] = None,
+        parent_file_path: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Semantic retrieval over media chunks (point_type=media_chunk).
+        Returns normalized payloads for API responses.
+        """
+        if not self.qdrant_client:
+            return []
+        text = (query or "").strip()
+        if len(text) < 2:
+            return []
+
+        try:
+            embedding = self.get_embedding(text)
+            if not embedding:
+                return []
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            must = [FieldCondition(key="point_type", match=MatchValue(value="media_chunk"))]
+            if modality:
+                must.append(FieldCondition(key="modality", match=MatchValue(value=str(modality).strip().lower())))
+            qfilter = Filter(must=must)
+            search_limit = max(1, min(int(limit or 20), 100))
+            results = self.qdrant_client.search(
+                collection_name=QDRANT_COLLECTION,
+                query_vector=embedding,
+                query_filter=qfilter,
+                limit=search_limit * 3,  # pre-filter in Python for path includes
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            normalized: List[Dict[str, Any]] = []
+            parent_filter = (parent_file_path or "").strip()
+            for hit in results or []:
+                payload = hit.payload or {}
+                candidate_parent = str(payload.get("parent_file_path", "") or "")
+                if parent_filter and parent_filter not in candidate_parent:
+                    continue
+                normalized.append(
+                    {
+                        "score": float(getattr(hit, "score", 0.0) or 0.0),
+                        "parent_file_path": candidate_parent,
+                        "modality": payload.get("modality", "media"),
+                        "chunk_index": int(payload.get("chunk_index", 0) or 0),
+                        "start_sec": float(payload.get("start_sec", 0.0) or 0.0),
+                        "end_sec": float(payload.get("end_sec", 0.0) or 0.0),
+                        "text": str(payload.get("text", "") or ""),
+                        "confidence": float(payload.get("confidence", 0.0) or 0.0),
+                        "extraction_version": payload.get("extraction_version", ""),
+                    }
+                )
+                if len(normalized) >= search_limit:
+                    break
+            return normalized
+        except Exception as e:
+            logger.warning(f"[TripleWrite] search_media_chunks failed: {e}")
+            return []
 
     def _write_weaviate_internal(
         self,
