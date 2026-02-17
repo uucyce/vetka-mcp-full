@@ -87,6 +87,19 @@ def _format_search_results_for_stream(results: list) -> str:
     return "\n\n".join(formatted_parts)
 
 
+def _should_attempt_tools_in_stream(user_text: str) -> bool:
+    """
+    Lightweight intent gate to avoid unnecessary pre-stream tool round trips.
+    """
+    text = (user_text or "").lower()
+    keywords = (
+        "show", "focus", "navigate", "find", "search", "grep", "tree", "file",
+        "open", "where", "scan", "index", "dependency", "dependencies", "import",
+        "покажи", "найди", "фокус", "поиск", "зависим", "файл", "индекс",
+    )
+    return any(k in text for k in keywords)
+
+
 def register_user_message_handler(sio, app=None):
     """Register the user_message Socket.IO handler."""
 
@@ -116,6 +129,10 @@ def register_user_message_handler(sio, app=None):
         call_model_v2_stream,
         Provider,
         XaiKeysExhausted,
+    )
+    from src.elisya.capability_matrix import (
+        build_capability_snapshot,
+        resolve_tool_execution_mode,
     )
 
     # Handler utilities (context, persistence, keys)
@@ -208,6 +225,111 @@ def register_user_message_handler(sio, app=None):
             return _get_builder()
         except Exception:
             return None
+
+    async def _run_pre_stream_tool_phase(
+        *,
+        sio,
+        sid: str,
+        msg_id: str,
+        requested_model: str,
+        detected_provider,
+        model_prompt: str,
+        prefetch_context: str,
+    ):
+        """
+        Execute one non-stream tool-calling phase, emit tool_* events,
+        and return a compact result summary for follow-up streamed answer.
+        """
+        from src.agents.tools import get_tools_for_agent
+        from src.tools import SafeToolExecutor, ToolCall
+
+        model_tools = get_tools_for_agent("Dev")
+        if not model_tools:
+            return []
+
+        tool_system = "You can call tools when needed. Return tool calls if required."
+        if prefetch_context:
+            tool_system += (
+                "\n\n## Pre-fetched Codebase Search Results\n"
+                + prefetch_context
+            )
+
+        pre_messages = [
+            {"role": "system", "content": tool_system},
+            {"role": "user", "content": model_prompt},
+        ]
+        pre_result = await call_model_v2(
+            messages=pre_messages,
+            model=requested_model,
+            provider=detected_provider,
+            source=None,
+            temperature=0.2,
+            tools=model_tools,
+        )
+        message_data = pre_result.get("message", {}) if isinstance(pre_result, dict) else {}
+        tool_calls = message_data.get("tool_calls", []) or []
+        if not tool_calls:
+            return []
+
+        executor = SafeToolExecutor()
+        tool_results = []
+        for idx, tc in enumerate(tool_calls[:8]):
+            func = tc.get("function", {}) if isinstance(tc, dict) else {}
+            tool_name = str(func.get("name", "") or "").strip()
+            raw_args = func.get("arguments", {}) if isinstance(func, dict) else {}
+            if isinstance(raw_args, str):
+                try:
+                    tool_args = json.loads(raw_args)
+                except Exception:
+                    tool_args = {}
+            elif isinstance(raw_args, dict):
+                tool_args = raw_args
+            else:
+                tool_args = {}
+            if not tool_name:
+                continue
+
+            await sio.emit(
+                "tool_start",
+                {
+                    "id": msg_id,
+                    "index": idx,
+                    "tool": tool_name,
+                    "args": tool_args,
+                },
+                to=sid,
+            )
+
+            call = ToolCall(
+                tool_name=tool_name,
+                arguments=tool_args,
+                agent_type="Dev",
+                call_id=f"stream_pre_{idx}_{tool_name}",
+            )
+            result_obj = await executor.execute(call)
+            result_payload = {
+                "tool": tool_name,
+                "args": tool_args,
+                "success": bool(result_obj.success),
+                "result": result_obj.result if result_obj.success else None,
+                "error": result_obj.error if not result_obj.success else None,
+            }
+            tool_results.append(result_payload)
+
+            await sio.emit(
+                "tool_result" if result_obj.success else "tool_error",
+                {
+                    "id": msg_id,
+                    "index": idx,
+                    "tool": tool_name,
+                    "success": bool(result_obj.success),
+                    "result": result_obj.result if result_obj.success else None,
+                    "error": result_obj.error if not result_obj.success else None,
+                },
+                to=sid,
+            )
+
+        return tool_results
 
     @sio.on("user_message")
     async def handle_user_message(sid, data):
@@ -690,31 +812,65 @@ def register_user_message_handler(sio, app=None):
 
                 full_response = ""
                 tokens_output = 0
-
-                # Phase 93.3: Use call_model_v2_stream from provider_registry
-                # Emit stream start
-                # Phase 111.10.2: Include model_source for Reply routing
-                await sio.emit(
-                    "stream_start",
-                    {
-                        "id": msg_id,
-                        "agent": agent_short_name,
-                        "model": requested_model,
-                        "model_source": model_source,  # Phase 111.10.2
-                        "tool_execution_mode": "disabled_stream",
-                    },
-                    to=sid,
-                )
+                detected_provider = None
+                capability_snapshot = None
+                tool_execution_mode = "disabled_stream"
 
                 try:
                     # Phase 93.3: Detect provider from model name (XAI/Grok support)
                     # Phase 111.9: Use model_source for multi-provider routing
                     from src.elisya.provider_registry import ProviderRegistry
                     detected_provider = ProviderRegistry.detect_provider(requested_model, source=model_source)
+                    provider_instance = ProviderRegistry().get(detected_provider)
+                    capability_snapshot = build_capability_snapshot(
+                        model=requested_model,
+                        provider_name=detected_provider.value,
+                        provider_instance=provider_instance,
+                        model_source=model_source,
+                    )
+                    wants_tools = _should_attempt_tools_in_stream(text)
+                    tool_results = []
+                    tool_execution_mode = resolve_tool_execution_mode(
+                        wants_tools=wants_tools,
+                        snapshot=capability_snapshot,
+                        tools_executed=False,
+                    )
+
+                    if wants_tools and capability_snapshot.tool_calling and not capability_snapshot.tool_calling_in_stream:
+                        try:
+                            tool_results = await _run_pre_stream_tool_phase(
+                                sio=sio,
+                                sid=sid,
+                                msg_id=msg_id,
+                                requested_model=requested_model,
+                            detected_provider=detected_provider,
+                            model_prompt=model_prompt,
+                            prefetch_context=prefetch_context,
+                            )
+                            tool_execution_mode = resolve_tool_execution_mode(
+                                wants_tools=wants_tools,
+                                snapshot=capability_snapshot,
+                                tools_executed=bool(tool_results),
+                            )
+                        except Exception as tool_phase_err:
+                            print(f"[MODEL_DIRECTORY] Pre-stream tool phase error: {tool_phase_err}")
+
+                    # Emit stream start
+                    await sio.emit(
+                        "stream_start",
+                        {
+                            "id": msg_id,
+                            "agent": agent_short_name,
+                            "model": requested_model,
+                            "model_source": model_source,
+                            "tool_execution_mode": tool_execution_mode,
+                            "capability_snapshot": capability_snapshot.to_dict(),
+                        },
+                        to=sid,
+                    )
 
                     # MARKER_152.CLEANUP: Removed stream_meta telemetry + preflight tool exec
-                    # (MARKER_153.IMPL.G14_STREAM_TOOL_EXEC removed — caused double LLM call + chat noise)
-                    # Clean system prompt with pre-fetched context only
+                    # G14 implementation: tools can run in pre-stream phase when stream tool-loop unavailable.
                     stream_system_prompt = "You are a VETKA AI agent with access to project context.\n\n"
 
                     if prefetch_context:
@@ -725,10 +881,27 @@ def register_user_message_handler(sio, app=None):
                             + prefetch_context + "\n\n"
                         )
 
+                    if tool_results:
+                        formatted = []
+                        for tr in tool_results[:8]:
+                            if tr.get("success"):
+                                formatted.append(
+                                    f"- {tr.get('tool')}: success, result={str(tr.get('result'))[:600]}"
+                                )
+                            else:
+                                formatted.append(
+                                    f"- {tr.get('tool')}: error={str(tr.get('error'))[:200]}"
+                                )
+                        stream_system_prompt += (
+                            "## Executed Tool Results (pre-stream phase)\n"
+                            + "\n".join(formatted)
+                            + "\n\n"
+                        )
+
                     stream_system_prompt += (
                         "When responding, reference the pre-fetched codebase results above if relevant. "
                         "Provide clear, helpful answers based on the project context. "
-                        "Do not claim that tools were executed in this streamed response."
+                        "If no tool result section is present, do not claim that tools were executed."
                     )
 
                     stream_messages = [
@@ -775,14 +948,15 @@ def register_user_message_handler(sio, app=None):
                         "full_message": full_response,
                         "metadata": {
                             "tokens_output": tokens_output,
-                            "tokens_input": len(model_prompt.split()),
-                            "model": requested_model,
-                            "agent": agent_short_name,
-                            "tool_execution_mode": "disabled_stream",
+                                "tokens_input": len(model_prompt.split()),
+                                "model": requested_model,
+                                "agent": agent_short_name,
+                                "tool_execution_mode": tool_execution_mode,
+                                "capability_snapshot": capability_snapshot.to_dict() if capability_snapshot else {},
+                            },
                         },
-                    },
-                    to=sid,
-                )
+                        to=sid,
+                    )
 
                 # Save to chat history
                 # Phase 74: Pass pinned_files for group chat context
