@@ -1,6 +1,7 @@
 # MARKER_136.ARTIFACT_APPROVE_REJECT_TEST
 import asyncio
 import json
+from types import SimpleNamespace
 
 import src.services.artifact_scanner as scanner
 from src.api.handlers.artifact_routes import (
@@ -10,8 +11,10 @@ from src.api.handlers.artifact_routes import (
 )
 from src.api.routes.artifact_routes import (
     ArtifactDecisionRequest,
+    SaveSearchResultRequest,
     approve_artifact_endpoint,
     reject_artifact_endpoint,
+    save_search_result_endpoint,
 )
 
 
@@ -75,3 +78,53 @@ def test_artifact_route_endpoints(monkeypatch):
 
     assert ok["status"] == "approved"
     assert bad["status"] == "rejected"
+
+
+def test_save_search_result_endpoint_indexes_when_qdrant_available(monkeypatch):
+    async def _save_search_result_artifact_mock(**kwargs):
+        return {
+            "success": True,
+            "file_path": "/tmp/artifacts/saved.md",
+            "title": "Saved",
+        }
+
+    monkeypatch.setattr(
+        "src.api.routes.artifact_routes.save_search_result_artifact",
+        _save_search_result_artifact_mock,
+    )
+
+    class _Updater:
+        def update_file(self, path):
+            return True
+
+    monkeypatch.setattr(
+        "src.api.routes.artifact_routes.get_qdrant_updater",
+        lambda **kwargs: _Updater(),
+    )
+
+    req = SaveSearchResultRequest(source="web", url="https://example.com")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(qdrant_manager=SimpleNamespace(client=object()))))
+    result = asyncio.run(save_search_result_endpoint(req, request))
+    assert result["success"] is True
+    assert result["indexed"] is True
+
+
+def test_save_search_result_endpoint_marks_index_error_without_qdrant(monkeypatch):
+    async def _save_search_result_artifact_mock(**kwargs):
+        return {
+            "success": True,
+            "file_path": "/tmp/artifacts/saved.md",
+            "title": "Saved",
+        }
+
+    monkeypatch.setattr(
+        "src.api.routes.artifact_routes.save_search_result_artifact",
+        _save_search_result_artifact_mock,
+    )
+
+    req = SaveSearchResultRequest(source="file", path="README.md")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(qdrant_manager=None)))
+    result = asyncio.run(save_search_result_endpoint(req, request))
+    assert result["success"] is True
+    assert result["indexed"] is False
+    assert result["index_error"] == "qdrant_client_not_available"
