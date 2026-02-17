@@ -118,6 +118,42 @@ def _get_memory_manager(request: Request):
     return memory
 
 
+def _get_qdrant_client(request: Request):
+    """
+    Resolve active Qdrant client from multiple runtime sources.
+    Mirrors watcher_routes fallback strategy to avoid empty tree when one path is None.
+    """
+    # 1) app.state.qdrant_manager.client (QdrantAutoRetry)
+    try:
+        qdrant_manager = getattr(request.app.state, "qdrant_manager", None) if request and request.app else None
+        if qdrant_manager and hasattr(qdrant_manager, "client") and qdrant_manager.client:
+            return qdrant_manager.client
+    except Exception:
+        pass
+
+    # 2) memory manager (supports both .qdrant and .qdrant_client)
+    try:
+        memory = _get_memory_manager(request)
+        if memory:
+            if hasattr(memory, "qdrant") and memory.qdrant:
+                return memory.qdrant
+            if hasattr(memory, "qdrant_client") and memory.qdrant_client:
+                return memory.qdrant_client
+    except Exception:
+        pass
+
+    # 3) direct singleton fallback
+    try:
+        from src.memory.qdrant_client import get_qdrant_client
+        q = get_qdrant_client()
+        if q is None:
+            return None
+        # QdrantAutoRetry wrapper may expose .client
+        return q.client if hasattr(q, "client") and q.client else q
+    except Exception:
+        return None
+
+
 # MARKER_108_CHAT_VIZ_API: Phase 108.2 - Chat nodes in tree API - Helper functions
 def extract_participants(chat: Dict[str, Any]) -> List[str]:
     """
@@ -253,8 +289,7 @@ async def get_tree_data(
     # MARKER_101.8_END
 
     try:
-        memory = _get_memory_manager(request)
-        qdrant = memory.qdrant if memory else None
+        qdrant = _get_qdrant_client(request)
 
         if not qdrant:
             return {
