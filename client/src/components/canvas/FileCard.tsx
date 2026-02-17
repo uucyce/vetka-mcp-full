@@ -122,6 +122,25 @@ const isPreviewableFile = (name: string): boolean => {
   return !binaryExtensions.includes(ext);
 };
 
+const toEpochMs = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return value < 1e12 ? value * 1000 : value;
+  const asNumber = Number(value);
+  if (!Number.isNaN(asNumber) && Number.isFinite(asNumber)) {
+    return asNumber < 1e12 ? asNumber * 1000 : asNumber;
+  }
+  const parsed = Date.parse(String(value));
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const formatNodeTime = (value: unknown): string => {
+  const ms = toEpochMs(value);
+  if (ms === null) return 'n/a';
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 /**
  * Hover preview styles
  */
@@ -1154,7 +1173,7 @@ function FileCardComponent({
           When clicked: POST /api/cam/pin with { file_path, metadata }
           Visual feedback: highlight pin icon or show "Added to CAM" toast */}
 
-      {(type === 'file' || type === 'folder' || type === 'artifact') && (isHoveredDebounced || isFavorite) && (
+      {(type === 'file' || type === 'folder' || type === 'artifact') && isFavorite && (
         <Html
           position={[position[0] + cardSize[0] / 2 - 1.0, position[1] + cardSize[1] / 2 - 0.8, position[2]]}
           style={{ pointerEvents: 'auto' }}
@@ -1223,8 +1242,20 @@ function FileCardComponent({
                 >
                   {name}
                 </div>
+                <div
+                  style={{
+                    borderBottom: getFileCategory(name) === 'code' ? '1px solid #2a2a2a' : '1px solid #ececec',
+                    paddingBottom: '6px',
+                    marginBottom: '8px',
+                    fontSize: '10px',
+                    color: getFileCategory(name) === 'code' ? '#8b949e' : '#5f6368',
+                  }}
+                >
+                  <div>Created: {formatNodeTime(metadata?.created_time || metadata?.created_at)}</div>
+                  <div>Modified: {formatNodeTime(metadata?.modified_time || metadata?.updated_at)}</div>
+                </div>
                 {/* Content */}
-                <div style={{ height: 'calc(100% - 30px)', overflow: 'hidden' }}>
+                <div style={{ height: 'calc(100% - 72px)', overflow: 'hidden' }}>
                   {previewContent || '// Empty file'}
                 </div>
               </div>

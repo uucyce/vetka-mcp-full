@@ -36,6 +36,7 @@ interface ScannedFile {
   timestamp: number;
   type?: 'file' | 'directory';
   size?: number;
+  created?: string;
   modified?: string;
 }
 
@@ -237,13 +238,14 @@ const formatSize = (bytes?: number): string => {
 };
 
 const formatDate = (date?: string): string => {
-  if (!date) return '—';
+  if (!date) return 'n/a';
   try {
-    return new Date(date).toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return 'n/a';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   } catch {
-    return '—';
+    return 'n/a';
   }
 };
 
@@ -658,6 +660,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
           timestamp: Date.now(),
           type: 'file' as const,
           size: f.size,
+          created: f.modified ? new Date(f.modified * 1000).toISOString() : undefined,
           modified: f.modified ? new Date(f.modified * 1000).toISOString() : undefined
         }));
 
@@ -705,6 +708,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       current?: number;
       total?: number;
       file_size?: number;
+      file_ctime?: number;
       file_mtime?: number;
     }>) => {
       const detail = event.detail;
@@ -721,6 +725,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
             timestamp: Date.now(),
             type: 'file',
             size: detail.file_size,
+            created: detail.file_ctime ? new Date(detail.file_ctime * 1000).toISOString() : undefined,
             modified: detail.file_mtime ? new Date(detail.file_mtime * 1000).toISOString() : undefined
           };
           const filtered = prev.filter(f => f.path !== detail.file_path);
@@ -1583,7 +1588,8 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
           <div className="preview-meta">
             <span>{hoveredFile.type === 'directory' ? 'Directory' : 'File'}</span>
             <span>{formatSize(hoveredFile.size)}</span>
-            <span>{formatDate(hoveredFile.modified)}</span>
+            <span>Created: {formatDate(hoveredFile.created || hoveredFile.modified)}</span>
+            <span>Modified: {formatDate(hoveredFile.modified)}</span>
           </div>
           <div className="preview-path">{hoveredFile.path}</div>
         </div>

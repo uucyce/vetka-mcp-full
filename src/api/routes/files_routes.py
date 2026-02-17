@@ -25,6 +25,7 @@ import base64
 import hashlib
 import mimetypes
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
@@ -136,6 +137,10 @@ async def read_file(req: FileReadRequest):
 
         # Get file size
         file_size = os.path.getsize(real_path)
+        stat = os.stat(real_path)
+
+        created_ts = float(getattr(stat, "st_birthtime", 0) or stat.st_ctime)
+        modified_ts = float(stat.st_mtime)
 
         # For binary files, use base64
         is_binary = not mime_type.startswith(("text/", "application/json", "application/javascript", "application/xml"))
@@ -154,7 +159,11 @@ async def read_file(req: FileReadRequest):
             "encoding": encoding,
             "mimeType": mime_type,
             "size": file_size,
-            "path": real_path
+            "path": real_path,
+            "createdAt": created_ts,
+            "modifiedAt": modified_ts,
+            "createdAtIso": datetime.fromtimestamp(created_ts, tz=timezone.utc).isoformat(),
+            "modifiedAtIso": datetime.fromtimestamp(modified_ts, tz=timezone.utc).isoformat(),
         }
 
     except PermissionError:

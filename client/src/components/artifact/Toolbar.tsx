@@ -14,6 +14,8 @@ interface Props {
   filename: string;
   filePath?: string;  // Phase 60.4: For "Open in Finder"
   fileSize?: number;
+  createdAt?: number;
+  modifiedAt?: number;
   isEditing?: boolean;
   hasChanges?: boolean;
   isSaving?: boolean;
@@ -33,6 +35,8 @@ export function Toolbar({
   filename,
   filePath,
   fileSize,
+  createdAt,
+  modifiedAt,
   isEditing,
   hasChanges,
   isSaving,
@@ -52,6 +56,17 @@ export function Toolbar({
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDate = (timestamp?: number) => {
+    if (!timestamp) return 'n/a';
+    try {
+      const d = new Date(timestamp * 1000);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } catch {
+      return 'n/a';
+    }
   };
 
   const btnBase = {
@@ -129,6 +144,12 @@ export function Toolbar({
         <span style={{ fontSize: 11, color: '#666' }}>{filename}</span>
         {fileSize !== undefined && (
           <span style={{ fontSize: 11, color: '#444', marginLeft: 8 }}>({formatSize(fileSize)})</span>
+        )}
+        {(createdAt || modifiedAt) && (
+          <div style={{ fontSize: 10, color: '#4f4f4f', marginTop: 2 }}>
+            <span>Created: {formatDate(createdAt)}</span>
+            <span style={{ marginLeft: 8 }}>Modified: {formatDate(modifiedAt)}</span>
+          </div>
         )}
       </div>
 

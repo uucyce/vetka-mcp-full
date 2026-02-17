@@ -51,6 +51,8 @@ interface FileData {
   encoding?: 'utf-8' | 'base64' | 'binary' | string;
   hasChanges: boolean;
   fileSize?: number;
+  createdAt?: number;
+  modifiedAt?: number;
 }
 
 // Phase 48.5.1: Raw content for chat responses
@@ -268,6 +270,8 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
         encoding: data.encoding || 'utf-8',
         hasChanges: false,
         fileSize: data.size,
+        createdAt: typeof data.createdAt === 'number' ? data.createdAt : undefined,
+        modifiedAt: typeof data.modifiedAt === 'number' ? data.modifiedAt : undefined,
       });
     } catch (err) {
       console.error('[ArtifactPanel] Load error:', err);
@@ -984,6 +988,8 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
           filename={file?.name || ''}
           filePath={fileData.path}
           fileSize={fileData.fileSize}
+          createdAt={fileData.createdAt}
+          modifiedAt={fileData.modifiedAt}
           isEditing={isEditing}
           hasChanges={fileData.hasChanges}
           isSaving={isSaving}
