@@ -64,6 +64,19 @@ def test_scan_artifacts_reads_files_and_staging_links(monkeypatch, tmp_path):
     assert dev["visual_hints"]["color"] == scanner.ARTIFACT_COLORS["code"]
 
 
+def test_scan_artifacts_applies_ingest_policy(monkeypatch, tmp_path):
+    _patch_paths(monkeypatch, tmp_path)
+    scanner.ARTIFACTS_DIR.mkdir(parents=True)
+
+    (scanner.ARTIFACTS_DIR / "allowed.md").write_text("ok", encoding="utf-8")
+    (scanner.ARTIFACTS_DIR / "blocked.exe").write_text("no", encoding="utf-8")
+
+    artifacts = scanner.scan_artifacts()
+    names = {a["name"] for a in artifacts}
+    assert "allowed.md" in names
+    assert "blocked.exe" not in names
+
+
 def test_build_artifact_edges_connects_only_existing_parents():
     artifacts = [
         {"id": "artifact_1", "parent_id": "chat_a", "visual_hints": {"color": "#10b981"}},

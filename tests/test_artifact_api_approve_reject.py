@@ -80,11 +80,14 @@ def test_artifact_route_endpoints(monkeypatch):
     assert bad["status"] == "rejected"
 
 
-def test_save_search_result_endpoint_indexes_when_qdrant_available(monkeypatch):
+def test_save_search_result_endpoint_indexes_when_qdrant_available(monkeypatch, tmp_path):
+    saved = tmp_path / "saved.md"
+    saved.write_text("# ok", encoding="utf-8")
+
     async def _save_search_result_artifact_mock(**kwargs):
         return {
             "success": True,
-            "file_path": "/tmp/artifacts/saved.md",
+            "file_path": str(saved),
             "title": "Saved",
         }
 
@@ -109,11 +112,14 @@ def test_save_search_result_endpoint_indexes_when_qdrant_available(monkeypatch):
     assert result["indexed"] is True
 
 
-def test_save_search_result_endpoint_marks_index_error_without_qdrant(monkeypatch):
+def test_save_search_result_endpoint_marks_index_error_without_qdrant(monkeypatch, tmp_path):
+    saved = tmp_path / "saved.md"
+    saved.write_text("# ok", encoding="utf-8")
+
     async def _save_search_result_artifact_mock(**kwargs):
         return {
             "success": True,
-            "file_path": "/tmp/artifacts/saved.md",
+            "file_path": str(saved),
             "title": "Saved",
         }
 
@@ -128,3 +134,28 @@ def test_save_search_result_endpoint_marks_index_error_without_qdrant(monkeypatc
     assert result["success"] is True
     assert result["indexed"] is False
     assert result["index_error"] == "qdrant_client_not_available"
+
+
+def test_save_search_result_endpoint_returns_policy_block(monkeypatch, tmp_path):
+    blocked = tmp_path / "blocked.exe"
+    blocked.write_bytes(b"binary")
+
+    async def _save_search_result_artifact_mock(**kwargs):
+        return {
+            "success": True,
+            "file_path": str(blocked),
+            "title": "Saved",
+        }
+
+    monkeypatch.setattr(
+        "src.api.routes.artifact_routes.save_search_result_artifact",
+        _save_search_result_artifact_mock,
+    )
+
+    req = SaveSearchResultRequest(source="file", path="README.md")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(qdrant_manager=SimpleNamespace(client=object()))))
+    result = asyncio.run(save_search_result_endpoint(req, request))
+    assert result["success"] is True
+    assert result["indexed"] is False
+    assert result["index_error"] == "ingest_policy_blocked"
+    assert result["index_policy"]["code"] in ("DENY_EXTENSION", "UNKNOWN_EXTENSION", "FILE_TOO_LARGE")

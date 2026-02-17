@@ -50,6 +50,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from src.services.chat_artifact_registry import get_chat_artifact_registry
+from src.scanners.mime_policy import validate_ingest_target
 
 
 # ============================================================
@@ -290,6 +291,17 @@ def scan_artifacts() -> List[Dict]:
             stat = file_path.stat()
         except Exception as e:
             print(f"[ARTIFACT_SCAN] Warning: Could not stat {file_path.name}: {e}")
+            continue
+
+        # MARKER_153.IMPL.G01_ARTIFACT_SCAN_POLICY:
+        # Enforce unified ingest policy in artifact scan path too,
+        # so tree/panel visibility aligns with indexing policy.
+        try:
+            allowed, policy = validate_ingest_target(str(file_path), int(stat.st_size))
+            if not allowed:
+                continue
+        except Exception:
+            # Keep scanner resilient on policy errors.
             continue
 
         # Determine artifact type and language

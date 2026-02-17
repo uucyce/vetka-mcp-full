@@ -18,6 +18,7 @@ from src.api.handlers.artifact_routes import (
     save_webpage_artifact,
 )
 from src.scanners.qdrant_updater import get_qdrant_updater
+from src.scanners.mime_policy import validate_ingest_target
 from src.services.artifact_scanner import set_artifact_favorite
 
 
@@ -32,6 +33,23 @@ def _try_index_saved_artifact(result: dict, request: Request) -> dict:
     try:
         if not result.get("success") or not result.get("file_path"):
             return result
+        target_path = Path(str(result["file_path"]))
+        if not target_path.exists() or not target_path.is_file():
+            result["indexed"] = False
+            result["index_error"] = "saved_artifact_not_found"
+            return result
+        allowed, policy = validate_ingest_target(str(target_path), int(target_path.stat().st_size))
+        if not allowed:
+            result["indexed"] = False
+            result["index_error"] = "ingest_policy_blocked"
+            result["index_policy"] = {
+                "code": policy.get("code"),
+                "message": policy.get("message"),
+                "extension": policy.get("extension"),
+                "category": policy.get("category"),
+                "mime_type": policy.get("mime_type"),
+            }
+            return result
         qdrant_manager = getattr(request.app.state, "qdrant_manager", None)
         qdrant_client = getattr(qdrant_manager, "client", None) if qdrant_manager else None
         if not qdrant_client:
@@ -39,7 +57,7 @@ def _try_index_saved_artifact(result: dict, request: Request) -> dict:
             result["index_error"] = "qdrant_client_not_available"
             return result
         updater = get_qdrant_updater(qdrant_client=qdrant_client, enable_triple_write=True)
-        indexed = updater.update_file(Path(str(result["file_path"])))
+        indexed = updater.update_file(target_path)
         result["indexed"] = bool(indexed)
     except Exception as idx_err:
         result["indexed"] = False
