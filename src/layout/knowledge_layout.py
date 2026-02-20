@@ -2460,10 +2460,33 @@ def build_knowledge_graph_from_qdrant(
         logger.error("[KnowledgeLayout] No Qdrant client provided")
         return {'tags': {}, 'edges': [], 'chain_edges': [], 'positions': {}, 'knowledge_levels': {}}
 
+    def _safe_float(value: Any) -> float:
+        try:
+            if value is None:
+                return 0.0
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _resolve_times(payload: Dict[str, Any]) -> Tuple[float, float]:
+        created = _safe_float(payload.get('created_time'))
+        modified = _safe_float(payload.get('modified_time'))
+        updated = _safe_float(payload.get('updated_at'))
+        created_resolved = created or modified or updated or 0.0
+        modified_resolved = modified or created_resolved or updated or 0.0
+        return created_resolved, modified_resolved
+
     # 1. Fetch embeddings from Qdrant
     embeddings_dict: Dict[str, np.ndarray] = {}
     file_metadata: Dict[str, Dict] = {}
     offset = None
+    metadata_stats = {
+        'total': 0,
+        'with_created_time': 0,
+        'with_modified_time': 0,
+        'with_parent_folder': 0,
+        'with_modality': 0,
+    }
 
     logger.info("[KnowledgeLayout] Fetching embeddings from Qdrant...")
 
@@ -2482,25 +2505,59 @@ def build_knowledge_graph_from_qdrant(
                 embeddings_dict[file_id] = np.array(point.vector)
 
             payload = point.payload or {}
+            path = payload.get('path', '')
+            created_time, modified_time = _resolve_times(payload)
+            parent_folder = payload.get('parent_folder', '')
+            modality = payload.get('modality', '')
             file_metadata[file_id] = {
-                'path': payload.get('path', ''),
+                'path': path,
                 'name': payload.get('name', ''),
                 'extension': payload.get('extension', ''),
-                'type': payload.get('type', 'file')
+                'type': payload.get('type', 'file'),
+                'depth': int(payload.get('depth') or (path.count('/') if path else 0)),
+                'parent_folder': parent_folder,
+                'mime_type': payload.get('mime_type', ''),
+                'modality': modality,
+                'size_bytes': int(payload.get('size_bytes') or 0),
+                'content_hash': payload.get('content_hash', ''),
+                'source': payload.get('source', ''),
+                'created_time': created_time,
+                'modified_time': modified_time,
+                'updated_at': _safe_float(payload.get('updated_at')),
+                'mtime': modified_time,
+                'ctime': created_time,
             }
+            metadata_stats['total'] += 1
+            if created_time > 0:
+                metadata_stats['with_created_time'] += 1
+            if modified_time > 0:
+                metadata_stats['with_modified_time'] += 1
+            if parent_folder:
+                metadata_stats['with_parent_folder'] += 1
+            if modality:
+                metadata_stats['with_modality'] += 1
 
         if offset is None:
             break
 
     logger.info(f"[KnowledgeLayout] Loaded {len(embeddings_dict)} embeddings from Qdrant")
+    total = max(1, metadata_stats['total'])
+    logger.info(
+        "[KnowledgeLayout] Metadata completeness: created=%.1f%% modified=%.1f%% parent=%.1f%% modality=%.1f%%",
+        100.0 * metadata_stats['with_created_time'] / total,
+        100.0 * metadata_stats['with_modified_time'] / total,
+        100.0 * metadata_stats['with_parent_folder'] / total,
+        100.0 * metadata_stats['with_modality'] / total,
+    )
 
     # Phase 22 FIX: SAVE ORIGINAL DATA before filtering for fallback
     original_embeddings_dict = embeddings_dict.copy()
     original_file_metadata = file_metadata.copy()
 
     # Phase 17.21: CRITICAL FIX - Filter to only files that exist in 3D scene!
-    # Qdrant may contain more files than current directory scan
-    # We must only use files that the 3D scene knows about
+    # Qdrant may contain more files than current directory scan.
+    # IMPORTANT: when scope positions are provided by frontend (single-folder mode switch),
+    # we must NOT fallback to global filename-only matches, otherwise unrelated files leak in.
     if file_directory_positions:
         scene_file_paths = set(file_directory_positions.keys())
         original_count = len(embeddings_dict)
@@ -2524,6 +2581,8 @@ def build_knowledge_graph_from_qdrant(
             logger.info(f"  Sample path→id mapping: {sample_mapping}")
 
         # Phase 23 FIX: Improved path matching with normalization + backslash handling
+        # Strict-scoped matching: only exact normalized path or safe suffix path match.
+        # Filename-only fallback is intentionally disabled for scoped knowledge mode.
         scene_file_paths_normalized = {
             os.path.normpath(p.replace('\\', '/')): p for p in scene_file_paths
         }
@@ -2547,19 +2606,13 @@ def build_knowledge_graph_from_qdrant(
                 if normalized_path.endswith(scene_norm) or scene_norm.endswith(normalized_path):
                     scene_file_ids.add(qdrant_id)
                     break
-            else:
-                # Check 3: Match by filename only (last resort)
-                filename = os.path.basename(normalized_path)
-                for scene_norm in scene_file_paths_normalized:
-                    if os.path.basename(scene_norm) == filename:
-                        scene_file_ids.add(qdrant_id)
-                        break
 
         if not scene_file_ids and file_metadata:
             logger.warning(f"[KnowledgeLayout] No files matched! scene_paths={len(scene_file_paths_normalized)}, qdrant_files={len(file_metadata)}")
-            # Fallback: use all Qdrant files
-            scene_file_ids = set(file_metadata.keys())
-            logger.warning(f"[KnowledgeLayout] FALLBACK: Using all {len(scene_file_ids)} Qdrant files")
+            # Strict scope mode: do not fallback to all Qdrant files.
+            # Return empty KG for this scope; caller can keep directed view unchanged.
+            logger.warning("[KnowledgeLayout] Strict scope mode: skipping global fallback to avoid cross-folder contamination")
+            return {'tags': {}, 'edges': [], 'positions': {}, 'knowledge_levels': {}, 'chain_edges': []}
 
         # Check intersection
         matching_ids = qdrant_ids & scene_file_ids
@@ -2579,16 +2632,12 @@ def build_knowledge_graph_from_qdrant(
             logger.warning(f"[KnowledgeLayout] Removed {original_count - filtered_count} files "
                            f"not present in 3D scene!")
 
-        # If NO matches, IDs are incompatible - USE FALLBACK!
+        # If NO matches, IDs are incompatible - keep strict empty response.
         if filtered_count == 0 and original_count > 0:
             logger.error(f"[KnowledgeLayout] NO MATCHING IDs! ID formats incompatible!")
             logger.error(f"  First Qdrant ID: {list(qdrant_ids)[0] if qdrant_ids else 'none'}")
             logger.error(f"  First Scene ID: {list(scene_file_ids)[0] if scene_file_ids else 'none'}")
-            # Phase 22 FIX: RESTORE original data from saved copies
-            logger.warning("[KnowledgeLayout] FALLBACK: Restoring ALL Qdrant files due to ID mismatch!")
-            embeddings_dict = original_embeddings_dict
-            file_metadata = original_file_metadata
-            logger.info(f"[KnowledgeLayout] Restored {len(embeddings_dict)} embeddings for fallback processing")
+            return {'tags': {}, 'edges': [], 'positions': {}, 'knowledge_levels': {}, 'chain_edges': []}
     else:
         logger.warning("[KnowledgeLayout] No file_directory_positions provided - using ALL Qdrant files!")
 

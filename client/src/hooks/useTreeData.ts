@@ -9,8 +9,13 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useStore, TreeNode, VetkaNodeType } from '../store/useStore';
-import { fetchTreeData, ApiTreeNode } from '../utils/api';
+import { useStore, TreeNode } from '../store/useStore';
+import {
+  fetchTreeData,
+  ApiTreeNode,
+  fetchKnowledgeGraphData,
+  TreeViewMode,
+} from '../utils/api';
 import { calculateSimpleLayout } from '../utils/layout';
 import {
   convertApiResponse,
@@ -43,6 +48,8 @@ export function useTreeData() {
 
   // MARKER_110_FIX: Trigger for manual tree refresh (from DevPanel)
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [treeViewMode, setTreeViewMode] = useState<TreeViewMode>('directed');
+  const [knowledgeScopePath, setKnowledgeScopePath] = useState<string>('');
   // MARKER_136.TREE_REFRESH_DEDUP_TREEHOOK: collapse bursty refresh events
   const [lastRefreshEventTs, setLastRefreshEventTs] = useState(0);
 
@@ -56,11 +63,10 @@ export function useTreeData() {
       if (!response.success) {
         setError(response.error || 'Failed to load tree data');
         setLoading(false);
-
-        // console.warn('[useTreeData] API unavailable, using demo data');
-        const demoNodes = getDemoNodes();
-        const positioned = calculateSimpleLayout(demoNodes);
-        setNodes(positioned);
+        // MARKER_155.KMODE.FAILSAFE:
+        // Never replace real graph with demo nodes on transient API failure.
+        // Keep current store state to avoid collapsing scene to 7-node demo graph.
+        console.warn('[useTreeData] fetchTreeData failed; preserving current graph state');
         return;
       }
 
@@ -138,7 +144,7 @@ export function useTreeData() {
         });
 
         // Merge edges
-        const allEdges = [...edges, ...chatEdges, ...artifactEdges];
+        let allEdges = [...edges, ...chatEdges, ...artifactEdges];
 
         // Ensure children arrays are complete for imported chat/artifact edges.
         allEdges.forEach((edge) => {
@@ -149,6 +155,158 @@ export function useTreeData() {
             parentNode.children.push(edge.target);
           }
         });
+
+        // Knowledge mode overlay: use KG positions/extra edges on top of tree payload.
+        if (treeViewMode === 'knowledge') {
+          try {
+            // MARKER_155.KMODE.FILE_POSITIONS:
+            // Backend Knowledge builder expects scene file paths in `file_positions`
+            // for stable ID mapping (path -> qdrant_id) and scope filtering.
+            const sceneFilePositions: Record<string, { x: number; y: number; z: number }> = {};
+            const normalizedScope = String(knowledgeScopePath || '').replace(/\\/g, '/').toLowerCase();
+            Object.values(allNodes).forEach((node) => {
+              if (!node?.path) return;
+              if (node.type !== 'file') return;
+              const normalizedPath = String(node.path).replace(/\\/g, '/').toLowerCase();
+              if (normalizedScope && !normalizedPath.startsWith(normalizedScope)) return;
+              sceneFilePositions[node.path] = {
+                x: Number(node.position?.x || 0),
+                y: Number(node.position?.y || 0),
+                z: Number(node.position?.z || 0),
+              };
+            });
+            const scopedPathSet = new Set(Object.keys(sceneFilePositions));
+
+            const kg = await fetchKnowledgeGraphData({
+              forceRefresh: false,
+              hydrateScopePath: knowledgeScopePath || undefined,
+              hydrateForce: false,
+              filePositions: sceneFilePositions,
+            });
+            console.log('[useTreeData] Knowledge mode response:', {
+              status: kg.status,
+              scope: knowledgeScopePath || 'global',
+              sentFilePositions: Object.keys(sceneFilePositions).length,
+              positions: kg.positions ? Object.keys(kg.positions).length : 0,
+              edges: Array.isArray(kg.edges) ? kg.edges.length : 0,
+              chainEdges: Array.isArray(kg.chain_edges) ? kg.chain_edges.length : 0,
+            });
+
+            // Resolver: frontend scene uses TreeNode IDs, KG may return qdrant IDs or paths.
+            const pathToSceneNodeId = new Map<string, string>();
+            Object.values(allNodes).forEach((node) => {
+              if (node?.path) pathToSceneNodeId.set(node.path, node.id);
+            });
+
+            const kgKeyToSceneNodeId = new Map<string, string>();
+            const resolveSceneNodeId = (rawKey: unknown, posObj?: any): string | null => {
+              const key = String(rawKey || '');
+              const posPath = String(posObj?.path || posObj?.file_path || '');
+              if (key && allNodes[key]) return key;
+              if (key && pathToSceneNodeId.has(key)) return pathToSceneNodeId.get(key) || null;
+              if (posPath && pathToSceneNodeId.has(posPath)) return pathToSceneNodeId.get(posPath) || null;
+              return null;
+            };
+
+            if (kg.status === 'ok' && kg.positions && typeof kg.positions === 'object') {
+              const matchedNodes: Array<{
+                nodeId: string;
+                kgX: number;
+                kgY: number;
+                kgZ: number;
+                oldX: number;
+              }> = [];
+
+              Object.entries(kg.positions).forEach(([kgNodeKey, pos]) => {
+                const sceneNodeId = resolveSceneNodeId(kgNodeKey, pos);
+                if (sceneNodeId) kgKeyToSceneNodeId.set(String(kgNodeKey), sceneNodeId);
+                const target = sceneNodeId ? allNodes[sceneNodeId] : undefined;
+                if (!target || !pos || typeof pos !== 'object') return;
+                const targetPath = String((target as any)?.path || '');
+                if (scopedPathSet.size > 0 && targetPath && !scopedPathSet.has(targetPath)) return;
+
+                const kgX = Number((pos as any).x);
+                const kgY = Number((pos as any).y);
+                const kgZ = Number((pos as any).z);
+
+                if (!Number.isFinite(kgX)) return;
+                matchedNodes.push({
+                  nodeId: sceneNodeId!,
+                  kgX,
+                  kgY: Number.isFinite(kgY) ? kgY : 0,
+                  kgZ: Number.isFinite(kgZ) ? kgZ : 0,
+                  oldX: Number(target.position.x || 0),
+                });
+
+                const kl = Number((pos as any).knowledge_level);
+                if (Number.isFinite(kl)) {
+                  target.metadata = {
+                    ...(target.metadata || {}),
+                    knowledge_level: kl,
+                  };
+                }
+              });
+
+              // MARKER_155.KMODE.ANCHORED_COORDS:
+              // Keep Directed Y/Z stability (no "fall to ground").
+              // Apply only anchored X-shift from KG so branch keeps its level/height.
+              if (matchedNodes.length > 0) {
+                const xOffsets = matchedNodes.map((m) => m.oldX - m.kgX).sort((a, b) => a - b);
+                const medianOffsetX = xOffsets[Math.floor(xOffsets.length / 2)] || 0;
+                matchedNodes.forEach((m) => {
+                  const target = allNodes[m.nodeId];
+                  if (!target) return;
+                  target.position = {
+                    x: m.kgX + medianOffsetX,
+                    y: target.position.y, // preserve current Directed height
+                    z: target.position.z, // preserve current Z layer
+                  };
+                });
+              }
+            } else if (kg.status === 'error') {
+              console.warn('[useTreeData] Knowledge mode fetch failed:', kg.error);
+            }
+
+            const kgEdges = Array.isArray(kg.edges) ? kg.edges : [];
+            const kgChainEdges = Array.isArray(kg.chain_edges) ? kg.chain_edges : [];
+            const extraEdges = [...kgEdges, ...kgChainEdges];
+
+            const knownEdgeIds = new Set(allEdges.map((e) => `${e.source}|${e.target}|${e.type}`));
+            extraEdges.forEach((edge: any, idx) => {
+              if (!edge || typeof edge !== 'object') return;
+              const rawSource = String(edge.source || edge.from || '');
+              const rawTarget = String(edge.target || edge.to || '');
+              if (!rawSource || !rawTarget) return;
+
+              const source = kgKeyToSceneNodeId.get(rawSource)
+                || pathToSceneNodeId.get(rawSource)
+                || (allNodes[rawSource] ? rawSource : '');
+              const target = kgKeyToSceneNodeId.get(rawTarget)
+                || pathToSceneNodeId.get(rawTarget)
+                || (allNodes[rawTarget] ? rawTarget : '');
+
+              if (!source || !target) return;
+              if (!allNodes[source] || !allNodes[target]) return;
+              const sourcePath = String((allNodes[source] as any)?.path || '');
+              const targetPath = String((allNodes[target] as any)?.path || '');
+              if (scopedPathSet.size > 0) {
+                if (!sourcePath || !targetPath) return;
+                if (!scopedPathSet.has(sourcePath) || !scopedPathSet.has(targetPath)) return;
+              }
+              const dedupKey = `${source}|${target}|semantic`;
+              if (knownEdgeIds.has(dedupKey)) return;
+              knownEdgeIds.add(dedupKey);
+              allEdges.push({
+                id: `kg_${source}_${target}_${idx}`,
+                source,
+                target,
+                type: 'contains',
+              });
+            });
+          } catch (kgErr) {
+            console.error('[useTreeData] Knowledge overlay failed, keeping directed layout:', kgErr);
+          }
+        }
 
         // MARKER_109_DEVPANEL: Threshold-based fallback for layout
         const config = getDevPanelConfig();
@@ -197,6 +355,14 @@ export function useTreeData() {
         // MARKER_111_DEBUG: Final count before store
         console.log(`[useTreeData] Setting ${Object.keys(allNodes).length} nodes to store`);
         setNodesFromRecord(allNodes);
+        window.dispatchEvent(
+          new CustomEvent('vetka-tree-mode-changed', {
+            detail: {
+              mode: treeViewMode,
+              scopePath: knowledgeScopePath || '',
+            },
+          })
+        );
 
         // Phase 113.1: Restore saved positions — DISABLED (Phase 113.3 cleanup)
         // Positions come from backend fan_layout.py, no localStorage override needed
@@ -233,7 +399,7 @@ export function useTreeData() {
     }
 
     loadData();
-  }, [setNodes, setNodesFromRecord, setEdges, setLoading, setError, addChatNode, refreshTrigger]);
+  }, [setNodes, setNodesFromRecord, setEdges, setLoading, setError, addChatNode, refreshTrigger, treeViewMode, knowledgeScopePath]);
 
   // MARKER_110_FIX: Listen for tree refresh events from DevPanel
   useEffect(() => {
@@ -253,41 +419,22 @@ export function useTreeData() {
     };
   }, [lastRefreshEventTs]);
 
-  return { nodes, isLoading, error };
-}
-
-function getDemoNodes(): TreeNode[] {
-  const makeNode = (
-    id: string,
-    name: string,
-    type: 'file' | 'folder',
-    depth: number,
-    parentId: string | null,
-    color: string
-  ): TreeNode => {
-    const backendType: VetkaNodeType =
-      depth === 0 ? 'root' : type === 'folder' ? 'branch' : 'leaf';
-
-    return {
-      id,
-      path: id,
-      name,
-      type,
-      backendType,
-      depth,
-      parentId,
-      position: { x: 0, y: 0, z: 0 },
-      color,
+  useEffect(() => {
+    const handleSwitchMode = (evt: Event) => {
+      const e = evt as CustomEvent;
+      const requestedMode = String(e.detail?.mode || '').toLowerCase();
+      const nextMode: TreeViewMode = requestedMode === 'knowledge' ? 'knowledge' : 'directed';
+      const scopePath = String(e.detail?.scopePath || '');
+      setTreeViewMode(nextMode);
+      setKnowledgeScopePath(scopePath);
+      setRefreshTrigger(prev => prev + 1);
     };
-  };
 
-  return [
-    makeNode('/root', 'vetka_project', 'folder', 0, null, '#6366f1'),
-    makeNode('/root/src', 'src', 'folder', 1, '/root', '#374151'),
-    makeNode('/root/client', 'client', 'folder', 1, '/root', '#374151'),
-    makeNode('/root/src/main.py', 'main.py', 'file', 2, '/root/src', '#1f2937'),
-    makeNode('/root/src/config.py', 'config.py', 'file', 2, '/root/src', '#1f2937'),
-    makeNode('/root/client/App.tsx', 'App.tsx', 'file', 2, '/root/client', '#1f2937'),
-    makeNode('/root/README.md', 'README.md', 'file', 1, '/root', '#1f2937'),
-  ];
+    window.addEventListener('vetka-switch-tree-mode', handleSwitchMode);
+    return () => {
+      window.removeEventListener('vetka-switch-tree-mode', handleSwitchMode);
+    };
+  }, []);
+
+  return { nodes, isLoading, error };
 }
