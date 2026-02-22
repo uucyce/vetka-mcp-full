@@ -1,0 +1,391 @@
+{
+  "scope_root": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03",
+  "signature": "1d930e85a778",
+  "stats": {
+    "l0_nodes": 821,
+    "l0_edges": 2017,
+    "l0_explicit_edges": 1569,
+    "l0_reference_edges": 687,
+    "l0_channel_hist": {
+      "structural": 1569,
+      "semantic": 19,
+      "temporal": 429
+    },
+    "l1_scc_nodes": 671,
+    "l1_scc_edges": 1198,
+    "cyclic_scc_count": 11,
+    "max_scc_size": 80,
+    "l2_nodes": 120,
+    "l2_edges": 317,
+    "build_ms": 1089
+  },
+  "markers": [
+    "MARKER_155.MODE_ARCH.V11.P1",
+    "MARKER_155.INPUT_MATRIX.SCANNERS.V1",
+    "MARKER_155.MODE_ARCH.V11.GRAPH_LEVELS",
+    "MARKER_155.MODE_ARCH.V11.CYCLE_POLICY"
+  ],
+  "sample_l0_edges": [
+    {
+      "source": "analyze_unused_imports.py",
+      "target": "analyze_unused_imports_v2.py",
+      "type": "semantic",
+      "relation_kind": "semantic",
+      "score": 0.35433839593969074,
+      "confidence": 1.0,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 1.0,
+        "temporal": 0.9999862163427204,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "pair_types": {
+        "source": "code",
+        "target": "code"
+      },
+      "evidence": [
+        "semantic_jaccard:1.000",
+        "temporal:1767816816->1767816861"
+      ]
+    },
+    {
+      "source": "app/artifact-panel/eslint.config.js",
+      "target": "app/artifact-panel/tailwind.config.js",
+      "type": "temporal",
+      "relation_kind": "temporal",
+      "score": 0.1945514949012504,
+      "confidence": 0.9998871621110763,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.5726495726495726,
+        "temporal": 0.9998871621110763,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "pair_types": {
+        "source": "code",
+        "target": "code"
+      },
+      "evidence": [
+        "semantic_jaccard:0.667",
+        "temporal:1766890722->1766891087"
+      ]
+    },
+    {
+      "source": "app/artifact-panel/eslint.config.js",
+      "target": "app/artifact-panel/vite.config.ts",
+      "type": "semantic",
+      "relation_kind": "semantic",
+      "score": 0.0971478590696509,
+      "confidence": 0.5726495726495726,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.5726495726495726,
+        "temporal": 0.5185643814068435,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "pair_types": {
+        "source": "code",
+        "target": "code"
+      },
+      "evidence": [
+        "semantic_jaccard:0.667",
+        "temporal:1766890722->1769277402"
+      ]
+    },
+    {
+      "source": "app/artifact-panel/src/App.tsx",
+      "target": "app/artifact-panel/src/components/ArtifactPanel.tsx",
+      "type": "structural",
+      "relation_kind": "structural",
+      "score": 0.9404756340234984,
+      "confidence": 1.0,
+      "channels": {
+        "structural": 1.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "pair_types": {
+        "source": "code",
+        "target": "code"
+      },
+      "evidence": [
+        "import ./components/ArtifactPanel"
+      ]
+    },
+    {
+      "source": "app/artifact-panel/src/components/ArtifactPanel.tsx",
+      "target": "app/artifact-panel/src/components/Toolbar.tsx",
+      "type": "structural",
+      "relation_kind": "structural",
+      "score": 0.9404756340234984,
+      "confidence": 1.0,
+      "channels": {
+        "structural": 1.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "pair_types": {
+        "source": "code",
+        "target": "code"
+      },
+      "evidence": [
+        "import ./Toolbar"
+      ]
+    }
+  ],
+  "sample_l1_edges": [
+    {
+      "source": "scc_10",
+      "target": "scc_6",
+      "type": "temporal",
+      "relation_kind": "temporal",
+      "mode_layer": 0,
+      "is_condensed": true,
+      "score": 0.24102480616552854,
+      "confidence": 0.9999638757042684,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.7150997150997151,
+        "temporal": 0.9999638757042684,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "semantic_jaccard:0.778",
+        "temporal:1766925492->1766925609"
+      ]
+    },
+    {
+      "source": "scc_10",
+      "target": "scc_7",
+      "type": "temporal",
+      "relation_kind": "temporal",
+      "mode_layer": 0,
+      "is_condensed": true,
+      "score": 0.24103111660760082,
+      "confidence": 0.9999844089355461,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.7150997150997151,
+        "temporal": 0.9999844089355461,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "semantic_jaccard:0.778",
+        "temporal:1766925492->1766925543"
+      ]
+    },
+    {
+      "source": "scc_10",
+      "target": "scc_8",
+      "type": "temporal",
+      "relation_kind": "temporal",
+      "mode_layer": 0,
+      "is_condensed": true,
+      "score": 0.24103322610280717,
+      "confidence": 0.9999912728344877,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.7150997150997151,
+        "temporal": 0.9999912728344877,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "semantic_jaccard:0.778",
+        "temporal:1766925492->1766925520"
+      ]
+    },
+    {
+      "source": "scc_102",
+      "target": "scc_53",
+      "type": "structural",
+      "relation_kind": "structural",
+      "mode_layer": 0,
+      "is_condensed": true,
+      "score": 0.9708013673158152,
+      "confidence": 1.0,
+      "channels": {
+        "structural": 1.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.62,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "from src.services.approval_service import ...",
+        "ref:approval_service.py"
+      ]
+    },
+    {
+      "source": "scc_103",
+      "target": "scc_101",
+      "type": "structural",
+      "relation_kind": "structural",
+      "mode_layer": 0,
+      "is_condensed": true,
+      "score": 0.9404756340234984,
+      "confidence": 1.0,
+      "channels": {
+        "structural": 1.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "from src.services.persistence_service import ..."
+      ]
+    }
+  ],
+  "sample_l2_nodes": [
+    {
+      "id": "scc_420",
+      "kind": "module",
+      "label": "src/api/handlers/di_container.py",
+      "layer": 0,
+      "scope": "architecture",
+      "members": [
+        "src/api/handlers/di_container.py"
+      ],
+      "scc_size": 1,
+      "scc_health": {
+        "size": 1,
+        "density": 1.0,
+        "max_cycle_len": 0,
+        "warning": "singleton"
+      },
+      "ports": {
+        "inputs": [
+          "in.default"
+        ],
+        "outputs": [
+          "out.default"
+        ]
+      },
+      "metadata": {
+        "parent": "src/api/handlers"
+      }
+    },
+    {
+      "id": "scc_446",
+      "kind": "module",
+      "label": "src/intake/__init__.py",
+      "layer": 0,
+      "scope": "architecture",
+      "members": [
+        "src/intake/__init__.py"
+      ],
+      "scc_size": 1,
+      "scc_health": {
+        "size": 1,
+        "density": 1.0,
+        "max_cycle_len": 0,
+        "warning": "singleton"
+      },
+      "ports": {
+        "inputs": [
+          "in.default"
+        ],
+        "outputs": [
+          "out.default"
+        ]
+      },
+      "metadata": {
+        "parent": "src/intake"
+      }
+    },
+    {
+      "id": "scc_462",
+      "kind": "module",
+      "label": "src/main.py",
+      "layer": 0,
+      "scope": "architecture",
+      "members": [
+        "src/main.py"
+      ],
+      "scc_size": 1,
+      "scc_health": {
+        "size": 1,
+        "density": 1.0,
+        "max_cycle_len": 0,
+        "warning": "singleton"
+      },
+      "ports": {
+        "inputs": [
+          "in.default"
+        ],
+        "outputs": [
+          "out.default"
+        ]
+      },
+      "metadata": {
+        "parent": "src"
+      }
+    },
+    {
+      "id": "scc_539",
+      "kind": "module",
+      "label": "tests/test_cam_integration.py",
+      "layer": 0,
+      "scope": "architecture",
+      "members": [
+        "tests/test_cam_integration.py"
+      ],
+      "scc_size": 1,
+      "scc_health": {
+        "size": 1,
+        "density": 1.0,
+        "max_cycle_len": 0,
+        "warning": "singleton"
+      },
+      "ports": {
+        "inputs": [
+          "in.default"
+        ],
+        "outputs": [
+          "out.default"
+        ]
+      },
+      "metadata": {
+        "parent": "tests"
+      }
+    },
+    {
+      "id": "scc_543",
+      "kind": "module",
+      "label": "tests/test_chat_markers_107.py",
+      "layer": 0,
+      "scope": "architecture",
+      "members": [
+        "tests/test_chat_markers_107.py"
+      ],
+      "scc_size": 1,
+      "scc_health": {
+        "size": 1,
+        "density": 1.0,
+        "max_cycle_len": 0,
+        "warning": "singleton"
+      },
+      "ports": {
+        "inputs": [
+          "in.default"
+        ],
+        "outputs": [
+          "out.default"
+        ]
+      },
+      "metadata": {
+        "parent": "tests"
+      }
+    }
+  ]
+}
