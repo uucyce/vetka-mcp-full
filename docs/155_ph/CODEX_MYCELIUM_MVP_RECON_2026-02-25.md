@@ -63,8 +63,8 @@ Inventory method:
 
 Totals:
 - Total unique markers in docs: **200**
-- Markers with code hits: **66**
-- Doc-only markers (design/planning/not yet materialized): **134**
+- Markers with code hits: **65** (recheck on 2026-02-26)
+- Doc-only markers (design/planning/not yet materialized): **135** (recheck on 2026-02-26)
 
 Important caveat:
 - `DOC_ONLY` is not automatically bad; many are architecture/recon/checklist markers by design.
@@ -111,11 +111,11 @@ Why it blocks MVP:
 
 ## G2. Runtime blockers observability is incomplete
 
-What is missing:
-- Dedicated diagnostics payload for shutdown blockers snapshot/export (called out in handoff as next action).
+Status update (2026-02-26):
+- CLOSED for MVP baseline (shutdown blockers snapshot/export implemented and validated as separate issue track from Desktop Codex UI bug).
 
-Why it blocks MVP:
-- Reported lag/hang incidents are hard to triage fast without one structured blocker snapshot.
+Residual note:
+- Keep runtime blockers snapshot in regression smoke pack to avoid silent drift.
 
 ## G3. GO/NO-GO numeric gates are not frozen in one executable release gate
 
@@ -146,7 +146,7 @@ Why it blocks MVP:
 ## D-3 (2026-02-26): Freeze acceptance + diagnostics contracts
 
 Deliverables:
-- Add and expose shutdown blockers snapshot endpoint + UI diagnostics card/export.
+- Keep shutdown blockers snapshot endpoint + UI diagnostics card/export in regression pack (already implemented).
 - Freeze numeric thresholds for verifier/readability/runtime checks in one release-gate doc + code constants.
 - Record one fresh manual P4 checklist run.
 
@@ -189,4 +189,5 @@ Done criteria:
 - `docs/155_ph/CODEX_ALGORITHMIC_OFFLOAD_REPORT_2026-02-25.md`
 - `docs/155_ph/ARCHITECT_BUILD_CONTRACT_V1.md`
 - `docs/155_ph/ARCHITECT_BUILD_CONTRACT_V1_CHECKLIST.md`
-
+- `docs/155_ph/MCC_RELEASE_GATE_V1.md`
+- `docs/155_ph/MCC_P4_MANUAL_ACCEPTANCE_2026-02-26.md`

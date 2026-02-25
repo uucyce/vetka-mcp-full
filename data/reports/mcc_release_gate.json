@@ -1,0 +1,99 @@
+{
+  "marker": "MARKER_155.READINESS.G3_G4.RELEASE_GATE.V1",
+  "timestamp_utc": "2026-02-25T21:45:10.934663+00:00",
+  "status": "PASS",
+  "checks": [
+    {
+      "name": "layout_verifier_gate",
+      "status": "PASS",
+      "details": {
+        "count": 2,
+        "best_score": 98.0,
+        "min_score": 70.0,
+        "max_orphan_rate": 0.35,
+        "decision_ok": true,
+        "orphan_ok": true,
+        "acyclic_ok": true,
+        "monotonic_ok": true,
+        "best": {
+          "name": "clean",
+          "version_id": "",
+          "score": 98.0
+        },
+        "top_variant": {
+          "name": "clean",
+          "variant_params": {
+            "name": "clean",
+            "max_nodes": 140,
+            "use_predictive_overlay": false
+          },
+          "scorecard": {
+            "score": 98.0,
+            "breakdown": {
+              "decision": 30.0,
+              "acyclic": 18.0,
+              "monotonic": 14.0,
+              "orphan_rate": 14.0,
+              "spectral_status": 12.0,
+              "components": 6.0,
+              "density": 0.0,
+              "size": 4.0
+            },
+            "decision": "pass",
+            "acyclic": true,
+            "monotonic_layers": true,
+            "orphan_rate": 0.0,
+            "density": 0.3333333333333333,
+            "component_count": 1,
+            "node_count": 3,
+            "edge_count": 2
+          },
+          "verifier": {
+            "acyclic": true,
+            "monotonic_layers": true,
+            "orphan_rate": 0.0,
+            "density": 0.3333333333333333,
+            "avg_out_degree": 0.6666666666666666,
+            "spectral": {
+              "lambda2": 1.0,
+              "eigengap": 2.0,
+              "component_count": 1,
+              "status": "ok"
+            },
+            "decision": "pass"
+          },
+          "version_id": "",
+          "created_at": ""
+        }
+      }
+    },
+    {
+      "name": "runtime_safety_gate",
+      "status": "PASS",
+      "details": {
+        "enabled": false,
+        "ok": false,
+        "detail": "http_url_not_configured",
+        "health": {
+          "ok": false,
+          "enabled": false,
+          "embed_url": "",
+          "health_url": "",
+          "detail": "http_url_not_configured",
+          "backend": "uninitialized",
+          "backend_detail": ""
+        }
+      }
+    },
+    {
+      "name": "mcc_scope_pytest_gate",
+      "status": "PASS",
+      "details": {
+        "command": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.venv/bin/python -m pytest -q tests/mcc",
+        "returncode": 0,
+        "stdout_tail": "..........                                                               [100%]\n=============================== warnings summary ===============================\n.venv/lib/python3.13/site-packages/hdbscan/robust_single_linkage_.py:175\n  /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.venv/lib/python3.13/site-packages/hdbscan/robust_single_linkage_.py:175: SyntaxWarning: invalid escape sequence '\\{'\n    $max \\{ core_k(a), core_k(b), 1/\\alpha d(a,b) \\}$.\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n10 passed, 1 warning in 2.30s",
+        "stderr_tail": ""
+      }
+    }
+  ]
+}
