@@ -111,7 +111,16 @@ class ArchitectCaptain:
     def get_completed_modules(cls, roadmap: RoadmapDAG, board: Dict) -> set:
         """Find which roadmap modules have completed tasks."""
         completed = set()
-        tasks = board.get("tasks", [])
+        raw_tasks = board.get("tasks", [])
+        tasks: List[Dict[str, Any]] = []
+
+        # Support both board formats:
+        # - {"tasks": [ {...}, {...} ]}
+        # - {"tasks": {"id1": {...}, "id2": {...}}}
+        if isinstance(raw_tasks, dict):
+            tasks = [t for t in raw_tasks.values() if isinstance(t, dict)]
+        elif isinstance(raw_tasks, list):
+            tasks = [t for t in raw_tasks if isinstance(t, dict)]
 
         for task in tasks:
             status = task.get("status", "")

@@ -1,27 +1,27 @@
 {
   "groups": {
-    "17277a47-05f9-490a-b5d4-eb3b0fb9165d": {
-      "id": "17277a47-05f9-490a-b5d4-eb3b0fb9165d",
-      "name": "",
-      "description": "Group chat with 2 agents",
-      "admin_id": "@PM",
+    "deaa7cf2-7f10-4935-b9ac-264019c7d638": {
+      "id": "deaa7cf2-7f10-4935-b9ac-264019c7d638",
+      "name": "Test Project",
+      "description": "Testing persistence",
+      "admin_id": "@admin",
       "participants": {
-        "@PM": {
-          "agent_id": "@PM",
-          "model_id": "deepseek-coder:6.7b",
+        "@admin": {
+          "agent_id": "@admin",
+          "model_id": "claude-sonnet-4-5",
           "role": "admin",
-          "display_name": "PM (Deepseek Coder)",
+          "display_name": "Admin",
           "permissions": [
             "read",
             "write"
           ],
           "model_source": null
         },
-        "@Architect": {
-          "agent_id": "@Architect",
-          "model_id": "llama3.2:1b",
+        "@dev": {
+          "agent_id": "@dev",
+          "model_id": "deepseek-r1",
           "role": "worker",
-          "display_name": "Architect (Llama3.2)",
+          "display_name": "Developer",
           "permissions": [
             "read",
             "write"
@@ -29,12 +29,35 @@
           "model_source": null
         }
       },
-      "messages": [],
+      "messages": [
+        {
+          "id": "03a0d0a8-5f6a-4d71-bea1-44b831805a9d",
+          "group_id": "deaa7cf2-7f10-4935-b9ac-264019c7d638",
+          "sender_id": "@admin",
+          "content": "Hello team! Let's test persistence.",
+          "mentions": [],
+          "message_type": "chat",
+          "metadata": {},
+          "created_at": "2026-02-17T21:27:55.448193"
+        },
+        {
+          "id": "c47bb76f-b7eb-4f46-a040-e12a9cf95807",
+          "group_id": "deaa7cf2-7f10-4935-b9ac-264019c7d638",
+          "sender_id": "@dev",
+          "content": "@admin Got it! This should be saved.",
+          "mentions": [
+            "admin"
+          ],
+          "message_type": "chat",
+          "metadata": {},
+          "created_at": "2026-02-17T21:27:55.449926"
+        }
+      ],
       "shared_context": {},
       "project_id": null,
-      "created_at": "2026-02-13T01:23:30.101255",
-      "last_activity": "2026-02-13T01:23:30.101258"
+      "created_at": "2026-02-17T21:27:55.446335",
+      "last_activity": "2026-02-17T21:27:55.449929"
     }
   },
-  "saved_at": "2026-02-13T01:23:30.107620"
+  "saved_at": "2026-02-17T21:27:55.449990"
 }

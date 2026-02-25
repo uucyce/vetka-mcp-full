@@ -10,6 +10,8 @@ Provides endpoints for listing, selecting, and managing AI models.
 @used_by: main.py router registration
 """
 
+import asyncio
+import time
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -17,6 +19,16 @@ from typing import Optional, List, Dict, Any
 from src.services.model_registry import get_model_registry
 
 router = APIRouter(prefix="/api/models", tags=["models"])
+
+
+# MARKER_155.PERF.MODELS_SINGLEFLIGHT:
+# Keep /api/models fast on startup and avoid duplicate remote fetches.
+_models_cache = {
+    "ts": 0.0,
+    "response": None,
+}
+_MODELS_TTL_SEC = 60.0
+_models_lock = asyncio.Lock()
 
 
 # MARKER_138.S2_5_MODEL_AUTODETECT
@@ -148,24 +160,38 @@ async def list_models():
     MARKER_112_LIST_MODELS: Returns models from fetcher with multi-source support.
     Phase 112: Uses model_fetcher directly for proper source tracking.
     """
-    from src.services.model_duplicator import create_duplicates, get_duplication_stats
-    from src.elisya.model_fetcher import get_all_models
+    cached = _models_cache.get("response")
+    now = time.monotonic()
+    if cached is not None and (now - float(_models_cache.get("ts", 0.0))) <= _MODELS_TTL_SEC:
+        return cached
 
-    # Phase 112: Use model_fetcher for proper source tracking
-    base_models = await get_all_models()
+    async with _models_lock:
+        cached = _models_cache.get("response")
+        now = time.monotonic()
+        if cached is not None and (now - float(_models_cache.get("ts", 0.0))) <= _MODELS_TTL_SEC:
+            return cached
 
-    # Phase 112: Generate duplicates for models with multiple sources
-    expanded_models = create_duplicates(base_models)
+        from src.services.model_duplicator import create_duplicates, get_duplication_stats
+        from src.elisya.model_fetcher import get_all_models
 
-    stats = get_duplication_stats()
+        # Phase 112: Use model_fetcher for proper source tracking
+        base_models = await get_all_models()
 
-    return {
-        'models': expanded_models,
-        'count': len(expanded_models),
-        'base_count': len(base_models),
-        'duplicates_added': len(expanded_models) - len(base_models),
-        'duplication_stats': stats
-    }
+        # Phase 112: Generate duplicates for models with multiple sources
+        expanded_models = create_duplicates(base_models)
+
+        stats = get_duplication_stats()
+
+        response = {
+            "models": expanded_models,
+            "count": len(expanded_models),
+            "base_count": len(base_models),
+            "duplicates_added": len(expanded_models) - len(base_models),
+            "duplication_stats": stats,
+        }
+        _models_cache["ts"] = time.monotonic()
+        _models_cache["response"] = response
+        return response
 
 
 @router.get("/available")

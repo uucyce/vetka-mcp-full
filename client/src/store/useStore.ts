@@ -224,6 +224,35 @@ interface TreeState {
 const POSITIONS_STORAGE_KEY = 'vetka_node_positions';
 let _positionSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v));
+}
+
+function inferLayoutBiasFromPositionMap(positionMap: Record<string, { x: number; y: number; z: number }>) {
+  const points = Object.values(positionMap);
+  if (points.length < 3) return null;
+  const xs = points.map(p => p.x);
+  const ys = points.map(p => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const spreadX = Math.max(1, maxX - minX);
+  const spreadY = Math.max(1, maxY - minY);
+  const ratio = spreadY / spreadX;
+  const compactness = points.length / (spreadX * spreadY);
+  return {
+    vertical_separation_bias: clamp((ratio - 0.75) * 1.2, -1, 1),
+    sibling_spacing_bias: clamp((spreadX / Math.max(1, points.length * 50)) - 1, -1, 1),
+    branch_compactness_bias: clamp((compactness * 120000) - 0.5, -1, 1),
+    focus_overlay_preference: 'focus_only',
+    pin_persistence_preference: 'pin_first',
+    confidence: clamp(0.55 + Math.log10(points.length + 1) * 0.2, 0.55, 0.95),
+    sample_count: 1,
+    updated_at: new Date().toISOString(),
+  };
+}
+
 export const useStore = create<TreeState>((set, get) => ({
   nodes: {},
   edges: [],
@@ -566,7 +595,7 @@ export const useStore = create<TreeState>((set, get) => ({
 
   // Phase 113.1: Persistent Spatial Memory
   savePositions: () => {
-    const { nodes } = get();
+    const { nodes, rootPath } = get();
     const entries = Object.values(nodes);
     if (entries.length === 0) return;
 
@@ -603,6 +632,25 @@ export const useStore = create<TreeState>((set, get) => ({
         console.error('[Layout] Backend save failed:', e);
       }
     }, 500);
+
+    // MARKER_155.MEMORY.ENGRAM_DAG_PREFS.V1:
+    // Update shared ENGRAM DAG layout intent profile (no raw coordinates).
+    try {
+      const profile = inferLayoutBiasFromPositionMap(positionMap);
+      if (profile) {
+        const scopeRoot = String(rootPath || 'default').replace(/\\/g, '/');
+        const scopeKey = `dag:${scopeRoot}:architecture`;
+        fetch('http://localhost:5001/api/mcc/layout/preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: 'danila',
+            scope_key: scopeKey,
+            profile,
+          }),
+        }).catch(() => {});
+      }
+    } catch {}
 
     console.log(`[Layout] Saved ${entries.length} positions`);
   },

@@ -37,6 +37,9 @@ interface RoadmapTaskNodeProps {
     subtasksTotal?: number;
     description?: string;
     layer?: string;
+    // MARKER_155.INTEGRATION.CHAT_BADGE: VETKA chat linking
+    sourceChatId?: string;
+    sourceChatUrl?: string;
   };
   selected?: boolean;
 }
@@ -80,7 +83,7 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
         style={{ background: NOLAN_PALETTE.borderLight, width: 8, height: 8 }}
       />
 
-      {/* Header row: label + team badge */}
+      {/* Header row: label + badges */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
         {/* Team badge */}
         {badge && (
@@ -102,6 +105,33 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
             title={data.preset}
           >
             {badge.label}
+          </span>
+        )}
+
+        {/* MARKER_155.INTEGRATION.CHAT_BADGE: Chat link */}
+        {data.sourceChatId && (
+          <span
+            onClick={(e) => {
+              e.stopPropagation();
+              const chatUrl = data.sourceChatUrl || `/chat/${data.sourceChatId}`;
+              window.open(chatUrl, '_blank');
+            }}
+            style={{
+              width: 16,
+              height: 16,
+              borderRadius: 3,
+              background: 'rgba(74, 158, 255, 0.15)',
+              border: '1px solid rgba(74, 158, 255, 0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 9,
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+            title={`Open linked VETKA chat (${data.sourceChatId.slice(0, 8)})`}
+          >
+            💬
           </span>
         )}
 

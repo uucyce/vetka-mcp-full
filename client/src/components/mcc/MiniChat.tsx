@@ -10,7 +10,7 @@
  * @status active
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { MiniWindow } from './MiniWindow';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 
@@ -22,6 +22,18 @@ function ChatCompact() {
   const [lastAnswer, setLastAnswer] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handlePrefill = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      const message = String(detail.message || '').trim();
+      if (!message) return;
+      setInput(message);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    };
+    window.addEventListener('mcc-chat-prefill', handlePrefill as EventListener);
+    return () => window.removeEventListener('mcc-chat-prefill', handlePrefill as EventListener);
+  }, []);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || loading) return;
@@ -122,6 +134,19 @@ function ChatExpanded() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
   const [loading, setLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handlePrefill = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      const message = String(detail.message || '').trim();
+      if (!message) return;
+      setInput(message);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    };
+    window.addEventListener('mcc-chat-prefill', handlePrefill as EventListener);
+    return () => window.removeEventListener('mcc-chat-prefill', handlePrefill as EventListener);
+  }, []);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || loading) return;
@@ -188,6 +213,7 @@ function ChatExpanded() {
         borderTop: `1px solid ${NOLAN_PALETTE.border}`,
       }}>
         <input
+          ref={inputRef}
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => {
@@ -234,6 +260,7 @@ function ChatExpanded() {
 export function MiniChat() {
   return (
     <MiniWindow
+      windowId="chat" // MARKER_155.DRAGGABLE.011: Unique ID for position persistence
       title="Chat"
       icon="💬"
       position="top-left"

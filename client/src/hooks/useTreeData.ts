@@ -16,7 +16,8 @@ import {
   fetchKnowledgeGraphData,
   TreeViewMode,
 } from '../utils/api';
-import { calculateSimpleLayout } from '../utils/layout';
+import { calculateSimpleLayout, setLayoutBiasProfile } from '../utils/layout';
+import { fetchDagLayoutBiasProfile } from '../utils/dagLayoutPreferences';
 import {
   convertApiResponse,
   convertLegacyNode,
@@ -52,6 +53,30 @@ export function useTreeData() {
   const [knowledgeScopePath, setKnowledgeScopePath] = useState<string>('');
   // MARKER_136.TREE_REFRESH_DEDUP_TREEHOOK: collapse bursty refresh events
   const [lastRefreshEventTs, setLastRefreshEventTs] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const initRes = await fetch('http://localhost:5001/api/mcc/init');
+        let scopeRoot = 'default';
+        if (initRes.ok) {
+          const init = await initRes.json();
+          const cfg = init?.project_config || {};
+          scopeRoot = String(cfg.source_path || cfg.sandbox_path || 'default').replace(/\\/g, '/');
+        }
+        const graphType = treeViewMode === 'knowledge' ? 'architecture' : 'workflow';
+        const scopeKey = `dag:${scopeRoot}:${graphType}`;
+        const profile = await fetchDagLayoutBiasProfile(scopeKey);
+        if (!cancelled) setLayoutBiasProfile(profile);
+      } catch {
+        if (!cancelled) setLayoutBiasProfile(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [treeViewMode, knowledgeScopePath]);
 
   useEffect(() => {
     async function loadData() {
@@ -135,7 +160,7 @@ export function useTreeData() {
         }
 
         // Merge file tree nodes and chat nodes
-        const allNodes = { ...convertedNodes };
+        let allNodes = { ...convertedNodes };
         chatTreeNodes.forEach((chatNode) => {
           allNodes[chatNode.id] = chatNode;
         });
@@ -157,6 +182,7 @@ export function useTreeData() {
         });
 
         // Knowledge mode overlay: use KG positions/extra edges on top of tree payload.
+        const knowledgeNodeIds = new Set<string>();
         if (treeViewMode === 'knowledge') {
           try {
             // MARKER_155.KMODE.FILE_POSITIONS:
@@ -176,12 +202,19 @@ export function useTreeData() {
               };
             });
             const scopedPathSet = new Set(Object.keys(sceneFilePositions));
+            let semanticExpansionBudget = 20; // folder default
+            if (scopedPathSet.size <= 2) semanticExpansionBudget = 8; // file scope
+            else if (scopedPathSet.size >= 400) semanticExpansionBudget = 80; // root-like scope
 
             const kg = await fetchKnowledgeGraphData({
               forceRefresh: false,
               hydrateScopePath: knowledgeScopePath || undefined,
               hydrateForce: false,
               filePositions: sceneFilePositions,
+              semanticExpansionBudget,
+              // MARKER_155.IMPL.A3_EXPANSION_THRESHOLD_DEFAULT:
+              // 0.72 was too strict for many folders and produced degenerate tiny graphs.
+              semanticExpansionThreshold: 0.62,
             });
             console.log('[useTreeData] Knowledge mode response:', {
               status: kg.status,
@@ -209,6 +242,10 @@ export function useTreeData() {
             };
 
             if (kg.status === 'ok' && kg.positions && typeof kg.positions === 'object') {
+              // Knowledge mode is a distinct visual language:
+              // clear directed stems and rebuild semantic edges below.
+              allEdges = [];
+
               const matchedNodes: Array<{
                 nodeId: string;
                 kgX: number;
@@ -222,8 +259,7 @@ export function useTreeData() {
                 if (sceneNodeId) kgKeyToSceneNodeId.set(String(kgNodeKey), sceneNodeId);
                 const target = sceneNodeId ? allNodes[sceneNodeId] : undefined;
                 if (!target || !pos || typeof pos !== 'object') return;
-                const targetPath = String((target as any)?.path || '');
-                if (scopedPathSet.size > 0 && targetPath && !scopedPathSet.has(targetPath)) return;
+                knowledgeNodeIds.add(sceneNodeId!);
 
                 const kgX = Number((pos as any).x);
                 const kgY = Number((pos as any).y);
@@ -247,20 +283,147 @@ export function useTreeData() {
                 }
               });
 
-              // MARKER_155.KMODE.ANCHORED_COORDS:
-              // Keep Directed Y/Z stability (no "fall to ground").
-              // Apply only anchored X-shift from KG so branch keeps its level/height.
+              // MARKER_155.KMODE.A3_BACKEND_COORDS:
+              // Knowledge mode should use backend KG coordinates directly.
+              // Frontend anchoring to Directed Y/Z was causing "sticks/cones".
               if (matchedNodes.length > 0) {
-                const xOffsets = matchedNodes.map((m) => m.oldX - m.kgX).sort((a, b) => a - b);
-                const medianOffsetX = xOffsets[Math.floor(xOffsets.length / 2)] || 0;
                 matchedNodes.forEach((m) => {
                   const target = allNodes[m.nodeId];
                   if (!target) return;
                   target.position = {
-                    x: m.kgX + medianOffsetX,
-                    y: target.position.y, // preserve current Directed height
-                    z: target.position.z, // preserve current Z layer
+                    x: m.kgX,
+                    y: m.kgY,
+                    z: m.kgZ,
                   };
+                });
+              }
+
+              // MARKER_155.KMODE.TAG_LAYOUT_V1:
+              // Build semantic tag hubs and redistribute scoped files around tags.
+              const focusNode = Object.values(allNodes).find((node) => {
+                const p = String((node as any)?.path || '').replace(/\\/g, '/').toLowerCase();
+                return p === normalizedScope;
+              });
+              const focusX = Number(focusNode?.position?.x || 0);
+              const focusY = Number(focusNode?.position?.y || 0);
+              const focusZ = Number(focusNode?.position?.z || 0);
+
+              const kgTags = (kg.tags && typeof kg.tags === 'object') ? kg.tags : {};
+              const activeTagEntries = Object.entries(kgTags).filter(([, tagData]: any) => {
+                const files = Array.isArray(tagData?.files) ? tagData.files : [];
+                return files.some((rawFileId: string) => {
+                  const sceneId = kgKeyToSceneNodeId.get(String(rawFileId))
+                    || pathToSceneNodeId.get(String(rawFileId))
+                    || (allNodes[String(rawFileId)] ? String(rawFileId) : '');
+                  if (!sceneId) return false;
+                  const scenePath = String((allNodes[sceneId] as any)?.path || '');
+                  return Boolean(scenePath && scopedPathSet.has(scenePath));
+                });
+              });
+
+              if (false && activeTagEntries.length > 0) {
+                const tagRadius = Math.max(140, activeTagEntries.length * 42);
+                const angleStep = (Math.PI * 2) / activeTagEntries.length;
+
+                activeTagEntries.forEach(([tagId, tagData]: any, tagIndex) => {
+                  const angle = tagIndex * angleStep;
+                  const tagNodeId = `kg_tag_${tagId}`;
+                  const tagX = focusX + Math.cos(angle) * tagRadius;
+                  const tagY = focusY + Math.sin(angle) * (tagRadius * 0.5);
+                  const tagZ = focusZ + 25;
+
+                  allNodes[tagNodeId] = {
+                    id: tagNodeId,
+                    path: `kg://tag/${tagId}`,
+                    name: String(tagData?.name || tagId || 'tag'),
+                    type: 'folder',
+                    backendType: 'branch',
+                    depth: Number(focusNode?.depth || 0),
+                    parentId: focusNode?.id || null,
+                    position: { x: tagX, y: tagY, z: tagZ },
+                    color: String(tagData?.color || '#7dd3fc'),
+                    children: [],
+                    metadata: {
+                      context_type: 'knowledge_tag',
+                      tag_id: tagId,
+                    },
+                  };
+
+                  const rawFiles = Array.isArray(tagData?.files) ? tagData.files : [];
+                  const scopedFileIds = rawFiles
+                    .map((rawFileId: string) => kgKeyToSceneNodeId.get(String(rawFileId))
+                      || pathToSceneNodeId.get(String(rawFileId))
+                      || (allNodes[String(rawFileId)] ? String(rawFileId) : ''))
+                    .filter((sceneId: string) => {
+                      if (!sceneId) return false;
+                      const scenePath = String((allNodes[sceneId] as any)?.path || '');
+                      return Boolean(scenePath && scopedPathSet.has(scenePath));
+                    });
+
+                  const getTime = (nodeId: string): number => {
+                    const n = allNodes[nodeId] as any;
+                    const md = n?.metadata || {};
+                    const c = Number(md.created_time || md.createdAt || 0);
+                    const m = Number(md.modified_time || md.updated_at || md.mtime || 0);
+                    if (Number.isFinite(c) && c > 0) return c;
+                    if (Number.isFinite(m) && m > 0) return m;
+                    return 0;
+                  };
+                  const getKl = (nodeId: string): number => {
+                    const n = allNodes[nodeId] as any;
+                    return Number(n?.metadata?.knowledge_level || 0);
+                  };
+
+                  const orderedScopedFiles = [...scopedFileIds].sort((a, b) => {
+                    const ta = getTime(a);
+                    const tb = getTime(b);
+                    if (ta > 0 && tb > 0 && ta !== tb) return ta - tb; // older -> newer
+                    const ka = getKl(a);
+                    const kb = getKl(b);
+                    if (Number.isFinite(ka) && Number.isFinite(kb) && ka !== kb) return ka - kb;
+                    return a.localeCompare(b);
+                  });
+
+                  const fileCount = orderedScopedFiles.length;
+                  const colStepY = 36;
+                  const colStepX = 18;
+
+                  orderedScopedFiles.forEach((fileNodeId: string, fileIdx: number) => {
+                    const fileNode = allNodes[fileNodeId];
+                    if (!fileNode) return;
+                    if (fileCount <= 12) {
+                      // MARKER_155.KMODE.NO_STICK_LAYOUT:
+                      // Small sets should fan out horizontally around tag,
+                      // not collapse into one vertical stem.
+                      const center = (fileCount - 1) / 2;
+                      const dx = (fileIdx - center) * 30;
+                      fileNode.position = {
+                        x: tagX + dx,
+                        y: tagY + 82 + Math.abs(fileIdx - center) * 4,
+                        z: focusZ + 8,
+                      };
+                    } else {
+                      const col = Math.floor(fileIdx / 12);
+                      const row = fileIdx % 12;
+                      fileNode.position = {
+                        x: tagX + col * colStepX,
+                        y: tagY + 70 + row * colStepY,
+                        z: focusZ + 8,
+                      };
+                    }
+                  });
+
+                  // MARKER_155.KMODE.TAG_ATTACH_ONLY:
+                  // Keep tag attachment edge only; semantic DAG comes from backend edges.
+                  // Avoid synthetic long chain that turns graph into a vertical "stick".
+                  if (orderedScopedFiles.length > 0) {
+                    allEdges.push({
+                      id: `kg_tag_edge_${tagNodeId}_${orderedScopedFiles[0]}`,
+                      source: tagNodeId,
+                      target: orderedScopedFiles[0],
+                      type: 'knowledge_tag',
+                    });
+                  }
                 });
               }
             } else if (kg.status === 'error') {
@@ -268,11 +431,54 @@ export function useTreeData() {
             }
 
             const kgEdges = Array.isArray(kg.edges) ? kg.edges : [];
-            const kgChainEdges = Array.isArray(kg.chain_edges) ? kg.chain_edges : [];
-            const extraEdges = [...kgEdges, ...kgChainEdges];
+            const extraEdges = [...kgEdges];
+            const skipSemanticOverlay = false;
+            const SEMANTIC_TOP_K_OUT = 2;
 
             const knownEdgeIds = new Set(allEdges.map((e) => `${e.source}|${e.target}|${e.type}`));
-            extraEdges.forEach((edge: any, idx) => {
+            const adjacency = new Map<string, Set<string>>();
+            const addAdj = (from: string, to: string) => {
+              if (!adjacency.has(from)) adjacency.set(from, new Set());
+              adjacency.get(from)!.add(to);
+            };
+            const wouldCreateCycle = (from: string, to: string): boolean => {
+              if (from === to) return true;
+              const stack = [to];
+              const visited = new Set<string>();
+              while (stack.length > 0) {
+                const cur = stack.pop()!;
+                if (cur === from) return true;
+                if (visited.has(cur)) continue;
+                visited.add(cur);
+                const next = adjacency.get(cur);
+                if (!next) continue;
+                next.forEach((n) => {
+                  if (!visited.has(n)) stack.push(n);
+                });
+              }
+              return false;
+            };
+
+            // Seed adjacency with current (already accepted) edges.
+            allEdges.forEach((edge) => {
+              if (!edge?.source || !edge?.target) return;
+              addAdj(edge.source, edge.target);
+            });
+
+            const getNodeTime = (nodeId: string): number => {
+              const node = allNodes[nodeId] as any;
+              if (!node) return 0;
+              const md = node.metadata || {};
+              const created = Number(md.created_time || md.createdAt || 0);
+              const modified = Number(md.modified_time || md.updated_at || md.mtime || 0);
+              if (Number.isFinite(created) && created > 0) return created;
+              if (Number.isFinite(modified) && modified > 0) return modified;
+              return 0;
+            };
+
+            const semanticCandidates: Array<{ from: string; to: string; weight: number; idx: number }> = [];
+              extraEdges.forEach((edge: any, idx) => {
+              if (skipSemanticOverlay) return;
               if (!edge || typeof edge !== 'object') return;
               const rawSource = String(edge.source || edge.from || '');
               const rawTarget = String(edge.target || edge.to || '');
@@ -287,24 +493,180 @@ export function useTreeData() {
 
               if (!source || !target) return;
               if (!allNodes[source] || !allNodes[target]) return;
-              const sourcePath = String((allNodes[source] as any)?.path || '');
-              const targetPath = String((allNodes[target] as any)?.path || '');
-              if (scopedPathSet.size > 0) {
-                if (!sourcePath || !targetPath) return;
-                if (!scopedPathSet.has(sourcePath) || !scopedPathSet.has(targetPath)) return;
+              // MARKER_155.KMODE.DAG_ENFORCE:
+              // Enforce acyclic semantic graph:
+              // 1) orient by time (older -> newer), 2) deterministic tie-break, 3) cycle guard.
+              let from = source;
+              let to = target;
+              const tFrom = getNodeTime(from);
+              const tTo = getNodeTime(to);
+              if (tFrom > 0 && tTo > 0 && tFrom !== tTo) {
+                if (tFrom > tTo) {
+                  from = target;
+                  to = source;
+                }
+              } else if (from > to) {
+                // deterministic fallback when timestamps absent/equal
+                from = target;
+                to = source;
               }
-              const dedupKey = `${source}|${target}|semantic`;
-              if (knownEdgeIds.has(dedupKey)) return;
-              knownEdgeIds.add(dedupKey);
-              allEdges.push({
-                id: `kg_${source}_${target}_${idx}`,
-                source,
-                target,
-                type: 'contains',
+
+              if (from === to) return;
+              const w = Number((edge as any).weight ?? (edge as any).score ?? 0.5);
+              semanticCandidates.push({
+                from,
+                to,
+                weight: Number.isFinite(w) ? w : 0.5,
+                idx,
               });
             });
+
+            // MARKER_155.KMODE.TOPK_THINNING:
+            // Keep only strongest semantic edges per source, then enforce DAG.
+            const outCount = new Map<string, number>();
+            semanticCandidates
+              .sort((a, b) => b.weight - a.weight)
+              .forEach((cand) => {
+                const usedOut = outCount.get(cand.from) || 0;
+                if (usedOut >= SEMANTIC_TOP_K_OUT) return;
+                const dedupKey = `${cand.from}|${cand.to}|semantic`;
+                if (knownEdgeIds.has(dedupKey)) return;
+                if (wouldCreateCycle(cand.from, cand.to)) return;
+                knownEdgeIds.add(dedupKey);
+                outCount.set(cand.from, usedOut + 1);
+                addAdj(cand.from, cand.to);
+                knowledgeNodeIds.add(cand.from);
+                knowledgeNodeIds.add(cand.to);
+                allEdges.push({
+                  id: `kg_${cand.from}_${cand.to}_${cand.idx}`,
+                  source: cand.from,
+                  target: cand.to,
+                  type: 'knowledge_semantic',
+                });
+              });
+
+            // MARKER_155.KMODE.TOPOLOGICAL_LAYERING:
+            // Frontend layering disabled in A.3; backend now owns DAG layering.
+            if (false && treeViewMode === 'knowledge' && scopedPathSet.size > 0) {
+              const scopedNodeIds = new Set<string>(
+                Object.entries(allNodes)
+                  .filter(([, n]) => {
+                    const p = String((n as any)?.path || '');
+                    return Boolean(p && scopedPathSet.has(p));
+                  })
+                  .map(([id]) => id)
+              );
+
+              // Include knowledge tag hubs in layout layers.
+              Object.keys(allNodes).forEach((id) => {
+                if (id.startsWith('kg_tag_')) scopedNodeIds.add(id);
+              });
+
+              const dagEdges = allEdges.filter((e) => scopedNodeIds.has(e.source) && scopedNodeIds.has(e.target));
+              const indeg = new Map<string, number>();
+              const outs = new Map<string, string[]>();
+              scopedNodeIds.forEach((id) => {
+                indeg.set(id, 0);
+                outs.set(id, []);
+              });
+              dagEdges.forEach((e) => {
+                indeg.set(e.target, (indeg.get(e.target) || 0) + 1);
+                outs.get(e.source)?.push(e.target);
+              });
+
+              const queue: string[] = Array.from(scopedNodeIds).filter((id) => (indeg.get(id) || 0) === 0);
+              const layer = new Map<string, number>();
+              queue.forEach((id) => layer.set(id, 0));
+
+              while (queue.length > 0) {
+                const cur = queue.shift()!;
+                const curLayer = layer.get(cur) || 0;
+                (outs.get(cur) || []).forEach((nxt) => {
+                  layer.set(nxt, Math.max(layer.get(nxt) || 0, curLayer + 1));
+                  indeg.set(nxt, (indeg.get(nxt) || 0) - 1);
+                  if ((indeg.get(nxt) || 0) === 0) queue.push(nxt);
+                });
+              }
+
+              // Fallback for any residual nodes.
+              scopedNodeIds.forEach((id) => {
+                if (!layer.has(id)) layer.set(id, 0);
+              });
+
+              const layers = new Map<number, string[]>();
+              layer.forEach((lv, id) => {
+                if (!layers.has(lv)) layers.set(lv, []);
+                layers.get(lv)!.push(id);
+              });
+
+              const focusNode = Object.values(allNodes).find((node) => {
+                const p = String((node as any)?.path || '').replace(/\\/g, '/').toLowerCase();
+                return p === normalizedScope;
+              });
+              const baseX = Number(focusNode?.position?.x || 0);
+              const baseY = Number(focusNode?.position?.y || 0);
+              const baseZ = Number(focusNode?.position?.z || 0);
+              const LAYER_GAP_Y = 68;
+              const NODE_GAP_X = 42;
+
+              const layerSizes = Array.from(layers.values()).map((ids) => ids.length);
+              const avgLayerSize = layerSizes.length
+                ? layerSizes.reduce((a, b) => a + b, 0) / layerSizes.length
+                : 0;
+              const shouldApplyLayering = avgLayerSize >= 1.6;
+
+              if (shouldApplyLayering) {
+                Array.from(layers.entries())
+                  .sort((a, b) => a[0] - b[0])
+                  .forEach(([lv, ids]) => {
+                    const sortedIds = [...ids].sort((a, b) => {
+                      const na = allNodes[a];
+                      const nb = allNodes[b];
+                      const an = String(na?.name || a);
+                      const bn = String(nb?.name || b);
+                      return an.localeCompare(bn);
+                    });
+                    const centerOffset = (sortedIds.length - 1) / 2;
+                    sortedIds.forEach((id, idx) => {
+                      const node = allNodes[id];
+                      if (!node) return;
+                      node.position = {
+                        x: baseX + (idx - centerOffset) * NODE_GAP_X,
+                        y: baseY + 90 + lv * LAYER_GAP_Y,
+                        z: baseZ + (id.startsWith('kg_tag_') ? 22 : 8),
+                      };
+                    });
+                  });
+              }
+            }
           } catch (kgErr) {
             console.error('[useTreeData] Knowledge overlay failed, keeping directed layout:', kgErr);
+          }
+        }
+
+        // MARKER_155.KMODE.LENS_V1:
+        // Knowledge mode should act as a focused lens for selected folder scope.
+        // Keep only nodes participating in computed KG (scope + semantic expansion).
+        if (treeViewMode === 'knowledge' && knowledgeScopePath) {
+          const focusNode = Object.values(allNodes).find((node) => {
+            const p = String((node as any)?.path || '').replace(/\\/g, '/').toLowerCase();
+            return p === String(knowledgeScopePath).replace(/\\/g, '/').toLowerCase();
+          });
+          if (focusNode?.id) {
+            knowledgeNodeIds.add(focusNode.id);
+          }
+
+          if (knowledgeNodeIds.size > 0) {
+            const scopedNodes: Record<string, TreeNode> = {};
+            knowledgeNodeIds.forEach((id) => {
+              if (allNodes[id]) scopedNodes[id] = allNodes[id];
+            });
+            allNodes = scopedNodes;
+            allEdges = allEdges.filter((edge) => Boolean(allNodes[edge.source] && allNodes[edge.target]));
+            Object.values(allNodes).forEach((node) => {
+              if (!Array.isArray(node.children)) return;
+              node.children = node.children.filter((childId) => Boolean(allNodes[childId]));
+            });
           }
         }
 

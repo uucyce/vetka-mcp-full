@@ -35,6 +35,18 @@ const LAYER_NODE_TYPE: Record<string, string> = {
 interface RoadmapData {
   nodes: DAGNode[];
   edges: DAGEdge[];
+  crossEdges: DAGEdge[];
+  verifier: {
+    decision: 'pass' | 'warn' | 'fail';
+    acyclic?: boolean;
+    monotonic_layers?: boolean;
+    spectral?: {
+      lambda2?: number;
+      eigengap?: number;
+      component_count?: number;
+      status?: 'ok' | 'warn' | 'fail';
+    };
+  } | null;
   loading: boolean;
   error: string | null;
 }
@@ -62,7 +74,15 @@ interface CondensedL2Node {
   layer?: number;
   members?: string[];
   scc_size?: number;
-  metadata?: { parent?: string };
+  metadata?: {
+    parent?: string;
+    cluster_id?: number;
+    rank_bucket?: number;
+    bucket_count?: number;
+    layer_index?: number;
+    is_branch?: boolean;
+    [key: string]: any;
+  };
 }
 
 interface CondensedL2Edge {
@@ -335,9 +355,15 @@ function mapCondensedL2Node(node: CondensedL2Node): DAGNode {
       description: '',
       graphKind: 'project_root' as any,
       projectNodeId: node.id,
+      metadata: node.metadata || {},
     };
   }
   const status = node.scc_size && node.scc_size > 1 ? 'running' : 'pending';
+  const kind = String(node.kind || '');
+  const graphKind =
+    kind === 'folder'
+      ? 'project_dir'
+      : (kind === 'scc' ? 'project_dir' : 'project_file');
   return {
     id: node.id,
     type: 'roadmap_task',
@@ -346,19 +372,27 @@ function mapCondensedL2Node(node: CondensedL2Node): DAGNode {
     layer: typeof node.layer === 'number' ? node.layer : 0,
     taskId: node.id,
     description: node.metadata?.parent || (node.members?.[0] || ''),
-    graphKind: (node.kind === 'scc' ? 'project_dir' : 'project_file') as any,
+    graphKind: graphKind as any,
     projectNodeId: node.id,
+    metadata: node.metadata || {},
   };
 }
 
 function mapCondensedL2Edge(edge: CondensedL2Edge, index: number): DAGEdge {
+  const rawType = String(edge.type || '').toLowerCase();
+  const mappedType: DAGEdge['type'] =
+    rawType === 'structural'
+      ? 'structural'
+      : rawType === 'predicted'
+      ? 'predicted'
+      : 'dependency';
   return {
     id: `l2-${edge.source}-${edge.target}-${index}`,
     source: edge.source,
     target: edge.target,
-    type: edge.type === 'predicted' ? 'predicted' : 'dependency',
+    type: mappedType,
     strength: 0.85,
-    relationKind: 'depends_on',
+    relationKind: mappedType === 'structural' ? 'contains' : 'depends_on',
   };
 }
 
@@ -659,6 +693,8 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
 } {
   const [nodes, setNodes] = useState<DAGNode[]>([]);
   const [edges, setEdges] = useState<DAGEdge[]>([]);
+  const [crossEdges, setCrossEdges] = useState<DAGEdge[]>([]);
+  const [verifier, setVerifier] = useState<RoadmapData['verifier']>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -666,21 +702,87 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
     setLoading(true);
     setError(null);
     try {
+      // MARKER_155.ARCHITECT_BUILD.UI_BIND.V1:
+      // Preferred source: architect build endpoint returns design_graph + verifier contract.
+      const buildRes = await fetch(`${API_BASE}/mcc/graph/build-design`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope_path: scopePath || '',
+          max_nodes: 220,
+          include_artifacts: false,
+          use_predictive_overlay: false,
+          problem_statement: 'Build readable architecture DAG for collaborative agent context.',
+          target_outcome: 'Single-canvas acyclic project DAG for task placement and drill.',
+        }),
+      });
+      if (buildRes.ok) {
+        const buildData = await buildRes.json();
+        const designNodes: CondensedL2Node[] = buildData?.design_graph?.nodes || [];
+        const designEdgesRaw: CondensedL2Edge[] = buildData?.design_graph?.edges || [];
+        const crossEdgesRaw: CondensedL2Edge[] =
+          buildData?.design_graph?.cross_edges ||
+          buildData?.runtime_graph?.l1?.cross_edges ||
+          [];
+        if (designNodes.length > 0) {
+          setNodes(designNodes.map(mapCondensedL2Node));
+          setEdges(designEdgesRaw.map(mapCondensedL2Edge));
+          setCrossEdges(crossEdgesRaw.map((e, i) => ({
+            ...mapCondensedL2Edge(e, i),
+            id: `build-cross-${e.source}-${e.target}-${i}`,
+            strength: Math.max(0.35, Math.min(0.95, Number((e as any).score ?? (e as any).confidence ?? 0.55))),
+            type: 'temporal',
+          })));
+          setVerifier(buildData?.verifier || null);
+          return;
+        }
+      }
+
       // MARKER_155.P15.UI_BIND:
       // Prefer SCC-condensed L2 architecture graph for MCC roadmap canvas.
       const qs = new URLSearchParams();
       if (scopePath) qs.set('scope_path', scopePath);
       qs.set('max_nodes', '220');
+      qs.set('refresh', '1');
       const condensedRes = await fetch(`${API_BASE}/mcc/graph/condensed?${qs.toString()}`);
       if (condensedRes.ok) {
         const condensed = await condensedRes.json();
+        const l2OverviewNodes: CondensedL2Node[] = condensed?.l2_overview?.nodes || [];
+        const l2OverviewEdgesRaw: CondensedL2Edge[] = condensed?.l2_overview?.edges || [];
         const l2Nodes: CondensedL2Node[] = condensed?.l2?.nodes || [];
         const l2EdgesRaw: CondensedL2Edge[] = condensed?.l2?.edges || [];
-        if (l2Nodes.length > 0) {
-          const l2Edges = thinCondensedEdges(l2Nodes, l2EdgesRaw);
-          const rooted = withVirtualArchitectureRoot(l2Nodes, l2Edges, scopePath);
-          setNodes(rooted.nodes.map(mapCondensedL2Node));
-          setEdges(rooted.edges.map(mapCondensedL2Edge));
+        const crossEdgesRaw: CondensedL2Edge[] = condensed?.l1?.cross_edges || [];
+        if (l2OverviewNodes.length > 0 || l2Nodes.length > 0) {
+          const sourceNodes = l2OverviewNodes.length > 0 ? l2OverviewNodes : l2Nodes;
+          const sourceEdges = l2OverviewEdgesRaw.length > 0 ? l2OverviewEdgesRaw : l2EdgesRaw;
+          // MARKER_155.INPUT_MATRIX.BACKBONE_DAG.V1:
+          // Backend now returns algorithmic backbone L2; avoid client-side re-wiring
+          // that can reintroduce horizontal rails/spaghetti.
+          const useRawL2 = true;
+          if (useRawL2) {
+            setNodes(sourceNodes.map(mapCondensedL2Node));
+            setEdges(sourceEdges.map(mapCondensedL2Edge));
+            setCrossEdges(crossEdgesRaw.map((e, i) => ({
+              ...mapCondensedL2Edge(e, i),
+              id: `l1-cross-${e.source}-${e.target}-${i}`,
+              strength: Math.max(0.35, Math.min(0.95, Number((e as any).score ?? (e as any).confidence ?? 0.55))),
+              type: 'temporal',
+            })));
+            setVerifier(null);
+          } else {
+            // Legacy fallback path.
+            const l2Edges = thinCondensedEdges(l2Nodes, l2EdgesRaw);
+            const rooted = withVirtualArchitectureRoot(l2Nodes, l2Edges, scopePath);
+            setNodes(rooted.nodes.map(mapCondensedL2Node));
+            setEdges(rooted.edges.map(mapCondensedL2Edge));
+            setCrossEdges(crossEdgesRaw.map((e, i) => ({
+              ...mapCondensedL2Edge(e, i),
+              id: `l1-cross-${e.source}-${e.target}-${i}`,
+              strength: Math.max(0.35, Math.min(0.95, Number((e as any).score ?? (e as any).confidence ?? 0.55))),
+              type: 'temporal',
+            })));
+            setVerifier(null);
+          }
           return;
         }
       }
@@ -696,6 +798,8 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
           if (mapped.nodes.length > 0) {
             setNodes(mapped.nodes);
             setEdges(mapped.edges);
+            setCrossEdges([]);
+            setVerifier(null);
             return;
           }
         }
@@ -717,11 +821,15 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
 
       setNodes(mappedNodes);
       setEdges(mappedEdges);
+      setCrossEdges([]);
+      setVerifier(null);
     } catch (err) {
       console.warn('[Roadmap] Fetch failed:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
       setNodes([]);
       setEdges([]);
+      setCrossEdges([]);
+      setVerifier(null);
     } finally {
       setLoading(false);
     }
@@ -743,5 +851,5 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
     }
   }, [fetchRoadmap]);
 
-  return { nodes, edges, loading, error, fetchRoadmap, regenerateRoadmap };
+  return { nodes, edges, crossEdges, verifier, loading, error, fetchRoadmap, regenerateRoadmap };
 }

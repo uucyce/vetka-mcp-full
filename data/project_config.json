@@ -1,9 +1,9 @@
 {
-  "project_id": "fake_project_b9c3cf3d",
+  "project_id": "vetka_live_03",
   "source_type": "local",
-  "source_path": "/var/folders/vq/scxn6n8n3v776t0c79rn98vw0000gn/T/tmp2x4mjzdf/fake_project",
+  "source_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03",
   "sandbox_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/data/playgrounds/fake_project_b9c3cf3d",
   "quota_gb": 10,
   "created_at": "2026-02-16T18:45:46.770162+00:00",
-  "qdrant_collection": "fake_project_b9c3cf3d"
+  "qdrant_collection": "vetka_live_03"
 }

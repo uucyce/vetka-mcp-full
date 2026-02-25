@@ -41,6 +41,7 @@ class AddWatchRequest(BaseModel):
     """Request to add a directory to watch."""
     path: str
     recursive: Optional[bool] = True
+    rescan_existing: Optional[bool] = False
 
 
 class RemoveWatchRequest(BaseModel):
@@ -97,6 +98,7 @@ async def add_watch_directory(req: AddWatchRequest, request: Request):
     """
     path = req.path
     recursive = req.recursive
+    rescan_existing = bool(req.rescan_existing)
 
     if not path:
         raise HTTPException(status_code=400, detail="No path provided")
@@ -156,10 +158,11 @@ async def add_watch_directory(req: AddWatchRequest, request: Request):
 
     success = watcher.add_directory(path, recursive=recursive)
 
-    # Phase 54.9: Scan existing files and index to Qdrant
-    # MARKER_90.5.1_FIX: Scan even if already watching (user explicitly requested)
+    # Phase 54.9: Scan existing files and index to Qdrant.
+    # Default behavior: scan only on first add.
+    # Rescan for already watched path requires explicit rescan_existing=true.
     indexed_count = 0
-    should_scan = success or already_watching  # Scan if newly added OR already watching
+    should_scan = bool(success) or (bool(already_watching) and bool(rescan_existing))
     if should_scan:
         try:
             # MARKER_90.6_START: Use unified scan_directory from QdrantUpdater
@@ -257,8 +260,10 @@ async def add_watch_directory(req: AddWatchRequest, request: Request):
     # MARKER_90.5.1_FIX: Improved response message
     if success:
         message = f"Now watching: {path} ({indexed_count} files indexed)"
-    elif already_watching:
+    elif already_watching and rescan_existing:
         message = f"Rescanned (already watching): {path} ({indexed_count} files indexed)"
+    elif already_watching:
+        message = f"Already watching: {path} (rescan skipped)"
     else:
         message = f"Failed to watch: {path}"
 
@@ -972,6 +977,74 @@ async def cleanup_browser_files():
 
     except Exception as e:
         print(f"[Watcher] Cleanup error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/cleanup-playground-files")
+async def cleanup_playground_files(dry_run: bool = False):
+    """
+    Remove indexed playground duplicates from Qdrant.
+
+    Targets paths containing:
+    - /data/playgrounds/
+    - /.playgrounds/
+    """
+    try:
+        from qdrant_client import QdrantClient
+        from qdrant_client.models import PointIdsList
+        from src.config import QDRANT_HOST, QDRANT_PORT
+
+        qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        prefixes = ("/data/playgrounds/", "/.playgrounds/")
+
+        matched_ids = []
+        offset = None
+        while True:
+            points, offset = qdrant_client.scroll(
+                collection_name='vetka_elisya',
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                path = str(payload.get("path", ""))
+                if any(pref in path for pref in prefixes):
+                    matched_ids.append(point.id)
+            if offset is None:
+                break
+
+        if dry_run:
+            return {
+                "success": True,
+                "dry_run": True,
+                "matched_count": len(matched_ids),
+                "message": "Dry run complete; no points deleted",
+            }
+
+        deleted = 0
+        batch_size = 200
+        for i in range(0, len(matched_ids), batch_size):
+            batch = matched_ids[i:i + batch_size]
+            qdrant_client.delete(
+                collection_name='vetka_elisya',
+                points_selector=PointIdsList(points=batch),
+                wait=True,
+            )
+            deleted += len(batch)
+
+        print(f"[Watcher] Cleaned playground files from Qdrant: {deleted}")
+        return {
+            "success": True,
+            "dry_run": False,
+            "matched_count": len(matched_ids),
+            "deleted_count": deleted,
+            "message": "Playground files cleaned up from Qdrant",
+        }
+
+    except Exception as e:
+        print(f"[Watcher] Playground cleanup error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

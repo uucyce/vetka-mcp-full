@@ -40,6 +40,16 @@ import {
   applyHysteresis,
 } from './utils/labelScoring';
 
+interface NodeContextMenuState {
+  visible: boolean;
+  clientX: number;
+  clientY: number;
+  nodeId: string;
+  nodeName: string;
+  nodePath: string;
+  nodeType: string;
+}
+
 // ============================================================================
 // MARKER_111.21_FRUSTUM: Phase 112.2 - Frustum Culling Component
 // Phase 112.6: Adaptive Foveated Spot - screen-position LOD
@@ -222,6 +232,16 @@ export default function App() {
     sourceUrl?: string;
   } | null>(null);
   const [artifactSeekSec, setArtifactSeekSec] = useState<number | undefined>(undefined);
+  const [treeViewMode, setTreeViewMode] = useState<'directed' | 'knowledge'>('directed');
+  const [nodeContextMenu, setNodeContextMenu] = useState<NodeContextMenuState>({
+    visible: false,
+    clientX: 0,
+    clientY: 0,
+    nodeId: '',
+    nodeName: '',
+    nodePath: '',
+    nodeType: '',
+  });
 
   const nodes = useStore((state) => Object.values(state.nodes));
   const selectedId = useStore((state) => state.selectedId);
@@ -639,6 +659,42 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [grabMode, setGrabMode]);
 
+  useEffect(() => {
+    const handleNodeContextMenu = (evt: Event) => {
+      const e = evt as CustomEvent;
+      const d = e.detail || {};
+      setNodeContextMenu({
+        visible: true,
+        clientX: Number(d.clientX || 0),
+        clientY: Number(d.clientY || 0),
+        nodeId: String(d.id || ''),
+        nodeName: String(d.name || ''),
+        nodePath: String(d.path || ''),
+        nodeType: String(d.type || ''),
+      });
+    };
+
+    const handleTreeModeChanged = (evt: Event) => {
+      const e = evt as CustomEvent;
+      const mode = String(e.detail?.mode || '').toLowerCase() === 'knowledge' ? 'knowledge' : 'directed';
+      setTreeViewMode(mode);
+    };
+
+    const closeContextMenu = () => {
+      setNodeContextMenu((prev) => ({ ...prev, visible: false }));
+    };
+
+    window.addEventListener('vetka-node-context-menu', handleNodeContextMenu);
+    window.addEventListener('vetka-tree-mode-changed', handleTreeModeChanged);
+    window.addEventListener('click', closeContextMenu);
+
+    return () => {
+      window.removeEventListener('vetka-node-context-menu', handleNodeContextMenu);
+      window.removeEventListener('vetka-tree-mode-changed', handleTreeModeChanged);
+      window.removeEventListener('click', closeContextMenu);
+    };
+  }, []);
+
   // Phase 50.2: ChestIcon component
   // MARKER_118.1B: ChestIcon — иконка артефакта (сундук)
   const ChestIcon = ({ isOpen }: { isOpen: boolean }) => (
@@ -948,6 +1004,99 @@ export default function App() {
       )}
 
       {/* MARKER_118.2B: REMOVED - floating icons moved to ChatPanel header */}
+
+      {nodeContextMenu.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            left: nodeContextMenu.clientX,
+            top: nodeContextMenu.clientY,
+            background: 'rgba(18,18,18,0.96)',
+            border: '1px solid #343434',
+            borderRadius: 10,
+            minWidth: 220,
+            zIndex: 2200,
+            boxShadow: '0 12px 28px rgba(0,0,0,0.45)',
+            backdropFilter: 'blur(8px)',
+            overflow: 'hidden',
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid #2a2a2a' }}>
+            <div style={{ color: '#e9e9e9', fontSize: 12, fontWeight: 600 }}>{nodeContextMenu.nodeName || 'Folder'}</div>
+            <div style={{ color: '#7e7e7e', fontSize: 11, marginTop: 2 }}>
+              {nodeContextMenu.nodePath}
+            </div>
+          </div>
+
+          <button
+            disabled={nodeContextMenu.nodeType !== 'folder'}
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('vetka-switch-tree-mode', {
+                  detail: { mode: 'directed', scopePath: nodeContextMenu.nodePath },
+                })
+              );
+              if (nodeContextMenu.nodeType === 'folder' && nodeContextMenu.nodePath) {
+                setCameraCommand({
+                  target: nodeContextMenu.nodePath,
+                  zoom: 'medium',
+                  highlight: true,
+                });
+              }
+              setNodeContextMenu((prev) => ({ ...prev, visible: false }));
+            }}
+            style={{
+              width: '100%',
+              textAlign: 'left',
+              padding: '10px 12px',
+              border: 'none',
+              borderTop: '1px solid transparent',
+              background: treeViewMode === 'directed' ? 'rgba(74,158,255,0.14)' : 'transparent',
+              color: nodeContextMenu.nodeType !== 'folder' ? '#6b6b6b' : (treeViewMode === 'directed' ? '#9fccff' : '#d4d4d4'),
+              cursor: nodeContextMenu.nodeType === 'folder' ? 'pointer' : 'not-allowed',
+              fontSize: 13,
+              opacity: nodeContextMenu.nodeType === 'folder' ? 1 : 0.75,
+            }}
+          >
+            Directed Mode
+          </button>
+
+          <button
+            disabled={nodeContextMenu.nodeType !== 'folder'}
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('vetka-switch-tree-mode', {
+                  detail: { mode: 'knowledge', scopePath: nodeContextMenu.nodePath },
+                })
+              );
+              if (nodeContextMenu.nodeType === 'folder' && nodeContextMenu.nodePath) {
+                setCameraCommand({
+                  target: nodeContextMenu.nodePath,
+                  zoom: 'medium',
+                  highlight: true,
+                });
+              }
+              setNodeContextMenu((prev) => ({ ...prev, visible: false }));
+            }}
+            style={{
+              width: '100%',
+              textAlign: 'left',
+              padding: '10px 12px',
+              border: 'none',
+              borderTop: '1px solid #2a2a2a',
+              background: treeViewMode === 'knowledge' ? 'rgba(74,158,255,0.14)' : 'transparent',
+              color: nodeContextMenu.nodeType !== 'folder' ? '#6b6b6b' : (treeViewMode === 'knowledge' ? '#9fccff' : '#d4d4d4'),
+              cursor: nodeContextMenu.nodeType === 'folder' ? 'pointer' : 'not-allowed',
+              fontSize: 13,
+              opacity: nodeContextMenu.nodeType === 'folder' ? 1 : 0.75,
+            }}
+          >
+            Knowledge Mode
+          </button>
+        </div>
+      )}
 
       {/* Phase 65: Grab mode indicator */}
       {grabMode && (

@@ -29,6 +29,8 @@ const LEVEL_DEPTH: Record<NavLevel, number> = {
 interface MatryoshkaTransitionProps {
   navLevel: NavLevel;
   children: ReactNode;
+  // MARKER_155A.G21.DRILL_IN_PLACE: Disable scene-switch animation for single-canvas UX.
+  inPlace?: boolean;
 }
 
 // Transition variants — expand in (drill-down) or contract out (go back)
@@ -49,7 +51,15 @@ const transition = {
   ease: [0.4, 0, 0.2, 1], // cubic-bezier(0.4, 0, 0.2, 1)
 };
 
-export function MatryoshkaTransition({ navLevel, children }: MatryoshkaTransitionProps) {
+export function MatryoshkaTransition({ navLevel, children, inPlace = false }: MatryoshkaTransitionProps) {
+  if (inPlace) {
+    return (
+      <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+        {children}
+      </div>
+    );
+  }
+
   const prevLevelRef = useRef<NavLevel>(navLevel);
   const [direction, setDirection] = useState<'in' | 'out'>('in');
 

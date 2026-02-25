@@ -30,13 +30,17 @@ from pathlib import Path
 from typing import Callable, Dict, List, Set, Optional, Any
 
 from watchdog.observers import Observer
-from watchdog.observers.polling import PollingObserver  # FIX_95.9: Fallback for macOS FSEvents issues
+from watchdog.observers.polling import (
+    PollingObserver,
+)  # FIX_95.9: Fallback for macOS FSEvents issues
 from watchdog.events import FileSystemEventHandler, FileSystemEvent
 
 # FIX_95.9: MARKER_WATCHDOG_002 - macOS FSEvents can miss 'created' events
 # Set USE_POLLING_OBSERVER=1 to use reliable but slower polling instead
-USE_POLLING_OBSERVER = os.environ.get('USE_POLLING_OBSERVER', '0') == '1'
-print(f"[Watcher Module] USE_POLLING_OBSERVER = {USE_POLLING_OBSERVER} (env: {os.environ.get('USE_POLLING_OBSERVER', 'NOT SET')})")
+USE_POLLING_OBSERVER = os.environ.get("USE_POLLING_OBSERVER", "0") == "1"
+print(
+    f"[Watcher Module] USE_POLLING_OBSERVER = {USE_POLLING_OBSERVER} (env: {os.environ.get('USE_POLLING_OBSERVER', 'NOT SET')})"
+)
 
 # Qdrant integration for real-time indexing
 from src.scanners.qdrant_updater import handle_watcher_event
@@ -48,39 +52,83 @@ from src.scanners.qdrant_updater import handle_watcher_event
 
 # Directories to skip
 SKIP_PATTERNS = [
-    '.git', 'node_modules', '__pycache__', '.pyc', '.pyo',
-    '.venv', 'venv', 'venv_', 'site-packages',  # FIX_95.11: Added venv_ and site-packages for virtual envs
-    '.env', 'dist', 'build', '.idea',
-    '.vscode', '.DS_Store', 'Pods', '.gradle', 'target',
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".pyc",
+    ".pyo",
+    ".venv",
+    "venv",
+    "venv_",
+    "site-packages",  # FIX_95.11: Added venv_ and site-packages for virtual envs
+    ".env",
+    "dist",
+    "build",
+    ".idea",
+    ".vscode",
+    ".DS_Store",
+    "Pods",
+    ".gradle",
+    "target",
     # FIX_95.9.3: Prevent infinite loop - TripleWrite writes to changelog, watchdog sees it, triggers TW again
-    'data/changelog', 'changelog_',  # Skip changelog directory and files
-    'watcher_state.json',  # Skip watcher's own state file
-    'models_cache.json', 'groups.json', 'chat_history.json',  # Skip other data files that change frequently
+    "data/changelog",
+    "changelog_",  # Skip changelog directory and files
+    "watcher_state.json",  # Skip watcher's own state file
+    "models_cache.json",
+    "groups.json",
+    "chat_history.json",  # Skip other data files that change frequently
     # MARKER_129.0A: Skip ALL high-frequency data files that change during pipeline execution
     # During Dragon Silver: 50+ writes to these files → 50 TripleWrite calls → server freeze
-    'pipeline_tasks.json',      # Written ~10x per pipeline (every subtask state change)
-    'usage_tracking.json',      # Written ~25x per pipeline (every LLM call!)
-    'model_status_cache.json',  # Written ~15x per pipeline (every model health update)
-    'heartbeat_state.json',     # Written per heartbeat tick
-    'task_board.json',          # Written per task dispatch/completion + SocketIO emit
-    'project_digest.json',      # Written on git commit / sync
-    'config.json',              # App config — rarely changes, no need to index
-    'tool_audit_log.jsonl',     # Append-only audit log
-    'mcp_audit',                # MCP audit directory
+    "pipeline_tasks.json",  # Written ~10x per pipeline (every subtask state change)
+    "usage_tracking.json",  # Written ~25x per pipeline (every LLM call!)
+    "model_status_cache.json",  # Written ~15x per pipeline (every model health update)
+    "heartbeat_state.json",  # Written per heartbeat tick
+    "task_board.json",  # Written per task dispatch/completion + SocketIO emit
+    "project_digest.json",  # Written on git commit / sync
+    "config.json",  # App config — rarely changes, no need to index
+    "tool_audit_log.jsonl",  # Append-only audit log
+    "mcp_audit",  # MCP audit directory
     # MARKER_146.5_WATCHER: Skip playground sandboxes and agent worktrees
     # These are temporary git worktrees with full project copies — indexing them
     # causes massive log spam and blocks the event loop (100+ files per worktree)
-    '.playgrounds',             # PlaygroundManager worktrees (active + test)
-    '.claude/worktrees',        # Claude Code agent experiment worktrees
-    'data/playground_settings.json',  # Playground config (changes on settings update)
+    ".playgrounds",  # PlaygroundManager worktrees (active + test)
+    "data/playgrounds",  # Legacy playground copies under data/
+    ".claude/worktrees",  # Claude Code agent experiment worktrees
+    "data/playground_settings.json",  # Playground config (changes on settings update)
+    # MARKER_155.WATCHDOG.EXCLUDE: External playground directory (prevents recursion)
+    ".vetka",  # External playground base directory (~/.vetka/)
 ]
 
 # Supported file extensions for watching
 SUPPORTED_EXTENSIONS = {
-    '.py', '.js', '.ts', '.jsx', '.tsx', '.json', '.yaml', '.yml',
-    '.md', '.txt', '.html', '.css', '.scss', '.sql', '.sh',
-    '.java', '.go', '.rs', '.rb', '.php', '.c', '.cpp', '.h',
-    '.swift', '.kt', '.scala', '.vue', '.svelte'
+    ".py",
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".md",
+    ".txt",
+    ".html",
+    ".css",
+    ".scss",
+    ".sql",
+    ".sh",
+    ".java",
+    ".go",
+    ".rs",
+    ".rb",
+    ".php",
+    ".c",
+    ".cpp",
+    ".h",
+    ".swift",
+    ".kt",
+    ".scala",
+    ".vue",
+    ".svelte",
 }
 
 
@@ -93,11 +141,11 @@ SUPPORTED_EXTENSIONS = {
 # 2. Emits SocketIO alert with suggested block path
 # 3. Logs warning with the offending path
 
-SPAM_THRESHOLD = 50       # Events per window to trigger mute
+SPAM_THRESHOLD = 50  # Events per window to trigger mute
 SPAM_WINDOW_SECONDS = 10  # Sliding window duration
-SPAM_COOLDOWN = 300       # Seconds before un-muting (5 min)
+SPAM_COOLDOWN = 300  # Seconds before un-muting (5 min)
 REGULAR_SPAM_THRESHOLD = 300  # Higher threshold for regular user directories
-REGULAR_SPAM_COOLDOWN = 30    # Short cooldown for burst protection
+REGULAR_SPAM_COOLDOWN = 30  # Short cooldown for burst protection
 
 
 class SpamDetector:
@@ -109,16 +157,22 @@ class SpamDetector:
     short-muted only on extreme bursts (higher threshold + shorter cooldown).
     """
 
-    def __init__(self, threshold: int = SPAM_THRESHOLD, window: float = SPAM_WINDOW_SECONDS,
-                 cooldown: float = SPAM_COOLDOWN,
-                 regular_threshold: int = REGULAR_SPAM_THRESHOLD,
-                 regular_cooldown: float = REGULAR_SPAM_COOLDOWN):
+    def __init__(
+        self,
+        threshold: int = SPAM_THRESHOLD,
+        window: float = SPAM_WINDOW_SECONDS,
+        cooldown: float = SPAM_COOLDOWN,
+        regular_threshold: int = REGULAR_SPAM_THRESHOLD,
+        regular_cooldown: float = REGULAR_SPAM_COOLDOWN,
+    ):
         self.threshold = threshold
         self.window = window
         self.cooldown = cooldown
         self.regular_threshold = regular_threshold
         self.regular_cooldown = regular_cooldown
-        self._counters: Dict[str, List[float]] = defaultdict(list)  # dir -> [timestamps]
+        self._counters: Dict[str, List[float]] = defaultdict(
+            list
+        )  # dir -> [timestamps]
         self._muted: Dict[str, float] = {}  # dir -> mute_until timestamp
         self._alert_callback: Optional[Callable] = None
         self._lock = threading.Lock()
@@ -163,7 +217,9 @@ class SpamDetector:
                 else:
                     # Cooldown expired — unmute
                     del self._muted[dir_key]
-                    print(f"[Watcher] 🔊 Un-muted directory (cooldown expired): {dir_key}")
+                    print(
+                        f"[Watcher] 🔊 Un-muted directory (cooldown expired): {dir_key}"
+                    )
 
             # Add timestamp, prune old ones
             timestamps = self._counters[dir_key]
@@ -178,13 +234,17 @@ class SpamDetector:
                 self._muted[dir_key] = now + cooldown
                 self._counters[dir_key] = []  # Reset counter
 
-                print(f"\n{'='*60}")
+                print(f"\n{'=' * 60}")
                 print(f"[Watcher] 🚨 SPAM DETECTED: {dir_key}")
-                print(f"[Watcher]    {count} events in {self.window}s (threshold: {threshold})")
+                print(
+                    f"[Watcher]    {count} events in {self.window}s (threshold: {threshold})"
+                )
                 print(f"[Watcher]    Auto-muted for {cooldown}s")
                 print(f"[Watcher]    💡 Suggested skip pattern: '{suggested_skip}'")
-                print(f"[Watcher]    Add to SKIP_PATTERNS in file_watcher.py to permanently block")
-                print(f"{'='*60}\n")
+                print(
+                    f"[Watcher]    Add to SKIP_PATTERNS in file_watcher.py to permanently block"
+                )
+                print(f"{'=' * 60}\n")
 
                 # Emit alert via callback (SocketIO → frontend)
                 if self._alert_callback:
@@ -228,7 +288,7 @@ class SpamDetector:
         parts = Path(file_path).parts
         # Find the first 'dotdir' component (.playgrounds, .claude, .cache, etc.)
         for i, part in enumerate(parts):
-            if part.startswith('.') and part not in ('.', '..'):
+            if part.startswith(".") and part not in (".", ".."):
                 # Return up to 2 levels deep: .playgrounds/pg_xxx
                 end = min(i + 2, len(parts))
                 return str(Path(*parts[:end]))
@@ -260,7 +320,7 @@ class SpamDetector:
         parts = Path(dir_key).parts
         # Find dotdir component
         for part in parts:
-            if part.startswith('.') and part not in ('.', '..'):
+            if part.startswith(".") and part not in (".", ".."):
                 return part  # e.g. '.playgrounds' or '.claude'
         # Fallback: last 2 components
         if len(parts) >= 2:
@@ -281,6 +341,7 @@ def get_spam_detector() -> SpamDetector:
 # VETKA FILE HANDLER (Debounced)
 # ============================================================
 
+
 class VetkaFileHandler(FileSystemEventHandler):
     """
     Debounced file system event handler for VETKA.
@@ -290,7 +351,9 @@ class VetkaFileHandler(FileSystemEventHandler):
     - Bulk operations (git checkout, npm install)
     """
 
-    def __init__(self, on_change_callback: Callable[[Dict], None], debounce_ms: int = 400):
+    def __init__(
+        self, on_change_callback: Callable[[Dict], None], debounce_ms: int = 400
+    ):
         """
         Initialize handler.
 
@@ -328,11 +391,13 @@ class VetkaFileHandler(FileSystemEventHandler):
 
         with self.lock:
             # Add event to pending batch
-            self.pending[path].append({
-                'type': event.event_type,  # created, modified, deleted, moved
-                'path': path,
-                'time': time.time()
-            })
+            self.pending[path].append(
+                {
+                    "type": event.event_type,  # created, modified, deleted, moved
+                    "path": path,
+                    "time": time.time(),
+                }
+            )
 
             # Reset debounce timer for this path
             if path in self.timers:
@@ -340,9 +405,7 @@ class VetkaFileHandler(FileSystemEventHandler):
                 del self.timers[path]  # Fix: Clear reference to prevent memory leak
 
             self.timers[path] = threading.Timer(
-                self.debounce_ms / 1000,
-                self._process_batch,
-                [path]
+                self.debounce_ms / 1000, self._process_batch, [path]
             )
             self.timers[path].start()
 
@@ -367,10 +430,10 @@ class VetkaFileHandler(FileSystemEventHandler):
         if len(events) > 10:
             # Bulk operation detected (git checkout, npm install, etc.)
             coalesced = {
-                'type': 'bulk_update',
-                'path': path,
-                'count': len(events),
-                'events': [e['type'] for e in events]
+                "type": "bulk_update",
+                "path": path,
+                "count": len(events),
+                "events": [e["type"] for e in events],
             }
         else:
             # Single file: use the last event type
@@ -384,6 +447,7 @@ class VetkaFileHandler(FileSystemEventHandler):
 # ADAPTIVE SCANNER
 # ============================================================
 
+
 class AdaptiveScanner:
     """
     Adjusts scan frequency based on directory activity.
@@ -394,9 +458,9 @@ class AdaptiveScanner:
 
     def __init__(self):
         self.heat_scores: Dict[str, float] = {}
-        self.min_interval = 5      # seconds (hot directories)
-        self.max_interval = 300    # seconds (cold directories) = 5 min
-        self.decay_factor = 0.95   # hourly decay
+        self.min_interval = 5  # seconds (hot directories)
+        self.max_interval = 300  # seconds (cold directories) = 5 min
+        self.decay_factor = 0.95  # hourly decay
         self.last_decay = time.time()
 
     def get_scan_interval(self, dir_path: str) -> int:
@@ -411,7 +475,9 @@ class AdaptiveScanner:
         """
         score = self.heat_scores.get(dir_path, 0.0)
         # Hot (score=1.0) -> 5s, Cold (score=0.0) -> 300s
-        interval = int(self.min_interval + (self.max_interval - self.min_interval) * (1 - score))
+        interval = int(
+            self.min_interval + (self.max_interval - self.min_interval) * (1 - score)
+        )
         return interval
 
     def update_heat(self, dir_path: str, event_type: str) -> None:
@@ -423,12 +489,12 @@ class AdaptiveScanner:
             event_type: Type of event ('modify', 'create', 'delete', 'access', 'click')
         """
         delta_map = {
-            'modified': 0.3,
-            'created': 0.2,
-            'deleted': 0.2,
-            'access': 0.1,
-            'click': 0.05,
-            'bulk_update': 0.4
+            "modified": 0.3,
+            "created": 0.2,
+            "deleted": 0.2,
+            "access": 0.1,
+            "click": 0.05,
+            "bulk_update": 0.4,
         }
         delta = delta_map.get(event_type, 0.05)
 
@@ -461,6 +527,7 @@ class AdaptiveScanner:
 # VETKA FILE WATCHER (Main Class)
 # ============================================================
 
+
 class VetkaFileWatcher:
     """
     Manages multiple directory watchers with Socket.IO integration.
@@ -472,7 +539,13 @@ class VetkaFileWatcher:
     - Adaptive scan frequency
     """
 
-    def __init__(self, socketio: Optional[Any] = None, state_file: str = 'data/watcher_state.json', qdrant_client: Optional[Any] = None, use_emit_queue: bool = False):
+    def __init__(
+        self,
+        socketio: Optional[Any] = None,
+        state_file: str = "data/watcher_state.json",
+        qdrant_client: Optional[Any] = None,
+        use_emit_queue: bool = False,
+    ):
         """
         Initialize watcher.
 
@@ -523,6 +596,40 @@ class VetkaFileWatcher:
             return False
 
         with self._lock:
+            # Prevent nested duplicate watchers:
+            # - if a parent path is already watched, child watcher is redundant
+            # - if adding parent path, remove already watched children
+            covered_by_parent = None
+            redundant_children: List[str] = []
+            prefix = path + os.sep
+            for watched in list(self.watched_dirs):
+                watched_prefix = watched + os.sep
+                if path == watched:
+                    covered_by_parent = watched
+                    break
+                if path.startswith(watched_prefix):
+                    covered_by_parent = watched
+                    break
+                if watched.startswith(prefix):
+                    redundant_children.append(watched)
+
+            if covered_by_parent:
+                print(f"[Watcher] Skip nested watch (covered by {covered_by_parent}): {path}")
+                return False
+
+            # Remove redundant child watchers before adding the parent.
+            for child in redundant_children:
+                try:
+                    observer = self.observers.get(child)
+                    if observer is not None:
+                        observer.stop()
+                        observer.join(timeout=5)
+                        del self.observers[child]
+                    self.watched_dirs.discard(child)
+                    print(f"[Watcher] Removed redundant child watch: {child}")
+                except Exception as e:
+                    print(f"[Watcher] Failed removing redundant child {child}: {e}")
+
             if path in self.watched_dirs:
                 print(f"[Watcher] Already watching: {path}")
                 return False
@@ -530,7 +637,7 @@ class VetkaFileWatcher:
             try:
                 # FIX_95.9: MARKER_WATCHDOG_002 - Use PollingObserver on macOS if FSEvents unreliable
                 # Read env var dynamically to ensure it's picked up even with uvicorn reload
-                use_polling = os.environ.get('USE_POLLING_OBSERVER', '0') == '1'
+                use_polling = os.environ.get("USE_POLLING_OBSERVER", "0") == "1"
                 if use_polling:
                     observer = PollingObserver(timeout=1)  # Check every 1 second
                     print(f"[Watcher] Using PollingObserver (slower but reliable)")
@@ -591,8 +698,8 @@ class VetkaFileWatcher:
         Args:
             event: Coalesced event dictionary
         """
-        event_type = event['type']
-        path = event['path']
+        event_type = event["type"]
+        path = event["path"]
 
         print(f"[Watcher] {event_type}: {path}")
 
@@ -619,7 +726,9 @@ class VetkaFileWatcher:
 
         if not qdrant_client:
             # FIX_95.9: Schedule non-blocking retry instead of blocking sleep
-            print(f"[Watcher] ⏳ Qdrant unavailable, scheduling background retry for: {path}")
+            print(
+                f"[Watcher] ⏳ Qdrant unavailable, scheduling background retry for: {path}"
+            )
             self._schedule_qdrant_retry(event, retry_count=0)
             # Continue to emit socket event (don't block watchdog thread)
             indexed_successfully = False
@@ -627,11 +736,14 @@ class VetkaFileWatcher:
             # Qdrant client available - index immediately
             # FIX_96.1: Explicit enable_triple_write=True for coherent writes to all stores
             try:
-                result = handle_watcher_event(event, qdrant_client=qdrant_client, enable_triple_write=True)
+                result = handle_watcher_event(
+                    event, qdrant_client=qdrant_client, enable_triple_write=True
+                )
                 indexed_successfully = result
                 print(f"[Watcher] ✅ Indexed via TripleWrite: {path}")
             except Exception as e:
                 import traceback
+
                 print(f"[Watcher] ❌ Error updating Qdrant: {e}")
                 traceback.print_exc()
         # MARKER_90.3_END
@@ -640,28 +752,38 @@ class VetkaFileWatcher:
         # This ensures tree/data will include the new file
         if self.socketio:
             try:
-                if event_type == 'created':
-                    self._emit('node_added', {'path': path, 'event': event, 'indexed': indexed_successfully})
-                elif event_type == 'deleted':
-                    self._emit('node_removed', {'path': path, 'event': event})
-                elif event_type == 'modified':
-                    self._emit('node_updated', {'path': path, 'event': event, 'indexed': indexed_successfully})
-                elif event_type == 'moved':
-                    self._emit('node_moved', {'path': path, 'event': event})
-                elif event_type == 'bulk_update':
-                    self._emit('tree_bulk_update', {
-                        'path': path,
-                        'count': event.get('count', 0),
-                        'events': event.get('events', [])
-                    })
+                if event_type == "created":
+                    self._emit(
+                        "node_added",
+                        {"path": path, "event": event, "indexed": indexed_successfully},
+                    )
+                elif event_type == "deleted":
+                    self._emit("node_removed", {"path": path, "event": event})
+                elif event_type == "modified":
+                    self._emit(
+                        "node_updated",
+                        {"path": path, "event": event, "indexed": indexed_successfully},
+                    )
+                elif event_type == "moved":
+                    self._emit("node_moved", {"path": path, "event": event})
+                elif event_type == "bulk_update":
+                    self._emit(
+                        "tree_bulk_update",
+                        {
+                            "path": path,
+                            "count": event.get("count", 0),
+                            "events": event.get("events", []),
+                        },
+                    )
 
                 # MARKER_124.3A: Phase 124.3 - Emit glow AFTER node_added
                 # Fix: Node must exist in frontend store before glow can be applied
-                if event_type in ('created', 'modified'):
+                if event_type in ("created", "modified"):
                     try:
                         from src.services.activity_hub import get_activity_hub
+
                         hub = get_activity_hub()
-                        intensity = 0.9 if event_type == 'created' else 0.7
+                        intensity = 0.9 if event_type == "created" else 0.7
                         hub.emit_glow_sync(path, intensity, f"watcher:{event_type}")
                     except Exception as glow_err:
                         print(f"[Watcher] Glow emit failed: {glow_err}")
@@ -670,7 +792,9 @@ class VetkaFileWatcher:
                 print(f"[Watcher] Error emitting socket event: {e}")
         # MARKER_90.11_END
 
-    def _schedule_qdrant_retry(self, event: Dict, retry_count: int = 0, max_retries: int = 3) -> None:
+    def _schedule_qdrant_retry(
+        self, event: Dict, retry_count: int = 0, max_retries: int = 3
+    ) -> None:
         """
         FIX_95.9: Non-blocking Qdrant retry via background timer.
 
@@ -684,44 +808,62 @@ class VetkaFileWatcher:
             max_retries: Maximum retry attempts (default: 3)
         """
         if retry_count >= max_retries:
-            path = event.get('path', 'unknown')
-            print(f"[Watcher] ⚠️ SKIPPED after {max_retries} retries (Qdrant unavailable): {path}")
+            path = event.get("path", "unknown")
+            print(
+                f"[Watcher] ⚠️ SKIPPED after {max_retries} retries (Qdrant unavailable): {path}"
+            )
             return
 
         # Exponential backoff: 2s, 4s, 8s
-        delay = 2 * (2 ** retry_count)
-        path = event.get('path', 'unknown')
+        delay = 2 * (2**retry_count)
+        path = event.get("path", "unknown")
 
         def retry_index():
             qdrant_client = self._get_qdrant_client()
             if qdrant_client:
                 try:
                     # FIX_96.1: Explicit enable_triple_write=True for coherent writes
-                    result = handle_watcher_event(event, qdrant_client=qdrant_client, enable_triple_write=True)
+                    result = handle_watcher_event(
+                        event, qdrant_client=qdrant_client, enable_triple_write=True
+                    )
                     if result:
-                        print(f"[Watcher] ✅ Retry #{retry_count + 1} via TripleWrite succeeded: {path}")
+                        print(
+                            f"[Watcher] ✅ Retry #{retry_count + 1} via TripleWrite succeeded: {path}"
+                        )
                         # Emit update to frontend
                         if self.socketio:
-                            event_type = event.get('type', 'modified')
-                            if event_type == 'created':
-                                self._emit('node_added', {'path': path, 'event': event, 'indexed': True})
-                            elif event_type == 'modified':
-                                self._emit('node_updated', {'path': path, 'event': event, 'indexed': True})
+                            event_type = event.get("type", "modified")
+                            if event_type == "created":
+                                self._emit(
+                                    "node_added",
+                                    {"path": path, "event": event, "indexed": True},
+                                )
+                            elif event_type == "modified":
+                                self._emit(
+                                    "node_updated",
+                                    {"path": path, "event": event, "indexed": True},
+                                )
                     else:
-                        print(f"[Watcher] ⚠️ Retry #{retry_count + 1} returned False: {path}")
+                        print(
+                            f"[Watcher] ⚠️ Retry #{retry_count + 1} returned False: {path}"
+                        )
                 except Exception as e:
                     print(f"[Watcher] ❌ Retry #{retry_count + 1} error: {e}")
                     # Schedule another retry
                     self._schedule_qdrant_retry(event, retry_count + 1, max_retries)
             else:
-                print(f"[Watcher] ⏳ Retry #{retry_count + 1} - still no Qdrant, scheduling next: {path}")
+                print(
+                    f"[Watcher] ⏳ Retry #{retry_count + 1} - still no Qdrant, scheduling next: {path}"
+                )
                 self._schedule_qdrant_retry(event, retry_count + 1, max_retries)
 
         # Schedule non-blocking retry
         timer = threading.Timer(delay, retry_index)
         timer.daemon = True  # Don't block app shutdown
         timer.start()
-        print(f"[Watcher] 🔄 Scheduled retry #{retry_count + 1} in {delay}s for: {path}")
+        print(
+            f"[Watcher] 🔄 Scheduled retry #{retry_count + 1} in {delay}s for: {path}"
+        )
 
     def _start_emit_worker(self) -> None:
         """
@@ -730,6 +872,7 @@ class VetkaFileWatcher:
         """
         import queue
         import asyncio
+
         self._emit_queue = queue.Queue()
 
         def worker():
@@ -745,7 +888,9 @@ class VetkaFileWatcher:
                     if self.socketio:
                         # Phase 80.20: Run coroutine in thread's event loop
                         loop.run_until_complete(self.socketio.emit(event_name, data))
-                        print(f"[Watcher] Queue emitted {event_name}: {data.get('path', 'unknown')}")
+                        print(
+                            f"[Watcher] Queue emitted {event_name}: {data.get('path', 'unknown')}"
+                        )
                 except Exception as e:
                     print(f"[Watcher] Queue emit error: {e}")
                 finally:
@@ -753,11 +898,15 @@ class VetkaFileWatcher:
 
             loop.close()
 
-        self._emit_worker_thread = threading.Thread(target=worker, daemon=True, name="WatcherEmitWorker")
+        self._emit_worker_thread = threading.Thread(
+            target=worker, daemon=True, name="WatcherEmitWorker"
+        )
         self._emit_worker_thread.start()
         print("[Watcher] Emit worker started (queue mode with async support)")
 
-    def _on_spam_detected(self, dir_path: str, event_count: int, suggested_skip: str) -> None:
+    def _on_spam_detected(
+        self, dir_path: str, event_count: int, suggested_skip: str
+    ) -> None:
         """
         MARKER_146.5_SPAM: Callback when SpamDetector identifies a noisy directory.
         Emits a watcher_spam_alert SocketIO event to frontend with:
@@ -765,16 +914,19 @@ class VetkaFileWatcher:
         - event_count: how many events triggered the alert
         - suggested_skip: pattern to add to SKIP_PATTERNS
         """
-        self._emit('watcher_spam_alert', {
-            'dir_path': dir_path,
-            'event_count': event_count,
-            'suggested_skip': suggested_skip,
-            'message': f'Directory "{dir_path}" generated {event_count} events in {SPAM_WINDOW_SECONDS}s. '
-                       f'Auto-muted for {SPAM_COOLDOWN}s. '
-                       f'Suggest adding \'{suggested_skip}\' to SKIP_PATTERNS.',
-            'action': 'add_skip_pattern',
-            'time': time.time()
-        })
+        self._emit(
+            "watcher_spam_alert",
+            {
+                "dir_path": dir_path,
+                "event_count": event_count,
+                "suggested_skip": suggested_skip,
+                "message": f'Directory "{dir_path}" generated {event_count} events in {SPAM_WINDOW_SECONDS}s. '
+                f"Auto-muted for {SPAM_COOLDOWN}s. "
+                f"Suggest adding '{suggested_skip}' to SKIP_PATTERNS.",
+                "action": "add_skip_pattern",
+                "time": time.time(),
+            },
+        )
 
     def _emit(self, event_name: str, data: Dict) -> None:
         """
@@ -821,6 +973,7 @@ class VetkaFileWatcher:
         except Exception as e:
             print(f"[Watcher] Emit error for {event_name}: {e}")
             import traceback
+
             traceback.print_exc()
 
     def _get_qdrant_client(self) -> Optional[Any]:
@@ -842,8 +995,9 @@ class VetkaFileWatcher:
         # Try 1: get_qdrant_manager from components_init
         try:
             from src.initialization.components_init import get_qdrant_manager
+
             manager = get_qdrant_manager()
-            if manager and hasattr(manager, 'client') and manager.client:
+            if manager and hasattr(manager, "client") and manager.client:
                 self.qdrant_client = manager.client
                 print("[Watcher] ✅ Qdrant client from qdrant_manager")
                 return manager.client
@@ -853,8 +1007,13 @@ class VetkaFileWatcher:
         # Try 2: memory_manager.qdrant_client (VetkaMemory) - THIS WORKS per Kimi K2
         try:
             from src.initialization.components_init import get_memory_manager
+
             memory_manager = get_memory_manager()
-            if memory_manager and hasattr(memory_manager, 'qdrant_client') and memory_manager.qdrant_client:
+            if (
+                memory_manager
+                and hasattr(memory_manager, "qdrant_client")
+                and memory_manager.qdrant_client
+            ):
                 self.qdrant_client = memory_manager.qdrant_client
                 print("[Watcher] ✅ Qdrant client from memory_manager")
                 return memory_manager.qdrant_client
@@ -864,6 +1023,7 @@ class VetkaFileWatcher:
         # Try 3: Direct from qdrant_client singleton
         try:
             from src.memory.qdrant_client import get_qdrant_client
+
             client = get_qdrant_client()
             if client:
                 self.qdrant_client = client
@@ -879,11 +1039,11 @@ class VetkaFileWatcher:
         """Persist watched directories to file."""
         try:
             state = {
-                'watched_dirs': list(self.watched_dirs),
-                'heat_scores': self.adaptive_scanner.get_all_heat_scores(),
-                'saved_at': time.time()
+                "watched_dirs": list(self.watched_dirs),
+                "heat_scores": self.adaptive_scanner.get_all_heat_scores(),
+                "saved_at": time.time(),
             }
-            with open(self.state_file, 'w') as f:
+            with open(self.state_file, "w") as f:
                 json.dump(state, f, indent=2)
         except Exception as e:
             print(f"[Watcher] Error saving state: {e}")
@@ -891,18 +1051,20 @@ class VetkaFileWatcher:
     def load_state(self) -> None:
         """Restore watched directories on startup."""
         try:
-            with open(self.state_file, 'r') as f:
+            with open(self.state_file, "r") as f:
                 state = json.load(f)
 
-            # Restore watched directories
-            for path in state.get('watched_dirs', []):
+            # Restore watched directories (parents first reduces nested duplicates).
+            watched_dirs = [p for p in state.get("watched_dirs", []) if isinstance(p, str)]
+            watched_dirs.sort(key=lambda p: len(os.path.abspath(p)))
+            for path in watched_dirs:
                 if os.path.exists(path):
                     self.add_directory(path)
                 else:
                     print(f"[Watcher] Skipping non-existent path: {path}")
 
             # Restore heat scores
-            heat_scores = state.get('heat_scores', {})
+            heat_scores = state.get("heat_scores", {})
             self.adaptive_scanner.heat_scores = heat_scores
 
             print(f"[Watcher] Restored state: {len(self.watched_dirs)} directories")
@@ -967,10 +1129,12 @@ class VetkaFileWatcher:
             Dictionary with watching dirs, count, and heat scores
         """
         return {
-            'watching': list(self.watched_dirs),
-            'count': len(self.watched_dirs),
-            'heat_scores': self.adaptive_scanner.get_all_heat_scores(),
-            'observers_active': len([o for o in self.observers.values() if o.is_alive()])
+            "watching": list(self.watched_dirs),
+            "count": len(self.watched_dirs),
+            "heat_scores": self.adaptive_scanner.get_all_heat_scores(),
+            "observers_active": len(
+                [o for o in self.observers.values() if o.is_alive()]
+            ),
         }
 
 
@@ -982,7 +1146,11 @@ _watcher_instance: Optional[VetkaFileWatcher] = None
 _watcher_lock = threading.Lock()
 
 
-def get_watcher(socketio: Optional[Any] = None, qdrant_client: Optional[Any] = None, use_emit_queue: bool = False) -> VetkaFileWatcher:
+def get_watcher(
+    socketio: Optional[Any] = None,
+    qdrant_client: Optional[Any] = None,
+    use_emit_queue: bool = False,
+) -> VetkaFileWatcher:
     """
     Get singleton watcher instance.
 
@@ -998,7 +1166,11 @@ def get_watcher(socketio: Optional[Any] = None, qdrant_client: Optional[Any] = N
 
     with _watcher_lock:
         if _watcher_instance is None:
-            _watcher_instance = VetkaFileWatcher(socketio=socketio, qdrant_client=qdrant_client, use_emit_queue=use_emit_queue)
+            _watcher_instance = VetkaFileWatcher(
+                socketio=socketio,
+                qdrant_client=qdrant_client,
+                use_emit_queue=use_emit_queue,
+            )
             _watcher_instance.load_state()
         else:
             if socketio and _watcher_instance.socketio is None:

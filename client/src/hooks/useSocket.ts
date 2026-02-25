@@ -659,6 +659,37 @@ export function useSocket() {
       }, 800);
     });
 
+    const hasTargetNodeInStore = (targetPath: string, targetBase: string): boolean => {
+      const stateNodes = useStore.getState().nodes;
+      return Object.values(stateNodes).some((n: any) => {
+        const nodePath = String(n.path || '');
+        return nodePath === targetPath || nodePath.endsWith('/' + targetBase) || n.name === targetBase;
+      });
+    };
+
+    const waitForNodeInStore = (targetPath: string, targetBase: string, timeoutMs = 3000): Promise<boolean> => {
+      if (hasTargetNodeInStore(targetPath, targetBase)) {
+        return Promise.resolve(true);
+      }
+      return new Promise((resolve) => {
+        let resolved = false;
+        const finalize = (found: boolean) => {
+          if (resolved) return;
+          resolved = true;
+          clearTimeout(timeout);
+          unsubscribe();
+          resolve(found);
+        };
+
+        const timeout = window.setTimeout(() => finalize(false), timeoutMs);
+        const unsubscribe = useStore.subscribe(() => {
+          if (hasTargetNodeInStore(targetPath, targetBase)) {
+            finalize(true);
+          }
+        });
+      });
+    };
+
     // MARKER_136.CAM_SOCKET_FILE_INDEXED: explicit camera trigger for manual index-file flow
     socket.on('file_indexed', async (data) => {
       const targetPath = String(data?.path || '').trim();
@@ -667,23 +698,12 @@ export function useSocket() {
       await reloadTreeFromHttp();
 
       const targetBase = targetPath.split('/').pop() || targetPath;
-      let attempts = 0;
-      const timer = setInterval(() => {
-        attempts += 1;
-        const stateNodes = useStore.getState().nodes;
-        const hasNode = Object.values(stateNodes).some((n: any) => {
-          const nodePath = String(n.path || '');
-          return nodePath === targetPath || nodePath.endsWith('/' + targetBase) || n.name === targetBase;
-        });
-        if (hasNode || attempts >= 12) {
-          clearInterval(timer);
-          setCameraCommand({
-            target: hasNode ? targetPath : targetBase,
-            zoom: 'medium',
-            highlight: true,
-          });
-        }
-      }, 250);
+      const hasNode = await waitForNodeInStore(targetPath, targetBase);
+      setCameraCommand({
+        target: hasNode ? targetPath : targetBase,
+        zoom: 'medium',
+        highlight: true,
+      });
     });
 
     socket.on('node_removed', (data) => {

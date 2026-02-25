@@ -2622,7 +2622,7 @@ async def llm_call_endpoint(request: Request) -> Dict[str, Any]:
 # ============================================================
 
 @router.get("/usage/balances")
-async def get_usage_balances() -> Dict[str, Any]:
+async def get_usage_balances(refresh_remote: bool = False) -> Dict[str, Any]:
     """
     MARKER_126.5A: Get unified usage and balance data.
     MARKER_126.3E: Sync all keys from KeyManager before returning.
@@ -2645,15 +2645,22 @@ async def get_usage_balances() -> Dict[str, Any]:
     # MARKER_126.3E: Sync ALL keys from KeyManager (not just used ones)
     synced_count = tracker.sync_from_key_manager()
 
-    # Optionally refresh remote balances for providers that support it
-    try:
-        for provider in ['openrouter', 'polza']:
-            try:
-                await km.fetch_provider_balance(provider)
-            except Exception:
-                pass
-    except Exception:
-        pass
+    # MARKER_155.PERF.BALANCE_TRIGGER_CACHE:
+    # Do not hit remote balance APIs on every poll; only when explicitly requested.
+    remote_cache = getattr(get_usage_balances, "_remote_cache", {"ts": 0.0})
+    now_ts = time.time()
+    ttl_sec = 300.0
+    should_refresh_remote = bool(refresh_remote) or (now_ts - float(remote_cache.get("ts", 0.0)) > ttl_sec)
+    if should_refresh_remote:
+        try:
+            for provider in ['openrouter', 'polza']:
+                try:
+                    await km.fetch_provider_balance(provider)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        get_usage_balances._remote_cache = {"ts": now_ts}
 
     return {
         "success": True,

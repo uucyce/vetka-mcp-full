@@ -1,16 +1,16 @@
 /**
- * MARKER_153.6A: RailsActionBar — max 3 context-aware actions per level.
+ * ⚠️ DEPRECATED: RailsActionBar
  *
- * Floating bottom bar in the center DAG column.
- * Shows different actions depending on current navLevel.
- * Replaces WorkflowToolbar for non-edit scenarios.
+ * MARKER_155.CLEANUP: Component deprecated in Phase 155.
+ * Replaced by FooterActionBar which provides unified 3-action interface.
  *
- * Design: ComfyUI/n8n action-bar UX (Grok R6 recommendation).
- * Extra actions accessible via ⚙ gear icon popup.
+ * This file is kept for reference only. Do not use in new code.
+ * All functionality migrated to FooterActionBar + useMCCStore.LEVEL_CONFIG.
  *
  * @phase 153
  * @wave 6
- * @status active
+ * @status deprecated
+ * @replaced_by FooterActionBar
  */
 
 import { useCallback, useMemo } from 'react';

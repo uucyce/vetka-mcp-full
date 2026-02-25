@@ -19,6 +19,7 @@ import { NOLAN_PALETTE } from '../../utils/dagLayout';
 // ── MARKER_154.2B: Extra actions per level (gear popup) ──
 const GEAR_ACTIONS: Partial<Record<NavLevel, ActionDef[]>> = {
   roadmap: [
+    { label: 'Playground', icon: '📁', action: 'openPlayground' },
     { label: 'Regenerate', icon: '↻', action: 'regenerate' },
     { label: 'Settings', icon: '⚙', action: 'openSettings' },
   ],
@@ -129,13 +130,14 @@ export function FooterActionBar({ onAction, disabledActions = [] }: FooterAction
       }}
     >
       {/* Primary actions (max 3) */}
-      {actions.map((act) => {
+      {actions.map((act, idx) => {
         const isDisabled = disabledActions.includes(act.action);
         return (
           <button
             key={act.action}
             onClick={() => !isDisabled && handleAction(act.action)}
             disabled={isDisabled}
+            data-onboarding={idx === 0 ? 'footer-primary-1' : undefined}
             style={{
               display: 'flex',
               alignItems: 'center',

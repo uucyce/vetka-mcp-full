@@ -38,9 +38,24 @@ export function PlaygroundBadge() {
   // Initial fetch + periodic refresh
   useEffect(() => {
     fetchPlaygrounds();
-    const timer = setInterval(fetchPlaygrounds, 15000);
-    return () => clearInterval(timer);
+    const onVisibility = () => {
+      if (!document.hidden) fetchPlaygrounds();
+    };
+    window.addEventListener('task-board-updated', fetchPlaygrounds as EventListener);
+    window.addEventListener('pipeline-stats', fetchPlaygrounds as EventListener);
+    window.addEventListener('focus', fetchPlaygrounds);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('task-board-updated', fetchPlaygrounds as EventListener);
+      window.removeEventListener('pipeline-stats', fetchPlaygrounds as EventListener);
+      window.removeEventListener('focus', fetchPlaygrounds);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [fetchPlaygrounds]);
+
+  useEffect(() => {
+    if (showDropdown) fetchPlaygrounds();
+  }, [showDropdown, fetchPlaygrounds]);
 
   const handleDestroy = useCallback(async (pgId: string) => {
     setLoading(true);

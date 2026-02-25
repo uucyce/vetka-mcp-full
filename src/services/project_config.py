@@ -110,10 +110,14 @@ class ProjectConfig:
         if not self.sandbox_exists():
             return 0
         try:
+            timeout_sec = max(
+                1,
+                int(str(os.getenv("VETKA_SANDBOX_DU_TIMEOUT_SEC", "5")).strip() or "5"),
+            )
             # Use du -sb for fast recursive byte count (macOS: du -sk then *1024)
             result = subprocess.run(
                 ["du", "-sk", self.sandbox_path],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, timeout=timeout_sec,
             )
             if result.returncode == 0 and result.stdout.strip():
                 # du -sk returns KB, convert to bytes
@@ -151,7 +155,8 @@ class ProjectConfig:
             "percent": 0, "warning": False, "exceeded": False,
         }
         file_count = 0
-        if exists:
+        include_file_count = str(os.getenv("VETKA_SANDBOX_COUNT_FILES", "0")).strip().lower() in {"1", "true", "yes", "on"}
+        if exists and include_file_count:
             try:
                 # Fast file count: find . -type f | wc -l
                 result = subprocess.run(

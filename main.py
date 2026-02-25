@@ -39,7 +39,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 # Suppress noisy third-party loggers immediately (before any imports trigger them)
-for _noisy in ['httpx', 'httpcore', 'urllib3', 'qdrant_client', 'weaviate', 'ollama', 'grpc']:
+for _noisy in [
+    "httpx",
+    "httpcore",
+    "urllib3",
+    "qdrant_client",
+    "weaviate",
+    "ollama",
+    "grpc",
+]:
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 # Add project to path
@@ -66,19 +74,90 @@ async def lifespan(app: FastAPI):
     """Initialize components on startup, cleanup on shutdown."""
     import asyncio
     import logging
+    import urllib.request
 
     logger = logging.getLogger(__name__)
+    jepa_runtime_proc: asyncio.subprocess.Process | None = None
+
+    async def _await_shutdown_step(label: str, coro, timeout_sec: float = 8.0):
+        """Bound shutdown waits to prevent stuck SIGINT hangs."""
+        try:
+            await asyncio.wait_for(coro, timeout=timeout_sec)
+            logger.info(f"[Shutdown] {label} stopped")
+        except asyncio.TimeoutError:
+            logger.warning(f"[Shutdown] {label} timeout after {timeout_sec:.1f}s (continue)")
+        except asyncio.CancelledError:
+            logger.info(f"[Shutdown] {label} cancelled")
+        except Exception as e:
+            logger.warning(f"[Shutdown] {label} stop failed: {e}")
+
+    async def _http_ok(url: str, timeout_sec: float = 0.8) -> bool:
+        def _probe() -> bool:
+            try:
+                req = urllib.request.Request(url=url, method="GET")
+                with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+                    return 200 <= int(getattr(resp, "status", 0)) < 400
+            except Exception:
+                return False
+
+        return await asyncio.to_thread(_probe)
 
     print("\n" + "=" * 60)
     print("  VETKA FASTAPI STARTING (Phase 39.8 - PRODUCTION)")
     print("=" * 60)
 
     # FIX_95.9: Debug output for watchdog polling mode
-    use_polling = os.environ.get('USE_POLLING_OBSERVER', 'NOT_SET')
+    use_polling = os.environ.get("USE_POLLING_OBSERVER", "NOT_SET")
     print(f"  [DEBUG] USE_POLLING_OBSERVER env = {use_polling}")
 
     # Parse debug mode from environment
     debug_mode = os.getenv("VETKA_DEBUG", "false").lower() == "true"
+
+    # MARKER_155.P3_5.JEPA_AUTOSTART_APP:
+    # Auto-start JEPA HTTP runtime for strict architecture mode, even when app runs via `python main.py`.
+    os.environ.setdefault("MCC_JEPA_HTTP_ENABLE", "1")
+    os.environ.setdefault("MCC_JEPA_HTTP_HOST", "127.0.0.1")
+    os.environ.setdefault("MCC_JEPA_HTTP_PORT", "8099")
+    os.environ.setdefault(
+        "MCC_JEPA_HTTP_URL",
+        f"http://{os.environ['MCC_JEPA_HTTP_HOST']}:{os.environ['MCC_JEPA_HTTP_PORT']}/embed_texts",
+    )
+    jepa_enabled = os.environ.get("MCC_JEPA_HTTP_ENABLE", "").strip().lower() in {"1", "true", "yes", "on"}
+    jepa_host = os.environ.get("MCC_JEPA_HTTP_HOST", "127.0.0.1")
+    jepa_port = os.environ.get("MCC_JEPA_HTTP_PORT", "8099")
+    jepa_health_url = f"http://{jepa_host}:{jepa_port}/health"
+    if jepa_enabled:
+        jepa_alive = await _http_ok(jepa_health_url)
+        if not jepa_alive:
+            try:
+                jepa_runtime_proc = await asyncio.create_subprocess_exec(
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "src.services.jepa_http_server:app",
+                    "--host",
+                    jepa_host,
+                    "--port",
+                    str(jepa_port),
+                    "--log-level",
+                    "warning",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                for _ in range(25):
+                    if await _http_ok(jepa_health_url):
+                        logger.info(f"[Startup] JEPA runtime started on {jepa_host}:{jepa_port}")
+                        break
+                    await asyncio.sleep(0.2)
+                if not await _http_ok(jepa_health_url):
+                    logger.warning(
+                        f"[Startup] JEPA runtime healthcheck failed on {jepa_health_url} "
+                        "(strict architecture mode may show unavailable)"
+                    )
+            except Exception as e:
+                logger.warning(f"[Startup] JEPA runtime auto-start failed: {e}")
+        else:
+            logger.info(f"[Startup] JEPA runtime already active on {jepa_host}:{jepa_port}")
 
     # Initialize all components using existing initialization module
     from src.initialization import initialize_all_components
@@ -111,12 +190,16 @@ async def lifespan(app: FastAPI):
 
         # MARKER_133.C33E: Load persisted config on startup
         config = _load_heartbeat_config()
-        os.environ["VETKA_HEARTBEAT_ENABLED"] = "true" if config.get("enabled", False) else "false"
+        os.environ["VETKA_HEARTBEAT_ENABLED"] = (
+            "true" if config.get("enabled", False) else "false"
+        )
         os.environ["VETKA_HEARTBEAT_INTERVAL"] = str(config.get("interval", 60))
 
         # Wait for server to be fully ready
         await asyncio.sleep(10)
-        logger.info(f"[Heartbeat] Daemon started (enabled={config.get('enabled')}, interval={config.get('interval')}s)")
+        logger.info(
+            f"[Heartbeat] Daemon started (enabled={config.get('enabled')}, interval={config.get('interval')}s)"
+        )
 
         while True:
             try:
@@ -133,10 +216,14 @@ async def lifespan(app: FastAPI):
                 # MARKER_140: monitor_all=True scans ALL active groups + recent solo chats
                 monitor_all = config.get("monitor_all", True)
                 # Run heartbeat tick FIRST, then sleep (responsive startup)
-                result = await heartbeat_tick(group_id=MCP_DEV_GROUP_ID, dry_run=False, monitor_all=monitor_all)
+                result = await heartbeat_tick(
+                    group_id=MCP_DEV_GROUP_ID, dry_run=False, monitor_all=monitor_all
+                )
                 tasks_found = len(result.get("results", []))
                 if tasks_found > 0:
-                    logger.info(f"[Heartbeat] Tick completed: {tasks_found} tasks processed")
+                    logger.info(
+                        f"[Heartbeat] Tick completed: {tasks_found} tasks processed"
+                    )
 
                 await asyncio.sleep(interval)
 
@@ -145,7 +232,9 @@ async def lifespan(app: FastAPI):
                 break
             except Exception as e:
                 logger.error(f"[Heartbeat] Daemon error: {e}", exc_info=True)
-                await asyncio.sleep(60)  # MARKER_136.DAEMON_FIX: was HEARTBEAT_INTERVAL (undefined)
+                await asyncio.sleep(
+                    60
+                )  # MARKER_136.DAEMON_FIX: was HEARTBEAT_INTERVAL (undefined)
 
     cleanup_task = None
     heartbeat_task = None  # MARKER_131.C20A
@@ -244,6 +333,7 @@ async def lifespan(app: FastAPI):
     # MARKER_131.C20B: Auto-resume orphaned tasks on server restart
     try:
         from src.orchestration.task_board import TaskBoard
+
         board = TaskBoard()
         queue = board.get_queue()
         orphaned = [t for t in queue if t.get("status") in ("running", "claimed")]
@@ -251,15 +341,27 @@ async def lifespan(app: FastAPI):
             for task in orphaned:
                 task_id = task.get("id")
                 # Reset to pending so heartbeat can re-dispatch
-                board.update_task(task_id, status="pending", result_summary="Server restart - task reset")
-                logger.info(f"[Startup] Reset orphaned task {task_id} from {task.get('status')} to pending")
+                board.update_task(
+                    task_id,
+                    status="pending",
+                    result_summary="Server restart - task reset",
+                )
+                logger.info(
+                    f"[Startup] Reset orphaned task {task_id} from {task.get('status')} to pending"
+                )
             logger.info(f"[Startup] Reset {len(orphaned)} orphaned tasks")
     except Exception as e:
         logger.warning(f"[Startup] Auto-resume check failed: {e}")
 
     # MARKER_131.C20A: Start heartbeat daemon (60s loop for @dragon/@doctor tasks)
-    heartbeat_task = asyncio.create_task(heartbeat_daemon())
-    logger.info("[Startup] Heartbeat daemon started (60s interval)")
+    existing_heartbeat_task = getattr(app.state, "heartbeat_task", None)
+    if existing_heartbeat_task and not existing_heartbeat_task.done():
+        heartbeat_task = existing_heartbeat_task
+        logger.info("[Startup] Heartbeat daemon already running, skip duplicate start")
+    else:
+        heartbeat_task = asyncio.create_task(heartbeat_daemon())
+        app.state.heartbeat_task = heartbeat_task
+        logger.info("[Startup] Heartbeat daemon started (60s interval)")
 
     # === PHASE 56: Start model health checks ===
     # === PHASE 60.4: Auto-discover Ollama models ===
@@ -290,6 +392,7 @@ async def lifespan(app: FastAPI):
     # === PHASE 115 BUG-4: Initialize pinned files service ===
     try:
         from src.api.routes.cam_routes import initialize_pinned_files_service
+
         await initialize_pinned_files_service()
         logger.info("[Startup] Pinned files service initialized")
     except Exception as e:
@@ -313,6 +416,7 @@ async def lifespan(app: FastAPI):
     # === Phase 111.18: Initialize Qdrant batch manager ===
     try:
         from src.memory.qdrant_batch_manager import init_batch_manager
+
         batch_manager = await init_batch_manager()
         app.state.qdrant_batch_manager = batch_manager
         logger.info("[Startup] Qdrant batch manager initialized (30s flush interval)")
@@ -364,6 +468,7 @@ async def lifespan(app: FastAPI):
     # === PHASE 104: Start TTS server ===
     try:
         from src.voice.tts_server_manager import start_tts_server
+
         app.state.tts_process = start_tts_server(port=5003, wait_ready=False)
     except Exception as e:
         logger.error(f"[Startup] TTS server start failed: {e}")
@@ -372,6 +477,7 @@ async def lifespan(app: FastAPI):
     # === MARKER_106e_2: Register async Socket.IO handlers ===
     try:
         from src.api.handlers import register_all_handlers
+
         await register_all_handlers(sio, app)
         logger.info("[Startup] Socket.IO handlers registered (including MCP)")
     except Exception as e:
@@ -380,6 +486,7 @@ async def lifespan(app: FastAPI):
     # MARKER_145.MODEL_UPDATER: On-demand model profile loading (no cron, no polling)
     try:
         from src.elisya.model_updater import start_model_updater
+
         await start_model_updater()  # No-op, just logs readiness
         logger.info("[Startup] LLM model registry ready (on-demand profile loading)")
     except Exception as e:
@@ -396,39 +503,43 @@ async def lifespan(app: FastAPI):
     # Cancel cleanup task
     if cleanup_task:
         cleanup_task.cancel()
-        try:
-            await cleanup_task
-        except asyncio.CancelledError:
-            pass
-        logger.info("[Shutdown] Cleanup task cancelled")
+        await _await_shutdown_step("Cleanup task", cleanup_task, timeout_sec=3.0)
 
     # MARKER_131.C20A: Cancel heartbeat daemon
+    heartbeat_task = getattr(app.state, "heartbeat_task", heartbeat_task)
     if heartbeat_task:
         heartbeat_task.cancel()
-        try:
-            await heartbeat_task
-        except asyncio.CancelledError:
-            pass
-        logger.info("[Shutdown] Heartbeat daemon cancelled")
+        await _await_shutdown_step("Heartbeat daemon", heartbeat_task, timeout_sec=3.0)
+        app.state.heartbeat_task = None
 
     # === PHASE 56: Stop model health checks and group chat cleanup ===
     if hasattr(app.state, "model_registry") and app.state.model_registry:
-        await app.state.model_registry.stop_health_checks()
-        logger.info("[Shutdown] Model registry health checks stopped")
+        await _await_shutdown_step(
+            "Model registry health checks",
+            app.state.model_registry.stop_health_checks(),
+            timeout_sec=8.0,
+        )
 
     # ✅ PHASE 56.4: Stop group chat cleanup task
     if hasattr(app.state, "group_chat_manager") and app.state.group_chat_manager:
-        await app.state.group_chat_manager.stop_cleanup()
-        logger.info("[Shutdown] Group chat cleanup task stopped")
+        await _await_shutdown_step(
+            "Group chat cleanup task",
+            app.state.group_chat_manager.stop_cleanup(),
+            timeout_sec=8.0,
+        )
 
     # Phase 111.18: Stop Qdrant batch manager (flush remaining)
     if hasattr(app.state, "qdrant_batch_manager") and app.state.qdrant_batch_manager:
-        await app.state.qdrant_batch_manager.stop()
-        logger.info("[Shutdown] Qdrant batch manager stopped (flushed remaining)")
+        await _await_shutdown_step(
+            "Qdrant batch manager",
+            app.state.qdrant_batch_manager.stop(),
+            timeout_sec=10.0,
+        )
 
     # MARKER_145.MODEL_UPDATER: Clear model profile session cache on shutdown
     try:
         from src.elisya.model_updater import stop_model_updater
+
         await stop_model_updater()
     except Exception:
         pass
@@ -436,6 +547,7 @@ async def lifespan(app: FastAPI):
     # === PHASE 104: Stop TTS server ===
     try:
         from src.voice.tts_server_manager import stop_tts_server
+
         stop_tts_server()
     except Exception as e:
         logger.warning(f"[Shutdown] TTS server stop failed: {e}")
@@ -443,8 +555,25 @@ async def lifespan(app: FastAPI):
     executor = app.state.executor
     if executor:
         print("  Shutting down executor...")
-        executor.shutdown(wait=True)
-        print("  Executor shutdown complete")
+        try:
+            # Non-blocking shutdown prevents long hangs on SIGINT when workers are stuck.
+            executor.shutdown(wait=False, cancel_futures=True)
+            print("  Executor shutdown initiated (non-blocking)")
+        except Exception as e:
+            logger.warning(f"[Shutdown] Executor shutdown failed: {e}")
+
+    # MARKER_155.P3_5.JEPA_AUTOSTART_APP: Stop JEPA runtime only if this app started it.
+    if jepa_runtime_proc and jepa_runtime_proc.returncode is None:
+        try:
+            jepa_runtime_proc.terminate()
+            await asyncio.wait_for(jepa_runtime_proc.wait(), timeout=3.0)
+            logger.info("[Shutdown] JEPA runtime stopped")
+        except asyncio.TimeoutError:
+            jepa_runtime_proc.kill()
+            await jepa_runtime_proc.wait()
+            logger.warning("[Shutdown] JEPA runtime force-killed")
+        except Exception as e:
+            logger.warning(f"[Shutdown] JEPA runtime stop failed: {e}")
 
 
 # ============================================================
@@ -764,8 +893,11 @@ async def health_check(request: Request):
 
     # MARKER_C21B: Enhanced health status
     import os
+
     heartbeat_status = {
-        "running": heartbeat_task is not None and not heartbeat_task.done() if 'heartbeat_task' in dir() else False,
+        "running": heartbeat_task is not None and not heartbeat_task.done()
+        if "heartbeat_task" in dir()
+        else False,
         "interval": int(os.getenv("VETKA_HEARTBEAT_INTERVAL", "60")),
         "enabled": os.getenv("VETKA_HEARTBEAT_ENABLED", "false").lower() == "true",
     }
@@ -782,6 +914,15 @@ async def health_check(request: Request):
         "safe_directories": ["src/vetka_out", "data/vetka_staging", "data/artifacts"],
     }
 
+    # MARKER_155.PERF.HEALTH_COUNTERS: expose minimal tree rebuild diagnostics.
+    tree_perf = {"full_rebuild_count": 0}
+    try:
+        from src.api.routes.tree_routes import get_tree_perf_counters
+
+        tree_perf = get_tree_perf_counters()
+    except Exception:
+        pass
+
     return {
         "status": "healthy",
         "version": "2.0.0",
@@ -791,6 +932,7 @@ async def health_check(request: Request):
         "heartbeat_daemon": heartbeat_status,
         "bmad": bmad_status,
         "pipeline_safety": pipeline_safety,
+        "tree_perf": tree_perf,
     }
 
 
@@ -854,10 +996,12 @@ app.include_router(mcp_console_router)
 
 # === PHASE 133: PIPELINE RUN HISTORY ===
 from src.api.routes.pipeline_history import router as pipeline_history_router
+
 app.include_router(pipeline_history_router)
 
 # === PHASE 133: TASK TRACKER ===
 from src.api.routes.task_tracker_routes import router as task_tracker_router
+
 app.include_router(task_tracker_router)
 
 # === PHASE 57: API KEYS MANAGEMENT ===
@@ -1154,15 +1298,33 @@ if __name__ == "__main__":
     # Port 5001 is production default (frontend configured for this)
     port = int(os.getenv("VETKA_PORT", 5001))
     host = os.getenv("VETKA_HOST", "0.0.0.0")
+    reload_enabled = str(os.getenv("VETKA_RELOAD", "false")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
     print(f"\n  Starting VETKA FastAPI on {host}:{port}")
     print(f"  Docs: http://localhost:{port}/docs")
     print(f"  Health: http://localhost:{port}/api/health\n")
+    print(f"  Reload: {'ON' if reload_enabled else 'OFF'} (env VETKA_RELOAD)\n")
 
-    uvicorn.run(
-        "main:socket_app",  # socket_app includes both FastAPI and Socket.IO
-        host=host,
-        port=port,
-        reload=True,
-        log_level="info",
-    )
+    uvicorn_kwargs = {
+        "app": "main:socket_app",  # socket_app includes both FastAPI and Socket.IO
+        "host": host,
+        "port": port,
+        "reload": reload_enabled,
+        "log_level": "info",
+    }
+    if reload_enabled:
+        uvicorn_kwargs["reload_excludes"] = [
+            "data/playgrounds/*",
+            ".playgrounds/*",
+            ".vetka/*",  # MARKER_155.WATCHDOG.EXCLUDE: External playground directory
+            "data/changelog/*",
+            "data/pipeline_history.json",
+            "data/pipeline_tasks.json",
+        ]
+
+    uvicorn.run(**uvicorn_kwargs)

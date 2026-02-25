@@ -43,14 +43,16 @@
 - Implemented P1.6 backend narrow:
   - input-matrix style channel aggregation (`structural`, `temporal`, `reference`, `semantic`)
   - SCC condensation from scored graph
+  - algorithmic root scoring + backbone DAG projection (no path hardcode)
+  - L2 knowledge-level fields (`knowledge_level`, `root_metrics`, `is_root`)
   - extended stats (`l0_channel_hist`, explicit/reference counters)
 - Added architecture root/hub strategy on frontend to reduce single-star root collapse.
 - Added implementation docs and sample JSON for P1.6.
 
 ### Open Architectural Issues
-- `tests/*` still appear as horizontal-derived strip in architecture view.
-- `visualization/*` and similar folders are not yet promoted into dedicated semantic branch grouping.
-- Need better layer/rank normalization for “derived artifacts” so they are not forced into one rail.
+- `tests/*` still appears as mostly horizontal-derived strip in some snapshots.
+- `visualization/*` and similar folders need stronger semantic separation through modality scanners (not hardcoded folders).
+- Need UI toggle to expose/hide cross-links while keeping backbone default.
 
 ## 📌 Plan For Tomorrow
 
@@ -81,6 +83,44 @@
 - `MARKER_155.ZOOM_DRILL`: Zoom-based navigation logic.
 - `MARKER_155.MINIMAL_UI`: Footer and window management logic.
 - `MARKER_155.DANGER.STUB`: Temporary placeholders for Phase 156.
+
+## ⚡ OpenHands Accelerator Addendum (ASAP)
+
+Reference baseline:
+- `https://github.com/All-Hands-AI/OpenHands`
+
+Purpose:
+- Reuse proven execution/runtime UX patterns to reduce MVP lead time for MCC without changing one-canvas DAG architecture.
+
+Adoption scope for Phase 155/156 bridge:
+1. **Live Terminal Stream**
+- Marker: `MARKER_155A.P6.OPENHANDS_TERMINAL`
+- Bind real-time tool output to execution view in MCC (single canvas).
+
+2. **Human Tool Approval Gate**
+- Marker: `MARKER_155A.P6.OPENHANDS_APPROVAL`
+- Approve/Edit/Reject tool calls in execution stage (no parallel approval stack).
+
+3. **Diff Review before Promote**
+- Marker: `MARKER_155A.P6.OPENHANDS_DIFF_REVIEW`
+- Side-by-side result review before final apply/promote.
+
+4. **Sandbox Runtime Overlay**
+- Marker: `MARKER_155A.P6.OPENHANDS_SANDBOX`
+- Optional containerized runtime path over existing playground/worktree flow.
+
+5. **Local-First Model Presets**
+- Marker: `MARKER_155A.P6.OPENHANDS_LOCAL_LLM`
+- Local model fallback strategy for architect/scout-heavy runs.
+
+6. **Bounded Error Recovery Loop**
+- Marker: `MARKER_155A.P6.OPENHANDS_RECOVERY_LOOP`
+- Retry with feedback on patch/apply/verify failures; always observable in stream.
+
+Constraints:
+- FastAPI-only backend remains canonical.
+- No periodic polling loop reintroduction in UI.
+- Preserve max-3 primary actions rule at all stages.
 
 ---
 *Created by Opus on 2026-02-21*

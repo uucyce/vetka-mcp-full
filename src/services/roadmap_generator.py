@@ -126,37 +126,51 @@ class RoadmapGenerator:
         if not os.path.isdir(sandbox_path):
             return {"tree": "", "key_files": {}, "languages": set(), "frameworks": []}
 
-        # Get tree structure (limited depth)
+        # MARKER_155.1A: Get tree structure — depth 4, skip junk, process ALL lines
         tree_lines = []
+        skip_dirs = {
+            "node_modules", ".git", "__pycache__", ".DS_Store", "dist",
+            "build", ".next", ".vetka_backups", ".pytest_cache", "venv",
+            ".venv", ".tox", ".mypy_cache", ".ruff_cache", "coverage",
+        }
         try:
+            cmd = ["find", sandbox_path, "-maxdepth", "5", "-type", "f"]
+            for d in skip_dirs:
+                cmd.extend(["-not", "-path", f"*/{d}/*"])
             result = subprocess.run(
-                ["find", sandbox_path, "-maxdepth", "3", "-type", "f"],
-                capture_output=True, text=True, timeout=10,
+                cmd, capture_output=True, text=True, timeout=15,
             )
             if result.returncode == 0:
-                for line in result.stdout.strip().splitlines()[:200]:
+                for line in result.stdout.strip().splitlines():
                     rel = os.path.relpath(line, sandbox_path)
-                    tree_lines.append(rel)
+                    if not rel.startswith("."):
+                        tree_lines.append(rel)
         except (subprocess.TimeoutExpired, OSError):
             pass
 
-        # Detect key config files
+        # Detect key config files (check root + common subdirs)
         key_file_names = [
             "package.json", "Cargo.toml", "setup.py", "pyproject.toml",
             "requirements.txt", "go.mod", "pom.xml", "build.gradle",
             "Makefile", "Dockerfile", "docker-compose.yml",
             "tsconfig.json", ".eslintrc.json", "vite.config.ts",
         ]
+        # MARKER_155.1A: Also check client/ and client/src/ for frontend config
+        check_prefixes = ["", "client/", "client/src/", "frontend/", "web/"]
         key_files = {}
-        for name in key_file_names:
-            path = os.path.join(sandbox_path, name)
-            if os.path.exists(path):
-                try:
-                    with open(path, 'r', errors='ignore') as f:
-                        content = f.read(2000)  # First 2KB
-                    key_files[name] = content
-                except OSError:
-                    pass
+        for prefix in check_prefixes:
+            for name in key_file_names:
+                lookup = f"{prefix}{name}"
+                if lookup in key_files:
+                    continue
+                fpath = os.path.join(sandbox_path, lookup)
+                if os.path.exists(fpath):
+                    try:
+                        with open(fpath, 'r', errors='ignore') as f:
+                            content = f.read(2000)  # First 2KB
+                        key_files[lookup] = content
+                    except OSError:
+                        pass
 
         # Detect languages from file extensions
         ext_map = {
@@ -173,115 +187,263 @@ class RoadmapGenerator:
 
         # Detect frameworks from key files
         frameworks = []
-        if "package.json" in key_files:
-            pkg = key_files["package.json"]
-            for fw in ["react", "vue", "angular", "next", "express", "fastify", "three"]:
-                if f'"{fw}"' in pkg.lower():
-                    frameworks.append(fw)
-        if "requirements.txt" in key_files or "pyproject.toml" in key_files:
-            content = key_files.get("requirements.txt", "") + key_files.get("pyproject.toml", "")
-            for fw in ["fastapi", "django", "flask", "pytorch", "tensorflow"]:
-                if fw in content.lower():
+        # MARKER_155.1A: Check all package.json files (root, client/, etc.)
+        for key, content in key_files.items():
+            if key.endswith("package.json"):
+                for fw in ["react", "vue", "angular", "next", "express", "fastify", "three", "zustand", "vite"]:
+                    if f'"{fw}"' in content.lower() and fw not in frameworks:
+                        frameworks.append(fw)
+        # Check Python configs
+        py_content = ""
+        for key in key_files:
+            if key.endswith(("requirements.txt", "pyproject.toml", "setup.py")):
+                py_content += key_files[key]
+        if py_content:
+            for fw in ["fastapi", "django", "flask", "pytorch", "tensorflow", "socketio"]:
+                if fw in py_content.lower() and fw not in frameworks:
                     frameworks.append(fw)
 
         return {
-            "tree": "\n".join(tree_lines[:100]),
+            "tree": "\n".join(tree_lines),  # MARKER_155.1A: no cap — generator parses all
             "key_files": key_files,
             "languages": languages,
             "frameworks": frameworks,
         }
 
+    # MARKER_155.1A: Heuristic layer detection for directory modules
+    LAYER_RULES = {
+        # Core backend
+        'api': 'core', 'routes': 'core', 'services': 'core',
+        'orchestration': 'core', 'models': 'core', 'tools': 'core',
+        'layout': 'core', 'mcp': 'core', 'elisya': 'core',
+        'handlers': 'core', 'middleware': 'core',
+        # Frontend features
+        'components': 'feature', 'hooks': 'feature', 'store': 'feature',
+        'pages': 'feature', 'views': 'feature', 'panels': 'feature',
+        'canvas': 'feature',
+        # Enhancement / utility
+        'utils': 'enhancement', 'config': 'enhancement', 'scripts': 'enhancement',
+        'types': 'enhancement', 'styles': 'enhancement',
+        # Tests
+        'tests': 'test', 'test': 'test', '__tests__': 'test', 'spec': 'test',
+        # Docs
+        'docs': 'docs', 'documentation': 'docs',
+    }
+
+    # MARKER_155.1A: Human-readable labels for known directories
+    DIR_LABELS = {
+        'api': 'API Layer', 'routes': 'API Routes', 'services': 'Services',
+        'orchestration': 'Orchestration', 'models': 'Data Models',
+        'tools': 'Tools', 'layout': 'Layout Engine', 'mcp': 'MCP Server',
+        'elisya': 'Elisya Engine', 'handlers': 'Handlers',
+        'components': 'Components', 'hooks': 'Hooks', 'store': 'State Store',
+        'pages': 'Pages', 'views': 'Views', 'panels': 'Panels',
+        'canvas': 'Canvas / 3D', 'utils': 'Utilities', 'config': 'Config',
+        'tests': 'Tests', 'test': 'Tests', 'docs': 'Documentation',
+        'types': 'Types', 'styles': 'Styles', 'scripts': 'Scripts',
+    }
+
     @staticmethod
     def generate_static_roadmap(scan_result: dict, project_id: str) -> RoadmapDAG:
         """
-        Generate a roadmap from static analysis (no LLM needed).
-        Uses heuristics based on project structure and detected stack.
+        MARKER_155.1A: Generate hierarchical architecture DAG from project scan.
+
+        Strategy:
+        1. Parse tree lines into a directory→file_count map
+        2. Find "source roots" (dirs containing code subdirectories: src/, client/src/, lib/)
+        3. Create module nodes from child directories of each source root
+        4. Group into backend/frontend/tests top-level branches
+        5. Create edges: project_root → branch → modules
         """
         nodes = []
         edges = []
-        languages = scan_result.get("languages", set())
-        frameworks = scan_result.get("frameworks", [])
         tree = scan_result.get("tree", "")
+        tree_lines = [l.strip() for l in tree.split("\n") if l.strip()]
 
-        # Always start with core node
+        # --- Step 1: Count files per directory (depth 1 and 2 segments) ---
+        dir_files: dict[str, int] = {}  # "src/api" -> 12
+        for line in tree_lines:
+            parts = line.split("/")
+            if len(parts) >= 2:
+                # Top-level dir
+                d1 = parts[0]
+                if not d1.startswith("."):
+                    dir_files[d1] = dir_files.get(d1, 0) + 1
+                # Second-level dir (src/api, client/src, etc.)
+                if len(parts) >= 3:
+                    d2 = f"{parts[0]}/{parts[1]}"
+                    dir_files[d2] = dir_files.get(d2, 0) + 1
+                # Third-level (client/src/components, src/api/routes)
+                if len(parts) >= 4:
+                    d3 = f"{parts[0]}/{parts[1]}/{parts[2]}"
+                    dir_files[d3] = dir_files.get(d3, 0) + 1
+
+        # --- Step 2: Identify source roots and their children ---
+        # Source root = a dir whose children are code modules (not just files)
+        source_roots: list[tuple[str, str, str]] = []  # (path, branch_id, branch_label)
+
+        # Check known source root patterns
+        root_patterns = [
+            ("src", "backend", "Backend"),
+            ("lib", "backend", "Backend"),
+            ("server", "backend", "Backend"),
+            ("client/src", "frontend", "Frontend"),
+            ("frontend/src", "frontend", "Frontend"),
+            ("web/src", "frontend", "Frontend"),
+            ("app", "app", "Application"),
+        ]
+        for root_path, branch_id, branch_label in root_patterns:
+            # Check if this root has child directories with files
+            children = [d for d in dir_files if d.startswith(f"{root_path}/") and d.count("/") == root_path.count("/") + 1]
+            if children:
+                source_roots.append((root_path, branch_id, branch_label))
+
+        # Also check bare top-level dirs that ARE modules (tests/, docs/, config/)
+        standalone_dirs = set()
+        for d, count in dir_files.items():
+            if "/" not in d and count >= 1:
+                d_lower = d.lower()
+                if d_lower in RoadmapGenerator.LAYER_RULES:
+                    standalone_dirs.add(d)
+
+        # --- Step 3: Build nodes from source root children ---
+        seen_ids: set[str] = set()
+
+        # Project root node
+        root_id = "project"
         nodes.append(asdict(RoadmapNode(
-            id="core",
-            label="Core / Backend",
+            id=root_id,
+            label=project_id or "Project",
             layer="core",
             status="active",
-            description="Core backend logic and API",
+            description=f"{len(tree_lines)} files scanned",
         )))
+        seen_ids.add(root_id)
 
-        # Detect modules from directory structure
-        top_dirs = set()
-        for line in tree.split("\n"):
-            if "/" in line:
-                top_dir = line.split("/")[0]
-                if top_dir and not top_dir.startswith("."):
-                    top_dirs.add(top_dir)
-
-        # Map common directories to roadmap nodes
-        dir_mapping = {
-            "src": ("source", "Source Code", "core"),
-            "lib": ("library", "Libraries", "core"),
-            "api": ("api", "API Layer", "core"),
-            "client": ("frontend", "Frontend", "feature"),
-            "frontend": ("frontend", "Frontend", "feature"),
-            "web": ("frontend", "Frontend", "feature"),
-            "components": ("ui", "UI Components", "feature"),
-            "tests": ("tests", "Test Suite", "test"),
-            "test": ("tests", "Test Suite", "test"),
-            "docs": ("docs", "Documentation", "docs"),
-            "scripts": ("scripts", "Build Scripts", "enhancement"),
-            "config": ("config", "Configuration", "core"),
-            "data": ("data", "Data Layer", "core"),
-            "models": ("models", "Data Models", "core"),
-            "services": ("services", "Services", "core"),
-            "hooks": ("hooks", "React Hooks", "feature"),
-            "store": ("store", "State Management", "feature"),
-            "utils": ("utils", "Utilities", "enhancement"),
-        }
-
-        seen_ids = {"core"}
-        for d in sorted(top_dirs):
-            d_lower = d.lower()
-            if d_lower in dir_mapping:
-                node_id, label, layer = dir_mapping[d_lower]
-                if node_id not in seen_ids:
-                    nodes.append(asdict(RoadmapNode(
-                        id=node_id,
-                        label=label,
-                        layer=layer,
-                        description=f"Module: {d}/",
-                        file_patterns=[f"{d}/**"],
-                    )))
-                    seen_ids.add(node_id)
-                    # Core nodes depend on core, feature nodes depend on core
-                    if layer in ("feature", "enhancement"):
-                        edges.append(asdict(RoadmapEdge(source="core", target=node_id)))
-                    elif layer == "test" and "source" in seen_ids:
-                        edges.append(asdict(RoadmapEdge(source="source", target=node_id)))
-                    elif layer == "docs":
-                        pass  # Docs are independent
-
-        # Add framework-specific nodes
-        if "react" in frameworks or "TypeScript" in languages:
-            if "ui" not in seen_ids:
+        for root_path, branch_id, branch_label in source_roots:
+            # Branch node (Backend / Frontend)
+            if branch_id not in seen_ids:
+                # Count total files under this root
+                total_files = sum(c for p, c in dir_files.items() if p.startswith(f"{root_path}/"))
                 nodes.append(asdict(RoadmapNode(
-                    id="ui", label="UI Components", layer="feature",
-                    description="React components and views",
+                    id=branch_id,
+                    label=f"{branch_label} ({total_files})",
+                    layer="core" if branch_id == "backend" else "feature",
+                    status="active",
+                    description=f"{root_path}/",
+                    file_patterns=[f"{root_path}/**"],
                 )))
-                seen_ids.add("ui")
-                edges.append(asdict(RoadmapEdge(source="core", target="ui")))
+                edges.append(asdict(RoadmapEdge(source=root_id, target=branch_id)))
+                seen_ids.add(branch_id)
 
-        # If we only have core, add a generic "features" node
-        if len(nodes) == 1:
+            # MARKER_155.1A: Child module nodes — show top modules, collapse small ones
+            MIN_FILES = 3         # Skip modules with fewer files
+            MAX_MODULES = 10      # Show at most this many per branch
+            children = sorted([
+                d for d in dir_files
+                if d.startswith(f"{root_path}/") and d.count("/") == root_path.count("/") + 1
+            ])
+
+            # Sort by file count descending to prioritize important modules
+            children_with_count = []
+            for child_path in children:
+                module_name = child_path.split("/")[-1]
+                if module_name.startswith(".") or module_name.startswith("__"):
+                    continue
+                file_count = dir_files.get(child_path, 0)
+                if file_count < 1:
+                    continue
+                children_with_count.append((child_path, module_name, file_count))
+
+            children_with_count.sort(key=lambda x: -x[2])  # largest first
+
+            added_count = 0
+            collapsed_files = 0
+            collapsed_names = []
+            for child_path, module_name, file_count in children_with_count:
+                module_id = f"{branch_id}_{module_name}"
+                if module_id in seen_ids:
+                    continue
+
+                # Collapse small modules or those beyond the cap
+                if file_count < MIN_FILES or added_count >= MAX_MODULES:
+                    collapsed_files += file_count
+                    collapsed_names.append(module_name)
+                    continue
+
+                module_lower = module_name.lower()
+                layer = RoadmapGenerator.LAYER_RULES.get(module_lower, "core" if branch_id == "backend" else "feature")
+                label = RoadmapGenerator.DIR_LABELS.get(module_lower, module_name.replace("_", " ").title())
+
+                nodes.append(asdict(RoadmapNode(
+                    id=module_id,
+                    label=f"{label} ({file_count})",
+                    layer=layer,
+                    status="active",
+                    description=f"{child_path}/",
+                    file_patterns=[f"{child_path}/**"],
+                )))
+                edges.append(asdict(RoadmapEdge(source=branch_id, target=module_id)))
+                seen_ids.add(module_id)
+                added_count += 1
+
+            # Add "Other" node for collapsed small modules
+            if collapsed_files > 0:
+                other_id = f"{branch_id}_other"
+                if other_id not in seen_ids:
+                    nodes.append(asdict(RoadmapNode(
+                        id=other_id,
+                        label=f"Other ({collapsed_files})",
+                        layer="enhancement",
+                        status="pending",
+                        description=f"{len(collapsed_names)} small modules",
+                        file_patterns=[f"{root_path}/{n}/**" for n in collapsed_names[:5]],
+                    )))
+                    edges.append(asdict(RoadmapEdge(source=branch_id, target=other_id)))
+                    seen_ids.add(other_id)
+
+        # --- Step 4: Add standalone top-level dirs (tests/, config/, scripts/) ---
+        # MARKER_155.1A: Skip dirs already covered by source roots or not useful
+        skip_standalone = {"data", "output", "datasets", "backups", "backup", "archive"}
+        for d in sorted(standalone_dirs):
+            d_lower = d.lower()
+            if d_lower in skip_standalone:
+                continue
+            # Skip huge documentation dumps (not architecture)
+            file_count_check = dir_files.get(d, 0)
+            if d_lower == "docs" and file_count_check > 200:
+                continue
+            # Skip if this exact ID already exists (e.g., 'backend' from source roots)
+            node_id = d_lower
+            if node_id in seen_ids:
+                continue
+
+            file_count = dir_files.get(d, 0)
+            layer = RoadmapGenerator.LAYER_RULES.get(d_lower, "enhancement")
+            label = RoadmapGenerator.DIR_LABELS.get(d_lower, d.title())
+
             nodes.append(asdict(RoadmapNode(
-                id="features",
-                label="Features",
-                layer="feature",
-                description="Project features and functionality",
+                id=node_id,
+                label=f"{label} ({file_count})",
+                layer=layer,
+                status="active" if layer in ("core", "feature") else "pending",
+                description=f"{d}/",
+                file_patterns=[f"{d}/**"],
             )))
+            edges.append(asdict(RoadmapEdge(source=root_id, target=node_id)))
+            seen_ids.add(node_id)
+
+        # --- Step 5: Fallback — if we got nothing besides root, add generic nodes ---
+        if len(nodes) <= 1:
+            nodes.append(asdict(RoadmapNode(
+                id="core", label="Core", layer="core",
+                status="active", description="Core project logic",
+            )))
+            nodes.append(asdict(RoadmapNode(
+                id="features", label="Features", layer="feature",
+                description="Project features",
+            )))
+            edges.append(asdict(RoadmapEdge(source=root_id, target="core")))
             edges.append(asdict(RoadmapEdge(source="core", target="features")))
 
         dag = RoadmapDAG(
@@ -297,11 +459,16 @@ class RoadmapGenerator:
     async def analyze_project(cls, config: ProjectConfig) -> RoadmapDAG:
         """
         Full project analysis:
-        1. Scan directory structure
+        1. Scan directory structure (prefer source_path over sandbox)
         2. Generate roadmap (static for now, LLM in future)
         3. Save to disk
         """
-        scan = cls.scan_project_structure(config.sandbox_path)
+        # MARKER_155.1A: Prefer source_path (original project) for scanning.
+        # Sandbox may be a small copy; source has full architecture.
+        scan_path = config.source_path
+        if not scan_path or not os.path.isdir(scan_path):
+            scan_path = config.sandbox_path
+        scan = cls.scan_project_structure(scan_path)
         dag = cls.generate_static_roadmap(scan, config.project_id)
         dag.save()
         return dag

@@ -1,23 +1,25 @@
 {
-  "id": "artifact_c9e6f153",
+  "id": "artifact_88c4cb6a",
   "type": "artifact",
-  "name": "QA_1767071710856_fe7ab690.md",
+  "name": "claude-3.5-sonnet_1767085744791_b99fda27.md",
   "parent_id": null,
   "metadata": {
-    "file_path": "data/artifacts/QA_1767071710856_fe7ab690.md",
+    "file_path": "data/artifacts/claude-3.5-sonnet_1767085744791_b99fda27.md",
     "artifact_type": "document",
     "language": "markdown",
-    "size_bytes": 61,
-    "created_at": "2025-12-30T08:15:10.856792",
-    "modified_at": "2025-12-30T08:15:10.856792",
+    "size_bytes": 663,
+    "created_at": "2026-02-11T00:23:50.743191",
+    "modified_at": "2025-12-30T12:09:04.791952",
     "source_message_id": null,
     "source_chat_id": null,
+    "artifact_id": "artifact_88c4cb6a",
     "status": "done",
+    "is_favorite": false,
     "extension": ".md"
   },
   "visual_hints": {
     "layout_hint": {
-      "expected_x": 105,
+      "expected_x": 100,
       "expected_y": -50,
       "expected_z": 0
     },

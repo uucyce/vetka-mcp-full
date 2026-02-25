@@ -12,6 +12,7 @@ Provides adaptive branch length, file spacing, and repulsion calculations.
 """
 
 import math
+import os
 import re
 from collections import defaultdict
 from typing import Dict, List, Tuple, Optional, Callable
@@ -894,6 +895,7 @@ def calculate_tree_layout(
                         'z': _file_z(depth, i)
                     }
 
+
     # === ШАГ 3: Найти root папки ===
     root_folders = [p for p, f in folders.items() if not f.get('parent_path')]
     print(f"[TREE_LAYOUT] Found {len(root_folders)} root folders")
@@ -984,4 +986,121 @@ def calculate_tree_layout(
     print(f"[TREE_LAYOUT] Positioned {len(positions)} nodes")
     print(f"[TREE_LAYOUT] Y_PER_DEPTH={Y_PER_DEPTH}, X_SPACING={X_SPACING}")
 
+    # MARKER_155.RECON.DAG_OVERLAP_AUDIT_V1:
+    # Pure diagnostics (no geometry changes). Helps derive stable formula.
+    if os.getenv("TREE_LAYOUT_AUDIT", "1") != "0":
+        try:
+            _run_tree_overlap_audit(
+                folders=folders,
+                files_by_folder=files_by_folder,
+                positions=positions,
+                subtree_widths=subtree_widths,
+                y_per_depth=Y_PER_DEPTH,
+                x_spacing=X_SPACING,
+                file_y_step=FILE_Y_STEP,
+            )
+        except Exception as audit_error:
+            print(f"[TREE_AUDIT] failed: {audit_error}")
+
     return positions, root_folders, 0, 0, Y_PER_DEPTH
+
+
+def _run_tree_overlap_audit(
+    folders: Dict[str, dict],
+    files_by_folder: Dict[str, List[dict]],
+    positions: Dict[str, dict],
+    subtree_widths: Dict[str, int],
+    y_per_depth: float,
+    x_spacing: float,
+    file_y_step: float,
+) -> None:
+    """
+    MARKER_155.RECON.DAG_OVERLAP_AUDIT_V1
+    Audit-only metrics:
+    1) Folder interval overlaps at each depth.
+    2) File stack intrusion into next directory level.
+    3) Parent->single-child exact centerline alignments.
+    """
+    depth_rows: Dict[int, List[Tuple[str, float, float, float]]] = defaultdict(list)
+    single_child_centerline = 0
+    total_single_child = 0
+
+    # Build folder intervals per depth: [x - w/2, x + w/2]
+    for folder_path, folder in folders.items():
+        pos = positions.get(folder_path)
+        if not pos:
+            continue
+        depth = int(folder.get("depth", 0) or 0)
+        width_units = max(1, int(subtree_widths.get(folder_path, 1) or 1))
+        half_w = (width_units * x_spacing) / 2.0
+        center_x = float(pos.get("x", 0.0))
+        depth_rows[depth].append((folder_path, center_x - half_w, center_x + half_w, center_x))
+
+        # Centerline diagnostic for exactly one child
+        children = folder.get("children", []) or []
+        if len(children) == 1:
+            child_pos = positions.get(children[0])
+            if child_pos:
+                total_single_child += 1
+                if abs(float(child_pos.get("x", 0.0)) - center_x) < 1e-6:
+                    single_child_centerline += 1
+
+    # Overlap scan per depth (sweep line on sorted intervals)
+    overlap_count = 0
+    overlap_samples: List[Tuple[int, str, str, float]] = []
+    for depth, intervals in depth_rows.items():
+        intervals = sorted(intervals, key=lambda t: (t[1], t[2]))
+        prev_path = None
+        prev_right = None
+        for path, left, right, _ in intervals:
+            if prev_right is not None and left < prev_right:
+                overlap = prev_right - left
+                overlap_count += 1
+                if len(overlap_samples) < 8 and prev_path is not None:
+                    overlap_samples.append((depth, prev_path, path, overlap))
+            if prev_right is None or right > prev_right:
+                prev_right = right
+                prev_path = path
+
+    # File-stack intrusion: actual file positions exceeding next level Y
+    stack_intrusions = 0
+    intrusion_samples: List[Tuple[str, int, float]] = []
+    max_slots = max(1, int(y_per_depth // file_y_step))
+    for folder_path, folder in folders.items():
+        pos = positions.get(folder_path)
+        if not pos:
+            continue
+        folder_files = files_by_folder.get(folder_path, [])
+        files_count = len(folder_files)
+        if files_count <= 0:
+            continue
+        folder_y = float(pos.get("y", 0.0))
+        top_file_y = folder_y
+        for f in folder_files:
+            file_id = f.get("id")
+            if not file_id:
+                continue
+            fpos = positions.get(file_id)
+            if not fpos:
+                continue
+            fy = float(fpos.get("y", folder_y))
+            if fy > top_file_y:
+                top_file_y = fy
+        next_level_y = folder_y + y_per_depth
+        if top_file_y > next_level_y:
+            stack_intrusions += 1
+            if len(intrusion_samples) < 8:
+                intrusion_samples.append((folder_path, files_count, top_file_y - next_level_y))
+
+    print(
+        "[TREE_AUDIT] "
+        f"folders={len(folders)} depths={len(depth_rows)} "
+        f"x_overlaps={overlap_count} "
+        f"file_intrusions={stack_intrusions} "
+        f"single_child_centerline={single_child_centerline}/{total_single_child} "
+        f"max_files_per_level={max_slots}"
+    )
+    for depth, left_p, right_p, ov in overlap_samples:
+        print(f"[TREE_AUDIT] overlap depth={depth} left={left_p} right={right_p} overlap={ov:.1f}")
+    for path, n, excess in intrusion_samples:
+        print(f"[TREE_AUDIT] intrusion path={path} files={n} exceed_y={excess:.1f}")

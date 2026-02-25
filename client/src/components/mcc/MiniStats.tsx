@@ -11,9 +11,11 @@
  * @status active
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { MiniWindow } from './MiniWindow';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+import { useDevPanelStore } from '../../store/useDevPanelStore';
+import { useMCCDiagnostics } from '../../hooks/useMCCDiagnostics';
 
 const API_BASE = 'http://localhost:5001/api';
 
@@ -54,11 +56,33 @@ function normalizeSummary(raw: any): SummaryData {
   };
 }
 
+// MARKER_155.STATS.UI: Agent metrics data
+interface AgentSummary {
+  agent_type: string;
+  total_runs: number;
+  successful_runs: number;
+  failed_runs: number;
+  avg_duration: number;
+  avg_quality: number;
+  total_tokens: number;
+  total_cost: number;
+  recent_remarks: string[];
+}
+
+interface AgentsData {
+  period: string;
+  agents: Record<string, AgentSummary>;
+}
+
 function useSummaryData() {
   const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastFetchRef = useRef(0);
 
   const fetch_ = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastFetchRef.current < 1000) return;
+    lastFetchRef.current = now;
     try {
       const res = await fetch(`${API_BASE}/analytics/summary`);
       if (!res.ok) return;
@@ -74,8 +98,63 @@ function useSummaryData() {
 
   useEffect(() => {
     fetch_();
-    const interval = setInterval(fetch_, 30000); // Refresh every 30s
-    return () => clearInterval(interval);
+    const onVisibility = () => {
+      if (!document.hidden) fetch_();
+    };
+    window.addEventListener('pipeline-stats', fetch_ as EventListener);
+    window.addEventListener('task-board-updated', fetch_ as EventListener);
+    window.addEventListener('focus', fetch_);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pipeline-stats', fetch_ as EventListener);
+      window.removeEventListener('task-board-updated', fetch_ as EventListener);
+      window.removeEventListener('focus', fetch_);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [fetch_]);
+
+  return { data, loading, refresh: fetch_ };
+}
+
+// MARKER_155.STATS.UI: Hook for agent metrics
+function useAgentsData() {
+  const [data, setData] = useState<AgentsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const lastFetchRef = useRef(0);
+
+  const fetch_ = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastFetchRef.current < 1500) return;
+    lastFetchRef.current = now;
+    try {
+      const res = await fetch(`${API_BASE}/analytics/agents/summary?period=7d`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.success) {
+        setData(json);
+      }
+    } catch {
+      // API may not be available
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetch_();
+    const onVisibility = () => {
+      if (!document.hidden) fetch_();
+    };
+    window.addEventListener('pipeline-stats', fetch_ as EventListener);
+    window.addEventListener('task-board-updated', fetch_ as EventListener);
+    window.addEventListener('focus', fetch_);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pipeline-stats', fetch_ as EventListener);
+      window.removeEventListener('task-board-updated', fetch_ as EventListener);
+      window.removeEventListener('focus', fetch_);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [fetch_]);
 
   return { data, loading, refresh: fetch_ };
@@ -110,6 +189,9 @@ function StatBox({ label, value, unit }: { label: string; value: string | number
 // Compact: 4 stat boxes
 function StatsCompact() {
   const { data, loading } = useSummaryData();
+  const setActiveTab = useDevPanelStore(s => s.setActiveTab);
+  const setStatsMode = useDevPanelStore(s => s.setStatsMode);
+  const diagnostics = useMCCDiagnostics();
 
   if (loading || !data) {
     return (
@@ -145,6 +227,174 @@ function StatsCompact() {
         <StatBox label="Avg Time" value={formatDuration(data.avg_duration_s ?? 0)} />
         <StatBox label="Cost" value={`$${cost.toFixed(2)}`} />
       </div>
+
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginTop: 2,
+        paddingTop: 6,
+        borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`,
+      }}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <span style={{
+            fontSize: 8,
+            color: diagnostics.buildDesign?.verifier?.decision === 'pass' ? '#67e6bf' : diagnostics.buildDesign?.verifier?.decision === 'warn' ? '#f7d070' : '#ef8d8d',
+          }}>
+            graph:{String(diagnostics.buildDesign?.verifier?.decision || '-')}
+          </span>
+          <span style={{
+            fontSize: 8,
+            color: diagnostics.runtimeHealth?.ok ? '#67e6bf' : '#ef8d8d',
+          }}>
+            rt:{diagnostics.runtimeHealth?.ok ? 'ok' : 'down'}
+          </span>
+        </div>
+        <button
+          onClick={() => {
+            setActiveTab('stats');
+            setStatsMode('diagnostics');
+          }}
+          style={{
+            border: '1px solid #2e2e2e',
+            borderRadius: 3,
+            background: '#151515',
+            color: '#9aa2ad',
+            fontSize: 8,
+            padding: '1px 6px',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+          }}
+          title="Open diagnostics"
+        >
+          diag ↗
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Agent icon mapping
+const AGENT_ICONS: Record<string, string> = {
+  scout: '🕵️',
+  researcher: '🔬',
+  architect: '👨‍💻',
+  coder: '💻',
+  verifier: '✅',
+};
+
+// Agent Performance Section
+function AgentPerformanceSection() {
+  const { data, loading } = useAgentsData();
+
+  if (loading) {
+    return (
+      <div style={{ color: '#444', fontSize: 11, padding: '12px 0' }}>
+        Loading agent metrics...
+      </div>
+    );
+  }
+
+  if (!data || !data.agents) {
+    return (
+      <div style={{ color: '#444', fontSize: 11, padding: '12px 0' }}>
+        No agent data available
+      </div>
+    );
+  }
+
+  const agents = Object.entries(data.agents);
+  
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ 
+        color: NOLAN_PALETTE.textMuted, 
+        fontSize: 9, 
+        marginBottom: 12, 
+        textTransform: 'uppercase',
+        borderBottom: `1px solid ${NOLAN_PALETTE.border}`,
+        paddingBottom: 8,
+      }}>
+        Agent Performance ({data.period})
+      </div>
+      
+      {agents.map(([agentType, stats]) => {
+        const successRate = stats.total_runs > 0 
+          ? Math.round((stats.successful_runs / stats.total_runs) * 100) 
+          : 0;
+        
+        return (
+          <div
+            key={agentType}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '8px 0',
+              borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
+            }}
+          >
+            <span style={{ fontSize: 12, width: 20 }}>
+              {AGENT_ICONS[agentType] || '🤖'}
+            </span>
+            <span style={{ 
+              color: NOLAN_PALETTE.text, 
+              fontSize: 10, 
+              width: 80,
+              textTransform: 'capitalize',
+            }}>
+              {agentType}
+            </span>
+            <span style={{ color: '#666', fontSize: 9, width: 50 }}>
+              {stats.total_runs} runs
+            </span>
+            <span style={{
+              color: successRate >= 70 ? '#8a8' : successRate >= 50 ? '#aa8' : '#a66',
+              fontSize: 9,
+              width: 40,
+            }}>
+              {successRate}%
+            </span>
+            <span style={{ color: '#666', fontSize: 9, width: 60 }}>
+              ~{Math.round(stats.avg_duration)}s
+            </span>
+            <span style={{ color: '#666', fontSize: 9 }}>
+              ${stats.total_cost.toFixed(2)}
+            </span>
+          </div>
+        );
+      })}
+      
+      {/* Recent Remarks */}
+      {agents.some(([_, s]) => s.recent_remarks.length > 0) && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ 
+            color: NOLAN_PALETTE.textMuted, 
+            fontSize: 8, 
+            marginBottom: 8,
+          }}>
+            Recent Architect Remarks
+          </div>
+          {agents.flatMap(([agentType, stats]) => 
+            stats.recent_remarks.map((remark, idx) => (
+              <div
+                key={`${agentType}-${idx}`}
+                style={{
+                  padding: '4px 8px',
+                  marginBottom: 4,
+                  background: NOLAN_PALETTE.bg,
+                  borderRadius: 4,
+                  fontSize: 8,
+                  color: '#888',
+                }}
+              >
+                <span style={{ color: NOLAN_PALETTE.textAccent }}>{AGENT_ICONS[agentType]}</span>
+                {' '}{remark}
+              </div>
+            ))
+          ).slice(0, 3)}
+        </div>
+      )}
     </div>
   );
 }
@@ -229,6 +479,9 @@ function StatsExpanded() {
         </>
       )}
 
+      {/* MARKER_155.STATS.UI: Agent Performance Section */}
+      <AgentPerformanceSection />
+
       {/* Refresh button */}
       <button
         onClick={refresh}
@@ -253,6 +506,7 @@ function StatsExpanded() {
 export function MiniStats() {
   return (
     <MiniWindow
+      windowId="stats" // MARKER_155.DRAGGABLE.012: Unique ID for position persistence
       title="Stats"
       icon="📊"
       position="top-right"

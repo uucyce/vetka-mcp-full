@@ -46,6 +46,60 @@ export interface PresetConfig {
   roles: Record<string, string>;
 }
 
+// MARKER_155A.P2.PIN_LAYOUT: Persist manual node positions per graph context.
+export interface NodePinPosition {
+  x: number;
+  y: number;
+}
+
+export type LayoutPinsMap = Record<string, Record<string, NodePinPosition>>;
+export type FocusRestorePolicy = 'scope_first' | 'selection_first';
+export type FocusRestoreSource = 'current' | 'memory' | 'default' | null;
+
+const LAYOUT_PINS_STORAGE_KEY = 'mcc_layout_pins_v1';
+const FOCUS_RESTORE_POLICY_STORAGE_KEY = 'mcc_focus_restore_policy_v1';
+
+function loadLayoutPins(): LayoutPinsMap {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(LAYOUT_PINS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLayoutPins(pins: LayoutPinsMap): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(LAYOUT_PINS_STORAGE_KEY, JSON.stringify(pins));
+  } catch {
+    // ignore persistence errors
+  }
+}
+
+function loadFocusRestorePolicy(): FocusRestorePolicy {
+  if (typeof window === 'undefined') return 'selection_first';
+  try {
+    const raw = window.localStorage.getItem(FOCUS_RESTORE_POLICY_STORAGE_KEY);
+    if (raw === 'scope_first' || raw === 'selection_first') return raw;
+    return 'selection_first';
+  } catch {
+    return 'selection_first';
+  }
+}
+
+function saveFocusRestorePolicy(policy: FocusRestorePolicy): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(FOCUS_RESTORE_POLICY_STORAGE_KEY, policy);
+  } catch {
+    // ignore persistence errors
+  }
+}
+
 // ── Store ──
 
 // MARKER_153.1C: Navigation level type for Matryoshka drill-down
@@ -160,6 +214,14 @@ interface MCCState {
   hasProject: boolean;
   projectConfig: Record<string, any> | null;
 
+  // MARKER_155.4: Camera position for zoom-based navigation
+  cameraPosition: { x: number; y: number; zoom: number } | null;
+  focusedNodeId: string | null;
+  focusRestorePolicy: FocusRestorePolicy;
+  focusRestoreSource: FocusRestoreSource;
+  // MARKER_155A.P2.PIN_LAYOUT: Manual layout persistence buckets.
+  layoutPins: LayoutPinsMap;
+
   // Actions
   fetchTasks: () => Promise<void>;
   addTask: (title: string, preset: string, phaseType: string, tags: string[], selectedKey?: any) => Promise<string | null>;
@@ -192,6 +254,16 @@ interface MCCState {
   goBack: () => void;
   // MARKER_154.1B: Direct level jump (no history push — used by breadcrumb clicks)
   goToLevel: (level: NavLevel) => void;
+  // MARKER_155.4: Camera position actions
+  setCameraPosition: (pos: { x: number; y: number; zoom: number } | null) => void;
+  setFocusedNodeId: (nodeId: string | null) => void;
+  setFocusRestorePolicy: (policy: FocusRestorePolicy) => void;
+  setFocusRestoreSource: (source: FocusRestoreSource) => void;
+  // MARKER_155A.P2.PIN_LAYOUT: Layout pin actions.
+  setLayoutPinsForKey: (key: string, positions: Record<string, NodePinPosition>) => void;
+  clearLayoutPinsForKey: (key: string) => void;
+  // MARKER_155A.G21.SINGLE_CANVAS_STATE: Focus roadmap branch without level switch.
+  setRoadmapFocus: (roadmapNodeId: string | null) => void;
 }
 
 const MAX_STREAM_EVENTS = 30;
@@ -228,13 +300,20 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   streamEvents: [],
   editMode: true, // MARKER_151.3A: Edit mode ON by default
 
-  // MARKER_153.1C: Navigation initial state
-  navLevel: 'roadmap' as NavLevel,
+  // MARKER_155A.P0.FLOW_GATE: Safe bootstrap level to avoid premature drill UI
+  navLevel: 'first_run' as NavLevel,
   navRoadmapNodeId: '',
   navTaskId: '',
   navHistory: [] as NavLevel[],
   hasProject: false,
   projectConfig: null,
+
+  // MARKER_155.4: Camera position initial state
+  cameraPosition: null,
+  focusedNodeId: null,
+  focusRestorePolicy: loadFocusRestorePolicy(),
+  focusRestoreSource: null,
+  layoutPins: loadLayoutPins(),
 
   // ── Fetch tasks + agents + heartbeat ──
   fetchTasks: async () => {
@@ -466,13 +545,16 @@ export const useMCCStore = create<MCCState>((set, get) => ({
       const data = await res.json();
 
       if (data.has_project && data.session_state) {
+        // MARKER_155A.P0.FLOW_GATE:
+        // Do not restore deep drill levels on startup. Users should enter from roadmap
+        // after project init to keep context predictable.
         set({
           hasProject: true,
           projectConfig: data.project_config,
-          navLevel: (data.session_state.level || 'roadmap') as NavLevel,
-          navRoadmapNodeId: data.session_state.roadmap_node_id || '',
-          navTaskId: data.session_state.task_id || '',
-          navHistory: data.session_state.history || [],
+          navLevel: 'roadmap',
+          navRoadmapNodeId: '',
+          navTaskId: '',
+          navHistory: [],
         });
       } else {
         // MARKER_154.1B: No project → first_run level
@@ -540,4 +622,29 @@ export const useMCCStore = create<MCCState>((set, get) => ({
       history: newState.navHistory,
     });
   },
+
+  // MARKER_155.4: Camera position actions
+  setCameraPosition: (pos) => set({ cameraPosition: pos }),
+  setFocusedNodeId: (nodeId) => set({ focusedNodeId: nodeId }),
+  setFocusRestorePolicy: (policy) => {
+    saveFocusRestorePolicy(policy);
+    set({ focusRestorePolicy: policy });
+  },
+  setFocusRestoreSource: (source) => set({ focusRestoreSource: source }),
+  setLayoutPinsForKey: (key, positions) => set((state) => {
+    const next = {
+      ...state.layoutPins,
+      [key]: positions,
+    };
+    saveLayoutPins(next);
+    return { layoutPins: next };
+  }),
+  clearLayoutPinsForKey: (key) => set((state) => {
+    if (!state.layoutPins[key]) return state;
+    const next = { ...state.layoutPins };
+    delete next[key];
+    saveLayoutPins(next);
+    return { layoutPins: next };
+  }),
+  setRoadmapFocus: (roadmapNodeId) => set({ navRoadmapNodeId: roadmapNodeId || '' }),
 }));

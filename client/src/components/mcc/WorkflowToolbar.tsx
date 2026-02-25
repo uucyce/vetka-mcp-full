@@ -1,10 +1,15 @@
 /**
- * MARKER_144.6: Workflow Toolbar — save/load/validate/execute controls.
- * Thin bar between header and DAG area, only visible in edit mode.
- * Nolan palette, monospace, compact.
+ * ⚠️ DEPRECATED: WorkflowToolbar
+ *
+ * MARKER_155.CLEANUP: Component deprecated in Phase 155.
+ * Replaced by FooterActionBar which provides unified 3-action interface.
+ *
+ * This file is kept for reference only. Do not use in new code.
+ * Workflow actions (save/load/validate) moved to FooterActionBar gear popup.
  *
  * @phase 144
- * @status active
+ * @status deprecated
+ * @replaced_by FooterActionBar
  */
 
 import { memo, useState, useCallback, useEffect } from 'react';

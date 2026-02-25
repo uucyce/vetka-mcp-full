@@ -1,0 +1,36 @@
+Scale Name (KORG),Number of Notes,Interval Formula (Semitones from Root),Step Formula
+Chromatic,12,"0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11",H H H H H H H H H H H H
+Ionian (Major),7,"0, 2, 4, 5, 7, 9, 11",W W H W W W H
+Dorian,7,"0, 2, 3, 5, 7, 9, 10",W H W W W H W
+Phrygian,7,"0, 1, 3, 5, 7, 8, 10",H W W W H W W
+Lydian,7,"0, 2, 4, 6, 7, 9, 11",W W W H W W H
+Mixolydian,7,"0, 2, 4, 5, 7, 9, 10",W W H W W H W
+Aeolian (Natural Minor),7,"0, 2, 3, 5, 7, 8, 10",W H W W H W W
+Locrian,7,"0, 1, 3, 5, 6, 8, 10",H W W H W W W
+Harmonic Minor,7,"0, 2, 3, 5, 7, 8, 11",W H W W H 3H H
+Melodic Minor,7,"0, 2, 3, 5, 7, 9, 11",W H W W W W H
+Major Blues,6,"0, 2, 3, 4, 7, 9",W H H 3H W 3H
+Minor Blues,6,"0, 3, 5, 6, 7, 10",3H W H H 3H W
+Diminished,8,"0, 2, 3, 5, 6, 8, 9, 11",W H W H W H W H
+Combination Diminished,8,"0, 1, 3, 4, 6, 7, 9, 10",H W H W H W H W
+Major Pentatonic,5,"0, 2, 4, 7, 9",W W 3H W 3H
+Minor Pentatonic,5,"0, 3, 5, 7, 10",3H W W 3H W
+Raga 1 (Bhairav),7,"0, 1, 4, 5, 7, 8, 11",H 3H H W H 3H H
+Raga 2 (Gamanasrama),7,"0, 1, 4, 6, 7, 9, 11",H 3H W H W W H
+Raga 3 (Todi),7,"0, 1, 3, 6, 7, 8, 11",H W 3H H H 3H H
+Arabic,7,"0, 2, 4, 5, 6, 8, 10",W W H H W W
+Spanish,8,"0, 1, 3, 4, 5, 7, 8, 10",H W H H W H W W
+Gypsy,7,"0, 2, 3, 6, 7, 8, 11",W H 3H H H 3H H
+Egyptian,5,"0, 2, 5, 7, 10",W 3H W 3H W
+Hawaiian,5,"0, 2, 3, 7, 9",W H 4H W 3H
+Pelog,5,"0, 1, 3, 7, 8",H W 4H H 4H
+Japanese,5,"0, 1, 5, 7, 8",H 4H W H 4H
+Ryuku,5,"0, 4, 5, 7, 11",4H H W 4H H
+Chinese,5,"0, 4, 6, 7, 11",4H W H 4H H
+Bass Line,3,"0, 7, 10",7s 3s
+Whole Tone,6,"0, 2, 4, 6, 8, 10",W W W W W W
+Minor 3rd,4,"0, 3, 6, 9",3H 3H 3H 3H
+Major 3rd,3,"0, 4, 8",4s 4s
+4th Interval,3,"0, 5, 10",5s 5s
+5th Interval,2,"0, 7",7s
+Octave,1,0,-

@@ -34,8 +34,10 @@ logger = logging.getLogger(__name__)
 # Project root (3 levels up from this file)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
-# Default playground base directory
-PLAYGROUND_BASE = PROJECT_ROOT / ".playgrounds"
+# MARKER_155.PLAYGROUND.PATH: External path for isolation
+# Changed from PROJECT_ROOT / ".playgrounds" to home directory
+# Prevents watchdog from seeing playground files (recursion protection)
+PLAYGROUND_BASE = Path.home() / ".vetka" / "playgrounds"
 
 # Max concurrent playgrounds (prevent disk abuse)
 MAX_PLAYGROUNDS = 5
@@ -47,16 +49,17 @@ PLAYGROUND_TTL_SECONDS = 4 * 60 * 60
 @dataclass
 class PlaygroundConfig:
     """Configuration for a playground instance."""
+
     playground_id: str
     branch_name: str
     worktree_path: str
     created_at: float
     last_used_at: float
     source_branch: str = "main"
-    auto_write: bool = True      # Pipeline can write files in playground
+    auto_write: bool = True  # Pipeline can write files in playground
     preset: str = "dragon_silver"
     task_description: str = ""
-    status: str = "active"       # active | completed | failed | expired
+    status: str = "active"  # active | completed | failed | expired
     files_created: List[str] = field(default_factory=list)
     pipeline_runs: int = 0
 
@@ -139,6 +142,15 @@ class PlaygroundManager:
         branch_name = f"playground/{pg_id}"
         worktree_path = self._base_dir / pg_id
 
+        # MARKER_155.PLAYGROUND.GUARD: Prevent creation inside project directory
+        # This prevents watchdog from seeing playground files (recursion protection)
+        if str(worktree_path).startswith(str(PROJECT_ROOT)):
+            raise RuntimeError(
+                f"Playground cannot be created inside project directory: {worktree_path}\n"
+                f"This would cause file watcher recursion. "
+                f"Playgrounds must be external (e.g., ~/.vetka/playgrounds/)"
+            )
+
         # Create git worktree
         await self._create_worktree(
             worktree_path=worktree_path,
@@ -166,23 +178,42 @@ class PlaygroundManager:
 
         # Create playground metadata file inside the worktree
         meta_file = worktree_path / ".playground.json"
-        meta_file.write_text(json.dumps({
-            "playground_id": pg_id,
-            "task": task_description,
-            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
-            "restrictions": {
-                "scoped_to": str(worktree_path),
-                "can_write_main": False,
-                "auto_write": auto_write,
-            }
-        }, indent=2))
+        meta_file.write_text(
+            json.dumps(
+                {
+                    "playground_id": pg_id,
+                    "task": task_description,
+                    "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+                    "restrictions": {
+                        "scoped_to": str(worktree_path),
+                        "can_write_main": False,
+                        "auto_write": auto_write,
+                    },
+                },
+                indent=2,
+            )
+        )
 
         self._playgrounds[pg_id] = config
         self._save_config()
 
+        # MARKER_155.PLAYGROUND.SYMLINK: Create optional symlink in project for UX
+        # This allows users to easily find the playground from project root
+        try:
+            symlink_path = PROJECT_ROOT / f".vetka-playground-{pg_id}"
+            if not symlink_path.exists():
+                symlink_path.symlink_to(worktree_path, target_is_directory=True)
+                logger.info("Created symlink: %s -> %s", symlink_path, worktree_path)
+        except OSError as e:
+            # Windows may require admin rights, or other permission issues
+            logger.debug("Could not create symlink (optional): %s", e)
+
         logger.info(
             "Playground created: %s at %s (branch=%s, preset=%s)",
-            pg_id, worktree_path, branch_name, preset
+            pg_id,
+            worktree_path,
+            branch_name,
+            preset,
         )
         return config
 
@@ -201,6 +232,15 @@ class PlaygroundManager:
             return False
 
         worktree_path = Path(config.worktree_path)
+
+        # MARKER_155.PLAYGROUND.SYMLINK_CLEANUP: Remove symlink if exists
+        try:
+            symlink_path = PROJECT_ROOT / f".vetka-playground-{playground_id}"
+            if symlink_path.exists() or symlink_path.is_symlink():
+                symlink_path.unlink()
+                logger.info("Removed symlink: %s", symlink_path)
+        except OSError as e:
+            logger.debug("Could not remove symlink (optional): %s", e)
 
         # Remove git worktree
         try:
@@ -250,7 +290,9 @@ class PlaygroundManager:
 
         return root
 
-    def list_playgrounds(self, include_inactive: bool = False) -> List[PlaygroundConfig]:
+    def list_playgrounds(
+        self, include_inactive: bool = False
+    ) -> List[PlaygroundConfig]:
         """List playground instances.
 
         Args:
@@ -272,7 +314,10 @@ class PlaygroundManager:
         now = time.time()
         expired = []
         for pg_id, config in self._playgrounds.items():
-            if config.status == "active" and (now - config.last_used_at) > PLAYGROUND_TTL_SECONDS:
+            if (
+                config.status == "active"
+                and (now - config.last_used_at) > PLAYGROUND_TTL_SECONDS
+            ):
                 expired.append(pg_id)
 
         for pg_id in expired:
@@ -321,7 +366,11 @@ class PlaygroundManager:
 
         # Block path traversal attempts
         if ".." in relative_path:
-            logger.warning("Path traversal blocked: %s (playground=%s)", relative_path, playground_id)
+            logger.warning(
+                "Path traversal blocked: %s (playground=%s)",
+                relative_path,
+                playground_id,
+            )
             return None
 
         # Strip leading / or ./ for safety
@@ -332,12 +381,18 @@ class PlaygroundManager:
 
         # Validate it's still within playground (prevent ../../../ attacks)
         if not self.validate_path(playground_id, str(full_path)):
-            logger.warning("Path traversal blocked: %s (playground=%s)", relative_path, playground_id)
+            logger.warning(
+                "Path traversal blocked: %s (playground=%s)",
+                relative_path,
+                playground_id,
+            )
             return None
 
         return full_path
 
-    def record_pipeline_run(self, playground_id: str, files_created: Optional[List[str]] = None):
+    def record_pipeline_run(
+        self, playground_id: str, files_created: Optional[List[str]] = None
+    ):
         """Record that a pipeline ran in this playground.
 
         Args:
@@ -384,8 +439,10 @@ class PlaygroundManager:
             diff_result = await asyncio.to_thread(
                 subprocess.run,
                 ["git", "diff", "--stat", "HEAD"],
-                capture_output=True, text=True,
-                cwd=str(worktree_path), timeout=10,
+                capture_output=True,
+                text=True,
+                cwd=str(worktree_path),
+                timeout=10,
             )
             if diff_result.returncode == 0 and diff_result.stdout.strip():
                 parts.append(diff_result.stdout.strip())
@@ -394,15 +451,19 @@ class PlaygroundManager:
             status_result = await asyncio.to_thread(
                 subprocess.run,
                 ["git", "status", "--porcelain"],
-                capture_output=True, text=True,
-                cwd=str(worktree_path), timeout=10,
+                capture_output=True,
+                text=True,
+                cwd=str(worktree_path),
+                timeout=10,
             )
             if status_result.returncode == 0:
                 untracked = []
                 for line in status_result.stdout.strip().split("\n"):
                     if line.startswith("??"):
                         filepath = line[3:].strip()
-                        if filepath not in (".playground.json",) and not filepath.startswith("data/vetka_staging"):
+                        if filepath not in (
+                            ".playground.json",
+                        ) and not filepath.startswith("data/vetka_staging"):
                             untracked.append(filepath)
                 if untracked:
                     parts.append(f"\nNew files ({len(untracked)}):")
@@ -448,8 +509,10 @@ class PlaygroundManager:
             diff_result = await asyncio.to_thread(
                 subprocess.run,
                 ["git", "diff", "HEAD", "--name-status"],
-                capture_output=True, text=True,
-                cwd=str(worktree_path), timeout=10,
+                capture_output=True,
+                text=True,
+                cwd=str(worktree_path),
+                timeout=10,
             )
             for line in diff_result.stdout.strip().split("\n"):
                 if not line.strip():
@@ -457,18 +520,26 @@ class PlaygroundManager:
                 parts = line.split("\t", 1)
                 if len(parts) == 2:
                     status_code, filepath = parts
-                    changed_files.append({
-                        "path": filepath,
-                        "status": {"M": "modified", "A": "added", "D": "deleted"}.get(status_code, status_code),
-                        "tracked": True,
-                    })
+                    changed_files.append(
+                        {
+                            "path": filepath,
+                            "status": {
+                                "M": "modified",
+                                "A": "added",
+                                "D": "deleted",
+                            }.get(status_code, status_code),
+                            "tracked": True,
+                        }
+                    )
 
             # Untracked files (git status --porcelain)
             status_result = await asyncio.to_thread(
                 subprocess.run,
                 ["git", "status", "--porcelain"],
-                capture_output=True, text=True,
-                cwd=str(worktree_path), timeout=10,
+                capture_output=True,
+                text=True,
+                cwd=str(worktree_path),
+                timeout=10,
             )
             for line in status_result.stdout.strip().split("\n"):
                 if not line.strip():
@@ -476,13 +547,17 @@ class PlaygroundManager:
                 if line.startswith("??"):
                     filepath = line[3:].strip()
                     # Skip playground metadata and staging dirs
-                    if filepath in (".playground.json",) or filepath.startswith("data/vetka_staging"):
+                    if filepath in (".playground.json",) or filepath.startswith(
+                        "data/vetka_staging"
+                    ):
                         continue
-                    changed_files.append({
-                        "path": filepath,
-                        "status": "new",
-                        "tracked": False,
-                    })
+                    changed_files.append(
+                        {
+                            "path": filepath,
+                            "status": "new",
+                            "tracked": False,
+                        }
+                    )
 
             # Get unified diff for each file
             for f in changed_files:
@@ -493,7 +568,9 @@ class PlaygroundManager:
                         # For untracked files, show entire content as diff
                         file_path = worktree_path / f["path"]
                         if file_path.exists() and file_path.stat().st_size < 50000:
-                            content = file_path.read_text(encoding="utf-8", errors="replace")
+                            content = file_path.read_text(
+                                encoding="utf-8", errors="replace"
+                            )
                             f["diff"] = f"+++ b/{f['path']}\n" + "\n".join(
                                 f"+{line}" for line in content.split("\n")
                             )
@@ -505,9 +582,12 @@ class PlaygroundManager:
                         continue
 
                     diff_out = await asyncio.to_thread(
-                        subprocess.run, diff_cmd,
-                        capture_output=True, text=True,
-                        cwd=str(worktree_path), timeout=10,
+                        subprocess.run,
+                        diff_cmd,
+                        capture_output=True,
+                        text=True,
+                        cwd=str(worktree_path),
+                        timeout=10,
                     )
                     if diff_out.returncode == 0:
                         f["diff"] = diff_out.stdout
@@ -559,7 +639,10 @@ class PlaygroundManager:
             self._load_config()
             config = self._playgrounds.get(playground_id)
         if not config or config.status != "active":
-            return {"success": False, "error": f"Playground {playground_id} not found or not active"}
+            return {
+                "success": False,
+                "error": f"Playground {playground_id} not found or not active",
+            }
 
         worktree_path = Path(config.worktree_path)
         if not worktree_path.exists():
@@ -609,7 +692,10 @@ class PlaygroundManager:
             try:
                 # First, commit all changes in the playground
                 await self._run_git(["add", "-A"], cwd=str(worktree_path))
-                msg = commit_message or f"Playground {playground_id}: {config.task_description[:60]}"
+                msg = (
+                    commit_message
+                    or f"Playground {playground_id}: {config.task_description[:60]}"
+                )
                 try:
                     await self._run_git(
                         ["commit", "-m", msg],
@@ -640,15 +726,25 @@ class PlaygroundManager:
             try:
                 # Commit changes in playground first
                 await self._run_git(["add", "-A"], cwd=str(worktree_path))
-                msg = commit_message or f"Playground {playground_id}: {config.task_description[:60]}"
+                msg = (
+                    commit_message
+                    or f"Playground {playground_id}: {config.task_description[:60]}"
+                )
                 try:
                     await self._run_git(["commit", "-m", msg], cwd=str(worktree_path))
                 except RuntimeError:
                     pass
 
                 # Merge into main
-                await self._run_git(["merge", config.branch_name, "--no-ff", "-m",
-                                     f"Merge playground {playground_id}: {config.task_description[:60]}"])
+                await self._run_git(
+                    [
+                        "merge",
+                        config.branch_name,
+                        "--no-ff",
+                        "-m",
+                        f"Merge playground {playground_id}: {config.task_description[:60]}",
+                    ]
+                )
                 promoted_files = files or ["(all via merge)"]
 
             except Exception as e:
@@ -700,7 +796,9 @@ class PlaygroundManager:
 
         config.status = "failed"
         self._save_config()
-        logger.info("Playground rejected: %s (reason: %s)", playground_id, reason or "none")
+        logger.info(
+            "Playground rejected: %s (reason: %s)", playground_id, reason or "none"
+        )
 
         if destroy:
             await self.destroy(playground_id)
@@ -773,12 +871,16 @@ class PlaygroundManager:
         await self._run_git(["rev-parse", "--verify", source_branch])
 
         # Create worktree with new branch
-        await self._run_git([
-            "worktree", "add",
-            "-b", branch_name,
-            str(worktree_path),
-            source_branch,
-        ])
+        await self._run_git(
+            [
+                "worktree",
+                "add",
+                "-b",
+                branch_name,
+                str(worktree_path),
+                source_branch,
+            ]
+        )
 
     async def _remove_worktree(self, worktree_path: Path, branch_name: str):
         """Remove a git worktree and its branch."""
@@ -832,8 +934,7 @@ class PlaygroundManager:
         try:
             data = json.loads(self._config_file.read_text())
             self._playgrounds = {
-                k: PlaygroundConfig.from_dict(v)
-                for k, v in data.items()
+                k: PlaygroundConfig.from_dict(v) for k, v in data.items()
             }
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             logger.warning("Failed to load playground config: %s", e)
@@ -863,6 +964,7 @@ def get_playground_manager() -> PlaygroundManager:
 # ---------------------------------------------------------------------------
 # Convenience functions for MCP tools
 # ---------------------------------------------------------------------------
+
 
 async def create_playground(
     task: str = "",
@@ -937,7 +1039,9 @@ async def promote_playground(
     )
 
 
-async def reject_playground(playground_id: str, reason: str = "", destroy: bool = False) -> Dict:
+async def reject_playground(
+    playground_id: str, reason: str = "", destroy: bool = False
+) -> Dict:
     """Reject playground — convenience for MCP/REST."""
     manager = get_playground_manager()
     return await manager.reject(playground_id, reason=reason, destroy=destroy)

@@ -43,6 +43,7 @@ const previewCache = new Map<string, string>();
 // Limit: 500 textures max to prevent memory bloat
 const textureCache = new Map<string, THREE.CanvasTexture>();
 const TEXTURE_CACHE_MAX = 500;
+const HOVER_PREVIEW_ENABLED = false;
 
 function getTextureCacheKey(
   id: string,
@@ -916,8 +917,39 @@ function FileCardComponent({
   // Phase 112.4: Reduced dependencies - hover/drag handled via material, not texture
   }, [id, name, path, type, isSelected, isHighlighted, isPinned, lodLevel, cardCategory, previewContent, metadata, visual_hints, artifactType, artifactStatus, artifactProgress]);
 
+  const handleContextMenu = useCallback(
+    (e: any) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const event = e?.nativeEvent || e?.sourceEvent || e;
+      const clientX = Number(event?.clientX ?? 0);
+      const clientY = Number(event?.clientY ?? 0);
+
+      window.dispatchEvent(
+        new CustomEvent('vetka-node-context-menu', {
+          detail: {
+            id,
+            name,
+            path,
+            type,
+            clientX,
+            clientY,
+          },
+        })
+      );
+    },
+    [id, name, path, type]
+  );
+
   const handlePointerDown = useCallback(
     (e: any) => {
+      // Right mouse button = open node context menu
+      if (e.button === 2) {
+        handleContextMenu(e);
+        return;
+      }
+
       // Phase 65: Ctrl/Cmd+Drag OR grabMode active = node movement
       const isDragModifier = e.ctrlKey || e.metaKey || grabMode;
       if (isDragModifier && e.button === 0) {
@@ -948,7 +980,7 @@ function FileCardComponent({
         dragOffset.current.copy(mesh.position).sub(intersection.current);
       }
     },
-    [setDraggingAny, grabMode]
+    [setDraggingAny, grabMode, handleContextMenu]
   );
 
   const handlePointerMove = useCallback(
@@ -1130,6 +1162,7 @@ function FileCardComponent({
         ref={meshRef}
         position={position}
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
         onDoubleClick={handleDoubleClick}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -1203,7 +1236,7 @@ function FileCardComponent({
       )}
 
       {/* Phase 61.1: Hover Preview - shows on 300ms hover (isHoveredDebounced) */}
-      {type === 'file' && isHoveredDebounced && isPreviewableFile(name) && (
+      {HOVER_PREVIEW_ENABLED && type === 'file' && isHoveredDebounced && isPreviewableFile(name) && (
         <Html
           position={[position[0], position[1] + cardSize[1] / 2 + 3, position[2]]}
           center
@@ -1462,6 +1495,16 @@ function FileCardComponent({
             zIndexRange={[50, 0]}
           >
             <div
+              onContextMenu={(e) => {
+                handleContextMenu(e);
+              }}
+              onMouseDown={(e) => {
+                // Prevent OrbitControls right-button rotate when user opens node menu from label.
+                if (e.button === 2) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 // Phase 119.1: Click on folder label = zoom to folder

@@ -100,6 +100,36 @@ export interface ApiTreeResponse {
   error?: string;
 }
 
+export type TreeViewMode = 'directed' | 'knowledge';
+
+export interface KnowledgeGraphResponse {
+  status: 'ok' | 'error';
+  source?: 'cache' | 'computed';
+  tags?: Record<string, {
+    id?: string;
+    name?: string;
+    files?: string[];
+    color?: string;
+    [key: string]: any;
+  }>;
+  positions?: Record<string, {
+    x?: number;
+    y?: number;
+    z?: number;
+    knowledge_level?: number;
+    [key: string]: any;
+  }>;
+  edges?: Array<{ source?: string; target?: string; from?: string; to?: string; [key: string]: any }>;
+  chain_edges?: Array<{ source?: string; target?: string; from?: string; to?: string; [key: string]: any }>;
+  hydration?: {
+    path?: string;
+    hydrated?: boolean;
+    reason?: string;
+    indexed_count?: number;
+  };
+  error?: string;
+}
+
 export async function fetchTreeData(): Promise<ApiTreeResponse> {
   try {
     const response = await fetch(`${API_BASE}/tree/data`);
@@ -123,6 +153,39 @@ export async function fetchTreeData(): Promise<ApiTreeResponse> {
       success: false,
       nodes: [],
       error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+export async function fetchKnowledgeGraphData(params?: {
+  forceRefresh?: boolean;
+  hydrateScopePath?: string;
+  hydrateForce?: boolean;
+  filePositions?: Record<string, { x: number; y: number; z: number }>;
+  semanticExpansionBudget?: number;
+  semanticExpansionThreshold?: number;
+}): Promise<KnowledgeGraphResponse> {
+  try {
+    const response = await fetch(`${API_BASE}/tree/knowledge-graph`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        force_refresh: Boolean(params?.forceRefresh),
+        hydrate_scope_path: params?.hydrateScopePath || '',
+        hydrate_force: Boolean(params?.hydrateForce),
+        file_positions: params?.filePositions || {},
+        semantic_expansion_budget: params?.semanticExpansionBudget,
+        semantic_expansion_threshold: params?.semanticExpansionThreshold,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    return {
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 }

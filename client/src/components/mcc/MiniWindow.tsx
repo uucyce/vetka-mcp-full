@@ -1,16 +1,17 @@
 /**
- * MARKER_154.11A: MiniWindow — compact/expanded floating window framework.
+ * MARKER_155.DRAGGABLE.002: MiniWindow — Draggable floating window framework.
  *
- * Used for MiniChat, MiniTasks, MiniStats in the DAG canvas.
- * Compact: small card in corner (200×150). Expanded: overlay (80% screen).
- * Toggle by clicking header. X or click outside → compact.
+ * Uses react-draggable for position control.
+ * Position is saved to localStorage per window.
+ * Compact: small card in corner (draggable). Expanded: overlay (centered, not draggable).
  *
- * @phase 154
+ * @phase 155
  * @wave 4
  * @status active
  */
 
 import { useState, useCallback, useRef, useEffect, type ReactNode } from 'react';
+import Draggable from 'react-draggable';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 
@@ -20,6 +21,8 @@ interface MiniWindowProps {
   title: string;
   icon: string;
   position: Position;
+  /** Unique ID for saving position to localStorage */
+  windowId: string;
   /** Content for compact mode */
   compactContent: ReactNode;
   /** Content for expanded mode */
@@ -33,17 +36,45 @@ interface MiniWindowProps {
   onToggle?: (expanded: boolean) => void;
 }
 
-const POSITION_STYLE: Record<Position, React.CSSProperties> = {
-  'top-left': { top: 8, left: 8 },
-  'top-right': { top: 8, right: 8 },
-  'bottom-left': { bottom: 60, left: 8 },  // 60px clearance for FooterActionBar
-  'bottom-right': { bottom: 60, right: 8 },
-};
+// MARKER_155.DRAGGABLE.003: Default positions
+function getDefaultPosition(position: Position, width: number): { x: number; y: number } {
+  const padding = 8;
+  switch (position) {
+    case 'top-left': return { x: padding, y: padding };
+    case 'top-right': return { x: window.innerWidth - width - padding, y: padding };
+    case 'bottom-left': return { x: padding, y: window.innerHeight - 200 };
+    case 'bottom-right': return { x: window.innerWidth - width - padding, y: window.innerHeight - 200 };
+  }
+}
+
+// MARKER_155.DRAGGABLE.004: Load saved position from localStorage
+function loadSavedPosition(windowId: string, defaultPos: { x: number; y: number }): { x: number; y: number } {
+  try {
+    const saved = localStorage.getItem(`miniwindow_pos_${windowId}`);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return { x: parsed.x, y: parsed.y };
+    }
+  } catch {
+    // Ignore errors
+  }
+  return defaultPos;
+}
+
+// MARKER_155.DRAGGABLE.005: Save position to localStorage
+function savePosition(windowId: string, pos: { x: number; y: number }) {
+  try {
+    localStorage.setItem(`miniwindow_pos_${windowId}`, JSON.stringify(pos));
+  } catch {
+    // Ignore errors
+  }
+}
 
 export function MiniWindow({
   title,
   icon,
   position,
+  windowId,
   compactContent,
   expandedContent,
   compactWidth = 200,
@@ -52,6 +83,11 @@ export function MiniWindow({
   onToggle,
 }: MiniWindowProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [isDragging, setIsDragging] = useState(false);
+  const [positionState, setPositionState] = useState(() =>
+    loadSavedPosition(windowId, getDefaultPosition(position, compactWidth))
+  );
+  const nodeRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const toggle = useCallback(() => {
@@ -65,6 +101,21 @@ export function MiniWindow({
     onToggle?.(false);
   }, [onToggle]);
 
+  // MARKER_155.DRAGGABLE.006: Handle drag stop - save position
+  const handleDragStop = useCallback(
+    (_e: any, data: { x: number; y: number }) => {
+      setIsDragging(false);
+      setPositionState({ x: data.x, y: data.y });
+      savePosition(windowId, { x: data.x, y: data.y });
+    },
+    [windowId]
+  );
+
+  // MARKER_155.DRAGGABLE.007: Handle drag start
+  const handleDragStart = useCallback(() => {
+    setIsDragging(true);
+  }, []);
+
   // Close on Escape
   useEffect(() => {
     if (!expanded) return;
@@ -76,67 +127,109 @@ export function MiniWindow({
   }, [expanded, collapse]);
 
   // Click outside to close (expanded only)
-  const handleOverlayClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === overlayRef.current) collapse();
-  }, [collapse]);
+  const handleOverlayClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.target === overlayRef.current) collapse();
+    },
+    [collapse]
+  );
 
   return (
     <>
-      {/* Compact mode — corner card */}
+      {/* MARKER_155.DRAGGABLE.008: Compact mode — draggable corner card */}
       <AnimatePresence>
         {!expanded && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ duration: 0.2 }}
-            style={{
-              position: 'absolute',
-              ...POSITION_STYLE[position],
-              width: compactWidth,
-              height: compactHeight,
-              background: 'rgba(15,15,15,0.85)',
-              backdropFilter: 'blur(12px)',
-              border: `1px solid ${NOLAN_PALETTE.border}`,
-              borderRadius: 8,
-              overflow: 'hidden',
-              zIndex: 50,
-              fontFamily: 'monospace',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
+          <Draggable
+            nodeRef={nodeRef}
+            position={positionState}
+            onStart={handleDragStart}
+            onStop={handleDragStop}
+            bounds="parent"
+            handle=".mini-window-header"
           >
-            {/* Header — click to expand */}
-            <div
-              onClick={toggle}
+            <motion.div
+              ref={nodeRef}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.2 }}
               style={{
+                position: 'absolute',
+                width: compactWidth,
+                height: compactHeight,
+                background: 'rgba(15,15,15,0.95)',
+                backdropFilter: 'blur(12px)',
+                border: `1px solid ${NOLAN_PALETTE.border}`,
+                borderRadius: 8,
+                overflow: 'hidden',
+                zIndex: isDragging ? 100 : 50,
+                fontFamily: 'monospace',
                 display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '5px 8px',
-                cursor: 'pointer',
-                borderBottom: `1px solid ${NOLAN_PALETTE.border}`,
-                flexShrink: 0,
+                flexDirection: 'column',
+                cursor: isDragging ? 'grabbing' : 'default',
+                boxShadow: isDragging
+                  ? '0 8px 32px rgba(0,0,0,0.4)'
+                  : '0 2px 8px rgba(0,0,0,0.2)',
               }}
             >
-              <span style={{ fontSize: 10 }}>{icon}</span>
-              <span style={{ color: NOLAN_PALETTE.textAccent, fontSize: 9, fontWeight: 600, flex: 1 }}>
-                {title}
-              </span>
-              <span style={{ color: '#444', fontSize: 8, cursor: 'pointer' }} title="Expand">
-                ↗
-              </span>
-            </div>
+              {/* MARKER_155.DRAGGABLE.009: Draggable header */}
+              <div
+                className="mini-window-header"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '5px 8px',
+                  cursor: 'grab',
+                  borderBottom: `1px solid ${NOLAN_PALETTE.border}`,
+                  flexShrink: 0,
+                  background: isDragging ? 'rgba(74, 158, 255, 0.1)' : 'transparent',
+                }}
+              >
+                <span style={{ fontSize: 10 }}>{icon}</span>
+                <span
+                  style={{
+                    color: NOLAN_PALETTE.textAccent,
+                    fontSize: 9,
+                    fontWeight: 600,
+                    flex: 1,
+                  }}
+                >
+                  {title}
+                </span>
+                <button
+                  onClick={toggle}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#444',
+                    fontSize: 10,
+                    cursor: 'pointer',
+                    padding: '0 4px',
+                  }}
+                  title="Expand"
+                >
+                  ↗
+                </button>
+              </div>
 
-            {/* Compact content */}
-            <div style={{ flex: 1, overflow: 'hidden', padding: '4px 8px' }}>
-              {compactContent}
-            </div>
-          </motion.div>
+              {/* Compact content */}
+              <div
+                style={{
+                  flex: 1,
+                  overflow: 'hidden',
+                  padding: '4px 8px',
+                  cursor: 'default',
+                }}
+              >
+                {compactContent}
+              </div>
+            </motion.div>
+          </Draggable>
         )}
       </AnimatePresence>
 
-      {/* Expanded mode — overlay */}
+      {/* MARKER_155.DRAGGABLE.010: Expanded mode — centered overlay (not draggable) */}
       <AnimatePresence>
         {expanded && (
           <motion.div
@@ -188,7 +281,14 @@ export function MiniWindow({
                 }}
               >
                 <span style={{ fontSize: 13 }}>{icon}</span>
-                <span style={{ color: NOLAN_PALETTE.text, fontSize: 12, fontWeight: 600, flex: 1 }}>
+                <span
+                  style={{
+                    color: NOLAN_PALETTE.text,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    flex: 1,
+                  }}
+                >
                   {title}
                 </span>
                 <button
@@ -222,9 +322,7 @@ export function MiniWindow({
               </div>
 
               {/* Expanded content */}
-              <div style={{ flex: 1, overflow: 'auto' }}>
-                {expandedContent}
-              </div>
+              <div style={{ flex: 1, overflow: 'auto' }}>{expandedContent}</div>
             </motion.div>
           </motion.div>
         )}

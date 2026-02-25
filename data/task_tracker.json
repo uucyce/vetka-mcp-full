@@ -803,6 +803,54 @@
         "llm_calls": 0,
         "preset": "dragon_bronze"
       }
+    },
+    {
+      "task_id": "task_1771345248",
+      "title": "build new API endpoint",
+      "status": "done",
+      "source": "dragon_titan_core",
+      "completed_at": "2026-02-17T19:32:14",
+      "stats": {
+        "duration_s": 685.5,
+        "llm_calls": 15,
+        "preset": "titan_core"
+      }
+    },
+    {
+      "task_id": "task_1771345934",
+      "title": "Model fallback chain with key roaming\n\nWhen model unavailable after key roaming, call local Hostess (ollama), then try other provider keys.",
+      "status": "done",
+      "source": "dragon_dragon_gold",
+      "completed_at": "2026-02-17T19:40:39",
+      "stats": {
+        "duration_s": 505.3,
+        "llm_calls": 16,
+        "preset": "dragon_gold"
+      }
+    },
+    {
+      "task_id": "task_1771346446",
+      "title": "test task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-17T19:40:46",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
+    },
+    {
+      "task_id": "task_1771346446",
+      "title": "fix task",
+      "status": "done",
+      "source": "dragon_dragon_bronze",
+      "completed_at": "2026-02-17T19:40:46",
+      "stats": {
+        "duration_s": 0.0,
+        "llm_calls": 0,
+        "preset": "dragon_bronze"
+      }
     }
   ],
   "in_progress": [

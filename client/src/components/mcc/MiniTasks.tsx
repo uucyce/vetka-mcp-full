@@ -120,6 +120,7 @@ function TasksCompact() {
 export function MiniTasks() {
   return (
     <MiniWindow
+      windowId="tasks" // MARKER_155.DRAGGABLE.013: Unique ID for position persistence
       title="Tasks"
       icon="📋"
       position="bottom-right"

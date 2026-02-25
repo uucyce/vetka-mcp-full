@@ -2,7 +2,7 @@
   "_meta": {
     "version": "1.0",
     "phase": "121",
-    "updated": "2026-02-15T23:51:04.193982"
+    "updated": "2026-02-26T00:31:51.664254"
   },
   "tasks": {
     "tb_1770577538_6": {
@@ -40,7 +40,8 @@
         "verifier_avg_confidence": 0.4428571428571429,
         "completed_at": 1770666313.602069,
         "duration_s": 666.8
-      }
+      },
+      "module": "backend_orchestration"
     },
     "tb_1770577538_3": {
       "id": "tb_1770577538_3",
@@ -77,7 +78,8 @@
         "verifier_avg_confidence": 0.5625,
         "completed_at": 1770656085.526765,
         "duration_s": 309.7
-      }
+      },
+      "module": "frontend_components"
     },
     "tb_1770577538_4": {
       "id": "tb_1770577538_4",
@@ -114,7 +116,8 @@
         "verifier_avg_confidence": 0.9,
         "completed_at": 1770656927.091423,
         "duration_s": 555.2
-      }
+      },
+      "module": "backend_elisya"
     },
     "tb_1770577538_2": {
       "id": "tb_1770577538_2",
@@ -151,7 +154,8 @@
         "verifier_avg_confidence": 0.675,
         "completed_at": 1770654089.1705558,
         "duration_s": 808.2
-      }
+      },
+      "module": "backend_memory"
     },
     "tb_1770577538_11": {
       "id": "tb_1770577538_11",
@@ -188,7 +192,8 @@
         "verifier_avg_confidence": 0,
         "completed_at": 1770667447.708616,
         "duration_s": 1134.1
-      }
+      },
+      "module": "backend_orchestration"
     },
     "tb_1770577538_9": {
       "id": "tb_1770577538_9",
@@ -199,7 +204,7 @@
       "phase_type": "research",
       "preset": null,
       "assigned_tier": null,
-      "status": "pending",
+      "status": "queued",
       "source": "titan_todo",
       "tags": [
         "models",
@@ -212,7 +217,8 @@
       "completed_at": null,
       "pipeline_task_id": null,
       "result_summary": null,
-      "stats": null
+      "stats": null,
+      "module": "backend_elisya"
     },
     "tb_1770577538_10": {
       "id": "tb_1770577538_10",
@@ -236,7 +242,8 @@
       "completed_at": "2026-02-11T14:27:40.794825",
       "pipeline_task_id": null,
       "result_summary": null,
-      "stats": null
+      "stats": null,
+      "module": ""
     },
     "tb_1770577538_12": {
       "id": "tb_1770577538_12",
@@ -246,8 +253,8 @@
       "complexity": "high",
       "phase_type": "build",
       "preset": null,
-      "assigned_tier": null,
-      "status": "pending",
+      "assigned_tier": "dragon_gold",
+      "status": "done",
       "source": "dragon_todo",
       "tags": [
         "models",
@@ -256,11 +263,465 @@
       ],
       "dependencies": [],
       "created_at": "2026-02-08T22:05:38.158830",
-      "started_at": null,
-      "completed_at": null,
-      "pipeline_task_id": null,
-      "result_summary": null,
-      "stats": null
+      "started_at": "2026-02-17T19:32:14.634597",
+      "completed_at": "2026-02-17T19:40:39.991277",
+      "pipeline_task_id": "task_1771345934",
+      "result_summary": "{\"subtasks_completed\": 10, \"subtasks_total\": 10, \"files_created\": [], \"stats\": {\"preset\": \"dragon_gold\", \"league\": \"dragon\", \"phase_type\": \"build\", \"subtasks_total\": 10, \"subtasks_completed\": 10, \"success\": true, \"llm_calls\": 16, \"tokens_in\": 16495, \"tokens_out\": 13454, \"verifier_avg_confidence\": 0.745, \"completed_at\": 1771346439.9655821, \"duration_s\": 505.3, \"agent_stats\": {\"scout\": {\"calls\": 1, \"tokens_in\": 802, \"tokens_out\": 1000, \"duration_s\": 16.416708946228027, \"retries\": 0, \"success_count\": 1, \"fail_count\": 0}, \"researcher\": {\"calls\": 1, \"tokens_in\": 878, \"tokens_out\": 1618, \"duration_s\": 12.014180183410645, \"retries\": 0, \"success_count\": 1, \"fail_count\": 0}, \"architect\": {\"calls\": 2, \"tokens_in\": 1505, \"tokens_out\": 2848, \"duration_s\": 52.24772810935974, \"retries\": 0, \"success_count\": 2, \"fail_count\": 0}, \"coder\": {\"calls\": 12, \"tokens_in\": 0, \"tokens_out\": 0, \"duration_s\": 250.2171115875244, \"retries\": 4, \"success_count\": 12, \"fail_count\": 0}, \"verifier\": {\"calls\": 12, \"tokens_in\": 13310, \"tokens_out\": 7988, \"duration_s\": 141.33477020263672, \"retries\": 0, \"success_count\": 4, \"fail_count\": 8}}, \"timeline\": [{\"ts\": 1771345934.6470542, \"role\": \"pipeline\", \"event\": \"start\", \"detail\": \"build | dragon_silver\", \"duration_s\": 0.0, \"subtask_idx\": -1}, {\"ts\": 1771345934.6668649, \"role\": \"scout\", \"event\": \"start\", \"detail\": \"parallel recon\", \"duration_s\": 0.0, \"subtask_idx\": -1}, {\"ts\": 1771345934.666867, \"role\": \"researcher\", \"event\": \"start\", \"detail\": \"parallel recon\", \"duration_s\": 0.0, \"subtask_idx\": -1}, {\"ts\": 1771345951.083741, \"role\": \"scout\", \"event\": \"end\", \"detail\": \"tokens=1802\", \"duration_s\": 16.42, \"subtask_idx\": -1}, {\"ts\": 1771345966.11817, \"role\": \"researcher\", \"event\": \"end\", \"detail\": \"tokens=2496\", \"duration_s\": 12.01, \"subtask_idx\": -1}, {\"ts\": 1771345966.153673, \"role\": \"architect\", \"event\": \"start\", \"detail\": \"planning subtasks\", \"duration_s\": 0.0, \"subtask_idx\": -1}, {\"ts\": 1771346010.348011, \"role\": \"architect\", \"event\": \"end\", \"detail\": \"tok",
+      "stats": {
+        "preset": "dragon_gold",
+        "league": "dragon",
+        "phase_type": "build",
+        "subtasks_total": 10,
+        "subtasks_completed": 10,
+        "success": true,
+        "llm_calls": 16,
+        "tokens_in": 16495,
+        "tokens_out": 13454,
+        "verifier_avg_confidence": 0.745,
+        "completed_at": 1771346439.9655821,
+        "duration_s": 505.3,
+        "agent_stats": {
+          "scout": {
+            "calls": 1,
+            "tokens_in": 802,
+            "tokens_out": 1000,
+            "duration_s": 16.416708946228027,
+            "retries": 0,
+            "success_count": 1,
+            "fail_count": 0
+          },
+          "researcher": {
+            "calls": 1,
+            "tokens_in": 878,
+            "tokens_out": 1618,
+            "duration_s": 12.014180183410645,
+            "retries": 0,
+            "success_count": 1,
+            "fail_count": 0
+          },
+          "architect": {
+            "calls": 2,
+            "tokens_in": 1505,
+            "tokens_out": 2848,
+            "duration_s": 52.24772810935974,
+            "retries": 0,
+            "success_count": 2,
+            "fail_count": 0
+          },
+          "coder": {
+            "calls": 12,
+            "tokens_in": 0,
+            "tokens_out": 0,
+            "duration_s": 250.2171115875244,
+            "retries": 4,
+            "success_count": 12,
+            "fail_count": 0
+          },
+          "verifier": {
+            "calls": 12,
+            "tokens_in": 13310,
+            "tokens_out": 7988,
+            "duration_s": 141.33477020263672,
+            "retries": 0,
+            "success_count": 4,
+            "fail_count": 8
+          }
+        },
+        "timeline": [
+          {
+            "ts": 1771345934.6470542,
+            "role": "pipeline",
+            "event": "start",
+            "detail": "build | dragon_silver",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345934.6668649,
+            "role": "scout",
+            "event": "start",
+            "detail": "parallel recon",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345934.666867,
+            "role": "researcher",
+            "event": "start",
+            "detail": "parallel recon",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345951.083741,
+            "role": "scout",
+            "event": "end",
+            "detail": "tokens=1802",
+            "duration_s": 16.42,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345966.11817,
+            "role": "researcher",
+            "event": "end",
+            "detail": "tokens=2496",
+            "duration_s": 12.01,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345966.153673,
+            "role": "architect",
+            "event": "start",
+            "detail": "planning subtasks",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346010.348011,
+            "role": "architect",
+            "event": "end",
+            "detail": "tokens=2138",
+            "duration_s": 44.18,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346017.903137,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 6.64,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346051.008856,
+            "role": "verifier",
+            "event": "fail",
+            "detail": "tokens=1715",
+            "duration_s": 23.09,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346051.0210612,
+            "role": "coder",
+            "event": "retry",
+            "detail": "attempt 1: Verifier ambiguous — defaulting to retry",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346056.6349492,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 4.18,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346073.3267,
+            "role": "verifier",
+            "event": "fail",
+            "detail": "tokens=1765",
+            "duration_s": 16.68,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346097.610513,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 23.46,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346106.3564959,
+            "role": "verifier",
+            "event": "fail",
+            "detail": "tokens=858",
+            "duration_s": 8.74,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346106.364032,
+            "role": "coder",
+            "event": "retry",
+            "detail": "attempt 1: No code provided in output; Output is a human-like response instead of code or diff",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346137.951038,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 29.99,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346147.397019,
+            "role": "verifier",
+            "event": "fail",
+            "detail": "tokens=2095",
+            "duration_s": 9.44,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346147.397034,
+            "role": "coder",
+            "event": "retry",
+            "detail": "attempt 2: Diff does not show removal of existing call_model implementations - only adds new code without showing what was replaced; Marker_102_2_START suggests incomplete diff - missing surrounding c",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346170.222111,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 18.67,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346192.724572,
+            "role": "verifier",
+            "event": "fail",
+            "detail": "tokens=1457",
+            "duration_s": 22.5,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346192.7252722,
+            "role": "pipeline",
+            "event": "tier_upgrade",
+            "detail": "dragon_silver → dragon_gold",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346211.6778529,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 17.48,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346217.211901,
+            "role": "verifier",
+            "event": "fail",
+            "detail": "tokens=738",
+            "duration_s": 5.53,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346242.777788,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 24.84,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346250.089008,
+            "role": "verifier",
+            "event": "end",
+            "detail": "tokens=2114",
+            "duration_s": 7.3,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346281.824422,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 31.02,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346289.346436,
+            "role": "verifier",
+            "event": "end",
+            "detail": "tokens=2113",
+            "duration_s": 7.51,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346289.720947,
+            "role": "architect",
+            "event": "escalate",
+            "detail": "1 failed subtasks → re-plan",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346297.794358,
+            "role": "architect",
+            "event": "end",
+            "detail": "tokens=2215",
+            "duration_s": 8.07,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346316.442482,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 17.83,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346324.004957,
+            "role": "verifier",
+            "event": "end",
+            "detail": "tokens=1304",
+            "duration_s": 7.55,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346350.641547,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 26.56,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346363.8142269,
+            "role": "verifier",
+            "event": "fail",
+            "detail": "tokens=2594",
+            "duration_s": 13.16,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346363.81425,
+            "role": "coder",
+            "event": "retry",
+            "detail": "attempt 1: Incomplete image handling in Ollama fallback (pass statement); Missing error handling for Ollama API calls",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346393.434228,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 27.54,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346403.923648,
+            "role": "verifier",
+            "event": "fail",
+            "detail": "tokens=2457",
+            "duration_s": 10.48,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346426.0050838,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 21.99,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771346435.3877351,
+            "role": "verifier",
+            "event": "end",
+            "detail": "tokens=2088",
+            "duration_s": 9.37,
+            "subtask_idx": -1
+          }
+        ]
+      },
+      "result": {
+        "agents": {
+          "scout": {
+            "status": "done",
+            "model": "moonshotai/kimi-k2.5"
+          },
+          "architect": {
+            "status": "done",
+            "model": "moonshotai/kimi-k2.5"
+          },
+          "researcher": {
+            "status": "done",
+            "model": "x-ai/grok-4.1-fast"
+          },
+          "coder": {
+            "status": "done",
+            "model": "qwen/qwen3-coder"
+          },
+          "verifier": {
+            "status": "done",
+            "model": "qwen/qwen3-235b-a22b",
+            "confidence": 0.74
+          }
+        },
+        "subtasks": [
+          {
+            "description": "Create litellm_config.yaml with model_list defining providers, fallback_order to Ollama (Hostess), a",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.3
+          },
+          {
+            "description": "Refactor call_model() in main.py to integrate LiteLLM proxy client with unified API, replacing exist",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.5
+          },
+          {
+            "description": "Implement key roaming logic in call_model() to rotate through multiple API keys when rate limited or",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
+          },
+          {
+            "description": "Add Ollama (Hostess) local model fallback as terminal option in the fallback chain when all provider",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Create litellm_config.yaml with proper model_list defining primary provider, local Ollama/Hostess in",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
+          },
+          {
+            "description": "Implement key roaming detection in call_model function: when primary model returns unavailable statu",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.6
+          },
+          {
+            "description": "Implement secondary fallback cascade: if Ollama/Hostess call fails or returns unavailable, proceed t",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
+          },
+          {
+            "description": "Create litellm_config.yaml with proper model_list defining primary provider, local Ollama/Hostess in",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
+          },
+          {
+            "description": "Implement key roaming detection in call_model function: when primary model returns unavailable statu",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.6
+          },
+          {
+            "description": "Implement secondary fallback cascade: if Ollama/Hostess call fails or returns unavailable, proceed t",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.9
+          }
+        ]
+      },
+      "module": "backend_elisya"
     },
     "tb_1770577538_1": {
       "id": "tb_1770577538_1",
@@ -285,7 +746,8 @@
       "completed_at": "2026-02-11T17:32:42.965299",
       "pipeline_task_id": null,
       "result_summary": null,
-      "stats": null
+      "stats": null,
+      "module": "frontend_components"
     },
     "tb_1770577538_5": {
       "id": "tb_1770577538_5",
@@ -310,7 +772,8 @@
       "completed_at": "2026-02-11T17:32:42.967701",
       "pipeline_task_id": null,
       "result_summary": null,
-      "stats": null
+      "stats": null,
+      "module": "frontend_components"
     },
     "tb_1770577538_7": {
       "id": "tb_1770577538_7",
@@ -335,7 +798,8 @@
       "completed_at": "2026-02-11T14:30:50.202668",
       "pipeline_task_id": null,
       "result_summary": null,
-      "stats": null
+      "stats": null,
+      "module": "frontend_components"
     },
     "tb_1770729522_1": {
       "id": "tb_1770729522_1",
@@ -377,7 +841,8 @@
       "assigned_at": null,
       "agent_type": null,
       "commit_hash": null,
-      "commit_message": null
+      "commit_message": null,
+      "module": "backend_api"
     },
     "tb_1770729526_2": {
       "id": "tb_1770729526_2",
@@ -419,7 +884,8 @@
       "assigned_at": null,
       "agent_type": null,
       "commit_hash": null,
-      "commit_message": null
+      "commit_message": null,
+      "module": "backend_orchestration"
     },
     "tb_1770729529_3": {
       "id": "tb_1770729529_3",
@@ -461,7 +927,8 @@
       "assigned_at": null,
       "agent_type": null,
       "commit_hash": null,
-      "commit_message": null
+      "commit_message": null,
+      "module": "backend_api"
     },
     "tb_1770804774_1": {
       "id": "tb_1770804774_1",
@@ -492,7 +959,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_api"
     },
     "tb_1770804778_2": {
       "id": "tb_1770804778_2",
@@ -524,7 +992,8 @@
       "agent_type": "cursor",
       "commit_hash": "7ca9f3ca",
       "commit_message": "Phase 136: Pipeline→TaskBoard→DAG Bridge + Grayscale Palette",
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "frontend_components"
     },
     "tb_1770804781_3": {
       "id": "tb_1770804781_3",
@@ -556,7 +1025,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "tests"
     },
     "tb_1770804784_4": {
       "id": "tb_1770804784_4",
@@ -587,7 +1057,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "tests"
     },
     "tb_1770804787_5": {
       "id": "tb_1770804787_5",
@@ -617,7 +1088,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_orchestration"
     },
     "tb_1770804791_6": {
       "id": "tb_1770804791_6",
@@ -648,7 +1120,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_orchestration"
     },
     "tb_1770805958_1": {
       "id": "tb_1770805958_1",
@@ -773,7 +1246,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "frontend_components"
     },
     "tb_1770805958_2": {
       "id": "tb_1770805958_2",
@@ -806,7 +1280,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "frontend_components"
     },
     "tb_1770805963_3": {
       "id": "tb_1770805963_3",
@@ -840,7 +1315,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "frontend_components"
     },
     "tb_1770805967_4": {
       "id": "tb_1770805967_4",
@@ -872,7 +1348,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "frontend_components"
     },
     "tb_1770805971_5": {
       "id": "tb_1770805971_5",
@@ -905,7 +1382,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "frontend_components"
     },
     "tb_1770805979_6": {
       "id": "tb_1770805979_6",
@@ -937,7 +1415,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_api"
     },
     "tb_1770805982_7": {
       "id": "tb_1770805982_7",
@@ -969,7 +1448,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_api"
     },
     "tb_1770805987_8": {
       "id": "tb_1770805987_8",
@@ -1002,7 +1482,8 @@
       "agent_type": null,
       "commit_hash": "97c0f71c",
       "commit_message": "Phase 137: MCC Final Fixes",
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_api"
     },
     "tb_1770805991_9": {
       "id": "tb_1770805991_9",
@@ -1035,7 +1516,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_api"
     },
     "tb_1770805995_10": {
       "id": "tb_1770805995_10",
@@ -1067,7 +1549,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_memory"
     },
     "tb_1770805999_11": {
       "id": "tb_1770805999_11",
@@ -1100,7 +1583,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_api"
     },
     "tb_1770806003_12": {
       "id": "tb_1770806003_12",
@@ -1133,7 +1617,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_api"
     },
     "tb_1770806011_13": {
       "id": "tb_1770806011_13",
@@ -1164,7 +1649,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_scanners"
     },
     "tb_1770806015_14": {
       "id": "tb_1770806015_14",
@@ -1196,7 +1682,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_orchestration"
     },
     "tb_1770806018_15": {
       "id": "tb_1770806018_15",
@@ -1228,7 +1715,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_api"
     },
     "tb_1770809266_1": {
       "id": "tb_1770809266_1",
@@ -1259,7 +1747,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_orchestration"
     },
     "tb_1770809269_2": {
       "id": "tb_1770809269_2",
@@ -1353,7 +1842,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_api"
     },
     "tb_1770809271_3": {
       "id": "tb_1770809271_3",
@@ -1384,7 +1874,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_api"
     },
     "tb_1770809274_4": {
       "id": "tb_1770809274_4",
@@ -1415,7 +1906,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "frontend_components"
     },
     "tb_1770809276_5": {
       "id": "tb_1770809276_5",
@@ -1563,7 +2055,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "frontend_components"
     },
     "tb_1770809279_6": {
       "id": "tb_1770809279_6",
@@ -1594,7 +2087,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "tests"
     },
     "tb_1771092046_1": {
       "id": "tb_1771092046_1",
@@ -1760,7 +2254,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_orchestration"
     },
     "tb_1771092046_2": {
       "id": "tb_1771092046_2",
@@ -1849,7 +2344,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "frontend_components"
     },
     "tb_1771092048_3": {
       "id": "tb_1771092048_3",
@@ -1881,7 +2377,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_orchestration"
     },
     "tb_1771092050_4": {
       "id": "tb_1771092050_4",
@@ -1913,7 +2410,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_orchestration"
     },
     "tb_1771092078_5": {
       "id": "tb_1771092078_5",
@@ -2009,7 +2507,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_scanners"
     },
     "tb_1771092080_6": {
       "id": "tb_1771092080_6",
@@ -2041,7 +2540,8 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "unknown"
+      "created_by": "unknown",
+      "module": "backend_elisya"
     },
     "tb_1771156779_9": {
       "id": "tb_1771156779_9",
@@ -2121,10 +2621,403 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "heartbeat:titan"
+      "created_by": "heartbeat:titan",
+      "module": "backend_api"
     },
     "tb_1771188524_9": {
       "id": "tb_1771188524_9",
+      "title": "build new API endpoint",
+      "description": "build new API endpoint",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": "titan_core",
+      "assigned_tier": "titan_core",
+      "status": "done",
+      "source": "heartbeat_titan",
+      "tags": [
+        "titan"
+      ],
+      "dependencies": [],
+      "created_at": "2026-02-15T23:48:44.082758",
+      "started_at": "2026-02-17T19:20:48.950658",
+      "completed_at": "2026-02-17T19:32:14.514408",
+      "pipeline_task_id": "task_1771345248",
+      "result_summary": "{\"subtasks_completed\": 7, \"subtasks_total\": 7, \"files_created\": [], \"stats\": {\"preset\": \"titan_core\", \"league\": \"titan\", \"phase_type\": \"build\", \"subtasks_total\": 7, \"subtasks_completed\": 7, \"success\": true, \"llm_calls\": 15, \"tokens_in\": 17325, \"tokens_out\": 10960, \"verifier_avg_confidence\": 0.8499999999999999, \"completed_at\": 1771345934.4937868, \"duration_s\": 685.5, \"agent_stats\": {\"scout\": {\"calls\": 1, \"tokens_in\": 587, \"tokens_out\": 1000, \"duration_s\": 29.4302921295166, \"retries\": 0, \"success_count\": 1, \"fail_count\": 0}, \"researcher\": {\"calls\": 5, \"tokens_in\": 3734, \"tokens_out\": 6286, \"duration_s\": 53.42451000213623, \"retries\": 0, \"success_count\": 4, \"fail_count\": 1}, \"architect\": {\"calls\": 2, \"tokens_in\": 1234, \"tokens_out\": 3121, \"duration_s\": 38.883054971694946, \"retries\": 0, \"success_count\": 2, \"fail_count\": 0}, \"coder\": {\"calls\": 7, \"tokens_in\": 0, \"tokens_out\": 0, \"duration_s\": 456.73641753196716, \"retries\": 2, \"success_count\": 7, \"fail_count\": 0}, \"verifier\": {\"calls\": 7, \"tokens_in\": 11770, \"tokens_out\": 553, \"duration_s\": 44.19301152229309, \"retries\": 0, \"success_count\": 3, \"fail_count\": 4}}, \"timeline\": [{\"ts\": 1771345248.963014, \"role\": \"pipeline\", \"event\": \"start\", \"detail\": \"build | titan_core\", \"duration_s\": 0.0, \"subtask_idx\": -1}, {\"ts\": 1771345248.98385, \"role\": \"scout\", \"event\": \"start\", \"detail\": \"parallel recon\", \"duration_s\": 0.0, \"subtask_idx\": -1}, {\"ts\": 1771345248.983854, \"role\": \"researcher\", \"event\": \"start\", \"detail\": \"parallel recon\", \"duration_s\": 0.0, \"subtask_idx\": -1}, {\"ts\": 1771345278.415002, \"role\": \"scout\", \"event\": \"end\", \"detail\": \"tokens=1587\", \"duration_s\": 29.43, \"subtask_idx\": -1}, {\"ts\": 1771345291.5289621, \"role\": \"researcher\", \"event\": \"end\", \"detail\": \"tokens=2141\", \"duration_s\": 11.21, \"subtask_idx\": -1}, {\"ts\": 1771345291.563375, \"role\": \"architect\", \"event\": \"start\", \"detail\": \"planning subtasks\", \"duration_s\": 0.0, \"subtask_idx\": -1}, {\"ts\": 1771345311.964475, \"role\": \"architect\", \"event\": \"end\", \"detail\": \"token",
+      "stats": {
+        "preset": "titan_core",
+        "league": "titan",
+        "phase_type": "build",
+        "subtasks_total": 7,
+        "subtasks_completed": 7,
+        "success": true,
+        "llm_calls": 15,
+        "tokens_in": 17325,
+        "tokens_out": 10960,
+        "verifier_avg_confidence": 0.8499999999999999,
+        "completed_at": 1771345934.4937868,
+        "duration_s": 685.5,
+        "agent_stats": {
+          "scout": {
+            "calls": 1,
+            "tokens_in": 587,
+            "tokens_out": 1000,
+            "duration_s": 29.4302921295166,
+            "retries": 0,
+            "success_count": 1,
+            "fail_count": 0
+          },
+          "researcher": {
+            "calls": 5,
+            "tokens_in": 3734,
+            "tokens_out": 6286,
+            "duration_s": 53.42451000213623,
+            "retries": 0,
+            "success_count": 4,
+            "fail_count": 1
+          },
+          "architect": {
+            "calls": 2,
+            "tokens_in": 1234,
+            "tokens_out": 3121,
+            "duration_s": 38.883054971694946,
+            "retries": 0,
+            "success_count": 2,
+            "fail_count": 0
+          },
+          "coder": {
+            "calls": 7,
+            "tokens_in": 0,
+            "tokens_out": 0,
+            "duration_s": 456.73641753196716,
+            "retries": 2,
+            "success_count": 7,
+            "fail_count": 0
+          },
+          "verifier": {
+            "calls": 7,
+            "tokens_in": 11770,
+            "tokens_out": 553,
+            "duration_s": 44.19301152229309,
+            "retries": 0,
+            "success_count": 3,
+            "fail_count": 4
+          }
+        },
+        "timeline": [
+          {
+            "ts": 1771345248.963014,
+            "role": "pipeline",
+            "event": "start",
+            "detail": "build | titan_core",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345248.98385,
+            "role": "scout",
+            "event": "start",
+            "detail": "parallel recon",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345248.983854,
+            "role": "researcher",
+            "event": "start",
+            "detail": "parallel recon",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345278.415002,
+            "role": "scout",
+            "event": "end",
+            "detail": "tokens=1587",
+            "duration_s": 29.43,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345291.5289621,
+            "role": "researcher",
+            "event": "end",
+            "detail": "tokens=2141",
+            "duration_s": 11.21,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345291.563375,
+            "role": "architect",
+            "event": "start",
+            "detail": "planning subtasks",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345311.964475,
+            "role": "architect",
+            "event": "end",
+            "detail": "tokens=2522",
+            "duration_s": 20.39,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345331.345782,
+            "role": "researcher",
+            "event": "end",
+            "detail": "tokens=2463",
+            "duration_s": 15.57,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345402.23236,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 69.96,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345406.000559,
+            "role": "verifier",
+            "event": "end",
+            "detail": "tokens=1943",
+            "duration_s": 3.75,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345496.239145,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 73.68,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345503.052999,
+            "role": "verifier",
+            "event": "fail",
+            "detail": "tokens=1879",
+            "duration_s": 6.8,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345504.3081899,
+            "role": "coder",
+            "event": "retry",
+            "detail": "attempt 1: The code is incomplete - the _save_memory function is cut off and missing its closing brace and return statement; The file appears to be truncated mid-function which would cause syntax erro",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345577.192877,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 71.38,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345585.340375,
+            "role": "verifier",
+            "event": "fail",
+            "detail": "tokens=1889",
+            "duration_s": 8.14,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345634.465787,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 49.03,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345638.2509189,
+            "role": "verifier",
+            "event": "end",
+            "detail": "tokens=1906",
+            "duration_s": 3.77,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345643.879267,
+            "role": "architect",
+            "event": "escalate",
+            "detail": "1 failed subtasks → re-plan",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345662.3763032,
+            "role": "architect",
+            "event": "end",
+            "detail": "tokens=1833",
+            "duration_s": 18.49,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345675.464274,
+            "role": "researcher",
+            "event": "end",
+            "detail": "tokens=1724",
+            "duration_s": 8.55,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345686.295122,
+            "role": "researcher",
+            "event": "fail",
+            "detail": "tokens=1968",
+            "duration_s": 9.39,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345696.589299,
+            "role": "researcher",
+            "event": "end",
+            "detail": "tokens=1724",
+            "duration_s": 8.71,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345741.0647821,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 43.02,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345744.8539221,
+            "role": "verifier",
+            "event": "end",
+            "detail": "tokens=1066",
+            "duration_s": 3.77,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345839.304588,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 75.01,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345847.086061,
+            "role": "verifier",
+            "event": "fail",
+            "detail": "tokens=1834",
+            "duration_s": 7.77,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345848.162018,
+            "role": "coder",
+            "event": "retry",
+            "detail": "attempt 1: The code output is truncated and incomplete - ends with '# =============' without implementing any route handlers; Missing all FastAPI route implementations (GET/POST/DELETE endpoints menti",
+            "duration_s": 0.0,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345924.205886,
+            "role": "coder",
+            "event": "end",
+            "detail": "",
+            "duration_s": 74.66,
+            "subtask_idx": -1
+          },
+          {
+            "ts": 1771345934.409601,
+            "role": "verifier",
+            "event": "fail",
+            "detail": "tokens=1806",
+            "duration_s": 10.19,
+            "subtask_idx": -1
+          }
+        ]
+      },
+      "result": {
+        "agents": {
+          "scout": {
+            "status": "done",
+            "model": "moonshotai/kimi-k2.5"
+          },
+          "architect": {
+            "status": "done",
+            "model": "google/gemini-3-pro-preview"
+          },
+          "researcher": {
+            "status": "done",
+            "model": "x-ai/grok-4.1-fast"
+          },
+          "coder": {
+            "status": "done",
+            "model": "anthropic/claude-sonnet-4.5"
+          },
+          "verifier": {
+            "status": "done",
+            "model": "qwen/qwen3-max",
+            "confidence": 0.85
+          }
+        },
+        "subtasks": [
+          {
+            "description": "Analyze the codebase to identify the appropriate directory and file for the new API endpoint (e.g., ",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Implement the new API endpoint using FastAPI APIRouter, defining necessary Pydantic models for reque",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Register the new router in the main application file (e.g., main.py) and add a basic test case in te",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Research the codebase to locate the incomplete API endpoint file (referencing the failed `_get_all_s",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Implement the new API endpoint using FastAPI APIRouter, defining necessary Pydantic models and ensur",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.6
+          },
+          {
+            "description": "Research the codebase to locate the incomplete API endpoint file (referencing the failed `_get_all_s",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.95
+          },
+          {
+            "description": "Implement the new API endpoint using FastAPI APIRouter, defining necessary Pydantic models and ensur",
+            "status": "done",
+            "tokens_used": null,
+            "confidence": 0.6
+          }
+        ]
+      },
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "heartbeat:titan",
+      "module": "backend_api"
+    },
+    "tb_1771352905_9": {
+      "id": "tb_1771352905_9",
       "title": "build new API endpoint",
       "description": "build new API endpoint",
       "priority": 2,
@@ -2138,8 +3031,8 @@
         "titan"
       ],
       "dependencies": [],
-      "created_at": "2026-02-15T23:48:44.082758",
-      "started_at": "2026-02-15T23:48:44.083671",
+      "created_at": "2026-02-17T21:28:25.652548",
+      "started_at": "2026-02-17T21:28:25.653397",
       "completed_at": null,
       "pipeline_task_id": null,
       "result_summary": "Server restart - task reset",
@@ -2150,7 +3043,10 @@
       "agent_type": null,
       "commit_hash": null,
       "commit_message": null,
-      "created_by": "heartbeat:titan"
+      "created_by": "heartbeat:titan",
+      "source_chat_id": null,
+      "source_group_id": null,
+      "module": "backend_api"
     }
   },
   "settings": {

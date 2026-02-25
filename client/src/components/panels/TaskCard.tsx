@@ -54,6 +54,14 @@ export interface TaskData {
   commit_hash?: string;
   commit_message?: string;
   completed_at?: string;
+  // MARKER_155.1A: Task dependencies for DAG edges at tasks level
+  dependencies?: string[];
+  // MARKER_155.2A: Roadmap module assignment for drill-down filtering
+  module?: string;
+  // MARKER_155A.P1.CROSSCUT_TASKS: Unified graph contract for cross-cutting tasks
+  primary_node_id?: string;
+  affected_nodes?: string[];
+  integration_task_of?: string[];
 }
 
 // MARKER_127.0B: Pipeline results data structure

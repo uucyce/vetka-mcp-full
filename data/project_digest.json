@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-22T03:43:41.194727+00:00",
+  "last_updated": "2026-02-25T21:32:16.338012+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 154,
@@ -29,19 +29,19 @@
   },
   "system_status": {
     "vetka_elisya": {
-      "points": 2863,
-      "vectors": "none",
-      "hnsw_status": "active"
+      "points": 0,
+      "vectors": "unknown",
+      "hnsw_status": "unknown"
     },
     "vetka_tree": {
-      "points": 3182,
-      "vectors": "none",
-      "hierarchy": "enabled"
+      "points": 0,
+      "vectors": "unknown",
+      "hierarchy": "unknown"
     },
     "mcp_server": {
-      "status": "running",
+      "status": "offline",
       "port": 5001,
-      "tools_count": 15
+      "tools_count": 0
     },
     "api_keys": {
       "total": 30,
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "phase152-fix-stream-favorites",
-    "commit": "09447fe6",
+    "commit": "db75252b",
     "dirty": true
   }
 }

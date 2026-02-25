@@ -25,7 +25,7 @@ const NODE_DIMENSIONS: Record<DAGNodeType, { width: number; height: number }> = 
   transform: { width: 130, height: 50 },    // Trapezoid shape
   group: { width: 240, height: 160 },       // Large container
   // MARKER_154.6A: Roadmap task node — wider for badge + progress bar
-  roadmap_task: { width: 180, height: 70 },
+  roadmap_task: { width: 150, height: 55 },
 };
 
 // MARKER_135.5A: Pure VETKA grayscale — like 3D tree on the right
@@ -103,20 +103,224 @@ export function getConfidenceColor(confidence: number): string {
  * Apply Sugiyama BT layout using dagre.
  * Returns positioned xyflow nodes and edges.
  */
+// MARKER_155.2B: Layout options for compact mode (tasks level with many nodes)
+export interface LayoutOptions {
+  compact?: boolean;  // Reduces spacing for large graphs
+  mode?: 'architecture' | 'tasks' | 'workflow';
+  // MARKER_155.MEMORY.ENGRAM_DAG_PREFS.V1:
+  // Cross-surface learned layout intent (no raw coordinates).
+  layoutBiasProfile?: {
+    vertical_separation_bias?: number;
+    sibling_spacing_bias?: number;
+    branch_compactness_bias?: number;
+    confidence?: number;
+  } | null;
+}
+
+function laplacianSmoothX(
+  nodeIds: string[],
+  edges: DAGEdge[],
+  initialX: Map<string, number>,
+  iterations = 36,
+): Map<string, number> {
+  const neighbors = new Map<string, Set<string>>();
+  for (const id of nodeIds) neighbors.set(id, new Set());
+  for (const e of edges) {
+    if (!neighbors.has(e.source) || !neighbors.has(e.target) || e.source === e.target) continue;
+    neighbors.get(e.source)!.add(e.target);
+    neighbors.get(e.target)!.add(e.source);
+  }
+
+  let cur = new Map(initialX);
+  const anchor = new Map(initialX);
+  for (let it = 0; it < iterations; it++) {
+    const next = new Map(cur);
+    for (const id of nodeIds) {
+      const ns = Array.from(neighbors.get(id) || []);
+      if (ns.length === 0) continue;
+      const avg = ns.reduce((s, n) => s + (cur.get(n) ?? 0), 0) / ns.length;
+      const self = cur.get(id) ?? 0;
+      const anc = anchor.get(id) ?? 0;
+      // Fourier/Laplacian objective: minimize Σ(i,j) (x_i - x_j)^2 while preserving anchors.
+      const blended = (self * 0.42) + (avg * 0.44) + (anc * 0.14);
+      next.set(id, blended);
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+function applyArchitectureTreeLayout(
+  nodes: Node[],
+  dagNodes: DAGNode[],
+  compact: boolean,
+  layoutBiasProfile?: LayoutOptions['layoutBiasProfile'],
+): boolean {
+  const idSet = new Set(nodes.map(n => n.id));
+  if (idSet.size === 0) return false;
+
+  const parentById = new Map<string, string>();
+  const childrenById = new Map<string, string[]>();
+  for (const id of idSet) childrenById.set(id, []);
+
+  const resolveParentId = (n: DAGNode): string | null => {
+    const meta: any = (n as any).metadata || {};
+    const parent = String(meta.parent || '').trim();
+    if (!parent) return null;
+    if (parent.startsWith('branch:')) return idSet.has(parent) ? parent : null;
+    const pid = `dir:${parent}`;
+    if (idSet.has(pid)) return pid;
+    if (parent === '(root)' && idSet.has('dir:(root)')) return 'dir:(root)';
+    return null;
+  };
+
+  let links = 0;
+  for (const n of dagNodes) {
+    if (!idSet.has(n.id)) continue;
+    const pid = resolveParentId(n);
+    if (!pid || pid === n.id) continue;
+    parentById.set(n.id, pid);
+    const arr = childrenById.get(pid) || [];
+    arr.push(n.id);
+    childrenById.set(pid, arr);
+    links += 1;
+  }
+
+  // If no usable parent metadata, caller should use fallback layout.
+  if (links < Math.max(2, Math.floor(nodes.length * 0.45))) return false;
+
+  const roots = nodes
+    .map(n => n.id)
+    .filter(id => !parentById.has(id))
+    .sort((a, b) => a.localeCompare(b));
+  if (roots.length === 0) return false;
+
+  const childOrderScore = (id: string): [number, number, string] => {
+    const raw = dagNodes.find(n => n.id === id);
+    const meta: any = raw?.metadata || {};
+    const bucket = Number.isFinite(meta.rank_bucket) ? Number(meta.rank_bucket) : 0;
+    const cluster = Number.isFinite(meta.cluster_id) ? Number(meta.cluster_id) : -1;
+    return [bucket, cluster, id];
+  };
+  for (const [pid, arr] of childrenById.entries()) {
+    arr.sort((a, b) => {
+      const sa = childOrderScore(a);
+      const sb = childOrderScore(b);
+      if (sa[0] !== sb[0]) return sa[0] - sb[0];
+      if (sa[1] !== sb[1]) return sa[1] - sb[1];
+      return sa[2].localeCompare(sb[2]);
+    });
+    childrenById.set(pid, arr);
+  }
+
+  const leaves = new Map<string, number>();
+  const visit = (id: string, seen: Set<string>): number => {
+    if (seen.has(id)) return 1;
+    seen.add(id);
+    const children = childrenById.get(id) || [];
+    if (children.length === 0) {
+      leaves.set(id, 1);
+      return 1;
+    }
+    let sum = 0;
+    for (const c of children) sum += visit(c, seen);
+    const val = Math.max(1, sum);
+    leaves.set(id, val);
+    return val;
+  };
+  for (const r of roots) visit(r, new Set());
+
+  const xById = new Map<string, number>();
+  let cursor = 0;
+  const place = (id: string): void => {
+    const children = childrenById.get(id) || [];
+    if (children.length === 0) {
+      xById.set(id, cursor);
+      cursor += 1;
+      return;
+    }
+    const start = cursor;
+    for (const c of children) place(c);
+    const end = cursor - 1;
+    xById.set(id, (start + end) / 2);
+  };
+  for (const r of roots) place(r);
+
+  const layerById = new Map<string, number>();
+  for (const d of dagNodes) layerById.set(d.id, typeof d.layer === 'number' ? d.layer : 0);
+  const maxLayer = Math.max(...Array.from(layerById.values()));
+  const conf = Math.max(0, Math.min(1, Number(layoutBiasProfile?.confidence ?? 0)));
+  const vBias = Number(layoutBiasProfile?.vertical_separation_bias ?? 0);
+  const sBias = Number(layoutBiasProfile?.sibling_spacing_bias ?? 0);
+  const cBias = Number(layoutBiasProfile?.branch_compactness_bias ?? 0);
+  // Soft-prior only: explicit pins still override in DAGView.
+  const xFactor = 1 + (Math.max(-1, Math.min(1, sBias)) * 0.22 * conf) - (Math.max(-1, Math.min(1, cBias)) * 0.14 * conf);
+  const yFactor = 1 + (Math.max(-1, Math.min(1, vBias)) * 0.30 * conf);
+  const xStep = (compact ? 95 : 115) * xFactor;
+  const yStep = (compact ? 190 : 230) * yFactor;
+  const centerX = 0;
+
+  for (const n of nodes) {
+    const xv = xById.get(n.id);
+    const layer = layerById.get(n.id) ?? 0;
+    if (typeof xv === 'number') {
+      n.position.x = centerX + xv * xStep;
+    }
+    n.position.y = (maxLayer - layer) * yStep;
+  }
+
+  // Recenter around origin for fitView stability.
+  const xs = nodes.map(n => n.position.x);
+  const meanX = xs.reduce((s, v) => s + v, 0) / Math.max(1, xs.length);
+  for (const n of nodes) n.position.x -= meanX;
+  return true;
+}
+
 export function layoutSugiyamaBT(
   dagNodes: DAGNode[],
-  dagEdges: DAGEdge[]
+  dagEdges: DAGEdge[],
+  options?: LayoutOptions
 ): { nodes: Node[]; edges: Edge[] } {
   // Create dagre graph
   const g = new dagre.graphlib.Graph();
-  // MARKER_151.2A: Tuned spacing for clean orthogonal edges
+  // MARKER_155A.G22.VERTICAL_PROFILE:
+  // Do not auto-compact by node count; use explicit mode/profile from caller.
+  const compact = options?.compact ?? false;
+  const mode = options?.mode || 'workflow';
+  const profile = (() => {
+    if (mode === 'architecture') {
+      return {
+        ranksep: compact ? 90 : 180,   // more vertical separation
+        nodesep: compact ? 24 : 40,    // tighter horizontal spread
+        edgesep: compact ? 10 : 18,
+        marginx: compact ? 10 : 20,
+        marginy: compact ? 14 : 24,
+      };
+    }
+    if (mode === 'tasks') {
+      return {
+        ranksep: compact ? 70 : 110,
+        nodesep: compact ? 18 : 56,
+        edgesep: compact ? 8 : 16,
+        marginx: compact ? 10 : 24,
+        marginy: compact ? 10 : 20,
+      };
+    }
+    return {
+      ranksep: compact ? 60 : 120,
+      nodesep: compact ? 20 : 80,
+      edgesep: compact ? 8 : 20,
+      marginx: compact ? 10 : 30,
+      marginy: compact ? 10 : 30,
+    };
+  })();
   g.setGraph({
     rankdir: 'BT',     // Bottom-to-Top: root at bottom (VETKA tree metaphor)
-    ranksep: 120,      // Vertical spacing — was 80, more breathing room
-    nodesep: 80,       // Horizontal spacing — was 50, prevents edge crowding
-    edgesep: 20,       // Minimum edge separation — prevents overlapping paths
-    marginx: 30,
-    marginy: 30,
+    ranksep: profile.ranksep,
+    nodesep: profile.nodesep,
+    edgesep: profile.edgesep,
+    marginx: profile.marginx,
+    marginy: profile.marginy,
   });
   g.setDefaultEdgeLabel(() => ({}));
 
@@ -158,9 +362,92 @@ export function layoutSugiyamaBT(
         layer: node.layer,
         // MARKER_154.6A: Pass extra fields for RoadmapTaskNode rendering
         description: node.description,
+        // MARKER_155.1A: Extra fields for tasks-level RoadmapTaskNode
+        preset: node.preset,
+        subtasksDone: node.subtasksDone,
+        subtasksTotal: node.subtasksTotal,
       },
     };
   });
+
+  // MARKER_155.INPUT_MATRIX.LAYOUT_VERTICAL_COMPACT.V1:
+  // Architecture mode: prioritize vertical hierarchy readability and compress horizontal sprawl.
+  const usedTreeLayout = mode === 'architecture' && nodes.length > 0
+    ? applyArchitectureTreeLayout(nodes, dagNodes, compact, options?.layoutBiasProfile)
+    : false;
+  if (mode === 'architecture' && nodes.length > 0 && !usedTreeLayout) {
+    const layerById = new Map<string, number>();
+    const bucketById = new Map<string, number>();
+    const bucketCountByLayer = new Map<number, number>();
+    for (const n of dagNodes) {
+      layerById.set(n.id, typeof n.layer === 'number' ? n.layer : 0);
+      const meta = (n as any).metadata || {};
+      const bucket = Number.isFinite(meta.rank_bucket) ? Number(meta.rank_bucket) : 0;
+      const bucketCount = Number.isFinite(meta.bucket_count) ? Number(meta.bucket_count) : 1;
+      bucketById.set(n.id, Math.max(0, bucket));
+      const layer = typeof n.layer === 'number' ? n.layer : 0;
+      bucketCountByLayer.set(layer, Math.max(bucketCountByLayer.get(layer) || 1, Math.max(1, bucketCount)));
+    }
+    const maxLayer = Math.max(...Array.from(layerById.values()));
+    const byLayer = new Map<number, Node[]>();
+    for (const n of nodes) {
+      const layer = layerById.get(n.id) ?? 0;
+      const arr = byLayer.get(layer) || [];
+      arr.push(n);
+      byLayer.set(layer, arr);
+    }
+
+    const conf = Math.max(0, Math.min(1, Number(options?.layoutBiasProfile?.confidence ?? 0)));
+    const vBias = Math.max(-1, Math.min(1, Number(options?.layoutBiasProfile?.vertical_separation_bias ?? 0)));
+    const sBias = Math.max(-1, Math.min(1, Number(options?.layoutBiasProfile?.sibling_spacing_bias ?? 0)));
+    const cBias = Math.max(-1, Math.min(1, Number(options?.layoutBiasProfile?.branch_compactness_bias ?? 0)));
+    const yStep = (compact ? 220 : 300) * (1 + vBias * 0.24 * conf);
+    const rowStep = compact ? 82 : 96;
+    const maxCols = compact ? 8 : 10;
+    const xStep = (compact ? 92 : 106) * (1 + sBias * 0.18 * conf - cBias * 0.12 * conf);
+    const globalCenterX = nodes.reduce((sum, n) => sum + n.position.x, 0) / Math.max(1, nodes.length);
+    const initX = new Map<string, number>();
+    for (const n of nodes) initX.set(n.id, n.position.x);
+    const smoothX = laplacianSmoothX(nodes.map(n => n.id), dagEdges, initX, compact ? 28 : 40);
+
+    for (const [layer, arr] of byLayer.entries()) {
+      // Spectral ordering within layer using smoothed Laplacian objective.
+      arr.sort((a, b) => (smoothX.get(a.id) ?? a.position.x) - (smoothX.get(b.id) ?? b.position.x));
+
+      const bucketCount = Math.max(1, bucketCountByLayer.get(layer) || 1);
+      const byBucket = new Map<number, Node[]>();
+      for (const n of arr) {
+        const b = Math.max(0, Math.min(bucketCount - 1, bucketById.get(n.id) ?? 0));
+        const list = byBucket.get(b) || [];
+        list.push(n);
+        byBucket.set(b, list);
+      }
+
+      const orderedBuckets = Array.from(byBucket.keys()).sort((a, b) => a - b);
+      const bucketSpread = xStep * (maxCols + 1);
+      const bucketCenter = (orderedBuckets.length - 1) / 2;
+
+      for (const bucket of orderedBuckets) {
+        const bucketNodes = byBucket.get(bucket) || [];
+        const rows = Math.max(1, Math.ceil(bucketNodes.length / maxCols));
+        const bucketOffsetX = (bucket - bucketCenter) * bucketSpread;
+        for (let i = 0; i < bucketNodes.length; i++) {
+          const n = bucketNodes[i];
+          const col = i % maxCols;
+          const row = Math.floor(i / maxCols);
+          const rowCenter = (maxCols - 1) / 2;
+          const packedX = (col - rowCenter) * xStep;
+          const smooth = smoothX.get(n.id) ?? n.position.x;
+          n.position.x = globalCenterX + bucketOffsetX + packedX + (smooth - globalCenterX) * 0.18;
+
+          const baseY = (maxLayer - layer) * yStep;
+          const rowOffset = row * rowStep;
+          const chess = ((col + layer + bucket) % 2 === 0) ? 0 : 10;
+          n.position.y = baseY + rowOffset + chess - ((rows > 1) ? (rows - 1) * (rowStep / 2.6) : 0);
+        }
+      }
+    }
+  }
 
   // MARKER_144.4: Edge color mapping for all edge types
   const getEdgeColor = (edgeType: string): string => {
@@ -172,6 +459,7 @@ export function layoutSugiyamaBT(
       case 'parallel_fork': return NOLAN_PALETTE.edgeParallelFork;
       case 'parallel_join': return NOLAN_PALETTE.edgeParallelJoin;
       case 'feedback': return NOLAN_PALETTE.edgeFeedback;
+      case 'predicted': return '#6dc8ff';
       default: return NOLAN_PALETTE.edgeStructural;
     }
   };
@@ -187,7 +475,7 @@ export function layoutSugiyamaBT(
       stroke: getEdgeColor(edge.type),
       strokeWidth: 1 + edge.strength * 2,
       opacity: 0.6 + edge.strength * 0.4,
-      strokeDasharray: edge.type === 'feedback' ? '5 3' : undefined,
+      strokeDasharray: edge.type === 'feedback' || edge.type === 'predicted' ? '6 4' : undefined,
     },
     label: (edge as any).label || undefined,
     labelStyle: { fill: NOLAN_PALETTE.textDim, fontSize: 9, fontFamily: 'monospace' },

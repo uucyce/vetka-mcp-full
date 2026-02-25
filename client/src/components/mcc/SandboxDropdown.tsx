@@ -46,9 +46,24 @@ export function SandboxDropdown() {
 
   useEffect(() => {
     fetchStatus();
-    const t = setInterval(fetchStatus, 30000); // 30s refresh (was 20s for multi-playground)
-    return () => clearInterval(t);
+    const onVisibility = () => {
+      if (!document.hidden) fetchStatus();
+    };
+    window.addEventListener('task-board-updated', fetchStatus as EventListener);
+    window.addEventListener('pipeline-stats', fetchStatus as EventListener);
+    window.addEventListener('focus', fetchStatus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('task-board-updated', fetchStatus as EventListener);
+      window.removeEventListener('pipeline-stats', fetchStatus as EventListener);
+      window.removeEventListener('focus', fetchStatus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [fetchStatus]);
+
+  useEffect(() => {
+    if (open) fetchStatus();
+  }, [open, fetchStatus]);
 
   // Close on outside click
   useEffect(() => {

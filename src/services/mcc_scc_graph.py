@@ -78,6 +78,8 @@ _cache: Dict[str, Any] = {
     "result": None,
 }
 
+_ALGO_REV = "marker155-archdir-v2"
+
 
 def _build_artifact_l0(scope_root: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     artifact_dir = os.path.join(scope_root, "data", "artifacts")
@@ -713,12 +715,318 @@ def _compute_layers(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) ->
     return layer
 
 
+def _normalize(values: Dict[str, float]) -> Dict[str, float]:
+    if not values:
+        return {}
+    min_v = min(values.values())
+    max_v = max(values.values())
+    if abs(max_v - min_v) < 1e-12:
+        return {k: 0.5 for k in values.keys()}
+    return {k: (v - min_v) / (max_v - min_v) for k, v in values.items()}
+
+
+# MARKER_155.INPUT_MATRIX.ROOT_SCORE.V1:
+# Compute algorithmic roots from graph statistics and time signals (no path hardcode).
+def _compute_root_scores(
+    scc_nodes: List[Dict[str, Any]],
+    scc_edges: List[Dict[str, Any]],
+    module_by_id: Dict[str, _ModuleNode],
+) -> Dict[str, Dict[str, float]]:
+    node_ids = [n["id"] for n in scc_nodes]
+    indeg: Dict[str, int] = {nid: 0 for nid in node_ids}
+    outdeg: Dict[str, int] = {nid: 0 for nid in node_ids}
+    ref_out: Dict[str, float] = {nid: 0.0 for nid in node_ids}
+    earliest_ts: Dict[str, float] = {}
+    cycle_penalty_raw: Dict[str, float] = {}
+
+    for n in scc_nodes:
+        nid = n["id"]
+        members = n.get("members") or []
+        member_times = [module_by_id[m].mtime for m in members if m in module_by_id]
+        earliest_ts[nid] = min(member_times) if member_times else 0.0
+        density = float((n.get("scc_health") or {}).get("density", 0.0))
+        size = max(1.0, float(n.get("scc_size", 1)))
+        cycle_penalty_raw[nid] = min(1.0, density * 0.7 + ((size - 1.0) / 20.0))
+
+    for e in scc_edges:
+        s = e["source"]
+        t = e["target"]
+        if s in outdeg:
+            outdeg[s] += 1
+        if t in indeg:
+            indeg[t] += 1
+        ref_out[s] = ref_out.get(s, 0.0) + float((e.get("channels") or {}).get("reference", 0.0))
+
+    out_power_raw = {nid: float(outdeg.get(nid, 0)) for nid in node_ids}
+    sink_penalty_raw = {nid: float(indeg.get(nid, 0)) for nid in node_ids}
+    earliness_raw = _normalize({nid: -earliest_ts.get(nid, 0.0) for nid in node_ids})
+    authority_raw = _normalize(ref_out)
+    cycle_penalty = _normalize(cycle_penalty_raw)
+    out_power = _normalize(out_power_raw)
+    sink_penalty = _normalize(sink_penalty_raw)
+
+    result: Dict[str, Dict[str, float]] = {}
+    for nid in node_ids:
+        score = (
+            0.45 * out_power.get(nid, 0.0)
+            + 0.25 * authority_raw.get(nid, 0.0)
+            + 0.20 * earliness_raw.get(nid, 0.0)
+            - 0.10 * cycle_penalty.get(nid, 0.0)
+            - 0.05 * sink_penalty.get(nid, 0.0)
+        )
+        result[nid] = {
+            "root_score": float(score),
+            "source_centrality": float(out_power.get(nid, 0.0)),
+            "time_earliness": float(earliness_raw.get(nid, 0.0)),
+            "authority": float(authority_raw.get(nid, 0.0)),
+            "sink_penalty": float(sink_penalty.get(nid, 0.0)),
+            "cycle_penalty": float(cycle_penalty.get(nid, 0.0)),
+        }
+    return result
+
+
+def _choose_roots_by_component(
+    scc_nodes: List[Dict[str, Any]],
+    scc_edges: List[Dict[str, Any]],
+    root_scores: Dict[str, Dict[str, float]],
+) -> List[str]:
+    node_ids = [n["id"] for n in scc_nodes]
+    undirected: Dict[str, Set[str]] = {nid: set() for nid in node_ids}
+    for e in scc_edges:
+        s = e["source"]
+        t = e["target"]
+        if s in undirected and t in undirected:
+            undirected[s].add(t)
+            undirected[t].add(s)
+
+    roots: List[str] = []
+    seen: Set[str] = set()
+    for nid in sorted(node_ids):
+        if nid in seen:
+            continue
+        # BFS component
+        comp: List[str] = []
+        dq = deque([nid])
+        seen.add(nid)
+        while dq:
+            cur = dq.popleft()
+            comp.append(cur)
+            for nxt in sorted(undirected.get(cur, set())):
+                if nxt not in seen:
+                    seen.add(nxt)
+                    dq.append(nxt)
+
+        # Pick algorithmic source of component by root_score only.
+        best = max(comp, key=lambda x: (root_scores.get(x, {}).get("root_score", -1e9), x))
+        roots.append(best)
+    return sorted(set(roots))
+
+
+def _tokens_for_scc(
+    scc_nodes: List[Dict[str, Any]],
+) -> Dict[str, Set[str]]:
+    out: Dict[str, Set[str]] = {}
+    for n in scc_nodes:
+        nid = n["id"]
+        members = n.get("members") or []
+        sample = members[0] if members else nid
+        out[nid] = _tokenize_module_id(sample)
+    return out
+
+
+# MARKER_155.INPUT_MATRIX.ROOT_COALESCE.V1:
+# Keep root count bounded for readable architecture while preserving algorithmic derivation.
+def _coalesce_roots(
+    roots: List[str],
+    root_scores: Dict[str, Dict[str, float]],
+    scc_nodes: List[Dict[str, Any]],
+    limit: int,
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+    if len(roots) <= max(1, limit):
+        return roots, []
+
+    ranked = sorted(
+        roots,
+        key=lambda rid: (-float(root_scores.get(rid, {}).get("root_score", 0.0)), rid),
+    )
+    keep = ranked[: max(1, limit)]
+    keep_set = set(keep)
+    dropped = ranked[max(1, limit) :]
+
+    token_map = _tokens_for_scc(scc_nodes)
+    synthetic_edges: List[Dict[str, Any]] = []
+
+    for child in dropped:
+        child_toks = token_map.get(child, set())
+        best_parent = keep[0]
+        best_score = -1.0
+        for parent in keep:
+            parent_toks = token_map.get(parent, set())
+            overlap = 0.0
+            if child_toks and parent_toks:
+                inter = len(child_toks & parent_toks)
+                union = len(child_toks | parent_toks)
+                overlap = float(inter) / float(union) if union > 0 else 0.0
+            score = overlap + 0.25 * float(root_scores.get(parent, {}).get("root_score", 0.0))
+            if score > best_score:
+                best_score = score
+                best_parent = parent
+        synthetic_edges.append(
+            {
+                "source": best_parent,
+                "target": child,
+                "type": "hier_root",
+                "relation_kind": "hier_root",
+                "score": 0.55,
+                "confidence": 0.65,
+                "channels": {"structural": 0.0, "semantic": 0.0, "temporal": 0.0, "reference": 0.0, "contextual": 0.0},
+                "evidence": ["root_coalesce"],
+                "is_backbone": True,
+                "mode_layer": 0,
+            }
+        )
+    return sorted(keep), synthetic_edges
+
+
+# MARKER_155.INPUT_MATRIX.BACKBONE_DAG.V1:
+# Build deterministic causal backbone: one best parent per non-root node.
+def _build_backbone_edges(
+    scc_nodes: List[Dict[str, Any]],
+    scc_edges: List[Dict[str, Any]],
+    roots: List[str],
+    preferred_layers: Optional[Dict[str, int]] = None,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    incoming: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for e in scc_edges:
+        incoming[e["target"]].append(e)
+
+    root_set = set(roots)
+    backbone: List[Dict[str, Any]] = []
+    cross: List[Dict[str, Any]] = []
+    chosen_keys: Set[Tuple[str, str]] = set()
+
+    for n in sorted(scc_nodes, key=lambda x: x["id"]):
+        nid = n["id"]
+        if nid in root_set:
+            continue
+        candidates = incoming.get(nid, [])
+        if not candidates:
+            continue
+        ranked = sorted(
+            candidates,
+            key=lambda e: (
+                # Prefer deeper parents when provisional layering is available.
+                -(preferred_layers.get(e.get("source", ""), 0) if preferred_layers else 0),
+                -float(e.get("score", 0.0)),
+                -float(e.get("confidence", 0.0)),
+                str(e.get("source", "")),
+                str(e.get("target", "")),
+            ),
+        )
+        winner = ranked[0]
+        backbone.append({**winner, "is_backbone": True, "mode_layer": 0})
+        chosen_keys.add((winner["source"], winner["target"]))
+        for rest in ranked[1:]:
+            cross.append({**rest, "is_backbone": False, "mode_layer": 1, "type": "cross_link"})
+
+    # Keep remaining edges as cross-links.
+    for e in scc_edges:
+        key = (e["source"], e["target"])
+        if key in chosen_keys:
+            continue
+        if any(c["source"] == e["source"] and c["target"] == e["target"] for c in cross):
+            continue
+        cross.append({**e, "is_backbone": False, "mode_layer": 1, "type": "cross_link"})
+
+    return backbone, cross
+
+
+def _compute_layers_from_roots(
+    scc_nodes: List[Dict[str, Any]],
+    backbone_edges: List[Dict[str, Any]],
+    roots: List[str],
+) -> Dict[str, int]:
+    node_ids = [n["id"] for n in scc_nodes]
+    succ: Dict[str, Set[str]] = {nid: set() for nid in node_ids}
+    indeg: Dict[str, int] = {nid: 0 for nid in node_ids}
+    undirected: Dict[str, Set[str]] = {nid: set() for nid in node_ids}
+    for e in backbone_edges:
+        s = e["source"]
+        t = e["target"]
+        if s in succ and t in indeg and t not in succ[s]:
+            succ[s].add(t)
+            indeg[t] += 1
+            undirected[s].add(t)
+            undirected[t].add(s)
+
+    # Topological longest-path layering over DAG edges.
+    q = deque(sorted([nid for nid in node_ids if indeg.get(nid, 0) == 0]))
+    indeg_work = dict(indeg)
+    layer: Dict[str, int] = {nid: 0 for nid in node_ids}
+    seen_order: List[str] = []
+    while q:
+        cur = q.popleft()
+        seen_order.append(cur)
+        for nxt in sorted(succ.get(cur, set())):
+            layer[nxt] = max(int(layer.get(nxt, 0)), int(layer.get(cur, 0)) + 1)
+            indeg_work[nxt] = int(indeg_work.get(nxt, 0)) - 1
+            if indeg_work[nxt] == 0:
+                q.append(nxt)
+
+    # Defensive fallback if graph has unresolved nodes.
+    unresolved = [nid for nid in node_ids if nid not in set(seen_order)]
+    if unresolved:
+        for _ in range(len(node_ids)):
+            changed = False
+            for e in backbone_edges:
+                s = e["source"]
+                t = e["target"]
+                if s in layer and t in layer:
+                    cand = int(layer[s]) + 1
+                    if cand > int(layer[t]):
+                        layer[t] = cand
+                        changed = True
+            if not changed:
+                break
+
+    # Normalize each weak component so designated roots (or component minimum) start at layer 0.
+    roots_set = set(roots)
+    visited: Set[str] = set()
+    for nid in sorted(node_ids):
+        if nid in visited:
+            continue
+        comp: List[str] = []
+        dq = deque([nid])
+        visited.add(nid)
+        while dq:
+            cur = dq.popleft()
+            comp.append(cur)
+            for nxt in undirected.get(cur, set()):
+                if nxt not in visited:
+                    visited.add(nxt)
+                    dq.append(nxt)
+        comp_roots = [r for r in comp if r in roots_set]
+        if comp_roots:
+            base = min(int(layer.get(r, 0)) for r in comp_roots)
+        else:
+            base = min(int(layer.get(x, 0)) for x in comp)
+        for x in comp:
+            layer[x] = int(layer.get(x, 0)) - int(base)
+
+    return layer
+
+
 def _build_l2_nodes(
     scc_nodes: List[Dict[str, Any]],
     layers: Dict[str, int],
     module_by_id: Dict[str, _ModuleNode],
+    root_scores: Dict[str, Dict[str, float]],
+    roots: List[str],
 ) -> List[Dict[str, Any]]:
     result: List[Dict[str, Any]] = []
+    max_layer = max([int(layers.get(n["id"], 0)) for n in scc_nodes], default=1)
+    max_layer = max(1, max_layer)
+    root_set = set(roots)
     for n in scc_nodes:
         sid = n["id"]
         members = n.get("members") or []
@@ -732,10 +1040,13 @@ def _build_l2_nodes(
                 "kind": n.get("kind", "module"),
                 "label": label,
                 "layer": int(layers.get(sid, 0)),
+                "knowledge_level": float(int(layers.get(sid, 0)) / float(max_layer)),
+                "is_root": sid in root_set,
                 "scope": "architecture",
                 "members": members,
                 "scc_size": int(n.get("scc_size", len(members))),
                 "scc_health": n.get("scc_health", {}),
+                "root_metrics": root_scores.get(sid, {}),
                 "ports": {
                     "inputs": ["in.default"],
                     "outputs": ["out.default"],
@@ -765,8 +1076,11 @@ def _trim_view_graph(
     ranked = sorted(
         nodes,
         key=lambda n: (
+            0 if bool(n.get("is_root")) else 1,
             0 if degree.get(n["id"], 0) > 0 else 1,  # keep connected nodes first
             int(n.get("layer", 0)),
+            -float((n.get("root_metrics") or {}).get("authority", 0.0)),
+            -float((n.get("root_metrics") or {}).get("source_centrality", 0.0)),
             -int(degree.get(n["id"], 0)),
             str(n.get("label", "")),
         ),
@@ -810,10 +1124,133 @@ def _trim_view_graph(
     return selected, trimmed_edges
 
 
+def _cap_overview_edges(
+    nodes: List[Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+    per_source_limit: int = 6,
+) -> List[Dict[str, Any]]:
+    if per_source_limit <= 0 or not edges:
+        return edges
+    layer_by_id = {n["id"]: int(n.get("layer", 0)) for n in nodes}
+    by_source: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for e in edges:
+        by_source[e["source"]].append(e)
+
+    kept: List[Dict[str, Any]] = []
+    for src, arr in by_source.items():
+        arr_sorted = sorted(
+            arr,
+            key=lambda e: (
+                -float(e.get("score", e.get("confidence", 0.0))),
+                # keep short layer jumps on overview
+                abs(int(layer_by_id.get(e.get("target", ""), 0)) - int(layer_by_id.get(src, 0))),
+                str(e.get("target", "")),
+            ),
+        )
+        kept.extend(arr_sorted[: per_source_limit])
+    return kept
+
+
+def _folder_key_for_node(node: Dict[str, Any]) -> str:
+    parent = str((node.get("metadata") or {}).get("parent", "")).replace("\\", "/").strip("/")
+    if not parent:
+        members = node.get("members") or []
+        if members:
+            parent = os.path.dirname(str(members[0]).replace("\\", "/")).strip("/")
+    parts = [p for p in parent.split("/") if p and p != "."]
+    if not parts:
+        return "(root)"
+    if len(parts) >= 2:
+        return "/".join(parts[:2])
+    return parts[0]
+
+
+def _build_l2_folder_overview(
+    l2_nodes: List[Dict[str, Any]],
+    l2_edges: List[Dict[str, Any]],
+    max_folders: int = 90,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    if not l2_nodes:
+        return [], []
+
+    folder_meta: Dict[str, Dict[str, Any]] = {}
+    node_to_folder: Dict[str, str] = {}
+    for n in l2_nodes:
+        fid = _folder_key_for_node(n)
+        node_to_folder[n["id"]] = fid
+        meta = folder_meta.setdefault(
+            fid,
+            {
+                "id": f"dir:{fid}",
+                "kind": "folder",
+                "label": fid,
+                "members_count": 0,
+                "layer": int(n.get("layer", 0)),
+                "is_root": False,
+                "metadata": {"parent": fid},
+            },
+        )
+        meta["members_count"] += 1
+        meta["layer"] = min(int(meta.get("layer", 0)), int(n.get("layer", 0)))
+        if bool(n.get("is_root")):
+            meta["is_root"] = True
+
+    edge_strength: Dict[Tuple[str, str], float] = defaultdict(float)
+    for e in l2_edges:
+        sf = node_to_folder.get(e.get("source", ""))
+        tf = node_to_folder.get(e.get("target", ""))
+        if not sf or not tf or sf == tf:
+            continue
+        edge_strength[(sf, tf)] += float(e.get("score", e.get("confidence", 1.0)))
+
+    folder_nodes = list(folder_meta.values())
+    if len(folder_nodes) > max_folders:
+        degree: Dict[str, int] = defaultdict(int)
+        for (s, t), _w in edge_strength.items():
+            degree[s] += 1
+            degree[t] += 1
+        ranked = sorted(
+            folder_nodes,
+            key=lambda x: (
+                0 if bool(x.get("is_root")) else 1,
+                -int(x.get("members_count", 0)),
+                -int(degree.get(x.get("label", ""), 0)),
+                int(x.get("layer", 0)),
+                str(x.get("label", "")),
+            ),
+        )
+        keep = {str(n.get("label", "")) for n in ranked[:max_folders]}
+        folder_nodes = [n for n in folder_nodes if str(n.get("label", "")) in keep]
+    else:
+        keep = {str(n.get("label", "")) for n in folder_nodes}
+
+    layer_by_folder = {str(n.get("label", "")): int(n.get("layer", 0)) for n in folder_nodes}
+    folder_edges: List[Dict[str, Any]] = []
+    for (s, t), w in edge_strength.items():
+        if s not in keep or t not in keep:
+            continue
+        if int(layer_by_folder.get(t, 0)) <= int(layer_by_folder.get(s, 0)):
+            continue
+        folder_edges.append(
+            {
+                "source": f"dir:{s}",
+                "target": f"dir:{t}",
+                "type": "structural",
+                "score": float(w),
+                "confidence": 0.8,
+            }
+        )
+
+    folder_nodes.sort(key=lambda x: (int(x.get("layer", 0)), -int(x.get("members_count", 0)), str(x.get("label", ""))))
+    folder_edges = _cap_overview_edges(folder_nodes, folder_edges, per_source_limit=4)
+    return folder_nodes, folder_edges
+
+
 def build_condensed_graph(
     scope_root: str,
     max_nodes: int = 600,
     include_artifacts: bool = False,
+    force_refresh: bool = False,
 ) -> Dict[str, Any]:
     """
     Build the 3-layer graph package:
@@ -826,8 +1263,10 @@ def build_condensed_graph(
         raise ValueError(f"Invalid scope root: {scope_root}")
 
     src_mtime = _source_mtime(scope_root)
-    cache_key = f"{scope_root}|{max_nodes}|{int(include_artifacts)}"
+    cache_key = f"{_ALGO_REV}|{scope_root}|{max_nodes}|{int(include_artifacts)}"
     if (
+        not force_refresh
+        and
         _cache.get("result") is not None
         and _cache.get("key") == cache_key
         and float(_cache.get("source_mtime", 0.0)) == float(src_mtime)
@@ -844,10 +1283,49 @@ def build_condensed_graph(
     all_nodes = sorted(module_by_id.keys())
     sccs = _tarjan_scc(all_nodes, adj)
     scc_nodes, scc_edges, node_to_scc = _condense_graph(sccs, adj, l0_edges)
+    # MARKER_155.INPUT_MATRIX.ARCH_DIRECTION_INVERT.V1:
+    # Scanner edges are importer -> imported (dependent -> prerequisite).
+    # For MCC architecture tree semantics we need prerequisite -> derivative,
+    # so roots stay at the bottom (BT) as knowledge sources.
+    scc_edges_arch: List[Dict[str, Any]] = [
+        {**e, "source": e.get("target"), "target": e.get("source")}
+        for e in scc_edges
+        if e.get("source") and e.get("target") and e.get("source") != e.get("target")
+    ]
 
-    layers = _compute_layers(scc_nodes, scc_edges)
-    l2_nodes = _build_l2_nodes(scc_nodes, layers, module_by_id)
-    l2_nodes, l2_edges = _trim_view_graph(l2_nodes, scc_edges, max_nodes=max_nodes)
+    # MARKER_155.ALGORITHMIC_DAG_FORMULAS.V1:
+    # computed roots + backbone DAG as default architecture view.
+    root_scores = _compute_root_scores(scc_nodes, scc_edges_arch, module_by_id)
+    roots_raw = _choose_roots_by_component(scc_nodes, scc_edges_arch, root_scores)
+    root_limit = max(4, min(14, int(math.sqrt(max(1, len(scc_nodes))))))
+    roots, synthetic_root_edges = _coalesce_roots(roots_raw, root_scores, scc_nodes, root_limit)
+    # MARKER_155.INPUT_MATRIX.LAYER_FROM_FULL_DAG.V1:
+    # Derive semantic depth from full SCC DAG first, then select backbone edges with layer bias.
+    layers_full = _compute_layers_from_roots(scc_nodes, scc_edges_arch, roots)
+    backbone_edges, cross_edges = _build_backbone_edges(
+        scc_nodes, scc_edges_arch, roots, preferred_layers=layers_full
+    )
+    if synthetic_root_edges:
+        backbone_edges = synthetic_root_edges + backbone_edges
+    layers = _compute_layers_from_roots(scc_nodes, backbone_edges, roots)
+    # Preserve deeper knowledge strata from the full DAG to avoid rank collapse.
+    for nid, full_l in layers_full.items():
+        layers[nid] = max(int(layers.get(nid, 0)), int(full_l))
+    l2_nodes = _build_l2_nodes(scc_nodes, layers, module_by_id, root_scores, roots)
+    l2_nodes, l2_edges = _trim_view_graph(l2_nodes, backbone_edges, max_nodes=max_nodes)
+    # Enforce strict DAG monotonicity in view graph (source layer < target layer).
+    l2_layer = {n["id"]: int(n.get("layer", 0)) for n in l2_nodes}
+    l2_edges = [
+        e
+        for e in l2_edges
+        if int(l2_layer.get(e.get("source", ""), 0)) < int(l2_layer.get(e.get("target", ""), 0))
+    ]
+    # MARKER_155.INPUT_MATRIX.OVERVIEW_EDGE_BUDGET.V1:
+    # Keep first-screen DAG readable; rich links remain available in l1/cross for drill.
+    l2_edges = _cap_overview_edges(l2_nodes, l2_edges, per_source_limit=6)
+    # MARKER_155.INPUT_MATRIX.FOLDER_OVERVIEW.V1:
+    # Build architecture-first directory DAG for readable first-screen overview.
+    l2_overview_nodes, l2_overview_edges = _build_l2_folder_overview(l2_nodes, l2_edges)
 
     artifact_nodes: List[Dict[str, Any]] = []
     artifact_edges: List[Dict[str, Any]] = []
@@ -861,6 +1339,7 @@ def build_condensed_graph(
         "signature": hashlib.md5(f"{scope_root}:{src_mtime}:{len(files)}".encode("utf-8")).hexdigest()[:12],
         "generated_at": int(time.time()),
         "stats": {
+            "algo_rev": _ALGO_REV,
             "l0_nodes": l0_nodes_count,
             "l0_edges": l0_edges_count,
             "l0_explicit_edges": len(explicit_edges),
@@ -868,10 +1347,16 @@ def build_condensed_graph(
             "l0_channel_hist": channel_hist,
             "l1_scc_nodes": len(scc_nodes),
             "l1_scc_edges": len(scc_edges),
+            "l1_roots": len(roots),
+            "l1_roots_raw": len(roots_raw),
+            "l1_backbone_edges": len(backbone_edges),
+            "l1_cross_edges": len(cross_edges),
             "cyclic_scc_count": sum(1 for s in scc_nodes if int(s.get("scc_size", 1)) > 1),
             "max_scc_size": max([int(s.get("scc_size", 1)) for s in scc_nodes], default=1),
             "l2_nodes": len(l2_nodes),
             "l2_edges": len(l2_edges),
+            "l2_overview_nodes": len(l2_overview_nodes),
+            "l2_overview_edges": len(l2_overview_edges),
             "build_ms": int((time.time() - started) * 1000),
         },
         "l0": {
@@ -888,18 +1373,33 @@ def build_condensed_graph(
         },
         "l1": {
             "nodes": scc_nodes,
-            "edges": scc_edges,
+            "edges": scc_edges_arch,
             "node_to_scc": node_to_scc,
+            "roots": roots,
+            "roots_raw": roots_raw,
+            "root_scores": root_scores,
+            "backbone_edges": backbone_edges,
+            "cross_edges": cross_edges,
         },
         "l2": {
             "nodes": l2_nodes,
             "edges": l2_edges,
         },
+        "l2_overview": {
+            "nodes": l2_overview_nodes,
+            "edges": l2_overview_edges,
+        },
         "markers": [
             "MARKER_155.MODE_ARCH.V11.P1",
             "MARKER_155.INPUT_MATRIX.SCANNERS.V1",
+            "MARKER_155.INPUT_MATRIX.ROOT_SCORE.V1",
+            "MARKER_155.INPUT_MATRIX.BACKBONE_DAG.V1",
+            "MARKER_155.ALGORITHMIC_DAG_FORMULAS.V1",
             "MARKER_155.MODE_ARCH.V11.GRAPH_LEVELS",
             "MARKER_155.MODE_ARCH.V11.CYCLE_POLICY",
+            "MARKER_155.INPUT_MATRIX.ARCH_DIRECTION_INVERT.V1",
+            "MARKER_155.INPUT_MATRIX.FOLDER_OVERVIEW.V1",
+            _ALGO_REV,
         ],
     }
 

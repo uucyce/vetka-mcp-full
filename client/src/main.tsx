@@ -32,8 +32,78 @@ function Root() {
   return <App />;
 }
 
+type ErrorBoundaryState = {
+  hasError: boolean;
+  message: string;
+  stack?: string;
+};
+
+class AppErrorBoundary extends React.Component<React.PropsWithChildren, ErrorBoundaryState> {
+  constructor(props: React.PropsWithChildren) {
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return {
+      hasError: true,
+      message: error?.message || 'Unknown runtime error',
+      stack: error?.stack,
+    };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    const stack = [error?.stack, info?.componentStack].filter(Boolean).join('\n\n');
+    // Keep logs for terminal/dev runs and persist for Tauri sessions without DevTools.
+    console.error('[MCC_RUNTIME_ERROR]', error, info);
+    try {
+      localStorage.setItem('vetka_last_runtime_error', stack || error?.message || 'unknown');
+    } catch {
+      // ignore storage failures
+    }
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div
+        style={{
+          height: '100vh',
+          width: '100vw',
+          background: '#0b0b0b',
+          color: '#e6e6e6',
+          fontFamily: 'monospace',
+          padding: 16,
+          boxSizing: 'border-box',
+          overflow: 'auto',
+        }}
+      >
+        <h2 style={{ margin: '0 0 8px 0', fontSize: 18 }}>MCC Runtime Error</h2>
+        <div style={{ marginBottom: 8, color: '#ff9b9b' }}>{this.state.message}</div>
+        <div style={{ marginBottom: 10, color: '#999', fontSize: 12 }}>
+          Send this screen to Codex. Error is also saved in localStorage key:
+          <code style={{ marginLeft: 6, color: '#ccc' }}>vetka_last_runtime_error</code>
+        </div>
+        <pre
+          style={{
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            fontSize: 12,
+            lineHeight: 1.45,
+            margin: 0,
+          }}
+        >
+          {this.state.stack || 'No stack available'}
+        </pre>
+      </div>
+    );
+  }
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <Root />
+    <AppErrorBoundary>
+      <Root />
+    </AppErrorBoundary>
   </React.StrictMode>
 );

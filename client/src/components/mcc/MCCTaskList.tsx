@@ -1,10 +1,15 @@
 /**
- * MARKER_143.P2: MCCTaskList — compact left panel task list.
- * Extracted from DevPanel Board tab into a standalone column component.
- * Tasks are compact (single line) — click to focus, not expand inline.
+ * ⚠️ DEPRECATED: MCCTaskList
+ *
+ * MARKER_155.CLEANUP: Component deprecated in Phase 155.
+ * Replaced by MiniTasks floating window in DAG canvas.
+ *
+ * This file is kept for reference only. Do not use in new code.
+ * All functionality migrated to MiniTasks component.
  *
  * @phase 143
- * @status active
+ * @status deprecated
+ * @replaced_by MiniTasks
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';

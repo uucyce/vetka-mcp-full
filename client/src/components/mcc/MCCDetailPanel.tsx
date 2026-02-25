@@ -1,12 +1,15 @@
 /**
- * MARKER_143.P4: MCCDetailPanel — context-sensitive right panel.
- * Mode A: DAG node selected → node info + role editor
- * Mode B: Task selected (done/failed) → PipelineResultsViewer
- * Mode C: Task selected (running) → live progress
- * Mode D: Nothing selected → stats overview
+ * ⚠️ DEPRECATED: MCCDetailPanel
+ *
+ * MARKER_155.CLEANUP: Component deprecated in Phase 155.
+ * Replaced by MiniStats floating window in DAG canvas.
+ *
+ * This file is kept for reference only. Do not use in new code.
+ * Node details now shown in modals/popups.
  *
  * @phase 143
- * @status active
+ * @status deprecated
+ * @replaced_by MiniStats + Modal dialogs
  */
 import { useMemo, useState, useEffect } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';

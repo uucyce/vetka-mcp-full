@@ -189,9 +189,12 @@ class QdrantIncrementalUpdater:
             )
 
             # Log results
-            success_count = sum(1 for v in results.values() if v)
-            if success_count == 3:
-                logger.debug(f"[QdrantUpdater] TripleWrite OK: {file_path.name} (all 3 stores)")
+            total_targets = len(results)
+            success_count = sum(1 for v in results.values() if bool(v))
+            if total_targets > 0 and success_count == total_targets:
+                logger.debug(
+                    f"[QdrantUpdater] TripleWrite OK: {file_path.name} (all {total_targets} stores)"
+                )
             elif success_count > 0:
                 logger.warning(f"[QdrantUpdater] TripleWrite partial: {file_path.name} -> {results}")
             else:
@@ -738,7 +741,7 @@ class QdrantIncrementalUpdater:
             # MARKER_149.SCAN_SKIP: Unified skip list — prevent indexing worktrees/playgrounds
             skip_dirs = ['node_modules', '__pycache__', 'venv', '.venv', 'venv_mcp',
                         'site-packages', 'dist', 'build', '.git', '.idea', '.vscode',
-                        '.playgrounds', '.claude', 'Pods', 'target']
+                        '.playgrounds', 'playgrounds', '.claude', 'Pods', 'target']
 
         # Phase 92.3: First pass - count total files for progress
         total_files = 0

@@ -69,9 +69,24 @@ export function KeyDropdown() {
 
   useEffect(() => {
     fetchBalances();
-    const t = setInterval(fetchBalances, 30000);
-    return () => clearInterval(t);
+    const onVisibility = () => {
+      if (!document.hidden) fetchBalances();
+    };
+    window.addEventListener('task-board-updated', fetchBalances as EventListener);
+    window.addEventListener('pipeline-stats', fetchBalances as EventListener);
+    window.addEventListener('focus', fetchBalances);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('task-board-updated', fetchBalances as EventListener);
+      window.removeEventListener('pipeline-stats', fetchBalances as EventListener);
+      window.removeEventListener('focus', fetchBalances);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [fetchBalances]);
+
+  useEffect(() => {
+    if (open) fetchBalances();
+  }, [open, fetchBalances]);
 
   useEffect(() => {
     if (!open) return;

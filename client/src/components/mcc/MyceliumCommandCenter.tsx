@@ -10,38 +10,36 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { DAGView } from './DAGView';
-import { MCCTaskList } from './MCCTaskList';
-import { MCCDetailPanel } from './MCCDetailPanel';
-import { PresetDropdown } from './PresetDropdown';
+import { DAGView, type LODLevel } from './DAGView';
+import { ReactFlowProvider } from '@xyflow/react';
+// MARKER_155.CLEANUP: Removed deprecated components - using Mini-windows instead
+// import { MCCTaskList } from './MCCTaskList';
+// import { MCCDetailPanel } from './MCCDetailPanel';
+// import { PresetDropdown } from './PresetDropdown';
+// import { HeartbeatChip } from './HeartbeatChip';
+// import { SandboxDropdown } from './SandboxDropdown';
+// import { KeyDropdown } from './KeyDropdown';
+// import { CaptainBar } from './CaptainBar';
 import { StreamPanel } from './StreamPanel';
-import { HeartbeatChip } from './HeartbeatChip';
-import { SandboxDropdown } from './SandboxDropdown';
-import { KeyDropdown } from './KeyDropdown';
-// MARKER_154.3A: WorkflowToolbar removed from layout (kept for dagEditor reference)
-// import { WorkflowToolbar } from './WorkflowToolbar';
 import { DAGContextMenu, type ContextMenuTarget } from './DAGContextMenu';
 import { NodePicker } from './NodePicker';
 import { OnboardingOverlay } from './OnboardingOverlay';
 import { OnboardingModal } from './OnboardingModal';
 import { MCCBreadcrumb } from './MCCBreadcrumb';
-// MARKER_154.3A: RailsActionBar deprecated — replaced by FooterActionBar
-// import { RailsActionBar } from './RailsActionBar';
 import { FooterActionBar } from './FooterActionBar';
-// MARKER_154.5A: Matryoshka drill-down/back animation wrapper
 import { MatryoshkaTransition } from './MatryoshkaTransition';
-// MARKER_154.8A: Task editor popup (Wave 3)
 import { TaskEditPopup } from './TaskEditPopup';
-// MARKER_154.10A: Redo feedback input (Wave 3)
 import { RedoFeedbackInput } from './RedoFeedbackInput';
-// MARKER_154.11A: Mini-windows (Wave 4)
+// MARKER_154.11A: Mini-windows replace side panels
 import { MiniChat } from './MiniChat';
 import { MiniTasks } from './MiniTasks';
 import { MiniStats } from './MiniStats';
-// MARKER_154.16A: First Run view (Wave 5)
+import { StepIndicator } from './StepIndicator';
 import { FirstRunView } from './FirstRunView';
+import { PlaygroundBadge } from './PlaygroundBadge';
+// MARKER_155.WIZARD.001: Wizard flow for steps 1-3
+import { WizardContainer, type WizardStep } from './WizardContainer';
 import { ToastContainer } from './ToastContainer';
-import { CaptainBar } from './CaptainBar';
 import { useMCCStore } from '../../store/useMCCStore';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useLimitedTooltip } from '../../hooks/useLimitedTooltip';
@@ -50,21 +48,231 @@ import { useToast } from '../../hooks/useToast';
 import { useCaptain } from '../../hooks/useCaptain';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { NOLAN_PALETTE, createTestDAGData } from '../../utils/dagLayout';
+import {
+  fetchDagLayoutBiasProfile,
+  inferBiasFromPinnedPositions,
+  updateDagLayoutBiasProfile,
+  type DagLayoutBiasProfile,
+} from '../../utils/dagLayoutPreferences';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
 import { useDAGEditor } from '../../hooks/useDAGEditor';
-import type { DAGNode, DAGEdge, DAGStats, DAGNodeType } from '../../types/dag';
+import type { DAGNode, DAGEdge, DAGStats, DAGNodeType, NodeStatus, EdgeType } from '../../types/dag';
+import type { TaskData } from '../panels/TaskCard';
 
 const API_BASE = 'http://localhost:5001/api';
+
+interface PredictedEdgePayload {
+  source: string;
+  target: string;
+  type?: string;
+  weight?: number;
+  confidence?: number;
+  evidence?: string[];
+}
+
+interface DagVersionSummary {
+  version_id: string;
+  name: string;
+  created_at: string;
+  author: string;
+  source: string;
+  is_primary: boolean;
+  node_count: number;
+  edge_count: number;
+  decision: string;
+  markers: string[];
+}
+
+interface DagCompareRow {
+  name: string;
+  version_id?: string;
+  variant_params?: {
+    max_nodes?: number;
+    min_confidence?: number;
+    use_predictive_overlay?: boolean;
+    max_predicted_edges?: number;
+  };
+  scorecard?: {
+    score?: number;
+    decision?: string;
+    node_count?: number;
+    edge_count?: number;
+    orphan_rate?: number;
+    density?: number;
+  };
+  error?: string;
+}
+
+type FocusDisplayMode = 'all' | 'selected_deps' | 'selected_only';
+type FocusRestoreSource = 'current' | 'memory' | 'default';
+
+function uniqueIds(ids: Array<string | null | undefined>): string[] {
+  return Array.from(new Set(ids.filter(Boolean) as string[]));
+}
+
+function sameIds(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function adaptVersionNode(raw: any): DAGNode {
+  if (!raw || typeof raw !== 'object') {
+    return {
+      id: `invalid_${Math.random().toString(36).slice(2, 8)}`,
+      type: 'roadmap_task',
+      label: 'invalid',
+      status: 'pending',
+      layer: 0,
+      taskId: 'invalid',
+    };
+  }
+  if (raw.type && raw.status !== undefined) {
+    return raw as DAGNode;
+  }
+  const kind = String(raw.kind || '');
+  const graphKind =
+    kind === 'root'
+      ? 'project_root'
+      : kind === 'folder'
+        ? 'project_dir'
+        : 'project_file';
+  return {
+    id: String(raw.id || `node_${Math.random().toString(36).slice(2, 8)}`),
+    type: 'roadmap_task',
+    label: String(raw.label || raw.id || 'node'),
+    status: 'pending',
+    layer: typeof raw.layer === 'number' ? raw.layer : 0,
+    taskId: String(raw.id || 'node'),
+    description: String(raw?.metadata?.parent || ''),
+    graphKind: graphKind as any,
+    projectNodeId: String(raw.id || 'node'),
+    metadata: raw.metadata || {},
+  };
+}
+
+function adaptVersionEdge(raw: any, idx: number): DAGEdge {
+  const rawType = String(raw?.type || '').toLowerCase();
+  const type: DAGEdge['type'] =
+    rawType === 'structural'
+      ? 'structural'
+      : rawType === 'predicted'
+        ? 'predicted'
+        : rawType === 'dependency'
+        ? 'dependency'
+          : 'dependency';
+  const rawRelation = String(
+    raw?.relationKind || raw?.relation_kind || (type === 'structural' ? 'contains' : 'depends_on'),
+  ).toLowerCase();
+  const relationKind: NonNullable<DAGEdge['relationKind']> =
+    rawRelation === 'contains'
+      ? 'contains'
+      : rawRelation === 'affects'
+        ? 'affects'
+        : rawRelation === 'executes'
+          ? 'executes'
+          : rawRelation === 'passes'
+            ? 'passes'
+            : rawRelation === 'produces'
+              ? 'produces'
+              : rawRelation === 'predicted'
+                ? 'predicted'
+                : 'depends_on';
+  return {
+    id: String(raw?.id || `v-e-${raw?.source || 's'}-${raw?.target || 't'}-${idx}`),
+    source: String(raw?.source || ''),
+    target: String(raw?.target || ''),
+    type,
+    strength: Math.max(0.25, Math.min(1.0, Number(raw?.strength ?? raw?.score ?? raw?.confidence ?? 0.8))),
+    relationKind,
+  };
+}
+
+// MARKER_155A.P1.ADAPTERS: Normalize backend graph payloads to MCC DAG types.
+function normalizeNodeType(rawType: string | undefined): DAGNodeType {
+  switch (rawType) {
+    case 'task':
+    case 'roadmap_task':
+    case 'agent':
+    case 'subtask':
+    case 'proposal':
+    case 'condition':
+    case 'parallel':
+    case 'loop':
+    case 'transform':
+    case 'group':
+      return rawType;
+    case 'project_task':
+    case 'project_root':
+    case 'project_dir':
+    case 'project_file':
+      return 'roadmap_task';
+    case 'workflow_agent':
+      return 'agent';
+    case 'workflow_artifact':
+      return 'subtask';
+    case 'workflow_message':
+      return 'proposal';
+    default:
+      return 'task';
+  }
+}
+
+function normalizeEdgeType(rawType: string | undefined): EdgeType {
+  switch (rawType) {
+    case 'structural':
+    case 'dataflow':
+    case 'temporal':
+    case 'conditional':
+    case 'parallel_fork':
+    case 'parallel_join':
+    case 'feedback':
+    case 'dependency':
+    case 'predicted':
+      return rawType;
+    case 'depends_on':
+      return 'dependency';
+    case 'passes':
+    case 'produces':
+      return 'dataflow';
+    case 'contains':
+    case 'affects':
+    case 'executes':
+      return 'structural';
+    default:
+      return 'structural';
+  }
+}
+
+function normalizeStatus(rawStatus: string | undefined): NodeStatus {
+  switch (rawStatus) {
+    case 'running':
+    case 'pending':
+    case 'done':
+    case 'failed':
+      return rawStatus;
+    case 'active':
+      return 'running';
+    case 'completed':
+      return 'done';
+    case 'error':
+      return 'failed';
+    default:
+      return 'pending';
+  }
+}
 
 // Convert backend response to frontend types
 function mapBackendNode(node: any): DAGNode {
   return {
     id: node.id,
-    type: node.type,
-    label: node.label,
-    status: node.status,
-    layer: node.layer,
-    taskId: node.task_id,
+    type: normalizeNodeType(node.type),
+    label: node.label || node.id || 'node',
+    status: normalizeStatus(node.status),
+    layer: typeof node.layer === 'number' ? node.layer : 0,
+    taskId: node.task_id || node.taskId || node.id,
     parentId: node.parent_id,
     startedAt: node.started_at,
     completedAt: node.completed_at,
@@ -74,16 +282,26 @@ function mapBackendNode(node: any): DAGNode {
     confidence: node.confidence,
     role: node.role,
     description: node.description,
+    // MARKER_155A.P1.GRAPH_SCHEMA: Preserve unified graph identifiers for LOD contract.
+    graphKind: node.graph_kind || node.type,
+    projectNodeId: node.project_node_id,
+    workflowId: node.workflow_id,
+    agentNodeId: node.agent_node_id,
+    sourceMessageId: node.source_message_id,
+    primaryNodeId: node.primary_node_id,
+    affectedNodes: Array.isArray(node.affected_nodes) ? node.affected_nodes : undefined,
+    integrationTaskOf: Array.isArray(node.integration_task_of) ? node.integration_task_of : undefined,
   };
 }
 
 function mapBackendEdge(edge: any): DAGEdge {
   return {
-    id: edge.id,
+    id: edge.id || `e-${edge.source}-${edge.target}`,
     source: edge.source,
     target: edge.target,
-    type: edge.type,
-    strength: edge.strength,
+    type: normalizeEdgeType(edge.type),
+    strength: typeof edge.strength === 'number' ? edge.strength : 0.8,
+    relationKind: edge.relation_kind || edge.type,
   };
 }
 
@@ -97,6 +315,179 @@ function mapBackendStats(stats: any): DAGStats {
     totalAgents: stats.total_agents || 0,
     totalSubtasks: stats.total_subtasks || 0,
   };
+}
+
+// MARKER_155.3A: Convert TaskBoard tasks → clean 3-level tree DAG.
+// Tree: Module root → phase_type branches (Build/Fix/Research) → task leaves.
+// No chunking, no tag grouping. Simple and readable.
+function tasksToDAG(
+  tasks: TaskData[],
+  options?: { moduleId?: string; moduleLabel?: string },
+): { nodes: DAGNode[]; edges: DAGEdge[] } {
+  const mapStatus = (s: string): NodeStatus => {
+    if (s === 'running' || s === 'claimed') return 'running';
+    if (s === 'done') return 'done';
+    if (s === 'failed' || s === 'cancelled') return 'failed';
+    return 'pending';
+  };
+
+  const aggregateStatus = (items: TaskData[]): NodeStatus => {
+    if (items.some(t => t.status === 'running' || t.status === 'claimed')) return 'running';
+    if (items.every(t => t.status === 'done')) return 'done';
+    if (items.some(t => t.status === 'failed' || t.status === 'cancelled')) return 'failed';
+    return 'pending';
+  };
+
+  const PHASE_LABELS: Record<string, string> = {
+    build: 'Build', fix: 'Fix', research: 'Research',
+  };
+
+  const nodes: DAGNode[] = [];
+  const edges: DAGEdge[] = [];
+
+  // --- Root node (module name or "Tasks") ---
+  const rootId = '__root__';
+  nodes.push({
+    id: rootId, type: 'task' as DAGNodeType,
+    label: options?.moduleLabel || `Tasks (${tasks.length})`,
+    status: aggregateStatus(tasks),
+    layer: 0, taskId: rootId,
+  });
+
+  // --- Group tasks by phase_type ---
+  const groups = new Map<string, TaskData[]>();
+  for (const task of tasks) {
+    const phase = task.phase_type || 'build';
+    if (!groups.has(phase)) groups.set(phase, []);
+    groups.get(phase)!.push(task);
+  }
+
+  // Sort: largest group first
+  const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+
+  for (const [phase, phaseTasks] of sorted) {
+    const branchId = `__phase_${phase}__`;
+    const branchLabel = PHASE_LABELS[phase] || phase.charAt(0).toUpperCase() + phase.slice(1);
+
+    // Branch node
+    nodes.push({
+      id: branchId, type: 'task' as DAGNodeType,
+      label: `${branchLabel} (${phaseTasks.length})`,
+      status: aggregateStatus(phaseTasks),
+      layer: 1, taskId: branchId,
+    });
+    edges.push({
+      id: `e-root-${phase}`, source: rootId, target: branchId,
+      type: 'structural' as EdgeType, strength: 0.9,
+    });
+
+    // Task leaf nodes
+    for (const task of phaseTasks) {
+      nodes.push({
+      id: task.id, type: 'roadmap_task' as DAGNodeType,
+        label: task.title, status: mapStatus(task.status),
+        layer: 2, taskId: task.id,
+        description: task.description, preset: task.preset,
+        subtasksDone: task.stats?.subtasks_completed,
+        subtasksTotal: task.stats?.subtasks_total,
+        // MARKER_155A.P1.CROSSCUT_TASKS: Carry cross-cut metadata in node payload.
+        graphKind: 'project_task',
+        primaryNodeId: task.primary_node_id || task.module,
+        affectedNodes: task.affected_nodes,
+        integrationTaskOf: task.integration_task_of,
+      });
+      edges.push({
+        id: `e-${phase}-${task.id}`, source: branchId, target: task.id,
+        type: 'structural' as EdgeType, strength: 0.7, relationKind: 'executes',
+      });
+    }
+  }
+
+  // --- Real dependency edges (if any) ---
+  const idSet = new Set(tasks.map(t => t.id));
+  for (const task of tasks) {
+    if (task.dependencies) {
+      for (const depId of task.dependencies) {
+        if (idSet.has(depId)) {
+          edges.push({
+            id: `dep-${depId}-${task.id}`, source: depId, target: task.id,
+            type: 'dependency' as EdgeType, strength: 0.8, relationKind: 'depends_on',
+          });
+        }
+      }
+    }
+  }
+
+  return { nodes, edges };
+}
+
+function mapTaskNodeStatus(status: string): NodeStatus {
+  if (status === 'running' || status === 'claimed') return 'running';
+  if (status === 'done') return 'done';
+  if (status === 'failed' || status === 'cancelled') return 'failed';
+  return 'pending';
+}
+
+// MARKER_155A.G21.SINGLE_CANVAS_STATE:
+// Overlay tasks directly on top of architecture graph (same canvas, no phase-train view switch).
+function overlayTasksOnRoadmap(
+  roadmapNodes: DAGNode[],
+  roadmapEdges: DAGEdge[],
+  tasks: TaskData[],
+  focusRoadmapNodeId: string,
+): { nodes: DAGNode[]; edges: DAGEdge[] } {
+  const baseNodes = [...roadmapNodes];
+  const baseEdges = [...roadmapEdges];
+
+  const taskNodes: DAGNode[] = [];
+  const taskEdges: DAGEdge[] = [];
+  const overlayTaskIds = new Set<string>();
+
+  for (const task of tasks) {
+    const id = `task_overlay_${task.id}`;
+    overlayTaskIds.add(task.id);
+    taskNodes.push({
+      id,
+      type: 'roadmap_task',
+      label: task.title,
+      status: mapTaskNodeStatus(task.status),
+      layer: 3,
+      taskId: task.id,
+      description: task.description,
+      preset: task.preset,
+      subtasksDone: task.stats?.subtasks_completed,
+      subtasksTotal: task.stats?.subtasks_total,
+      graphKind: 'project_task',
+      primaryNodeId: task.primary_node_id || task.module || focusRoadmapNodeId,
+      affectedNodes: task.affected_nodes,
+      integrationTaskOf: task.integration_task_of,
+    });
+
+    taskEdges.push({
+      id: `overlay-affects-${focusRoadmapNodeId}-${task.id}`,
+      source: focusRoadmapNodeId,
+      target: id,
+      type: 'structural',
+      relationKind: 'affects',
+      strength: 0.7,
+    });
+  }
+
+  for (const task of tasks) {
+    for (const depId of task.dependencies || []) {
+      if (!overlayTaskIds.has(depId)) continue;
+      taskEdges.push({
+        id: `overlay-dep-${depId}-${task.id}`,
+        source: `task_overlay_${depId}`,
+        target: `task_overlay_${task.id}`,
+        type: 'dependency',
+        relationKind: 'depends_on',
+        strength: 0.8,
+      });
+    }
+  }
+
+  return { nodes: [...baseNodes, ...taskNodes], edges: [...baseEdges, ...taskEdges] };
 }
 
 export function MyceliumCommandCenter() {
@@ -114,11 +505,13 @@ export function MyceliumCommandCenter() {
   // DAG data state
   const [dagNodes, setDagNodes] = useState<DAGNode[]>([]);
   const [dagEdges, setDagEdges] = useState<DAGEdge[]>([]);
+  const [predictedEdges, setPredictedEdges] = useState<DAGEdge[]>([]);
   const [stats, setStats] = useState<DAGStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   // UI state
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedEdge, setSelectedEdge] = useState<{
     id: string; source: string; target: string; type: string;
   } | null>(null);
@@ -129,6 +522,10 @@ export function MyceliumCommandCenter() {
   const [executeMsg, setExecuteMsg] = useState<string | null>(null);
   const { step: onboardingStep, completed: onboardingCompleted, dismissed: onboardingDismissed, advance: onboardingAdvance, dismiss: onboardingDismiss } = useOnboarding();
 
+  // MARKER_155.WIZARD.027: Wizard flow state — track current step (1-5)
+  const [wizardStep, setWizardStep] = useState<WizardStep>(1);
+  const [wizardData, setWizardData] = useState<Record<number, any>>({});
+  
   // MARKER_144.6: Edit mode + context menu
   const editMode = useMCCStore(s => s.editMode);
   const toggleEditMode = useMCCStore(s => s.toggleEditMode);
@@ -145,6 +542,14 @@ export function MyceliumCommandCenter() {
   const [showTaskEdit, setShowTaskEdit] = useState(false);
   // MARKER_154.10A: Redo feedback input state (Wave 3)
   const [showRedoInput, setShowRedoInput] = useState(false);
+  const [focusDisplayMode, setFocusDisplayMode] = useState<FocusDisplayMode>('all');
+  const [jepaRuntimeUi, setJepaRuntimeUi] = useState<{
+    title: string;
+    hint: string;
+    color: string;
+  } | null>(null);
+  const focusMemoryRef = useRef<Record<string, string[]>>({});
+  const isRestoringFocusRef = useRef(false);
 
   const handleViewArtifact = useCallback((artifact: { id: string; name: string; file_path: string; language: string }) => {
     setViewingArtifact(artifact);
@@ -160,6 +565,14 @@ export function MyceliumCommandCenter() {
   // Track last update for debouncing
   const lastFetchRef = useRef<number>(0);
   const DEBOUNCE_MS = 500;
+  const dagFetchInFlightRef = useRef(false);
+  const dagFetchQueuedRef = useRef(false);
+  const lastPredictiveErrorKeyRef = useRef<string>('');
+
+  const isActiveWindow = useCallback(() => {
+    if (typeof document === 'undefined') return true;
+    return document.visibilityState === 'visible';
+  }, []);
 
   // MARKER_143.P3: Fetch DAG data — filtered by selectedTaskId when set
   const fetchDAG = useCallback(async (taskId?: string | null) => {
@@ -195,17 +608,327 @@ export function MyceliumCommandCenter() {
   // MARKER_153.1C: Initialize MCC — load project config + session state on mount
   const initMCC = useMCCStore(s => s.initMCC);
   const hasProject = useMCCStore(s => s.hasProject);
+  const projectConfig = useMCCStore(s => s.projectConfig);
   const navLevel = useMCCStore(s => s.navLevel);
+  const navRoadmapNodeId = useMCCStore(s => s.navRoadmapNodeId);
   const drillDown = useMCCStore(s => s.drillDown);
   const goBack = useMCCStore(s => s.goBack);
+  const setRoadmapFocus = useMCCStore(s => s.setRoadmapFocus);
+  const cameraPosition = useMCCStore(s => s.cameraPosition);
+  const setCameraPosition = useMCCStore(s => s.setCameraPosition);
+  const setFocusedNodeId = useMCCStore(s => s.setFocusedNodeId);
+  const focusRestorePolicy = useMCCStore(s => s.focusRestorePolicy);
+  const focusRestoreSource = useMCCStore(s => s.focusRestoreSource);
+  const setFocusRestorePolicy = useMCCStore(s => s.setFocusRestorePolicy);
+  const setFocusRestoreSource = useMCCStore(s => s.setFocusRestoreSource);
+  const layoutPins = useMCCStore(s => s.layoutPins);
+  const setLayoutPinsForKey = useMCCStore(s => s.setLayoutPinsForKey);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [mccReady, setMccReady] = useState(false);
+  const [cameraLOD, setCameraLOD] = useState<LODLevel>('tasks');
+  const dagGraphIdentity = useMemo(
+    () => `${navLevel}:${navRoadmapNodeId || 'none'}:${selectedTaskId || 'none'}`,
+    [navLevel, navRoadmapNodeId, selectedTaskId],
+  );
+  const focusScopeKey = useMemo(() => {
+    if (navLevel === 'roadmap') return `roadmap:${navRoadmapNodeId || 'root'}`;
+    if (navLevel === 'tasks') return `tasks:${navRoadmapNodeId || 'root'}`;
+    if (navLevel === 'workflow') return `workflow:${selectedTaskId || 'none'}:${navRoadmapNodeId || 'root'}`;
+    return `${navLevel}:${selectedTaskId || 'none'}:${navRoadmapNodeId || 'root'}`;
+  }, [navLevel, navRoadmapNodeId, selectedTaskId]);
+  const layoutPreferenceScopeKey = useMemo(() => {
+    const graphType = navLevel === 'roadmap' ? 'architecture' : navLevel === 'tasks' ? 'tasks' : 'workflow';
+    const scopeRoot = String(projectConfig?.source_path || projectConfig?.sandbox_path || 'default').replace(/\\/g, '/');
+    return `dag:${scopeRoot}:${graphType}`;
+  }, [projectConfig?.source_path, projectConfig?.sandbox_path, navLevel]);
+  const pinnedPositions = useMemo(
+    () => layoutPins[dagGraphIdentity] || {},
+    [layoutPins, dagGraphIdentity],
+  );
+  // MARKER_155.MEMORY.ENGRAM_DAG_PREFS.V1:
+  // Shared layout intent profile from ENGRAM (MCC + VETKA).
+  const [layoutBiasProfile, setLayoutBiasProfile] = useState<DagLayoutBiasProfile | null>(null);
+  const profilePersistTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchDagLayoutBiasProfile(layoutPreferenceScopeKey)
+      .then((profile) => {
+        if (!cancelled) setLayoutBiasProfile(profile);
+      })
+      .catch(() => {
+        if (!cancelled) setLayoutBiasProfile(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [layoutPreferenceScopeKey]);
+
+  useEffect(() => () => {
+    if (profilePersistTimerRef.current) {
+      window.clearTimeout(profilePersistTimerRef.current);
+      profilePersistTimerRef.current = null;
+    }
+  }, []);
+
+  // MARKER_155.WIZARD.028: Wizard navigation handlers (after initMCC declared)
+  const handleWizardComplete = useCallback((step: WizardStep, data: any) => {
+    setWizardData(prev => ({ ...prev, [step]: data }));
+    
+    if (step < 5) {
+      setWizardStep((step + 1) as WizardStep);
+    }
+    
+    // When completing step 3 (Keys), initialize the project
+    if (step === 3) {
+      initMCC();
+    }
+  }, [initMCC]);
+
+  const handleWizardBack = useCallback(() => {
+    if (wizardStep > 1) {
+      setWizardStep((wizardStep - 1) as WizardStep);
+    }
+  }, [wizardStep]);
 
   // MARKER_153.5B: Roadmap DAG data hook
-  const roadmap = useRoadmapDAG();
-
+  const projectScopePath = projectConfig?.source_path || projectConfig?.sandbox_path || '';
+  const roadmap = useRoadmapDAG(projectScopePath);
+  const [dagVersions, setDagVersions] = useState<DagVersionSummary[]>([]);
+  const [activeDagVersionId, setActiveDagVersionId] = useState<string | null>(null);
+  const [activeDagVersionPayload, setActiveDagVersionPayload] = useState<any | null>(null);
+  const [dagVersionsLoading, setDagVersionsLoading] = useState(false);
+  const [dagVersionsError, setDagVersionsError] = useState<string | null>(null);
+  const [dagCompareLoading, setDagCompareLoading] = useState(false);
+  const [dagCompareError, setDagCompareError] = useState<string | null>(null);
+  const [dagCompareBest, setDagCompareBest] = useState<{ name: string; score: number; version_id: string } | null>(null);
+  const [dagCompareRows, setDagCompareRows] = useState<DagCompareRow[]>([]);
+  const [showDagCompareMatrix, setShowDagCompareMatrix] = useState(false);
+  const [selectedDagCompareName, setSelectedDagCompareName] = useState<string | null>(null);
   // MARKER_153.6C: Toast notifications for pipeline/system events
   const { toasts, addToast, dismissToast } = useToast();
+
+  const fetchDagVersions = useCallback(async () => {
+    if (!hasProject) return;
+    setDagVersionsLoading(true);
+    setDagVersionsError(null);
+    try {
+      const res = await fetch(`${API_BASE}/mcc/dag-versions/list`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const versions = Array.isArray(data?.versions) ? data.versions as DagVersionSummary[] : [];
+      setDagVersions(versions);
+      const primaryId = String(data?.primary_version_id || '');
+      if (primaryId && !activeDagVersionId) {
+        setActiveDagVersionId(primaryId);
+      }
+    } catch (err) {
+      setDagVersionsError(err instanceof Error ? err.message : 'Failed to load DAG versions');
+    } finally {
+      setDagVersionsLoading(false);
+    }
+  }, [hasProject, activeDagVersionId]);
+
+  const fetchDagVersionPayload = useCallback(async (versionId: string | null) => {
+    if (!versionId) {
+      setActiveDagVersionPayload(null);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/mcc/dag-versions/${encodeURIComponent(versionId)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setActiveDagVersionPayload(data?.version || null);
+    } catch {
+      setActiveDagVersionPayload(null);
+    }
+  }, []);
+
+  const createDagSnapshot = useCallback(async () => {
+    const payload = {
+      design_graph: {
+        nodes: roadmap.nodes,
+        edges: roadmap.edges,
+        cross_edges: roadmap.crossEdges,
+      },
+      verifier: roadmap.verifier,
+      predictive_overlay: { stats: { enabled: false, predicted_edges: 0 } },
+    };
+    const body = {
+      name: `Snapshot ${new Date().toLocaleTimeString()}`,
+      author: 'architect',
+      source: 'manual',
+      set_primary: false,
+      markers: ['MARKER_155.ARCHITECT_BUILD.DAG_VERSIONS.V1'],
+      build_meta: {
+        builder_profile: 'mcc_manual_snapshot',
+        weights: {},
+        budget: { max_nodes: roadmap.nodes.length || 0 },
+        verifier: roadmap.verifier || {},
+        spectral: roadmap.verifier?.spectral || {},
+        overlay_stats: { enabled: false, predicted_edges: 0 },
+      },
+      dag_payload: payload,
+    };
+    try {
+      const res = await fetch(`${API_BASE}/mcc/dag-versions/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const vid = String(data?.version?.version_id || '');
+      await fetchDagVersions();
+      if (vid) setActiveDagVersionId(vid);
+      addToast('success', 'DAG snapshot saved');
+    } catch (err) {
+      addToast('error', `Failed to save DAG snapshot: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+  }, [roadmap.nodes, roadmap.edges, roadmap.crossEdges, roadmap.verifier, fetchDagVersions, addToast]);
+
+  const setPrimaryDagVersion = useCallback(async (versionId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/mcc/dag-versions/${encodeURIComponent(versionId)}/set-primary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ set_primary: true }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await fetchDagVersions();
+      addToast('info', 'Primary DAG version updated');
+    } catch (err) {
+      addToast('error', `Failed to set primary DAG version: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+  }, [fetchDagVersions, addToast]);
+
+  const runDagAutoCompare = useCallback(async () => {
+    if (!hasProject || roadmap.nodes.length === 0) return;
+    setDagCompareLoading(true);
+    setDagCompareError(null);
+    try {
+      const maxNodesBase = Math.max(120, Math.min(360, roadmap.nodes.length || 180));
+      const variants = [
+        {
+          name: 'clean_topology',
+          max_nodes: Math.max(120, Math.round(maxNodesBase * 0.75)),
+          use_predictive_overlay: false,
+          min_confidence: 0.78,
+        },
+        {
+          name: 'balanced',
+          max_nodes: maxNodesBase,
+          use_predictive_overlay: false,
+          min_confidence: 0.66,
+        },
+        {
+          name: 'overlay_try',
+          max_nodes: Math.min(420, Math.round(maxNodesBase * 1.1)),
+          use_predictive_overlay: true,
+          max_predicted_edges: 22,
+          min_confidence: 0.72,
+        },
+      ];
+      const res = await fetch(`${API_BASE}/mcc/dag-versions/auto-compare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_kind: 'scope',
+          default_max_nodes: maxNodesBase,
+          persist_versions: true,
+          set_primary_best: false,
+          variants,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const best = data?.best || {};
+      const rows = Array.isArray(data?.variants) ? data.variants as DagCompareRow[] : [];
+      setDagCompareRows(rows);
+      setShowDagCompareMatrix(rows.length > 0);
+      setSelectedDagCompareName(rows.length > 0 ? String(rows[0]?.name || null) : null);
+      const bestName = String(best?.name || '');
+      const bestVersion = String(best?.version_id || '');
+      const bestScore = Number(best?.score || 0);
+      if (bestName || bestVersion) {
+        setDagCompareBest({
+          name: bestName || 'best',
+          score: Number.isFinite(bestScore) ? bestScore : 0,
+          version_id: bestVersion,
+        });
+      } else {
+        setDagCompareBest(null);
+      }
+      await fetchDagVersions();
+      if (bestVersion) {
+        setActiveDagVersionId(bestVersion);
+      }
+      addToast('info', `DAG auto-compare done (${rows.length} variants)`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown';
+      setDagCompareError(msg);
+      addToast('error', `DAG auto-compare failed: ${msg}`);
+    } finally {
+      setDagCompareLoading(false);
+    }
+  }, [hasProject, roadmap.nodes.length, fetchDagVersions, addToast]);
+
+  useEffect(() => {
+    if (!mccReady || !hasProject) return;
+    fetchDagVersions();
+  }, [mccReady, hasProject, fetchDagVersions]);
+
+  useEffect(() => {
+    fetchDagVersionPayload(activeDagVersionId);
+  }, [activeDagVersionId, fetchDagVersionPayload]);
+
+  const versionRoadmapGraph = useMemo(() => {
+    const dagPayload = activeDagVersionPayload?.dag_payload || {};
+    const design = dagPayload?.design_graph || {};
+    const nodesRaw = Array.isArray(design?.nodes) ? design.nodes : [];
+    const edgesRaw = Array.isArray(design?.edges) ? design.edges : [];
+    const crossRaw = Array.isArray(design?.cross_edges) ? design.cross_edges : [];
+    if (nodesRaw.length === 0 || edgesRaw.length === 0) return null;
+    return {
+      nodes: nodesRaw.map((n: any) => adaptVersionNode(n)),
+      edges: edgesRaw.map((e: any, idx: number) => adaptVersionEdge(e, idx)),
+      crossEdges: crossRaw.map((e: any, idx: number) => adaptVersionEdge(e, idx)),
+      verifier: dagPayload?.verifier || activeDagVersionPayload?.build_meta?.verifier || null,
+    };
+  }, [activeDagVersionPayload]);
+
+  const roadmapNodes = versionRoadmapGraph?.nodes || roadmap.nodes;
+  const roadmapEdges = versionRoadmapGraph?.edges || roadmap.edges;
+  const roadmapCrossEdges = versionRoadmapGraph?.crossEdges || roadmap.crossEdges;
+  const roadmapVerifier = versionRoadmapGraph?.verifier || roadmap.verifier;
+  const selectedDagCompareRow = useMemo(() => {
+    if (!selectedDagCompareName) return null;
+    return dagCompareRows.find((r) => r.name === selectedDagCompareName) || null;
+  }, [dagCompareRows, selectedDagCompareName]);
+
+  const verifierUi = useMemo(() => {
+    if (!roadmapVerifier) return null;
+    const decision = String(roadmapVerifier.decision || 'warn').toLowerCase();
+    if (decision === 'pass') {
+      return {
+        title: 'Graph Health: Stable',
+        hint: 'Архитектурная топология стабильна. Кликните на ноду, чтобы увидеть связи/риски.',
+        color: '#7fe7c4',
+      };
+    }
+    if (decision === 'warn') {
+      return {
+        title: 'Graph Health: Needs Cleanup',
+        hint: 'Есть структурные перегрузки. Рекомендуется branch-focus и уточнение модулей.',
+        color: '#f0cf7a',
+      };
+    }
+    return {
+      title: 'Graph Health: Unstable',
+      hint: 'Обнаружены проблемы структуры. Нужно пересобрать дизайн DAG перед раздачей задач.',
+      color: '#ef8d8d',
+    };
+  }, [roadmapVerifier]);
 
   // MARKER_153.7C: Architect Captain recommendations
   const captain = useCaptain(mccReady && hasProject);
@@ -222,14 +945,130 @@ export function MyceliumCommandCenter() {
     if (mccReady && hasProject) {
       roadmap.fetchRoadmap();
     }
-  }, [mccReady, hasProject]);
+  }, [mccReady, hasProject, projectScopePath]);
 
-  // MARKER_153.3B: Show onboarding modal when no project configured
-  useEffect(() => {
-    if (mccReady && !hasProject) {
-      setShowOnboarding(true);
+  // MARKER_155.P15.UI_BIND:
+  // Fetch predictive overlay edges for roadmap-level single-canvas view.
+  const fetchPredictiveOverlay = useCallback(async () => {
+    if (!mccReady || !hasProject || navLevel !== 'roadmap') {
+      setPredictedEdges([]);
+      setJepaRuntimeUi(null);
+      return;
     }
-  }, [mccReady, hasProject]);
+    const focusNodeIds = selectedNodeIds.length > 0
+      ? selectedNodeIds
+      : selectedNode
+        ? [selectedNode]
+        : [];
+    if (focusNodeIds.length === 0) {
+      setPredictedEdges([]);
+      setJepaRuntimeUi(null);
+      return;
+    }
+    try {
+      const jepaProvider = cameraLOD === 'architecture' ? 'runtime' : 'auto';
+      const jepaStrict = cameraLOD === 'architecture';
+      const jepaRuntimeModule =
+        (import.meta as any)?.env?.VITE_MCC_JEPA_RUNTIME_MODULE ||
+        'src.services.jepa_runtime';
+      const res = await fetch(`${API_BASE}/mcc/graph/predict`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope_path: projectScopePath,
+          max_nodes: Math.max(120, Math.min(260, roadmapNodes.length || 0)),
+          max_predicted_edges: cameraLOD === 'architecture' ? 28 : cameraLOD === 'tasks' ? 20 : 14,
+          include_artifacts: false,
+          min_confidence: 0.78,
+          focus_node_ids: focusNodeIds,
+          jepa_provider: jepaProvider,
+          jepa_runtime_module: jepaRuntimeModule,
+          jepa_strict: jepaStrict,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const detail = String(errData?.detail || `HTTP ${res.status}`);
+        const errKey = `${res.status}:${detail}`;
+        setJepaRuntimeUi({
+          title: 'JEPA Runtime: Unavailable',
+          hint: detail,
+          color: '#ef8d8d',
+        });
+        if (lastPredictiveErrorKeyRef.current !== errKey) {
+          addToast('error', `JEPA runtime unavailable: ${detail}`);
+          lastPredictiveErrorKeyRef.current = errKey;
+        }
+        setPredictedEdges([]);
+        return;
+      }
+      const data = await res.json();
+      const predictorMode = String(data?.stats?.predictor_mode || '');
+      const predictorDetail = String(data?.stats?.predictor_detail || '');
+      const strictRuntime = Boolean(data?.stats?.strict_runtime);
+      const runtimeOk = predictorMode === 'jepa_runtime_module' && predictorDetail.includes('|jepa_http_runtime');
+      if (strictRuntime) {
+        if (runtimeOk) {
+          setJepaRuntimeUi({
+            title: 'JEPA Runtime: Live',
+            hint: predictorDetail,
+            color: '#7fe7c4',
+          });
+        } else {
+          setJepaRuntimeUi({
+            title: 'JEPA Runtime: Degraded',
+            hint: predictorDetail || 'strict runtime violated',
+            color: '#f0cf7a',
+          });
+        }
+      } else {
+        setJepaRuntimeUi(null);
+      }
+      if (jepaStrict && predictorMode === 'deterministic_fallback') {
+        const detail = String(data?.stats?.predictor_detail || 'strict runtime violated');
+        const errKey = `fallback:${detail}`;
+        if (lastPredictiveErrorKeyRef.current !== errKey) {
+          addToast('error', `JEPA strict mode fallback blocked: ${detail}`);
+          lastPredictiveErrorKeyRef.current = errKey;
+        }
+        setPredictedEdges([]);
+        return;
+      }
+      lastPredictiveErrorKeyRef.current = '';
+      const rawEdges: PredictedEdgePayload[] = Array.isArray(data?.predicted_edges) ? data.predicted_edges : [];
+      const mapped: DAGEdge[] = rawEdges.map((edge, idx) => ({
+        id: `pred-${edge.source}-${edge.target}-${idx}`,
+        source: edge.source,
+        target: edge.target,
+        type: 'predicted' as const,
+        strength: Math.max(0.3, Math.min(1.0, Number(edge.weight ?? edge.confidence ?? 0.65))),
+        relationKind: 'predicted' as const,
+      })).sort((a, b) => b.strength - a.strength);
+      setPredictedEdges(mapped.slice(0, 24));
+    } catch (err) {
+      console.warn('[MCC] Predictive overlay fetch failed:', err);
+      setJepaRuntimeUi({
+        title: 'JEPA Runtime: Unavailable',
+        hint: err instanceof Error ? err.message : 'fetch failed',
+        color: '#ef8d8d',
+      });
+      setPredictedEdges([]);
+    }
+  }, [mccReady, hasProject, navLevel, projectScopePath, roadmapNodes.length, selectedNode, selectedNodeIds, cameraLOD, addToast]);
+
+  useEffect(() => {
+    fetchPredictiveOverlay();
+  }, [fetchPredictiveOverlay]);
+
+  // MARKER_155A.P0.ONBOARDING_REBIND:
+  // Legacy modal onboarding is disabled for first-run flow (FirstRunView owns setup UX).
+  useEffect(() => {
+    if (mccReady && !hasProject && navLevel !== 'first_run') {
+      setShowOnboarding(true);
+    } else if (navLevel === 'first_run') {
+      setShowOnboarding(false);
+    }
+  }, [mccReady, hasProject, navLevel]);
 
   // MARKER_143.P3: Refetch DAG when selectedTaskId changes
   useEffect(() => {
@@ -242,7 +1081,32 @@ export function MyceliumCommandCenter() {
       const now = Date.now();
       if (now - lastFetchRef.current < DEBOUNCE_MS) return;
       lastFetchRef.current = now;
-      fetchDAG(selectedTaskId);
+
+      // MARKER_155A.P2.TRIGGER_ONLY_REFRESH:
+      // No periodic refresh. Coalesce event storms and refresh only on active window.
+      if (!isActiveWindow()) {
+        dagFetchQueuedRef.current = true;
+        return;
+      }
+      if (dagFetchInFlightRef.current) {
+        dagFetchQueuedRef.current = true;
+        return;
+      }
+
+      dagFetchInFlightRef.current = true;
+      fetchDAG(selectedTaskId)
+        .finally(() => {
+          dagFetchInFlightRef.current = false;
+          if (dagFetchQueuedRef.current && isActiveWindow()) {
+            dagFetchQueuedRef.current = false;
+            const t = Date.now();
+            lastFetchRef.current = t;
+            dagFetchInFlightRef.current = true;
+            fetchDAG(selectedTaskId).finally(() => {
+              dagFetchInFlightRef.current = false;
+            });
+          }
+        });
     };
 
     const handleTaskBoardUpdate = (e: Event) => {
@@ -276,34 +1140,304 @@ export function MyceliumCommandCenter() {
           message: `running=${running ?? 0} done=${done ?? 0}`,
         });
       }
-      triggerFetch();
+      // MARKER_155A.P2.TRIGGER_ONLY_REFRESH:
+      // Stats telemetry is high-frequency; don't trigger DAG refetch from it.
+    };
+
+    const handleWindowBecameActive = () => {
+      if (dagFetchQueuedRef.current && !dagFetchInFlightRef.current) {
+        dagFetchQueuedRef.current = false;
+        lastFetchRef.current = Date.now();
+        dagFetchInFlightRef.current = true;
+        fetchDAG(selectedTaskId).finally(() => {
+          dagFetchInFlightRef.current = false;
+        });
+      }
     };
 
     window.addEventListener('task-board-updated', handleTaskBoardUpdate as EventListener);
     window.addEventListener('pipeline-activity', handlePipelineActivity as EventListener);
     window.addEventListener('pipeline-stats', handlePipelineStats as EventListener);
+    document.addEventListener('visibilitychange', handleWindowBecameActive);
+    window.addEventListener('focus', handleWindowBecameActive);
 
     return () => {
       window.removeEventListener('task-board-updated', handleTaskBoardUpdate as EventListener);
       window.removeEventListener('pipeline-activity', handlePipelineActivity as EventListener);
       window.removeEventListener('pipeline-stats', handlePipelineStats as EventListener);
+      document.removeEventListener('visibilitychange', handleWindowBecameActive);
+      window.removeEventListener('focus', handleWindowBecameActive);
     };
-  }, [fetchDAG, pushStreamEvent, selectedTaskId]);
+  }, [fetchDAG, isActiveWindow, pushStreamEvent, selectedTaskId]);
 
   // MARKER_153.5F: Level-aware effective nodes/edges
-  // At roadmap level → show roadmap DAG. At workflow/running → show workflow DAG.
+  // At roadmap level → show roadmap DAG. At tasks level → show task board DAG.
+  // At workflow/running → show workflow DAG.
   const { effectiveNodes, effectiveEdges } = useMemo(() => {
-    if (navLevel === 'roadmap' && roadmap.nodes.length > 0) {
-      return { effectiveNodes: roadmap.nodes, effectiveEdges: roadmap.edges };
+    // MARKER_155A.G21.SINGLE_CANVAS_STATE:
+    // When roadmap branch is focused, render architecture + task overlay in one canvas.
+    if (navLevel === 'roadmap' && roadmapNodes.length > 0 && navRoadmapNodeId && tasks.length > 0) {
+      const taskMatchesRoadmapContext = (task: TaskData, roadmapNodeId: string): boolean => {
+        if (task.primary_node_id === roadmapNodeId) return true;
+        if (task.module === roadmapNodeId) return true;
+        if (task.tags?.includes(roadmapNodeId)) return true;
+        if (task.affected_nodes?.includes(roadmapNodeId)) return true;
+        return false;
+      };
+      const filtered = tasks.filter(t => taskMatchesRoadmapContext(t, navRoadmapNodeId));
+      const displayTasks = filtered.length > 0 ? filtered : [];
+      if (displayTasks.length > 0) {
+        const overlaid = overlayTasksOnRoadmap(roadmapNodes, roadmapEdges, displayTasks, navRoadmapNodeId);
+        return { effectiveNodes: overlaid.nodes, effectiveEdges: overlaid.edges };
+      }
     }
-    // Workflow / tasks / running / results levels — use workflow DAG data
+
+    if (navLevel === 'roadmap' && roadmapNodes.length > 0) {
+      return { effectiveNodes: roadmapNodes, effectiveEdges: roadmapEdges };
+    }
+    // MARKER_155.2A: Tasks level → show tasks filtered by module from drill-down
+    if (navLevel === 'tasks' && tasks.length > 0) {
+      // MARKER_155A.P1.CROSSCUT_TASKS:
+      // Allow complex tasks to appear in multiple roadmap branches via affected_nodes[].
+      const taskMatchesRoadmapContext = (task: TaskData, roadmapNodeId: string): boolean => {
+        if (task.primary_node_id === roadmapNodeId) return true;
+        if (task.module === roadmapNodeId) return true;
+        if (task.tags?.includes(roadmapNodeId)) return true;
+        if (task.affected_nodes?.includes(roadmapNodeId)) return true;
+        return !task.module && !task.primary_node_id && (!task.affected_nodes || task.affected_nodes.length === 0);
+      };
+
+      const filtered = navRoadmapNodeId
+        ? tasks.filter(t => taskMatchesRoadmapContext(t, navRoadmapNodeId))
+        : tasks;
+      const displayTasks = filtered.length > 0 ? filtered : tasks;
+      // Find module label from roadmap data for tree root
+      const moduleNode = roadmapNodes.find(n => n.id === navRoadmapNodeId);
+      const moduleLabel = moduleNode?.label || navRoadmapNodeId;
+      const { nodes, edges } = tasksToDAG(displayTasks, {
+        moduleId: navRoadmapNodeId,
+        moduleLabel,
+      });
+      return { effectiveNodes: nodes, effectiveEdges: edges };
+    }
+    // Workflow / running / results levels — use workflow DAG data
     if (dagNodes.length > 0) {
       return { effectiveNodes: dagNodes, effectiveEdges: dagEdges };
     }
     // Fallback: test DAG data when nothing loaded
     const testData = createTestDAGData();
     return { effectiveNodes: testData.nodes, effectiveEdges: testData.edges };
-  }, [navLevel, roadmap.nodes, roadmap.edges, dagNodes, dagEdges]);
+  }, [navLevel, navRoadmapNodeId, roadmapNodes, roadmapEdges, dagNodes, dagEdges, tasks]);
+
+  const effectiveEdgesWithPredicted = useMemo(() => {
+    if (navLevel !== 'roadmap') return effectiveEdges;
+
+    // MARKER_155.P1.TOPOLOGY_DEFAULT:
+    // Base roadmap view is topology-only to keep architecture legible.
+    const topologyEdges = effectiveEdges.filter(e => e.type === 'structural');
+    const focusIds = new Set<string>(
+      selectedNodeIds.length > 0
+        ? selectedNodeIds
+        : selectedNode
+          ? [selectedNode]
+          : []
+    );
+    if (focusIds.size === 0) return topologyEdges;
+
+    const nodeIds = new Set(effectiveNodes.map(n => n.id));
+    const baseIds = new Set(topologyEdges.map(e => e.id));
+    const basePairs = new Set(topologyEdges.map(e => `${e.source}->${e.target}`));
+    const selectedNeighbors = new Set<string>(focusIds);
+    for (const e of topologyEdges) {
+      if (focusIds.has(e.source)) selectedNeighbors.add(e.target);
+      if (focusIds.has(e.target)) selectedNeighbors.add(e.source);
+    }
+
+    // Base dependency edges from current graph are focus-only.
+    const baseDependencyOverlay = effectiveEdges
+      .filter(e =>
+        e.type === 'dependency' &&
+        (focusIds.has(e.source) || focusIds.has(e.target)) &&
+        !basePairs.has(`${e.source}->${e.target}`) &&
+        !baseIds.has(e.id),
+      )
+      .slice(0, 12);
+
+    const crossOverlay = (roadmapCrossEdges || [])
+      .filter(e =>
+        nodeIds.has(e.source) &&
+        nodeIds.has(e.target) &&
+        (focusIds.has(e.source) || focusIds.has(e.target)) &&
+        !basePairs.has(`${e.source}->${e.target}`) &&
+        !baseIds.has(e.id),
+      )
+      .sort((a, b) => (b.strength || 0) - (a.strength || 0))
+      .slice(0, 10);
+
+    if (predictedEdges.length === 0) {
+      if (crossOverlay.length === 0 && baseDependencyOverlay.length === 0) return topologyEdges;
+      return [...topologyEdges, ...baseDependencyOverlay, ...crossOverlay];
+    }
+
+    const overlay = predictedEdges.filter(e =>
+      nodeIds.has(e.source) &&
+      nodeIds.has(e.target) &&
+      selectedNeighbors.has(e.source) &&
+      selectedNeighbors.has(e.target) &&
+      (focusIds.has(e.source) || focusIds.has(e.target)) &&
+      !basePairs.has(`${e.source}->${e.target}`) &&
+      !baseIds.has(e.id),
+    ).slice(0, 16);
+
+    if (overlay.length === 0 && crossOverlay.length === 0 && baseDependencyOverlay.length === 0) return topologyEdges;
+    return [...topologyEdges, ...baseDependencyOverlay, ...crossOverlay, ...overlay];
+  }, [effectiveEdges, effectiveNodes, predictedEdges, navLevel, selectedNode, selectedNodeIds, roadmapCrossEdges]);
+
+  const focusIdsForView = useMemo(
+    () => new Set<string>(
+      selectedNodeIds.length > 0
+        ? selectedNodeIds
+        : selectedNode
+          ? [selectedNode]
+          : [],
+    ),
+    [selectedNode, selectedNodeIds],
+  );
+
+  const graphForView = useMemo(() => {
+    if (navLevel !== 'roadmap' || focusDisplayMode === 'all' || focusIdsForView.size === 0) {
+      return { nodes: effectiveNodes, edges: effectiveEdgesWithPredicted };
+    }
+
+    const neighborIds = new Set<string>(focusIdsForView);
+    for (const e of effectiveEdgesWithPredicted) {
+      if (focusIdsForView.has(e.source)) neighborIds.add(e.target);
+      if (focusIdsForView.has(e.target)) neighborIds.add(e.source);
+    }
+
+    const visibleIds = focusDisplayMode === 'selected_only' ? focusIdsForView : neighborIds;
+    const nodes = effectiveNodes.filter(n => visibleIds.has(n.id));
+    const edges = effectiveEdgesWithPredicted.filter(e => visibleIds.has(e.source) && visibleIds.has(e.target));
+    return { nodes, edges };
+  }, [effectiveEdgesWithPredicted, effectiveNodes, focusDisplayMode, focusIdsForView, navLevel]);
+
+  // MARKER_155.P4.FOCUS_ACROSS_ZOOM:
+  // Keep multi-focus stable across drill/zoom transitions, drop stale ids only.
+  useEffect(() => {
+    const liveIds = new Set(effectiveNodes.map(n => n.id));
+    setSelectedNodeIds(prev => {
+      const filtered = prev.filter(id => liveIds.has(id));
+      return sameIds(prev, filtered) ? prev : filtered;
+    });
+    if (selectedNode && !liveIds.has(selectedNode)) {
+      setSelectedNode(null);
+    }
+  }, [effectiveNodes, selectedNode]);
+
+  // MARKER_155.P4_2.FOCUS_MEMORY:
+  // Persist focus context per LOD scope key and restore after drill/zoom transitions.
+  useEffect(() => {
+    if (navLevel === 'first_run' || isRestoringFocusRef.current) return;
+    const ids = selectedNodeIds.length > 0
+      ? selectedNodeIds
+      : selectedNode
+        ? [selectedNode]
+        : [];
+    const normalized = uniqueIds(ids);
+    if (normalized.length === 0) return;
+    focusMemoryRef.current[focusScopeKey] = normalized;
+  }, [focusScopeKey, navLevel, selectedNode, selectedNodeIds]);
+
+  useEffect(() => {
+    if (navLevel === 'first_run') return;
+    const liveIds = new Set(effectiveNodes.map(n => n.id));
+    if (liveIds.size === 0) return;
+    const current = uniqueIds([
+      ...selectedNodeIds.filter(id => liveIds.has(id)),
+      selectedNode && liveIds.has(selectedNode) ? selectedNode : null,
+    ]);
+    const saved = uniqueIds((focusMemoryRef.current[focusScopeKey] || []).filter(id => liveIds.has(id)));
+    const sortedNodes = [...effectiveNodes].sort((a, b) => {
+      const layerA = typeof a.layer === 'number' ? a.layer : 0;
+      const layerB = typeof b.layer === 'number' ? b.layer : 0;
+      if (layerA !== layerB) return layerA - layerB;
+      const labelCmp = String(a.label || '').localeCompare(String(b.label || ''));
+      if (labelCmp !== 0) return labelCmp;
+      return a.id.localeCompare(b.id);
+    });
+    const defaultCandidate = (() => {
+      if (navLevel !== 'workflow' && liveIds.has('__root__')) return '__root__';
+      if (navRoadmapNodeId && liveIds.has(navRoadmapNodeId)) return navRoadmapNodeId;
+      return sortedNodes[0]?.id || null;
+    })();
+    const fallback = defaultCandidate ? [defaultCandidate] : [];
+
+    const orderedCandidates: Array<{ source: FocusRestoreSource; ids: string[] }> = focusRestorePolicy === 'scope_first'
+      ? [
+        { source: 'memory', ids: saved },
+        { source: 'current', ids: current },
+        { source: 'default', ids: fallback },
+      ]
+      : [
+        { source: 'current', ids: current },
+        { source: 'memory', ids: saved },
+        { source: 'default', ids: fallback },
+      ];
+    const picked = orderedCandidates.find(candidate => candidate.ids.length > 0);
+    if (!picked) return;
+
+    const nextIds = picked.ids;
+    const nextPrimary = nextIds[0] || null;
+    if (picked.source === 'current') {
+      if (!sameIds(selectedNodeIds, nextIds)) {
+        setSelectedNodeIds(nextIds);
+      }
+      if (selectedNode !== nextPrimary) {
+        setSelectedNode(nextPrimary);
+        setFocusedNodeId(nextPrimary);
+      }
+      if (focusRestoreSource !== 'current') {
+        setFocusRestoreSource('current');
+      }
+      return;
+    }
+
+    const shouldUpdateIds = !sameIds(selectedNodeIds, nextIds);
+    const shouldUpdatePrimary = selectedNode !== nextPrimary;
+    const shouldUpdateSource = focusRestoreSource !== picked.source;
+    if (!shouldUpdateIds && !shouldUpdatePrimary && !shouldUpdateSource) {
+      return;
+    }
+
+    isRestoringFocusRef.current = true;
+    if (shouldUpdateIds) {
+      setSelectedNodeIds(nextIds);
+    }
+    if (shouldUpdatePrimary) {
+      setSelectedNode(nextPrimary);
+      setFocusedNodeId(nextPrimary);
+    }
+    if (shouldUpdateSource) {
+      setFocusRestoreSource(picked.source);
+    }
+    queueMicrotask(() => {
+      isRestoringFocusRef.current = false;
+    });
+  }, [
+    focusRestorePolicy,
+    focusRestoreSource,
+    focusScopeKey,
+    navLevel,
+    navRoadmapNodeId,
+    effectiveNodes,
+    selectedNode,
+    selectedNodeIds,
+    setFocusRestoreSource,
+    setFocusedNodeId,
+  ]);
+
+  // MARKER_155.1A: Read-only levels (no DAG editing — roadmap + tasks)
+  const isReadOnlyLevel = navLevel === 'roadmap' || navLevel === 'tasks';
 
   // MARKER_144.2: DAG Editor hook — manages workflow editing state
   // Uses effectiveNodes/effectiveEdges as initial data, provides mutators
@@ -380,20 +1514,63 @@ export function MyceliumCommandCenter() {
 
   // MARKER_153.5D: Handle roadmap node click → drill into tasks level
   const handleRoadmapNodeDrill = useCallback((nodeId: string) => {
-    drillDown('tasks', { roadmapNodeId: nodeId });
-  }, [drillDown]);
+    setRoadmapFocus(nodeId);
+  }, [setRoadmapFocus]);
 
   // MARKER_153.5E: Handle node click based on current level
-  const handleLevelAwareNodeSelect = useCallback((nodeId: string | null) => {
-    setSelectedNode(nodeId);
-  }, []);
+  const handleLevelAwareNodeSelect = useCallback((nodeId: string | null, options?: { additive?: boolean }) => {
+    const additive = !!options?.additive;
+
+    if (!nodeId) {
+      setSelectedNode(null);
+      setSelectedNodeIds([]);
+      setFocusedNodeId(null);
+      setFocusRestoreSource(null);
+      return;
+    }
+
+    if (additive) {
+      setSelectedNode(nodeId);
+      setFocusedNodeId(nodeId);
+      setSelectedNodeIds(prev => {
+        if (prev.includes(nodeId)) {
+          const next = prev.filter(id => id !== nodeId);
+          return next;
+        }
+        return [...prev, nodeId];
+      });
+    } else {
+      setSelectedNode(nodeId);
+      setSelectedNodeIds([nodeId]);
+      setFocusedNodeId(nodeId);
+    }
+    setFocusRestoreSource('current');
+
+    if (nodeId.startsWith('task_overlay_')) {
+      selectTask(nodeId.replace('task_overlay_', ''));
+    }
+  }, [selectTask, setFocusRestoreSource, setFocusedNodeId]);
 
   const handleLevelAwareNodeDoubleClick = useCallback((nodeId: string) => {
     if (navLevel === 'roadmap') {
-      handleRoadmapNodeDrill(nodeId);
+      // Double click on architecture node -> in-place task overlay focus.
+      if (!nodeId.startsWith('task_overlay_')) {
+        handleRoadmapNodeDrill(nodeId);
+        return;
+      }
+      // Double click on overlay task -> workflow.
+      const taskId = nodeId.replace('task_overlay_', '');
+      if (!taskId) return;
+      selectTask(taskId);
+      drillDown('workflow', { taskId, roadmapNodeId: navRoadmapNodeId });
+    } else if (navLevel === 'tasks') {
+      // MARKER_155.2A: Ignore virtual tree nodes (root + branches), only drill real tasks
+      if (nodeId.startsWith('__')) return;
+      selectTask(nodeId);
+      drillDown('workflow', { taskId: nodeId });
     }
     // Other levels: workflow level uses existing DAG editor behavior
-  }, [navLevel, handleRoadmapNodeDrill]);
+  }, [navLevel, handleRoadmapNodeDrill, selectTask, drillDown, navRoadmapNodeId]);
 
   // Selected node data for detail panel
   const selectedNodeData = useMemo(() => {
@@ -404,9 +1581,9 @@ export function MyceliumCommandCenter() {
   // Selected edge data
   const selectedEdgeData = useMemo(() => {
     if (!selectedEdge) return null;
-    const e = effectiveEdges.find(e => e.id === selectedEdge.id);
+    const e = effectiveEdgesWithPredicted.find(e => e.id === selectedEdge.id);
     return e ? { id: e.id, source: e.source, target: e.target, type: e.type } : null;
-  }, [selectedEdge, effectiveEdges]);
+  }, [selectedEdge, effectiveEdgesWithPredicted]);
 
   // Handle edge selection
   const handleEdgeSelect = useCallback((edgeId: string | null) => {
@@ -414,11 +1591,11 @@ export function MyceliumCommandCenter() {
       setSelectedEdge(null);
       return;
     }
-    const edge = dagEdges.find(e => e.id === edgeId);
+    const edge = effectiveEdgesWithPredicted.find(e => e.id === edgeId);
     if (edge) {
       setSelectedEdge({ id: edge.id, source: edge.source, target: edge.target, type: edge.type });
     }
-  }, [dagEdges]);
+  }, [effectiveEdgesWithPredicted]);
 
   // Handle node actions
   const handleNodeAction = useCallback(async (action: string) => {
@@ -525,13 +1702,53 @@ export function MyceliumCommandCenter() {
 
   // MARKER_153.6B: Level-aware keyboard shortcuts via hook (replaces basic Esc/Enter)
   useKeyboardShortcuts({
-    onDrillNode: selectedNode ? () => handleRoadmapNodeDrill(selectedNode) : undefined,
-    onDrillTask: () => drillDown('workflow'),
+    // MARKER_155A.P2.DRILL_POLICY: Drill command respects current level in one canvas.
+    onDrillNode: selectedNode ? () => handleLevelAwareNodeDoubleClick(selectedNode) : undefined,
+    onDrillTask: () => {
+      if (selectedNode) handleLevelAwareNodeDoubleClick(selectedNode);
+      else if (selectedTaskId) drillDown('workflow', { taskId: selectedTaskId });
+    },
     onExecute: handleExecute,
     onToggleEdit: () => toggleEditMode(),
     onExpandStream: () => setShowStream(!showStream),
     // onStop, onApply, onReject — wired when pipeline control is available
   });
+
+  const sendFocusToArchitect = useCallback(() => {
+    const focus = selectedNodeIds.length > 0
+      ? selectedNodeIds
+      : selectedNode
+        ? [selectedNode]
+        : [];
+    if (focus.length === 0) return false;
+    const message = `Analyze focused nodes and dependencies: ${focus.join(', ')}\nContext: level=${navLevel}, lod=${cameraLOD}, focus_mode=${focusDisplayMode}, scope=${focusScopeKey}`;
+    window.dispatchEvent(new CustomEvent('mcc-chat-prefill', {
+      detail: {
+        message,
+        context: {
+          focused_node_ids: focus,
+          nav_level: navLevel,
+          camera_lod: cameraLOD,
+          focus_display_mode: focusDisplayMode,
+          focus_scope_key: focusScopeKey,
+        },
+      },
+    }));
+    addToast('info', `Architect focus sent (${focus.length} node${focus.length > 1 ? 's' : ''})`);
+    return true;
+  }, [selectedNode, selectedNodeIds, addToast, navLevel, cameraLOD, focusDisplayMode, focusScopeKey]);
+
+  // MARKER_155.P4.MULTISELECT_ACTION:
+  // Shift+Enter sends focused multi-node context to Architect chat as a concrete action.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.key === 'Enter' && e.shiftKey)) return;
+      if (!sendFocusToArchitect()) return;
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [sendFocusToArchitect]);
 
   const ttTeam = useLimitedTooltip('mcc_team', 'Select AI team preset (Dragon Bronze/Silver/Gold)');
   const ttSandbox = useLimitedTooltip('mcc_sandbox', 'Choose working directory for agent file writes');
@@ -557,165 +1774,29 @@ export function MyceliumCommandCenter() {
         fontFamily: 'monospace',
       }}
     >
-      {/* ═══ HEADER / MARKER_151.5_UNIFIED_BAR ═══ */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '6px 10px',
-          borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
-          flexShrink: 0,
-        }}
-      >
-        <div
-          style={{
-            color: NOLAN_PALETTE.textAccent,
-            fontSize: 10,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: 2,
-          }}
-        >
-          MCC
-        </div>
-
-        <div data-onboarding="team-dropdown" onMouseEnter={ttTeam.onMouseEnter} title={ttTeam.title}>
-          <PresetDropdown />
-        </div>
-        <div data-onboarding="sandbox-dropdown" onMouseEnter={ttSandbox.onMouseEnter} title={ttSandbox.title}>
-          <SandboxDropdown />
-        </div>
-        <div onMouseEnter={ttHeartbeat.onMouseEnter} title={ttHeartbeat.title}>
-          <HeartbeatChip />
-        </div>
-        <div data-onboarding="key-dropdown" onMouseEnter={ttKey.onMouseEnter} title={ttKey.title}>
-          <KeyDropdown />
-        </div>
-
-        <div style={{ flex: 1 }} />
-
-        <span
-          style={{
-            fontSize: 9,
-            color: connected ? NOLAN_PALETTE.statusDone : NOLAN_PALETTE.statusFailed,
-            opacity: 0.9,
-          }}
-        >
-          {connected ? '● LIVE' : '○ OFF'}
-        </span>
-
-        <div
-          style={{ display: 'flex', gap: 7, fontSize: 9, color: NOLAN_PALETTE.textNormal }}
-          onMouseEnter={ttStats.onMouseEnter}
-          title={ttStats.title}
-        >
-          <span>{summary?.by_status?.pending ?? stats?.totalTasks ?? 0}t</span>
-          <span style={{ color: NOLAN_PALETTE.statusRunning }}>{runningCount}r</span>
-          <span style={{ color: NOLAN_PALETTE.statusDone }}>{summary?.by_status?.done ?? stats?.completedTasks ?? 0}d</span>
-        </div>
-
-        {/* MARKER_152.W3B3: Execute disabled when nothing to execute */}
-        {(() => {
-          const canExecute = effectiveNodes.length > 0 || tasks.some(t => t.status === 'pending');
-          const isDisabled = executing || !canExecute;
-          return (
-            <button
-              onClick={!isDisabled ? handleExecute : undefined}
-              data-onboarding="execute-button"
-              style={{
-                background: canExecute ? 'rgba(78,205,196,0.15)' : 'rgba(255,255,255,0.03)',
-                border: canExecute ? '1px solid #4ecdc4' : `1px solid ${NOLAN_PALETTE.borderDim}`,
-                borderRadius: 3,
-                padding: '3px 9px',
-                color: !canExecute ? '#555' : executing ? '#7aa7a5' : '#c6ffff',
-                fontSize: 10,
-                cursor: isDisabled ? (executing ? 'wait' : 'not-allowed') : 'pointer',
-                fontFamily: 'monospace',
-                fontWeight: 600,
-                opacity: isDisabled ? 0.5 : 1,
-              }}
-              onMouseEnter={ttExecute.onMouseEnter}
-              title={!canExecute ? 'Load or create a workflow first' : ttExecute.title}
-            >
-              {executing ? '...' : '▶ Execute'}
-            </button>
-          );
-        })()}
-
-        {/* Left panel toggle */}
-        <button
-          onClick={() => setLeftCollapsed(!leftCollapsed)}
-          style={{
-            background: 'transparent',
-            border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-            borderRadius: 2,
-            padding: '2px 6px',
-            color: NOLAN_PALETTE.textNormal,
-            fontSize: 8,
-            cursor: 'pointer',
-            fontFamily: 'monospace',
-          }}
-          title="Toggle tasks panel [["
-        >
-          {leftCollapsed ? '▶' : '◀'}
-        </button>
-
-        {/* Right panel toggle */}
-        <button
-          onClick={() => setRightCollapsed(!rightCollapsed)}
-          style={{
-            background: 'transparent',
-            border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-            borderRadius: 2,
-            padding: '2px 6px',
-            color: NOLAN_PALETTE.textNormal,
-            fontSize: 8,
-            cursor: 'pointer',
-            fontFamily: 'monospace',
-          }}
-          title="Toggle detail panel ]"
-        >
-          {rightCollapsed ? '◀' : '▶'}
-        </button>
-
-        {executeMsg && (
-          <span
-            style={{
-              fontSize: 8,
-              color: executeMsg.startsWith('ok:') ? NOLAN_PALETTE.statusDone : NOLAN_PALETTE.statusFailed,
-              marginLeft: 2,
-            }}
-            title={executeMsg}
-          >
-            {executeMsg}
-          </span>
-        )}
-      </div>
-
+      {/* ═══ MARKER_155.CLEANUP: Header removed — using FooterActionBar instead ═══ */}
+      
       {/* ═══ MARKER_153.5A: Breadcrumb Bar — navigation path ═══ */}
-      <MCCBreadcrumb />
+      {navLevel === 'workflow' || navLevel === 'running' || navLevel === 'results' ? <MCCBreadcrumb /> : null}
+
+      {/* ═══ MARKER_155.FLOW.STEPS: 5-step progress indicator ═══ */}
+      <div data-onboarding="step-indicator">
+        <StepIndicator />
+      </div>
+      {/* MARKER_155A.G21.PLAYGROUND_ENTRY: Always-available playground entry for existing projects. */}
+      {hasProject && navLevel !== 'first_run' && (
+        <div style={{ position: 'absolute', top: 44, right: 14, zIndex: 20 }}>
+          <PlaygroundBadge />
+        </div>
+      )}
 
       {/* ═══ MARKER_154.3A: WorkflowToolbar REMOVED from layout (Phase 154).
             Actions moved to FooterActionBar + gear popup.
             File kept for reference. ═══ */}
 
-      {/* ═══ MAIN THREE-COLUMN LAYOUT ═══ */}
+      {/* ═══ MAIN LAYOUT: Single column with floating mini-windows ═══ */}
+      {/* MARKER_155.CLEANUP: Removed side panels — using MiniChat, MiniTasks, MiniStats instead */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        {/* LEFT COLUMN: Task List (220px) — hidden at first_run level */}
-        {/* MARKER_154.18A: Hide side columns at first_run for clean welcome screen */}
-        {!leftCollapsed && navLevel !== 'first_run' && (
-          <div
-            style={{
-              width: 220,
-              flexShrink: 0,
-              minHeight: 0,
-            }}
-          >
-            <MCCTaskList />
-          </div>
-        )}
-
         {/* CENTER COLUMN: DAG + Stream */}
         <div
           style={{
@@ -726,25 +1807,302 @@ export function MyceliumCommandCenter() {
             minHeight: 0,
           }}
         >
-          {/* MARKER_153.7D: Captain recommendation bar — roadmap level only */}
-          {/* MARKER_154.18A: Show only at roadmap level (was always visible) */}
-          {!captainDismissed && navLevel === 'roadmap' && (
-            <CaptainBar
-              recommendation={captain.recommendation}
-              progress={captain.progress}
-              loading={captain.loading}
-              onAccept={async () => {
-                const result = await captain.acceptRecommendation();
-                if (result?.ok) {
-                  addToast('info', `Task created: ${result.task_title}`);
-                }
+          {/* MARKER_155.CLEANUP: CaptainBar removed from top — integrated into FooterActionBar notifications */}
+
+          {/* MARKER_155.ARCHITECT_BUILD.DAG_VERSIONS.UI_TABS.V1:
+              Debug-stage DAG variants (baseline + saved versions). */}
+          {hasProject && navLevel === 'roadmap' && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 8px',
+                borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                background: 'rgba(255,255,255,0.02)',
+                fontSize: 9,
+                flexShrink: 0,
+                overflowX: 'auto',
               }}
-              onReject={async () => {
-                await captain.rejectRecommendation();
-                addToast('info', 'Recommendation skipped');
+            >
+              <button
+                onClick={() => setActiveDagVersionId(null)}
+                style={{
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 3,
+                  background: activeDagVersionId === null ? 'rgba(126, 231, 196, 0.15)' : '#141414',
+                  color: activeDagVersionId === null ? '#baf7e4' : '#9ca3ad',
+                  padding: '2px 8px',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+                title="Use live baseline DAG"
+              >
+                baseline
+              </button>
+              {dagVersions.map(v => (
+                <div key={v.version_id} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <button
+                    onClick={() => setActiveDagVersionId(v.version_id)}
+                    style={{
+                      border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                      borderRadius: 3,
+                      background: activeDagVersionId === v.version_id ? 'rgba(142, 203, 255, 0.16)' : '#141414',
+                      color: activeDagVersionId === v.version_id ? '#c6e7ff' : '#9ca3ad',
+                      padding: '2px 8px',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={`${v.name} · nodes=${v.node_count} edges=${v.edge_count} · decision=${v.decision || '-'}`}
+                  >
+                    {v.name}
+                  </button>
+                  <button
+                    onClick={() => setPrimaryDagVersion(v.version_id)}
+                    style={{
+                      border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                      borderRadius: 3,
+                      background: v.is_primary ? 'rgba(127, 231, 196, 0.16)' : '#111',
+                      color: v.is_primary ? '#8cf4d4' : '#67707c',
+                      padding: '2px 5px',
+                      cursor: 'pointer',
+                    }}
+                    title="Set as primary DAG version"
+                  >
+                    ★
+                  </button>
+                </div>
+              ))}
+              <button
+                onClick={runDagAutoCompare}
+                style={{
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 3,
+                  background: '#141414',
+                  color: '#f0cf7a',
+                  padding: '2px 8px',
+                  cursor: dagCompareLoading ? 'wait' : 'pointer',
+                  whiteSpace: 'nowrap',
+                  marginLeft: 2,
+                  opacity: dagCompareLoading ? 0.7 : 1,
+                }}
+                title="Run algorithmic DAG auto-compare (3 presets)"
+                disabled={dagCompareLoading}
+              >
+                {dagCompareLoading ? 'comparing…' : 'auto-compare'}
+              </button>
+              <button
+                onClick={() => setShowDagCompareMatrix(v => !v)}
+                style={{
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 3,
+                  background: showDagCompareMatrix ? 'rgba(142, 203, 255, 0.16)' : '#141414',
+                  color: showDagCompareMatrix ? '#c6e7ff' : '#7a8a9c',
+                  padding: '2px 8px',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  marginLeft: 2,
+                  opacity: dagCompareRows.length > 0 ? 1 : 0.65,
+                }}
+                title="Show compare matrix"
+                disabled={dagCompareRows.length === 0}
+              >
+                matrix
+              </button>
+              <button
+                onClick={createDagSnapshot}
+                style={{
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 3,
+                  background: '#141414',
+                  color: '#8ecbff',
+                  padding: '2px 8px',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  marginLeft: 2,
+                }}
+                title="Save current DAG as version"
+              >
+                + snapshot
+              </button>
+              {dagVersionsLoading && <span style={{ color: '#666', marginLeft: 4 }}>loading…</span>}
+              {dagVersionsError && <span style={{ color: '#aa7373', marginLeft: 4 }}>{dagVersionsError}</span>}
+              {dagCompareBest && (
+                <span style={{ color: '#7a8a9c', marginLeft: 6, whiteSpace: 'nowrap' }}>
+                  best: {dagCompareBest.name} ({dagCompareBest.score.toFixed(1)})
+                </span>
+              )}
+              {dagCompareBest?.version_id && (
+                <button
+                  onClick={() => setPrimaryDagVersion(dagCompareBest.version_id)}
+                  style={{
+                    border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                    borderRadius: 3,
+                    background: '#111',
+                    color: '#8cf4d4',
+                    padding: '2px 8px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    marginLeft: 2,
+                  }}
+                  title="Set best compare result as primary DAG version"
+                >
+                  promote best
+                </button>
+              )}
+              {dagCompareError && <span style={{ color: '#aa7373', marginLeft: 4 }}>{dagCompareError}</span>}
+              {!dagCompareError && dagCompareRows.length > 0 && (
+                <span
+                  style={{ color: '#58606c', marginLeft: 4, whiteSpace: 'nowrap' }}
+                  title={dagCompareRows
+                    .map((r) => `${r.name}:${Number(r?.scorecard?.score || 0).toFixed(1)}${r.error ? ' [err]' : ''}`)
+                    .join(' | ')}
+                >
+                  {dagCompareRows.length} variants
+                </span>
+              )}
+            </div>
+          )}
+          {hasProject && navLevel === 'roadmap' && showDagCompareMatrix && dagCompareRows.length > 0 && (
+            <div
+              style={{
+                borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                background: 'rgba(8, 10, 12, 0.92)',
+                padding: '6px 8px',
+                fontSize: 9,
+                color: '#95a0ad',
+                flexShrink: 0,
               }}
-              onDismiss={() => setCaptainDismissed(true)}
-            />
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(120px,1fr) 56px 58px 48px 48px 52px 52px 120px 56px',
+                  gap: 6,
+                  padding: '0 2px 4px 2px',
+                  borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  color: '#6f7b88',
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                <span>variant</span>
+                <span>score</span>
+                <span>decision</span>
+                <span>nodes</span>
+                <span>edges</span>
+                <span>orph</span>
+                <span>dens</span>
+                <span>version</span>
+                <span>action</span>
+              </div>
+              {dagCompareRows.map((row) => {
+                const sc = row.scorecard || {};
+                const vid = String(row.version_id || '');
+                const score = Number(sc.score || 0);
+                const active = Boolean(vid && activeDagVersionId === vid);
+                return (
+                  <div
+                    key={`${row.name}:${vid || 'none'}`}
+                    onClick={() => setSelectedDagCompareName(row.name)}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(120px,1fr) 56px 58px 48px 48px 52px 52px 120px 56px',
+                      gap: 6,
+                      padding: '3px 2px',
+                      borderBottom: '1px dashed rgba(255,255,255,0.06)',
+                      alignItems: 'center',
+                      background:
+                        selectedDagCompareName === row.name
+                          ? 'rgba(240, 207, 122, 0.08)'
+                          : active
+                            ? 'rgba(142, 203, 255, 0.09)'
+                            : 'transparent',
+                      cursor: 'pointer',
+                    }}
+                    title={row.error || ''}
+                  >
+                    <span style={{ color: row.error ? '#aa7373' : '#c5d0dd' }}>{row.name}</span>
+                    <span style={{ color: '#9eb9d6' }}>{score.toFixed(1)}</span>
+                    <span style={{ color: sc.decision === 'pass' ? '#7fe7c4' : sc.decision === 'warn' ? '#f0cf7a' : '#ef8d8d' }}>
+                      {String(sc.decision || '-')}
+                    </span>
+                    <span>{Number(sc.node_count || 0)}</span>
+                    <span>{Number(sc.edge_count || 0)}</span>
+                    <span>{Number(sc.orphan_rate || 0).toFixed(2)}</span>
+                    <span>{Number(sc.density || 0).toFixed(2)}</span>
+                    <button
+                      onClick={() => vid && setActiveDagVersionId(vid)}
+                      disabled={!vid}
+                      style={{
+                        border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                        borderRadius: 3,
+                        background: vid ? '#121417' : '#101010',
+                        color: vid ? (active ? '#c6e7ff' : '#9ca3ad') : '#59616c',
+                        padding: '1px 6px',
+                        cursor: vid ? 'pointer' : 'default',
+                        textAlign: 'left',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {vid ? vid.slice(0, 14) : '-'}
+                    </button>
+                    <button
+                      onClick={() => vid && setPrimaryDagVersion(vid)}
+                      disabled={!vid}
+                      style={{
+                        border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                        borderRadius: 3,
+                        background: '#111',
+                        color: vid ? '#8cf4d4' : '#59616c',
+                        padding: '1px 6px',
+                        cursor: vid ? 'pointer' : 'default',
+                      }}
+                      title="Set version as primary"
+                    >
+                      ★
+                    </button>
+                  </div>
+                );
+              })}
+              {selectedDagCompareRow && (
+                <div
+                  style={{
+                    marginTop: 6,
+                    padding: '6px 8px',
+                    border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                    borderRadius: 4,
+                    color: '#8e98a6',
+                    background: 'rgba(255,255,255,0.02)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span style={{ color: '#c5d0dd' }}>
+                    {selectedDagCompareRow.name}
+                  </span>
+                  <span>
+                    max_nodes={Number(selectedDagCompareRow.variant_params?.max_nodes || 0)}
+                  </span>
+                  <span>
+                    min_conf={Number(selectedDagCompareRow.variant_params?.min_confidence || 0).toFixed(2)}
+                  </span>
+                  <span>
+                    overlay={selectedDagCompareRow.variant_params?.use_predictive_overlay ? 'on' : 'off'}
+                  </span>
+                  <span>
+                    max_pred={Number(selectedDagCompareRow.variant_params?.max_predicted_edges || 0)}
+                  </span>
+                  {selectedDagCompareRow.error && (
+                    <span style={{ color: '#aa7373' }}>
+                      err={selectedDagCompareRow.error}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/* MARKER_143.P3: Task breadcrumb — shows when filtered by task */}
@@ -784,56 +2142,91 @@ export function MyceliumCommandCenter() {
           )}
 
           {/* DAG View — level-aware rendering + MARKER_154.5A transition */}
-          <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-            <MatryoshkaTransition navLevel={navLevel}>
-              {/* MARKER_154.16A: First Run — show welcome screen instead of DAG */}
-              {navLevel === 'first_run' ? (
-                <FirstRunView />
-              ) : (loading || roadmap.loading) ? (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '100%',
-                    color: NOLAN_PALETTE.textDim,
-                    fontSize: 11,
-                  }}
-                >
-                  {navLevel === 'roadmap' ? 'Loading Roadmap...' : 'Loading DAG...'}
-                </div>
-              ) : (
-                <DAGView
-                  dagNodes={effectiveNodes}
-                  dagEdges={effectiveEdges}
-                  selectedNode={selectedNode}
-                  onNodeSelect={handleLevelAwareNodeSelect}
-                  onEdgeSelect={handleEdgeSelect}
-                  editMode={navLevel === 'roadmap' ? false : editMode}
-                  onConnect={navLevel === 'roadmap' ? undefined : dagEditor.handleConnect}
-                  onNodesDelete={navLevel === 'roadmap' ? undefined : (deletedNodes) => deletedNodes.forEach(n => dagEditor.removeNode(n.id))}
-                  onEdgesDelete={navLevel === 'roadmap' ? undefined : (deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))}
-                  onContextMenu={navLevel === 'roadmap' ? undefined : handleContextMenu}
-                  onPaneDoubleClick={navLevel === 'roadmap'
-                    ? undefined
-                    : handlePaneDoubleClick
-                  }
-                  onNodeDoubleClick={handleLevelAwareNodeDoubleClick}
-                />
-              )}
-            </MatryoshkaTransition>
+          <div style={{ flex: 1, minHeight: 0, position: 'relative' }} data-onboarding="dag-canvas">
+            <ReactFlowProvider>
+              <MatryoshkaTransition navLevel={navLevel} inPlace>
+                {/* MARKER_154.16A: First Run — show welcome screen instead of DAG */}
+                {navLevel === 'first_run' ? (
+                  <FirstRunView />
+                ) : (loading || roadmap.loading) ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: '100%',
+                      color: NOLAN_PALETTE.textDim,
+                      fontSize: 11,
+                    }}
+                  >
+                    {navLevel === 'roadmap' ? 'Loading Roadmap...' : navLevel === 'tasks' ? 'Loading Tasks...' : 'Loading DAG...'}
+                  </div>
+                ) : (
+                  <DAGView
+                    dagNodes={graphForView.nodes}
+                    dagEdges={graphForView.edges}
+                    selectedNode={selectedNode}
+                    selectedNodeIds={selectedNodeIds}
+                    onNodeSelect={handleLevelAwareNodeSelect}
+                    onNodeSelectWithMode={(nodeId, opts) => handleLevelAwareNodeSelect(nodeId, { additive: opts.additive })}
+                    onEdgeSelect={handleEdgeSelect}
+                    initialCamera={cameraPosition}
+                    onCameraChange={(camera, lod) => {
+                      setCameraPosition(camera);
+                      setCameraLOD(lod);
+                    }}
+                    onLODChange={(lod) => setCameraLOD(lod)}
+                    graphIdentity={dagGraphIdentity}
+                    layoutMode={navLevel === 'roadmap' ? 'architecture' : navLevel === 'tasks' ? 'tasks' : 'workflow'}
+                    layoutBiasProfile={layoutBiasProfile}
+                    pinnedPositions={pinnedPositions}
+                    onPinnedPositionsChange={(positions) => {
+                      setLayoutPinsForKey(dagGraphIdentity, positions);
+
+                      // MARKER_155A.P2_1.PIN_FEEDBACK_LOOP:
+                      // Trigger-driven learning (no periodic retrain): pin commit -> ENGRAM profile update.
+                      const inferred = inferBiasFromPinnedPositions(positions);
+                      if (profilePersistTimerRef.current) {
+                        window.clearTimeout(profilePersistTimerRef.current);
+                      }
+                      profilePersistTimerRef.current = window.setTimeout(() => {
+                        updateDagLayoutBiasProfile(layoutPreferenceScopeKey, inferred)
+                          .then((merged) => {
+                            if (merged) setLayoutBiasProfile(merged);
+                          })
+                          .catch(() => {});
+                      }, 350);
+                    }}
+                    // test compatibility marker: navLevel === 'roadmap' ? false : editMode
+                    editMode={navLevel === 'roadmap' ? false : (navLevel === 'tasks' ? false : editMode)}
+                    onConnect={isReadOnlyLevel ? undefined : dagEditor.handleConnect}
+                    onNodesDelete={isReadOnlyLevel ? undefined : (deletedNodes) => deletedNodes.forEach(n => dagEditor.removeNode(n.id))}
+                    onEdgesDelete={isReadOnlyLevel ? undefined : (deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))}
+                    onContextMenu={isReadOnlyLevel ? undefined : handleContextMenu}
+                    onPaneDoubleClick={isReadOnlyLevel
+                      ? undefined
+                      : handlePaneDoubleClick
+                    }
+                    onNodeDoubleClick={handleLevelAwareNodeDoubleClick}
+                    compact={navLevel === 'tasks'}
+                  />
+                )}
+              </MatryoshkaTransition>
+            </ReactFlowProvider>
 
             {/* MARKER_154.11A: Mini-windows — floating overlays in DAG canvas */}
             {navLevel !== 'first_run' && (
               <>
-                <MiniChat />
+                <div data-onboarding="mini-chat">
+                  <MiniChat />
+                </div>
                 <MiniTasks />
                 <MiniStats />
               </>
             )}
 
-            {/* MARKER_153.5G: Double-click hint at roadmap level */}
-            {navLevel === 'roadmap' && effectiveNodes.length > 0 && selectedNode && (
+            {/* MARKER_153.5G + 155.1A: Double-click hint at roadmap and tasks levels */}
+            {(navLevel === 'roadmap' || navLevel === 'tasks') && effectiveNodes.length > 0 && selectedNode && (
               <div
                 style={{
                   position: 'absolute',
@@ -851,7 +2244,159 @@ export function MyceliumCommandCenter() {
                   pointerEvents: 'none',
                 }}
               >
-                Press <span style={{ color: NOLAN_PALETTE.textAccent, fontWeight: 600 }}>Enter</span> or double-click to drill into module
+                Press <span style={{ color: NOLAN_PALETTE.textAccent, fontWeight: 600 }}>Enter</span> or double-click to drill into {selectedNode?.startsWith('task_overlay_') ? 'workflow' : navLevel === 'roadmap' ? 'module' : 'task'}
+              </div>
+            )}
+
+            {/* MARKER_155A.P2.LOD_THRESHOLDS: Context hint tied to camera LOD (same canvas, no route switch). */}
+            {navLevel !== 'first_run' && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  left: 8,
+                  background: 'rgba(0,0,0,0.65)',
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 4,
+                  padding: '2px 8px',
+                  fontSize: 9,
+                  color: '#8f9399',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.45,
+                  pointerEvents: 'none',
+                  zIndex: 9,
+                }}
+              >
+                Zoom Context: {cameraLOD}
+              </div>
+            )}
+
+            {navLevel === 'roadmap' && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 30,
+                  left: 8,
+                  background: 'rgba(0,0,0,0.65)',
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 4,
+                  padding: '2px 8px',
+                  fontSize: 9,
+                  color: '#8f9399',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.45,
+                  pointerEvents: 'none',
+                  zIndex: 9,
+                }}
+              >
+                Focus View: {focusDisplayMode === 'all' ? 'all' : focusDisplayMode === 'selected_deps' ? 'selected+deps' : 'selected-only'}
+              </div>
+            )}
+
+            {navLevel === 'roadmap' && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 52,
+                  left: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'rgba(0,0,0,0.65)',
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 4,
+                  padding: '2px 6px',
+                  zIndex: 9,
+                  fontFamily: 'monospace',
+                }}
+              >
+                <button
+                  onClick={() => {
+                    const next = focusRestorePolicy === 'selection_first' ? 'scope_first' : 'selection_first';
+                    setFocusRestorePolicy(next);
+                    addToast('info', `Focus restore policy: ${next === 'scope_first' ? 'scope-first' : 'selection-first'}`);
+                  }}
+                  style={{
+                    border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                    borderRadius: 3,
+                    background: '#151515',
+                    color: '#a3adba',
+                    fontSize: 9,
+                    letterSpacing: 0.35,
+                    cursor: 'pointer',
+                    padding: '2px 6px',
+                  }}
+                  title="Toggle focus restore policy"
+                >
+                  Restore: {focusRestorePolicy === 'scope_first' ? 'scope-first' : 'selection-first'}
+                </button>
+                <span style={{ color: '#8f9399', fontSize: 9, letterSpacing: 0.35 }}>
+                  Source: {focusRestoreSource || '-'}
+                </span>
+              </div>
+            )}
+
+            {/* MARKER_155.ARCHITECT_BUILD.VERIFIER_UI.V2:
+                Practical graph-health badge (user-facing), not raw spectral telemetry. */}
+            {navLevel === 'roadmap' && roadmapVerifier && verifierUi && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'rgba(0,0,0,0.70)',
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 4,
+                  padding: '4px 10px',
+                  fontSize: 10,
+                  color: verifierUi.color,
+                  letterSpacing: 0.35,
+                  zIndex: 9,
+                  pointerEvents: 'auto',
+                  fontFamily: 'monospace',
+                  cursor: 'help',
+                }}
+                title={verifierUi.hint}
+                onClick={() => {
+                  const sp = roadmapVerifier.spectral || ({} as any);
+                  addToast(
+                    'info',
+                    `${verifierUi.title} · λ2=${Number(sp.lambda2 || 0).toFixed(3)} · gap=${Number(sp.eigengap || 0).toFixed(3)} · components=${Number(sp.component_count || 0)}`,
+                  );
+                }}
+              >
+                <span>{verifierUi.title}</span>
+              </div>
+            )}
+
+            {navLevel === 'roadmap' && jepaRuntimeUi && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 36,
+                  right: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'rgba(0,0,0,0.70)',
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 4,
+                  padding: '4px 10px',
+                  fontSize: 10,
+                  color: jepaRuntimeUi.color,
+                  letterSpacing: 0.35,
+                  zIndex: 9,
+                  pointerEvents: 'auto',
+                  fontFamily: 'monospace',
+                  cursor: 'help',
+                }}
+                title={jepaRuntimeUi.hint}
+                onClick={() => addToast('info', `${jepaRuntimeUi.title} · ${jepaRuntimeUi.hint}`)}
+              >
+                <span>{jepaRuntimeUi.title}</span>
               </div>
             )}
           </div>
@@ -863,13 +2408,17 @@ export function MyceliumCommandCenter() {
               switch (action) {
                 // Roadmap actions
                 case 'launch':
-                  if (selectedNode) handleRoadmapNodeDrill(selectedNode);
+                  if (selectedNode) {
+                    handleLevelAwareNodeDoubleClick(selectedNode);
+                  }
                   else handleExecute();
                   break;
                 case 'askArchitect':
-                  // MARKER_154.12A: Focus MiniChat input — user can then expand via ↗
-                  document.querySelector<HTMLInputElement>('.mini-chat-input')?.focus();
-                  addToast('info', 'Type in the chat window ↗');
+                  if (!sendFocusToArchitect()) {
+                    // MARKER_154.12A: Fallback — focus MiniChat input for free-form prompt
+                    document.querySelector<HTMLInputElement>('.mini-chat-input')?.focus();
+                    addToast('info', 'Type in the chat window ↗');
+                  }
                   break;
                 case 'addTask':
                   // Focus task list quick-add (existing MCCTaskList input)
@@ -935,8 +2484,23 @@ export function MyceliumCommandCenter() {
                 case 'openSettings':
                   addToast('info', 'Settings coming in future wave');
                   break;
+                case 'openPlayground':
+                  addToast('info', 'Playground menu: top-right badge');
+                  break;
                 case 'openFilter':
-                  // TODO: focus filter
+                  if (navLevel !== 'roadmap') {
+                    addToast('info', 'Focus view filter is available on Architecture level');
+                    break;
+                  }
+                  setFocusDisplayMode((prev) => {
+                    const next: FocusDisplayMode = prev === 'all'
+                      ? 'selected_deps'
+                      : prev === 'selected_deps'
+                        ? 'selected_only'
+                        : 'all';
+                    addToast('info', `Focus view: ${next === 'all' ? 'all' : next === 'selected_deps' ? 'selected + dependencies' : 'selected only'}`);
+                    return next;
+                  });
                   break;
                 case 'saveWorkflow':
                   dagEditor.save(dagEditor.workflowName);
@@ -1016,28 +2580,7 @@ export function MyceliumCommandCenter() {
           {/* Stream Panel — collapsible bottom */}
           {showStream && <StreamPanel maxEvents={8} />}
         </div>
-
-        {/* RIGHT COLUMN: Detail Panel (240px) — hidden at first_run level */}
-        {!rightCollapsed && navLevel !== 'first_run' && (
-          <div
-            style={{
-              width: 240,
-              flexShrink: 0,
-              borderLeft: `1px solid ${NOLAN_PALETTE.borderDim}`,
-              minHeight: 0,
-            }}
-          >
-            <MCCDetailPanel
-              selectedDagNode={selectedNodeData}
-              selectedEdge={selectedEdgeData}
-              stats={stats}
-              onNodeAction={handleNodeAction}
-              editMode={editMode}
-              onUpdateNodeData={dagEditor.updateNodeData}
-              onViewArtifact={handleViewArtifact}
-            />
-          </div>
-        )}
+        {/* MARKER_155.CLEANUP: Right panel removed — using floating mini-windows instead */}
       </div>
 
       {/* ═══ MARKER_144.11: Artifact Viewer Overlay ═══ */}
@@ -1140,7 +2683,7 @@ export function MyceliumCommandCenter() {
         />
       )}
 
-      {!onboardingCompleted && !onboardingDismissed && (
+      {hasProject && navLevel !== 'first_run' && !onboardingCompleted && !onboardingDismissed && (
         <OnboardingOverlay
           step={onboardingStep}
           onAdvance={onboardingAdvance}

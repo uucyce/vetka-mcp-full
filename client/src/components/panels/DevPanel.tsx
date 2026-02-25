@@ -13,8 +13,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { FloatingWindow } from '../artifact/FloatingWindow';
-import { PipelineStats } from './PipelineStats';
-import { StatsDashboard } from './StatsDashboard';
+import { StatsWorkspace } from './StatsWorkspace';
 import { ArchitectChat } from './ArchitectChat';
 import { BalancesPanel } from './BalancesPanel';
 import { AgentStatusBar } from './AgentStatusBar';
@@ -51,9 +50,6 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
 
   // MARKER_129.C14B: MYCELIUM WebSocket connection
   const { connected: myceliumConnected } = useMyceliumSocket();
-
-  // Tasks from MCC store (for Stats tab + toast)
-  const tasks = useMCCStore(s => s.tasks);
 
   // MARKER_128.7B: Show toast for completed task
   const showToast = useCallback((message: string, type: 'success' | 'error', taskId?: string) => {
@@ -159,7 +155,7 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
         {/* ═══ STATS TAB ═══ */}
         {activeTab === 'stats' && (
           <div style={{ padding: 12, flex: 1, overflowY: 'auto' }}>
-            <StatsDashboard mode="expanded" />
+            <StatsWorkspace />
           </div>
         )}
 

@@ -132,10 +132,26 @@ class TaskBoard:
                     self.tasks = data.get("tasks", {})
                     self.settings = data.get("settings", self.settings)
                     logger.info(f"[TaskBoard] Loaded {len(self.tasks)} tasks from {path}")
+                    self._backfill_modules()
                     return
                 except Exception as e:
                     logger.warning(f"[TaskBoard] Failed to load from {path}: {e}")
         logger.info("[TaskBoard] No existing board found, starting fresh")
+
+    def _backfill_modules(self):
+        """MARKER_155.2A: Backfill 'module' field for existing tasks."""
+        updated = 0
+        for task in self.tasks.values():
+            if "module" not in task or not task.get("module"):
+                task["module"] = self._auto_assign_module(
+                    task.get("title", ""),
+                    task.get("description", ""),
+                    task.get("tags", []),
+                )
+                updated += 1
+        if updated > 0:
+            self._save(action="backfill_modules")
+            logger.info(f"[TaskBoard] Backfilled module for {updated} tasks")
 
     def _save(self, action: str = "update"):
         """Save task board to disk with sandbox fallback."""
@@ -235,6 +251,7 @@ class TaskBoard:
         created_by: str = "unknown",        # MARKER_133.C33D: Client attribution
         source_chat_id: Optional[str] = None,   # MARKER_152.3: Chat provenance
         source_group_id: Optional[str] = None,  # MARKER_152.3: Group provenance
+        module: Optional[str] = None,            # MARKER_155.2A: Roadmap module assignment
     ) -> str:
         """Add a new task to the board.
 
@@ -290,11 +307,45 @@ class TaskBoard:
             # MARKER_152.3: Task provenance — trace back to originating chat
             "source_chat_id": source_chat_id,   # VETKA chat UUID where task was created
             "source_group_id": source_group_id, # Group chat UUID (for @dragon/@doctor tasks)
+            # MARKER_155.2A: Roadmap module assignment for drill-down filtering
+            "module": module or self._auto_assign_module(title, description or title, tags or []),
         }
 
         self._save(action="added")
         logger.info(f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})")
         return task_id
+
+    # MARKER_155.2A: Auto-assign module from task content
+    # Maps keywords in title/description/tags to roadmap module IDs
+    _MODULE_KEYWORDS: dict = {
+        "backend_api": ["api", "routes", "endpoint", "rest", "http", "backend route"],
+        "backend_orchestration": ["pipeline", "orchestration", "agent", "dragon", "mycelium", "heartbeat"],
+        "backend_mcp": ["mcp", "mcp server", "mcp tool"],
+        "backend_services": ["service", "roadmap", "config", "project config"],
+        "backend_memory": ["memory", "cam", "stm", "engram", "qdrant", "vector"],
+        "backend_elisya": ["elisya", "llm", "model", "provider", "call_model"],
+        "backend_tools": ["tool", "fc_loop", "patch", "registry"],
+        "backend_scanners": ["scanner", "scan", "watcher", "indexer"],
+        "frontend_components": ["component", "ui", "panel", "view", "dag", "node", "mcc", "dagview",
+                                "frontend", "canvas", "chat", "button", "toggle", "import", "drag"],
+        "frontend_hooks": ["hook", "useSocket", "useStore", "useMCC"],
+        "frontend_store": ["store", "zustand", "state"],
+        "tests": ["test", "pytest", "e2e", "playwright"],
+        "scripts": ["script", "setup", "deploy", "ci"],
+    }
+
+    @staticmethod
+    def _auto_assign_module(title: str, description: str, tags: list) -> str:
+        """Match task content to a roadmap module ID."""
+        text = f"{title} {description} {' '.join(tags)}".lower()
+        best_module = ""
+        best_score = 0
+        for module_id, keywords in TaskBoard._MODULE_KEYWORDS.items():
+            score = sum(1 for kw in keywords if kw in text)
+            if score > best_score:
+                best_score = score
+                best_module = module_id
+        return best_module
 
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Get a task by ID.
@@ -331,8 +382,9 @@ class TaskBoard:
         # MARKER_137.S1_4: Allow adding 'result' field even if not present
         # MARKER_151.12A: Added result_status for user feedback (applied/rejected/rework)
         # MARKER_152.3: Added source_chat_id, source_group_id for task provenance
+        # MARKER_155.2A: Added 'module' for roadmap module assignment
         ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status",
-                          "source_chat_id", "source_group_id"}
+                          "source_chat_id", "source_group_id", "module"}
         for key, value in updates.items():
             if key in task or key in ADDABLE_FIELDS:
                 task[key] = value
