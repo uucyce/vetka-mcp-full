@@ -617,6 +617,70 @@ function overlayTasksOnRoadmap(
   return { nodes: [...baseNodes, ...taskNodes], edges: [...baseEdges, ...taskEdges] };
 }
 
+function overlayWorkflowOnSelectedTask(
+  baseNodes: DAGNode[],
+  baseEdges: DAGEdge[],
+  workflowNodes: DAGNode[],
+  workflowEdges: DAGEdge[],
+  selectedTaskId: string,
+): { nodes: DAGNode[]; edges: DAGEdge[] } {
+  const overlayTaskNodeId = `task_overlay_${selectedTaskId}`;
+  if (!baseNodes.some((n) => n.id === overlayTaskNodeId)) {
+    return { nodes: baseNodes, edges: baseEdges };
+  }
+  if (workflowNodes.length === 0) {
+    return { nodes: baseNodes, edges: baseEdges };
+  }
+
+  const visibleWorkflowNodes = workflowNodes.filter((n) => n.type !== 'task');
+  if (visibleWorkflowNodes.length === 0) {
+    return { nodes: baseNodes, edges: baseEdges };
+  }
+
+  const idMap = new Map<string, string>();
+  visibleWorkflowNodes.forEach((n) => idMap.set(n.id, `wf_${selectedTaskId}_${n.id}`));
+
+  const remappedNodes: DAGNode[] = visibleWorkflowNodes.map((n) => ({
+    ...n,
+    id: idMap.get(n.id) || n.id,
+    taskId: selectedTaskId,
+    workflowId: n.workflowId || selectedTaskId,
+    graphKind: n.graphKind || 'workflow_agent',
+  }));
+
+  const remappedEdges: DAGEdge[] = [];
+  for (const e of workflowEdges) {
+    const source = idMap.get(e.source);
+    const target = idMap.get(e.target);
+    if (!source || !target) continue;
+    remappedEdges.push({
+      ...e,
+      id: `wf_${selectedTaskId}_${e.id}`,
+      source,
+      target,
+      type: e.type || 'dataflow',
+      relationKind: e.relationKind || 'executes',
+      strength: Math.max(0.35, Number(e.strength || 0.65)),
+    });
+  }
+
+  const hasIncoming = new Set<string>(remappedEdges.map((e) => e.target));
+  const entryNodes = remappedNodes.filter((n) => !hasIncoming.has(n.id));
+  const bridgeEdges: DAGEdge[] = entryNodes.map((n, idx) => ({
+    id: `wf_bridge_${selectedTaskId}_${idx}`,
+    source: overlayTaskNodeId,
+    target: n.id,
+    type: 'dataflow',
+    relationKind: 'executes',
+    strength: 0.58,
+  }));
+
+  return {
+    nodes: [...baseNodes, ...remappedNodes],
+    edges: [...baseEdges, ...remappedEdges, ...bridgeEdges],
+  };
+}
+
 export function MyceliumCommandCenter() {
   // WebSocket connection status
   const { connected } = useMyceliumSocket();
@@ -1468,6 +1532,16 @@ export function MyceliumCommandCenter() {
   );
 
   const graphForView = useMemo(() => {
+    if (navLevel === 'roadmap' && cameraLOD === 'workflow' && selectedTaskId && dagNodes.length > 0) {
+      return overlayWorkflowOnSelectedTask(
+        effectiveNodes,
+        effectiveEdges,
+        dagNodes,
+        dagEdges,
+        selectedTaskId,
+      );
+    }
+
     if (navLevel !== 'roadmap' || focusDisplayMode === 'all' || focusIdsForView.size === 0) {
       return { nodes: effectiveNodes, edges: effectiveEdgesWithPredicted };
     }
@@ -1482,7 +1556,18 @@ export function MyceliumCommandCenter() {
     const nodes = effectiveNodes.filter(n => visibleIds.has(n.id));
     const edges = effectiveEdgesWithPredicted.filter(e => visibleIds.has(e.source) && visibleIds.has(e.target));
     return { nodes, edges };
-  }, [effectiveEdgesWithPredicted, effectiveNodes, focusDisplayMode, focusIdsForView, navLevel]);
+  }, [
+    cameraLOD,
+    dagEdges,
+    dagNodes,
+    effectiveEdges,
+    effectiveEdgesWithPredicted,
+    effectiveNodes,
+    focusDisplayMode,
+    focusIdsForView,
+    navLevel,
+    selectedTaskId,
+  ]);
 
   // MARKER_155.P4.FOCUS_ACROSS_ZOOM:
   // Keep multi-focus stable across drill/zoom transitions, drop stale ids only.

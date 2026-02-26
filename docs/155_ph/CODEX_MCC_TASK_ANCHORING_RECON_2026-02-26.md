@@ -39,6 +39,10 @@ Scope: task-to-code anchoring and minimal task UX in MCC roadmap/tasks flow.
    - tasks without explicit anchors get one inferred `suggested` anchor (when match found),
    - suggested task nodes are rendered semi-transparent with dashed outline,
    - right-click suggested task node -> `Approve Suggested Anchor` persists `primary_node_id/affected_nodes/module`.
+5. Fractal workflow reveal:
+   - in roadmap (single canvas), when a task is selected and camera LOD reaches workflow zoom,
+   - selected task workflow nodes/edges are overlaid inline (prefixed IDs, bridge edge from task overlay),
+   - no forced navigation to separate workflow screen for basic drill.
 
 ## Verification Notes
 
