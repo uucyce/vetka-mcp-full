@@ -263,7 +263,7 @@ export function MiniChat() {
       windowId="chat" // MARKER_155.DRAGGABLE.011: Unique ID for position persistence
       title="Chat"
       icon="💬"
-      position="top-left"
+      position="bottom-left"
       compactWidth={210}
       compactHeight={130}
       compactContent={<ChatCompact />}

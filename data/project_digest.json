@@ -1,17 +1,19 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-25T21:45:26.477322+00:00",
+  "last_updated": "2026-02-26T01:23:37.854632+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 154,
-    "subphase": "0",
-    "name": "Wave 6 \u2014 polish, dead code cleanup, level-aware layout",
+    "subphase": "2",
+    "name": "Phase 154: Active Development",
     "status": "IN_PROGRESS",
     "started": "2026-02-10"
   },
   "summary": {
-    "headline": "Phase 154.0 DONE! Wave 6 \u2014 polish, dead code cleanup, level-aware layout",
+    "headline": "Phase 154 active \u2014 dragon_dragon_bronze: fix task",
     "key_achievements": [
+      "[dragon_dragon_bronze] fix task",
+      "[dragon_dragon_bronze] test task",
       "[cdf4f912] Phase 154.0: feat: Phase 154 Wave 6 \u2014 polish, dead code cleanup, level-aw",
       "[6e7ef7d6] Phase 154.0: feat: Phase 154 Wave 5 \u2014 FirstRunView + project init integra",
       "[dragon_dragon_bronze] fix task",
@@ -19,9 +21,7 @@
       "[dragon_dragon_gold] Model fallback chain with key roaming\n\nWhen model unavailable after key roaming,",
       "[d1ab33c3] Phase 154.0: feat: Phase 154 Wave 4 \u2014 MiniWindow framework + Chat/Tasks/S",
       "[11cab6d3] Phase 154.0: feat: Phase 154 Wave 3 \u2014 action wiring + TaskEditPopup + Red",
-      "[dragon_titan_core] build new API endpoint",
-      "[898f22f7] Phase 154.0: feat: Phase 154 Waves 1+2 \u2014 Matryoshka DAG-in-DAG navigation",
-      "[dragon_dragon_bronze] fix task"
+      "[dragon_titan_core] build new API endpoint"
     ],
     "pending_items": [
       "TEST: Verify MGC cascade works with 1690+ files"
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "phase152-fix-stream-favorites",
-    "commit": "46716a2a",
+    "commit": "585047d4",
     "dirty": true
   }
 }

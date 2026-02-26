@@ -250,25 +250,45 @@ function StatsCompact() {
             rt:{diagnostics.runtimeHealth?.ok ? 'ok' : 'down'}
           </span>
         </div>
-        <button
-          onClick={() => {
-            setActiveTab('stats');
-            setStatsMode('diagnostics');
-          }}
-          style={{
-            border: '1px solid #2e2e2e',
-            borderRadius: 3,
-            background: '#151515',
-            color: '#9aa2ad',
-            fontSize: 8,
-            padding: '1px 6px',
-            cursor: 'pointer',
-            fontFamily: 'monospace',
-          }}
-          title="Open diagnostics"
-        >
-          diag ↗
-        </button>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            onClick={() => {
+              setActiveTab('balance');
+            }}
+            style={{
+              border: '1px solid #2e2e2e',
+              borderRadius: 3,
+              background: '#151515',
+              color: '#9aa2ad',
+              fontSize: 8,
+              padding: '1px 6px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+            }}
+            title="Open balance panel"
+          >
+            bal ↗
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('stats');
+              setStatsMode('diagnostics');
+            }}
+            style={{
+              border: '1px solid #2e2e2e',
+              borderRadius: 3,
+              background: '#151515',
+              color: '#9aa2ad',
+              fontSize: 8,
+              padding: '1px 6px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+            }}
+            title="Open diagnostics"
+          >
+            diag ↗
+          </button>
+        </div>
       </div>
     </div>
   );

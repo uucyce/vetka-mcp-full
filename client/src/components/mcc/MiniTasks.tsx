@@ -3,7 +3,7 @@
  *
  * Compact: top 5 tasks with status badges.
  * Expanded: full task list with filters (wraps MCCTaskList).
- * Position: bottom-right.
+ * Position: top-left.
  *
  * @phase 154
  * @wave 4
@@ -123,7 +123,7 @@ export function MiniTasks() {
       windowId="tasks" // MARKER_155.DRAGGABLE.013: Unique ID for position persistence
       title="Tasks"
       icon="📋"
-      position="bottom-right"
+      position="top-left"
       compactWidth={210}
       compactHeight={150}
       compactContent={<TasksCompact />}
