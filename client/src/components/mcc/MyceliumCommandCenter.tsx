@@ -538,6 +538,7 @@ function overlayTasksOnRoadmap(
   roadmapEdges: DAGEdge[],
   tasks: TaskData[],
   focusRoadmapNodeId: string,
+  selectedTaskId?: string | null,
 ): { nodes: DAGNode[]; edges: DAGEdge[] } {
   const baseNodes = [...roadmapNodes];
   const baseEdges = [...roadmapEdges];
@@ -553,6 +554,8 @@ function overlayTasksOnRoadmap(
     const effectiveAnchors = anchors.length > 0 ? anchors : suggestedAnchors;
     const anchorState: 'anchored' | 'suggested' | 'unplaced' =
       anchors.length > 0 ? 'anchored' : suggestedAnchors.length > 0 ? 'suggested' : 'unplaced';
+    // Keep roadmap clean: show suggested anchors only for explicitly selected task.
+    if (anchorState === 'suggested' && (!selectedTaskId || task.id !== selectedTaskId)) continue;
     // Keep fully unplaced tasks out of roadmap graph until operator places them.
     if (anchorState === 'unplaced') continue;
     overlayTaskIds.add(task.id);
@@ -1331,7 +1334,7 @@ export function MyceliumCommandCenter() {
         roadmapNodes.find((n) => n.graphKind === 'project_root')?.id ||
         roadmapNodes[0]?.id ||
         '__root__';
-      const overlaid = overlayTasksOnRoadmap(roadmapNodes, roadmapEdges, tasks, fallbackFocusNodeId);
+      const overlaid = overlayTasksOnRoadmap(roadmapNodes, roadmapEdges, tasks, fallbackFocusNodeId, selectedTaskId);
       return { effectiveNodes: overlaid.nodes, effectiveEdges: overlaid.edges };
     }
 
