@@ -1365,8 +1365,10 @@ export function MyceliumCommandCenter() {
       })
       .catch(() => {
         if (cancelled) return;
-        setInlineWorkflowNodes([]);
-        setInlineWorkflowEdges([]);
+        // Always keep a default inline workflow skeleton available.
+        const fallback = buildInlineWorkflowFromPipeline(selectedTaskId, []);
+        setInlineWorkflowNodes(fallback.nodes);
+        setInlineWorkflowEdges(fallback.edges);
       });
     return () => {
       cancelled = true;
@@ -1613,10 +1615,14 @@ export function MyceliumCommandCenter() {
   );
 
   const graphForView = useMemo(() => {
-    if (navLevel === 'roadmap' && cameraLOD !== 'architecture' && selectedTaskId && dagNodes.length > 0) {
+    if (navLevel === 'roadmap' && cameraLOD !== 'architecture' && selectedTaskId) {
       const hasDetailedWorkflow = dagNodes.some((n) => n.type !== 'task');
-      const workflowNodes = hasDetailedWorkflow ? dagNodes : inlineWorkflowNodes;
-      const workflowEdges = hasDetailedWorkflow ? dagEdges : inlineWorkflowEdges;
+      const workflowNodes = hasDetailedWorkflow
+        ? dagNodes
+        : (inlineWorkflowNodes.length > 0 ? inlineWorkflowNodes : buildInlineWorkflowFromPipeline(selectedTaskId, []).nodes);
+      const workflowEdges = hasDetailedWorkflow
+        ? dagEdges
+        : (inlineWorkflowEdges.length > 0 ? inlineWorkflowEdges : buildInlineWorkflowFromPipeline(selectedTaskId, []).edges);
       return overlayWorkflowOnSelectedTask(
         effectiveNodes,
         effectiveEdges,
