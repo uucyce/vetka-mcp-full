@@ -19,11 +19,12 @@ interface TaskFilterBarProps {
   sources: string[];
   presets: string[];
   onChange: (updates: Partial<TaskFiltersValue>) => void;
+  minimal?: boolean;
 }
 
 const STATUSES = ['pending', 'queued', 'running', 'done', 'failed', 'hold'] as const;
 
-export function TaskFilterBar({ value, sources, presets, onChange }: TaskFilterBarProps) {
+export function TaskFilterBar({ value, sources, presets, onChange, minimal = false }: TaskFilterBarProps) {
   return (
     <div
       style={{
@@ -53,53 +54,56 @@ export function TaskFilterBar({ value, sources, presets, onChange }: TaskFilterB
             outline: 'none',
           }}
         />
-        <select
-          value={value.sortBy}
-          onChange={(e) => onChange({ sortBy: e.target.value as TaskSortKey })}
-          style={{
-            width: 92,
-            background: '#111',
-            border: '1px solid #333',
-            borderRadius: 2,
-            color: '#bbb',
-            fontSize: 9,
-            fontFamily: 'monospace',
-            padding: '4px 5px',
-          }}
-          title="Sort tasks by"
-        >
-          <option value="priority">priority</option>
-          <option value="created_at">date</option>
-          <option value="duration_s">duration</option>
-          <option value="success_rate">success</option>
-        </select>
+        {!minimal && (
+          <select
+            value={value.sortBy}
+            onChange={(e) => onChange({ sortBy: e.target.value as TaskSortKey })}
+            style={{
+              width: 92,
+              background: '#111',
+              border: '1px solid #333',
+              borderRadius: 2,
+              color: '#bbb',
+              fontSize: 9,
+              fontFamily: 'monospace',
+              padding: '4px 5px',
+            }}
+            title="Sort tasks by"
+          >
+            <option value="priority">priority</option>
+            <option value="created_at">date</option>
+            <option value="duration_s">duration</option>
+            <option value="success_rate">success</option>
+          </select>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 4 }}>
-        <select
-          value={value.source}
-          onChange={(e) => onChange({ source: e.target.value })}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            background: '#111',
-            border: '1px solid #333',
-            borderRadius: 2,
-            color: '#bbb',
-            fontSize: 9,
-            fontFamily: 'monospace',
-            padding: '3px 5px',
-          }}
-          title="Filter by task source"
-        >
-          <option value="all">source: all</option>
-          {sources.map((source) => (
-            <option key={source} value={source}>
-              {source}
-            </option>
-          ))}
-        </select>
-
+        {!minimal && (
+          <select
+            value={value.source}
+            onChange={(e) => onChange({ source: e.target.value })}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              background: '#111',
+              border: '1px solid #333',
+              borderRadius: 2,
+              color: '#bbb',
+              fontSize: 9,
+              fontFamily: 'monospace',
+              padding: '3px 5px',
+            }}
+            title="Filter by task source"
+          >
+            <option value="all">source: all</option>
+            {sources.map((source) => (
+              <option key={source} value={source}>
+                {source}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           value={value.preset}
           onChange={(e) => onChange({ preset: e.target.value })}
@@ -114,9 +118,9 @@ export function TaskFilterBar({ value, sources, presets, onChange }: TaskFilterB
             fontFamily: 'monospace',
             padding: '3px 5px',
           }}
-          title="Filter by preset/team"
+          title="Filter by team"
         >
-          <option value="all">preset: all</option>
+          <option value="all">team: all</option>
           {presets.map((preset) => (
             <option key={preset} value={preset}>
               {preset}
@@ -155,6 +159,7 @@ export function TaskFilterBar({ value, sources, presets, onChange }: TaskFilterB
         })}
       </div>
 
+      {!minimal && (
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#888', fontSize: 9, cursor: 'pointer' }}>
           <input
@@ -196,6 +201,7 @@ export function TaskFilterBar({ value, sources, presets, onChange }: TaskFilterB
           title="Created to date"
         />
       </div>
+      )}
     </div>
   );
 }

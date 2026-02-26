@@ -77,21 +77,16 @@ export function MCCTaskList() {
 
   // Heartbeat countdown moved to HeartbeatChip — Phase 149.2
 
-  // Add & optionally run
-  const handleAdd = useCallback(async (andRun: boolean) => {
+  // Add task to queue
+  const handleAdd = useCallback(async () => {
     if (!newTaskTitle.trim()) return;
     const preset = activePreset;
     const phaseType = preset.startsWith('titan') ? 'research' : 'build';
     const tags = [preset.startsWith('titan') ? 'titan' : 'dragon'];
 
-    const taskId = await addTask(newTaskTitle.trim(), preset, phaseType, tags, selectedKey);
+    await addTask(newTaskTitle.trim(), preset, phaseType, tags, selectedKey);
     setNewTaskTitle('');
-
-    if (andRun && taskId) {
-      await dispatchTask(taskId, preset, selectedKey);
-      if (selectedKey) clearSelectedKey();
-    }
-  }, [newTaskTitle, activePreset, addTask, dispatchTask, selectedKey, clearSelectedKey]);
+  }, [newTaskTitle, activePreset, addTask, selectedKey]);
 
   // Dispatch next
   const handleDispatchNext = useCallback(async () => {
@@ -171,8 +166,7 @@ export function MCCTaskList() {
             value={newTaskTitle}
             onChange={e => setNewTaskTitle(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter') handleAdd(false);
-              if (e.key === 'Enter' && e.shiftKey) handleAdd(true);
+              if (e.key === 'Enter') handleAdd();
             }}
             style={{
               flex: 1,
@@ -188,7 +182,7 @@ export function MCCTaskList() {
             }}
           />
           <button
-            onClick={() => handleAdd(false)}
+            onClick={handleAdd}
             disabled={!newTaskTitle.trim()}
             style={{
               background: newTaskTitle.trim() ? 'rgba(255,255,255,0.06)' : 'transparent',
@@ -202,21 +196,6 @@ export function MCCTaskList() {
             }}
             title="Add to queue"
           >+</button>
-          <button
-            onClick={() => handleAdd(true)}
-            disabled={!newTaskTitle.trim()}
-            style={{
-              background: newTaskTitle.trim() ? '#2d3d5a' : 'transparent',
-              color: newTaskTitle.trim() ? '#8af' : '#333',
-              border: `1px solid ${newTaskTitle.trim() ? '#3d4d6a' : NOLAN_PALETTE.borderDim}`,
-              borderRadius: 2,
-              padding: '4px 6px',
-              fontSize: 11,
-              cursor: newTaskTitle.trim() ? 'pointer' : 'not-allowed',
-              fontWeight: 600,
-            }}
-            title="Add & Run"
-          >▶</button>
         </div>
       </div>
 
@@ -226,6 +205,7 @@ export function MCCTaskList() {
         sources={taskSources}
         presets={taskPresets}
         onChange={setTaskFilters}
+        minimal
       />
 
       {/* Active agents row */}

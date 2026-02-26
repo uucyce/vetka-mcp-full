@@ -31,6 +31,7 @@ interface DAGContextMenuProps {
   target: ContextMenuTarget | null;
   onClose: () => void;
   onAddNode: (type: DAGNodeType, position: { x: number; y: number }) => void;
+  onCreateTaskHere?: (nodeId: string, position: { x: number; y: number }) => void;
   onDeleteNode?: (nodeId: string) => void;
   onDuplicateNode?: (nodeId: string) => void;
   onDeleteEdge?: (edgeId: string) => void;
@@ -77,6 +78,7 @@ function DAGContextMenuComponent({
   target,
   onClose,
   onAddNode,
+  onCreateTaskHere,
   onDeleteNode,
   onDuplicateNode,
   onDeleteEdge,
@@ -149,7 +151,23 @@ function DAGContextMenuComponent({
       {/* Node context menu */}
       {target.kind === 'node' && (
         <>
+          {onCreateTaskHere && (
+            <div
+              style={itemStyle}
+              onMouseEnter={handleItemHover}
+              onMouseLeave={handleItemLeave}
+              onClick={() => {
+                onCreateTaskHere(target.nodeId, target.position);
+                onClose();
+              }}
+            >
+              <span style={{ width: 14, textAlign: 'center' }}>+</span>
+              <span>Create Task Here</span>
+            </div>
+          )}
           {onDuplicateNode && (
+            <>
+              {onCreateTaskHere && <div style={separatorStyle} />}
             <div
               style={itemStyle}
               onMouseEnter={handleItemHover}
@@ -162,6 +180,7 @@ function DAGContextMenuComponent({
               <span style={{ width: 14, textAlign: 'center' }}>⧉</span>
               <span>Duplicate</span>
             </div>
+            </>
           )}
           {onDeleteNode && (
             <>

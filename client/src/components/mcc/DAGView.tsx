@@ -108,6 +108,7 @@ interface DAGViewProps {
   onEdgesDelete?: (edges: Edge[]) => void;
   // MARKER_144.3: Context menu callback
   onContextMenu?: (event: React.MouseEvent, target: { kind: 'canvas' | 'node' | 'edge'; id?: string; position: { x: number; y: number } }) => void;
+  contextMenuEnabled?: boolean;
   // MARKER_151.3B: ComfyUI-style node picker trigger
   onPaneDoubleClick?: (position: { x: number; y: number }) => void;
   // MARKER_153.5D: Node double-click for Matryoshka drill-down
@@ -150,6 +151,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
   onEdgesDelete,
   // MARKER_144.3: Context menu
   onContextMenu,
+  contextMenuEnabled,
   onPaneDoubleClick,
   // MARKER_153.5D: Node double-click drill-down
   onNodeDoubleClick,
@@ -564,32 +566,35 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
     }
   }, [editMode, onNodeSelect, onNodeSelectWithMode, onEdgeSelect, onPaneDoubleClick, setEdges, setNodes]);
 
-  // MARKER_144.3: Right-click handlers for context menu (only in edit mode)
+  // MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1:
+  // Allow controlled context menu in read-only roadmap mode for task anchoring.
+  const canOpenContextMenu = Boolean(onContextMenu) && (contextMenuEnabled ?? editMode);
+
   const handleNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
-      if (!editMode || !onContextMenu) return;
+      if (!canOpenContextMenu || !onContextMenu) return;
       event.preventDefault();
       onContextMenu(event, { kind: 'node', id: node.id, position: { x: event.clientX, y: event.clientY } });
     },
-    [editMode, onContextMenu]
+    [canOpenContextMenu, onContextMenu]
   );
 
   const handleEdgeContextMenu = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
-      if (!editMode || !onContextMenu) return;
+      if (!canOpenContextMenu || !onContextMenu) return;
       event.preventDefault();
       onContextMenu(event, { kind: 'edge', id: edge.id, position: { x: event.clientX, y: event.clientY } });
     },
-    [editMode, onContextMenu]
+    [canOpenContextMenu, onContextMenu]
   );
 
   const handlePaneContextMenu = useCallback(
     (event: MouseEvent | React.MouseEvent) => {
-      if (!editMode || !onContextMenu) return;
+      if (!canOpenContextMenu || !onContextMenu) return;
       event.preventDefault();
       onContextMenu(event as React.MouseEvent, { kind: 'canvas', position: { x: event.clientX, y: event.clientY } });
     },
-    [editMode, onContextMenu]
+    [canOpenContextMenu, onContextMenu]
   );
 
   // MARKER_137.2C: Get node color for minimap (actually used now)
@@ -645,9 +650,9 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
         onEdgesDelete={editMode ? onEdgesDelete : undefined}
         deleteKeyCode={editMode ? 'Delete' : null}
         // MARKER_144.3: Context menu handlers (no-op when editMode=false)
-        onNodeContextMenu={editMode ? handleNodeContextMenu : undefined}
-        onEdgeContextMenu={editMode ? handleEdgeContextMenu : undefined}
-        onPaneContextMenu={editMode ? handlePaneContextMenu : undefined}
+        onNodeContextMenu={canOpenContextMenu ? handleNodeContextMenu : undefined}
+        onEdgeContextMenu={canOpenContextMenu ? handleEdgeContextMenu : undefined}
+        onPaneContextMenu={canOpenContextMenu ? handlePaneContextMenu : undefined}
         onMoveEnd={emitViewport}
       >
         <Background color="#111" gap={32} size={1} />

@@ -252,6 +252,11 @@ class TaskBoard:
         source_chat_id: Optional[str] = None,   # MARKER_152.3: Chat provenance
         source_group_id: Optional[str] = None,  # MARKER_152.3: Group provenance
         module: Optional[str] = None,            # MARKER_155.2A: Roadmap module assignment
+        primary_node_id: Optional[str] = None,   # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        affected_nodes: Optional[List[str]] = None,  # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        workflow_id: Optional[str] = None,       # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        team_profile: Optional[str] = None,      # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        task_origin: Optional[str] = None,       # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
     ) -> str:
         """Add a new task to the board.
 
@@ -309,6 +314,12 @@ class TaskBoard:
             "source_group_id": source_group_id, # Group chat UUID (for @dragon/@doctor tasks)
             # MARKER_155.2A: Roadmap module assignment for drill-down filtering
             "module": module or self._auto_assign_module(title, description or title, tags or []),
+            # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1: explicit task-to-code anchor metadata
+            "primary_node_id": primary_node_id,
+            "affected_nodes": affected_nodes or [],
+            "workflow_id": workflow_id,
+            "team_profile": team_profile,
+            "task_origin": task_origin,
         }
 
         self._save(action="added")
@@ -383,8 +394,10 @@ class TaskBoard:
         # MARKER_151.12A: Added result_status for user feedback (applied/rejected/rework)
         # MARKER_152.3: Added source_chat_id, source_group_id for task provenance
         # MARKER_155.2A: Added 'module' for roadmap module assignment
+        # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1: Added anchor metadata fields
         ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status",
-                          "source_chat_id", "source_group_id", "module"}
+                          "source_chat_id", "source_group_id", "module",
+                          "primary_node_id", "affected_nodes", "workflow_id", "team_profile", "task_origin"}
         for key, value in updates.items():
             if key in task or key in ADDABLE_FIELDS:
                 task[key] = value

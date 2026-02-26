@@ -2110,7 +2110,13 @@ async def add_task_api(body: Dict[str, Any]) -> Dict[str, Any]:
         phase_type=body.get("phase_type", "build"),
         preset=body.get("preset"),
         tags=body.get("tags", []),
-        source="api",
+        source=body.get("source", "api"),
+        module=body.get("module"),
+        primary_node_id=body.get("primary_node_id"),
+        affected_nodes=body.get("affected_nodes"),
+        workflow_id=body.get("workflow_id"),
+        team_profile=body.get("team_profile"),
+        task_origin=body.get("task_origin"),
     )
 
     return {"success": True, "task_id": task_id}
@@ -2124,7 +2130,10 @@ async def update_task_api(task_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
     board = get_task_board()
 
     # Filter allowed update fields
-    allowed_fields = {"title", "description", "priority", "phase_type", "preset", "status", "tags"}
+    allowed_fields = {
+        "title", "description", "priority", "phase_type", "preset", "status", "tags",
+        "module", "primary_node_id", "affected_nodes", "workflow_id", "team_profile", "task_origin",
+    }
     updates = {k: v for k, v in body.items() if k in allowed_fields}
 
     if not updates:

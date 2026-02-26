@@ -40,6 +40,16 @@ export interface AgentStatus {
   elapsed_seconds: number;
 }
 
+export interface TaskCreateOptions {
+  module?: string;
+  primary_node_id?: string;
+  affected_nodes?: string[];
+  workflow_id?: string;
+  team_profile?: string;
+  task_origin?: 'architect' | 'chat' | 'manual' | 'system' | string;
+  source?: string;
+}
+
 export interface PresetConfig {
   description: string;
   provider: string;
@@ -224,7 +234,7 @@ interface MCCState {
 
   // Actions
   fetchTasks: () => Promise<void>;
-  addTask: (title: string, preset: string, phaseType: string, tags: string[], selectedKey?: any) => Promise<string | null>;
+  addTask: (title: string, preset: string, phaseType: string, tags: string[], selectedKey?: any, options?: TaskCreateOptions) => Promise<string | null>;
   dispatchTask: (taskId: string, preset?: string, selectedKey?: any) => Promise<void>;
   dispatchNext: (selectedKey?: any) => Promise<void>;
   selectTask: (taskId: string | null) => void;
@@ -345,12 +355,24 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   },
 
   // ── Add task ──
-  addTask: async (title, preset, phaseType, tags, selectedKey) => {
+  addTask: async (title, preset, phaseType, tags, selectedKey, options) => {
     try {
       const res = await fetch(`${API_DEBUG}/task-board/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, preset, phase_type: phaseType, tags }),
+        body: JSON.stringify({
+          title,
+          preset,
+          phase_type: phaseType,
+          tags,
+          module: options?.module,
+          primary_node_id: options?.primary_node_id,
+          affected_nodes: options?.affected_nodes,
+          workflow_id: options?.workflow_id,
+          team_profile: options?.team_profile,
+          task_origin: options?.task_origin,
+          source: options?.source,
+        }),
       });
       if (res.ok) {
         const data = await res.json();

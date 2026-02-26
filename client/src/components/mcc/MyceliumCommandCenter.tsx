@@ -1583,6 +1583,10 @@ export function MyceliumCommandCenter() {
 
   // MARKER_144.3: Context menu handlers
   const handleContextMenu = useCallback((_event: React.MouseEvent, target: { kind: 'canvas' | 'node' | 'edge'; id?: string; position: { x: number; y: number } }) => {
+    if (navLevel === 'roadmap' && target.kind !== 'node') {
+      setContextMenuTarget(null);
+      return;
+    }
     setNodePickerPos(null);
     if (target.kind === 'canvas') {
       setContextMenuTarget({ kind: 'canvas', position: target.position });
@@ -1591,7 +1595,7 @@ export function MyceliumCommandCenter() {
     } else if (target.kind === 'edge' && target.id) {
       setContextMenuTarget({ kind: 'edge', edgeId: target.id, position: target.position });
     }
-  }, []);
+  }, [navLevel]);
 
   const handlePaneDoubleClick = useCallback((position: { x: number; y: number }) => {
     if (!editMode) return;
@@ -1609,6 +1613,42 @@ export function MyceliumCommandCenter() {
       dagEditor.addNode(node.type, { x: 50, y: 50 }, `${node.label} (copy)`);
     }
   }, [dagEditor, effectiveNodes]);
+
+  const handleCreateTaskFromNode = useCallback(async (nodeId: string) => {
+    if (nodeId.startsWith('task_overlay_')) {
+      addToast('info', 'Task node already exists for this anchor');
+      return;
+    }
+    const sourceNode = graphForView.nodes.find((n) => n.id === nodeId);
+    if (!sourceNode) {
+      addToast('error', `Anchor node not found: ${nodeId}`);
+      return;
+    }
+    const suggestedTitle = `Fix ${sourceNode.label}`;
+    const title = window.prompt('Task title', suggestedTitle)?.trim();
+    if (!title) return;
+    const store = useMCCStore.getState();
+    const preset = store.activePreset || 'dragon_silver';
+    const phaseType = preset.startsWith('titan') ? 'research' : 'build';
+    const tags = [preset.startsWith('titan') ? 'titan' : 'dragon', 'anchored'];
+    const metadata = (sourceNode.metadata || {}) as Record<string, any>;
+    const moduleHint = String(sourceNode.projectNodeId || metadata.path || metadata.file_path || sourceNode.id || '');
+    const taskId = await store.addTask(title, preset, phaseType, tags, undefined, {
+      module: moduleHint,
+      primary_node_id: sourceNode.id,
+      affected_nodes: [sourceNode.id],
+      workflow_id: `wf_anchor_${Date.now()}`,
+      team_profile: preset,
+      task_origin: 'manual',
+      source: 'mcc_anchor',
+    });
+    if (!taskId) {
+      addToast('error', 'Failed to create anchored task');
+      return;
+    }
+    store.selectTask(taskId);
+    addToast('success', `Task anchored: ${sourceNode.label}`);
+  }, [addToast, graphForView.nodes]);
 
   // MARKER_144.6: Keyboard shortcuts for edit mode (Ctrl+Z, Ctrl+Shift+Z)
   useEffect(() => {
@@ -2347,7 +2387,8 @@ export function MyceliumCommandCenter() {
                     onConnect={isReadOnlyLevel ? undefined : dagEditor.handleConnect}
                     onNodesDelete={isReadOnlyLevel ? undefined : (deletedNodes) => deletedNodes.forEach(n => dagEditor.removeNode(n.id))}
                     onEdgesDelete={isReadOnlyLevel ? undefined : (deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))}
-                    onContextMenu={isReadOnlyLevel ? undefined : handleContextMenu}
+                    onContextMenu={navLevel === 'roadmap' || !isReadOnlyLevel ? handleContextMenu : undefined}
+                    contextMenuEnabled={navLevel === 'roadmap' ? true : editMode}
                     onPaneDoubleClick={isReadOnlyLevel
                       ? undefined
                       : handlePaneDoubleClick
@@ -2808,15 +2849,16 @@ export function MyceliumCommandCenter() {
         </div>
       )}
 
-      {/* ═══ MARKER_144.3: Context Menu Overlay — only in edit mode ═══ */}
-      {editMode && (
+      {/* ═══ MARKER_144.3 + 155.G1: Context Menu Overlay ═══ */}
+      {(editMode || navLevel === 'roadmap') && (
         <DAGContextMenu
           target={contextMenuTarget}
           onClose={() => setContextMenuTarget(null)}
           onAddNode={handleAddNodeFromMenu}
-          onDeleteNode={dagEditor.removeNode}
-          onDuplicateNode={handleDuplicateNode}
-          onDeleteEdge={dagEditor.removeEdge}
+          onCreateTaskHere={navLevel === 'roadmap' ? handleCreateTaskFromNode : undefined}
+          onDeleteNode={navLevel === 'roadmap' ? undefined : dagEditor.removeNode}
+          onDuplicateNode={navLevel === 'roadmap' ? undefined : handleDuplicateNode}
+          onDeleteEdge={navLevel === 'roadmap' ? undefined : dagEditor.removeEdge}
         />
       )}
 
