@@ -623,11 +623,9 @@ function overlayWorkflowOnSelectedTask(
   workflowNodes: DAGNode[],
   workflowEdges: DAGEdge[],
   selectedTaskId: string,
+  attachFromNodeId?: string | null,
 ): { nodes: DAGNode[]; edges: DAGEdge[] } {
   const overlayTaskNodeId = `task_overlay_${selectedTaskId}`;
-  if (!baseNodes.some((n) => n.id === overlayTaskNodeId)) {
-    return { nodes: baseNodes, edges: baseEdges };
-  }
   if (workflowNodes.length === 0) {
     return { nodes: baseNodes, edges: baseEdges };
   }
@@ -666,14 +664,22 @@ function overlayWorkflowOnSelectedTask(
 
   const hasIncoming = new Set<string>(remappedEdges.map((e) => e.target));
   const entryNodes = remappedNodes.filter((n) => !hasIncoming.has(n.id));
-  const bridgeEdges: DAGEdge[] = entryNodes.map((n, idx) => ({
-    id: `wf_bridge_${selectedTaskId}_${idx}`,
-    source: overlayTaskNodeId,
-    target: n.id,
-    type: 'dataflow',
-    relationKind: 'executes',
-    strength: 0.58,
-  }));
+
+  const baseNodeIds = new Set(baseNodes.map((n) => n.id));
+  const bridgeSourceId = baseNodeIds.has(overlayTaskNodeId)
+    ? overlayTaskNodeId
+    : (attachFromNodeId && baseNodeIds.has(attachFromNodeId) ? attachFromNodeId : null);
+
+  const bridgeEdges: DAGEdge[] = bridgeSourceId
+    ? entryNodes.map((n, idx) => ({
+        id: `wf_bridge_${selectedTaskId}_${idx}`,
+        source: bridgeSourceId,
+        target: n.id,
+        type: 'dataflow',
+        relationKind: 'executes',
+        strength: 0.58,
+      }))
+    : [];
 
   return {
     nodes: [...baseNodes, ...remappedNodes],
@@ -1532,13 +1538,14 @@ export function MyceliumCommandCenter() {
   );
 
   const graphForView = useMemo(() => {
-    if (navLevel === 'roadmap' && cameraLOD === 'workflow' && selectedTaskId && dagNodes.length > 0) {
+    if (navLevel === 'roadmap' && cameraLOD !== 'architecture' && selectedTaskId && dagNodes.length > 0) {
       return overlayWorkflowOnSelectedTask(
         effectiveNodes,
         effectiveEdges,
         dagNodes,
         dagEdges,
         selectedTaskId,
+        selectedNode || navRoadmapNodeId || null,
       );
     }
 
@@ -1567,6 +1574,8 @@ export function MyceliumCommandCenter() {
     focusIdsForView,
     navLevel,
     selectedTaskId,
+    selectedNode,
+    navRoadmapNodeId,
   ]);
 
   // MARKER_155.P4.FOCUS_ACROSS_ZOOM:
