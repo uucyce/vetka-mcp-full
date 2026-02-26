@@ -108,6 +108,10 @@ function getDefaultPosition(position: Position, width: number, height: number, w
   }
   const maxX = Math.max(padding, vw - width - padding);
   const maxY = Math.max(padding, vh - height - padding);
+  // Stack balance panel below stats in top-right on first placement.
+  if (windowId === 'balance' && position === 'top-right') {
+    return { x: maxX, y: Math.min(maxY, padding + 132) };
+  }
   switch (position) {
     case 'top-left': return { x: padding, y: padding };
     case 'top-right': return { x: maxX, y: padding };

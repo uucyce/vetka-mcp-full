@@ -189,7 +189,6 @@ function StatBox({ label, value, unit }: { label: string; value: string | number
 // Compact: 4 stat boxes
 function StatsCompact() {
   const { data, loading } = useSummaryData();
-  const setActiveTab = useDevPanelStore(s => s.setActiveTab);
   const setStatsMode = useDevPanelStore(s => s.setStatsMode);
   const diagnostics = useMCCDiagnostics();
 
@@ -250,45 +249,24 @@ function StatsCompact() {
             rt:{diagnostics.runtimeHealth?.ok ? 'ok' : 'down'}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button
-            onClick={() => {
-              setActiveTab('balance');
-            }}
-            style={{
-              border: '1px solid #2e2e2e',
-              borderRadius: 3,
-              background: '#151515',
-              color: '#9aa2ad',
-              fontSize: 8,
-              padding: '1px 6px',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-            }}
-            title="Open balance panel"
-          >
-            bal ↗
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('stats');
-              setStatsMode('diagnostics');
-            }}
-            style={{
-              border: '1px solid #2e2e2e',
-              borderRadius: 3,
-              background: '#151515',
-              color: '#9aa2ad',
-              fontSize: 8,
-              padding: '1px 6px',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-            }}
-            title="Open diagnostics"
-          >
-            diag ↗
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            setStatsMode('diagnostics');
+          }}
+          style={{
+            border: '1px solid #2e2e2e',
+            borderRadius: 3,
+            background: '#151515',
+            color: '#9aa2ad',
+            fontSize: 8,
+            padding: '1px 6px',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+          }}
+          title="Open diagnostics"
+        >
+          diag ↗
+        </button>
       </div>
     </div>
   );

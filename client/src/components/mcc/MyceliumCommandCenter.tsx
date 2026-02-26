@@ -34,6 +34,7 @@ import { RedoFeedbackInput } from './RedoFeedbackInput';
 import { MiniChat } from './MiniChat';
 import { MiniTasks } from './MiniTasks';
 import { MiniStats } from './MiniStats';
+import { MiniBalance } from './MiniBalance';
 import { StepIndicator } from './StepIndicator';
 import { FirstRunView } from './FirstRunView';
 import { PlaygroundBadge } from './PlaygroundBadge';
@@ -705,6 +706,7 @@ export function MyceliumCommandCenter() {
   const [dagCompareRows, setDagCompareRows] = useState<DagCompareRow[]>([]);
   const [showDagCompareMatrix, setShowDagCompareMatrix] = useState(false);
   const [selectedDagCompareName, setSelectedDagCompareName] = useState<string | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
   // MARKER_153.6C: Toast notifications for pipeline/system events
   const { toasts, addToast, dismissToast } = useToast();
 
@@ -1772,19 +1774,50 @@ export function MyceliumCommandCenter() {
         height: '100%',
         background: NOLAN_PALETTE.bg,
         fontFamily: 'monospace',
+        position: 'relative',
       }}
     >
+      <button
+        onClick={() => setDebugMode((v) => !v)}
+        title={debugMode ? 'Disable debug UI' : 'Enable debug UI'}
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          zIndex: 40,
+          width: 30,
+          height: 30,
+          border: `1px solid ${debugMode ? '#ffffff' : NOLAN_PALETTE.borderDim}`,
+          borderRadius: 4,
+          background: '#000000',
+          color: '#ffffff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          padding: 0,
+        }}
+        aria-label="Toggle debug mode"
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <rect x="1.5" y="1.5" width="9" height="9" stroke="white" strokeWidth="1" />
+          <line x1="3" y1="6" x2="9" y2="6" stroke="white" strokeWidth="1" />
+        </svg>
+      </button>
+
       {/* ═══ MARKER_155.CLEANUP: Header removed — using FooterActionBar instead ═══ */}
       
       {/* ═══ MARKER_153.5A: Breadcrumb Bar — navigation path ═══ */}
       {navLevel === 'workflow' || navLevel === 'running' || navLevel === 'results' ? <MCCBreadcrumb /> : null}
 
       {/* ═══ MARKER_155.FLOW.STEPS: 5-step progress indicator ═══ */}
-      <div data-onboarding="step-indicator">
-        <StepIndicator />
-      </div>
+      {debugMode && (
+        <div data-onboarding="step-indicator">
+          <StepIndicator />
+        </div>
+      )}
       {/* MARKER_155A.G21.PLAYGROUND_ENTRY: Always-available playground entry for existing projects. */}
-      {hasProject && navLevel !== 'first_run' && (
+      {debugMode && hasProject && navLevel !== 'first_run' && (
         <div style={{ position: 'absolute', top: 44, right: 14, zIndex: 20 }}>
           <PlaygroundBadge />
         </div>
@@ -1811,7 +1844,7 @@ export function MyceliumCommandCenter() {
 
           {/* MARKER_155.ARCHITECT_BUILD.DAG_VERSIONS.UI_TABS.V1:
               Debug-stage DAG variants (baseline + saved versions). */}
-          {hasProject && navLevel === 'roadmap' && (
+          {debugMode && hasProject && navLevel === 'roadmap' && (
             <div
               style={{
                 display: 'flex',
@@ -1963,7 +1996,7 @@ export function MyceliumCommandCenter() {
               )}
             </div>
           )}
-          {hasProject && navLevel === 'roadmap' && showDagCompareMatrix && dagCompareRows.length > 0 && (
+          {debugMode && hasProject && navLevel === 'roadmap' && showDagCompareMatrix && dagCompareRows.length > 0 && (
             <div
               style={{
                 borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
@@ -2222,6 +2255,7 @@ export function MyceliumCommandCenter() {
                 </div>
                 <MiniTasks />
                 <MiniStats />
+                <MiniBalance />
               </>
             )}
 
@@ -2249,7 +2283,7 @@ export function MyceliumCommandCenter() {
             )}
 
             {/* MARKER_155A.P2.LOD_THRESHOLDS: Context hint tied to camera LOD (same canvas, no route switch). */}
-            {navLevel !== 'first_run' && (
+            {debugMode && navLevel !== 'first_run' && (
               <div
                 style={{
                   position: 'absolute',
@@ -2271,7 +2305,7 @@ export function MyceliumCommandCenter() {
               </div>
             )}
 
-            {navLevel === 'roadmap' && (
+            {debugMode && navLevel === 'roadmap' && (
               <div
                 style={{
                   position: 'absolute',
@@ -2293,7 +2327,7 @@ export function MyceliumCommandCenter() {
               </div>
             )}
 
-            {navLevel === 'roadmap' && (
+            {debugMode && navLevel === 'roadmap' && (
               <div
                 style={{
                   position: 'absolute',
@@ -2338,7 +2372,7 @@ export function MyceliumCommandCenter() {
 
             {/* MARKER_155.ARCHITECT_BUILD.VERIFIER_UI.V2:
                 Practical graph-health badge (user-facing), not raw spectral telemetry. */}
-            {navLevel === 'roadmap' && roadmapVerifier && verifierUi && (
+            {debugMode && navLevel === 'roadmap' && roadmapVerifier && verifierUi && (
               <div
                 style={{
                   position: 'absolute',
@@ -2372,7 +2406,7 @@ export function MyceliumCommandCenter() {
               </div>
             )}
 
-            {navLevel === 'roadmap' && jepaRuntimeUi && (
+            {debugMode && navLevel === 'roadmap' && jepaRuntimeUi && (
               <div
                 style={{
                   position: 'absolute',
@@ -2403,6 +2437,7 @@ export function MyceliumCommandCenter() {
 
           {/* MARKER_154.3A: FooterActionBar — unified 3-action bar per level.
               Replaces RailsActionBar + CaptainBar + WorkflowToolbar actions. */}
+          {debugMode && (
           <FooterActionBar
             onAction={(action) => {
               switch (action) {
@@ -2518,6 +2553,7 @@ export function MyceliumCommandCenter() {
               navLevel === 'roadmap' && !selectedNode ? ['launch'] : []
             }
           />
+          )}
 
           {/* MARKER_154.8A: TaskEditPopup — shown when user clicks Edit on task level */}
           {showTaskEdit && (() => {
@@ -2683,7 +2719,7 @@ export function MyceliumCommandCenter() {
         />
       )}
 
-      {hasProject && navLevel !== 'first_run' && !onboardingCompleted && !onboardingDismissed && (
+      {debugMode && hasProject && navLevel !== 'first_run' && !onboardingCompleted && !onboardingDismissed && (
         <OnboardingOverlay
           step={onboardingStep}
           onAdvance={onboardingAdvance}
