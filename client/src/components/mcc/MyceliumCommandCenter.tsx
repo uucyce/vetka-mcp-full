@@ -687,6 +687,52 @@ function overlayWorkflowOnSelectedTask(
   };
 }
 
+function buildInlineWorkflowFromPipeline(taskId: string, subtasks: Array<any>): { nodes: DAGNode[]; edges: DAGEdge[] } {
+  const nodes: DAGNode[] = [
+    { id: `wf_arch_${taskId}`, type: 'agent', label: '@architect', status: 'done', layer: 1, taskId, role: 'architect', graphKind: 'workflow_agent' },
+    { id: `wf_coder_${taskId}`, type: 'agent', label: '@coder', status: 'running', layer: 1, taskId, role: 'coder', graphKind: 'workflow_agent' },
+    { id: `wf_verifier_${taskId}`, type: 'agent', label: '@verifier', status: 'pending', layer: 1, taskId, role: 'verifier', graphKind: 'workflow_agent' },
+  ];
+  const edges: DAGEdge[] = [
+    { id: `wf_e_arch_coder_${taskId}`, source: `wf_arch_${taskId}`, target: `wf_coder_${taskId}`, type: 'dataflow', strength: 0.7, relationKind: 'passes' },
+    { id: `wf_e_coder_ver_${taskId}`, source: `wf_coder_${taskId}`, target: `wf_verifier_${taskId}`, type: 'temporal', strength: 0.64, relationKind: 'executes' },
+  ];
+  const max = Math.min(Array.isArray(subtasks) ? subtasks.length : 0, 12);
+  for (let i = 0; i < max; i += 1) {
+    const st = subtasks[i] || {};
+    const sid = `wf_sub_${taskId}_${i}`;
+    const raw = String(st.status || 'pending').toLowerCase();
+    const status: NodeStatus = raw === 'done' ? 'done' : raw === 'failed' ? 'failed' : raw === 'running' ? 'running' : 'pending';
+    nodes.push({
+      id: sid,
+      type: 'subtask',
+      label: String(st.description || `subtask ${i + 1}`).slice(0, 46),
+      status,
+      layer: 2,
+      taskId,
+      description: st.result ? String(st.result).slice(0, 220) : undefined,
+      graphKind: 'workflow_artifact',
+    });
+    edges.push({
+      id: `wf_e_coder_sub_${taskId}_${i}`,
+      source: `wf_coder_${taskId}`,
+      target: sid,
+      type: 'dataflow',
+      strength: 0.62,
+      relationKind: 'produces',
+    });
+    edges.push({
+      id: `wf_e_sub_ver_${taskId}_${i}`,
+      source: sid,
+      target: `wf_verifier_${taskId}`,
+      type: 'temporal',
+      strength: 0.56,
+      relationKind: 'executes',
+    });
+  }
+  return { nodes, edges };
+}
+
 export function MyceliumCommandCenter() {
   // WebSocket connection status
   const { connected } = useMyceliumSocket();
@@ -702,6 +748,8 @@ export function MyceliumCommandCenter() {
   // DAG data state
   const [dagNodes, setDagNodes] = useState<DAGNode[]>([]);
   const [dagEdges, setDagEdges] = useState<DAGEdge[]>([]);
+  const [inlineWorkflowNodes, setInlineWorkflowNodes] = useState<DAGNode[]>([]);
+  const [inlineWorkflowEdges, setInlineWorkflowEdges] = useState<DAGEdge[]>([]);
   const [predictedEdges, setPredictedEdges] = useState<DAGEdge[]>([]);
   const [stats, setStats] = useState<DAGStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1298,6 +1346,33 @@ export function MyceliumCommandCenter() {
     fetchDAG(selectedTaskId);
   }, [selectedTaskId, fetchDAG]);
 
+  // Fallback workflow source for fractal reveal when /api/dag has no detailed task.result.
+  useEffect(() => {
+    if (!selectedTaskId) {
+      setInlineWorkflowNodes([]);
+      setInlineWorkflowEdges([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`${API_BASE}/debug/pipeline-results/${encodeURIComponent(selectedTaskId)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data) => {
+        if (cancelled) return;
+        const subtasks = Array.isArray(data?.subtasks) ? data.subtasks : [];
+        const fallback = buildInlineWorkflowFromPipeline(selectedTaskId, subtasks);
+        setInlineWorkflowNodes(fallback.nodes);
+        setInlineWorkflowEdges(fallback.edges);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setInlineWorkflowNodes([]);
+        setInlineWorkflowEdges([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTaskId]);
+
   // Listen for real-time updates via CustomEvents
   useEffect(() => {
     const triggerFetch = () => {
@@ -1539,11 +1614,14 @@ export function MyceliumCommandCenter() {
 
   const graphForView = useMemo(() => {
     if (navLevel === 'roadmap' && cameraLOD !== 'architecture' && selectedTaskId && dagNodes.length > 0) {
+      const hasDetailedWorkflow = dagNodes.some((n) => n.type !== 'task');
+      const workflowNodes = hasDetailedWorkflow ? dagNodes : inlineWorkflowNodes;
+      const workflowEdges = hasDetailedWorkflow ? dagEdges : inlineWorkflowEdges;
       return overlayWorkflowOnSelectedTask(
         effectiveNodes,
         effectiveEdges,
-        dagNodes,
-        dagEdges,
+        workflowNodes,
+        workflowEdges,
         selectedTaskId,
         selectedNode || navRoadmapNodeId || null,
       );
@@ -1567,6 +1645,8 @@ export function MyceliumCommandCenter() {
     cameraLOD,
     dagEdges,
     dagNodes,
+    inlineWorkflowEdges,
+    inlineWorkflowNodes,
     effectiveEdges,
     effectiveEdgesWithPredicted,
     effectiveNodes,
