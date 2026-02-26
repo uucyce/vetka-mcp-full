@@ -32,6 +32,7 @@ interface DAGContextMenuProps {
   onClose: () => void;
   onAddNode: (type: DAGNodeType, position: { x: number; y: number }) => void;
   onCreateTaskHere?: (nodeId: string, position: { x: number; y: number }) => void;
+  onApproveSuggestedAnchor?: (taskOverlayNodeId: string) => void;
   onDeleteNode?: (nodeId: string) => void;
   onDuplicateNode?: (nodeId: string) => void;
   onDeleteEdge?: (edgeId: string) => void;
@@ -79,6 +80,7 @@ function DAGContextMenuComponent({
   onClose,
   onAddNode,
   onCreateTaskHere,
+  onApproveSuggestedAnchor,
   onDeleteNode,
   onDuplicateNode,
   onDeleteEdge,
@@ -151,7 +153,7 @@ function DAGContextMenuComponent({
       {/* Node context menu */}
       {target.kind === 'node' && (
         <>
-          {onCreateTaskHere && (
+          {onCreateTaskHere && !target.nodeId.startsWith('task_overlay_') && (
             <div
               style={itemStyle}
               onMouseEnter={handleItemHover}
@@ -165,9 +167,23 @@ function DAGContextMenuComponent({
               <span>Create Task Here</span>
             </div>
           )}
+          {onApproveSuggestedAnchor && target.nodeId.startsWith('task_overlay_') && (
+            <div
+              style={itemStyle}
+              onMouseEnter={handleItemHover}
+              onMouseLeave={handleItemLeave}
+              onClick={() => {
+                onApproveSuggestedAnchor(target.nodeId);
+                onClose();
+              }}
+            >
+              <span style={{ width: 14, textAlign: 'center' }}>✓</span>
+              <span>Approve Suggested Anchor</span>
+            </div>
+          )}
           {onDuplicateNode && (
             <>
-              {onCreateTaskHere && <div style={separatorStyle} />}
+              {(onCreateTaskHere || onApproveSuggestedAnchor) && <div style={separatorStyle} />}
             <div
               style={itemStyle}
               onMouseEnter={handleItemHover}

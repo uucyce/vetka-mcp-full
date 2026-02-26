@@ -37,6 +37,7 @@ interface RoadmapTaskNodeProps {
     subtasksTotal?: number;
     description?: string;
     layer?: string;
+    anchorState?: 'anchored' | 'suggested' | 'unplaced';
     // MARKER_155.INTEGRATION.CHAT_BADGE: VETKA chat linking
     sourceChatId?: string;
     sourceChatUrl?: string;
@@ -48,6 +49,7 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
   const borderColor = getStatusBorderColor(data.status);
   const isRunning = data.status === 'running';
   const isDone = data.status === 'done';
+  const isSuggested = data.anchorState === 'suggested';
   const badge = TEAM_BADGE[data.preset || ''];
   const progressPct = data.subtasksTotal
     ? Math.round((data.subtasksDone || 0) / data.subtasksTotal * 100)
@@ -58,6 +60,7 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
       style={{
         background: NOLAN_PALETTE.bgLight,
         border: `2px solid ${borderColor}`,
+        borderStyle: isSuggested ? 'dashed' : 'solid',
         borderRadius: 6,
         padding: '8px 12px',
         minWidth: 160,
@@ -74,6 +77,7 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
               : 'none',
         animation: isRunning ? 'nodePulse 2s ease-in-out infinite' : 'none',
         transition: 'all 0.2s ease',
+        opacity: isSuggested ? 0.58 : 1,
       }}
     >
       {/* Target handle */}
@@ -150,6 +154,24 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
         >
           {data.label}
         </div>
+
+        {isSuggested && (
+          <span
+            style={{
+              color: '#8b8f96',
+              fontSize: 8,
+              textTransform: 'uppercase',
+              letterSpacing: 0.7,
+              border: '1px dashed #3a3f48',
+              borderRadius: 3,
+              padding: '0 4px',
+              flexShrink: 0,
+            }}
+            title="Suggested anchor. Approve to persist."
+          >
+            suggested
+          </span>
+        )}
       </div>
 
       {/* Status row */}

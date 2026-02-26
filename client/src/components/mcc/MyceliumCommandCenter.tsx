@@ -191,6 +191,34 @@ function resolveTaskAnchorIds(task: TaskData, roadmapNodes: DAGNode[]): string[]
   return resolved.slice(0, 3);
 }
 
+function inferSuggestedAnchorIds(task: TaskData, roadmapNodes: DAGNode[]): string[] {
+  const title = String(task.title || '').toLowerCase();
+  const description = String(task.description || '').toLowerCase();
+  const stop = new Set(['fix', 'task', 'wire', 'update', 'with', 'from', 'into', 'for', 'and', 'the', 'api']);
+  const tokens = Array.from(new Set(`${title} ${description}`
+    .split(/[^a-z0-9_./-]+/g)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 4 && !stop.has(t))));
+  if (tokens.length === 0) return [];
+
+  let best: { id: string; score: number } | null = null;
+  for (const node of roadmapNodes) {
+    if (node.graphKind === 'project_root') continue;
+    const meta: any = node.metadata || {};
+    const hay = [
+      String(node.id || ''),
+      String(node.label || ''),
+      String(node.projectNodeId || ''),
+      String(meta.path || ''),
+      String(meta.file_path || ''),
+    ].join(' ').toLowerCase();
+    const score = tokens.reduce((s, token) => s + (hay.includes(token) ? 1 : 0), 0);
+    if (score <= 0) continue;
+    if (!best || score > best.score) best = { id: node.id, score };
+  }
+  return best ? [best.id] : [];
+}
+
 function adaptVersionNode(raw: any): DAGNode {
   if (!raw || typeof raw !== 'object') {
     return {
@@ -521,9 +549,12 @@ function overlayTasksOnRoadmap(
   for (const task of tasks) {
     const id = `task_overlay_${task.id}`;
     const anchors = resolveTaskAnchorIds(task, roadmapNodes);
-    const unplaced = anchors.length === 0;
-    // Keep roadmap visually clean: render only tasks that can be anchored to architecture.
-    if (unplaced) continue;
+    const suggestedAnchors = anchors.length === 0 ? inferSuggestedAnchorIds(task, roadmapNodes) : [];
+    const effectiveAnchors = anchors.length > 0 ? anchors : suggestedAnchors;
+    const anchorState: 'anchored' | 'suggested' | 'unplaced' =
+      anchors.length > 0 ? 'anchored' : suggestedAnchors.length > 0 ? 'suggested' : 'unplaced';
+    // Keep fully unplaced tasks out of roadmap graph until operator places them.
+    if (anchorState === 'unplaced') continue;
     overlayTaskIds.add(task.id);
     const teamProfile = String(task.team_profile || task.preset || 'dragon_bronze');
     const workflowId = String(task.workflow_id || task.pipeline_task_id || `wf_task_${task.id}`);
@@ -547,11 +578,11 @@ function overlayTasksOnRoadmap(
       workflowId,
       teamProfile,
       taskOrigin,
-      anchorNodeIds: anchors,
-      anchorState: 'anchored',
+      anchorNodeIds: effectiveAnchors,
+      anchorState,
     });
 
-    const edgeAnchors = anchors;
+    const edgeAnchors = effectiveAnchors;
 
     for (const anchor of edgeAnchors) {
       taskEdges.push({
@@ -560,7 +591,7 @@ function overlayTasksOnRoadmap(
         target: id,
         type: 'structural',
         relationKind: 'affects',
-        strength: 0.72,
+        strength: anchorState === 'suggested' ? 0.42 : 0.72,
       });
     }
   }
@@ -1648,6 +1679,38 @@ export function MyceliumCommandCenter() {
     }
     store.selectTask(taskId);
     addToast('success', `Task anchored: ${sourceNode.label}`);
+  }, [addToast, graphForView.nodes]);
+
+  const handleApproveSuggestedAnchor = useCallback(async (taskOverlayNodeId: string) => {
+    if (!taskOverlayNodeId.startsWith('task_overlay_')) return;
+    const taskId = taskOverlayNodeId.replace(/^task_overlay_/, '');
+    const taskNode = graphForView.nodes.find((n) => n.id === taskOverlayNodeId);
+    if (!taskNode) return;
+    const suggested = Array.isArray(taskNode.anchorNodeIds) ? taskNode.anchorNodeIds[0] : null;
+    if (!suggested) {
+      addToast('error', 'No suggested anchor found');
+      return;
+    }
+    const anchorNode = graphForView.nodes.find((n) => n.id === suggested);
+    const anchorMeta: any = anchorNode?.metadata || {};
+    const moduleHint = String(anchorNode?.projectNodeId || anchorMeta.path || anchorMeta.file_path || suggested);
+    try {
+      const res = await fetch(`${API_BASE}/debug/task-board/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          primary_node_id: suggested,
+          affected_nodes: [suggested],
+          module: moduleHint,
+          task_origin: 'manual',
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await useMCCStore.getState().fetchTasks();
+      addToast('success', 'Suggested anchor approved');
+    } catch {
+      addToast('error', 'Failed to approve suggested anchor');
+    }
   }, [addToast, graphForView.nodes]);
 
   // MARKER_144.6: Keyboard shortcuts for edit mode (Ctrl+Z, Ctrl+Shift+Z)
@@ -2856,6 +2919,16 @@ export function MyceliumCommandCenter() {
           onClose={() => setContextMenuTarget(null)}
           onAddNode={handleAddNodeFromMenu}
           onCreateTaskHere={navLevel === 'roadmap' ? handleCreateTaskFromNode : undefined}
+          onApproveSuggestedAnchor={
+            navLevel === 'roadmap'
+              && contextMenuTarget?.kind === 'node'
+              && contextMenuTarget.nodeId.startsWith('task_overlay_')
+              && graphForView.nodes.some(
+                (n) => n.id === contextMenuTarget.nodeId && n.anchorState === 'suggested'
+              )
+              ? handleApproveSuggestedAnchor
+              : undefined
+          }
           onDeleteNode={navLevel === 'roadmap' ? undefined : dagEditor.removeNode}
           onDuplicateNode={navLevel === 'roadmap' ? undefined : handleDuplicateNode}
           onDeleteEdge={navLevel === 'roadmap' ? undefined : dagEditor.removeEdge}

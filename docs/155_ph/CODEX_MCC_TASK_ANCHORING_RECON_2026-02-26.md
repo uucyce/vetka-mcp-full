@@ -35,9 +35,12 @@ Scope: task-to-code anchoring and minimal task UX in MCC roadmap/tasks flow.
    - `Create Task Here` on node.
 3. Task anchor persistence:
    - stored in `task_board.json` schema via TaskBoard fields and debug routes.
+4. Suggested anchors flow (roadmap):
+   - tasks without explicit anchors get one inferred `suggested` anchor (when match found),
+   - suggested task nodes are rendered semi-transparent with dashed outline,
+   - right-click suggested task node -> `Approve Suggested Anchor` persists `primary_node_id/affected_nodes/module`.
 
 ## Verification Notes
 
 - Python compile: OK for touched backend files.
 - Frontend full `npm run build` currently fails due unrelated pre-existing TS errors in other modules; no new blocker-specific compile signal available from full build.
-

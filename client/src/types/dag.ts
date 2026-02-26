@@ -72,7 +72,7 @@ export interface DAGNode {
   affectedNodes?: string[];
   integrationTaskOf?: string[];
   anchorNodeIds?: string[];
-  anchorState?: 'anchored' | 'unplaced';
+  anchorState?: 'anchored' | 'suggested' | 'unplaced';
   taskOrigin?: 'architect' | 'chat' | 'manual' | 'system';
   teamProfile?: string;
 
