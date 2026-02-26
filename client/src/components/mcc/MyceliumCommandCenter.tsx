@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { DAGView, type LODLevel } from './DAGView';
+import { DAGView, type LODLevel, type DAGViewRef } from './DAGView';
 import { ReactFlowProvider } from '@xyflow/react';
 // MARKER_155.CLEANUP: Removed deprecated components - using Mini-windows instead
 // import { MCCTaskList } from './MCCTaskList';
@@ -669,6 +669,7 @@ export function MyceliumCommandCenter() {
   const [showTaskEdit, setShowTaskEdit] = useState(false);
   // MARKER_154.10A: Redo feedback input state (Wave 3)
   const [showRedoInput, setShowRedoInput] = useState(false);
+  const dagViewRef = useRef<DAGViewRef | null>(null);
   const [focusDisplayMode, setFocusDisplayMode] = useState<FocusDisplayMode>('all');
   const [jepaRuntimeUi, setJepaRuntimeUi] = useState<{
     title: string;
@@ -1774,12 +1775,12 @@ export function MyceliumCommandCenter() {
     if (nodeId.startsWith('task_overlay_')) {
       const taskId = nodeId.replace('task_overlay_', '');
       selectTask(taskId);
-      // Contract v1: single-click on roadmap task node opens workflow matryoshka.
+      // Fractal interaction: keep one canvas, zoom in instead of switching to workflow level.
       if (navLevel === 'roadmap' && !additive) {
-        drillDown('workflow', { taskId, roadmapNodeId: navRoadmapNodeId });
+        dagViewRef.current?.zoomToNode(nodeId, 2);
       }
     }
-  }, [focusScopeKey, selectTask, setFocusRestoreSource, setFocusedNodeId, navLevel, drillDown, navRoadmapNodeId]);
+  }, [focusScopeKey, selectTask, setFocusRestoreSource, setFocusedNodeId, navLevel]);
 
   const handleLevelAwareNodeDoubleClick = useCallback((nodeId: string) => {
     if (navLevel === 'roadmap') {
@@ -1792,15 +1793,15 @@ export function MyceliumCommandCenter() {
       const taskId = nodeId.replace('task_overlay_', '');
       if (!taskId) return;
       selectTask(taskId);
-      drillDown('workflow', { taskId, roadmapNodeId: navRoadmapNodeId });
+      dagViewRef.current?.zoomToNode(nodeId, 2);
     } else if (navLevel === 'tasks') {
       // MARKER_155.2A: Ignore virtual tree nodes (root + branches), only drill real tasks
       if (nodeId.startsWith('__')) return;
       selectTask(nodeId);
-      drillDown('workflow', { taskId: nodeId });
+      dagViewRef.current?.zoomToNode(nodeId, 2);
     }
     // Other levels: workflow level uses existing DAG editor behavior
-  }, [navLevel, handleRoadmapNodeDrill, selectTask, drillDown, navRoadmapNodeId]);
+  }, [navLevel, handleRoadmapNodeDrill, selectTask]);
 
   // Selected node data for detail panel
   const selectedNodeData = useMemo(() => {
@@ -1936,7 +1937,10 @@ export function MyceliumCommandCenter() {
     onDrillNode: selectedNode ? () => handleLevelAwareNodeDoubleClick(selectedNode) : undefined,
     onDrillTask: () => {
       if (selectedNode) handleLevelAwareNodeDoubleClick(selectedNode);
-      else if (selectedTaskId) drillDown('workflow', { taskId: selectedTaskId });
+      else if (selectedTaskId) {
+        const fallbackNodeId = navLevel === 'roadmap' ? `task_overlay_${selectedTaskId}` : selectedTaskId;
+        dagViewRef.current?.zoomToNode(fallbackNodeId, 2);
+      }
     },
     onExecute: handleExecute,
     onToggleEdit: () => toggleEditMode(),
@@ -2424,6 +2428,7 @@ export function MyceliumCommandCenter() {
                   </div>
                 ) : (
                   <DAGView
+                    ref={dagViewRef}
                     dagNodes={graphForView.nodes}
                     dagEdges={graphForView.edges}
                     selectedNode={selectedNode}
