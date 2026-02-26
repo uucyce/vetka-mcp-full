@@ -1615,7 +1615,7 @@ export function MyceliumCommandCenter() {
   );
 
   const graphForView = useMemo(() => {
-    if (navLevel === 'roadmap' && cameraLOD !== 'architecture' && selectedTaskId) {
+    if (navLevel === 'roadmap' && selectedTaskId) {
       const hasDetailedWorkflow = dagNodes.some((n) => n.type !== 'task');
       const workflowNodes = hasDetailedWorkflow
         ? dagNodes
@@ -1648,7 +1648,6 @@ export function MyceliumCommandCenter() {
     const edges = effectiveEdgesWithPredicted.filter(e => visibleIds.has(e.source) && visibleIds.has(e.target));
     return { nodes, edges };
   }, [
-    cameraLOD,
     dagEdges,
     dagNodes,
     inlineWorkflowEdges,
@@ -1663,6 +1662,18 @@ export function MyceliumCommandCenter() {
     selectedNode,
     navRoadmapNodeId,
   ]);
+
+  // Keep task selection and camera LOD synchronized (first-click safe).
+  useEffect(() => {
+    if (navLevel !== 'roadmap') return;
+    if (!selectedTaskId) return;
+    const overlayId = `task_overlay_${selectedTaskId}`;
+    const targetId = effectiveNodes.some((n) => n.id === overlayId)
+      ? overlayId
+      : (selectedNode || navRoadmapNodeId || null);
+    if (!targetId) return;
+    dagViewRef.current?.zoomToNode(targetId, 2);
+  }, [effectiveNodes, navLevel, navRoadmapNodeId, selectedNode, selectedTaskId]);
 
   // MARKER_155.P4.FOCUS_ACROSS_ZOOM:
   // Keep multi-focus stable across drill/zoom transitions, drop stale ids only.
