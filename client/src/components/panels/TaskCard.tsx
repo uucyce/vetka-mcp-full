@@ -62,6 +62,10 @@ export interface TaskData {
   primary_node_id?: string;
   affected_nodes?: string[];
   integration_task_of?: string[];
+  // MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1: execution metadata
+  workflow_id?: string;
+  team_profile?: string;
+  task_origin?: 'architect' | 'chat' | 'manual' | 'system' | string;
 }
 
 // MARKER_127.0B: Pipeline results data structure

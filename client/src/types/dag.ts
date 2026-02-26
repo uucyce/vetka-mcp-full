@@ -71,6 +71,10 @@ export interface DAGNode {
   primaryNodeId?: string;
   affectedNodes?: string[];
   integrationTaskOf?: string[];
+  anchorNodeIds?: string[];
+  anchorState?: 'anchored' | 'unplaced';
+  taskOrigin?: 'architect' | 'chat' | 'manual' | 'system';
+  teamProfile?: string;
 
   // MARKER_155.ARCH_LAYOUT.METADATA_BRIDGE.V1:
   // Keep backend layout metadata (parent/cluster/buckets) for architecture tree renderer.

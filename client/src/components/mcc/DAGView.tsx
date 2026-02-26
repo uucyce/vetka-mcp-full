@@ -227,6 +227,85 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
       });
     }
 
+    // MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1:
+    // Deterministic post-layout placement for roadmap task overlays:
+    // anchored tasks near code anchors, unplaced tasks in right rail.
+    if (layoutMode === 'architecture') {
+      const taskOverlayNodes = updatedNodes.filter(
+        (n) => n.type === 'roadmap_task' && n.id.startsWith('task_overlay_')
+      );
+      if (taskOverlayNodes.length > 0) {
+        const nodeById = new Map(updatedNodes.map((n) => [n.id, n]));
+        const baseNodes = updatedNodes.filter((n) => !(n.type === 'roadmap_task' && n.id.startsWith('task_overlay_')));
+        const bounds = baseNodes.reduce(
+          (acc, n) => {
+            const w = Number(n.width || 140);
+            acc.maxX = Math.max(acc.maxX, n.position.x + w);
+            acc.minY = Math.min(acc.minY, n.position.y);
+            return acc;
+          },
+          { maxX: Number.NEGATIVE_INFINITY, minY: Number.POSITIVE_INFINITY }
+        );
+
+        const getCenter = (n: Node): { x: number; y: number } => ({
+          x: n.position.x + Number(n.width || 140) / 2,
+          y: n.position.y + Number(n.height || 48) / 2,
+        });
+
+        const anchoredGroups = new Map<string, Node[]>();
+        const unplacedNodes: Node[] = [];
+
+        for (const taskNode of taskOverlayNodes) {
+          if (pinMap[taskNode.id]) continue;
+          const data: any = taskNode.data || {};
+          const anchorIds: string[] = Array.isArray(data.anchorNodeIds)
+            ? (data.anchorNodeIds as unknown[]).filter((id): id is string => typeof id === 'string' && !!nodeById.get(id))
+            : [];
+          const anchors = anchorIds
+            .map((id: string) => nodeById.get(id))
+            .filter((n): n is Node => !!n && !(n.type === 'roadmap_task' && n.id.startsWith('task_overlay_')));
+          if (anchors.length === 0) {
+            unplacedNodes.push(taskNode);
+            continue;
+          }
+          const key = anchorIds.slice().sort().join('|');
+          const list = anchoredGroups.get(key) || [];
+          list.push(taskNode);
+          anchoredGroups.set(key, list);
+        }
+
+        for (const [key, group] of anchoredGroups.entries()) {
+          const anchorIds = key.split('|').filter(Boolean);
+          const anchors = anchorIds
+            .map((id) => nodeById.get(id))
+            .filter((n): n is Node => !!n);
+          if (anchors.length === 0) continue;
+          const centers = anchors.map(getCenter);
+          const centerX = centers.reduce((s, c) => s + c.x, 0) / centers.length;
+          const centerY = centers.reduce((s, c) => s + c.y, 0) / centers.length;
+          const sorted = [...group].sort((a, b) => a.id.localeCompare(b.id));
+          sorted.forEach((taskNode, idx) => {
+            const offset = (idx - (sorted.length - 1) / 2) * 84;
+            taskNode.position = {
+              x: centerX + 120,
+              y: centerY + offset,
+            };
+          });
+        }
+
+        const railX = Number.isFinite(bounds.maxX) ? bounds.maxX + 180 : 980;
+        const railStartY = Number.isFinite(bounds.minY) ? Math.max(120, bounds.minY + 140) : 140;
+        unplacedNodes
+          .sort((a, b) => String((a.data as any)?.label || '').localeCompare(String((b.data as any)?.label || '')))
+          .forEach((taskNode, idx) => {
+            taskNode.position = {
+              x: railX,
+              y: railStartY + idx * 88,
+            };
+          });
+      }
+    }
+
     // Update position map for next render
     const newPositions: PositionMap = {};
     updatedNodes.forEach(n => {
@@ -235,7 +314,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
     prevPositionsRef.current = newPositions;
 
     return { nodes: updatedNodes, edges: result.edges };
-  }, [inputNodes, inputEdges, compact, graphIdentity, layoutMode, layoutBiasProfile, pinnedPositions]);
+  }, [inputNodes, inputEdges, compact, graphIdentity, layoutMode, layoutBiasProfile]);
 
   // xyflow state
   const fractalNodes = useMemo(() => {
@@ -400,7 +479,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
         opacity: connectedNodeIds.has(n.id) ? 1.0 : 0.25,
       },
     })));
-  }, [selectedNode, selectedNodeIds, setEdges, setNodes]);
+  }, [selectedNode, selectedNodeIds, layoutedEdges, setEdges, setNodes]);
 
   // Track user drag changes
   const handleNodesChange = useCallback((changes: any) => {
@@ -471,12 +550,19 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
   // Handle pane click (deselect)
   const onPaneClick = useCallback((event: React.MouseEvent) => {
+    // Immediate visual reset, then propagate selection clear upstream.
+    setEdges(baseEdgesRef.current);
+    setNodes(nds => nds.map(n => ({
+      ...n,
+      style: { ...n.style, opacity: 1 },
+    })));
+    onNodeSelectWithMode?.(null, { additive: false });
     onNodeSelect?.(null);
     onEdgeSelect?.(null);
     if (editMode && event.detail === 2) {
       onPaneDoubleClick?.({ x: event.clientX, y: event.clientY });
     }
-  }, [editMode, onNodeSelect, onEdgeSelect, onPaneDoubleClick]);
+  }, [editMode, onNodeSelect, onNodeSelectWithMode, onEdgeSelect, onPaneDoubleClick, setEdges, setNodes]);
 
   // MARKER_144.3: Right-click handlers for context menu (only in edit mode)
   const handleNodeContextMenu = useCallback(
@@ -584,25 +670,6 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
             borderRadius: 4,
           }}
         />
-        {/* MARKER_155A.P2.FRACTAL_RENDER: Lightweight in-canvas LOD badge for user orientation. */}
-        <div
-          style={{
-            position: 'absolute',
-            top: 8,
-            right: 8,
-            padding: '2px 6px',
-            borderRadius: 4,
-            border: `1px solid ${NOLAN_PALETTE.border}`,
-            background: 'rgba(0,0,0,0.65)',
-            color: '#9aa0a6',
-            fontSize: 9,
-            letterSpacing: 0.5,
-            textTransform: 'uppercase',
-            pointerEvents: 'none',
-          }}
-        >
-          LOD {cameraLOD}
-        </div>
       </ReactFlow>
 
       {/* CSS animations for running nodes + fade-in */}

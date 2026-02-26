@@ -366,6 +366,11 @@ export function layoutSugiyamaBT(
         preset: node.preset,
         subtasksDone: node.subtasksDone,
         subtasksTotal: node.subtasksTotal,
+        // MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        anchorNodeIds: node.anchorNodeIds,
+        anchorState: node.anchorState,
+        taskOrigin: node.taskOrigin,
+        teamProfile: node.teamProfile,
       },
     };
   });

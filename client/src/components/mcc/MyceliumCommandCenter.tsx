@@ -51,8 +51,6 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { NOLAN_PALETTE, createTestDAGData } from '../../utils/dagLayout';
 import {
   fetchDagLayoutBiasProfile,
-  inferBiasFromPinnedPositions,
-  updateDagLayoutBiasProfile,
   type DagLayoutBiasProfile,
 } from '../../utils/dagLayoutPreferences';
 import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
@@ -117,6 +115,80 @@ function sameIds(a: string[], b: string[]): boolean {
     if (a[i] !== b[i]) return false;
   }
   return true;
+}
+
+function normalizePathKey(value: string | null | undefined): string {
+  return String(value || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\.\/+/, '')
+    .replace(/\/+/g, '/')
+    .toLowerCase();
+}
+
+function normalizeTaskOrigin(raw: string | null | undefined): 'architect' | 'chat' | 'manual' | 'system' {
+  const v = String(raw || '').trim().toLowerCase();
+  if (v.includes('architect')) return 'architect';
+  if (v.includes('chat') || v.includes('doctor')) return 'chat';
+  if (v.includes('system') || v.includes('auto')) return 'system';
+  return 'manual';
+}
+
+function resolveTaskAnchorIds(task: TaskData, roadmapNodes: DAGNode[]): string[] {
+  const idSet = new Set(roadmapNodes.map((n) => n.id));
+  const lookup = new Map<string, string[]>();
+
+  const addLookup = (key: string | null | undefined, nodeId: string) => {
+    const normalized = normalizePathKey(key);
+    if (!normalized) return;
+    const prev = lookup.get(normalized) || [];
+    if (!prev.includes(nodeId)) prev.push(nodeId);
+    lookup.set(normalized, prev);
+  };
+
+  for (const node of roadmapNodes) {
+    addLookup(node.id, node.id);
+    addLookup(node.projectNodeId, node.id);
+    addLookup(node.label, node.id);
+    const meta: any = node.metadata || {};
+    addLookup(meta.path, node.id);
+    addLookup(meta.file_path, node.id);
+  }
+
+  const candidates = uniqueIds([
+    task.primary_node_id,
+    ...(Array.isArray(task.affected_nodes) ? task.affected_nodes : []),
+    task.module,
+  ]);
+
+  const resolved: string[] = [];
+  const append = (nodeId: string) => {
+    if (!idSet.has(nodeId)) return;
+    if (!resolved.includes(nodeId)) resolved.push(nodeId);
+  };
+
+  for (const candidate of candidates) {
+    if (idSet.has(candidate)) {
+      append(candidate);
+      continue;
+    }
+    const key = normalizePathKey(candidate);
+    if (!key) continue;
+    const exact = lookup.get(key) || [];
+    if (exact.length > 0) {
+      exact.forEach(append);
+      continue;
+    }
+    for (const [k, ids] of lookup.entries()) {
+      if (k.endsWith(`/${key}`) || key.endsWith(`/${k}`)) {
+        ids.forEach(append);
+      }
+      if (resolved.length >= 3) break;
+    }
+    if (resolved.length >= 3) break;
+  }
+
+  return resolved.slice(0, 3);
 }
 
 function adaptVersionNode(raw: any): DAGNode {
@@ -292,6 +364,8 @@ function mapBackendNode(node: any): DAGNode {
     primaryNodeId: node.primary_node_id,
     affectedNodes: Array.isArray(node.affected_nodes) ? node.affected_nodes : undefined,
     integrationTaskOf: Array.isArray(node.integration_task_of) ? node.integration_task_of : undefined,
+    taskOrigin: normalizeTaskOrigin(node.task_origin || node.source),
+    teamProfile: String(node.team_profile || node.preset || ''),
   };
 }
 
@@ -446,7 +520,15 @@ function overlayTasksOnRoadmap(
 
   for (const task of tasks) {
     const id = `task_overlay_${task.id}`;
+    const anchors = resolveTaskAnchorIds(task, roadmapNodes);
+    const unplaced = anchors.length === 0;
+    // Keep roadmap visually clean: render only tasks that can be anchored to architecture.
+    if (unplaced) continue;
     overlayTaskIds.add(task.id);
+    const teamProfile = String(task.team_profile || task.preset || 'dragon_bronze');
+    const workflowId = String(task.workflow_id || task.pipeline_task_id || `wf_task_${task.id}`);
+    const taskOrigin = normalizeTaskOrigin(task.task_origin || task.source);
+
     taskNodes.push({
       id,
       type: 'roadmap_task',
@@ -455,26 +537,36 @@ function overlayTasksOnRoadmap(
       layer: 3,
       taskId: task.id,
       description: task.description,
-      preset: task.preset,
+      preset: teamProfile,
       subtasksDone: task.stats?.subtasks_completed,
       subtasksTotal: task.stats?.subtasks_total,
       graphKind: 'project_task',
       primaryNodeId: task.primary_node_id || task.module || focusRoadmapNodeId,
       affectedNodes: task.affected_nodes,
       integrationTaskOf: task.integration_task_of,
+      workflowId,
+      teamProfile,
+      taskOrigin,
+      anchorNodeIds: anchors,
+      anchorState: 'anchored',
     });
 
-    taskEdges.push({
-      id: `overlay-affects-${focusRoadmapNodeId}-${task.id}`,
-      source: focusRoadmapNodeId,
-      target: id,
-      type: 'structural',
-      relationKind: 'affects',
-      strength: 0.7,
-    });
+    const edgeAnchors = anchors;
+
+    for (const anchor of edgeAnchors) {
+      taskEdges.push({
+        id: `overlay-affects-${anchor}-${task.id}`,
+        source: anchor,
+        target: id,
+        type: 'structural',
+        relationKind: 'affects',
+        strength: 0.72,
+      });
+    }
   }
 
   for (const task of tasks) {
+    if (!overlayTaskIds.has(task.id)) continue;
     for (const depId of task.dependencies || []) {
       if (!overlayTaskIds.has(depId)) continue;
       taskEdges.push({
@@ -569,6 +661,8 @@ export function MyceliumCommandCenter() {
   const dagFetchInFlightRef = useRef(false);
   const dagFetchQueuedRef = useRef(false);
   const lastPredictiveErrorKeyRef = useRef<string>('');
+  const runtimeHealthCacheRef = useRef<{ ok: boolean; detail: string; ts: number } | null>(null);
+  const predictiveSkipUntilRef = useRef<number>(0);
 
   const isActiveWindow = useCallback(() => {
     if (typeof document === 'undefined') return true;
@@ -649,7 +743,6 @@ export function MyceliumCommandCenter() {
   // MARKER_155.MEMORY.ENGRAM_DAG_PREFS.V1:
   // Shared layout intent profile from ENGRAM (MCC + VETKA).
   const [layoutBiasProfile, setLayoutBiasProfile] = useState<DagLayoutBiasProfile | null>(null);
-  const profilePersistTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -664,13 +757,6 @@ export function MyceliumCommandCenter() {
       cancelled = true;
     };
   }, [layoutPreferenceScopeKey]);
-
-  useEffect(() => () => {
-    if (profilePersistTimerRef.current) {
-      window.clearTimeout(profilePersistTimerRef.current);
-      profilePersistTimerRef.current = null;
-    }
-  }, []);
 
   // MARKER_155.WIZARD.028: Wizard navigation handlers (after initMCC declared)
   const handleWizardComplete = useCallback((step: WizardStep, data: any) => {
@@ -973,6 +1059,35 @@ export function MyceliumCommandCenter() {
       const jepaRuntimeModule =
         (import.meta as any)?.env?.VITE_MCC_JEPA_RUNTIME_MODULE ||
         'src.services.jepa_runtime';
+      if (jepaStrict) {
+        const now = Date.now();
+        if (predictiveSkipUntilRef.current > now) {
+          setPredictedEdges([]);
+          return;
+        }
+        const cache = runtimeHealthCacheRef.current;
+        const cacheFresh = cache && (now - cache.ts) < 3000;
+        let runtimeOk = Boolean(cache?.ok);
+        let runtimeDetail = String(cache?.detail || '');
+        if (!cacheFresh) {
+          const healthUrl = `${API_BASE}/mcc/graph/predict/runtime-health?force=false&runtime_module=${encodeURIComponent(jepaRuntimeModule)}`;
+          const healthRes = await fetch(healthUrl);
+          const healthData = await healthRes.json().catch(() => ({}));
+          runtimeOk = Boolean(healthData?.ok);
+          runtimeDetail = String(healthData?.detail || '');
+          runtimeHealthCacheRef.current = { ok: runtimeOk, detail: runtimeDetail, ts: now };
+        }
+        if (!runtimeOk) {
+          setJepaRuntimeUi({
+            title: 'JEPA Runtime: Unavailable',
+            hint: runtimeDetail || 'runtime health failed',
+            color: '#ef8d8d',
+          });
+          setPredictedEdges([]);
+          predictiveSkipUntilRef.current = now + 5000;
+          return;
+        }
+      }
       const res = await fetch(`${API_BASE}/mcc/graph/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1001,6 +1116,7 @@ export function MyceliumCommandCenter() {
           addToast('error', `JEPA runtime unavailable: ${detail}`);
           lastPredictiveErrorKeyRef.current = errKey;
         }
+        predictiveSkipUntilRef.current = Date.now() + 5000;
         setPredictedEdges([]);
         return;
       }
@@ -1177,21 +1293,15 @@ export function MyceliumCommandCenter() {
   // At workflow/running → show workflow DAG.
   const { effectiveNodes, effectiveEdges } = useMemo(() => {
     // MARKER_155A.G21.SINGLE_CANVAS_STATE:
-    // When roadmap branch is focused, render architecture + task overlay in one canvas.
-    if (navLevel === 'roadmap' && roadmapNodes.length > 0 && navRoadmapNodeId && tasks.length > 0) {
-      const taskMatchesRoadmapContext = (task: TaskData, roadmapNodeId: string): boolean => {
-        if (task.primary_node_id === roadmapNodeId) return true;
-        if (task.module === roadmapNodeId) return true;
-        if (task.tags?.includes(roadmapNodeId)) return true;
-        if (task.affected_nodes?.includes(roadmapNodeId)) return true;
-        return false;
-      };
-      const filtered = tasks.filter(t => taskMatchesRoadmapContext(t, navRoadmapNodeId));
-      const displayTasks = filtered.length > 0 ? filtered : [];
-      if (displayTasks.length > 0) {
-        const overlaid = overlayTasksOnRoadmap(roadmapNodes, roadmapEdges, displayTasks, navRoadmapNodeId);
-        return { effectiveNodes: overlaid.nodes, effectiveEdges: overlaid.edges };
-      }
+    // Roadmap always renders architecture + full task overlay to keep topology stable.
+    if (navLevel === 'roadmap' && roadmapNodes.length > 0 && tasks.length > 0) {
+      const fallbackFocusNodeId =
+        navRoadmapNodeId ||
+        roadmapNodes.find((n) => n.graphKind === 'project_root')?.id ||
+        roadmapNodes[0]?.id ||
+        '__root__';
+      const overlaid = overlayTasksOnRoadmap(roadmapNodes, roadmapEdges, tasks, fallbackFocusNodeId);
+      return { effectiveNodes: overlaid.nodes, effectiveEdges: overlaid.edges };
     }
 
     if (navLevel === 'roadmap' && roadmapNodes.length > 0) {
@@ -1202,8 +1312,11 @@ export function MyceliumCommandCenter() {
       // MARKER_155A.P1.CROSSCUT_TASKS:
       // Allow complex tasks to appear in multiple roadmap branches via affected_nodes[].
       const taskMatchesRoadmapContext = (task: TaskData, roadmapNodeId: string): boolean => {
+        const moduleKey = normalizePathKey(task.module);
+        const nodeKey = normalizePathKey(roadmapNodeId);
         if (task.primary_node_id === roadmapNodeId) return true;
         if (task.module === roadmapNodeId) return true;
+        if (moduleKey && nodeKey && (moduleKey.endsWith(`/${nodeKey}`) || nodeKey.endsWith(`/${moduleKey}`))) return true;
         if (task.tags?.includes(roadmapNodeId)) return true;
         if (task.affected_nodes?.includes(roadmapNodeId)) return true;
         return !task.module && !task.primary_node_id && (!task.affected_nodes || task.affected_nodes.length === 0);
@@ -1235,7 +1348,7 @@ export function MyceliumCommandCenter() {
     if (navLevel !== 'roadmap') return effectiveEdges;
 
     // MARKER_155.P1.TOPOLOGY_DEFAULT:
-    // Base roadmap view is topology-only to keep architecture legible.
+    // Base roadmap view is topology-first, but keep task->task dependency edges stable.
     const topologyEdges = effectiveEdges.filter(e => e.type === 'structural');
     const focusIds = new Set<string>(
       selectedNodeIds.length > 0
@@ -1294,6 +1407,19 @@ export function MyceliumCommandCenter() {
     if (overlay.length === 0 && crossOverlay.length === 0 && baseDependencyOverlay.length === 0) return topologyEdges;
     return [...topologyEdges, ...baseDependencyOverlay, ...crossOverlay, ...overlay];
   }, [effectiveEdges, effectiveNodes, predictedEdges, navLevel, selectedNode, selectedNodeIds, roadmapCrossEdges]);
+
+  // MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1:
+  // Keep MiniTasks selection and roadmap task_overlay node selection synchronized.
+  useEffect(() => {
+    if (navLevel !== 'roadmap') return;
+    if (!selectedTaskId) return;
+    const overlayId = `task_overlay_${selectedTaskId}`;
+    if (!effectiveNodes.some((n) => n.id === overlayId)) return;
+    setSelectedNode((prev) => (prev === overlayId ? prev : overlayId));
+    setSelectedNodeIds((prev) => (sameIds(prev, [overlayId]) ? prev : [overlayId]));
+    setFocusedNodeId(overlayId);
+    setFocusRestoreSource('current');
+  }, [effectiveNodes, navLevel, selectedTaskId, setFocusRestoreSource, setFocusedNodeId]);
 
   const focusIdsForView = useMemo(
     () => new Set<string>(
@@ -1359,31 +1485,18 @@ export function MyceliumCommandCenter() {
       selectedNode && liveIds.has(selectedNode) ? selectedNode : null,
     ]);
     const saved = uniqueIds((focusMemoryRef.current[focusScopeKey] || []).filter(id => liveIds.has(id)));
-    const sortedNodes = [...effectiveNodes].sort((a, b) => {
-      const layerA = typeof a.layer === 'number' ? a.layer : 0;
-      const layerB = typeof b.layer === 'number' ? b.layer : 0;
-      if (layerA !== layerB) return layerA - layerB;
-      const labelCmp = String(a.label || '').localeCompare(String(b.label || ''));
-      if (labelCmp !== 0) return labelCmp;
-      return a.id.localeCompare(b.id);
-    });
-    const defaultCandidate = (() => {
-      if (navLevel !== 'workflow' && liveIds.has('__root__')) return '__root__';
-      if (navRoadmapNodeId && liveIds.has(navRoadmapNodeId)) return navRoadmapNodeId;
-      return sortedNodes[0]?.id || null;
-    })();
-    const fallback = defaultCandidate ? [defaultCandidate] : [];
+
+    // Explicit user clear (pane click) must remain empty; do not auto-select defaults.
+    if (current.length === 0 && saved.length === 0) return;
 
     const orderedCandidates: Array<{ source: FocusRestoreSource; ids: string[] }> = focusRestorePolicy === 'scope_first'
       ? [
         { source: 'memory', ids: saved },
         { source: 'current', ids: current },
-        { source: 'default', ids: fallback },
       ]
       : [
         { source: 'current', ids: current },
         { source: 'memory', ids: saved },
-        { source: 'default', ids: fallback },
       ];
     const picked = orderedCandidates.find(candidate => candidate.ids.length > 0);
     if (!picked) return;
@@ -1524,6 +1637,10 @@ export function MyceliumCommandCenter() {
     const additive = !!options?.additive;
 
     if (!nodeId) {
+      // Explicit deselect (pane click): clear focus memory for current scope
+      // so auto-restore does not immediately reselect old nodes.
+      focusMemoryRef.current[focusScopeKey] = [];
+      selectTask(null);
       setSelectedNode(null);
       setSelectedNodeIds([]);
       setFocusedNodeId(null);
@@ -1549,9 +1666,14 @@ export function MyceliumCommandCenter() {
     setFocusRestoreSource('current');
 
     if (nodeId.startsWith('task_overlay_')) {
-      selectTask(nodeId.replace('task_overlay_', ''));
+      const taskId = nodeId.replace('task_overlay_', '');
+      selectTask(taskId);
+      // Contract v1: single-click on roadmap task node opens workflow matryoshka.
+      if (navLevel === 'roadmap' && !additive) {
+        drillDown('workflow', { taskId, roadmapNodeId: navRoadmapNodeId });
+      }
     }
-  }, [selectTask, setFocusRestoreSource, setFocusedNodeId]);
+  }, [focusScopeKey, selectTask, setFocusRestoreSource, setFocusedNodeId, navLevel, drillDown, navRoadmapNodeId]);
 
   const handleLevelAwareNodeDoubleClick = useCallback((nodeId: string) => {
     if (navLevel === 'roadmap') {
@@ -2217,18 +2339,8 @@ export function MyceliumCommandCenter() {
                       setLayoutPinsForKey(dagGraphIdentity, positions);
 
                       // MARKER_155A.P2_1.PIN_FEEDBACK_LOOP:
-                      // Trigger-driven learning (no periodic retrain): pin commit -> ENGRAM profile update.
-                      const inferred = inferBiasFromPinnedPositions(positions);
-                      if (profilePersistTimerRef.current) {
-                        window.clearTimeout(profilePersistTimerRef.current);
-                      }
-                      profilePersistTimerRef.current = window.setTimeout(() => {
-                        updateDagLayoutBiasProfile(layoutPreferenceScopeKey, inferred)
-                          .then((merged) => {
-                            if (merged) setLayoutBiasProfile(merged);
-                          })
-                          .catch(() => {});
-                      }, 350);
+                      // Temporarily disabled: real-time profile retrain on drag causes edge jitter
+                      // (lines "fly away then back"). Keep only explicit pin persistence.
                     }}
                     // test compatibility marker: navLevel === 'roadmap' ? false : editMode
                     editMode={navLevel === 'roadmap' ? false : (navLevel === 'tasks' ? false : editMode)}

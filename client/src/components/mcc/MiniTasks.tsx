@@ -32,6 +32,8 @@ function TasksCompact() {
   const tasks = useMCCStore(s => s.tasks);
   const summary = useMCCStore(s => s.summary);
   const fetchTasks = useMCCStore(s => s.fetchTasks);
+  const selectedTaskId = useMCCStore(s => s.selectedTaskId);
+  const selectTask = useMCCStore(s => s.selectTask);
 
   // Fetch on mount
   useEffect(() => {
@@ -69,11 +71,15 @@ function TasksCompact() {
       {display.map(task => (
         <div
           key={task.id}
+          onClick={() => selectTask(task.id)}
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: 5,
-            padding: '2px 0',
+            padding: '2px 4px',
+            borderLeft: task.id === selectedTaskId ? '2px solid #fff' : '2px solid transparent',
+            background: task.id === selectedTaskId ? 'rgba(255,255,255,0.05)' : 'transparent',
+            cursor: 'pointer',
           }}
         >
           <span
