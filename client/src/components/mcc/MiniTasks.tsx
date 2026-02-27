@@ -13,6 +13,9 @@
 import { useEffect } from 'react';
 import { MiniWindow } from './MiniWindow';
 import { useMCCStore } from '../../store/useMCCStore';
+// MARKER_155A.G24.LEGACY_EXPANDED_TASK_PANEL:
+// Expanded mode still embeds deprecated MCCTaskList.
+// Kept temporarily for feature parity; roadmap includes extraction to modern inline panel.
 import { MCCTaskList } from './MCCTaskList';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 
@@ -71,7 +74,7 @@ function TasksCompact() {
       {display.map(task => (
         <div
           key={task.id}
-          onClick={() => selectTask(task.id)}
+          onClick={() => selectTask(task.id === selectedTaskId ? null : task.id)}
           style={{
             display: 'flex',
             alignItems: 'center',

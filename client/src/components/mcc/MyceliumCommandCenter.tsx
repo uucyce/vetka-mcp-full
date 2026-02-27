@@ -44,7 +44,6 @@ import { ToastContainer } from './ToastContainer';
 import { useMCCStore } from '../../store/useMCCStore';
 import { useStore } from '../../store/useStore';
 import { useOnboarding } from '../../hooks/useOnboarding';
-import { useLimitedTooltip } from '../../hooks/useLimitedTooltip';
 import { useRoadmapDAG } from '../../hooks/useRoadmapDAG';
 import { useToast } from '../../hooks/useToast';
 import { useCaptain } from '../../hooks/useCaptain';
@@ -60,7 +59,6 @@ import type { DAGNode, DAGEdge, DAGStats, DAGNodeType, NodeStatus, EdgeType } fr
 import type { TaskData } from '../panels/TaskCard';
 
 const API_BASE = 'http://localhost:5001/api';
-const AUTO_DRILL_ZOOM = false;
 
 interface PredictedEdgePayload {
   source: string;
@@ -107,6 +105,7 @@ interface DagCompareRow {
 type FocusDisplayMode = 'all' | 'selected_deps' | 'selected_only';
 type FocusRestoreSource = 'current' | 'memory' | 'default';
 type TaskDrillState = 'collapsed' | 'expanded';
+type RoadmapNodeDrillState = 'collapsed' | 'expanded';
 
 function uniqueIds(ids: Array<string | null | undefined>): string[] {
   return Array.from(new Set(ids.filter(Boolean) as string[]));
@@ -645,6 +644,10 @@ function overlayWorkflowOnSelectedTask(
     taskId: selectedTaskId,
     workflowId: n.workflowId || selectedTaskId,
     graphKind: n.graphKind || 'workflow_agent',
+    metadata: {
+      ...(n.metadata || {}),
+      mini_scale: 0.42,
+    },
     // MARKER_155A.P0.WF_MINI_LAYER:
     // Inline workflow is rendered as micro-layer (fractal scale) over architecture.
     width: 54,
@@ -667,12 +670,145 @@ function overlayWorkflowOnSelectedTask(
     });
   }
 
-  // P0 UX: keep inline workflow visually clean; no bridge rays from anchor to workflow cluster.
-  const bridgeEdges: DAGEdge[] = [];
+  const hasIncoming = new Set<string>(remappedEdges.map((e) => e.target));
+  const entryNodeId = remappedNodes
+    .map((n) => n.id)
+    .sort((a, b) => a.localeCompare(b))
+    .find((id) => !hasIncoming.has(id));
+  const overlayTaskNodeId = `task_overlay_${selectedTaskId}`;
+  const bridgeEdges: DAGEdge[] = entryNodeId
+    ? [{
+        id: `wf_bridge_${selectedTaskId}`,
+        source: overlayTaskNodeId,
+        target: entryNodeId,
+        type: 'structural',
+        relationKind: 'contains',
+        strength: 0.26,
+      }]
+    : [];
 
   return {
     nodes: [...baseNodes, ...remappedNodes],
     edges: [...baseEdges, ...remappedEdges, ...bridgeEdges],
+  };
+}
+
+// MARKER_155A.G23.NODE_DRILL_NEXT_DEPTH:
+// Roadmap matryoshka drill for folder/node: reveal only next depth as micro-layer.
+function overlayRoadmapNodeChildren(
+  baseNodes: DAGNode[],
+  baseEdges: DAGEdge[],
+  parentNodeId: string,
+): { nodes: DAGNode[]; edges: DAGEdge[] } {
+  if (!parentNodeId) return { nodes: baseNodes, edges: baseEdges };
+  const structural = baseEdges.filter((e) => {
+    if (e.relationKind === 'contains') return true;
+    if (e.type === 'structural') return true;
+    return false;
+  });
+  if (structural.length === 0) return { nodes: baseNodes, edges: baseEdges };
+
+  const byId = new Map(baseNodes.map((n) => [n.id, n]));
+  const validRoadmapNode = (id: string): boolean => {
+    if (!id) return false;
+    if (id.startsWith('task_overlay_') || id.startsWith('wf_') || id.startsWith('rd_')) return false;
+    return byId.has(id);
+  };
+  const adjacency = new Map<string, Set<string>>();
+  const connect = (a: string, b: string) => {
+    if (!validRoadmapNode(a) || !validRoadmapNode(b)) return;
+    const aa = adjacency.get(a) || new Set<string>();
+    aa.add(b);
+    adjacency.set(a, aa);
+  };
+  for (const e of structural) {
+    connect(e.source, e.target);
+    connect(e.target, e.source);
+  }
+
+  const remappedNodes: DAGNode[] = [];
+  const remappedEdges: DAGEdge[] = [];
+  const seen = new Set<string>();
+
+  // MARKER_155A.G23.NODE_DRILL_BREADTH:
+  // Show richer next-depth context (children + limited grandchildren) instead of a single node.
+  let depth1 = Array.from(adjacency.get(parentNodeId) || [])
+    .filter((id) => validRoadmapNode(id))
+    .sort((a, b) => a.localeCompare(b))
+    .slice(0, 6);
+
+  // MARKER_155A.G23.NODE_DRILL_PATH_FALLBACK:
+  // If graph edges provide too sparse neighborhood, derive child candidates by path hierarchy.
+  if (depth1.length < 2) {
+    const parent = byId.get(parentNodeId);
+    const parentMeta: any = parent?.metadata || {};
+    const parentPath = normalizePathKey(
+      String(parentMeta.path || parentMeta.file_path || parent?.projectNodeId || parent?.id || '')
+    );
+    if (parentPath) {
+      const segCount = parentPath.split('/').filter(Boolean).length;
+      const pathCandidates = baseNodes
+        .filter((n) => validRoadmapNode(n.id))
+        .filter((n) => {
+          const m: any = n.metadata || {};
+          const p = normalizePathKey(String(m.path || m.file_path || n.projectNodeId || n.id || ''));
+          if (!p || p === parentPath) return false;
+          if (!p.startsWith(`${parentPath}/`)) return false;
+          const pc = p.split('/').filter(Boolean).length;
+          return pc === segCount + 1;
+        })
+        .map((n) => n.id)
+        .sort((a, b) => a.localeCompare(b))
+        .slice(0, 8);
+      if (pathCandidates.length > depth1.length) depth1 = pathCandidates;
+    }
+  }
+  const depth2Set = new Set<string>();
+  for (const c of depth1) {
+    const neighbors = Array.from(adjacency.get(c) || [])
+      .filter((id) => id !== parentNodeId && validRoadmapNode(id))
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, 3);
+    neighbors.forEach((id) => depth2Set.add(id));
+    if (depth2Set.size >= 8) break;
+  }
+  const depth2 = Array.from(depth2Set).slice(0, 8);
+
+  const pushNode = (childId: string, depth: number) => {
+    if (seen.has(childId)) return;
+    const child = byId.get(childId);
+    if (!child) return;
+    seen.add(childId);
+    const rid = `rd_${parentNodeId}_${childId}`;
+    remappedNodes.push({
+      ...child,
+      id: rid,
+      metadata: {
+        ...(child.metadata || {}),
+        rd_parent: parentNodeId,
+        rd_depth: depth,
+        mini_scale: 0.14,
+      },
+      width: 44,
+      height: 18,
+    });
+    remappedEdges.push({
+      id: `rd_bridge_${parentNodeId}_${childId}`,
+      source: parentNodeId,
+      target: rid,
+      type: 'structural',
+      relationKind: 'contains',
+      strength: 0.24,
+    });
+  };
+
+  depth1.forEach((id) => pushNode(id, 1));
+  depth2.forEach((id) => pushNode(id, 2));
+
+  if (remappedNodes.length === 0) return { nodes: baseNodes, edges: baseEdges };
+  return {
+    nodes: [...baseNodes, ...remappedNodes],
+    edges: [...baseEdges, ...remappedEdges],
   };
 }
 
@@ -760,6 +896,10 @@ function buildInlineWorkflowFromTemplate(taskId: string, template: any): { nodes
       description: String(n?.data?.description || '').slice(0, 220) || undefined,
       graphKind: nodeType === 'agent' ? 'workflow_agent' : 'workflow_artifact',
       workflowId: String(template?.id || template?.name || 'bmad_default'),
+      metadata: {
+        wf_x: Number(n?.position?.x ?? 0),
+        wf_y: Number(n?.position?.y ?? 0),
+      },
     };
   });
 
@@ -808,13 +948,13 @@ export function MyceliumCommandCenter() {
 
   // UI state
   const [taskDrillState, setTaskDrillState] = useState<TaskDrillState>('collapsed');
+  const [roadmapNodeDrillState, setRoadmapNodeDrillState] = useState<RoadmapNodeDrillState>('collapsed');
+  const [roadmapDrillNodeId, setRoadmapDrillNodeId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedEdge, setSelectedEdge] = useState<{
     id: string; source: string; target: string; type: string;
   } | null>(null);
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
   const [showStream, setShowStream] = useState(true);
   const [executing, setExecuting] = useState(false);
   const [executeMsg, setExecuteMsg] = useState<string | null>(null);
@@ -870,7 +1010,6 @@ export function MyceliumCommandCenter() {
   const lastPredictiveErrorKeyRef = useRef<string>('');
   const runtimeHealthCacheRef = useRef<{ ok: boolean; detail: string; ts: number } | null>(null);
   const predictiveSkipUntilRef = useRef<number>(0);
-  const lastFractalZoomKeyRef = useRef<string>('');
 
   const isActiveWindow = useCallback(() => {
     if (typeof document === 'undefined') return true;
@@ -920,7 +1059,6 @@ export function MyceliumCommandCenter() {
   const navRoadmapNodeId = useMCCStore(s => s.navRoadmapNodeId);
   const drillDown = useMCCStore(s => s.drillDown);
   const goBack = useMCCStore(s => s.goBack);
-  const setRoadmapFocus = useMCCStore(s => s.setRoadmapFocus);
   const cameraPosition = useMCCStore(s => s.cameraPosition);
   const setCameraPosition = useMCCStore(s => s.setCameraPosition);
   const setFocusedNodeId = useMCCStore(s => s.setFocusedNodeId);
@@ -1414,6 +1552,10 @@ export function MyceliumCommandCenter() {
 
   // MARKER_143.P3: Refetch DAG when selectedTaskId changes
   useEffect(() => {
+    // MARKER_155A.G24.WF_SOURCE_FANOUT:
+    // selectedTaskId currently fans out into 3 workflow sources:
+    // (1) /api/dag task filter, (2) debug pipeline fallback, (3) workflow template fallback.
+    // This is functional but increases divergence risk in inline drill rendering.
     fetchDAG(selectedTaskId);
   }, [selectedTaskId, fetchDAG]);
 
@@ -1455,6 +1597,9 @@ export function MyceliumCommandCenter() {
     }
     const selectedTask = tasks.find((t) => t.id === selectedTaskId);
     const rawWorkflowKey = String(selectedTask?.workflow_id || '').trim();
+    // MARKER_155A.G24.WF_TEMPLATE_KEY_POLICY:
+    // Auto-normalizing `wf_*` ids to `bmad_default` is convenient, but can hide
+    // task-specific workflow intent when workflow_id encodes runtime-only identifiers.
     const workflowKey = rawWorkflowKey && !rawWorkflowKey.startsWith('wf_')
       ? rawWorkflowKey
       : 'bmad_default';
@@ -1744,8 +1889,25 @@ export function MyceliumCommandCenter() {
     Boolean(selectedTaskId);
 
   const graphForView = useMemo(() => {
+    let roadmapNodeExpanded = { nodes: effectiveNodes, edges: effectiveEdgesWithPredicted };
+    if (
+      navLevel === 'roadmap' &&
+      roadmapNodeDrillState === 'expanded' &&
+      roadmapDrillNodeId &&
+      !roadmapDrillNodeId.startsWith('task_overlay_')
+    ) {
+      roadmapNodeExpanded = overlayRoadmapNodeChildren(
+        effectiveNodes,
+        effectiveEdgesWithPredicted,
+        roadmapDrillNodeId,
+      );
+    }
+
     if (isInlineWorkflowFocus && selectedTaskId) {
       const hasDetailedWorkflow = dagNodes.some((n) => n.type !== 'task');
+      // MARKER_155A.G24.WF_SOURCE_ARBITRATION:
+      // Arbitration is currently "prefer bigger fallback set" between template and pipeline.
+      // This is deterministic but not semantic; roadmap P0 tracks explicit source priority contract.
       const templateFallback =
         inlineTemplateWorkflowNodes.length >= inlineWorkflowNodes.length
           ? { nodes: inlineTemplateWorkflowNodes, edges: inlineTemplateWorkflowEdges }
@@ -1758,8 +1920,8 @@ export function MyceliumCommandCenter() {
         : (templateFallback.edges.length > 0 ? templateFallback.edges : buildInlineWorkflowFromPipeline(selectedTaskId, []).edges);
 
       return overlayWorkflowOnSelectedTask(
-        effectiveNodes,
-        effectiveEdgesWithPredicted,
+        roadmapNodeExpanded.nodes,
+        roadmapNodeExpanded.edges,
         workflowNodes,
         workflowEdges,
         selectedTaskId,
@@ -1767,7 +1929,14 @@ export function MyceliumCommandCenter() {
     }
 
     if (navLevel !== 'roadmap' || focusDisplayMode === 'all' || focusIdsForView.size === 0) {
-      return { nodes: effectiveNodes, edges: effectiveEdgesWithPredicted };
+      return roadmapNodeExpanded;
+    }
+
+    // MARKER_155A.P0.WF_STABLE_CONTEXT:
+    // Roadmap must keep full architecture context visible while selecting nodes.
+    // Selection still drives highlight, but not graph clipping.
+    if (navLevel === 'roadmap') {
+      return roadmapNodeExpanded;
     }
 
     const neighborIds = new Set<string>(focusIdsForView);
@@ -1777,15 +1946,16 @@ export function MyceliumCommandCenter() {
     }
 
     const visibleIds = focusDisplayMode === 'selected_only' ? focusIdsForView : neighborIds;
-    const nodes = effectiveNodes.filter(n => visibleIds.has(n.id));
-    const edges = effectiveEdgesWithPredicted.filter(e => visibleIds.has(e.source) && visibleIds.has(e.target));
+    const nodes = roadmapNodeExpanded.nodes.filter(n => visibleIds.has(n.id));
+    const edges = roadmapNodeExpanded.edges.filter(e => visibleIds.has(e.source) && visibleIds.has(e.target));
     return { nodes, edges };
   }, [
-    effectiveEdges,
     effectiveEdgesWithPredicted,
     effectiveNodes,
     focusDisplayMode,
     focusIdsForView,
+    roadmapDrillNodeId,
+    roadmapNodeDrillState,
     isInlineWorkflowFocus,
     navLevel,
     selectedTaskId,
@@ -2042,11 +2212,6 @@ export function MyceliumCommandCenter() {
     return () => window.removeEventListener('keydown', handleKey);
   }, [editMode, dagEditor]);
 
-  // MARKER_153.5D: Handle roadmap node click → drill into tasks level
-  const handleRoadmapNodeDrill = useCallback((nodeId: string) => {
-    setRoadmapFocus(nodeId);
-  }, [setRoadmapFocus]);
-
   // MARKER_153.5E: Handle node click based on current level
   const handleLevelAwareNodeSelect = useCallback((nodeId: string | null, options?: { additive?: boolean }) => {
     const additive = !!options?.additive;
@@ -2088,11 +2253,21 @@ export function MyceliumCommandCenter() {
   const handleLevelAwareNodeDoubleClick = useCallback((nodeId: string) => {
     if (navLevel === 'roadmap') {
       // Roadmap: workflow drill is explicit on double-click for task overlays.
-      if (!nodeId.startsWith('task_overlay_')) return;
-      const taskId = nodeId.replace('task_overlay_', '');
-      if (!taskId) return;
-      selectTask(taskId);
-      setTaskDrillState((prev) => (selectedTaskId === taskId && prev === 'expanded' ? 'collapsed' : 'expanded'));
+      if (nodeId.startsWith('task_overlay_')) {
+        const taskId = nodeId.replace('task_overlay_', '');
+        if (!taskId) return;
+        // MARKER_155A.G24.DRILL_TOGGLE_SINGLE_SOURCE:
+        // Task drill toggle is intentionally controlled here (single source of truth),
+        // avoiding hidden zoom-trigger side effects.
+        selectTask(taskId);
+        setTaskDrillState((prev) => (selectedTaskId === taskId && prev === 'expanded' ? 'collapsed' : 'expanded'));
+        return;
+      }
+      // MARKER_155A.G23.NODE_DRILL_NEXT_DEPTH:
+      // Non-task roadmap node drill (folder/module matryoshka).
+      const isSameExpanded = roadmapDrillNodeId === nodeId && roadmapNodeDrillState === 'expanded';
+      setRoadmapDrillNodeId(isSameExpanded ? null : nodeId);
+      setRoadmapNodeDrillState(isSameExpanded ? 'collapsed' : 'expanded');
       return;
     } else if (navLevel === 'tasks') {
       // MARKER_155.2A: Ignore virtual tree nodes (root + branches), only drill real tasks
@@ -2101,20 +2276,7 @@ export function MyceliumCommandCenter() {
       drillDown('workflow', { taskId: nodeId });
     }
     // Other levels: workflow level uses existing DAG editor behavior
-  }, [navLevel, selectTask, drillDown, selectedTaskId]);
-
-  // Selected node data for detail panel
-  const selectedNodeData = useMemo(() => {
-    if (!selectedNode) return null;
-    return effectiveNodes.find(n => n.id === selectedNode) || null;
-  }, [selectedNode, effectiveNodes]);
-
-  // Selected edge data
-  const selectedEdgeData = useMemo(() => {
-    if (!selectedEdge) return null;
-    const e = effectiveEdgesWithPredicted.find(e => e.id === selectedEdge.id);
-    return e ? { id: e.id, source: e.source, target: e.target, type: e.type } : null;
-  }, [selectedEdge, effectiveEdgesWithPredicted]);
+  }, [navLevel, selectTask, drillDown, selectedTaskId, roadmapDrillNodeId, roadmapNodeDrillState]);
 
   // Handle edge selection
   const handleEdgeSelect = useCallback((edgeId: string | null) => {
@@ -2284,13 +2446,6 @@ export function MyceliumCommandCenter() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [sendFocusToArchitect]);
-
-  const ttTeam = useLimitedTooltip('mcc_team', 'Select AI team preset (Dragon Bronze/Silver/Gold)');
-  const ttSandbox = useLimitedTooltip('mcc_sandbox', 'Choose working directory for agent file writes');
-  const ttHeartbeat = useLimitedTooltip('mcc_heartbeat', 'Set automatic task polling interval');
-  const ttKey = useLimitedTooltip('mcc_key', 'Select API key and view remaining balance');
-  const ttStats = useLimitedTooltip('mcc_stats', 'pending / running / done tasks');
-  const ttExecute = useLimitedTooltip('mcc_execute', 'Run current workflow or dispatch next task');
 
   // MARKER_143.P3: Get selected task title for breadcrumb
   const selectedTaskTitle = useMemo(() => {

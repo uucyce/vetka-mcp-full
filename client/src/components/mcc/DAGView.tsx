@@ -204,6 +204,14 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
     // Preserve positions of existing nodes (incremental layout) for non-architecture modes.
     const prevPositions = prevPositionsRef.current;
+    const hasWorkflowInline = inputNodes.some((n) => n.id.startsWith('wf_'));
+    const hasRoadmapDrillInline = inputNodes.some((n) => n.id.startsWith('rd_'));
+    // MARKER_155A.G23.NO_SINK_ACCUMULATION:
+    // In architecture mode, avoid incremental reuse when inline overlays are active.
+    // Otherwise local push offsets accumulate and drag anchor branches "underground".
+    // MARKER_155A.G24.INCREMENTAL_LAYOUT_ARBITRATION:
+    // Incremental reuse is disabled for architecture mode to prevent cumulative sink drift.
+    // Tradeoff: architecture can feel less stable between rapid drill toggles.
     const keepIncremental = layoutMode !== 'architecture';
     let updatedNodes = result.nodes.map(node => {
       if (!keepIncremental) return node;
@@ -311,6 +319,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
       const wfNodes = updatedNodes.filter((n) => n.id.startsWith('wf_'));
       if (wfNodes.length > 0) {
         const nodeById = new Map(updatedNodes.map((n) => [n.id, n]));
+        const pushBBoxes: Array<{ x: number; y: number; w: number; h: number }> = [];
         const wfByTask = new Map<string, Node[]>();
         for (const n of wfNodes) {
           if (pinMap[n.id]) continue;
@@ -327,68 +336,131 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           const overlayCenterX = overlay.position.x + Number(overlay.width || 150) / 2;
           const overlayY = overlay.position.y;
           const groupIds = new Set(group.map((n) => n.id));
-          const localEdges = result.edges.filter((e) => groupIds.has(e.source) && groupIds.has(e.target));
+          const srcById = new Map(inputNodes.map((n) => [n.id, n]));
+          const localDagNodes: DAGNode[] = group
+            .map((n) => srcById.get(n.id))
+            .filter((n): n is DAGNode => !!n);
+          const localDagEdges: DAGEdge[] = inputEdges.filter(
+            (e) => groupIds.has(e.source) && groupIds.has(e.target)
+          );
+          if (localDagNodes.length === 0) continue;
 
-          // Local standalone DAG layering (top->down) for workflow cluster.
-          const indegree = new Map<string, number>();
-          const outgoing = new Map<string, string[]>();
+          // MARKER_155A.G23.WF_LAYER_PHYSICS_V1:
+          // Build canonical workflow shape via isolated sublayout (same DAG engine), then embed as micro-layer.
+          const localLayout = layoutSugiyamaBT(localDagNodes, localDagEdges, {
+            compact: true,
+            mode: 'workflow',
+            layoutBiasProfile,
+          });
+          const localById = new Map(localLayout.nodes.map((n) => [n.id, n]));
+          const xs = localLayout.nodes.map((n) => n.position.x);
+          const ys = localLayout.nodes.map((n) => n.position.y);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+          const spanX = Math.max(1, maxX - minX);
+          const spanY = Math.max(1, maxY - minY);
+
+          const nodeCount = localLayout.nodes.length;
+          const targetW = Math.min(340, Math.max(210, 140 + nodeCount * 18));
+          const targetH = Math.min(220, Math.max(120, 92 + nodeCount * 12));
+          const scale = Math.min(targetW / spanX, targetH / spanY);
+          const anchorX = overlayCenterX - targetW / 2;
+          const topYTry = overlayY - targetH - 26;
+          const topY = topYTry < 24 ? (overlayY + Number(overlay.height || 60) + 18) : topYTry;
+
           for (const n of group) {
-            indegree.set(n.id, 0);
-            outgoing.set(n.id, []);
-          }
-          for (const e of localEdges) {
-            indegree.set(e.target, (indegree.get(e.target) || 0) + 1);
-            const out = outgoing.get(e.source) || [];
-            out.push(e.target);
-            outgoing.set(e.source, out);
+            const p = localById.get(n.id);
+            if (!p) continue;
+            n.position = {
+              x: anchorX + (p.position.x - minX) * scale,
+              // bottom->top invariant: keep workflow above task anchor in roadmap view.
+              y: topY + (p.position.y - minY) * scale,
+            };
           }
 
-          const roots = group
-            .filter((n) => (indegree.get(n.id) || 0) === 0)
-            .sort((a, b) => a.id.localeCompare(b.id))
-            .map((n) => n.id);
-          const queue: string[] = [...roots];
-          const levelById = new Map<string, number>();
-          roots.forEach((id) => levelById.set(id, 0));
+          pushBBoxes.push({
+            x: anchorX - 20,
+            y: topY - 14,
+            w: targetW + 40,
+            h: targetH + 28,
+          });
+        }
 
-          while (queue.length > 0) {
-            const currentId = queue.shift() as string;
-            const level = levelById.get(currentId) || 0;
-            const nextIds = outgoing.get(currentId) || [];
-            for (const nextId of nextIds) {
-              const prev = levelById.get(nextId) || 0;
-              if (level + 1 > prev) levelById.set(nextId, level + 1);
-              const left = (indegree.get(nextId) || 0) - 1;
-              indegree.set(nextId, left);
-              if (left === 0) queue.push(nextId);
+        // MARKER_155A.G23.LOCAL_PUSH_V1:
+        // Push only nearby conflicting architecture branches; never global relayout.
+        if (pushBBoxes.length > 0) {
+          const blockers = updatedNodes.filter((n) =>
+            !n.id.startsWith('wf_') &&
+            !n.id.startsWith('rd_') &&
+            !n.id.startsWith('task_overlay_')
+          );
+          const overlaps = (
+            a: { x: number; y: number; w: number; h: number },
+            b: { x: number; y: number; w: number; h: number },
+          ) => !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
+          for (const n of blockers) {
+            const box = {
+              x: n.position.x,
+              y: n.position.y,
+              w: Number(n.width || 150),
+              h: Number(n.height || 54),
+            };
+            let shiftY = 0;
+            for (const wfBox of pushBBoxes) {
+              if (!overlaps(box, wfBox)) continue;
+              shiftY = Math.max(shiftY, Math.round(wfBox.h * 0.55));
+            }
+            if (shiftY > 0) {
+              n.position = {
+                x: n.position.x,
+                y: n.position.y + shiftY,
+              };
             }
           }
-          for (const n of group) {
-            if (!levelById.has(n.id)) levelById.set(n.id, 1);
-          }
+        }
+      }
 
-          const levels = new Map<number, Node[]>();
+      // MARKER_155A.G23.NODE_DRILL_NEXT_DEPTH:
+      // Place roadmap node-drill micro layer above selected parent (bottom->top invariant).
+      const rdNodes = updatedNodes.filter((n) => n.id.startsWith('rd_'));
+      if (rdNodes.length > 0) {
+        const nodeById = new Map(updatedNodes.map((n) => [n.id, n]));
+        const rdByParent = new Map<string, Node[]>();
+        for (const n of rdNodes) {
+          if (pinMap[n.id]) continue;
+          const parentId = String((n.data as any)?.rd_parent || '');
+          if (!parentId) continue;
+          const arr = rdByParent.get(parentId) || [];
+          arr.push(n);
+          rdByParent.set(parentId, arr);
+        }
+
+        for (const [parentId, group] of rdByParent.entries()) {
+          const parent = nodeById.get(parentId);
+          if (!parent) continue;
+          const centerX = parent.position.x + Number(parent.width || 160) / 2;
+          const parentTopY = parent.position.y;
+          const xGap = 62;
+          const yGap = 42;
+          const byDepth = new Map<number, Node[]>();
           for (const n of group) {
-            const level = levelById.get(n.id) || 0;
-            const row = levels.get(level) || [];
+            const d = Math.max(1, Number((n.data as any)?.rd_depth || 1));
+            const row = byDepth.get(d) || [];
             row.push(n);
-            levels.set(level, row);
+            byDepth.set(d, row);
           }
-          const levelKeys = Array.from(levels.keys()).sort((a, b) => a - b);
-          // MARKER_155A.P0.WF_MINI_LAYER:
-          // 10x fractal geometry vs architecture spacing (micro workflow over task anchor).
-          const yGap = 10;
-          const xGap = 18;
-          const topY = overlayY - 82 - Math.max(0, levelKeys.length - 1) * yGap;
-
-          for (const level of levelKeys) {
-            const row = (levels.get(level) || []).sort((a, b) => a.id.localeCompare(b.id));
+          const depthKeys = Array.from(byDepth.keys()).sort((a, b) => a - b);
+          for (const d of depthKeys) {
+            const row = (byDepth.get(d) || []).sort((a, b) => a.id.localeCompare(b.id));
             const rowWidth = Math.max(0, row.length - 1) * xGap;
-            const rowStartX = overlayCenterX - rowWidth / 2;
+            const rowStartX = centerX - rowWidth / 2;
+            const rowY = parentTopY - 54 - (d - 1) * yGap;
             row.forEach((n, idx) => {
               n.position = {
                 x: rowStartX + idx * xGap,
-                y: topY + level * yGap,
+                y: rowY,
               };
             });
           }
@@ -398,10 +470,14 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
     // Update position map for next render
     const newPositions: PositionMap = {};
-    updatedNodes.forEach(n => {
+    updatedNodes.forEach((n) => {
       newPositions[n.id] = n.position;
     });
-    prevPositionsRef.current = newPositions;
+    if (layoutMode === 'architecture' && (hasWorkflowInline || hasRoadmapDrillInline)) {
+      prevPositionsRef.current = {};
+    } else {
+      prevPositionsRef.current = newPositions;
+    }
 
     return { nodes: updatedNodes, edges: result.edges };
   }, [inputNodes, inputEdges, compact, graphIdentity, layoutMode, layoutBiasProfile]);
@@ -419,12 +495,11 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
       // Keep architecture/task roots visually dominant when zoomed out.
       const isWorkflowEntity = node.type === 'agent' || node.type === 'subtask' || node.type === 'proposal';
       if (hasInlineWorkflow) {
-        const isWF = node.id.startsWith('wf_');
         return {
           ...node,
           style: {
             ...node.style,
-            opacity: isWF ? 1 : 0.18,
+            opacity: 1,
           },
         };
       }
@@ -543,7 +618,14 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
     );
 
     if (hasInlineWorkflow) {
+      // MARKER_155A.G24.HIGHLIGHT_BYPASS_WHEN_INLINE:
+      // While inline workflow is visible, graph-wide dim/highlight is bypassed.
+      // This prevents over-dimming, but also hides selected-edge emphasis expectations.
       setEdges(baseEdgesRef.current);
+      setNodes(nds => nds.map(n => ({
+        ...n,
+        style: { ...n.style, opacity: 1 },
+      })));
       return;
     }
 
@@ -635,12 +717,15 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
   // Handle node click
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
+      if (event.detail > 1) return;
       if (clickTimerRef.current !== null) {
         window.clearTimeout(clickTimerRef.current);
       }
       clickTimerRef.current = window.setTimeout(() => {
         clickTimerRef.current = null;
         const additive = !!event.shiftKey;
+        // MARKER_155A.G24.CLICK_DBLCLICK_DEBOUNCE:
+        // 220ms debounce separates single vs double click. Keep aligned with UX contract docs.
         if (onNodeSelectWithMode) {
           onNodeSelectWithMode(node.id, { additive });
           return;
@@ -757,6 +842,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
         fitView={false}
         minZoom={0.2}
         maxZoom={3}
+        zoomOnDoubleClick={false}
         nodesDraggable={true}
         nodesConnectable={editMode}
         elementsSelectable={true}
@@ -823,7 +909,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
         .react-flow__node {
           animation: none;
-          transition: transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.12s linear;
+          transition: transform 420ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.22s linear;
         }
 
         .react-flow__node.dragging {

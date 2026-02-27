@@ -4,6 +4,11 @@
 **Status:** ACTIVE CANONICAL PLAN  
 **Protocol:** RECON+markers -> REPORT -> WAIT GO -> IMPL NARROW -> VERIFY
 
+## 0.1 Implementation References (Current)
+- `docs/155_ph/MCC_DRILLDOWN_MECHANICS_SYNTHESIS_2026-02-27.md`
+- `docs/155_ph/MCC_DRILLDOWN_IMPLEMENTATION_ROADMAP_2026-02-27.md`
+- `docs/155_ph/MCC_DRILLDOWN_REVISION_MARKERS_2026-02-27.md`
+
 ## 1) Objective
 Build MCC as a single-canvas, drill/zoom DAG system:
 - LOD0: Playground context (workspace selected/created by user).
@@ -49,6 +54,25 @@ Every `project_task` has:
 - `integration_task_of[]` optional (for architect merge/verify tasks)
 
 ## 3) LOD/Drill Behavior
+
+### 3.0 Mandatory Drill Contract (Locked)
+- Workflow unfolds **from selected task node anchor** in the same canvas.
+- Reveal is matryoshka-style: expand/collapse is local, deterministic, and reversible.
+- Expanded workflow must **push aside conflicting nearby branches/files** locally (collision area only), not by global random re-layout.
+- Workflow cards are micro-layer scale: approximately **10x smaller** than architecture cards.
+- Workflow DAG must remain structurally clear (hierarchy/branches readable, no strip/no cluster mash).
+- No route/screen switch and no detached workflow scene.
+- Pane click only clears selection/highlight; it must not destroy unfolded structure state unless explicit collapse is requested.
+- Canonical DAG direction is fixed: **bottom -> top**.
+- For workflow: task/root context at lower level, team/steps above, result/artifact/new code outcome at upper level.
+- Same matryoshka rule for project tree: folder/node expand reveals next directory depth in-place; each deeper level is rendered as micro-layer (~10x smaller than parent level).
+
+### 3.0.1 Non-negotiable UX checks
+- Double-click on task toggles workflow expand/collapse for this exact task.
+- Expanded workflow stays visually linked to its parent task node.
+- Architecture context remains visible; no global fade blackout and no camera teleport.
+- If local top space is insufficient, deterministic local fallback is allowed (top -> down), still anchored to the same task node.
+- Folder drill is hierarchical and directional: parent stays as anchor, children appear above in DAG flow, then next drill repeats the same pattern.
 
 ### LOD0 (Playground)
 - No drill UI yet.

@@ -371,9 +371,17 @@ export function layoutSugiyamaBT(
         anchorState: node.anchorState,
         taskOrigin: node.taskOrigin,
         teamProfile: node.teamProfile,
+        wf_x: Number((node as any)?.metadata?.wf_x),
+        wf_y: Number((node as any)?.metadata?.wf_y),
+        rd_parent: String((node as any)?.metadata?.rd_parent || ''),
+        rd_depth: Number((node as any)?.metadata?.rd_depth || 0),
+        miniScale: Number((node as any)?.metadata?.mini_scale),
+        // MARKER_155A.G24.NODE_SIZE_CONTROL_PATH:
+        // Inline micro sizing is controlled primarily by node component styles via mini/miniScale.
+        // Dagre width/height alone is insufficient for visual card shrink in ReactFlow nodes.
         // MARKER_155A.P0.WF_MINI_LAYER:
         // Explicit render flag for micro workflow nodes only.
-        mini: String(node.id || '').startsWith('wf_') || Boolean((node as any).mini),
+        mini: String(node.id || '').startsWith('wf_') || String(node.id || '').startsWith('rd_') || Boolean((node as any).mini),
       },
     };
   });

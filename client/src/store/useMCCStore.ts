@@ -9,6 +9,7 @@
  */
 import { create } from 'zustand';
 import type { TaskData } from '../components/panels/TaskCard';
+import { useStore } from './useStore';
 
 const API_BASE = 'http://localhost:5001/api';
 const API_DEBUG = `${API_BASE}/debug`;
@@ -144,6 +145,9 @@ export const LEVEL_CONFIG: Record<NavLevel, LevelConfig> = {
   roadmap: {
     label: 'Roadmap',
     icon: '🗺',
+    // MARKER_155A.G24.ACTION_SEMANTICS_REVIEW:
+    // Legacy labels kept for backward compatibility with FooterActionBar wiring.
+    // Roadmap plan tracks semantic rename/context-gating alignment.
     actions: [
       { label: 'Launch', icon: '▶', action: 'launch', shortcut: '1', primary: true },
       { label: 'Ask', icon: '💬', action: 'askArchitect', shortcut: '2' },
@@ -274,6 +278,8 @@ interface MCCState {
   clearLayoutPinsForKey: (key: string) => void;
   // MARKER_155A.G21.SINGLE_CANVAS_STATE: Focus roadmap branch without level switch.
   setRoadmapFocus: (roadmapNodeId: string | null) => void;
+  // MARKER_156.MCC_KEY_PERSIST.001: Persist full MCC session state on demand.
+  persistSessionState: () => void;
 }
 
 const MAX_STREAM_EVENTS = 30;
@@ -283,6 +289,7 @@ let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 const _persistState = (state: { level: NavLevel; roadmapNodeId: string; taskId: string; history: NavLevel[] }) => {
   if (_saveTimer) clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
+    const selectedKey = useStore.getState().selectedKey;
     fetch(`${API_BASE}/mcc/state`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -290,6 +297,7 @@ const _persistState = (state: { level: NavLevel; roadmapNodeId: string; taskId: 
         level: state.level,
         roadmap_node_id: state.roadmapNodeId,
         task_id: state.taskId,
+        selected_key: selectedKey || undefined,
         history: state.history,
       }),
     }).catch(() => {}); // Silent fail — state is also in memory
@@ -567,6 +575,17 @@ export const useMCCStore = create<MCCState>((set, get) => ({
       const data = await res.json();
 
       if (data.has_project && data.session_state) {
+        const ss = data.session_state || {};
+        const savedSelectedKey = (
+          ss.selected_key
+          && typeof ss.selected_key.provider === 'string'
+          && typeof ss.selected_key.key_masked === 'string'
+        ) ? { provider: ss.selected_key.provider, key_masked: ss.selected_key.key_masked } : null;
+        if (savedSelectedKey) {
+          useStore.getState().setSelectedKey(savedSelectedKey);
+        } else {
+          useStore.getState().clearSelectedKey();
+        }
         // MARKER_155A.P0.FLOW_GATE:
         // Do not restore deep drill levels on startup. Users should enter from roadmap
         // after project init to keep context predictable.
@@ -669,4 +688,13 @@ export const useMCCStore = create<MCCState>((set, get) => ({
     return { layoutPins: next };
   }),
   setRoadmapFocus: (roadmapNodeId) => set({ navRoadmapNodeId: roadmapNodeId || '' }),
+  persistSessionState: () => {
+    const s = get();
+    _persistState({
+      level: s.navLevel,
+      roadmapNodeId: s.navRoadmapNodeId,
+      taskId: s.navTaskId,
+      history: s.navHistory,
+    });
+  },
 }));
