@@ -61,6 +61,17 @@ def test_mcc_has_roadmap_node_drill_matryoshka_marker():
     assert "rd_depth: depth," in code
 
 
+def test_mcc_lazy_unfold_cleanup_contract_exists():
+    code = _read("client/src/components/mcc/MyceliumCommandCenter.tsx")
+    assert "MARKER_155A.G25.LAZY_UNFOLD_STATE_CLEANUP" in code
+    assert "taskDrillState === 'expanded' && roadmapNodeDrillState === 'expanded'" in code
+    assert "setRoadmapNodeDrillState('collapsed');" in code
+    assert "setRoadmapDrillNodeId(null);" in code
+    assert "if (isInlineWorkflowFocus || isRoadmapNodeInlineFocus) return;" in code
+    assert "prev.id.startsWith('wf_')" in code
+    assert "prev.id.startsWith('rd_')" in code
+
+
 def test_mini_scale_contract_is_wired():
     dag_layout = _read("client/src/utils/dagLayout.ts")
     assert "miniScale: Number((node as any)?.metadata?.mini_scale)," in dag_layout

@@ -1946,6 +1946,56 @@ export function MyceliumCommandCenter() {
     navLevel === 'roadmap' &&
     taskDrillState === 'expanded' &&
     Boolean(selectedTaskId);
+  const isRoadmapNodeInlineFocus =
+    navLevel === 'roadmap' &&
+    roadmapNodeDrillState === 'expanded' &&
+    Boolean(roadmapDrillNodeId) &&
+    !String(roadmapDrillNodeId || '').startsWith('task_overlay_');
+
+  // MARKER_155A.G25.LAZY_UNFOLD_STATE_CLEANUP:
+  // Keep inline drill states mutually consistent and clear stale temporary selections.
+  useEffect(() => {
+    if (navLevel !== 'roadmap') {
+      if (roadmapNodeDrillState !== 'collapsed') setRoadmapNodeDrillState('collapsed');
+      if (roadmapDrillNodeId !== null) setRoadmapDrillNodeId(null);
+      return;
+    }
+
+    // Task workflow drill and roadmap node drill are mutually exclusive to avoid mixed inline artifacts.
+    if (taskDrillState === 'expanded' && roadmapNodeDrillState === 'expanded') {
+      setRoadmapNodeDrillState('collapsed');
+      setRoadmapDrillNodeId(null);
+      return;
+    }
+
+    // If drill anchor disappeared from current effective graph, collapse safely.
+    if (
+      roadmapNodeDrillState === 'expanded' &&
+      roadmapDrillNodeId &&
+      !effectiveNodes.some((n) => n.id === roadmapDrillNodeId)
+    ) {
+      setRoadmapNodeDrillState('collapsed');
+      setRoadmapDrillNodeId(null);
+      return;
+    }
+  }, [
+    navLevel,
+    taskDrillState,
+    roadmapNodeDrillState,
+    roadmapDrillNodeId,
+    effectiveNodes,
+  ]);
+
+  useEffect(() => {
+    if (isInlineWorkflowFocus || isRoadmapNodeInlineFocus) return;
+    setSelectedEdge((prev) => {
+      if (!prev) return prev;
+      if (prev.id.startsWith('wf_') || prev.id.startsWith('rd_') || prev.id.startsWith('wf_bridge_') || prev.id.startsWith('rd_bridge_')) {
+        return null;
+      }
+      return prev;
+    });
+  }, [isInlineWorkflowFocus, isRoadmapNodeInlineFocus]);
 
   const graphForView = useMemo(() => {
     let roadmapNodeExpanded = { nodes: effectiveNodes, edges: effectiveEdgesWithPredicted };
