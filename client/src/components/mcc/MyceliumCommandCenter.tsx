@@ -871,7 +871,6 @@ export function MyceliumCommandCenter() {
   const runtimeHealthCacheRef = useRef<{ ok: boolean; detail: string; ts: number } | null>(null);
   const predictiveSkipUntilRef = useRef<number>(0);
   const lastFractalZoomKeyRef = useRef<string>('');
-  const lastSelectedTaskRef = useRef<string | null>(null);
 
   const isActiveWindow = useCallback(() => {
     if (typeof document === 'undefined') return true;
@@ -1494,14 +1493,10 @@ export function MyceliumCommandCenter() {
       return;
     }
     if (!selectedTaskId) {
-      lastSelectedTaskRef.current = null;
       setTaskDrillState('collapsed');
       return;
     }
-    if (lastSelectedTaskRef.current !== selectedTaskId) {
-      lastSelectedTaskRef.current = selectedTaskId;
-      setTaskDrillState('expanded');
-    }
+    // Keep explicit mode: selection alone does not auto-expand workflow.
   }, [navLevel, selectedTaskId]);
 
   // Listen for real-time updates via CustomEvents

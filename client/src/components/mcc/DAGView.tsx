@@ -328,8 +328,6 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           const overlayY = overlay.position.y;
           const groupIds = new Set(group.map((n) => n.id));
           const localEdges = result.edges.filter((e) => groupIds.has(e.source) && groupIds.has(e.target));
-          const nodeW = (n: Node) => Number(n.width || 140);
-          const nodeH = (n: Node) => Number(n.height || 48);
 
           // Local standalone DAG layering (top->down) for workflow cluster.
           const indegree = new Map<string, number>();
@@ -394,41 +392,6 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
               };
             });
           }
-
-          // Move nearby architecture nodes away from reveal zone to free space.
-          const pad = 64;
-          const bbox = group.reduce(
-            (acc, n) => {
-              acc.minX = Math.min(acc.minX, n.position.x);
-              acc.maxX = Math.max(acc.maxX, n.position.x + nodeW(n));
-              acc.minY = Math.min(acc.minY, n.position.y);
-              acc.maxY = Math.max(acc.maxY, n.position.y + nodeH(n));
-              return acc;
-            },
-            { minX: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY, minY: Number.POSITIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY },
-          );
-          // Soft displacement only; no hard "jump" of architecture branches.
-          const pushY = Math.max(14, Math.min(44, (bbox.maxY - bbox.minY) * 0.22));
-          const pushX = Math.max(12, Math.min(34, (bbox.maxX - bbox.minX) * 0.18));
-          const boxCenterX = (bbox.minX + bbox.maxX) / 2;
-          for (const n of updatedNodes) {
-            if (groupIds.has(n.id) || n.id === overlay.id || n.id.startsWith('wf_')) continue;
-            if (pinMap[n.id]) continue;
-            const nx0 = n.position.x;
-            const nx1 = nx0 + nodeW(n);
-            const ny0 = n.position.y;
-            const ny1 = ny0 + nodeH(n);
-            const overlapX = nx1 >= bbox.minX - pad && nx0 <= bbox.maxX + pad;
-            const overlapY = ny1 >= bbox.minY - pad && ny0 <= bbox.maxY + pad;
-            if (!overlapX || !overlapY) continue;
-            const centerX = nx0 + nodeW(n) / 2;
-            const shiftX = centerX < boxCenterX ? -pushX : pushX;
-            if (n.position.y <= overlayY) {
-              n.position = { ...n.position, x: n.position.x + shiftX, y: n.position.y - pushY };
-            } else {
-              n.position = { ...n.position, x: n.position.x + shiftX * 0.4, y: n.position.y + Math.min(28, pushY * 0.35) };
-            }
-          }
         }
       }
     }
@@ -443,9 +406,13 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
     return { nodes: updatedNodes, edges: result.edges };
   }, [inputNodes, inputEdges, compact, graphIdentity, layoutMode, layoutBiasProfile]);
 
+  const hasInlineWorkflow = useMemo(
+    () => layoutedNodes.some((n) => n.id.startsWith('wf_')),
+    [layoutedNodes],
+  );
+
   // xyflow state
   const fractalNodes = useMemo(() => {
-    const hasInlineWorkflow = layoutedNodes.some((n) => n.id.startsWith('wf_'));
     if (cameraLOD === 'workflow') return layoutedNodes;
 
     return layoutedNodes.map(node => {
@@ -475,10 +442,6 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
   const [nodes, setNodes, onNodesChange] = useNodesState(fractalNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
-  const hasInlineWorkflow = useMemo(
-    () => layoutedNodes.some((n) => n.id.startsWith('wf_')),
-    [layoutedNodes],
-  );
 
   // MARKER_155A.G21.VECTOR_EDGE_STYLE:
   // Render all loaded edges as direct vectors regardless of upstream edge type.
