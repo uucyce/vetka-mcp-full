@@ -12,14 +12,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { DAGView, type LODLevel, type DAGViewRef } from './DAGView';
 import { ReactFlowProvider } from '@xyflow/react';
-// MARKER_155.CLEANUP: Removed deprecated components - using Mini-windows instead
-// import { MCCTaskList } from './MCCTaskList';
-// import { MCCDetailPanel } from './MCCDetailPanel';
-// import { PresetDropdown } from './PresetDropdown';
-// import { HeartbeatChip } from './HeartbeatChip';
-// import { SandboxDropdown } from './SandboxDropdown';
-// import { KeyDropdown } from './KeyDropdown';
-// import { CaptainBar } from './CaptainBar';
+// MARKER_155A.G25.DEPRECATED_UI_RUNTIME_GUARD:
+// Deprecated panels/toolbars are intentionally not imported in main MCC runtime path.
 import { StreamPanel } from './StreamPanel';
 import { DAGContextMenu, type ContextMenuTarget } from './DAGContextMenu';
 import { NodePicker } from './NodePicker';

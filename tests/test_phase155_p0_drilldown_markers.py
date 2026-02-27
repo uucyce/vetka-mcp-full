@@ -136,3 +136,12 @@ def test_minitasks_expanded_panel_no_longer_depends_on_deprecated_mcctasklist():
     assert "MARKER_155A.G25.MINITASKS_EXPANDED_V2" in code
     assert "expandedContent={<TasksExpanded />}" in code
     assert "from './MCCTaskList'" not in code
+
+
+def test_mcc_runtime_path_does_not_import_deprecated_mcc_ui_components():
+    code = _read("client/src/components/mcc/MyceliumCommandCenter.tsx")
+    assert "MARKER_155A.G25.DEPRECATED_UI_RUNTIME_GUARD" in code
+    assert "from './MCCTaskList'" not in code
+    assert "from './MCCDetailPanel'" not in code
+    assert "from './WorkflowToolbar'" not in code
+    assert "from './RailsActionBar'" not in code
