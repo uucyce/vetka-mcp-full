@@ -16,7 +16,6 @@
 - `P3.3` Deprecated-surface lock policy documented (`MCC_DEPRECATED_SURFACES_RETIREMENT_2026-02-27.md`).
 
 В процессе:
-- `P1.3` incremental/reuse tuning under rapid toggle stress.
 - `P2` threshold/breadcrumb/lazy consistency hardening.
 - `P3` final deprecated-surface retirement strategy (archive/remove policy).
 
@@ -24,6 +23,9 @@
 - roadmap node drill thresholds: `DEPTH1_LIMIT=6`, `DEPTH2_PER_PARENT_LIMIT=3`, `DEPTH2_TOTAL_LIMIT=8`.
 - overflow markers `+N more` для порционного раскрытия при скрытых узлах.
 - lazy unfold consistency: взаимное исключение task/folder inline drill и cleanup временных inline edge selections при collapse.
+
+Недавно добавлено (P1.3):
+- incremental stress tuning: при inline drill сохраняются позиции базовых (non-inline) архитектурных узлов, inline слой перераскладывается отдельно.
 
 ## 1. Сверка с текущей архитектурой
 
