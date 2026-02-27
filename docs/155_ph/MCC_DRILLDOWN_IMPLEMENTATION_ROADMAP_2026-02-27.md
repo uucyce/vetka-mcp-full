@@ -3,6 +3,22 @@
 Статус: RECON + implementation spec (без смены стека).
 Основание: `MCC_DRILLDOWN_MECHANICS_SYNTHESIS_2026-02-27.md` + текущая codebase MCC.
 
+## 0. Progress Snapshot
+
+Выполнено:
+- `P0.1` Drill contract hardening (explicit toggle, no hidden zoom side-effects).
+- `P0.2` Workflow source arbitration v1 (priority: `dag -> template -> pipeline`).
+- `P0.3` Size control contract locked (mini sizing path documented in node render layer).
+- `P1.1` Focus+context partial: inline mode keeps context while preserving selected-edge emphasis.
+- `P1.2` Local relayout partial: bounded repel vector replaces one-way downward push.
+- `P3.1` Legacy dependency removed: `MiniTasks(expanded)` no longer uses deprecated `MCCTaskList`.
+- `P3.2` Runtime guard added: main MCC path protected from deprecated component imports.
+
+В процессе:
+- `P1.3` incremental/reuse tuning under rapid toggle stress.
+- `P2` threshold/breadcrumb/lazy consistency hardening.
+- `P3` final deprecated-surface retirement strategy (archive/remove policy).
+
 ## 1. Сверка с текущей архитектурой
 
 Текущий каркас уже подходит под single-canvas концепцию:
