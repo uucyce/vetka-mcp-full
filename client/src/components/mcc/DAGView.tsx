@@ -211,14 +211,23 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
     // Otherwise local push offsets accumulate and drag anchor branches "underground".
     // MARKER_155A.G24.INCREMENTAL_LAYOUT_ARBITRATION:
     // Keep architecture stable when no inline overlays are active.
-    // Disable incremental reuse only while inline layers are present to avoid sink drift.
+    // Disable full incremental reuse while inline layers are present to avoid sink drift.
     const keepIncremental =
       layoutMode !== 'architecture' || (!hasWorkflowInline && !hasRoadmapDrillInline);
+    // MARKER_155A.G25.INCREMENTAL_STRESS_TUNE:
+    // Under inline drill, keep non-inline architecture nodes pinned to previous positions.
+    // This reduces jump/flicker during rapid toggle stress while letting inline nodes re-layout.
+    const reuseArchitectureBaseWhileInline =
+      layoutMode === 'architecture' && (hasWorkflowInline || hasRoadmapDrillInline);
+    const isInlineOverlayNodeId = (id: string): boolean => id.startsWith('wf_') || id.startsWith('rd_');
     let updatedNodes = result.nodes.map(node => {
-      if (!keepIncremental) return node;
       const prevPos = prevPositions[node.id];
-      if (prevPos) {
+      if (!prevPos) return node;
+      if (keepIncremental) {
         // Keep existing position for smooth updates
+        return { ...node, position: prevPos };
+      }
+      if (reuseArchitectureBaseWhileInline && !isInlineOverlayNodeId(node.id)) {
         return { ...node, position: prevPos };
       }
       return node;
@@ -497,7 +506,13 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
       newPositions[n.id] = n.position;
     });
     if (layoutMode === 'architecture' && (hasWorkflowInline || hasRoadmapDrillInline)) {
-      prevPositionsRef.current = {};
+      // Keep only non-inline architecture anchors in cache while inline overlays are active.
+      const retained: PositionMap = {};
+      for (const [id, pos] of Object.entries(newPositions)) {
+        if (isInlineOverlayNodeId(id)) continue;
+        retained[id] = pos;
+      }
+      prevPositionsRef.current = retained;
     } else {
       prevPositionsRef.current = newPositions;
     }

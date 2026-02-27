@@ -134,6 +134,11 @@ def test_dagview_incremental_reuse_is_adaptive_in_architecture_mode():
     code = _read("client/src/components/mcc/DAGView.tsx")
     assert "MARKER_155A.G24.INCREMENTAL_LAYOUT_ARBITRATION" in code
     assert "layoutMode !== 'architecture' || (!hasWorkflowInline && !hasRoadmapDrillInline)" in code
+    assert "MARKER_155A.G25.INCREMENTAL_STRESS_TUNE" in code
+    assert "const reuseArchitectureBaseWhileInline =" in code
+    assert "const isInlineOverlayNodeId = (id: string): boolean => id.startsWith('wf_') || id.startsWith('rd_');" in code
+    assert "if (reuseArchitectureBaseWhileInline && !isInlineOverlayNodeId(node.id)) {" in code
+    assert "prevPositionsRef.current = retained;" in code
 
 
 def test_breadcrumb_supports_roadmap_inline_drill_context():
