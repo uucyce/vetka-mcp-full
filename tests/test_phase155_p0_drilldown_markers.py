@@ -116,3 +116,16 @@ def test_dagview_incremental_reuse_is_adaptive_in_architecture_mode():
     code = _read("client/src/components/mcc/DAGView.tsx")
     assert "MARKER_155A.G24.INCREMENTAL_LAYOUT_ARBITRATION" in code
     assert "layoutMode !== 'architecture' || (!hasWorkflowInline && !hasRoadmapDrillInline)" in code
+
+
+def test_breadcrumb_supports_roadmap_inline_drill_context():
+    code = _read("client/src/components/mcc/MCCBreadcrumb.tsx")
+    assert "MARKER_155A.G24.BREADCRUMB_ROADMAP_CONTEXT" in code
+    assert "const selectedTaskId = useMCCStore(s => s.selectedTaskId);" in code
+    assert "if (navLevel === 'roadmap' && selectedTaskId)" in code
+    assert "if (navLevel === 'roadmap' && navHistory.length === 0 && !navRoadmapNodeId && !selectedTaskId)" in code
+
+
+def test_mcc_renders_breadcrumb_for_all_non_first_run_levels():
+    code = _read("client/src/components/mcc/MyceliumCommandCenter.tsx")
+    assert "{navLevel !== 'first_run' ? <MCCBreadcrumb /> : null}" in code

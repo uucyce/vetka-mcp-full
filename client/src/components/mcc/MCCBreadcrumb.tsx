@@ -29,6 +29,7 @@ export function MCCBreadcrumb() {
   const navHistory = useMCCStore(s => s.navHistory);
   const navRoadmapNodeId = useMCCStore(s => s.navRoadmapNodeId);
   const navTaskId = useMCCStore(s => s.navTaskId);
+  const selectedTaskId = useMCCStore(s => s.selectedTaskId);
   const goToLevel = useMCCStore(s => s.goToLevel);
   const goBack = useMCCStore(s => s.goBack);
 
@@ -68,6 +69,12 @@ export function MCCBreadcrumb() {
     // Context for current level
     if (navLevel === 'tasks' && navRoadmapNodeId) {
       currentSeg.contextLabel = navRoadmapNodeId;
+    } else if (navLevel === 'roadmap' && selectedTaskId) {
+      // MARKER_155A.G24.BREADCRUMB_ROADMAP_CONTEXT:
+      // Keep task context visible in roadmap inline drill mode (single-canvas).
+      currentSeg.contextLabel = `task:${selectedTaskId.slice(0, 16)}`;
+    } else if (navLevel === 'roadmap' && navRoadmapNodeId) {
+      currentSeg.contextLabel = navRoadmapNodeId;
     } else if ((navLevel === 'workflow' || navLevel === 'running' || navLevel === 'results') && navTaskId) {
       currentSeg.contextLabel = navTaskId.slice(0, 16);
     }
@@ -86,11 +93,11 @@ export function MCCBreadcrumb() {
     [goToLevel],
   );
 
-  // Don't show breadcrumb at first_run or root level with no history
+  // Don't show breadcrumb at first_run or plain roadmap root with no context.
   if (navLevel === 'first_run') {
     return null;
   }
-  if (navLevel === 'roadmap' && navHistory.length === 0) {
+  if (navLevel === 'roadmap' && navHistory.length === 0 && !navRoadmapNodeId && !selectedTaskId) {
     return null;
   }
 

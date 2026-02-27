@@ -2515,7 +2515,7 @@ export function MyceliumCommandCenter() {
       {/* ═══ MARKER_155.CLEANUP: Header removed — using FooterActionBar instead ═══ */}
       
       {/* ═══ MARKER_153.5A: Breadcrumb Bar — navigation path ═══ */}
-      {navLevel === 'workflow' || navLevel === 'running' || navLevel === 'results' ? <MCCBreadcrumb /> : null}
+      {navLevel !== 'first_run' ? <MCCBreadcrumb /> : null}
 
       {/* ═══ MARKER_155.FLOW.STEPS: 5-step progress indicator ═══ */}
       {debugMode && (
