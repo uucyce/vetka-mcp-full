@@ -13,11 +13,8 @@
 import { useEffect } from 'react';
 import { MiniWindow } from './MiniWindow';
 import { useMCCStore } from '../../store/useMCCStore';
-// MARKER_155A.G24.LEGACY_EXPANDED_TASK_PANEL:
-// Expanded mode still embeds deprecated MCCTaskList.
-// Kept temporarily for feature parity; roadmap includes extraction to modern inline panel.
-import { MCCTaskList } from './MCCTaskList';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+import { useMemo, useState } from 'react';
 
 // Status → dot color
 const STATUS_COLOR: Record<string, string> = {
@@ -126,6 +123,176 @@ function TasksCompact() {
   );
 }
 
+// MARKER_155A.G25.MINITASKS_EXPANDED_V2:
+// Legacy MCCTaskList dependency removed.
+// Expanded content is now native MiniTasks panel to keep one-path MCC task UX.
+function TasksExpanded() {
+  const tasks = useMCCStore(s => s.tasks);
+  const selectedTaskId = useMCCStore(s => s.selectedTaskId);
+  const selectTask = useMCCStore(s => s.selectTask);
+  const dispatchTask = useMCCStore(s => s.dispatchTask);
+  const cancelTask = useMCCStore(s => s.cancelTask);
+  const activePreset = useMCCStore(s => s.activePreset);
+  const fetchTasks = useMCCStore(s => s.fetchTasks);
+
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState<'all' | 'pending' | 'queued' | 'running' | 'done' | 'failed'>('all');
+
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return tasks
+      .filter((t) => status === 'all' ? true : t.status === status)
+      .filter((t) => {
+        if (!q) return true;
+        return `${t.title || ''} ${t.description || ''}`.toLowerCase().includes(q);
+      })
+      .sort((a, b) => {
+        const order: Record<string, number> = { running: 0, queued: 1, pending: 2, hold: 3, done: 4, failed: 5, cancelled: 6 };
+        const oa = order[a.status] ?? 99;
+        const ob = order[b.status] ?? 99;
+        if (oa !== ob) return oa - ob;
+        return (b.priority || 99) - (a.priority || 99);
+      });
+  }, [tasks, query, status]);
+
+  const statuses: Array<'all' | 'pending' | 'queued' | 'running' | 'done' | 'failed'> = [
+    'all', 'pending', 'queued', 'running', 'done', 'failed',
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 6 }}>
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="search title/description..."
+        style={{
+          background: 'rgba(255,255,255,0.03)',
+          border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+          borderRadius: 3,
+          color: '#c9c9c9',
+          fontFamily: 'monospace',
+          fontSize: 9,
+          padding: '6px 8px',
+          outline: 'none',
+        }}
+      />
+
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {statuses.map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatus(s)}
+            style={{
+              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              borderRadius: 3,
+              background: status === s ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.03)',
+              color: status === s ? '#f2f2f2' : '#8c8c8c',
+              padding: '2px 6px',
+              fontFamily: 'monospace',
+              fontSize: 8,
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+              letterSpacing: 0.4,
+            }}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {filtered.map((task) => {
+          const isSelected = task.id === selectedTaskId;
+          const canLaunch = task.status === 'pending' || task.status === 'queued';
+          const canStop = task.status === 'running';
+          return (
+            <div
+              key={task.id}
+              onClick={() => selectTask(task.id === selectedTaskId ? null : task.id)}
+              style={{
+                border: `1px solid ${isSelected ? '#d9d9d9' : NOLAN_PALETTE.borderDim}`,
+                borderRadius: 4,
+                background: isSelected ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)',
+                padding: '6px 8px',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: STATUS_COLOR[task.status] || '#555' }} />
+                <span
+                  style={{
+                    color: '#e3e3e3',
+                    fontSize: 10,
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={task.title}
+                >
+                  {task.title}
+                </span>
+                <span style={{ color: '#7b7b7b', fontSize: 8 }}>P{task.priority}</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <span style={{ color: '#6f6f6f', fontSize: 8 }}>{task.status}</span>
+                <span style={{ color: '#555', fontSize: 8 }}>{task.preset || '-'}</span>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                  {canLaunch && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        dispatchTask(task.id, activePreset);
+                      }}
+                      style={{
+                        border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                        borderRadius: 3,
+                        background: 'rgba(255,255,255,0.08)',
+                        color: '#d9d9d9',
+                        fontSize: 8,
+                        padding: '1px 6px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      launch
+                    </button>
+                  )}
+                  {canStop && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        cancelTask(task.id);
+                      }}
+                      style={{
+                        border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                        borderRadius: 3,
+                        background: 'rgba(170,80,80,0.14)',
+                        color: '#c88',
+                        fontSize: 8,
+                        padding: '1px 6px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      stop
+                    </button>
+                  )}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div style={{ color: '#5e5e5e', fontSize: 9, padding: '6px 2px' }}>No tasks for current filter.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function MiniTasks() {
   return (
     <MiniWindow
@@ -136,7 +303,7 @@ export function MiniTasks() {
       compactWidth={210}
       compactHeight={150}
       compactContent={<TasksCompact />}
-      expandedContent={<MCCTaskList />}
+      expandedContent={<TasksExpanded />}
     />
   );
 }

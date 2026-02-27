@@ -129,3 +129,10 @@ def test_breadcrumb_supports_roadmap_inline_drill_context():
 def test_mcc_renders_breadcrumb_for_all_non_first_run_levels():
     code = _read("client/src/components/mcc/MyceliumCommandCenter.tsx")
     assert "{navLevel !== 'first_run' ? <MCCBreadcrumb /> : null}" in code
+
+
+def test_minitasks_expanded_panel_no_longer_depends_on_deprecated_mcctasklist():
+    code = _read("client/src/components/mcc/MiniTasks.tsx")
+    assert "MARKER_155A.G25.MINITASKS_EXPANDED_V2" in code
+    assert "expandedContent={<TasksExpanded />}" in code
+    assert "from './MCCTaskList'" not in code
