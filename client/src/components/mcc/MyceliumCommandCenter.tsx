@@ -923,6 +923,29 @@ function buildInlineWorkflowFromTemplate(taskId: string, template: any): { nodes
   return { nodes, edges };
 }
 
+function selectInlineWorkflowSource(
+  selectedTaskId: string,
+  dagNodes: DAGNode[],
+  dagEdges: DAGEdge[],
+  templateNodes: DAGNode[],
+  templateEdges: DAGEdge[],
+  pipelineNodes: DAGNode[],
+  pipelineEdges: DAGEdge[],
+): { nodes: DAGNode[]; edges: DAGEdge[]; source: 'dag' | 'template' | 'pipeline' } {
+  const hasDetailedDagWorkflow = dagNodes.some((n) => n.type !== 'task');
+  if (hasDetailedDagWorkflow) {
+    return { nodes: dagNodes, edges: dagEdges, source: 'dag' };
+  }
+  if (templateNodes.length > 0 && templateEdges.length > 0) {
+    return { nodes: templateNodes, edges: templateEdges, source: 'template' };
+  }
+  if (pipelineNodes.length > 0 && pipelineEdges.length > 0) {
+    return { nodes: pipelineNodes, edges: pipelineEdges, source: 'pipeline' };
+  }
+  const fallback = buildInlineWorkflowFromPipeline(selectedTaskId, []);
+  return { nodes: fallback.nodes, edges: fallback.edges, source: 'pipeline' };
+}
+
 export function MyceliumCommandCenter() {
   // WebSocket connection status
   const { connected } = useMyceliumSocket();
@@ -1600,9 +1623,7 @@ export function MyceliumCommandCenter() {
     // MARKER_155A.G24.WF_TEMPLATE_KEY_POLICY:
     // Auto-normalizing `wf_*` ids to `bmad_default` is convenient, but can hide
     // task-specific workflow intent when workflow_id encodes runtime-only identifiers.
-    const workflowKey = rawWorkflowKey && !rawWorkflowKey.startsWith('wf_')
-      ? rawWorkflowKey
-      : 'bmad_default';
+    const workflowKey = rawWorkflowKey || 'bmad_default';
 
     let cancelled = false;
     const loadTemplate = async () => {
@@ -1904,26 +1925,24 @@ export function MyceliumCommandCenter() {
     }
 
     if (isInlineWorkflowFocus && selectedTaskId) {
-      const hasDetailedWorkflow = dagNodes.some((n) => n.type !== 'task');
       // MARKER_155A.G24.WF_SOURCE_ARBITRATION:
-      // Arbitration is currently "prefer bigger fallback set" between template and pipeline.
-      // This is deterministic but not semantic; roadmap P0 tracks explicit source priority contract.
-      const templateFallback =
-        inlineTemplateWorkflowNodes.length >= inlineWorkflowNodes.length
-          ? { nodes: inlineTemplateWorkflowNodes, edges: inlineTemplateWorkflowEdges }
-          : { nodes: inlineWorkflowNodes, edges: inlineWorkflowEdges };
-      const workflowNodes = hasDetailedWorkflow
-        ? dagNodes
-        : (templateFallback.nodes.length > 0 ? templateFallback.nodes : buildInlineWorkflowFromPipeline(selectedTaskId, []).nodes);
-      const workflowEdges = hasDetailedWorkflow
-        ? dagEdges
-        : (templateFallback.edges.length > 0 ? templateFallback.edges : buildInlineWorkflowFromPipeline(selectedTaskId, []).edges);
+      // Explicit source priority:
+      // 1) detailed DAG result, 2) workflow template, 3) pipeline fallback.
+      const selectedWorkflow = selectInlineWorkflowSource(
+        selectedTaskId,
+        dagNodes,
+        dagEdges,
+        inlineTemplateWorkflowNodes,
+        inlineTemplateWorkflowEdges,
+        inlineWorkflowNodes,
+        inlineWorkflowEdges,
+      );
 
       return overlayWorkflowOnSelectedTask(
         roadmapNodeExpanded.nodes,
         roadmapNodeExpanded.edges,
-        workflowNodes,
-        workflowEdges,
+        selectedWorkflow.nodes,
+        selectedWorkflow.edges,
         selectedTaskId,
       );
     }
