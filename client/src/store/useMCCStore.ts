@@ -1,7 +1,7 @@
 /**
  * MARKER_143.P1: Zustand store for MCC (Mycelium Command Center) unified workspace.
  * Replaces DevPanel's local useState for tasks, heartbeat, agents, presets.
- * Shared by MCCTaskList, MCCDetailPanel, PresetDropdown, StreamPanel.
+ * Shared by active MCC surfaces (MyceliumCommandCenter + mini windows + stream/actions).
  *
  * @phase 143
  * @status active

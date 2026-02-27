@@ -2,7 +2,7 @@
  * MARKER_154.13A: MiniTasks — compact task list overlay in DAG canvas.
  *
  * Compact: top 5 tasks with status badges.
- * Expanded: full task list with filters (wraps MCCTaskList).
+ * Expanded: full task list with filters (native MiniTasks panel).
  * Position: top-left.
  *
  * @phase 154

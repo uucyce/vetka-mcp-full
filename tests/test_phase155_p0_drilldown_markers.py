@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -145,3 +146,32 @@ def test_mcc_runtime_path_does_not_import_deprecated_mcc_ui_components():
     assert "from './MCCDetailPanel'" not in code
     assert "from './WorkflowToolbar'" not in code
     assert "from './RailsActionBar'" not in code
+
+
+def test_no_new_runtime_imports_of_deprecated_mcc_components():
+    mcc_dir = ROOT / "client/src/components/mcc"
+    deprecated = {
+        "./MCCTaskList",
+        "./MCCDetailPanel",
+        "./WorkflowToolbar",
+        "./RailsActionBar",
+        "./TaskDAGView",
+    }
+    import_pat = re.compile(r"""from\s+['"](\./[A-Za-z0-9_/-]+)['"]""")
+    allowed_files = {
+        "MCCTaskList.tsx",
+        "MCCDetailPanel.tsx",
+        "WorkflowToolbar.tsx",
+        "RailsActionBar.tsx",
+        "TaskDAGView.tsx",
+    }
+    violations: list[str] = []
+    for file in mcc_dir.glob("*.tsx"):
+        if file.name in allowed_files:
+            continue
+        code = file.read_text(encoding="utf-8")
+        for m in import_pat.finditer(code):
+            target = m.group(1)
+            if target in deprecated:
+                violations.append(f"{file.name} -> {target}")
+    assert not violations, f"Deprecated runtime imports found: {violations}"
