@@ -371,6 +371,9 @@ export function layoutSugiyamaBT(
         anchorState: node.anchorState,
         taskOrigin: node.taskOrigin,
         teamProfile: node.teamProfile,
+        // MARKER_155A.P0.WF_MINI_LAYER:
+        // Explicit render flag for micro workflow nodes only.
+        mini: String(node.id || '').startsWith('wf_') || Boolean((node as any).mini),
       },
     };
   });

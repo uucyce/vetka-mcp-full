@@ -306,6 +306,131 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
             };
           });
       }
+
+      // Keep inline workflow fragments as a local mini-DAG above selected task (not detached strips).
+      const wfNodes = updatedNodes.filter((n) => n.id.startsWith('wf_'));
+      if (wfNodes.length > 0) {
+        const nodeById = new Map(updatedNodes.map((n) => [n.id, n]));
+        const wfByTask = new Map<string, Node[]>();
+        for (const n of wfNodes) {
+          if (pinMap[n.id]) continue;
+          const taskId = String((n.data as any)?.taskId || '').trim();
+          if (!taskId) continue;
+          const arr = wfByTask.get(taskId) || [];
+          arr.push(n);
+          wfByTask.set(taskId, arr);
+        }
+
+        for (const [taskId, group] of wfByTask.entries()) {
+          const overlay = nodeById.get(`task_overlay_${taskId}`);
+          if (!overlay) continue;
+          const overlayCenterX = overlay.position.x + Number(overlay.width || 150) / 2;
+          const overlayY = overlay.position.y;
+          const groupIds = new Set(group.map((n) => n.id));
+          const localEdges = result.edges.filter((e) => groupIds.has(e.source) && groupIds.has(e.target));
+          const nodeW = (n: Node) => Number(n.width || 140);
+          const nodeH = (n: Node) => Number(n.height || 48);
+
+          // Local standalone DAG layering (top->down) for workflow cluster.
+          const indegree = new Map<string, number>();
+          const outgoing = new Map<string, string[]>();
+          for (const n of group) {
+            indegree.set(n.id, 0);
+            outgoing.set(n.id, []);
+          }
+          for (const e of localEdges) {
+            indegree.set(e.target, (indegree.get(e.target) || 0) + 1);
+            const out = outgoing.get(e.source) || [];
+            out.push(e.target);
+            outgoing.set(e.source, out);
+          }
+
+          const roots = group
+            .filter((n) => (indegree.get(n.id) || 0) === 0)
+            .sort((a, b) => a.id.localeCompare(b.id))
+            .map((n) => n.id);
+          const queue: string[] = [...roots];
+          const levelById = new Map<string, number>();
+          roots.forEach((id) => levelById.set(id, 0));
+
+          while (queue.length > 0) {
+            const currentId = queue.shift() as string;
+            const level = levelById.get(currentId) || 0;
+            const nextIds = outgoing.get(currentId) || [];
+            for (const nextId of nextIds) {
+              const prev = levelById.get(nextId) || 0;
+              if (level + 1 > prev) levelById.set(nextId, level + 1);
+              const left = (indegree.get(nextId) || 0) - 1;
+              indegree.set(nextId, left);
+              if (left === 0) queue.push(nextId);
+            }
+          }
+          for (const n of group) {
+            if (!levelById.has(n.id)) levelById.set(n.id, 1);
+          }
+
+          const levels = new Map<number, Node[]>();
+          for (const n of group) {
+            const level = levelById.get(n.id) || 0;
+            const row = levels.get(level) || [];
+            row.push(n);
+            levels.set(level, row);
+          }
+          const levelKeys = Array.from(levels.keys()).sort((a, b) => a - b);
+          // MARKER_155A.P0.WF_MINI_LAYER:
+          // 10x fractal geometry vs architecture spacing (micro workflow over task anchor).
+          const yGap = 10;
+          const xGap = 18;
+          const topY = overlayY - 82 - Math.max(0, levelKeys.length - 1) * yGap;
+
+          for (const level of levelKeys) {
+            const row = (levels.get(level) || []).sort((a, b) => a.id.localeCompare(b.id));
+            const rowWidth = Math.max(0, row.length - 1) * xGap;
+            const rowStartX = overlayCenterX - rowWidth / 2;
+            row.forEach((n, idx) => {
+              n.position = {
+                x: rowStartX + idx * xGap,
+                y: topY + level * yGap,
+              };
+            });
+          }
+
+          // Move nearby architecture nodes away from reveal zone to free space.
+          const pad = 64;
+          const bbox = group.reduce(
+            (acc, n) => {
+              acc.minX = Math.min(acc.minX, n.position.x);
+              acc.maxX = Math.max(acc.maxX, n.position.x + nodeW(n));
+              acc.minY = Math.min(acc.minY, n.position.y);
+              acc.maxY = Math.max(acc.maxY, n.position.y + nodeH(n));
+              return acc;
+            },
+            { minX: Number.POSITIVE_INFINITY, maxX: Number.NEGATIVE_INFINITY, minY: Number.POSITIVE_INFINITY, maxY: Number.NEGATIVE_INFINITY },
+          );
+          // Soft displacement only; no hard "jump" of architecture branches.
+          const pushY = Math.max(14, Math.min(44, (bbox.maxY - bbox.minY) * 0.22));
+          const pushX = Math.max(12, Math.min(34, (bbox.maxX - bbox.minX) * 0.18));
+          const boxCenterX = (bbox.minX + bbox.maxX) / 2;
+          for (const n of updatedNodes) {
+            if (groupIds.has(n.id) || n.id === overlay.id || n.id.startsWith('wf_')) continue;
+            if (pinMap[n.id]) continue;
+            const nx0 = n.position.x;
+            const nx1 = nx0 + nodeW(n);
+            const ny0 = n.position.y;
+            const ny1 = ny0 + nodeH(n);
+            const overlapX = nx1 >= bbox.minX - pad && nx0 <= bbox.maxX + pad;
+            const overlapY = ny1 >= bbox.minY - pad && ny0 <= bbox.maxY + pad;
+            if (!overlapX || !overlapY) continue;
+            const centerX = nx0 + nodeW(n) / 2;
+            const shiftX = centerX < boxCenterX ? -pushX : pushX;
+            if (n.position.y <= overlayY) {
+              n.position = { ...n.position, x: n.position.x + shiftX, y: n.position.y - pushY };
+            } else {
+              n.position = { ...n.position, x: n.position.x + shiftX * 0.4, y: n.position.y + Math.min(28, pushY * 0.35) };
+            }
+          }
+        }
+      }
     }
 
     // Update position map for next render
@@ -320,11 +445,22 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
   // xyflow state
   const fractalNodes = useMemo(() => {
+    const hasInlineWorkflow = layoutedNodes.some((n) => n.id.startsWith('wf_'));
     if (cameraLOD === 'workflow') return layoutedNodes;
 
     return layoutedNodes.map(node => {
       // Keep architecture/task roots visually dominant when zoomed out.
       const isWorkflowEntity = node.type === 'agent' || node.type === 'subtask' || node.type === 'proposal';
+      if (hasInlineWorkflow) {
+        const isWF = node.id.startsWith('wf_');
+        return {
+          ...node,
+          style: {
+            ...node.style,
+            opacity: isWF ? 1 : 0.18,
+          },
+        };
+      }
       const shouldDim = cameraLOD === 'architecture' ? isWorkflowEntity : node.type === 'proposal';
       if (!shouldDim) return node;
       return {
@@ -339,6 +475,10 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
   const [nodes, setNodes, onNodesChange] = useNodesState(fractalNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
+  const hasInlineWorkflow = useMemo(
+    () => layoutedNodes.some((n) => n.id.startsWith('wf_')),
+    [layoutedNodes],
+  );
 
   // MARKER_155A.G21.VECTOR_EDGE_STYLE:
   // Render all loaded edges as direct vectors regardless of upstream edge type.
@@ -356,6 +496,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
   const reactFlow = useReactFlow();
   const nodesRef = useRef(nodes);
   const didApplyInitialCameraRef = useRef(false);
+  const clickTimerRef = useRef<number | null>(null);
 
   // Keep nodes ref updated for imperative handle
   useEffect(() => {
@@ -392,8 +533,12 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
       }
       const zoomConfig = ZOOM_LEVELS[level as keyof typeof ZOOM_LEVELS];
       const targetZoom = zoomConfig?.min || 1.5;
+      const nodeWidth = Number((targetNode as any).measured?.width ?? targetNode.width ?? 0);
+      const nodeHeight = Number((targetNode as any).measured?.height ?? targetNode.height ?? 0);
+      const centerX = targetNode.position.x + (nodeWidth > 0 ? nodeWidth / 2 : 0);
+      const centerY = targetNode.position.y + (nodeHeight > 0 ? nodeHeight / 2 : 0);
       
-      reactFlow.setCenter(targetNode.position.x, targetNode.position.y, {
+      reactFlow.setCenter(centerX, centerY, {
         zoom: targetZoom,
         duration: 800,
       });
@@ -433,6 +578,11 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           ? [selectedNode]
           : []
     );
+
+    if (hasInlineWorkflow) {
+      setEdges(baseEdgesRef.current);
+      return;
+    }
 
     if (focusIds.size === 0) {
       // Reset all edges and nodes to default
@@ -481,7 +631,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
         opacity: connectedNodeIds.has(n.id) ? 1.0 : 0.25,
       },
     })));
-  }, [selectedNode, selectedNodeIds, layoutedEdges, setEdges, setNodes]);
+  }, [selectedNode, selectedNodeIds, layoutedEdges, setEdges, setNodes, hasInlineWorkflow]);
 
   // Track user drag changes
   const handleNodesChange = useCallback((changes: any) => {
@@ -510,6 +660,9 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
   useEffect(() => {
     return () => {
+      if (clickTimerRef.current !== null) {
+        window.clearTimeout(clickTimerRef.current);
+      }
       if (persistPinsTimerRef.current !== null) {
         window.clearTimeout(persistPinsTimerRef.current);
       }
@@ -519,17 +672,23 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
   // Handle node click
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
-      const additive = !!event.shiftKey;
-      if (onNodeSelectWithMode) {
-        onNodeSelectWithMode(node.id, { additive });
-        return;
+      if (clickTimerRef.current !== null) {
+        window.clearTimeout(clickTimerRef.current);
       }
-      // Toggle: click same node again → deselect
-      if (node.id === selectedNode) {
-        onNodeSelect?.(null);
-      } else {
-        onNodeSelect?.(node.id);
-      }
+      clickTimerRef.current = window.setTimeout(() => {
+        clickTimerRef.current = null;
+        const additive = !!event.shiftKey;
+        if (onNodeSelectWithMode) {
+          onNodeSelectWithMode(node.id, { additive });
+          return;
+        }
+        // Toggle: click same node again → deselect
+        if (node.id === selectedNode) {
+          onNodeSelect?.(null);
+        } else {
+          onNodeSelect?.(node.id);
+        }
+      }, 220);
     },
     [onNodeSelect, onNodeSelectWithMode, selectedNode]
   );
@@ -537,6 +696,10 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
   // MARKER_153.5D: Handle node double-click — Matryoshka drill-down
   const handleNodeDoubleClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      if (clickTimerRef.current !== null) {
+        window.clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
       onNodeDoubleClick?.(node.id);
     },
     [onNodeDoubleClick]
@@ -628,8 +791,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitView={false}
         minZoom={0.2}
         maxZoom={3}
         nodesDraggable={true}
@@ -697,8 +859,12 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
         }
 
         .react-flow__node {
-          animation: nodeFadeIn 0.3s ease-out;
-          transition: opacity 0.2s ease;
+          animation: none;
+          transition: transform 260ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity 0.12s linear;
+        }
+
+        .react-flow__node.dragging {
+          transition: none !important;
         }
 
         .react-flow__node.selected {
@@ -715,8 +881,8 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
         }
 
         .react-flow__edge {
-          animation: nodeFadeIn 0.4s ease-out;
-          transition: opacity 0.2s ease;
+          animation: none;
+          transition: opacity 0.12s linear;
         }
 
         .react-flow__edge path {

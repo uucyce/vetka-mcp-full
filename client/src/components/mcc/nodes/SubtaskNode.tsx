@@ -17,6 +17,7 @@ interface SubtaskNodeProps {
     status: NodeStatus;
     tokens?: number;
     durationS?: number;
+    mini?: boolean;
   };
   selected?: boolean;
 }
@@ -24,15 +25,16 @@ interface SubtaskNodeProps {
 function SubtaskNodeComponent({ data, selected }: SubtaskNodeProps) {
   const borderColor = getStatusBorderColor(data.status);
   const isRunning = data.status === 'running';
+  const isWorkflowCompact = Boolean(data.mini);
 
   return (
     <div
       style={{
         background: NOLAN_PALETTE.bgLight,
         border: `1px solid ${borderColor}`,
-        borderRadius: 3,
-        padding: '6px 10px',
-        minWidth: 120,
+        borderRadius: isWorkflowCompact ? 2 : 3,
+        padding: isWorkflowCompact ? '2px 5px' : '6px 10px',
+        minWidth: isWorkflowCompact ? 42 : 120,
         fontFamily: 'monospace',
         boxShadow: selected
           ? `0 0 0 2px ${NOLAN_PALETTE.text}`
@@ -52,11 +54,11 @@ function SubtaskNodeComponent({ data, selected }: SubtaskNodeProps) {
       <div
         style={{
           color: NOLAN_PALETTE.text,
-          fontSize: 10,
+          fontSize: isWorkflowCompact ? 8 : 10,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
-          maxWidth: 120,
+          maxWidth: isWorkflowCompact ? 56 : 120,
         }}
       >
         {data.label}
@@ -68,8 +70,8 @@ function SubtaskNodeComponent({ data, selected }: SubtaskNodeProps) {
           style={{
             display: 'flex',
             gap: 8,
-            marginTop: 3,
-            fontSize: 8,
+            marginTop: isWorkflowCompact ? 1 : 3,
+            fontSize: isWorkflowCompact ? 7 : 8,
             color: NOLAN_PALETTE.textDim,
           }}
         >

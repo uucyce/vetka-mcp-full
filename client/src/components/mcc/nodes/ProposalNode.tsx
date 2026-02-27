@@ -16,6 +16,7 @@ interface ProposalNodeProps {
     label: string;
     status: NodeStatus;
     confidence?: number;
+    mini?: boolean;
   };
   selected?: boolean;
 }
@@ -24,13 +25,14 @@ function ProposalNodeComponent({ data, selected }: ProposalNodeProps) {
   const borderColor = getStatusBorderColor(data.status);
   const confidenceColor = data.confidence ? getConfidenceColor(data.confidence) : NOLAN_PALETTE.borderLight;
   const isReady = data.status === 'done' && data.confidence;
+  const isWorkflowCompact = Boolean(data.mini);
 
   return (
     <div
       style={{
         position: 'relative',
-        width: 100,
-        height: 60,
+        width: isWorkflowCompact ? 40 : 100,
+        height: isWorkflowCompact ? 26 : 60,
       }}
     >
       <Handle
@@ -52,8 +54,8 @@ function ProposalNodeComponent({ data, selected }: ProposalNodeProps) {
           position: 'absolute',
           top: '50%',
           left: '50%',
-          width: 80,
-          height: 50,
+          width: isWorkflowCompact ? 30 : 80,
+          height: isWorkflowCompact ? 20 : 50,
           transform: 'translate(-50%, -50%) rotate(45deg)',
           background: NOLAN_PALETTE.bgLight,
           border: `2px solid ${borderColor}`,
@@ -82,7 +84,7 @@ function ProposalNodeComponent({ data, selected }: ProposalNodeProps) {
         {data.confidence !== undefined && (
           <div
             style={{
-              fontSize: 14,
+              fontSize: isWorkflowCompact ? 9 : 14,
               fontWeight: 600,
               color: confidenceColor,
             }}
@@ -94,7 +96,7 @@ function ProposalNodeComponent({ data, selected }: ProposalNodeProps) {
         {/* Label */}
         <div
           style={{
-            fontSize: 8,
+            fontSize: isWorkflowCompact ? 6 : 8,
             color: NOLAN_PALETTE.textNormal,
             textTransform: 'uppercase',
             letterSpacing: 0.5,

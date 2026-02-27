@@ -18,6 +18,7 @@ interface AgentNodeProps {
     role?: AgentRole;
     model?: string;
     durationS?: number;
+    mini?: boolean;
   };
   selected?: boolean;
 }
@@ -26,15 +27,16 @@ interface AgentNodeProps {
 function AgentNodeComponent({ data, selected }: AgentNodeProps) {
   const borderColor = getStatusBorderColor(data.status);
   const isRunning = data.status === 'running';
+  const isWorkflowCompact = Boolean(data.mini);
 
   return (
     <div
       style={{
         background: NOLAN_PALETTE.bgLight,
         border: `1.5px solid ${borderColor}`,
-        borderRadius: 8,
-        padding: '8px 12px',
-        minWidth: 100,
+        borderRadius: isWorkflowCompact ? 5 : 8,
+        padding: isWorkflowCompact ? '3px 6px' : '8px 12px',
+        minWidth: isWorkflowCompact ? 44 : 100,
         fontFamily: 'monospace',
         boxShadow: selected
           ? `0 0 0 2px ${NOLAN_PALETTE.text}`
@@ -60,8 +62,8 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
       >
         <span
           style={{
-            width: 8,
-            height: 8,
+            width: isWorkflowCompact ? 4 : 8,
+            height: isWorkflowCompact ? 4 : 8,
             borderRadius: 2,
             background: isRunning ? NOLAN_PALETTE.text : NOLAN_PALETTE.borderLight,
           }}
@@ -69,7 +71,7 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
         <span
           style={{
             color: NOLAN_PALETTE.text,
-            fontSize: 11,
+            fontSize: isWorkflowCompact ? 8 : 11,
             fontWeight: 500,
           }}
         >
@@ -83,8 +85,8 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
           style={{
             display: 'flex',
             gap: 8,
-            marginTop: 4,
-            fontSize: 9,
+            marginTop: isWorkflowCompact ? 2 : 4,
+            fontSize: isWorkflowCompact ? 7 : 9,
             color: NOLAN_PALETTE.textDim,
           }}
         >

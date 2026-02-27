@@ -42,6 +42,7 @@ import { PlaygroundBadge } from './PlaygroundBadge';
 import { WizardContainer, type WizardStep } from './WizardContainer';
 import { ToastContainer } from './ToastContainer';
 import { useMCCStore } from '../../store/useMCCStore';
+import { useStore } from '../../store/useStore';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useLimitedTooltip } from '../../hooks/useLimitedTooltip';
 import { useRoadmapDAG } from '../../hooks/useRoadmapDAG';
@@ -59,6 +60,7 @@ import type { DAGNode, DAGEdge, DAGStats, DAGNodeType, NodeStatus, EdgeType } fr
 import type { TaskData } from '../panels/TaskCard';
 
 const API_BASE = 'http://localhost:5001/api';
+const AUTO_DRILL_ZOOM = false;
 
 interface PredictedEdgePayload {
   source: string;
@@ -104,6 +106,7 @@ interface DagCompareRow {
 
 type FocusDisplayMode = 'all' | 'selected_deps' | 'selected_only';
 type FocusRestoreSource = 'current' | 'memory' | 'default';
+type TaskDrillState = 'collapsed' | 'expanded';
 
 function uniqueIds(ids: Array<string | null | undefined>): string[] {
   return Array.from(new Set(ids.filter(Boolean) as string[]));
@@ -623,9 +626,7 @@ function overlayWorkflowOnSelectedTask(
   workflowNodes: DAGNode[],
   workflowEdges: DAGEdge[],
   selectedTaskId: string,
-  attachFromNodeId?: string | null,
 ): { nodes: DAGNode[]; edges: DAGEdge[] } {
-  const overlayTaskNodeId = `task_overlay_${selectedTaskId}`;
   if (workflowNodes.length === 0) {
     return { nodes: baseNodes, edges: baseEdges };
   }
@@ -644,6 +645,10 @@ function overlayWorkflowOnSelectedTask(
     taskId: selectedTaskId,
     workflowId: n.workflowId || selectedTaskId,
     graphKind: n.graphKind || 'workflow_agent',
+    // MARKER_155A.P0.WF_MINI_LAYER:
+    // Inline workflow is rendered as micro-layer (fractal scale) over architecture.
+    width: 54,
+    height: 24,
   }));
 
   const remappedEdges: DAGEdge[] = [];
@@ -662,24 +667,8 @@ function overlayWorkflowOnSelectedTask(
     });
   }
 
-  const hasIncoming = new Set<string>(remappedEdges.map((e) => e.target));
-  const entryNodes = remappedNodes.filter((n) => !hasIncoming.has(n.id));
-
-  const baseNodeIds = new Set(baseNodes.map((n) => n.id));
-  const bridgeSourceId = baseNodeIds.has(overlayTaskNodeId)
-    ? overlayTaskNodeId
-    : (attachFromNodeId && baseNodeIds.has(attachFromNodeId) ? attachFromNodeId : null);
-
-  const bridgeEdges: DAGEdge[] = bridgeSourceId
-    ? entryNodes.map((n, idx) => ({
-        id: `wf_bridge_${selectedTaskId}_${idx}`,
-        source: bridgeSourceId,
-        target: n.id,
-        type: 'dataflow',
-        relationKind: 'executes',
-        strength: 0.58,
-      }))
-    : [];
+  // P0 UX: keep inline workflow visually clean; no bridge rays from anchor to workflow cluster.
+  const bridgeEdges: DAGEdge[] = [];
 
   return {
     nodes: [...baseNodes, ...remappedNodes],
@@ -733,6 +722,67 @@ function buildInlineWorkflowFromPipeline(taskId: string, subtasks: Array<any>): 
   return { nodes, edges };
 }
 
+function buildInlineWorkflowFromTemplate(taskId: string, template: any): { nodes: DAGNode[]; edges: DAGEdge[] } {
+  const rawNodes = Array.isArray(template?.nodes) ? template.nodes : [];
+  const rawEdges = Array.isArray(template?.edges) ? template.edges : [];
+  if (rawNodes.length === 0) return { nodes: [], edges: [] };
+
+  const asNodeType = (raw: string): DAGNodeType => {
+    const t = String(raw || '').toLowerCase();
+    if (t === 'agent' || t === 'subtask' || t === 'proposal' || t === 'condition' || t === 'parallel' || t === 'loop' || t === 'transform' || t === 'group') {
+      return t as DAGNodeType;
+    }
+    return 'agent';
+  };
+
+  const asEdgeType = (raw: string): EdgeType => {
+    const t = String(raw || '').toLowerCase();
+    if (t === 'structural' || t === 'dataflow' || t === 'temporal' || t === 'conditional' || t === 'parallel_fork' || t === 'parallel_join' || t === 'feedback') {
+      return t as EdgeType;
+    }
+    return 'structural';
+  };
+
+  const nodes: DAGNode[] = rawNodes.map((n: any, idx: number) => {
+    const nodeType = asNodeType(String(n?.type || 'agent'));
+    const role = String(n?.data?.role || '').toLowerCase();
+    const status: NodeStatus = role === 'coder' ? 'running' : 'pending';
+    const layer = nodeType === 'agent' ? 1 : (nodeType === 'subtask' ? 2 : 3);
+    const nodeId = String(n?.id || `template_node_${idx}`);
+    return {
+      id: nodeId,
+      type: nodeType,
+      label: String(n?.label || nodeId).slice(0, 56),
+      status,
+      layer,
+      taskId,
+      role: role || undefined,
+      description: String(n?.data?.description || '').slice(0, 220) || undefined,
+      graphKind: nodeType === 'agent' ? 'workflow_agent' : 'workflow_artifact',
+      workflowId: String(template?.id || template?.name || 'bmad_default'),
+    };
+  });
+
+  const nodeIdSet = new Set(nodes.map((n) => n.id));
+  const edges: DAGEdge[] = rawEdges
+    .map((e: any, idx: number): DAGEdge | null => {
+      const source = String(e?.source || '');
+      const target = String(e?.target || '');
+      if (!source || !target || !nodeIdSet.has(source) || !nodeIdSet.has(target)) return null;
+      return {
+        id: String(e?.id || `tpl_e_${idx}`),
+        source,
+        target,
+        type: asEdgeType(String(e?.type || 'structural')),
+        strength: 0.68,
+        relationKind: String(e?.type || 'executes'),
+      };
+    })
+    .filter((e): e is DAGEdge => !!e);
+
+  return { nodes, edges };
+}
+
 export function MyceliumCommandCenter() {
   // WebSocket connection status
   const { connected } = useMyceliumSocket();
@@ -750,11 +800,14 @@ export function MyceliumCommandCenter() {
   const [dagEdges, setDagEdges] = useState<DAGEdge[]>([]);
   const [inlineWorkflowNodes, setInlineWorkflowNodes] = useState<DAGNode[]>([]);
   const [inlineWorkflowEdges, setInlineWorkflowEdges] = useState<DAGEdge[]>([]);
+  const [inlineTemplateWorkflowNodes, setInlineTemplateWorkflowNodes] = useState<DAGNode[]>([]);
+  const [inlineTemplateWorkflowEdges, setInlineTemplateWorkflowEdges] = useState<DAGEdge[]>([]);
   const [predictedEdges, setPredictedEdges] = useState<DAGEdge[]>([]);
   const [stats, setStats] = useState<DAGStats | null>(null);
   const [loading, setLoading] = useState(true);
 
   // UI state
+  const [taskDrillState, setTaskDrillState] = useState<TaskDrillState>('collapsed');
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedEdge, setSelectedEdge] = useState<{
@@ -813,9 +866,12 @@ export function MyceliumCommandCenter() {
   const DEBOUNCE_MS = 500;
   const dagFetchInFlightRef = useRef(false);
   const dagFetchQueuedRef = useRef(false);
+  const dagFetchSeqRef = useRef(0);
   const lastPredictiveErrorKeyRef = useRef<string>('');
   const runtimeHealthCacheRef = useRef<{ ok: boolean; detail: string; ts: number } | null>(null);
   const predictiveSkipUntilRef = useRef<number>(0);
+  const lastFractalZoomKeyRef = useRef<string>('');
+  const lastSelectedTaskRef = useRef<string | null>(null);
 
   const isActiveWindow = useCallback(() => {
     if (typeof document === 'undefined') return true;
@@ -824,6 +880,7 @@ export function MyceliumCommandCenter() {
 
   // MARKER_143.P3: Fetch DAG data — filtered by selectedTaskId when set
   const fetchDAG = useCallback(async (taskId?: string | null) => {
+    const requestSeq = ++dagFetchSeqRef.current;
     try {
       const url = taskId
         ? `${API_BASE}/dag?task_id=${encodeURIComponent(taskId)}`
@@ -837,11 +894,13 @@ export function MyceliumCommandCenter() {
       const edges = (data.edges || []).map(mapBackendEdge);
       const mappedStats = mapBackendStats(data.stats || {});
 
+      if (requestSeq !== dagFetchSeqRef.current) return;
       setDagNodes(nodes);
       setDagEdges(edges);
       setStats(mappedStats);
     } catch (err) {
       console.warn('DAG API unavailable:', err);
+      if (requestSeq !== dagFetchSeqRef.current) return;
       setDagNodes([]);
       setDagEdges([]);
       setStats({
@@ -849,6 +908,7 @@ export function MyceliumCommandCenter() {
         failedTasks: 0, successRate: 0, totalAgents: 0, totalSubtasks: 0,
       });
     } finally {
+      if (requestSeq !== dagFetchSeqRef.current) return;
       setLoading(false);
     }
   }, []);
@@ -869,14 +929,17 @@ export function MyceliumCommandCenter() {
   const focusRestoreSource = useMCCStore(s => s.focusRestoreSource);
   const setFocusRestorePolicy = useMCCStore(s => s.setFocusRestorePolicy);
   const setFocusRestoreSource = useMCCStore(s => s.setFocusRestoreSource);
+  const persistSessionState = useMCCStore(s => s.persistSessionState);
   const layoutPins = useMCCStore(s => s.layoutPins);
   const setLayoutPinsForKey = useMCCStore(s => s.setLayoutPinsForKey);
+  const selectedKey = useStore(s => s.selectedKey);
+  const loadFavorites = useStore(s => s.loadFavorites);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [mccReady, setMccReady] = useState(false);
   const [cameraLOD, setCameraLOD] = useState<LODLevel>('tasks');
   const dagGraphIdentity = useMemo(
-    () => `${navLevel}:${navRoadmapNodeId || 'none'}:${selectedTaskId || 'none'}`,
-    [navLevel, navRoadmapNodeId, selectedTaskId],
+    () => `${navLevel}:${navRoadmapNodeId || 'none'}`,
+    [navLevel, navRoadmapNodeId],
   );
   const focusScopeKey = useMemo(() => {
     if (navLevel === 'roadmap') return `roadmap:${navRoadmapNodeId || 'root'}`;
@@ -1181,6 +1244,15 @@ export function MyceliumCommandCenter() {
     });
   }, [initMCC]);
 
+  useEffect(() => {
+    loadFavorites();
+  }, [loadFavorites]);
+
+  useEffect(() => {
+    if (!mccReady) return;
+    persistSessionState();
+  }, [selectedKey, mccReady, persistSessionState]);
+
   // MARKER_153.5B: Fetch roadmap when MCC is ready and project exists
   useEffect(() => {
     if (mccReady && hasProject) {
@@ -1374,6 +1446,63 @@ export function MyceliumCommandCenter() {
       cancelled = true;
     };
   }, [selectedTaskId]);
+
+  // Full workflow template fallback (default: bmad_default) when live task.result is absent/partial.
+  useEffect(() => {
+    if (!selectedTaskId) {
+      setInlineTemplateWorkflowNodes([]);
+      setInlineTemplateWorkflowEdges([]);
+      return;
+    }
+    const selectedTask = tasks.find((t) => t.id === selectedTaskId);
+    const rawWorkflowKey = String(selectedTask?.workflow_id || '').trim();
+    const workflowKey = rawWorkflowKey && !rawWorkflowKey.startsWith('wf_')
+      ? rawWorkflowKey
+      : 'bmad_default';
+
+    let cancelled = false;
+    const loadTemplate = async () => {
+      try {
+        const primary = await fetch(`${API_BASE}/mcc/workflows/${encodeURIComponent(workflowKey)}`);
+        const fallback = !primary.ok && workflowKey !== 'bmad_default'
+          ? await fetch(`${API_BASE}/mcc/workflows/bmad_default`)
+          : null;
+        const response = primary.ok ? primary : fallback;
+        if (!response || !response.ok) throw new Error('template_unavailable');
+        const template = await response.json();
+        if (cancelled) return;
+        const mapped = buildInlineWorkflowFromTemplate(selectedTaskId, template);
+        setInlineTemplateWorkflowNodes(mapped.nodes);
+        setInlineTemplateWorkflowEdges(mapped.edges);
+      } catch {
+        if (cancelled) return;
+        setInlineTemplateWorkflowNodes([]);
+        setInlineTemplateWorkflowEdges([]);
+      }
+    };
+
+    loadTemplate();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTaskId, tasks]);
+
+  // P0 drill contract: workflow overlay is controlled by explicit expand/collapse state.
+  useEffect(() => {
+    if (navLevel !== 'roadmap') {
+      setTaskDrillState('collapsed');
+      return;
+    }
+    if (!selectedTaskId) {
+      lastSelectedTaskRef.current = null;
+      setTaskDrillState('collapsed');
+      return;
+    }
+    if (lastSelectedTaskRef.current !== selectedTaskId) {
+      lastSelectedTaskRef.current = selectedTaskId;
+      setTaskDrillState('expanded');
+    }
+  }, [navLevel, selectedTaskId]);
 
   // Listen for real-time updates via CustomEvents
   useEffect(() => {
@@ -1614,22 +1743,31 @@ export function MyceliumCommandCenter() {
     [selectedNode, selectedNodeIds],
   );
 
+  const isInlineWorkflowFocus =
+    navLevel === 'roadmap' &&
+    taskDrillState === 'expanded' &&
+    Boolean(selectedTaskId);
+
   const graphForView = useMemo(() => {
-    if (navLevel === 'roadmap' && selectedTaskId) {
+    if (isInlineWorkflowFocus && selectedTaskId) {
       const hasDetailedWorkflow = dagNodes.some((n) => n.type !== 'task');
+      const templateFallback =
+        inlineTemplateWorkflowNodes.length >= inlineWorkflowNodes.length
+          ? { nodes: inlineTemplateWorkflowNodes, edges: inlineTemplateWorkflowEdges }
+          : { nodes: inlineWorkflowNodes, edges: inlineWorkflowEdges };
       const workflowNodes = hasDetailedWorkflow
         ? dagNodes
-        : (inlineWorkflowNodes.length > 0 ? inlineWorkflowNodes : buildInlineWorkflowFromPipeline(selectedTaskId, []).nodes);
+        : (templateFallback.nodes.length > 0 ? templateFallback.nodes : buildInlineWorkflowFromPipeline(selectedTaskId, []).nodes);
       const workflowEdges = hasDetailedWorkflow
         ? dagEdges
-        : (inlineWorkflowEdges.length > 0 ? inlineWorkflowEdges : buildInlineWorkflowFromPipeline(selectedTaskId, []).edges);
+        : (templateFallback.edges.length > 0 ? templateFallback.edges : buildInlineWorkflowFromPipeline(selectedTaskId, []).edges);
+
       return overlayWorkflowOnSelectedTask(
         effectiveNodes,
-        effectiveEdges,
+        effectiveEdgesWithPredicted,
         workflowNodes,
         workflowEdges,
         selectedTaskId,
-        selectedNode || navRoadmapNodeId || null,
       );
     }
 
@@ -1648,32 +1786,16 @@ export function MyceliumCommandCenter() {
     const edges = effectiveEdgesWithPredicted.filter(e => visibleIds.has(e.source) && visibleIds.has(e.target));
     return { nodes, edges };
   }, [
-    dagEdges,
-    dagNodes,
-    inlineWorkflowEdges,
-    inlineWorkflowNodes,
     effectiveEdges,
     effectiveEdgesWithPredicted,
     effectiveNodes,
     focusDisplayMode,
     focusIdsForView,
+    isInlineWorkflowFocus,
     navLevel,
     selectedTaskId,
-    selectedNode,
-    navRoadmapNodeId,
+    taskDrillState,
   ]);
-
-  // Keep task selection and camera LOD synchronized (first-click safe).
-  useEffect(() => {
-    if (navLevel !== 'roadmap') return;
-    if (!selectedTaskId) return;
-    const overlayId = `task_overlay_${selectedTaskId}`;
-    const targetId = effectiveNodes.some((n) => n.id === overlayId)
-      ? overlayId
-      : (selectedNode || navRoadmapNodeId || null);
-    if (!targetId) return;
-    dagViewRef.current?.zoomToNode(targetId, 2);
-  }, [effectiveNodes, navLevel, navRoadmapNodeId, selectedNode, selectedTaskId]);
 
   // MARKER_155.P4.FOCUS_ACROSS_ZOOM:
   // Keep multi-focus stable across drill/zoom transitions, drop stale ids only.
@@ -1938,7 +2060,6 @@ export function MyceliumCommandCenter() {
       // Explicit deselect (pane click): clear focus memory for current scope
       // so auto-restore does not immediately reselect old nodes.
       focusMemoryRef.current[focusScopeKey] = [];
-      selectTask(null);
       setSelectedNode(null);
       setSelectedNodeIds([]);
       setFocusedNodeId(null);
@@ -1966,33 +2087,26 @@ export function MyceliumCommandCenter() {
     if (nodeId.startsWith('task_overlay_')) {
       const taskId = nodeId.replace('task_overlay_', '');
       selectTask(taskId);
-      // Fractal interaction: keep one canvas, zoom in instead of switching to workflow level.
-      if (navLevel === 'roadmap' && !additive) {
-        dagViewRef.current?.zoomToNode(nodeId, 2);
-      }
     }
-  }, [focusScopeKey, selectTask, setFocusRestoreSource, setFocusedNodeId, navLevel]);
+  }, [focusScopeKey, selectTask, setFocusRestoreSource, setFocusedNodeId]);
 
   const handleLevelAwareNodeDoubleClick = useCallback((nodeId: string) => {
     if (navLevel === 'roadmap') {
-      // Double click on architecture node -> in-place task overlay focus.
-      if (!nodeId.startsWith('task_overlay_')) {
-        handleRoadmapNodeDrill(nodeId);
-        return;
-      }
-      // Double click on overlay task -> workflow.
+      // Roadmap: workflow drill is explicit on double-click for task overlays.
+      if (!nodeId.startsWith('task_overlay_')) return;
       const taskId = nodeId.replace('task_overlay_', '');
       if (!taskId) return;
       selectTask(taskId);
-      dagViewRef.current?.zoomToNode(nodeId, 2);
+      setTaskDrillState((prev) => (selectedTaskId === taskId && prev === 'expanded' ? 'collapsed' : 'expanded'));
+      return;
     } else if (navLevel === 'tasks') {
       // MARKER_155.2A: Ignore virtual tree nodes (root + branches), only drill real tasks
       if (nodeId.startsWith('__')) return;
       selectTask(nodeId);
-      dagViewRef.current?.zoomToNode(nodeId, 2);
+      drillDown('workflow', { taskId: nodeId });
     }
     // Other levels: workflow level uses existing DAG editor behavior
-  }, [navLevel, handleRoadmapNodeDrill, selectTask]);
+  }, [navLevel, selectTask, drillDown, selectedTaskId]);
 
   // Selected node data for detail panel
   const selectedNodeData = useMemo(() => {
@@ -2128,9 +2242,10 @@ export function MyceliumCommandCenter() {
     onDrillNode: selectedNode ? () => handleLevelAwareNodeDoubleClick(selectedNode) : undefined,
     onDrillTask: () => {
       if (selectedNode) handleLevelAwareNodeDoubleClick(selectedNode);
-      else if (selectedTaskId) {
-        const fallbackNodeId = navLevel === 'roadmap' ? `task_overlay_${selectedTaskId}` : selectedTaskId;
-        dagViewRef.current?.zoomToNode(fallbackNodeId, 2);
+      else if (selectedTaskId && navLevel === 'roadmap') {
+        setTaskDrillState((prev) => (prev === 'expanded' ? 'collapsed' : 'expanded'));
+      } else if (selectedTaskId) {
+        drillDown('workflow', { taskId: selectedTaskId });
       }
     },
     onExecute: handleExecute,
@@ -2693,7 +2808,7 @@ export function MyceliumCommandCenter() {
                   pointerEvents: 'none',
                 }}
               >
-                Press <span style={{ color: NOLAN_PALETTE.textAccent, fontWeight: 600 }}>Enter</span> or double-click to drill into {selectedNode?.startsWith('task_overlay_') ? 'workflow' : navLevel === 'roadmap' ? 'module' : 'task'}
+                Press <span style={{ color: NOLAN_PALETTE.textAccent, fontWeight: 600 }}>Enter</span> to drill into {selectedNode?.startsWith('task_overlay_') ? 'workflow' : navLevel === 'roadmap' ? 'module' : 'task'}
               </div>
             )}
 
