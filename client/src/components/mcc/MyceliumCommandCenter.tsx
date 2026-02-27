@@ -723,13 +723,18 @@ function overlayRoadmapNodeChildren(
   const remappedNodes: DAGNode[] = [];
   const remappedEdges: DAGEdge[] = [];
   const seen = new Set<string>();
+  // MARKER_155A.G25.NODE_DRILL_THRESHOLDS:
+  // Explicit unfold thresholds for roadmap node drill (P2 auto-collapse contract).
+  const DEPTH1_LIMIT = 6;
+  const DEPTH2_PER_PARENT_LIMIT = 3;
+  const DEPTH2_TOTAL_LIMIT = 8;
 
   // MARKER_155A.G23.NODE_DRILL_BREADTH:
   // Show richer next-depth context (children + limited grandchildren) instead of a single node.
-  let depth1 = Array.from(adjacency.get(parentNodeId) || [])
+  let depth1CandidatesAll = Array.from(adjacency.get(parentNodeId) || [])
     .filter((id) => validRoadmapNode(id))
-    .sort((a, b) => a.localeCompare(b))
-    .slice(0, 6);
+    .sort((a, b) => a.localeCompare(b));
+  let depth1 = depth1CandidatesAll.slice(0, DEPTH1_LIMIT);
 
   // MARKER_155A.G23.NODE_DRILL_PATH_FALLBACK:
   // If graph edges provide too sparse neighborhood, derive child candidates by path hierarchy.
@@ -753,20 +758,26 @@ function overlayRoadmapNodeChildren(
         })
         .map((n) => n.id)
         .sort((a, b) => a.localeCompare(b))
-        .slice(0, 8);
-      if (pathCandidates.length > depth1.length) depth1 = pathCandidates;
+        .slice(0, DEPTH1_LIMIT + 2);
+      if (pathCandidates.length > depth1.length) {
+        depth1CandidatesAll = pathCandidates;
+        depth1 = depth1CandidatesAll.slice(0, DEPTH1_LIMIT);
+      }
     }
   }
+  const depth1Overflow = Math.max(0, depth1CandidatesAll.length - depth1.length);
   const depth2Set = new Set<string>();
   for (const c of depth1) {
     const neighbors = Array.from(adjacency.get(c) || [])
       .filter((id) => id !== parentNodeId && validRoadmapNode(id))
       .sort((a, b) => a.localeCompare(b))
-      .slice(0, 3);
+      .slice(0, DEPTH2_PER_PARENT_LIMIT);
     neighbors.forEach((id) => depth2Set.add(id));
-    if (depth2Set.size >= 8) break;
+    if (depth2Set.size >= DEPTH2_TOTAL_LIMIT) break;
   }
-  const depth2 = Array.from(depth2Set).slice(0, 8);
+  const depth2All = Array.from(depth2Set);
+  const depth2 = depth2All.slice(0, DEPTH2_TOTAL_LIMIT);
+  const depth2Overflow = Math.max(0, depth2All.length - depth2.length);
 
   const pushNode = (childId: string, depth: number) => {
     if (seen.has(childId)) return;
@@ -798,6 +809,39 @@ function overlayRoadmapNodeChildren(
 
   depth1.forEach((id) => pushNode(id, 1));
   depth2.forEach((id) => pushNode(id, 2));
+
+  const pushOverflowNode = (depth: number, count: number) => {
+    if (count <= 0) return;
+    const overflowId = `rd_${parentNodeId}__overflow_d${depth}`;
+    remappedNodes.push({
+      id: overflowId,
+      type: 'subtask',
+      label: `+${count} more`,
+      status: 'pending',
+      layer: 2,
+      graphKind: 'workflow_artifact',
+      metadata: {
+        rd_parent: parentNodeId,
+        rd_depth: depth,
+        rd_overflow: true,
+        mini_scale: 0.14,
+      },
+      width: 44,
+      height: 18,
+    });
+    remappedEdges.push({
+      id: `rd_bridge_${parentNodeId}__overflow_d${depth}`,
+      source: parentNodeId,
+      target: overflowId,
+      type: 'structural',
+      relationKind: 'contains',
+      strength: 0.18,
+    });
+  };
+  // MARKER_155A.G25.NODE_DRILL_OVERFLOW_BADGE:
+  // Show explicit +N badges when thresholds hide part of branch.
+  pushOverflowNode(1, depth1Overflow);
+  pushOverflowNode(2, depth2Overflow);
 
   if (remappedNodes.length === 0) return { nodes: baseNodes, edges: baseEdges };
   return {
