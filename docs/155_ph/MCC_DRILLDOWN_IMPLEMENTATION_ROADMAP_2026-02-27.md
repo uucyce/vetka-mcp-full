@@ -19,6 +19,10 @@
 - `P2` threshold/breadcrumb/lazy consistency hardening.
 - `P3` final deprecated-surface retirement strategy (archive/remove policy).
 
+Недавно добавлено (P2):
+- roadmap node drill thresholds: `DEPTH1_LIMIT=6`, `DEPTH2_PER_PARENT_LIMIT=3`, `DEPTH2_TOTAL_LIMIT=8`.
+- overflow markers `+N more` для порционного раскрытия при скрытых узлах.
+
 ## 1. Сверка с текущей архитектурой
 
 Текущий каркас уже подходит под single-canvas концепцию:
