@@ -29,7 +29,11 @@ def test_dagview_workflow_layout_is_adaptive_not_fixed_box():
     assert "const targetW = Math.min(340, Math.max(210, 140 + nodeCount * 18));" in code
     assert "const targetH = Math.min(220, Math.max(120, 92 + nodeCount * 12));" in code
     assert "MARKER_155A.G23.LOCAL_PUSH_V1" in code
-    assert "shiftY = Math.max(shiftY, Math.round(wfBox.h * 0.55));" in code
+    assert "MARKER_155A.G24.LOCAL_REPEL_VECTOR" in code
+    assert "const overlapX =" in code
+    assert "const overlapY =" in code
+    assert "const maxShiftX = 160;" in code
+    assert "const maxShiftY = 180;" in code
 
 
 def test_mcc_keeps_full_roadmap_context_while_selecting():
@@ -98,3 +102,17 @@ def test_task_workflow_expand_is_explicit_toggle_not_selection_side_effect():
     assert "setTaskDrillState((prev) => (selectedTaskId === taskId && prev === 'expanded' ? 'collapsed' : 'expanded'))" in code
     assert "if (navLevel !== 'roadmap') {" in code
     assert "if (!selectedTaskId) {" in code
+
+
+def test_dagview_inline_focus_keeps_context_and_edge_emphasis():
+    code = _read("client/src/components/mcc/DAGView.tsx")
+    assert "MARKER_155A.G24.HIGHLIGHT_INLINE_CONTEXT" in code
+    assert "opacity: isConnected ? 1.0 : 0.56" in code
+    assert "setNodes(nds => nds.map(n => ({" in code
+    assert "opacity: 1" in code
+
+
+def test_dagview_incremental_reuse_is_adaptive_in_architecture_mode():
+    code = _read("client/src/components/mcc/DAGView.tsx")
+    assert "MARKER_155A.G24.INCREMENTAL_LAYOUT_ARBITRATION" in code
+    assert "layoutMode !== 'architecture' || (!hasWorkflowInline && !hasRoadmapDrillInline)" in code

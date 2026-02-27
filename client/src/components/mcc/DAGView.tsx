@@ -210,9 +210,10 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
     // In architecture mode, avoid incremental reuse when inline overlays are active.
     // Otherwise local push offsets accumulate and drag anchor branches "underground".
     // MARKER_155A.G24.INCREMENTAL_LAYOUT_ARBITRATION:
-    // Incremental reuse is disabled for architecture mode to prevent cumulative sink drift.
-    // Tradeoff: architecture can feel less stable between rapid drill toggles.
-    const keepIncremental = layoutMode !== 'architecture';
+    // Keep architecture stable when no inline overlays are active.
+    // Disable incremental reuse only while inline layers are present to avoid sink drift.
+    const keepIncremental =
+      layoutMode !== 'architecture' || (!hasWorkflowInline && !hasRoadmapDrillInline);
     let updatedNodes = result.nodes.map(node => {
       if (!keepIncremental) return node;
       const prevPos = prevPositions[node.id];
@@ -390,6 +391,8 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
         // MARKER_155A.G23.LOCAL_PUSH_V1:
         // Push only nearby conflicting architecture branches; never global relayout.
+        // MARKER_155A.G24.LOCAL_REPEL_VECTOR:
+        // Resolve collisions with bounded local repel vector (x/y), not one-way downward shift.
         if (pushBBoxes.length > 0) {
           const blockers = updatedNodes.filter((n) =>
             !n.id.startsWith('wf_') &&
@@ -400,6 +403,8 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
             a: { x: number; y: number; w: number; h: number },
             b: { x: number; y: number; w: number; h: number },
           ) => !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
+          const maxShiftX = 160;
+          const maxShiftY = 180;
           for (const n of blockers) {
             const box = {
               x: n.position.x,
@@ -407,15 +412,33 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
               w: Number(n.width || 150),
               h: Number(n.height || 54),
             };
+            let shiftX = 0;
             let shiftY = 0;
             for (const wfBox of pushBBoxes) {
               if (!overlaps(box, wfBox)) continue;
-              shiftY = Math.max(shiftY, Math.round(wfBox.h * 0.55));
+              const overlapX =
+                Math.min(box.x + box.w, wfBox.x + wfBox.w) - Math.max(box.x, wfBox.x);
+              const overlapY =
+                Math.min(box.y + box.h, wfBox.y + wfBox.h) - Math.max(box.y, wfBox.y);
+              if (overlapX <= 0 || overlapY <= 0) continue;
+              const nodeCx = box.x + box.w / 2;
+              const nodeCy = box.y + box.h / 2;
+              const wfCx = wfBox.x + wfBox.w / 2;
+              const wfCy = wfBox.y + wfBox.h / 2;
+              if (overlapX < overlapY) {
+                const dirX = nodeCx < wfCx ? -1 : 1;
+                shiftX += dirX * Math.round(overlapX + 12);
+              } else {
+                const dirY = nodeCy < wfCy ? -1 : 1;
+                shiftY += dirY * Math.round(overlapY + 12);
+              }
             }
-            if (shiftY > 0) {
+            if (shiftX !== 0 || shiftY !== 0) {
+              const boundedX = Math.max(-maxShiftX, Math.min(maxShiftX, shiftX));
+              const boundedY = Math.max(-maxShiftY, Math.min(maxShiftY, shiftY));
               n.position = {
-                x: n.position.x,
-                y: n.position.y + shiftY,
+                x: n.position.x + boundedX,
+                y: n.position.y + boundedY,
               };
             }
           }
@@ -617,18 +640,6 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           : []
     );
 
-    if (hasInlineWorkflow) {
-      // MARKER_155A.G24.HIGHLIGHT_BYPASS_WHEN_INLINE:
-      // While inline workflow is visible, graph-wide dim/highlight is bypassed.
-      // This prevents over-dimming, but also hides selected-edge emphasis expectations.
-      setEdges(baseEdgesRef.current);
-      setNodes(nds => nds.map(n => ({
-        ...n,
-        style: { ...n.style, opacity: 1 },
-      })));
-      return;
-    }
-
     if (focusIds.size === 0) {
       // Reset all edges and nodes to default
       setEdges(baseEdgesRef.current);
@@ -651,6 +662,33 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
         connectedNodeIds.add(e.target);
       }
     });
+
+    if (hasInlineWorkflow) {
+      // MARKER_155A.G24.HIGHLIGHT_INLINE_CONTEXT:
+      // Keep full-context opacity for nodes while preserving edge emphasis for selection.
+      setEdges(baseEdgesRef.current.map(e => {
+        const isConnected = connectedEdgeIds.has(e.id);
+        return {
+          ...e,
+          style: {
+            ...e.style,
+            stroke: isConnected ? '#fff' : (e.style?.stroke || NOLAN_PALETTE.edgeStructural),
+            strokeWidth: isConnected ? 2.2 : 1,
+            opacity: isConnected ? 1.0 : 0.56,
+          },
+          animated: isConnected ? true : false,
+          zIndex: isConnected ? 10 : 0,
+        };
+      }));
+      setNodes(nds => nds.map(n => ({
+        ...n,
+        style: {
+          ...n.style,
+          opacity: 1,
+        },
+      })));
+      return;
+    }
 
     // Update edges: brighten connected, dim others
     setEdges(baseEdgesRef.current.map(e => {
