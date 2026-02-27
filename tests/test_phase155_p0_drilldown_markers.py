@@ -90,3 +90,11 @@ def test_workflow_template_key_policy_no_longer_forces_wf_prefix_to_default():
     code = _read("client/src/components/mcc/MyceliumCommandCenter.tsx")
     assert "const workflowKey = rawWorkflowKey || 'bmad_default';" in code
     assert "rawWorkflowKey && !rawWorkflowKey.startsWith('wf_')" not in code
+
+
+def test_task_workflow_expand_is_explicit_toggle_not_selection_side_effect():
+    code = _read("client/src/components/mcc/MyceliumCommandCenter.tsx")
+    assert "selection alone does not auto-expand workflow" in code
+    assert "setTaskDrillState((prev) => (selectedTaskId === taskId && prev === 'expanded' ? 'collapsed' : 'expanded'))" in code
+    assert "if (navLevel !== 'roadmap') {" in code
+    assert "if (!selectedTaskId) {" in code
