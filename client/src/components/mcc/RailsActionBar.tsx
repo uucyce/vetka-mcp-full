@@ -2,6 +2,7 @@
  * ⚠️ DEPRECATED: RailsActionBar
  *
  * MARKER_155.CLEANUP: Component deprecated in Phase 155.
+ * MARKER_155A.G25.DEPRECATED_SURFACE_LOCK: forbidden in runtime path.
  * Replaced by FooterActionBar which provides unified 3-action interface.
  *
  * This file is kept for reference only. Do not use in new code.

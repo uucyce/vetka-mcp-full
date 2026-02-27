@@ -13,6 +13,7 @@
 - `P1.2` Local relayout partial: bounded repel vector replaces one-way downward push.
 - `P3.1` Legacy dependency removed: `MiniTasks(expanded)` no longer uses deprecated `MCCTaskList`.
 - `P3.2` Runtime guard added: main MCC path protected from deprecated component imports.
+- `P3.3` Deprecated-surface lock policy documented (`MCC_DEPRECATED_SURFACES_RETIREMENT_2026-02-27.md`).
 
 В процессе:
 - `P1.3` incremental/reuse tuning under rapid toggle stress.

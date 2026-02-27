@@ -1,5 +1,6 @@
 /**
  * MARKER_152.10: TaskDAGView — Task-level DAG showing all tasks as nodes.
+ * MARKER_155A.G25.DEPRECATED_SURFACE_LOCK: legacy branch; forbidden in main runtime path.
  * Fetches from /api/analytics/dag/tasks, applies dagre layout, renders ReactFlow.
  * Read-only: single-click selects, double-click drills into workflow DAG.
  *

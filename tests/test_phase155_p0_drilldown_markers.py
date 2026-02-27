@@ -192,3 +192,16 @@ def test_no_new_runtime_imports_of_deprecated_mcc_components():
             if target in deprecated:
                 violations.append(f"{file.name} -> {target}")
     assert not violations, f"Deprecated runtime imports found: {violations}"
+
+
+def test_deprecated_surfaces_are_explicitly_locked():
+    files = [
+        "client/src/components/mcc/MCCTaskList.tsx",
+        "client/src/components/mcc/MCCDetailPanel.tsx",
+        "client/src/components/mcc/WorkflowToolbar.tsx",
+        "client/src/components/mcc/RailsActionBar.tsx",
+        "client/src/components/mcc/TaskDAGView.tsx",
+    ]
+    for rel in files:
+        code = _read(rel)
+        assert "MARKER_155A.G25.DEPRECATED_SURFACE_LOCK" in code

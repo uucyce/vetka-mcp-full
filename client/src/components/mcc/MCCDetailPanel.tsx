@@ -2,6 +2,7 @@
  * ⚠️ DEPRECATED: MCCDetailPanel
  *
  * MARKER_155.CLEANUP: Component deprecated in Phase 155.
+ * MARKER_155A.G25.DEPRECATED_SURFACE_LOCK: forbidden in runtime path.
  * Replaced by MiniStats floating window in DAG canvas.
  *
  * This file is kept for reference only. Do not use in new code.
