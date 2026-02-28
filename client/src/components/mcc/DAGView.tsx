@@ -713,6 +713,10 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           String((edge as any).className || '').includes('wf-bridge-edge');
         return {
           ...edge,
+          // MARKER_155A.G27.GLOBAL_HANDLE_FLOW:
+          // Global geometry contract: output from top, input to bottom.
+          sourceHandle: edge.sourceHandle || 'source-top',
+          targetHandle: edge.targetHandle || 'target-bottom',
           type: 'straight',
           markerEnd: edge.markerEnd || { type: MarkerType.ArrowClosed, color: '#7d8590' },
           style: {

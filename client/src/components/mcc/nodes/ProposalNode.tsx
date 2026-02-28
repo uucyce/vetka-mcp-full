@@ -39,6 +39,21 @@ function ProposalNodeComponent({ data, selected }: ProposalNodeProps) {
       }}
     >
       <Handle
+        type="source"
+        id="source-top"
+        position={Position.Top}
+        style={{
+          opacity: 0,
+          width: 2,
+          height: 2,
+          background: 'transparent',
+          border: 'none',
+          top: 0,
+          left: '50%',
+          transform: 'translateX(-50%)',
+        }}
+      />
+      <Handle
         type="target"
         id="target-top"
         position={Position.Top}

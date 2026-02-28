@@ -33,6 +33,7 @@ def test_dagview_workflow_layout_is_adaptive_not_fixed_box():
     assert "MARKER_155A.G26.WF_ANCHOR_ROOT_LOCK" in code
     assert "MARKER_155A.G27.RESERVED_WORKFLOW_FRAME" in code
     assert "MARKER_155A.G27.MICRO_HANDLE_DOWNSCALE" in code
+    assert "MARKER_155A.G27.GLOBAL_HANDLE_FLOW" in code
     assert "const RESERVED_WF_FRAME_W = 176;" in code
     assert "const RESERVED_WF_FRAME_H = 126;" in code
     assert "MARKER_155A.G23.LOCAL_PUSH_V1" in code

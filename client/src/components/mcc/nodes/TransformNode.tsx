@@ -79,6 +79,12 @@ function TransformNodeComponent({ data, selected }: TransformNodeProps) {
 
       {/* Handles */}
       <Handle
+        type="source"
+        id="source-top"
+        position={Position.Top}
+        style={{ opacity: 0, width: 2, height: 2, background: 'transparent', border: 'none' }}
+      />
+      <Handle
         type="target"
         id="target-top"
         position={Position.Top}
