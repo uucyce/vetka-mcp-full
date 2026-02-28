@@ -632,6 +632,23 @@ function overlayWorkflowOnSelectedTask(
   const idMap = new Map<string, string>();
   visibleWorkflowNodes.forEach((n) => idMap.set(n.id, `wf_${selectedTaskId}_${n.id}`));
 
+  const workflowStageOrder = (node: DAGNode): number => {
+    const role = String((node as any)?.role || '').toLowerCase();
+    if (role === 'architect') return 0;
+    if (role === 'scout') return 1;
+    if (role === 'researcher') return 2;
+    if (role === 'coder') return 3;
+    if (role === 'verifier') return 4;
+    if (node.type === 'condition') return 5;
+    if (node.type === 'parallel') return 6;
+    if (node.type === 'loop') return 7;
+    if (node.type === 'transform') return 8;
+    if (node.type === 'group') return 9;
+    if (node.type === 'subtask') return 10;
+    if (node.type === 'proposal') return 11;
+    return 12;
+  };
+
   const remappedNodes: DAGNode[] = visibleWorkflowNodes.map((n) => ({
     ...n,
     id: idMap.get(n.id) || n.id,
@@ -640,20 +657,22 @@ function overlayWorkflowOnSelectedTask(
     graphKind: n.graphKind || 'workflow_agent',
     metadata: {
       ...(n.metadata || {}),
-      mini_scale: 0.42,
+      // MARKER_155A.G26.WF_MINI_SCALE_MICRO:
+      // Workflow inline cards are intentionally tiny relative to roadmap cards.
+      mini_scale: 0.28,
     },
     // MARKER_155A.P0.WF_MINI_LAYER:
     // Inline workflow is rendered as micro-layer (fractal scale) over architecture.
-    width: 54,
-    height: 24,
+    width: 44,
+    height: 20,
   }));
 
-  const remappedEdges: DAGEdge[] = [];
+  const rawRemappedEdges: DAGEdge[] = [];
   for (const e of workflowEdges) {
     const source = idMap.get(e.source);
     const target = idMap.get(e.target);
     if (!source || !target) continue;
-    remappedEdges.push({
+    rawRemappedEdges.push({
       ...e,
       id: `wf_${selectedTaskId}_${e.id}`,
       source,
@@ -663,6 +682,44 @@ function overlayWorkflowOnSelectedTask(
       strength: Math.max(0.35, Number(e.strength || 0.65)),
     });
   }
+
+  // MARKER_155A.G26.WF_EDGE_PRUNE_CANONICAL:
+  // Reduce spaghetti in inline workflow: dedupe, drop self-links, cap fan-in/fan-out, and prefer forward stage edges.
+  const nodeById = new Map(remappedNodes.map((n) => [n.id, n]));
+  const dedup = new Map<string, DAGEdge>();
+  for (const e of rawRemappedEdges) {
+    if (e.source === e.target) continue;
+    if (!nodeById.has(e.source) || !nodeById.has(e.target)) continue;
+    const key = `${e.source}->${e.target}`;
+    const prev = dedup.get(key);
+    if (!prev || Number(e.strength || 0) > Number(prev.strength || 0)) dedup.set(key, e);
+  }
+  const deduped = Array.from(dedup.values());
+  const forwardBiased = deduped.filter((e) => {
+    const s = nodeById.get(e.source);
+    const t = nodeById.get(e.target);
+    if (!s || !t) return false;
+    const sd = workflowStageOrder(s);
+    const td = workflowStageOrder(t);
+    if (td >= sd) return true;
+    return Number(e.strength || 0) >= 0.82;
+  });
+  const incomingCount = new Map<string, number>();
+  const outgoingCount = new Map<string, number>();
+  const remappedEdges = forwardBiased
+    .sort((a, b) => {
+      const ds = Number(b.strength || 0) - Number(a.strength || 0);
+      if (Math.abs(ds) > 1e-6) return ds;
+      return a.id.localeCompare(b.id);
+    })
+    .filter((e) => {
+      const inN = incomingCount.get(e.target) || 0;
+      const outN = outgoingCount.get(e.source) || 0;
+      if (inN >= 2 || outN >= 3) return false;
+      incomingCount.set(e.target, inN + 1);
+      outgoingCount.set(e.source, outN + 1);
+      return true;
+    });
 
   const hasIncoming = new Set<string>(remappedEdges.map((e) => e.target));
   const entryNodeId = remappedNodes

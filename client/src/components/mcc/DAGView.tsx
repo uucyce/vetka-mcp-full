@@ -57,6 +57,126 @@ const LOD_THRESHOLDS = {
   tasksMax: 1.8,
 } as const;
 
+// MARKER_155A.G26.WF_CANONICAL_LAYOUT:
+// Deterministic inline workflow layout used in roadmap drill context.
+// Goal: stable matryoshka shape (no random "clump") across repeated expands.
+function layoutInlineWorkflowCanonical(
+  nodes: DAGNode[],
+  edges: DAGEdge[],
+): { nodes: DAGNode[]; edges: DAGEdge[] } {
+  if (nodes.length === 0) return { nodes, edges };
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const indegree = new Map<string, number>();
+  const depth = new Map<string, number>();
+  nodes.forEach((n) => {
+    indegree.set(n.id, 0);
+    depth.set(n.id, 0);
+  });
+  for (const e of edges) {
+    if (!byId.has(e.source) || !byId.has(e.target) || e.source === e.target) continue;
+    indegree.set(e.target, (indegree.get(e.target) || 0) + 1);
+  }
+
+  const roleDepth = (n: DAGNode): number => {
+    const role = String((n as any)?.role || '').toLowerCase();
+    if (role === 'architect') return 0;
+    if (role === 'coder') return 1;
+    if (role === 'verifier') return 2;
+    if (role === 'scout' || role === 'researcher') return 1;
+    if (n.type === 'proposal') return 3;
+    if (n.type === 'subtask') return 2;
+    return 1;
+  };
+  const roleOrder = (n: DAGNode): number => {
+    const role = String((n as any)?.role || '').toLowerCase();
+    if (role === 'architect') return 0;
+    if (role === 'scout') return 1;
+    if (role === 'researcher') return 2;
+    if (role === 'coder') return 3;
+    if (role === 'verifier') return 4;
+    if (n.type === 'condition') return 5;
+    if (n.type === 'parallel') return 6;
+    if (n.type === 'loop') return 7;
+    if (n.type === 'transform') return 8;
+    if (n.type === 'group') return 9;
+    if (n.type === 'subtask') return 10;
+    if (n.type === 'proposal') return 11;
+    return 20;
+  };
+
+  // Kahn traversal for acyclic core, then semantic fallback for cyclic leftovers.
+  const q: string[] = nodes
+    .filter((n) => (indegree.get(n.id) || 0) === 0)
+    .map((n) => n.id)
+    .sort((a, b) => a.localeCompare(b));
+  while (q.length > 0) {
+    const id = q.shift()!;
+    const d = depth.get(id) || 0;
+    for (const e of edges) {
+      if (e.source !== id || !byId.has(e.target)) continue;
+      depth.set(e.target, Math.max(depth.get(e.target) || 0, d + 1));
+      indegree.set(e.target, (indegree.get(e.target) || 0) - 1);
+      if ((indegree.get(e.target) || 0) === 0) q.push(e.target);
+    }
+    q.sort((a, b) => a.localeCompare(b));
+  }
+
+  for (const n of nodes) {
+    if ((indegree.get(n.id) || 0) > 0) {
+      depth.set(n.id, Math.max(depth.get(n.id) || 0, roleDepth(n)));
+    } else {
+      depth.set(n.id, Math.max(depth.get(n.id) || 0, roleDepth(n)));
+    }
+  }
+
+  const byDepth = new Map<number, DAGNode[]>();
+  for (const n of nodes) {
+    const d = Math.max(0, depth.get(n.id) || 0);
+    const arr = byDepth.get(d) || [];
+    arr.push(n);
+    byDepth.set(d, arr);
+  }
+  const levels = Array.from(byDepth.keys()).sort((a, b) => a - b);
+  // MARKER_155A.G26.WF_CANONICAL_PACKING:
+  // Split overcrowded rows into deterministic micro-levels to avoid horizontal-strip collapse.
+  const packedRows: DAGNode[][] = [];
+  const maxPerRow = 3;
+  for (const lvl of levels) {
+    const row = (byDepth.get(lvl) || []).sort((a, b) => {
+      const ra = roleOrder(a);
+      const rb = roleOrder(b);
+      if (ra !== rb) return ra - rb;
+      return String(a.label || a.id).localeCompare(String(b.label || b.id));
+    });
+    for (let i = 0; i < row.length; i += maxPerRow) {
+      packedRows.push(row.slice(i, i + maxPerRow));
+    }
+  }
+  const xGap = 102;
+  const yGap = 86;
+  const outNodes: DAGNode[] = [];
+  for (let lvl = 0; lvl < packedRows.length; lvl += 1) {
+    const row = packedRows[lvl] || [];
+    const rowW = Math.max(0, row.length - 1) * xGap;
+    const startX = -rowW / 2;
+    row.forEach((n, idx) => {
+      outNodes.push({
+        ...n,
+        metadata: {
+          ...(n.metadata || {}),
+          wf_stage: lvl,
+        },
+        // local canonical coords (later embedded as micro layer around anchor)
+        position: {
+          x: startX + idx * xGap,
+          y: lvl * yGap,
+        } as any,
+      } as any);
+    });
+  }
+  return { nodes: outNodes, edges };
+}
+
 function getLODLevel(zoom: number): LODLevel {
   if (zoom <= LOD_THRESHOLDS.architectureMax) return 'architecture';
   if (zoom <= LOD_THRESHOLDS.tasksMax) return 'tasks';
@@ -357,14 +477,10 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
           // MARKER_155A.G23.WF_LAYER_PHYSICS_V1:
           // Build canonical workflow shape via isolated sublayout (same DAG engine), then embed as micro-layer.
-          const localLayout = layoutSugiyamaBT(localDagNodes, localDagEdges, {
-            compact: true,
-            mode: 'workflow',
-            layoutBiasProfile,
-          });
+          const localLayout = layoutInlineWorkflowCanonical(localDagNodes, localDagEdges);
           const localById = new Map(localLayout.nodes.map((n) => [n.id, n]));
-          const xs = localLayout.nodes.map((n) => n.position.x);
-          const ys = localLayout.nodes.map((n) => n.position.y);
+          const xs = localLayout.nodes.map((n: any) => Number((n.position as any)?.x || 0));
+          const ys = localLayout.nodes.map((n: any) => Number((n.position as any)?.y || 0));
           const minX = Math.min(...xs);
           const maxX = Math.max(...xs);
           const minY = Math.min(...ys);
@@ -373,8 +489,10 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           const spanY = Math.max(1, maxY - minY);
 
           const nodeCount = localLayout.nodes.length;
-          const targetW = Math.min(340, Math.max(210, 140 + nodeCount * 18));
-          const targetH = Math.min(220, Math.max(120, 92 + nodeCount * 12));
+          // MARKER_155A.G26.WF_MICRO_ENVELOPE:
+          // Keep inline workflow envelope compact and local to task anchor.
+          const targetW = Math.min(220, Math.max(130, 96 + nodeCount * 9));
+          const targetH = Math.min(160, Math.max(84, 66 + nodeCount * 7));
           const scale = Math.min(targetW / spanX, targetH / spanY);
           const anchorX = overlayCenterX - targetW / 2;
           const topYTry = overlayY - targetH - 26;
@@ -551,7 +669,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
         },
       };
     });
-  }, [layoutedNodes, cameraLOD]);
+  }, [layoutedNodes, cameraLOD, hasInlineWorkflow]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(fractalNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);

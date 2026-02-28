@@ -26,9 +26,12 @@ def test_dagview_workflow_layout_is_adaptive_not_fixed_box():
     code = _read("client/src/components/mcc/DAGView.tsx")
     assert "MARKER_155A.G23.WF_LAYER_PHYSICS_V1" in code
     assert "MARKER_155A.G23.NO_SINK_ACCUMULATION" in code
-    assert "const localLayout = layoutSugiyamaBT(localDagNodes, localDagEdges, {" in code
-    assert "const targetW = Math.min(340, Math.max(210, 140 + nodeCount * 18));" in code
-    assert "const targetH = Math.min(220, Math.max(120, 92 + nodeCount * 12));" in code
+    assert "MARKER_155A.G26.WF_CANONICAL_LAYOUT" in code
+    assert "const localLayout = layoutInlineWorkflowCanonical(localDagNodes, localDagEdges);" in code
+    assert "MARKER_155A.G26.WF_CANONICAL_PACKING" in code
+    assert "MARKER_155A.G26.WF_MICRO_ENVELOPE" in code
+    assert "const targetW = Math.min(220, Math.max(130, 96 + nodeCount * 9));" in code
+    assert "const targetH = Math.min(160, Math.max(84, 66 + nodeCount * 7));" in code
     assert "MARKER_155A.G23.LOCAL_PUSH_V1" in code
     assert "MARKER_155A.G24.LOCAL_REPEL_VECTOR" in code
     assert "const overlapX =" in code
@@ -86,6 +89,15 @@ def test_mini_scale_contract_is_wired():
         code = _read(rel)
         assert "miniScale?: number;" in code
         assert "resolveMiniScale" in code
+
+
+def test_inline_workflow_edges_are_pruned_to_canonical_signal():
+    code = _read("client/src/components/mcc/MyceliumCommandCenter.tsx")
+    assert "MARKER_155A.G26.WF_EDGE_PRUNE_CANONICAL" in code
+    assert "if (inN >= 2 || outN >= 3) return false;" in code
+    assert "const key = `${e.source}->${e.target}`;" in code
+    assert "if (td >= sd) return true;" in code
+    assert "MARKER_155A.G26.WF_MINI_SCALE_MICRO" in code
 
 
 def test_capture_and_spectral_scripts_exist():
