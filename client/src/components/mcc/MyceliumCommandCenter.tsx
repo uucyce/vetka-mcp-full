@@ -659,12 +659,12 @@ function overlayWorkflowOnSelectedTask(
       ...(n.metadata || {}),
       // MARKER_155A.G26.WF_MINI_SCALE_MICRO:
       // Workflow inline cards are intentionally tiny relative to roadmap cards.
-      mini_scale: 0.28,
+      mini_scale: 0.1,
     },
     // MARKER_155A.P0.WF_MINI_LAYER:
     // Inline workflow is rendered as micro-layer (fractal scale) over architecture.
-    width: 44,
-    height: 20,
+    width: 26,
+    height: 12,
   }));
 
   const rawRemappedEdges: DAGEdge[] = [];
@@ -677,6 +677,7 @@ function overlayWorkflowOnSelectedTask(
       id: `wf_${selectedTaskId}_${e.id}`,
       source,
       target,
+      className: 'wf-inline-edge',
       type: e.type || 'dataflow',
       relationKind: e.relationKind || 'executes',
       strength: Math.max(0.35, Number(e.strength || 0.65)),
@@ -732,6 +733,7 @@ function overlayWorkflowOnSelectedTask(
         id: `wf_bridge_${selectedTaskId}`,
         source: overlayTaskNodeId,
         target: entryNodeId,
+        className: 'wf-bridge-edge',
         type: 'structural',
         relationKind: 'contains',
         strength: 0.26,

@@ -31,8 +31,9 @@ def test_dagview_workflow_layout_is_adaptive_not_fixed_box():
     assert "MARKER_155A.G26.WF_CANONICAL_PACKING" in code
     assert "MARKER_155A.G26.WF_MICRO_ENVELOPE" in code
     assert "MARKER_155A.G26.WF_ANCHOR_ROOT_LOCK" in code
-    assert "const targetW = Math.min(220, Math.max(130, 96 + nodeCount * 9));" in code
-    assert "const targetH = Math.min(160, Math.max(84, 66 + nodeCount * 7));" in code
+    assert "MARKER_155A.G27.RESERVED_WORKFLOW_FRAME" in code
+    assert "const RESERVED_WF_FRAME_W = 176;" in code
+    assert "const RESERVED_WF_FRAME_H = 126;" in code
     assert "MARKER_155A.G23.LOCAL_PUSH_V1" in code
     assert "MARKER_155A.G24.LOCAL_REPEL_VECTOR" in code
     assert "const overlapX =" in code
@@ -100,6 +101,8 @@ def test_inline_workflow_edges_are_pruned_to_canonical_signal():
     assert "const key = `${e.source}->${e.target}`;" in code
     assert "if (td >= sd) return true;" in code
     assert "MARKER_155A.G26.WF_MINI_SCALE_MICRO" in code
+    assert "className: 'wf-inline-edge'" in code
+    assert "className: 'wf-bridge-edge'" in code
 
 
 def test_capture_and_spectral_scripts_exist():

@@ -494,11 +494,13 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           const spanX = Math.max(1, maxX - minX);
           const spanY = Math.max(1, maxY - minY);
 
-          const nodeCount = localLayout.nodes.length;
           // MARKER_155A.G26.WF_MICRO_ENVELOPE:
-          // Keep inline workflow envelope compact and local to task anchor.
-          const targetW = Math.min(220, Math.max(130, 96 + nodeCount * 9));
-          const targetH = Math.min(160, Math.max(84, 66 + nodeCount * 7));
+          // MARKER_155A.G27.RESERVED_WORKFLOW_FRAME:
+          // Inline workflow always lives inside fixed reserved frame (invisible "table") near selected task.
+          const RESERVED_WF_FRAME_W = 176;
+          const RESERVED_WF_FRAME_H = 126;
+          const targetW = RESERVED_WF_FRAME_W;
+          const targetH = RESERVED_WF_FRAME_H;
           const scale = Math.min(targetW / spanX, targetH / spanY);
           const entryLocal = localById.get(localEntryId);
           const entryScaledX =
@@ -508,7 +510,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           // MARKER_155A.G26.WF_ANCHOR_ROOT_LOCK:
           // Lock inline workflow entry/root horizontally to selected task center.
           const anchorX = overlayCenterX - entryScaledX;
-          const topYTry = overlayY - targetH - 26;
+          const topYTry = overlayY - targetH - 22;
           const topY = topYTry < 24 ? (overlayY + Number(overlay.height || 60) + 18) : topYTry;
 
           for (const n of group) {
@@ -691,11 +693,23 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
   // Render all loaded edges as direct vectors regardless of upstream edge type.
   const vectorEdgesForRender = useMemo(
     () =>
-      edges.map((edge): Edge => ({
-        ...edge,
-        type: 'straight',
-        markerEnd: edge.markerEnd || { type: MarkerType.ArrowClosed, color: '#7d8590' },
-      })),
+      edges.map((edge): Edge => {
+        const isMicroInline =
+          String(edge.id || '').startsWith('wf_') ||
+          String(edge.id || '').startsWith('rd_') ||
+          String((edge as any).className || '').includes('wf-inline-edge') ||
+          String((edge as any).className || '').includes('wf-bridge-edge');
+        return {
+          ...edge,
+          type: 'straight',
+          markerEnd: edge.markerEnd || { type: MarkerType.ArrowClosed, color: '#7d8590' },
+          style: {
+            ...(edge.style || {}),
+            strokeWidth: isMicroInline ? 0.7 : Number((edge.style as any)?.strokeWidth || 1),
+            opacity: isMicroInline ? 0.78 : Number((edge.style as any)?.opacity || 1),
+          },
+        };
+      }),
     [edges],
   );
 
@@ -1120,6 +1134,12 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
         .react-flow__edge path {
           transition: stroke 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease;
+        }
+
+        .react-flow__edge.wf-inline-edge path,
+        .react-flow__edge.wf-bridge-edge path {
+          stroke-width: 0.7px !important;
+          opacity: 0.78 !important;
         }
 
         /* Controls button styling for dark theme */
