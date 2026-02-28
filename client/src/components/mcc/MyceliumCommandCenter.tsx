@@ -873,10 +873,11 @@ function overlayRoadmapNodeChildren(
         ...(child.metadata || {}),
         rd_parent: parentNodeId,
         rd_depth: depth,
-        mini_scale: 0.14,
+        // Keep folder/node drill readable (larger than workflow micro layer).
+        mini_scale: 0.22,
       },
-      width: 44,
-      height: 18,
+      width: 62,
+      height: 26,
     });
     remappedEdges.push({
       id: `rd_bridge_${parentNodeId}_${childId}`,
@@ -2454,6 +2455,11 @@ export function MyceliumCommandCenter() {
       // MARKER_155A.G23.NODE_DRILL_NEXT_DEPTH:
       // Non-task roadmap node drill (folder/module matryoshka).
       const isSameExpanded = roadmapDrillNodeId === nodeId && roadmapNodeDrillState === 'expanded';
+      // MARKER_155A.G27.NODE_DRILL_PRIORITY:
+      // Node/folder drill has explicit priority over task drill on non-task double-click.
+      if (!isSameExpanded && taskDrillState === 'expanded') {
+        setTaskDrillState('collapsed');
+      }
       setRoadmapDrillNodeId(isSameExpanded ? null : nodeId);
       setRoadmapNodeDrillState(isSameExpanded ? 'collapsed' : 'expanded');
       return;
@@ -2464,7 +2470,7 @@ export function MyceliumCommandCenter() {
       drillDown('workflow', { taskId: nodeId });
     }
     // Other levels: workflow level uses existing DAG editor behavior
-  }, [navLevel, selectTask, drillDown, selectedTaskId, roadmapDrillNodeId, roadmapNodeDrillState]);
+  }, [navLevel, selectTask, drillDown, selectedTaskId, roadmapDrillNodeId, roadmapNodeDrillState, taskDrillState]);
 
   // Handle edge selection
   const handleEdgeSelect = useCallback((edgeId: string | null) => {

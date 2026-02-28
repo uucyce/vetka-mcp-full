@@ -300,10 +300,22 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
   const pinnedPositionsRef = useRef<PositionMap>(pinnedPositions || {});
   const persistPinsTimerRef = useRef<number | null>(null);
   const graphIdentityRef = useRef<string | undefined>(graphIdentity);
+  const isInlineOverlayNodeId = useCallback(
+    (id: string): boolean => id.startsWith('wf_') || id.startsWith('rd_'),
+    [],
+  );
 
   useEffect(() => {
-    pinnedPositionsRef.current = pinnedPositions || {};
-  }, [pinnedPositions]);
+    // MARKER_155A.G27.PIN_SANITIZE_INLINE:
+    // Never restore persisted pins for temporary inline overlays (wf_/rd_).
+    const incoming = pinnedPositions || {};
+    const sanitized: PositionMap = {};
+    for (const [id, pos] of Object.entries(incoming)) {
+      if (isInlineOverlayNodeId(id)) continue;
+      sanitized[id] = pos;
+    }
+    pinnedPositionsRef.current = sanitized;
+  }, [pinnedPositions, isInlineOverlayNodeId]);
 
   // MARKER_155A.P2.FRACTAL_RENDER: LOD-aware visual density tuning in one canvas.
   const [cameraLOD, setCameraLOD] = useState<LODLevel>('tasks');
@@ -339,7 +351,6 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
     // This reduces jump/flicker during rapid toggle stress while letting inline nodes re-layout.
     const reuseArchitectureBaseWhileInline =
       layoutMode === 'architecture' && (hasWorkflowInline || hasRoadmapDrillInline);
-    const isInlineOverlayNodeId = (id: string): boolean => id.startsWith('wf_') || id.startsWith('rd_');
     let updatedNodes = result.nodes.map(node => {
       const prevPos = prevPositions[node.id];
       if (!prevPos) return node;
@@ -356,10 +367,11 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
     // MARKER_155A.P2.PIN_LAYOUT:
     // Persisted user drag positions have highest priority over auto layout.
     const pinMap = pinnedPositionsRef.current || {};
-    if (Object.keys(pinMap).length > 0) {
-      updatedNodes = updatedNodes.map(node => {
-        const pinned = pinMap[node.id];
-        if (!pinned) return node;
+      if (Object.keys(pinMap).length > 0) {
+        updatedNodes = updatedNodes.map(node => {
+          if (isInlineOverlayNodeId(node.id)) return node;
+          const pinned = pinMap[node.id];
+          if (!pinned) return node;
         return {
           ...node,
           position: pinned,
@@ -651,7 +663,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
     }
 
     return { nodes: updatedNodes, edges: result.edges };
-  }, [inputNodes, inputEdges, compact, graphIdentity, layoutMode, layoutBiasProfile]);
+  }, [inputNodes, inputEdges, compact, graphIdentity, layoutMode, layoutBiasProfile, isInlineOverlayNodeId]);
 
   const hasInlineWorkflow = useMemo(
     () => layoutedNodes.some((n) => n.id.startsWith('wf_')),
@@ -886,6 +898,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
     changes.forEach((change: any) => {
       if (change.type === 'position' && change.position) {
         prevPositionsRef.current[change.id] = change.position;
+        if (isInlineOverlayNodeId(change.id)) return;
         nextPins[change.id] = change.position;
         changed = true;
       }
@@ -899,7 +912,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
         onPinnedPositionsChange?.(nextPins);
       }, 120);
     }
-  }, [onNodesChange, onPinnedPositionsChange]);
+  }, [onNodesChange, onPinnedPositionsChange, isInlineOverlayNodeId]);
 
   useEffect(() => {
     return () => {
@@ -1171,6 +1184,15 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
         .react-flow__handle-valid {
           background: #4ecdc4 !important;
+        }
+
+        /* MARKER_155A.G27.MICRO_HANDLE_DOWNSCALE:
+           Inline wf/rd overlays use tiny handles to avoid visual clutter in reserved workflow frame. */
+        .react-flow__node[data-id^="wf_"] .react-flow__handle,
+        .react-flow__node[data-id^="rd_"] .react-flow__handle {
+          width: 4px !important;
+          height: 4px !important;
+          border-width: 1px !important;
         }
 
         /* MARKER_154.6A: Show double-click hint on roadmap node hover */

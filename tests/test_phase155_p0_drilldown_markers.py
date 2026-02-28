@@ -32,6 +32,7 @@ def test_dagview_workflow_layout_is_adaptive_not_fixed_box():
     assert "MARKER_155A.G26.WF_MICRO_ENVELOPE" in code
     assert "MARKER_155A.G26.WF_ANCHOR_ROOT_LOCK" in code
     assert "MARKER_155A.G27.RESERVED_WORKFLOW_FRAME" in code
+    assert "MARKER_155A.G27.MICRO_HANDLE_DOWNSCALE" in code
     assert "const RESERVED_WF_FRAME_W = 176;" in code
     assert "const RESERVED_WF_FRAME_H = 126;" in code
     assert "MARKER_155A.G23.LOCAL_PUSH_V1" in code
@@ -55,6 +56,7 @@ def test_mcc_has_roadmap_node_drill_matryoshka_marker():
     assert "MARKER_155A.G23.NODE_DRILL_BREADTH" in code
     assert "MARKER_155A.G23.NODE_DRILL_PATH_FALLBACK" in code
     assert "MARKER_155A.G26.NODE_DRILL_RICHER_PATH_FALLBACK" in code
+    assert "MARKER_155A.G27.NODE_DRILL_PRIORITY" in code
     assert "MARKER_155A.G25.NODE_DRILL_THRESHOLDS" in code
     assert "MARKER_155A.G25.NODE_DRILL_OVERFLOW_BADGE" in code
     assert "const DEPTH1_LIMIT = 6;" in code
@@ -153,7 +155,8 @@ def test_dagview_incremental_reuse_is_adaptive_in_architecture_mode():
     assert "layoutMode !== 'architecture' || (!hasWorkflowInline && !hasRoadmapDrillInline)" in code
     assert "MARKER_155A.G25.INCREMENTAL_STRESS_TUNE" in code
     assert "const reuseArchitectureBaseWhileInline =" in code
-    assert "const isInlineOverlayNodeId = (id: string): boolean => id.startsWith('wf_') || id.startsWith('rd_');" in code
+    assert "MARKER_155A.G27.PIN_SANITIZE_INLINE" in code
+    assert "id.startsWith('wf_') || id.startsWith('rd_')" in code
     assert "if (reuseArchitectureBaseWhileInline && !isInlineOverlayNodeId(node.id)) {" in code
     assert "prevPositionsRef.current = retained;" in code
 
