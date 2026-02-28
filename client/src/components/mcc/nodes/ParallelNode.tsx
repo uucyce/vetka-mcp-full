@@ -34,14 +34,14 @@ function ParallelNodeComponent({ data, selected }: ParallelNodeProps) {
     <div
       style={{
         background: NOLAN_PALETTE.bgLight,
-        border: `1.5px dashed ${borderColor}`,
+        border: `${isMini ? 1 : 1.5}px dashed ${borderColor}`,
         borderRadius: isMini ? scalePx(3, compactScale, 2) : 3,
         padding: isMini ? `${scalePx(2, compactScale, 1)}px ${scalePx(5, compactScale, 3)}px` : '6px 14px',
         minWidth: isMini ? scalePx(40, compactScale, 32) : 140,
         fontFamily: 'monospace',
         textAlign: 'center',
         boxShadow: selected
-          ? `0 0 0 2px ${NOLAN_PALETTE.text}`
+          ? `0 0 0 ${isMini ? 1 : 2}px ${NOLAN_PALETTE.text}`
           : isRunning
             ? `0 0 6px ${borderColor}30`
             : 'none',
@@ -50,10 +50,10 @@ function ParallelNodeComponent({ data, selected }: ParallelNodeProps) {
     >
       {/* Icon + label row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-        <span style={{ fontSize: isMini ? scalePx(8, compactScale, 6) : 12, color: NOLAN_PALETTE.textMuted }}>⫸</span>
+        <span style={{ fontSize: isMini ? scalePx(7, compactScale, 5) : 12, color: NOLAN_PALETTE.textMuted }}>⫸</span>
         <span
           style={{
-            fontSize: isMini ? scalePx(7, compactScale, 6) : 10,
+            fontSize: isMini ? scalePx(6, compactScale, 5) : 10,
             fontWeight: 500,
             color: NOLAN_PALETTE.text,
             overflow: 'hidden',

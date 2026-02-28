@@ -152,8 +152,8 @@ function layoutInlineWorkflowCanonical(
       packedRows.push(row.slice(i, i + maxPerRow));
     }
   }
-  const xGap = 102;
-  const yGap = 86;
+  const xGap = 118;
+  const yGap = 100;
   const outNodes: DAGNode[] = [];
   const totalRows = packedRows.length;
   for (let lvl = 0; lvl < packedRows.length; lvl += 1) {

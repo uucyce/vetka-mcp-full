@@ -35,14 +35,14 @@ function LoopNodeComponent({ data, selected }: LoopNodeProps) {
     <div
       style={{
         background: NOLAN_PALETTE.bgLight,
-        border: `1.5px solid ${borderColor}`,
+        border: `${isMini ? 1 : 1.5}px solid ${borderColor}`,
         borderRadius: isMini ? scalePx(7, compactScale, 5) : 12,
         padding: isMini ? `${scalePx(3, compactScale, 2)}px ${scalePx(6, compactScale, 3)}px` : '7px 12px',
         minWidth: isMini ? scalePx(38, compactScale, 30) : 100,
         fontFamily: 'monospace',
         textAlign: 'center',
         boxShadow: selected
-          ? `0 0 0 2px ${NOLAN_PALETTE.text}`
+          ? `0 0 0 ${isMini ? 1 : 2}px ${NOLAN_PALETTE.text}`
           : isRunning
             ? `0 0 6px ${borderColor}30`
             : 'none',
@@ -51,10 +51,10 @@ function LoopNodeComponent({ data, selected }: LoopNodeProps) {
     >
       {/* Icon + label */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-        <span style={{ fontSize: isMini ? scalePx(8, compactScale, 6) : 13, color: NOLAN_PALETTE.textMuted }}>↻</span>
+        <span style={{ fontSize: isMini ? scalePx(7, compactScale, 5) : 13, color: NOLAN_PALETTE.textMuted }}>↻</span>
         <span
           style={{
-            fontSize: isMini ? scalePx(7, compactScale, 6) : 10,
+            fontSize: isMini ? scalePx(6, compactScale, 5) : 10,
             fontWeight: 500,
             color: NOLAN_PALETTE.text,
             overflow: 'hidden',

@@ -48,10 +48,10 @@ function ConditionNodeComponent({ data, selected }: ConditionNodeProps) {
           height: isMini ? scalePx(22, compactScale, 16) : 56,
           transform: 'translate(-50%, -50%) rotate(45deg)',
           background: NOLAN_PALETTE.bgLight,
-          border: `2px solid ${borderColor}`,
+          border: `${isMini ? 1 : 2}px solid ${borderColor}`,
           borderRadius: 4,
           boxShadow: selected
-            ? `0 0 0 2px ${NOLAN_PALETTE.text}`
+            ? `0 0 0 ${isMini ? 1 : 2}px ${NOLAN_PALETTE.text}`
             : isRunning
               ? `0 0 8px ${borderColor}40`
               : 'none',
@@ -72,10 +72,10 @@ function ConditionNodeComponent({ data, selected }: ConditionNodeProps) {
           pointerEvents: 'none',
         }}
       >
-        <div style={{ fontSize: isMini ? scalePx(8, compactScale, 6) : 14, color: NOLAN_PALETTE.text }}>◇</div>
+        <div style={{ fontSize: isMini ? scalePx(7, compactScale, 5) : 14, color: NOLAN_PALETTE.text }}>◇</div>
         <div
           style={{
-            fontSize: isMini ? scalePx(6, compactScale, 5) : 9,
+            fontSize: isMini ? scalePx(5, compactScale, 4) : 9,
             color: NOLAN_PALETTE.textMuted,
             maxWidth: isMini ? scalePx(24, compactScale, 18) : 70,
             overflow: 'hidden',

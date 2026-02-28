@@ -34,7 +34,7 @@ function TransformNodeComponent({ data, selected }: TransformNodeProps) {
     <div
       style={{
         background: NOLAN_PALETTE.bgLight,
-        border: `1px solid ${borderColor}`,
+        border: `${isMini ? 0.8 : 1}px solid ${borderColor}`,
         borderRadius: isMini ? scalePx(3, compactScale, 2) : 3,
         padding: isMini ? `${scalePx(2, compactScale, 1)}px ${scalePx(6, compactScale, 3)}px` : '6px 12px',
         minWidth: isMini ? scalePx(40, compactScale, 32) : 110,
@@ -46,7 +46,7 @@ function TransformNodeComponent({ data, selected }: TransformNodeProps) {
         borderBottomLeftRadius: isMini ? scalePx(2, compactScale, 1) : 2,
         borderBottomRightRadius: isMini ? scalePx(2, compactScale, 1) : 2,
         boxShadow: selected
-          ? `0 0 0 2px ${NOLAN_PALETTE.text}`
+          ? `0 0 0 ${isMini ? 1 : 2}px ${NOLAN_PALETTE.text}`
           : isRunning
             ? `0 0 4px ${borderColor}20`
             : 'none',
@@ -55,10 +55,10 @@ function TransformNodeComponent({ data, selected }: TransformNodeProps) {
     >
       {/* Icon + label */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-        <span style={{ fontSize: isMini ? scalePx(8, compactScale, 6) : 11, color: NOLAN_PALETTE.textMuted }}>⟐</span>
+        <span style={{ fontSize: isMini ? scalePx(7, compactScale, 5) : 11, color: NOLAN_PALETTE.textMuted }}>⟐</span>
         <span
           style={{
-            fontSize: isMini ? scalePx(7, compactScale, 6) : 10,
+            fontSize: isMini ? scalePx(6, compactScale, 5) : 10,
             color: NOLAN_PALETTE.text,
             overflow: 'hidden',
             textOverflow: 'ellipsis',

@@ -679,8 +679,8 @@ function overlayWorkflowOnSelectedTask(
     },
     // MARKER_155A.P0.WF_MINI_LAYER:
     // Inline workflow is rendered as micro-layer (fractal scale) over architecture.
-    width: 22,
-    height: 11,
+    width: 26,
+    height: 12,
   }));
 
   const rawRemappedEdges: DAGEdge[] = [];

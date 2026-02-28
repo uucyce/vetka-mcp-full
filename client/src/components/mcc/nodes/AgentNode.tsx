@@ -38,14 +38,14 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
     <div
       style={{
         background: NOLAN_PALETTE.bgLight,
-        border: `1.5px solid ${borderColor}`,
+        border: `${isWorkflowCompact ? 1 : 1.5}px solid ${borderColor}`,
         borderRadius: isWorkflowCompact ? scalePx(4, compactScale, 2) : 8,
         padding: isWorkflowCompact ? `${scalePx(2, compactScale, 1)}px ${scalePx(5, compactScale, 2)}px` : '8px 12px',
-        minWidth: isWorkflowCompact ? scalePx(36, compactScale, 24) : 100,
-        width: isWorkflowCompact ? scalePx(48, compactScale, 30) : undefined,
+        minWidth: isWorkflowCompact ? scalePx(44, compactScale, 34) : 100,
+        width: isWorkflowCompact ? scalePx(58, compactScale, 42) : undefined,
         fontFamily: 'monospace',
         boxShadow: selected
-          ? `0 0 0 2px ${NOLAN_PALETTE.text}`
+          ? `0 0 0 ${isWorkflowCompact ? 1 : 2}px ${NOLAN_PALETTE.text}`
           : isRunning
             ? `0 0 6px ${NOLAN_PALETTE.statusRunning}30`
             : 'none',
@@ -90,10 +90,10 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
         <span
           style={{
             color: NOLAN_PALETTE.text,
-            fontSize: isWorkflowInlineMini ? scalePx(7, compactScale, 5) : isWorkflowCompact ? scalePx(8, compactScale, 6) : 11,
+            fontSize: isWorkflowInlineMini ? scalePx(6, compactScale, 5) : isWorkflowCompact ? scalePx(7, compactScale, 6) : 11,
             fontWeight: 500,
             display: 'inline-block',
-            maxWidth: isWorkflowInlineMini ? scalePx(64, compactScale, 40) : isWorkflowCompact ? scalePx(46, compactScale, 30) : 220,
+            maxWidth: isWorkflowInlineMini ? scalePx(70, compactScale, 44) : isWorkflowCompact ? scalePx(52, compactScale, 32) : 220,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
