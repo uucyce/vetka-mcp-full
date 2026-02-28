@@ -10,6 +10,7 @@ import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { NOLAN_PALETTE, getStatusBorderColor } from '../../../utils/dagLayout';
 import type { NodeStatus, AgentRole } from '../../../types/dag';
+import { resolveMiniScale, scalePx } from './miniScale';
 
 interface AgentNodeProps {
   data: {
@@ -19,6 +20,7 @@ interface AgentNodeProps {
     model?: string;
     durationS?: number;
     mini?: boolean;
+    miniScale?: number;
   };
   selected?: boolean;
 }
@@ -28,15 +30,17 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
   const borderColor = getStatusBorderColor(data.status);
   const isRunning = data.status === 'running';
   const isWorkflowCompact = Boolean(data.mini);
+  const compactScale = resolveMiniScale(isWorkflowCompact, data.miniScale);
 
   return (
     <div
       style={{
         background: NOLAN_PALETTE.bgLight,
         border: `1.5px solid ${borderColor}`,
-        borderRadius: isWorkflowCompact ? 5 : 8,
-        padding: isWorkflowCompact ? '3px 6px' : '8px 12px',
-        minWidth: isWorkflowCompact ? 44 : 100,
+        borderRadius: isWorkflowCompact ? scalePx(5, compactScale, 3) : 8,
+        padding: isWorkflowCompact ? `${scalePx(3, compactScale, 2)}px ${scalePx(6, compactScale, 3)}px` : '8px 12px',
+        minWidth: isWorkflowCompact ? scalePx(44, compactScale, 34) : 100,
+        width: isWorkflowCompact ? scalePx(58, compactScale, 42) : undefined,
         fontFamily: 'monospace',
         boxShadow: selected
           ? `0 0 0 2px ${NOLAN_PALETTE.text}`
@@ -48,8 +52,15 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
     >
       <Handle
         type="target"
+        id="target-top"
         position={Position.Top}
-        style={{ background: NOLAN_PALETTE.borderLight, width: 6, height: 6 }}
+        style={{ background: NOLAN_PALETTE.borderLight, width: scalePx(6, compactScale, 4), height: scalePx(6, compactScale, 4) }}
+      />
+      <Handle
+        type="target"
+        id="target-bottom"
+        position={Position.Bottom}
+        style={{ opacity: 0, width: 2, height: 2, background: 'transparent', border: 'none' }}
       />
 
       {/* Role badge */}
@@ -62,8 +73,8 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
       >
         <span
           style={{
-            width: isWorkflowCompact ? 4 : 8,
-            height: isWorkflowCompact ? 4 : 8,
+            width: isWorkflowCompact ? scalePx(4, compactScale, 3) : 8,
+            height: isWorkflowCompact ? scalePx(4, compactScale, 3) : 8,
             borderRadius: 2,
             background: isRunning ? NOLAN_PALETTE.text : NOLAN_PALETTE.borderLight,
           }}
@@ -71,8 +82,13 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
         <span
           style={{
             color: NOLAN_PALETTE.text,
-            fontSize: isWorkflowCompact ? 8 : 11,
+            fontSize: isWorkflowCompact ? scalePx(8, compactScale, 7) : 11,
             fontWeight: 500,
+            display: 'inline-block',
+            maxWidth: isWorkflowCompact ? scalePx(38, compactScale, 30) : 220,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
           }}
         >
           {data.label}
@@ -85,8 +101,8 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
           style={{
             display: 'flex',
             gap: 8,
-            marginTop: isWorkflowCompact ? 2 : 4,
-            fontSize: isWorkflowCompact ? 7 : 9,
+            marginTop: isWorkflowCompact ? scalePx(2, compactScale, 1) : 4,
+            fontSize: isWorkflowCompact ? scalePx(7, compactScale, 6) : 9,
             color: NOLAN_PALETTE.textDim,
           }}
         >
@@ -97,8 +113,9 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
 
       <Handle
         type="source"
+        id="source-bottom"
         position={Position.Bottom}
-        style={{ background: NOLAN_PALETTE.borderLight, width: 6, height: 6 }}
+        style={{ background: NOLAN_PALETTE.borderLight, width: scalePx(6, compactScale, 4), height: scalePx(6, compactScale, 4) }}
       />
     </div>
   );

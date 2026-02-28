@@ -18,6 +18,7 @@ import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { NOLAN_PALETTE, getStatusBorderColor } from '../../../utils/dagLayout';
 import type { NodeStatus } from '../../../types/dag';
+import { resolveMiniScale, scalePx } from './miniScale';
 
 // MARKER_154.6A: Team preset → badge label + color
 const TEAM_BADGE: Record<string, { label: string; color: string }> = {
@@ -41,6 +42,8 @@ interface RoadmapTaskNodeProps {
     // MARKER_155.INTEGRATION.CHAT_BADGE: VETKA chat linking
     sourceChatId?: string;
     sourceChatUrl?: string;
+    mini?: boolean;
+    miniScale?: number;
   };
   selected?: boolean;
 }
@@ -50,6 +53,8 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
   const isRunning = data.status === 'running';
   const isDone = data.status === 'done';
   const isSuggested = data.anchorState === 'suggested';
+  const isMini = Boolean(data.mini);
+  const compactScale = resolveMiniScale(isMini, data.miniScale);
   const badge = TEAM_BADGE[data.preset || ''];
   const progressPct = data.subtasksTotal
     ? Math.round((data.subtasksDone || 0) / data.subtasksTotal * 100)
@@ -61,10 +66,12 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
         background: NOLAN_PALETTE.bgLight,
         border: `2px solid ${borderColor}`,
         borderStyle: isSuggested ? 'dashed' : 'solid',
-        borderRadius: 6,
-        padding: '8px 12px',
-        minWidth: 160,
-        maxWidth: 200,
+        borderRadius: isMini ? scalePx(6, compactScale, 3) : 6,
+        padding: isMini
+          ? `${scalePx(8, compactScale, 2)}px ${scalePx(12, compactScale, 3)}px`
+          : '8px 12px',
+        minWidth: isMini ? scalePx(160, compactScale, 44) : 160,
+        maxWidth: isMini ? scalePx(200, compactScale, 58) : 200,
         fontFamily: 'monospace',
         cursor: 'pointer',
         position: 'relative',
@@ -83,25 +90,36 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
       {/* Target handle */}
       <Handle
         type="target"
+        id="target-top"
         position={Position.Top}
-        style={{ background: NOLAN_PALETTE.borderLight, width: 8, height: 8 }}
+        style={{
+          background: NOLAN_PALETTE.borderLight,
+          width: isMini ? scalePx(8, compactScale, 3) : 8,
+          height: isMini ? scalePx(8, compactScale, 3) : 8,
+        }}
+      />
+      <Handle
+        type="source"
+        id="source-top"
+        position={Position.Top}
+        style={{ opacity: 0, width: 2, height: 2, background: 'transparent', border: 'none' }}
       />
 
       {/* Header row: label + badges */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: isMini ? scalePx(6, compactScale, 2) : 6, marginBottom: isMini ? scalePx(4, compactScale, 1) : 4 }}>
         {/* Team badge */}
         {badge && (
           <span
             style={{
-              width: 16,
-              height: 16,
-              borderRadius: 3,
+              width: isMini ? scalePx(16, compactScale, 8) : 16,
+              height: isMini ? scalePx(16, compactScale, 8) : 16,
+              borderRadius: isMini ? scalePx(3, compactScale, 2) : 3,
               background: `${badge.color}22`,
               border: `1px solid ${badge.color}44`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: 8,
+              fontSize: isMini ? scalePx(8, compactScale, 5) : 8,
               fontWeight: 700,
               color: badge.color,
               flexShrink: 0,
@@ -121,15 +139,15 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
               window.open(chatUrl, '_blank');
             }}
             style={{
-              width: 16,
-              height: 16,
-              borderRadius: 3,
+              width: isMini ? scalePx(16, compactScale, 8) : 16,
+              height: isMini ? scalePx(16, compactScale, 8) : 16,
+              borderRadius: isMini ? scalePx(3, compactScale, 2) : 3,
               background: 'rgba(74, 158, 255, 0.15)',
               border: '1px solid rgba(74, 158, 255, 0.3)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: 9,
+              fontSize: isMini ? scalePx(9, compactScale, 5) : 9,
               cursor: 'pointer',
               flexShrink: 0,
             }}
@@ -143,7 +161,7 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
         <div
           style={{
             color: NOLAN_PALETTE.textAccent,
-            fontSize: 11,
+            fontSize: isMini ? scalePx(11, compactScale, 6) : 11,
             fontWeight: 600,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -159,7 +177,7 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
           <span
             style={{
               color: '#8b8f96',
-              fontSize: 8,
+              fontSize: isMini ? scalePx(8, compactScale, 5) : 8,
               textTransform: 'uppercase',
               letterSpacing: 0.7,
               border: '1px dashed #3a3f48',
@@ -175,11 +193,11 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
       </div>
 
       {/* Status row */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: isMini ? scalePx(5, compactScale, 2) : 5, marginBottom: isMini ? scalePx(4, compactScale, 1) : 4 }}>
         <span
           style={{
-            width: 5,
-            height: 5,
+            width: isMini ? scalePx(5, compactScale, 2) : 5,
+            height: isMini ? scalePx(5, compactScale, 2) : 5,
             borderRadius: '50%',
             background: borderColor,
             flexShrink: 0,
@@ -188,7 +206,7 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
         <span
           style={{
             color: NOLAN_PALETTE.textDim,
-            fontSize: 8,
+            fontSize: isMini ? scalePx(8, compactScale, 5) : 8,
             textTransform: 'uppercase',
             letterSpacing: 1,
           }}
@@ -198,7 +216,7 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
 
         {/* Subtask counter */}
         {data.subtasksTotal != null && data.subtasksTotal > 0 && (
-          <span style={{ color: '#555', fontSize: 8, marginLeft: 'auto' }}>
+          <span style={{ color: '#555', fontSize: isMini ? scalePx(8, compactScale, 5) : 8, marginLeft: 'auto' }}>
             {data.subtasksDone || 0}/{data.subtasksTotal}
           </span>
         )}
@@ -208,11 +226,11 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
       {data.subtasksTotal != null && data.subtasksTotal > 0 && (
         <div
           style={{
-            height: 2,
+            height: isMini ? 1 : 2,
             background: 'rgba(255,255,255,0.05)',
-            borderRadius: 1,
+            borderRadius: isMini ? 0 : 1,
             overflow: 'hidden',
-            marginTop: 2,
+            marginTop: isMini ? 1 : 2,
           }}
         >
           <div
@@ -220,7 +238,7 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
               height: '100%',
               width: `${progressPct}%`,
               background: isDone ? NOLAN_PALETTE.statusDone : NOLAN_PALETTE.statusRunning,
-              borderRadius: 1,
+              borderRadius: isMini ? 0 : 1,
               transition: 'width 0.3s ease',
             }}
           />
@@ -232,8 +250,8 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
         <div
           style={{
             color: '#444',
-            fontSize: 8,
-            marginTop: 4,
+            fontSize: isMini ? scalePx(8, compactScale, 5) : 8,
+            marginTop: isMini ? scalePx(4, compactScale, 1) : 4,
             lineHeight: 1.3,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -250,10 +268,10 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
         className="roadmap-node-hint"
         style={{
           position: 'absolute',
-          bottom: -16,
+          bottom: isMini ? -10 : -16,
           left: '50%',
           transform: 'translateX(-50%)',
-          fontSize: 7,
+          fontSize: isMini ? scalePx(7, compactScale, 4) : 7,
           color: '#444',
           whiteSpace: 'nowrap',
           opacity: 0,
@@ -267,8 +285,19 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
       {/* Source handle */}
       <Handle
         type="source"
+        id="source-bottom"
         position={Position.Bottom}
-        style={{ background: NOLAN_PALETTE.borderLight, width: 8, height: 8 }}
+        style={{
+          background: NOLAN_PALETTE.borderLight,
+          width: isMini ? scalePx(8, compactScale, 3) : 8,
+          height: isMini ? scalePx(8, compactScale, 3) : 8,
+        }}
+      />
+      <Handle
+        type="target"
+        id="target-bottom"
+        position={Position.Bottom}
+        style={{ opacity: 0, width: 2, height: 2, background: 'transparent', border: 'none' }}
       />
     </div>
   );

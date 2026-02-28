@@ -44,8 +44,15 @@ function TaskNodeComponent({ data, selected }: TaskNodeProps) {
       {/* Target handle (edges come FROM children below) */}
       <Handle
         type="target"
+        id="target-top"
         position={Position.Top}
         style={{ background: NOLAN_PALETTE.borderLight, width: 8, height: 8 }}
+      />
+      <Handle
+        type="source"
+        id="source-top"
+        position={Position.Top}
+        style={{ opacity: 0, width: 2, height: 2, background: 'transparent', border: 'none' }}
       />
 
       {/* Task label */}
@@ -95,8 +102,15 @@ function TaskNodeComponent({ data, selected }: TaskNodeProps) {
       {/* Source handle (edges go TO agents above) */}
       <Handle
         type="source"
+        id="source-bottom"
         position={Position.Bottom}
         style={{ background: NOLAN_PALETTE.borderLight, width: 8, height: 8 }}
+      />
+      <Handle
+        type="target"
+        id="target-bottom"
+        position={Position.Bottom}
+        style={{ opacity: 0, width: 2, height: 2, background: 'transparent', border: 'none' }}
       />
     </div>
   );
