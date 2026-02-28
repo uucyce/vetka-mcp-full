@@ -820,6 +820,28 @@ function overlayRoadmapNodeChildren(
         depth1CandidatesAll = pathCandidates;
         depth1 = depth1CandidatesAll.slice(0, DEPTH1_LIMIT);
       }
+
+      // MARKER_155A.G26.NODE_DRILL_RICHER_PATH_FALLBACK:
+      // If direct children are still too sparse, include one more descendant depth.
+      if (depth1.length < 2) {
+        const deeperCandidates = baseNodes
+          .filter((n) => validRoadmapNode(n.id))
+          .filter((n) => {
+            const m: any = n.metadata || {};
+            const p = normalizePathKey(String(m.path || m.file_path || n.projectNodeId || n.id || ''));
+            if (!p || p === parentPath) return false;
+            if (!p.startsWith(`${parentPath}/`)) return false;
+            const pc = p.split('/').filter(Boolean).length;
+            return pc > segCount + 1 && pc <= segCount + 2;
+          })
+          .map((n) => n.id)
+          .sort((a, b) => a.localeCompare(b));
+        for (const id of deeperCandidates) {
+          if (!depth1CandidatesAll.includes(id)) depth1CandidatesAll.push(id);
+          if (depth1CandidatesAll.length >= DEPTH1_LIMIT + 2) break;
+        }
+        depth1 = depth1CandidatesAll.slice(0, DEPTH1_LIMIT);
+      }
     }
   }
   const depth1Overflow = Math.max(0, depth1CandidatesAll.length - depth1.length);

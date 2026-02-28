@@ -52,6 +52,7 @@ def test_mcc_has_roadmap_node_drill_matryoshka_marker():
     assert "MARKER_155A.G23.NODE_DRILL_NEXT_DEPTH" in code
     assert "MARKER_155A.G23.NODE_DRILL_BREADTH" in code
     assert "MARKER_155A.G23.NODE_DRILL_PATH_FALLBACK" in code
+    assert "MARKER_155A.G26.NODE_DRILL_RICHER_PATH_FALLBACK" in code
     assert "MARKER_155A.G25.NODE_DRILL_THRESHOLDS" in code
     assert "MARKER_155A.G25.NODE_DRILL_OVERFLOW_BADGE" in code
     assert "const DEPTH1_LIMIT = 6;" in code
