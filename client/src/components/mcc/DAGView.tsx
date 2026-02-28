@@ -474,6 +474,12 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
             (e) => groupIds.has(e.source) && groupIds.has(e.target)
           );
           if (localDagNodes.length === 0) continue;
+          const localHasIncoming = new Set(localDagEdges.map((e) => e.target));
+          const localEntryId =
+            localDagNodes
+              .map((n) => n.id)
+              .sort((a, b) => a.localeCompare(b))
+              .find((id) => !localHasIncoming.has(id)) || localDagNodes[0].id;
 
           // MARKER_155A.G23.WF_LAYER_PHYSICS_V1:
           // Build canonical workflow shape via isolated sublayout (same DAG engine), then embed as micro-layer.
@@ -494,7 +500,14 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           const targetW = Math.min(220, Math.max(130, 96 + nodeCount * 9));
           const targetH = Math.min(160, Math.max(84, 66 + nodeCount * 7));
           const scale = Math.min(targetW / spanX, targetH / spanY);
-          const anchorX = overlayCenterX - targetW / 2;
+          const entryLocal = localById.get(localEntryId);
+          const entryScaledX =
+            entryLocal && Number.isFinite(Number((entryLocal.position as any)?.x))
+              ? ((Number((entryLocal.position as any)?.x) - minX) * scale)
+              : targetW / 2;
+          // MARKER_155A.G26.WF_ANCHOR_ROOT_LOCK:
+          // Lock inline workflow entry/root horizontally to selected task center.
+          const anchorX = overlayCenterX - entryScaledX;
           const topYTry = overlayY - targetH - 26;
           const topY = topYTry < 24 ? (overlayY + Number(overlay.height || 60) + 18) : topYTry;
 
