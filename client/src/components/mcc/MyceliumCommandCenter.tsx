@@ -632,6 +632,20 @@ function overlayWorkflowOnSelectedTask(
 
   const idMap = new Map<string, string>();
   visibleWorkflowNodes.forEach((n) => idMap.set(n.id, `wf_${selectedTaskId}_${n.id}`));
+  const compactWorkflowLabel = (node: DAGNode): string => {
+    const role = String((node as any)?.role || '').toLowerCase();
+    if (role === 'architect') return 'Architect';
+    if (role === 'scout') return 'Scout';
+    if (role === 'researcher') return 'Researcher';
+    if (role === 'coder') return 'Coder';
+    if (role === 'verifier') return 'Verifier';
+    const raw = String(node.label || '').trim();
+    if (!raw) return node.id;
+    const stripped = raw.replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
+    const words = stripped.split(' ').filter(Boolean);
+    if (words.length <= 2) return stripped;
+    return `${words[0]} ${words[1]}`;
+  };
 
   const workflowStageOrder = (node: DAGNode): number => {
     const role = String((node as any)?.role || '').toLowerCase();
@@ -653,6 +667,7 @@ function overlayWorkflowOnSelectedTask(
   const remappedNodes: DAGNode[] = visibleWorkflowNodes.map((n) => ({
     ...n,
     id: idMap.get(n.id) || n.id,
+    label: compactWorkflowLabel(n),
     taskId: selectedTaskId,
     workflowId: n.workflowId || selectedTaskId,
     graphKind: n.graphKind || 'workflow_agent',
@@ -664,8 +679,8 @@ function overlayWorkflowOnSelectedTask(
     },
     // MARKER_155A.P0.WF_MINI_LAYER:
     // Inline workflow is rendered as micro-layer (fractal scale) over architecture.
-    width: 26,
-    height: 12,
+    width: 22,
+    height: 11,
   }));
 
   const rawRemappedEdges: DAGEdge[] = [];

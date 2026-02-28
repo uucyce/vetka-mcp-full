@@ -515,8 +515,8 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           // MARKER_155A.G26.WF_MICRO_ENVELOPE:
           // MARKER_155A.G27.RESERVED_WORKFLOW_FRAME:
           // Inline workflow always lives inside fixed reserved frame (invisible "table") near selected task.
-          const RESERVED_WF_FRAME_W = 176;
-          const RESERVED_WF_FRAME_H = 126;
+          const RESERVED_WF_FRAME_W = 248;
+          const RESERVED_WF_FRAME_H = 188;
           const targetW = RESERVED_WF_FRAME_W;
           const targetH = RESERVED_WF_FRAME_H;
           const scale = Math.min(targetW / spanX, targetH / spanY);
