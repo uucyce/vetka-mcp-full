@@ -155,6 +155,7 @@ function layoutInlineWorkflowCanonical(
   const xGap = 102;
   const yGap = 86;
   const outNodes: DAGNode[] = [];
+  const totalRows = packedRows.length;
   for (let lvl = 0; lvl < packedRows.length; lvl += 1) {
     const row = packedRows[lvl] || [];
     const rowW = Math.max(0, row.length - 1) * xGap;
@@ -169,7 +170,9 @@ function layoutInlineWorkflowCanonical(
         // local canonical coords (later embedded as micro layer around anchor)
         position: {
           x: startX + idx * xGap,
-          y: lvl * yGap,
+          // MARKER_155A.G27.WF_BOTTOM_UP_ORIENTATION:
+          // Workflow in roadmap unfolds bottom-up: start near task (bottom), results above.
+          y: (totalRows - 1 - lvl) * yGap,
         } as any,
       } as any);
     });
@@ -487,7 +490,10 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           );
           if (localDagNodes.length === 0) continue;
           const localHasIncoming = new Set(localDagEdges.map((e) => e.target));
+          const architectFirst = localDagNodes
+            .find((n) => String((n as any)?.role || '').toLowerCase() === 'architect')?.id;
           const localEntryId =
+            architectFirst ||
             localDagNodes
               .map((n) => n.id)
               .sort((a, b) => a.localeCompare(b))
