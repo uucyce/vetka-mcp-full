@@ -34,6 +34,8 @@ from src.search.rrf_fusion import (
 )
 from src.utils.embedding_service import get_embedding_service
 from config.config import COLLECTIONS
+from src.search.file_search_service import search_files
+from src.services.mcc_jepa_adapter import embed_texts_for_overlay
 
 logger = logging.getLogger("VETKA_HYBRID_SEARCH")
 
@@ -42,6 +44,10 @@ SEMANTIC_WEIGHT = float(os.getenv("VETKA_SEMANTIC_WEIGHT", "0.5"))
 KEYWORD_WEIGHT = float(os.getenv("VETKA_KEYWORD_WEIGHT", "0.3"))
 GRAPH_WEIGHT = float(os.getenv("VETKA_GRAPH_WEIGHT", "0.2"))
 RRF_K = int(os.getenv("VETKA_RRF_K", "60"))
+FILE_WEIGHT = float(os.getenv("VETKA_FILE_WEIGHT", "0.35"))
+JEPA_REORDER_WEIGHT = float(os.getenv("VETKA_HYBRID_JEPA_REORDER_WEIGHT", "0.35"))
+HYBRID_JEPA_ENABLED = os.getenv("VETKA_HYBRID_JEPA_ENABLED", "true").lower() == "true"
+HYBRID_JEPA_INTENT_MIN_WORDS = int(os.getenv("VETKA_HYBRID_JEPA_INTENT_MIN_WORDS", "6"))
 
 # Cache configuration
 HYBRID_CACHE_TTL = int(os.getenv("VETKA_HYBRID_CACHE_TTL", "300"))  # 5 minutes
@@ -49,6 +55,14 @@ _hybrid_search_cache: Dict[str, Any] = {}
 
 # Thread pool for parallel searches
 _executor = ThreadPoolExecutor(max_workers=3)
+
+
+def _is_descriptive_query(query: str) -> bool:
+    q = (query or "").lower().strip()
+    words = [w for w in q.split() if w]
+    file_like = any(x in q for x in [".py", ".md", ".txt", "marker_", "/", "\\"])
+    markers = ["не помню", "найди файл где", "документ", "где ", "про "]
+    return (len(words) >= HYBRID_JEPA_INTENT_MIN_WORDS and not file_like) or any(m in q for m in markers)
 
 
 class HybridSearchService:
@@ -118,6 +132,68 @@ class HybridSearchService:
         self._init_backends()
         return self._embedding_service
 
+    async def _file_search_local(self, query: str, limit: int, mode: str = "keyword") -> List[Dict]:
+        try:
+            res = await asyncio.to_thread(search_files, query=query, limit=limit, mode=mode)
+            rows = []
+            for it in (res or {}).get("results", []):
+                rows.append(
+                    {
+                        "id": it.get("path") or it.get("title"),
+                        "path": it.get("path") or it.get("title", ""),
+                        "name": os.path.basename(it.get("path") or it.get("title", "")),
+                        "content": it.get("snippet", ""),
+                        "score": float(it.get("score", 0.0)),
+                        "source": "file_local",
+                    }
+                )
+            return rows
+        except Exception as e:
+            logger.debug(f"[HYBRID] local file search failed: {e}")
+            return []
+
+    @staticmethod
+    def _cosine(a: List[float], b: List[float]) -> float:
+        if not a or not b:
+            return 0.0
+        n = min(len(a), len(b))
+        dot = sum(float(a[i]) * float(b[i]) for i in range(n))
+        na = sum(float(a[i]) * float(a[i]) for i in range(n)) ** 0.5
+        nb = sum(float(b[i]) * float(b[i]) for i in range(n)) ** 0.5
+        if na <= 1e-12 or nb <= 1e-12:
+            return 0.0
+        return float(dot / (na * nb))
+
+    def _jepa_reorder(self, query: str, results: List[Dict], limit: int) -> List[Dict]:
+        if not HYBRID_JEPA_ENABLED or not results:
+            return results[:limit]
+        try:
+            texts = [query]
+            for r in results[: max(limit * 3, 30)]:
+                txt = (r.get("path") or r.get("name") or "") + " " + (r.get("content") or "")
+                texts.append(txt.strip())
+            jr = embed_texts_for_overlay(texts=texts, target_dim=128)
+            vectors = getattr(jr, "vectors", []) or []
+            if len(vectors) != len(texts):
+                return results[:limit]
+            qv = vectors[0]
+            rescored = []
+            for idx, r in enumerate(results[: max(limit * 3, 30)], start=1):
+                base = float(r.get("rrf_score") or r.get("score") or 0.0)
+                js = max(0.0, self._cosine(qv, vectors[idx]))
+                merged = base + (JEPA_REORDER_WEIGHT * js)
+                rc = dict(r)
+                rc["jepa_score"] = round(js, 6)
+                rc["jepa_provider_mode"] = getattr(jr, "provider_mode", "")
+                rc["jepa_reordered"] = True
+                rc["score"] = merged
+                rescored.append(rc)
+            rescored.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
+            return rescored[:limit]
+        except Exception as e:
+            logger.debug(f"[HYBRID] JEPA reorder skipped: {e}")
+            return results[:limit]
+
     async def search(
         self,
         query: str,
@@ -149,9 +225,10 @@ class HybridSearchService:
         """
         start_time = time.time()
         filters = filters or {}
+        query_intent = "descriptive" if _is_descriptive_query(query) else "name_like"
 
         # Check cache first
-        cache_key = f"hybrid:{query}:{limit}:{mode}:{hash(str(filters))}"
+        cache_key = f"hybrid:{query}:{limit}:{mode}:{query_intent}:{hash(str(filters))}"
         if not skip_cache and cache_key in _hybrid_search_cache:
             cached = _hybrid_search_cache[cache_key]
             age = time.time() - cached["timestamp"]
@@ -224,6 +301,12 @@ class HybridSearchService:
                     ("keyword", self._keyword_search(query, limit * 2, collection))
                 )
 
+            # 3. Local file search source (especially useful for descriptive doc queries).
+            if mode in ("keyword", "hybrid") and query_intent == "descriptive":
+                tasks.append(
+                    ("file", self._file_search_local(query, limit * 2, mode="keyword"))
+                )
+
             # Execute tasks
             if tasks:
                 # Run in parallel
@@ -238,11 +321,11 @@ class HybridSearchService:
 
                     if result:
                         # Normalize results to common format
-                        source = "qdrant" if task_name == "semantic" else "weaviate"
-                        normalized = normalize_results(result, source)
-                        if normalized:
-                            results_lists.append(normalized)
-                            sources_used.append(task_name)
+                            source = "qdrant" if task_name == "semantic" else ("weaviate" if task_name == "keyword" else "file")
+                            normalized = normalize_results(result, source)
+                            if normalized:
+                                results_lists.append(normalized)
+                                sources_used.append(task_name)
 
                             # Set weight based on mode
                             if mode == "hybrid":
@@ -250,6 +333,8 @@ class HybridSearchService:
                                     weights.append(SEMANTIC_WEIGHT)
                                 elif task_name == "keyword":
                                     weights.append(KEYWORD_WEIGHT)
+                                elif task_name == "file":
+                                    weights.append(FILE_WEIGHT)
                             else:
                                 weights.append(1.0)
 
@@ -265,6 +350,10 @@ class HybridSearchService:
                 # FIX_95.1_MODE_NONE: Preserve requested mode instead of "none"
                 # This allows frontend to show correct mode even with 0 results
                 actual_mode = mode  # Was: "none" - bug caused confusion in UI
+
+            # Optional JEPA reorder for descriptive queries.
+            if query_intent == "descriptive":
+                fused = self._jepa_reorder(query, fused, limit=limit)
 
             # Add explanations to results
             for result in fused:
@@ -283,9 +372,12 @@ class HybridSearchService:
                 "timing_ms": round(elapsed_ms, 2),
                 "sources": sources_used,
                 "cache_hit": False,
+                "intent": query_intent,
+                "jepa_reordered": bool(query_intent == "descriptive" and HYBRID_JEPA_ENABLED),
                 "config": {
                     "semantic_weight": SEMANTIC_WEIGHT,
                     "keyword_weight": KEYWORD_WEIGHT,
+                    "file_weight": FILE_WEIGHT,
                     "rrf_k": RRF_K,
                 },
             }
