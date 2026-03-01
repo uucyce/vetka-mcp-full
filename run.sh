@@ -2,18 +2,28 @@
 # VETKA FastAPI Server
 # Phase 39.8 - Production ready
 
+set -eo pipefail
+
 echo ""
 echo "  Starting VETKA FastAPI Server..."
 echo "  Port: 5001"
 echo "  Docs: http://localhost:5001/docs"
 echo ""
 
-# Activate venv if exists
-if [ -d ".venv" ]; then
-    source .venv/bin/activate
-elif [ -d "venv" ]; then
-    source venv/bin/activate
+# Canonical runtime environment: .venv only
+if [ ! -d ".venv" ]; then
+    echo "  ERROR: .venv not found."
+    echo "  Create it with: python3 -m venv .venv"
+    exit 1
 fi
+source .venv/bin/activate
+PYTHON_BIN=".venv/bin/python"
+
+# Harden local loopback routing against VPN/proxy interference.
+export NO_PROXY="${NO_PROXY:-127.0.0.1,localhost}"
+export no_proxy="${no_proxy:-127.0.0.1,localhost}"
+export QDRANT_HOST="${QDRANT_HOST:-127.0.0.1}"
+export QDRANT_PORT="${QDRANT_PORT:-6333}"
 
 JEPA_RUNTIME_PID=""
 
@@ -39,7 +49,7 @@ if [ "${MCC_JEPA_HTTP_ENABLE}" = "1" ] || [ "${MCC_JEPA_HTTP_ENABLE}" = "true" ]
     echo "  JEPA runtime already listening on port ${MCC_JEPA_HTTP_PORT}."
   else
     echo "  Starting JEPA runtime on ${MCC_JEPA_HTTP_HOST}:${MCC_JEPA_HTTP_PORT}..."
-    uvicorn src.services.jepa_http_server:app \
+    "${PYTHON_BIN}" -m uvicorn src.services.jepa_http_server:app \
       --host "${MCC_JEPA_HTTP_HOST}" \
       --port "${MCC_JEPA_HTTP_PORT}" \
       --log-level warning >/tmp/vetka_jepa_runtime.log 2>&1 &
@@ -62,7 +72,7 @@ fi
 
 # Run with uvicorn (reload only if explicitly enabled)
 if [ "${VETKA_RELOAD:-0}" = "1" ] || [ "${VETKA_RELOAD:-false}" = "true" ]; then
-  uvicorn main:socket_app \
+  "${PYTHON_BIN}" -m uvicorn main:socket_app \
     --host 0.0.0.0 \
     --port 5001 \
     --reload \
@@ -72,5 +82,5 @@ if [ "${VETKA_RELOAD:-0}" = "1" ] || [ "${VETKA_RELOAD:-false}" = "true" ]; then
     --reload-exclude "data/pipeline_history.json" \
     --reload-exclude "data/pipeline_tasks.json"
 else
-  uvicorn main:socket_app --host 0.0.0.0 --port 5001
+  "${PYTHON_BIN}" -m uvicorn main:socket_app --host 0.0.0.0 --port 5001
 fi

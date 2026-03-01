@@ -1,70 +1,77 @@
-# VETKA Phase 8.0 - Complete Requirements
+# VETKA Runtime Requirements (architecture-clean)
+# Canonical: FastAPI + Socket.IO backend, Qdrant/Weaviate memory stack.
 # Install: pip install -r requirements.txt
 
-# ============ WEB FRAMEWORK ============
-flask>=3.0.0
-flask-socketio>=5.3.6
-python-socketio>=5.11.0
-python-engineio>=4.8.0
-requests>=2.31.0
-httpx>=0.25.0
+# ===== Core API / server =====
+fastapi==0.120.0
+uvicorn==0.38.0
+python-socketio==5.14.2
+python-engineio==4.12.3
+websockets==15.0.1
+python-multipart==0.0.20
+sse-starlette==3.0.2
 
-# ============ VECTOR DATABASES ============
-weaviate-client>=4.9.0
-qdrant-client>=2.7.0
+# ===== HTTP / config =====
+httpx==0.28.1
+requests==2.32.5
+python-dotenv==1.2.1
+PyYAML==6.0.3
+orjson==3.11.4
+pydantic==2.12.3
+pydantic-settings==2.11.0
 
-# ============ AI FRAMEWORKS ============
-langgraph>=0.2.45
-langchain>=0.3.0
-langchain-core>=0.3.0
-langchain-community>=0.3.0
+# ===== Vector databases =====
+qdrant-client==1.10.0
+weaviate-client==3.26.7
 
-# Phase 75: Elysia (Weaviate agentic tool selection)
-# IMPORTANT: Used with optimize=False to avoid DSPy overhead
-elysia-ai>=0.1.0
+# ===== LLM providers / routing =====
+openai==2.6.1
+anthropic==0.75.0
+ollama==0.6.0
+litellm==1.79.0
+tiktoken==0.12.0
 
-# CrewAI (optional - multi-agent)
-crewai>=0.201.0
-crewai-tools>=0.75.0
+# ===== Orchestration / graph =====
+langgraph==1.0.1
+langchain-core==1.0.1
+mcp==1.19.0
 
-# ============ LLM CLIENTS ============
-ollama>=0.1.32
-anthropic>=0.7.0
-openai>=1.3.0
-# google-generativeai>=0.3.0  # Optional: Gemini
+# ===== Data / embeddings / layout =====
+numpy==2.3.4
+pandas==2.3.3
+networkx==3.6.1
+scikit-learn==1.8.0
+umap-learn==0.5.9.post2
+hdbscan==0.8.41
 
-# ============ ML/AI CORE ============
-numpy>=1.24.0
-pandas>=2.0.0
-scikit-learn>=1.3.0
-# torch>=2.1.0  # Large - install separately if needed
-# transformers>=4.35.0  # Large - install separately if needed
+# ===== Scanning / ingestion =====
+watchdog==6.0.0
+trafilatura==2.0.0
+beautifulsoup4==4.14.3
+lxml==6.0.2
 
-# ============ DATA VALIDATION ============
-pydantic>=1.10.0,<2.0.0  # CrewAI requires pydantic v1
+# ===== OCR / media =====
+Pillow==10.4.0
+pytesseract==0.3.13
+PyMuPDF==1.26.7
+pdf2image==1.17.0
+yt-dlp==2025.12.8
 
-# ============ SECURITY ============
-cryptography>=41.0.0
-python-dotenv>=1.1.0
+# ===== Voice (current project path uses these) =====
+edge-tts==7.2.7
+openai-whisper==20250625
+mlx==0.30.4
+mlx-metal==0.30.4
+mlx-whisper==0.4.3
+torch==2.9.1
 
-# ============ IMAGE PROCESSING ============
-pillow>=10.0.0
+# ===== Integrations / security =====
+composio==0.9.0
+cryptography==46.0.3
+Authlib==1.6.5
+paramiko==4.0.0
 
-# ============ UTILITIES ============
-colorama>=0.4.6
-click>=8.1.0
-tqdm>=4.65.0
-
-# ============ WEBSOCKET ============
-websockets>=12.0              # Phase 129: MYCELIUM DevPanel WebSocket
-
-# ============ TESTING ============
-pytest>=8.0.0
-
-# ============ OPTIONAL (install if needed) ============
-# redis>=5.0.0           # For caching
-# umap-learn>=0.5.0      # For dimensionality reduction
-# sentence-transformers>=2.2.0  # For embeddings
-# opencv-python>=4.8.0   # JEPA media frame extraction
-# mlx>=0.18.0            # Apple Silicon runtime (optional JEPA local path)
-# mlx-lm>=0.4.0          # Optional JEPA local path
+# ===== Utilities =====
+click==8.3.0
+tqdm==4.67.1
+tabulate==0.9.0

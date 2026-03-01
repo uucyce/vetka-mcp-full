@@ -9,6 +9,8 @@ import subprocess
 import logging
 import os
 import time
+import shutil
+import sys
 import httpx
 from pathlib import Path
 from typing import Optional
@@ -22,6 +24,76 @@ _tts_process: Optional[subprocess.Popen] = None
 TTS_PORT = 5003
 TTS_HEALTH_URL = f"http://127.0.0.1:{TTS_PORT}/health"
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+TTS_PYTHON_ENV = "VETKA_TTS_PYTHON"
+
+
+def _python_candidates() -> list[Path]:
+    """Build ordered list of Python executables for TTS service."""
+    candidates: list[Path] = []
+
+    env_python = os.getenv(TTS_PYTHON_ENV, "").strip()
+    if env_python:
+        candidates.append(Path(env_python))
+
+    candidates.extend(
+        [
+            PROJECT_ROOT / "venv_voice" / "bin" / "python",
+            PROJECT_ROOT / "venv_voice" / "bin" / "python3",
+            PROJECT_ROOT / ".venv" / "bin" / "python",
+            Path(sys.executable),
+        ]
+    )
+
+    for command in ("python3", "python"):
+        resolved = shutil.which(command)
+        if resolved:
+            candidates.append(Path(resolved))
+
+    # Preserve order and remove duplicates.
+    deduped: list[Path] = []
+    seen = set()
+    for path in candidates:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(path)
+    return deduped
+
+
+def _python_supports_mlx_audio(python_path: Path, timeout: float = 3.0) -> bool:
+    """Check whether interpreter can import mlx_audio TTS entrypoint."""
+    if not python_path.exists() or not os.access(python_path, os.X_OK):
+        return False
+    try:
+        proc = subprocess.run(
+            [str(python_path), "-c", "from mlx_audio.tts import load_model"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=str(PROJECT_ROOT),
+        )
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
+def _resolve_tts_python() -> Optional[Path]:
+    """
+    MARKER_156.VOICE.S6_TTS_AUTOSTART_PYTHON_RESOLVE:
+    Resolve an interpreter that can run the TTS service.
+    """
+    candidates = _python_candidates()
+    for python_path in candidates:
+        if _python_supports_mlx_audio(python_path):
+            logger.info(f"[TTS] Using python with mlx_audio: {python_path}")
+            return python_path
+
+    logger.warning(
+        "[TTS] No python interpreter with mlx_audio found. "
+        f"Checked: {[str(p) for p in candidates]}"
+    )
+    return None
 
 
 def start_tts_server(port: int = TTS_PORT, wait_ready: bool = True, timeout: float = 30.0) -> Optional[subprocess.Popen]:
@@ -44,11 +116,14 @@ def start_tts_server(port: int = TTS_PORT, wait_ready: bool = True, timeout: flo
         return _tts_process
 
     # Find paths
-    venv_python = PROJECT_ROOT / "venv_voice" / "bin" / "python"
+    venv_python = _resolve_tts_python()
     server_script = PROJECT_ROOT / "scripts" / "voice_tts_server.py"
 
-    if not venv_python.exists():
-        logger.warning(f"[TTS] venv_voice not found at {venv_python}")
+    if venv_python is None:
+        logger.warning(
+            f"[TTS] Cannot start TTS server: no valid python found. "
+            f"Set {TTS_PYTHON_ENV} to a python with mlx_audio."
+        )
         return None
 
     if not server_script.exists():
@@ -59,8 +134,8 @@ def start_tts_server(port: int = TTS_PORT, wait_ready: bool = True, timeout: flo
         # Start subprocess
         _tts_process = subprocess.Popen(
             [str(venv_python), str(server_script), str(port)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             start_new_session=True,  # Detach from parent process group
             cwd=str(PROJECT_ROOT)
         )

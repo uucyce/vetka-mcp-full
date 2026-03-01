@@ -95,7 +95,8 @@ class QdrantAutoRetry:
     
     def _retry_loop(self):
         """Background retry loop with exponential backoff"""
-        while self.retry_count < self.max_retries:
+        gave_up_logged = False
+        while True:
             try:
                 with self.lock:
                     if self.is_connected:
@@ -123,21 +124,28 @@ class QdrantAutoRetry:
                 # Silently handle errors in retry loop
                 pass
             
-            # Calculate backoff time: 2^retry_count seconds
+            # Retry strategy:
+            # - First max_retries attempts: exponential backoff (1,2,4,8,...)
+            # - Afterwards: keep retrying in background every 10s (never give up)
             if self.retry_count < self.max_retries:
                 backoff_time = 2 ** self.retry_count
                 logger.debug(
                     f"⏳ Qdrant reconnect attempt {self.retry_count + 1}/{self.max_retries} "
                     f"failed, retrying in {backoff_time}s..."
                 )
-                time.sleep(backoff_time)
-                self.retry_count += 1
-        
-        if not self.is_connected and self.retry_count >= self.max_retries:
-            logger.warning(
-                f"⚠️  Qdrant connection failed after {self.max_retries} attempts. "
-                f"Will continue without Qdrant (Weaviate only)."
-            )
+            else:
+                backoff_time = 10
+                if not gave_up_logged:
+                    logger.warning(
+                        f"⚠️  Qdrant connection failed after {self.max_retries} attempts. "
+                        "Switching to continuous background retry (10s interval)."
+                    )
+                    gave_up_logged = True
+                else:
+                    logger.debug("⏳ Qdrant still unavailable, background retry in 10s...")
+
+            time.sleep(backoff_time)
+            self.retry_count += 1
 
     def add_conversation_vector(self, *args, **kwargs):
         """
@@ -162,11 +170,15 @@ class QdrantAutoRetry:
             with self.lock:
                 print(f"🔌 Attempting Qdrant connection to {self.host}:{self.port}...")
                 
-                # Create client
+                # Create client - use URL to force HTTP
+                import socket
+                resolved_ip = socket.gethostbyname(self.host)
+                print(f"   🔍 Resolved {self.host} -> {resolved_ip}")
+                
+                # Use url= to force HTTP protocol (not gRPC)
                 test_client = QdrantClient(
-                    host=self.host,
-                    port=self.port,
-                    timeout=3.0  # Reduced timeout for faster detection
+                    url=f"http://{self.host}:{self.port}",
+                    timeout=3.0,
                 )
                 
                 print(f"   ✓ QdrantClient created")
@@ -174,19 +186,22 @@ class QdrantAutoRetry:
                 # Try primary health check: get_collections
                 health_ok = False
                 try:
+                    print(f"   🚀 Calling get_collections()...")
                     test_client.get_collections()
                     print(f"   ✓ get_collections() successful")
                     health_ok = True
                 except Exception as e:
-                    # Fallback to /readyz endpoint
-                    print(f"   ⚠ get_collections failed: {e}")
+                    print(f"   ⚠ get_collections FAILED: {type(e).__name__}: {e}")
+                    # Try raw HTTP request to debug
                     print(f"   ↻ Trying /readyz health endpoint...")
                     try:
                         import requests
-                        resp = requests.get(
-                            f"http://{self.host}:{self.port}/readyz",
-                            timeout=2
-                        )
+                        url = f"http://{self.host}:{self.port}/readyz"
+                        print(f"   ↻ Trying {url}...")
+                        session = requests.Session()
+                        session.trust_env = False
+                        resp = session.get(url, timeout=2)
+                        print(f"   ↻ Response status: {resp.status_code}, body: {resp.text[:50]}")
                         if resp.status_code == 200 or "ready" in resp.text.lower():
                             print(f"   ✓ /readyz health check passed")
                             health_ok = True
@@ -196,14 +211,16 @@ class QdrantAutoRetry:
                         print(f"   ❌ /readyz check failed: {req_e}")
                 
                 if not health_ok:
-                    raise Exception("No valid health check passed")
-                
-                # Success!
+                    self.client = None
+                    self.is_connected = False
+                    self.is_attempting = False
+                    print("   ⏳ Qdrant not ready yet, will retry...")
+                    return False
+
                 self.client = test_client
                 self.is_connected = True
                 self.is_attempting = False
-                print(f"✅ Qdrant connection SUCCESSFUL!")
-                
+                print("✅ Qdrant connection SUCCESSFUL (health check passed)!")
                 return True
         
         except (ConnectionError, TimeoutError, APIError, UnexpectedResponse) as e:
@@ -254,9 +271,8 @@ class QdrantAutoRetry:
         """Manually attempt connection (blocking)"""
         try:
             test_client = QdrantClient(
-                host=self.host,
-                port=self.port,
-                timeout=timeout
+                url=f"http://{self.host}:{self.port}",
+                timeout=int(timeout),
             )
             test_client.get_collections()
             

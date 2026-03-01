@@ -465,13 +465,23 @@ async def lifespan(app: FastAPI):
         logger.error(f"[Startup] File watcher init failed: {e}")
         app.state.file_watcher = None
 
-    # === PHASE 104: Start TTS server ===
-    try:
-        from src.voice.tts_server_manager import start_tts_server
+    # === PHASE 104: Start TTS server (optional autostart) ===
+    tts_autostart = os.getenv("VETKA_TTS_AUTOSTART", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if tts_autostart:
+        try:
+            from src.voice.tts_server_manager import start_tts_server
 
-        app.state.tts_process = start_tts_server(port=5003, wait_ready=False)
-    except Exception as e:
-        logger.error(f"[Startup] TTS server start failed: {e}")
+            app.state.tts_process = start_tts_server(port=5003, wait_ready=False)
+        except Exception as e:
+            logger.error(f"[Startup] TTS server start failed: {e}")
+            app.state.tts_process = None
+    else:
+        logger.info("[Startup] TTS autostart skipped (set VETKA_TTS_AUTOSTART=1 to enable)")
         app.state.tts_process = None
 
     # === MARKER_106e_2: Register async Socket.IO handlers ===

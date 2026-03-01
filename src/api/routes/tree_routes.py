@@ -541,6 +541,59 @@ def _get_memory_manager(request: Request):
     return memory
 
 
+def _get_qdrant_client(request: Request):
+    """
+    Resolve a healthy Qdrant client with lazy recovery.
+    Handles startup race where Qdrant returns 503 and becomes ready later.
+    """
+    memory = _get_memory_manager(request)
+    if not memory:
+        return None
+
+    qdrant = getattr(memory, "qdrant", None)
+    if qdrant is not None:
+        try:
+            qdrant.get_collections()
+            return qdrant
+        except Exception:
+            pass
+
+    # Prefer shared auto-retry manager if it has reconnected.
+    try:
+        from src.memory.qdrant_auto_retry import get_qdrant_auto_retry
+
+        mgr = get_qdrant_auto_retry()
+        if mgr is not None:
+            if not mgr.is_ready():
+                mgr.manual_connect(timeout=3.0)
+            if mgr.is_ready():
+                client = mgr.get_client()
+                if client is not None:
+                    memory.qdrant = client
+                    try:
+                        memory._ensure_qdrant_collection()
+                    except Exception:
+                        pass
+                    return client
+    except Exception:
+        pass
+
+    # Last fallback: direct reconnect on memory manager.
+    try:
+        client = memory._init_qdrant()
+        if client is not None:
+            memory.qdrant = client
+            try:
+                memory._ensure_qdrant_collection()
+            except Exception:
+                pass
+            return client
+    except Exception:
+        pass
+
+    return None
+
+
 def _normalize_scope_path(path: str) -> str:
     """Normalize scope path for stable hydration cache keys."""
     return os.path.abspath(os.path.expanduser((path or "").strip()))
@@ -830,8 +883,7 @@ async def get_tree_data(
             evt.set()
 
     try:
-        memory = _get_memory_manager(request)
-        qdrant = memory.qdrant if memory else None
+        qdrant = _get_qdrant_client(request)
 
         if not qdrant:
             response = {"error": "Qdrant not connected", "tree": {"nodes": [], "edges": []}}
@@ -1526,8 +1578,7 @@ async def export_blender(
     try:
         from src.export.blender_exporter import BlenderExporter
 
-        memory = _get_memory_manager(request)
-        qdrant = memory.qdrant if memory else None
+        qdrant = _get_qdrant_client(request)
 
         if not qdrant:
             raise HTTPException(status_code=500, detail="Qdrant not connected")
@@ -1697,8 +1748,7 @@ async def get_knowledge_graph(
         hydration_result = None
         qdrant = None
         if hydrate_scope_path:
-            memory = _get_memory_manager(request)
-            qdrant = memory.qdrant if memory else None
+            qdrant = _get_qdrant_client(request)
             if not qdrant:
                 return {
                     "status": "error",
@@ -1752,8 +1802,7 @@ async def get_knowledge_graph(
 
         # Get Qdrant client
         if qdrant is None:
-            memory = _get_memory_manager(request)
-            qdrant = memory.qdrant if memory else None
+            qdrant = _get_qdrant_client(request)
 
         if not qdrant:
             return {

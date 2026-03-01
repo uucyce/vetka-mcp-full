@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-02-28T15:51:58.600891+00:00",
+  "last_updated": "2026-03-01T17:34:46.967989+00:00",
   "auto_updated": true,
   "current_phase": {
     "number": 154,
@@ -39,7 +39,7 @@
       "hierarchy": "unknown"
     },
     "mcp_server": {
-      "status": "offline",
+      "status": "error",
       "port": 5001,
       "tools_count": 0
     },
@@ -141,7 +141,7 @@
   },
   "git": {
     "branch": "phase152-fix-stream-favorites",
-    "commit": "206e20c7",
+    "commit": "ad5218e5",
     "dirty": true
   }
 }
