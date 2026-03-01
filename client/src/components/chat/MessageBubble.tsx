@@ -156,6 +156,7 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
   const isVoiceMessage = message.type === 'voice';
   const audioMeta = message.metadata?.audio;
   const voiceMeta = message.metadata?.voice;
+  const streamMeta = message.metadata?.stream;
   const audioUrl = useMemo(() => {
     const direct = audioMeta?.url?.trim();
     if (direct) return direct;
@@ -597,7 +598,6 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
 
   // Assistant message
   const isStreaming = message.metadata?.isStreaming;
-  const streamMeta = message.metadata?.stream;
   const firstChunkReceived = Boolean(streamMeta?.chunks?.some((chunk) => chunk.seq === 0));
   const showVoiceTranscript = firstChunkReceived || !isStreaming || Boolean(voiceError);
   // Phase 48.3: Long message handling
