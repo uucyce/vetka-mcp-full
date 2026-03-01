@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import { useStore } from '../../store/useStore';
 // MARKER_123.8A: Phase 123.8 - Glow texture for activity visualization
 import { getWhiteGlowTexture } from '../../utils/glowTexture';
+import { readFileViaApi } from '../../utils/fileReadClient';
 
 /**
  * LOD Levels (Google Maps style - 10 levels for smooth transitions):
@@ -43,7 +44,7 @@ const previewCache = new Map<string, string>();
 // Limit: 500 textures max to prevent memory bloat
 const textureCache = new Map<string, THREE.CanvasTexture>();
 const TEXTURE_CACHE_MAX = 500;
-const HOVER_PREVIEW_ENABLED = false;
+const HOVER_PREVIEW_ENABLED = true;
 
 function getTextureCacheKey(
   id: string,
@@ -501,9 +502,9 @@ function FileCardComponent({
     return () => clearTimeout(timeout);
   }, [isHovered, type]);
 
-  // Phase 62: Load file content for preview (at LOD 3+ - when card is visible)
-  // Trigger: LOD >= 3 (card visible) OR hovered, only for previewable files
-  const shouldLoadContent = (lodLevel >= 3 || isHoveredDebounced) && type === 'file' && isPreviewableFile(name);
+  // Phase 62: Load file content for preview.
+  // Keep hover preview immediate while avoiding far-view preloading storms.
+  const shouldLoadContent = (lodLevel >= 5 || isHoveredDebounced) && type === 'file' && isPreviewableFile(name);
 
   useEffect(() => {
     if (!shouldLoadContent) return;
@@ -522,24 +523,11 @@ function FileCardComponent({
       setLoadingPreview(true);
 
       try {
-        const response = await fetch('/api/files/read', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          // Take first ~2000 chars for preview
-          const content = data.content?.slice(0, 2000) || '';
-          setPreviewContent(content);
-          previewCache.set(cacheKey, content);
-        } else {
-          // Fallback: show file info
-          const fallback = `// ${name}\n// Path: ${path}\n// Preview unavailable`;
-          setPreviewContent(fallback);
-          previewCache.set(cacheKey, fallback);
-        }
+        const data = await readFileViaApi(path);
+        // Take first ~2000 chars for preview
+        const content = data.content?.slice(0, 2000) || '';
+        setPreviewContent(content);
+        previewCache.set(cacheKey, content);
       } catch (error) {
         const fallback = `// ${name}\n// Preview unavailable`;
         setPreviewContent(fallback);

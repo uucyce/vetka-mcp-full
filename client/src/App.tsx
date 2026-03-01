@@ -26,7 +26,6 @@ import { UnifiedSearchBar } from './components/search/UnifiedSearchBar';
 import { DevPanel } from './components/panels/DevPanel';
 import { CommandPalette } from './components/search/CommandPalette';  // MARKER_136.W2C
 import { DropZoneRouter, type DropZoneEvent } from './components/DropZoneRouter';
-import JarvisWave from './components/jarvis/JarvisWave';
 import { useJarvis } from './hooks/useJarvis';
 import { useStore, type TreeNode } from './store/useStore';
 import { useTreeData } from './hooks/useTreeData';
@@ -806,29 +805,6 @@ export default function App() {
         onClose={() => setIsDevPanelOpen(false)}
       />
 
-      {/* Phase 104: Jarvis Wave in center top */}
-      <div style={{
-        position: 'fixed',
-        top: 16,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 150,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-      }}>
-        <JarvisWave
-          state={jarvis.state}
-          audioLevel={jarvis.audioLevel}
-          onClick={() => jarvis.toggle()}
-          width={200}
-          height={48}
-        />
-        {jarvis.error && (
-          <span style={{ color: '#ef4444', fontSize: 11 }}>{jarvis.error}</span>
-        )}
-      </div>
-
       {/* Phase 68.3: Search bar + icons container (top-left) */}
       {/* MARKER_118.2A: Контейнер когда чат ЗАКРЫТ — SearchBar + иконки справа */}
       {!isChatOpen && (
@@ -888,6 +864,11 @@ export default function App() {
               placeholder="Search..."
               contextPrefix="vetka/"
               compact={false}
+              onVoiceTrigger={() => {
+                void jarvis.toggle();
+              }}
+              voiceState={jarvis.state}
+              voiceLevel={jarvis.audioLevel}
             />
           </div>
 

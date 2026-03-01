@@ -31,6 +31,27 @@ let lastCameraFocusTime = 0;
 let pendingCameraFiles: string[] = [];
 const CAMERA_DEBOUNCE_MS = 2000;  // Minimum time between camera fly-tos
 const RAPID_CHANGE_THRESHOLD = 3; // If >3 files in debounce window, only highlight
+const TREE_RELOAD_DEBOUNCE_MS = 500;
+const TREE_RELOAD_MIN_GAP_MS = 1200;
+const INTERNAL_TREE_RELOAD_MIN_GAP_MS = 8000;
+const SOCKET_DEBUG = import.meta.env.VITE_SOCKET_DEBUG === '1';
+const INTERNAL_TREE_CHURN_MARKERS = [
+  '/data/session_state.json',
+  '/data/changelog.jsonl',
+  '/data/changelog/',
+  '/data/heartbeat_state.json',
+  '/data/model_status_cache.json',
+  '/data/models_cache.json',
+  '/data/usage_tracking.json',
+  '/data/task_board.json',
+  '/data/pipeline_history.json',
+];
+
+const isInternalTreeChurnPath = (path: string | undefined): boolean => {
+  const normalized = String(path || '').replace(/\\/g, '/').toLowerCase();
+  if (!normalized) return false;
+  return INTERNAL_TREE_CHURN_MARKERS.some((marker) => normalized.includes(marker));
+};
 
 // Use dynamic socket URL from config
 const SOCKET_URL = getSocketUrl();
@@ -76,7 +97,7 @@ interface ServerToClientEvents {
     workflow_id?: string;
   }) => void;
   // Phase 46: Streaming events
-  stream_start: (data: { id: string; agent: string; model: string }) => void;
+  stream_start: (data: { id: string; agent: string; model: string; model_source?: string }) => void;
   stream_token: (data: { id: string; token: string }) => void;
   stream_meta: (data: {
     id: string;
@@ -88,6 +109,58 @@ interface ServerToClientEvents {
     id: string;
     full_message: string;
     metadata: { tokens_output: number; tokens_input: number; model: string; agent: string };
+  }) => void;
+  // MARKER_156.S6_1_SOLO_VOICE_EVENT: Final solo voice payload emitted after stream end.
+  chat_voice_message: (data: {
+    id: string;
+    agent?: string;
+    model?: string;
+    full_message?: string;
+    message?: string;
+    metadata?: {
+      model?: string;
+      model_source?: string;
+      model_provider?: string;
+      audio?: {
+        format?: string | null;
+        duration_ms?: number | null;
+        waveform?: number[];
+        storage_id?: string | null;
+        url?: string | null;
+      };
+      voice?: {
+        voice_id?: string | null;
+        tts_provider?: string | null;
+        model_identity_key?: string;
+        persona_tag?: string | null;
+      };
+    };
+  }) => void;
+  // Progressive solo voice stream
+  chat_voice_stream_start: (data: {
+    message_id: string;
+    generation_id: string;
+    voice_id?: string;
+    model?: string;
+    agent?: string;
+    tts_provider?: string;
+    model_identity_key?: string;
+  }) => void;
+  chat_voice_stream_chunk: (data: {
+    message_id: string;
+    generation_id: string;
+    seq: number;
+    checksum: string;
+    duration_ms?: number;
+    is_final?: boolean;
+    audio?: string;
+  }) => void;
+  chat_voice_stream_end: (data: {
+    message_id: string;
+    generation_id: string;
+    total_seq: number;
+    total_duration_ms?: number;
+    final_checksum?: string;
   }) => void;
   // === PHASE 55: APPROVAL EVENTS ===
   approval_required: (data: {
@@ -162,6 +235,73 @@ interface ServerToClientEvents {
     metadata?: { tokens_output: number; model: string };
     error?: string;
   }) => void;
+  // MARKER_156.VOICE.S1_SOCKET_EVENTS: Voice streaming and final voice message contracts.
+  group_voice_stream_start: (data: {
+    id: string;
+    group_id: string;
+    agent_id: string;
+    voice?: {
+      voice_id?: string | null;
+      tts_provider?: string | null;
+      model_identity_key?: string;
+      persona_tag?: string | null;
+    };
+  }) => void;
+  group_voice_stream_chunk: (data: {
+    id: string;
+    group_id: string;
+    agent_id: string;
+    audio_chunk_b64?: string;
+    seq?: number;
+    is_final?: boolean;
+    format?: string;
+    duration_ms?: number;
+    waveform?: number[];
+  }) => void;
+  group_voice_stream_end: (data: {
+    id: string;
+    group_id: string;
+    agent_id: string;
+    audio?: {
+      format?: string | null;
+      duration_ms?: number | null;
+      waveform?: number[];
+      storage_id?: string | null;
+      url?: string | null;
+    };
+    voice?: {
+      voice_id?: string | null;
+      tts_provider?: string | null;
+      model_identity_key?: string;
+      persona_tag?: string | null;
+    };
+    text_preview?: string;
+    reason?: string;
+  }) => void;
+  group_voice_message: (data: {
+    id: string;
+    group_id: string;
+    agent_id: string;
+    full_message?: string;
+    text_preview?: string;
+    metadata?: {
+      model?: string;
+      model_source?: string;
+      audio?: {
+        format?: string | null;
+        duration_ms?: number | null;
+        waveform?: number[];
+        storage_id?: string | null;
+        url?: string | null;
+      };
+      voice?: {
+        voice_id?: string | null;
+        tts_provider?: string | null;
+        model_identity_key?: string;
+        persona_tag?: string | null;
+      };
+    };
+  }) => void;
   group_error: (data: {
     error: string;
   }) => void;
@@ -225,6 +365,17 @@ interface ServerToClientEvents {
     confidence?: number;
     language?: string;
     timestamp?: string;
+  }) => void;
+  voice_transcribed: (data: {
+    text: string;
+    final?: boolean;
+    provider?: string;
+    error?: string;
+    request_id?: string;
+  }) => void;
+  voice_error: (data: {
+    error?: string;
+    request_id?: string;
   }) => void;
   // === PHASE 104.9: ARTIFACT APPROVAL EVENTS ===
   // MARKER_104_VISUAL - L2 edit capability event
@@ -437,11 +588,20 @@ interface ClientToServerEvents {
     node_id: string;
     model?: string;
     model_source?: string;
+    message_type?: string;
+    message_metadata?: Record<string, unknown>;
     pinned_files?: PinnedFile[];
     viewport_context?: ViewportContext;
     web_context?: WebContextPayload;
     chat_id?: string;
     display_name?: string;
+  }) => void;
+  voice_audio: (data: {
+    audio: string;
+    provider?: string;
+    final?: boolean;
+    request_id?: string;
+    timeout_ms?: number;
   }) => void;
   // === PHASE 55: APPROVAL ACTIONS ===
   approve_artifact: (data: { request_id: string; reason?: string }) => void;
@@ -449,8 +609,22 @@ interface ClientToServerEvents {
   // === PHASE 56: GROUP ACTIONS ===
   join_group: (data: { group_id: string }) => void;
   leave_group: (data: { group_id: string }) => void;
-  group_message: (data: { group_id: string; sender_id: string; content: string }) => void;
+  group_message: (data: {
+    group_id: string;
+    sender_id: string;
+    content: string;
+    reply_to_id?: string;
+    voice_reply_mode?: 'text_only' | 'voice_auto' | 'voice_forced';
+    voice_input?: boolean;
+  }) => void;
   group_typing: (data: { group_id: string; agent_id: string }) => void;
+  chat_voice_stream_ack: (data: {
+    message_id: string;
+    generation_id: string;
+    seq: number;
+    checksum: string;
+    received_ms: number;
+  }) => void;
   // === PHASE 56.5: CHAT-AS-TREE ACTIONS ===
   create_chat_node: (data: {
     chatId: string;
@@ -479,12 +653,40 @@ interface ClientToServerEvents {
   }) => void;
 }
 
+interface VoiceChunkRecord {
+  seq: number;
+  checksum: string;
+  duration_ms?: number;
+  is_final?: boolean;
+  audio?: string;
+  received_at: number;
+}
+
+interface VoiceStreamCache {
+  generation_id: string;
+  chunks: VoiceChunkRecord[];
+  isFinal: boolean;
+  lastUpdated: number;
+}
+
+const buildVoiceStreamKey = (messageId: string, generationId: string) => `${messageId}:${generationId}`;
+
+let sharedVetkaSocket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
+let sharedVetkaSocketConsumers = 0;
+
 export function useSocket() {
   const socketRef = useRef<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const tokenBufferRef = useRef<Map<string, string>>(new Map());
   const rafIdRef = useRef<number | null>(null);
   // Phase 111.21: Typing throttle ref
   const lastTypingEmitRef = useRef<number>(0);
+  const chunkTrackerRef = useRef(new Map<string, Set<number>>());
+  const chunkQueueRef = useRef(new Map<string, VoiceStreamCache>());
+  const ackHistoryRef = useRef(new Map<string, number>());
+  const treeReloadTimerRef = useRef<number | null>(null);
+  const lastTreeReloadAtRef = useRef<number>(0);
+  const treeReloadInFlightRef = useRef<boolean>(false);
+  const treeReloadQueuedRef = useRef<boolean>(false);
 
   const setNodes = useStore((state) => state.setNodes);
   const setNodesFromRecord = useStore((state) => state.setNodesFromRecord);
@@ -525,11 +727,18 @@ export function useSocket() {
 
   // Helper function to reload tree data via HTTP
   const reloadTreeFromHttp = useCallback(async () => {
+    if (treeReloadInFlightRef.current) {
+      treeReloadQueuedRef.current = true;
+      return;
+    }
+    treeReloadInFlightRef.current = true;
     try {
       const response = await fetch(`${API_BASE}/tree/data`);
       if (response.ok) {
         const treeData = await response.json();
-        console.log('[Socket] Tree reloaded via HTTP:', treeData.tree?.nodes?.length, 'nodes');
+        if (SOCKET_DEBUG) {
+          console.log('[Socket] Tree reloaded via HTTP:', treeData.tree?.nodes?.length, 'nodes');
+        }
 
         if (treeData.tree) {
           const vetkaResponse: VetkaApiResponse = {
@@ -545,22 +754,63 @@ export function useSocket() {
       }
     } catch (err) {
       console.error('[Socket] Tree reload error:', err);
+    } finally {
+      treeReloadInFlightRef.current = false;
+      if (treeReloadQueuedRef.current) {
+        treeReloadQueuedRef.current = false;
+        void reloadTreeFromHttp();
+      }
     }
   }, [setNodesFromRecord, setEdges]);
 
+  const scheduleTreeReload = useCallback((path?: string, delayMs: number = TREE_RELOAD_DEBOUNCE_MS) => {
+    const now = Date.now();
+    const minGap = isInternalTreeChurnPath(path)
+      ? INTERNAL_TREE_RELOAD_MIN_GAP_MS
+      : TREE_RELOAD_MIN_GAP_MS;
+    const elapsed = now - lastTreeReloadAtRef.current;
+    const effectiveDelay = elapsed >= minGap
+      ? delayMs
+      : Math.max(delayMs, minGap - elapsed);
+
+    if (treeReloadTimerRef.current !== null) {
+      window.clearTimeout(treeReloadTimerRef.current);
+    }
+    treeReloadTimerRef.current = window.setTimeout(() => {
+      treeReloadTimerRef.current = null;
+      lastTreeReloadAtRef.current = Date.now();
+      void reloadTreeFromHttp();
+    }, effectiveDelay);
+  }, [reloadTreeFromHttp]);
+
   useEffect(() => {
-    const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(SOCKET_URL, {
+    sharedVetkaSocketConsumers += 1;
+
+    const socket: Socket<ServerToClientEvents, ClientToServerEvents> = sharedVetkaSocket || io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
     });
 
+    const isSocketOwner = sharedVetkaSocket == null;
+    if (isSocketOwner) {
+      sharedVetkaSocket = socket;
+    }
+
     socketRef.current = socket;
 
     // MARKER_110_FIX: Expose socket globally for DevPanel config sync
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__vetkaSocket = socket;
+
+    // Secondary hook consumers share existing socket and must not rebind all handlers.
+    if (!isSocketOwner) {
+      return () => {
+        sharedVetkaSocketConsumers = Math.max(0, sharedVetkaSocketConsumers - 1);
+        socketRef.current = null;
+      };
+    }
 
     socket.on('connect', () => {
       // console.log('[Socket] Connected to', SOCKET_URL);
@@ -609,15 +859,17 @@ export function useSocket() {
     // Phase 80.24: Watchdog socket listeners - enhanced with detailed logging
     // Phase 90.11: Added camera focus after indexing completes
     socket.on('node_added', async (data) => {
-      console.log('[Socket] node_added received:', {
-        path: data.path,
-        event: data.event,
-        indexed: data.indexed,
-        timestamp: new Date().toISOString()
-      });
+      if (SOCKET_DEBUG) {
+        console.log('[Socket] node_added received:', {
+          path: data.path,
+          event: data.event,
+          indexed: data.indexed,
+          timestamp: new Date().toISOString()
+        });
+      }
 
       // Trigger tree refetch via HTTP to get updated tree with proper positions
-      await reloadTreeFromHttp();
+      scheduleTreeReload(data.path);
 
       // FIX_95.9.6: Camera debounce for rapid file changes
       // Problem: Multiple files changing = camera flies everywhere = CPU heat + confusion
@@ -644,7 +896,9 @@ export function useSocket() {
             zoom: 'none',      // Don't change zoom
             highlight: true,   // Just highlight the node
           });
-          console.log('[Socket] ⚡ Rapid changes detected, highlight-only:', fileName, `(${pendingCameraFiles.length} files in window)`);
+          if (SOCKET_DEBUG) {
+            console.log('[Socket] ⚡ Rapid changes detected, highlight-only:', fileName, `(${pendingCameraFiles.length} files in window)`);
+          }
         } else {
           // Normal case - fly to new file
           setCameraCommand({
@@ -654,7 +908,9 @@ export function useSocket() {
           });
           lastCameraFocusTime = Date.now();
           pendingCameraFiles = [];  // Reset after fly-to
-          console.log('[Socket] ✅ Camera focusing on new file:', fileName);
+          if (SOCKET_DEBUG) {
+            console.log('[Socket] ✅ Camera focusing on new file:', fileName);
+          }
         }
       }, 800);
     });
@@ -707,35 +963,41 @@ export function useSocket() {
     });
 
     socket.on('node_removed', (data) => {
-      console.log('[Socket] node_removed received:', {
-        path: data.path,
-        event: data.event,
-        timestamp: new Date().toISOString()
-      });
+      if (SOCKET_DEBUG) {
+        console.log('[Socket] node_removed received:', {
+          path: data.path,
+          event: data.event,
+          timestamp: new Date().toISOString()
+        });
+      }
       // Remove node from local state
       const { removeNode } = useStore.getState();
       removeNode(data.path);
     });
 
     socket.on('node_updated', (data) => {
-      console.log('[Socket] node_updated received:', {
-        path: data.path,
-        event: data.event,
-        timestamp: new Date().toISOString()
-      });
+      if (SOCKET_DEBUG) {
+        console.log('[Socket] node_updated received:', {
+          path: data.path,
+          event: data.event,
+          timestamp: new Date().toISOString()
+        });
+      }
       // Trigger tree refetch for updated node
-      reloadTreeFromHttp();
+      scheduleTreeReload(data.path);
     });
 
     socket.on('tree_bulk_update', (data) => {
-      console.log('[Socket] tree_bulk_update received:', {
-        path: data.path,
-        count: data.count,
-        events: data.events,
-        timestamp: new Date().toISOString()
-      });
+      if (SOCKET_DEBUG) {
+        console.log('[Socket] tree_bulk_update received:', {
+          path: data.path,
+          count: data.count,
+          events: data.events,
+          timestamp: new Date().toISOString()
+        });
+      }
       // Reload entire tree for bulk updates (git checkout, etc.)
-      reloadTreeFromHttp();
+      scheduleTreeReload(data.path);
     });
 
     socket.on('node_moved', (data) => {
@@ -825,32 +1087,15 @@ export function useSocket() {
 
       // Fetch fresh tree data via HTTP (socket request_tree handler doesn't exist on backend)
       try {
-        const response = await fetch('/api/tree/data');
-        if (response.ok) {
-          const treeData = await response.json();
-          // console.log('[Socket] Tree reloaded via HTTP:', treeData.tree?.nodes?.length, 'nodes');
-
-          if (treeData.tree) {
-            const vetkaResponse: VetkaApiResponse = {
-              tree: {
-                nodes: treeData.tree.nodes,
-                edges: treeData.tree.edges || [],
-              },
-            };
-            const { nodes: convertedNodes, edges } = convertApiResponse(vetkaResponse);
-            setNodesFromRecord(convertedNodes);
-            setEdges(edges);
-
-            // Camera fly-to after tree is loaded
-            setTimeout(() => {
-              setCameraCommand({
-                target: data.root_name,
-                zoom: 'medium',
-                highlight: true,
-              });
-            }, 300);
-          }
-        }
+        await reloadTreeFromHttp();
+        // Camera fly-to after tree is loaded
+        setTimeout(() => {
+          setCameraCommand({
+            target: data.root_name,
+            zoom: 'medium',
+            highlight: true,
+          });
+        }, 300);
       } catch (err) {
         console.error('[Socket] Tree reload error:', err);
       }
@@ -870,34 +1115,17 @@ export function useSocket() {
 
       try {
         // Reload tree data via HTTP (use API_BASE from config)
-        const response = await fetch(`${API_BASE}/tree/data`);
-        if (response.ok) {
-          const treeData = await response.json();
-          // console.log('[Socket] Tree reloaded after directory scan:', treeData.tree?.nodes?.length, 'nodes');
-
-          if (treeData.tree) {
-            const vetkaResponse: VetkaApiResponse = {
-              tree: {
-                nodes: treeData.tree.nodes,
-                edges: treeData.tree.edges || [],
-              },
-            };
-            const { nodes: convertedNodes, edges } = convertApiResponse(vetkaResponse);
-            setNodesFromRecord(convertedNodes);
-            setEdges(edges);
-
-            // Camera fly-to the new folder
-            setTimeout(() => {
-              if (data.root_name) {
-                setCameraCommand({
-                  target: data.root_name,
-                  zoom: 'medium',
-                  highlight: true,
-                });
-              }
-            }, 300);
+        await reloadTreeFromHttp();
+        // Camera fly-to the new folder
+        setTimeout(() => {
+          if (data.root_name) {
+            setCameraCommand({
+              target: data.root_name,
+              zoom: 'medium',
+              highlight: true,
+            });
           }
-        }
+        }, 300);
       } catch (err) {
         console.error('[Socket] Error handling directory_scanned:', err);
       }
@@ -1035,6 +1263,294 @@ export function useSocket() {
       }));
     });
 
+    socket.on('chat_voice_message', (data) => {
+      const messageId = data.id || crypto.randomUUID();
+      const fullMessage = data.full_message || data.message || '';
+      const audioMeta = data.metadata?.audio || {};
+      const voiceMeta = data.metadata?.voice || {};
+
+      useStore.setState((state) => {
+        const existing = state.chatMessages.find((m) => m.id === messageId);
+
+        if (existing) {
+          return {
+            chatMessages: state.chatMessages.map((msg) =>
+              msg.id === messageId
+                ? {
+                    ...msg,
+                    type: 'voice',
+                    content: fullMessage || msg.content,
+                    metadata: {
+                      ...msg.metadata,
+                      ...(data.metadata || {}),
+                      model: data.metadata?.model || msg.metadata?.model || data.model,
+                      isStreaming: false,
+                      audio: audioMeta,
+                      voice: voiceMeta,
+                    },
+                  }
+                : msg
+            ),
+          };
+        }
+
+        return {
+          chatMessages: [
+            ...state.chatMessages,
+            {
+              id: messageId,
+              role: 'assistant',
+              agent: data.agent as ChatMessage['agent'],
+              content: fullMessage,
+              type: 'voice',
+              timestamp: new Date().toISOString(),
+              metadata: {
+                ...(data.metadata || {}),
+                model: data.metadata?.model || data.model,
+                audio: audioMeta,
+                voice: voiceMeta,
+                isStreaming: false,
+              },
+            },
+          ],
+        };
+      });
+      setIsTyping(false);
+    });
+
+    socket.on('chat_voice_stream_start', (data) => {
+      const key = buildVoiceStreamKey(data.message_id, data.generation_id);
+      chunkTrackerRef.current.set(key, new Set());
+      chunkQueueRef.current.set(key, {
+        generation_id: data.generation_id,
+        chunks: [],
+        isFinal: false,
+        lastUpdated: Date.now(),
+      });
+
+      useStore.setState((state) => {
+        const existing = state.chatMessages.find((m) => m.id === data.message_id);
+        if (existing) {
+          return {
+            chatMessages: state.chatMessages.map((msg) =>
+              msg.id === data.message_id
+                ? {
+                    ...msg,
+                    type: 'voice',
+                    metadata: {
+                      ...msg.metadata,
+                      voice: {
+                        ...(msg.metadata?.voice || {}),
+                        voice_id: data.voice_id || msg.metadata?.voice?.voice_id,
+                        model_identity_key: data.model_identity_key || msg.metadata?.voice?.model_identity_key,
+                        tts_provider: data.tts_provider || msg.metadata?.voice?.tts_provider,
+                      },
+                      stream: {
+                        generation_id: data.generation_id,
+                        chunks: [],
+                        isFinal: false,
+                      },
+                      isStreaming: true,
+                    },
+                  }
+                : msg
+            ),
+          };
+        }
+
+        return {
+          chatMessages: [
+            ...state.chatMessages,
+            {
+              id: data.message_id,
+              role: 'assistant',
+              agent: data.agent as ChatMessage['agent'],
+              content: '',
+              type: 'voice',
+              timestamp: new Date().toISOString(),
+              metadata: {
+                model: data.model,
+                voice: {
+                  voice_id: data.voice_id || undefined,
+                  model_identity_key: data.model_identity_key,
+                  tts_provider: data.tts_provider,
+                },
+                stream: {
+                  generation_id: data.generation_id,
+                  chunks: [],
+                  isFinal: false,
+                },
+                isStreaming: true,
+              },
+            },
+          ],
+        };
+      });
+    });
+
+    socket.on('chat_voice_stream_chunk', (data) => {
+      const key = buildVoiceStreamKey(data.message_id, data.generation_id);
+      const seenSeqs = chunkTrackerRef.current.get(key) || new Set<number>();
+      if (seenSeqs.has(data.seq)) {
+        return;
+      }
+      seenSeqs.add(data.seq);
+      chunkTrackerRef.current.set(key, seenSeqs);
+
+      const cache = chunkQueueRef.current.get(key) || {
+        generation_id: data.generation_id,
+        chunks: [],
+        isFinal: false,
+        lastUpdated: Date.now(),
+      };
+
+      const chunkRecord: VoiceChunkRecord = {
+        seq: data.seq,
+        checksum: data.checksum,
+        duration_ms: data.duration_ms,
+        is_final: data.is_final,
+        audio: data.audio,
+        received_at: Date.now(),
+      };
+
+      const dedupedChunks = cache.chunks.filter((chunk) => chunk.seq !== data.seq);
+      const updatedChunks = [...dedupedChunks, chunkRecord].sort((a, b) => a.seq - b.seq);
+
+      chunkQueueRef.current.set(key, {
+        ...cache,
+        chunks: updatedChunks,
+        isFinal: cache.isFinal || Boolean(data.is_final),
+        lastUpdated: Date.now(),
+      });
+
+      useStore.setState((state) => {
+        const existing = state.chatMessages.find((m) => m.id === data.message_id);
+        if (existing) {
+          return {
+            chatMessages: state.chatMessages.map((msg) =>
+              msg.id === data.message_id
+                ? {
+                    ...msg,
+                    type: 'voice',
+                    metadata: {
+                      ...msg.metadata,
+                      stream: {
+                        generation_id: data.generation_id,
+                        chunks: updatedChunks,
+                        isFinal: cache.isFinal || Boolean(data.is_final),
+                      },
+                      isStreaming: true,
+                    },
+                  }
+                : msg
+            ),
+          };
+        }
+
+        return {
+          chatMessages: [
+            ...state.chatMessages,
+            {
+              id: data.message_id,
+              role: 'assistant',
+              agent: 'PM',
+              content: '',
+              type: 'voice',
+              timestamp: new Date().toISOString(),
+              metadata: {
+                stream: {
+                  generation_id: data.generation_id,
+                  chunks: updatedChunks,
+                  isFinal: cache.isFinal || Boolean(data.is_final),
+                },
+                isStreaming: true,
+              },
+            },
+          ],
+        };
+      });
+
+      const socket = socketRef.current;
+      if (socket && socket.connected) {
+        const ackKey = `${data.message_id}:${data.generation_id}:${data.seq}`;
+        if (ackHistoryRef.current.get(ackKey) !== data.checksum) {
+          ackHistoryRef.current.set(ackKey, data.checksum);
+          socket.emit('chat_voice_stream_ack', {
+            message_id: data.message_id,
+            generation_id: data.generation_id,
+            seq: data.seq,
+            checksum: data.checksum,
+            received_ms: Date.now(),
+          });
+        }
+      }
+    });
+
+    socket.on('chat_voice_stream_end', (data) => {
+      const key = buildVoiceStreamKey(data.message_id, data.generation_id);
+      const cache = chunkQueueRef.current.get(key);
+      if (cache) {
+        chunkQueueRef.current.set(key, {
+          ...cache,
+          isFinal: true,
+          lastUpdated: Date.now(),
+        });
+      }
+      chunkTrackerRef.current.delete(key);
+
+      useStore.setState((state) => {
+        const existing = state.chatMessages.find((m) => m.id === data.message_id);
+        if (existing) {
+          return {
+            chatMessages: state.chatMessages.map((msg) =>
+              msg.id === data.message_id
+                ? {
+                    ...msg,
+                    metadata: {
+                      ...msg.metadata,
+                      audio: {
+                        ...(msg.metadata?.audio || {}),
+                        duration_ms: data.total_duration_ms || msg.metadata?.audio?.duration_ms,
+                      },
+                      stream: {
+                        ...(msg.metadata?.stream || {}),
+                        isFinal: true,
+                      },
+                      isStreaming: false,
+                    },
+                  }
+                : msg
+            ),
+          };
+        }
+
+        return {
+          chatMessages: [
+            ...state.chatMessages,
+            {
+              id: data.message_id,
+              role: 'assistant',
+              agent: 'PM',
+              content: '',
+              type: 'voice',
+              timestamp: new Date().toISOString(),
+              metadata: {
+                audio: {
+                  duration_ms: data.total_duration_ms,
+                },
+                stream: {
+                  generation_id: data.generation_id,
+                  chunks: cache?.chunks || [],
+                  isFinal: true,
+                },
+                isStreaming: false,
+              },
+            },
+          ],
+        };
+      });
+    });
+
     // === PHASE 55: APPROVAL LISTENERS ===
 
     socket.on('approval_required', (data) => {
@@ -1157,6 +1673,34 @@ export function useSocket() {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(
           new CustomEvent('group-stream-end', { detail: data })
+        );
+      }
+    });
+    socket.on('group_voice_stream_start', (data) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('group-voice-stream-start', { detail: data })
+        );
+      }
+    });
+    socket.on('group_voice_stream_chunk', (data) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('group-voice-stream-chunk', { detail: data })
+        );
+      }
+    });
+    socket.on('group_voice_stream_end', (data) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('group-voice-stream-end', { detail: data })
+        );
+      }
+    });
+    socket.on('group_voice_message', (data) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('group-voice-message', { detail: data })
         );
       }
     });
@@ -1593,7 +2137,15 @@ export function useSocket() {
       if (tokenBufferRef.current.size > 0) {
         flushTokenBuffer();
       }
-      socket.disconnect();
+      if (treeReloadTimerRef.current !== null) {
+        window.clearTimeout(treeReloadTimerRef.current);
+        treeReloadTimerRef.current = null;
+      }
+      sharedVetkaSocketConsumers = Math.max(0, sharedVetkaSocketConsumers - 1);
+      if (sharedVetkaSocketConsumers === 0) {
+        socket.disconnect();
+        sharedVetkaSocket = null;
+      }
     };
   }, [
     setNodes,
@@ -1611,6 +2163,7 @@ export function useSocket() {
     setIsTyping,
     flushTokenBuffer,
     reloadTreeFromHttp,
+    scheduleTreeReload,
   ]);
 
   const requestTree = useCallback(() => {
@@ -1631,7 +2184,18 @@ export function useSocket() {
   // FIX_109.4b: Added chatId parameter for immediate passing (React setState is async)
   // Phase 111.9: Added modelSource for multi-provider routing
   // MARKER_109_14: Added displayName for chat naming (priority: pinned > node > keywords)
-  const sendMessage = useCallback((message: string, nodePath?: string, modelId?: string, chatId?: string, modelSource?: string, displayName?: string) => {
+  const sendMessage = useCallback((
+    message: string,
+    nodePath?: string,
+    modelId?: string,
+    chatId?: string,
+    modelSource?: string,
+    displayName?: string,
+    options?: {
+      messageType?: string;
+      messageMetadata?: Record<string, unknown>;
+    }
+  ) => {
     if (!socketRef.current?.connected) {
       // console.warn('[Socket] Not connected, cannot send message');
       return;
@@ -1694,6 +2258,8 @@ export function useSocket() {
       node_id: 'root',                  // Backend expects 'node_id'
       model: modelId,                   // Phase 48.1: Optional model override
       model_source: modelSource,        // Phase 111.9: Source for multi-provider routing
+      message_type: options?.messageType || undefined,
+      message_metadata: options?.messageMetadata || undefined,
       pinned_files: pinnedFiles.length > 0 ? pinnedFiles : undefined,  // Phase 61
       // Phase 70: Full viewport context for AI spatial awareness
       viewport_context: viewportContext || undefined,
@@ -1750,15 +2316,26 @@ export function useSocket() {
     // console.log('[Socket] Emitted leave_group:', groupId);
   }, []);
 
-  // Phase 80.35: Added reply_to_id for reply routing
-  const sendGroupMessage = useCallback((groupId: string, senderId: string, content: string, replyToId?: string) => {
+  // MARKER_156.VOICE.S5_SOCKET_POLICY: Group message supports voice reply policy.
+  const sendGroupMessage = useCallback((
+    groupId: string,
+    senderId: string,
+    content: string,
+    options?: {
+      replyToId?: string;
+      voiceReplyMode?: 'text_only' | 'voice_auto' | 'voice_forced';
+      voiceInput?: boolean;
+    }
+  ) => {
     socketRef.current?.emit('group_message', {
       group_id: groupId,
       sender_id: senderId,
       content,
-      reply_to_id: replyToId,  // Phase 80.35: Pass reply target for routing
+      reply_to_id: options?.replyToId,
+      voice_reply_mode: options?.voiceReplyMode,
+      voice_input: options?.voiceInput,
     });
-    // console.log('[Socket] Emitted group_message:', { groupId, senderId, replyToId });
+    // console.log('[Socket] Emitted group_message:', { groupId, senderId, options });
   }, []);
 
   // Phase 111.21: Typing indicator with 500ms throttle
@@ -1874,6 +2451,81 @@ export function useSocket() {
     // console.log('[Socket] Emitted search_query:', query);
   }, []);
 
+  const transcribeVoiceSample = useCallback((
+    audioBase64: string,
+    provider: 'whisper' | 'deepgram' | 'openai' | 'gemini' = 'whisper',
+    options?: {
+      timeoutMs?: number;
+    }
+  ): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) {
+        reject(new Error('Socket not connected'));
+        return;
+      }
+
+      const requestId = crypto.randomUUID();
+      let settled = false;
+
+      const cleanup = () => {
+        socket.off('voice_transcribed', onTranscribed);
+        socket.off('voice_error', onVoiceError);
+      };
+
+      const finishResolve = (text: string) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(text);
+      };
+
+      const finishReject = (message: string) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error(message));
+      };
+
+      const onTranscribed = (data: {
+        text?: string;
+        error?: string;
+        request_id?: string;
+      }) => {
+        if (data?.request_id && data.request_id !== requestId) return;
+        const text = String(data?.text || '').trim();
+        if (text) {
+          finishResolve(text);
+        } else {
+          finishReject(data?.error || 'STT returned empty');
+        }
+      };
+
+      const onVoiceError = (data: { error?: string; request_id?: string }) => {
+        if (data?.request_id && data.request_id !== requestId) return;
+        finishReject(data?.error || 'Voice transcription failed');
+      };
+
+      socket.on('voice_transcribed', onTranscribed);
+      socket.on('voice_error', onVoiceError);
+
+      socket.emit('voice_audio', {
+        audio: audioBase64,
+        provider,
+        final: true,
+        request_id: requestId,
+        timeout_ms: options?.timeoutMs,
+      });
+
+      const timeoutMs = Math.max(15000, Number(options?.timeoutMs || 45000));
+      window.setTimeout(() => {
+        if (!settled) {
+          finishReject('Voice transcription timeout');
+        }
+      }, timeoutMs);
+    });
+  }, []);
+
   return {
     isConnected: isSocketConnected,
     requestTree,
@@ -1897,5 +2549,6 @@ export function useSocket() {
     getKeyStatus,
     // === PHASE 68: SEARCH ACTIONS ===
     searchQuery,
+    transcribeVoiceSample,
   };
 }
