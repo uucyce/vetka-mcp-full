@@ -33,6 +33,8 @@ import json
 import asyncio
 import uuid
 import logging  # MARKER_116_CLEANUP
+import base64
+import re
 
 from src.utils.chat_utils import detect_response_type, get_agent_model_name
 
@@ -108,6 +110,14 @@ def register_user_message_handler(sio, app=None):
     # Tracks pending_key per session for Hostess learn flow
     # ========================================
     pending_api_keys = {}  # {sid: {'key': 'xxx', 'timestamp': time.time()}}
+    # S6.4: lightweight in-process prosody memory by model identity.
+    solo_prosody_memory: dict[str, dict] = {}
+    # Serializes solo Qwen synth requests to reduce local model overload/500s.
+    solo_qwen_tts_lock = asyncio.Lock()
+    # Latest voice generation sequence per socket session (drop stale background jobs).
+    voice_generation_seq: dict[str, int] = {}
+    # Prevent duplicate voice generation jobs for the same assistant message id.
+    voice_jobs_inflight: set[str] = set()
 
     # ========================================
     # Phase 44.6: DIRECT IMPORTS (no god object)
@@ -119,6 +129,11 @@ def register_user_message_handler(sio, app=None):
 
     # Phase 53: Per-session chat registry
     from src.chat.chat_registry import ChatRegistry, Message
+    from src.voice.voice_assignment_registry import get_voice_assignment_registry
+    from src.voice.emotion_prosody import infer_and_map_prosody
+    from src.voice.qwen_voice_catalog import normalize_qwen_voice_id
+    from src.api.routes.voice_storage_routes import normalize_qwen_audio_payload, store_voice_audio_bytes
+    from src.services.progressive_tts_service import ProgressiveTtsService
 
     # Phase 46: Streaming support (HOST_HAS_OLLAMA needed for streaming decision)
     from src.elisya.api_aggregator_v3 import HOST_HAS_OLLAMA
@@ -152,16 +167,13 @@ def register_user_message_handler(sio, app=None):
 
     # Phase 51.4: Message Surprise - CAM event emission
     from src.orchestration.cam_event_handler import emit_cam_event
+    from src.orchestration.context_packer import get_context_packer
 
     # Phase 64.1: Extracted pure utility functions
-    # Phase 71: Added build_viewport_summary
-    # Phase 73: Added build_json_context
     from .message_utils import (
         format_history_for_prompt,
         load_pinned_file_content,
         build_pinned_context,
-        build_viewport_summary,
-        build_json_context,
     )
 
     # Phase 64.2: Extracted streaming handler
@@ -379,6 +391,25 @@ def register_user_message_handler(sio, app=None):
 
         # Phase 61: Pinned files for multi-file context
         pinned_files = data.get("pinned_files", [])
+        # MARKER_156.S5_SOLO_STORAGE: Optional message contract fields for voice/text persistence.
+        message_type = str(data.get("message_type", "text") or "text").strip().lower()
+        message_metadata = data.get("message_metadata") if isinstance(data.get("message_metadata"), dict) else {}
+        voice_t0 = time.perf_counter() if message_type == "voice" else None
+        request_voice_seq = None
+        if message_type == "voice":
+            request_voice_seq = int(voice_generation_seq.get(sid, 0) or 0) + 1
+            voice_generation_seq[sid] = request_voice_seq
+            print(
+                f"[MARKER_156.VOICE.S6_TRACE_T0_USER_SEND] sid={sid} seq={request_voice_seq} chat_id={data.get('chat_id')} model={data.get('model')} source={data.get('model_source')}"
+            )
+            logger.info(
+                "[MARKER_156.VOICE.S6_TRACE_T0_USER_SEND] sid=%s seq=%s chat_id=%s model=%s source=%s",
+                sid,
+                request_voice_seq,
+                data.get("chat_id"),
+                data.get("model"),
+                data.get("model_source"),
+            )
 
         # [PHASE71-M1] Phase 71: Viewport context for spatial awareness
         viewport_context = data.get("viewport_context", None)
@@ -401,7 +432,7 @@ def register_user_message_handler(sio, app=None):
         request_timestamp = time.time()
 
         print(
-            f"\n[SOCKET] User message from {client_id}: {text[:50]}... (node: {node_path})"
+            f"\n[SOCKET] User message from {client_id}: {text[:50]}... (node: {node_path}, message_type: {message_type})"
         )
 
         # Phase 61: Log pinned files
@@ -425,6 +456,450 @@ def register_user_message_handler(sio, app=None):
         chat_manager.add_message(
             Message(role="user", content=text, node_path=node_path)
         )
+
+        def _language_for_text(text_value: str) -> str:
+            return "ru" if re.search(r"[А-Яа-яЁё]", text_value or "") else "en"
+
+        def _waveform_from_audio(audio_bytes: bytes, points: int = 64) -> list[float]:
+            if not audio_bytes:
+                return []
+            # Prefer real PCM amplitude extraction for WAV.
+            try:
+                import io
+                import wave
+                import struct
+
+                with wave.open(io.BytesIO(audio_bytes), "rb") as wav:
+                    n_channels = wav.getnchannels()
+                    sample_width = wav.getsampwidth()
+                    n_frames = wav.getnframes()
+                    raw = wav.readframes(n_frames)
+
+                if sample_width not in (1, 2) or not raw:
+                    raise ValueError("unsupported wav format")
+
+                if sample_width == 2:
+                    fmt = f"<{len(raw) // 2}h"
+                    samples = struct.unpack(fmt, raw)
+                    max_abs = 32767.0
+                    values = [abs(s) / max_abs for s in samples]
+                else:
+                    values = [abs(b - 128) / 128.0 for b in raw]
+
+                if n_channels > 1:
+                    mono = []
+                    for i in range(0, len(values), n_channels):
+                        chunk = values[i:i + n_channels]
+                        if chunk:
+                            mono.append(sum(chunk) / len(chunk))
+                    values = mono
+
+                step = max(1, len(values) // points)
+                out: list[float] = []
+                for i in range(0, len(values), step):
+                    chunk = values[i:i + step]
+                    if not chunk:
+                        continue
+                    out.append(round(max(chunk), 4))
+                    if len(out) >= points:
+                        break
+                return out
+            except Exception:
+                # Fallback amplitude approximation for unknown formats.
+                length = len(audio_bytes)
+                step = max(1, length // points)
+                out: list[float] = []
+                for i in range(0, length, step):
+                    chunk = audio_bytes[i:i + step]
+                    if not chunk:
+                        continue
+                    mean_val = sum(chunk) / len(chunk)
+                    out.append(round(abs(mean_val - 128.0) / 128.0, 4))
+                    if len(out) >= points:
+                        break
+                return out
+
+        def _apply_voice_response_contract(prompt: str, user_text: str) -> str:
+            """
+            Voice mode response policy:
+            - bounded token budget
+            - plain speakable text (no markdown/tables/JSON)
+            - emotion/prosody is handled server-side, model should focus on semantic answer
+            """
+            if not prompt:
+                return prompt
+            # Keep voice replies shorter to reduce TTS latency in solo mode.
+            max_tokens = 90 if len(user_text or "") < 220 else 140
+            policy = (
+                "\n\n[VOICE_MODE_POLICY]\n"
+                f"- Keep answer concise: <= {max_tokens} tokens.\n"
+                "- Output plain natural text for TTS. No markdown lists/tables/code fences/JSON.\n"
+                "- Never say that you cannot answer by voice; voice rendering is handled by the system.\n"
+                "- Do not print emotion tags; prosody/emotion is applied by server tools.\n"
+                "- If clarification needed, ask one short follow-up question.\n"
+            )
+            return f"{prompt}{policy}"
+
+        async def _synthesize_qwen_and_store(
+            *,
+            text_value: str,
+            speaker: str,
+            prosody: dict | None = None,
+            msg_id: str | None = None,
+            trace_t0: float | None = None,
+        ) -> dict:
+            """
+            S6.2 strict path: Qwen local TTS only (no provider fallback).
+            Returns audio metadata contract for chat message.
+            """
+            text_clean = (text_value or "").strip()
+            if not text_clean:
+                return {
+                    "format": None,
+                    "duration_ms": None,
+                    "waveform": [],
+                    "storage_id": None,
+                    "url": None,
+                }
+
+            try:
+                if request_voice_seq is not None and voice_generation_seq.get(sid) != request_voice_seq:
+                    print(f"[SOLO_VOICE_S6_2] drop stale tts msg_id={msg_id} sid={sid} seq={request_voice_seq}")
+                    return {
+                        "format": None,
+                        "duration_ms": None,
+                        "waveform": [],
+                        "storage_id": None,
+                        "url": None,
+                    }
+                import httpx
+                from src.voice.tts_engine import estimate_audio_duration
+                from src.voice.tts_server_manager import is_tts_running, start_tts_server
+
+                language = _language_for_text(text_clean)
+                prosody_payload = prosody if isinstance(prosody, dict) else {}
+                logger.info(
+                    "[MARKER_156.VOICE.S6_TRACE_T2_TTS_START] msg_id=%s len=%s speaker=%s t_since_t0_ms=%.1f",
+                    msg_id or "n/a",
+                    len(text_clean),
+                    speaker,
+                    ((time.perf_counter() - trace_t0) * 1000.0) if trace_t0 else -1.0,
+                )
+                print(
+                    f"[MARKER_156.VOICE.S6_TRACE_T2_TTS_START] msg_id={msg_id or 'n/a'} len={len(text_clean)} speaker={speaker}"
+                )
+                if not is_tts_running():
+                    start_tts_server(wait_ready=True, timeout=60.0)
+                resolved_speaker = normalize_qwen_voice_id(speaker or "ryan", default="ryan")
+                async with solo_qwen_tts_lock:
+                    async with httpx.AsyncClient(timeout=90.0) as client:
+                        health = await client.get("http://127.0.0.1:5003/health", timeout=3.0)
+                        if health.status_code != 200:
+                            logger.warning("[SOLO_VOICE_S6_2] Qwen TTS health check failed: %s", health.status_code)
+                        payload = {
+                            "text": text_clean,
+                            "language": language,
+                            "speaker": resolved_speaker,
+                            # S6.4: optional fields for future TTS server prosody support.
+                            "speed": prosody_payload.get("speed"),
+                            "pitch": prosody_payload.get("pitch"),
+                            "energy": prosody_payload.get("energy"),
+                            "pause_profile": prosody_payload.get("pause_profile"),
+                        }
+                        tts_resp = None
+                        for attempt in range(2):
+                            try:
+                                tts_resp = await client.post(
+                                    "http://127.0.0.1:5003/tts/generate",
+                                    json=payload,
+                                    timeout=30.0,
+                                )
+                                tts_resp.raise_for_status()
+                                break
+                            except Exception as inner_exc:
+                                if attempt == 1:
+                                    raise
+                                logger.warning("[SOLO_VOICE_S6_2] qwen generate retry: %r", inner_exc)
+                                if not is_tts_running():
+                                    start_tts_server(wait_ready=True, timeout=45.0)
+
+                payload = tts_resp.json() if tts_resp.content else {}
+                audio_b64 = payload.get("audio") if isinstance(payload, dict) else None
+                if not audio_b64:
+                    logger.warning("[SOLO_VOICE_S6_2] Empty audio from Qwen TTS")
+                    return {
+                        "format": None,
+                        "duration_ms": None,
+                        "waveform": [],
+                        "storage_id": None,
+                        "url": None,
+                    }
+
+                audio_bytes = base64.b64decode(audio_b64)
+                if not audio_bytes:
+                    return {
+                        "format": None,
+                        "duration_ms": None,
+                        "waveform": [],
+                        "storage_id": None,
+                        "url": None,
+                    }
+                audio_bytes, normalized_content_type, normalized_ext = normalize_qwen_audio_payload(audio_bytes)
+
+                estimated_duration_ms = int(max(0.6, estimate_audio_duration(text_clean)) * 1000)
+                storage_meta = store_voice_audio_bytes(
+                    audio_bytes,
+                    content_type=normalized_content_type,
+                    ext_hint=normalized_ext,
+                    duration_ms=estimated_duration_ms,
+                )
+                logger.info(
+                    "[MARKER_156.VOICE.S6_TRACE_T4_STORAGE_DONE] msg_id=%s storage_id=%s format=%s duration_ms=%s t_since_t0_ms=%.1f",
+                    msg_id or "n/a",
+                    storage_meta.get("storage_id"),
+                    storage_meta.get("format") or normalized_ext,
+                    storage_meta.get("duration_ms") or estimated_duration_ms,
+                    ((time.perf_counter() - trace_t0) * 1000.0) if trace_t0 else -1.0,
+                )
+                print(
+                    f"[MARKER_156.VOICE.S6_TRACE_T4_STORAGE_DONE] msg_id={msg_id or 'n/a'} storage_id={storage_meta.get('storage_id')} format={storage_meta.get('format') or normalized_ext}"
+                )
+                return {
+                    "format": storage_meta.get("format") or normalized_ext,
+                    "duration_ms": storage_meta.get("duration_ms") or estimated_duration_ms,
+                    "waveform": _waveform_from_audio(audio_bytes, points=64),
+                    "storage_id": storage_meta.get("storage_id"),
+                    "url": storage_meta.get("url"),
+                }
+            except Exception as exc:
+                logger.warning("[SOLO_VOICE_S6_2] qwen synth/store failed: %r", exc, exc_info=True)
+                print(f"[SOLO_VOICE_S6_2] qwen synth/store failed: {exc!r}")
+                return {
+                    "format": None,
+                    "duration_ms": None,
+                    "waveform": [],
+                    "storage_id": None,
+                    "url": None,
+                }
+
+        async def _emit_progressive_voice_chunks(
+            *,
+            msg_id: str,
+            voice_id: str,
+            full_text: str,
+            prosody: dict | None,
+            trace_t0: float | None,
+        ) -> str | None:
+            if not full_text.strip():
+                return None
+            language = _language_for_text(full_text)
+            service = ProgressiveTtsService()
+            generation_id = str(uuid.uuid4())
+            seq_count = 0
+            total_duration = 0
+            checksum = ""
+            await sio.emit(
+                "chat_voice_stream_start",
+                {
+                    "message_id": msg_id,
+                    "generation_id": generation_id,
+                    "voice_id": voice_id,
+                    "model": model_name,
+                    "agent": agent_short_name,
+                    "tts_provider": voice_meta.get("tts_provider"),
+                    "model_identity_key": voice_meta.get("model_identity_key"),
+                },
+                to=sid,
+            )
+            try:
+                async for chunk in service.stream_sentences(
+                    full_text,
+                    speaker=voice_id or "ryan",
+                    language=language,
+                    prosody=prosody,
+                ):
+                    checksum = chunk.get("checksum", checksum)
+                    total_duration += int(chunk.get("duration_ms") or 0)
+                    seq_count = max(seq_count, int(chunk.get("seq", 0)))
+                    await sio.emit(
+                        "chat_voice_stream_chunk",
+                        {
+                            "message_id": msg_id,
+                            "generation_id": generation_id,
+                            "seq": chunk.get("seq"),
+                            "audio": chunk.get("audio_b64"),
+                            "duration_ms": chunk.get("duration_ms"),
+                            "checksum": chunk.get("checksum"),
+                            "is_final": chunk.get("is_final", False),
+                        },
+                        to=sid,
+                    )
+                await sio.emit(
+                    "chat_voice_stream_end",
+                    {
+                        "message_id": msg_id,
+                        "generation_id": generation_id,
+                        "total_seq": seq_count + 1,
+                        "total_duration_ms": total_duration,
+                        "final_checksum": checksum,
+                    },
+                    to=sid,
+                )
+            except Exception as exc:
+                logger.warning("[SOLO_VOICE_S6_2] progressive stream failed: %s", exc)
+            return generation_id
+
+        async def _emit_solo_voice_message(
+            *,
+            msg_id: str,
+            agent_name: str,
+            model_name: str,
+            provider_name: str,
+            model_source_name: str | None,
+            full_text: str,
+            trace_t0: float | None = None,
+        ) -> dict:
+            """MARKER_156.S6_1_SOLO_VOICE_EVENT: Final solo voice contract over socket."""
+            if request_voice_seq is not None and voice_generation_seq.get(sid) != request_voice_seq:
+                print(f"[SOLO_VOICE_S6_2] skip stale emit msg_id={msg_id} sid={sid} seq={request_voice_seq}")
+                return {}
+            provider_key = str(provider_name or "unknown").strip().lower() or "unknown"
+            model_key = str(model_name or "unknown").strip() or "unknown"
+            identity_key = f"{provider_key}:{model_key}"
+            voice_meta = {
+                "voice_id": None,
+                "tts_provider": "qwen",
+                "model_identity_key": identity_key,
+            }
+            emotion_snapshot: dict = {}
+            prosody_snapshot: dict = {}
+            audio_meta = {
+                "format": None,
+                "duration_ms": None,
+                "waveform": [],
+                "storage_id": None,
+                "url": None,
+            }
+            try:
+                assignment = await get_voice_assignment_registry().get_or_assign(
+                    provider=provider_key,
+                    model_id=model_key,
+                    tts_provider="qwen",
+                )
+                if isinstance(assignment, dict):
+                    voice_meta = {
+                        "voice_id": assignment.get("voice_id"),
+                        "tts_provider": assignment.get("tts_provider") or "qwen",
+                        "model_identity_key": assignment.get("model_identity_key") or identity_key,
+                        "persona_tag": assignment.get("persona_tag"),
+                    }
+            except Exception as exc:
+                logger.warning("[SOLO_VOICE_S6_2] voice assignment failed for %s: %s", identity_key, exc)
+
+            try:
+                inference = infer_and_map_prosody(
+                    full_text,
+                    previous_prosody=solo_prosody_memory.get(identity_key),
+                )
+                emotion_snapshot = inference.get("emotion", {}) if isinstance(inference, dict) else {}
+                prosody_snapshot = inference.get("prosody", {}) if isinstance(inference, dict) else {}
+                if prosody_snapshot:
+                    solo_prosody_memory[identity_key] = dict(prosody_snapshot)
+            except Exception as exc:
+                logger.warning("[SOLO_VOICE_S6_4] emotion inference failed for %s: %s", identity_key, exc)
+
+            await _emit_progressive_voice_chunks(
+                msg_id=msg_id,
+                voice_id=str(voice_meta.get("voice_id") or "ryan"),
+                full_text=full_text,
+                prosody=prosody_snapshot,
+                trace_t0=trace_t0,
+            )
+
+            audio_meta = await _synthesize_qwen_and_store(
+                text_value=full_text,
+                speaker=str(voice_meta.get("voice_id") or "ryan"),
+                prosody=prosody_snapshot,
+                msg_id=msg_id,
+                trace_t0=trace_t0,
+            )
+
+            await sio.emit(
+                "chat_voice_message",
+                {
+                    "id": msg_id,
+                    "agent": agent_name,
+                    "model": model_name,
+                    "full_message": full_text,
+                    "metadata": {
+                        "model": model_name,
+                        "model_source": model_source_name,
+                        "model_provider": provider_key,
+                        "voice": voice_meta,
+                        "audio": audio_meta,
+                        "emotion": emotion_snapshot,
+                        "prosody": prosody_snapshot,
+                    },
+                },
+                to=sid,
+            )
+            logger.info(
+                "[MARKER_156.VOICE.S6_TRACE_T5_UI_BUBBLE_EMIT] msg_id=%s storage_id=%s t_since_t0_ms=%.1f",
+                msg_id,
+                (audio_meta or {}).get("storage_id"),
+                ((time.perf_counter() - trace_t0) * 1000.0) if trace_t0 else -1.0,
+            )
+            print(
+                f"[MARKER_156.VOICE.S6_TRACE_T5_UI_BUBBLE_EMIT] msg_id={msg_id} storage_id={(audio_meta or {}).get('storage_id')}"
+            )
+            return {
+                "voice": voice_meta,
+                "audio": audio_meta,
+                "emotion": emotion_snapshot,
+                "prosody": prosody_snapshot,
+            }
+
+        def _schedule_solo_voice_message(
+            *,
+            msg_id: str,
+            agent_name: str,
+            model_name: str,
+            provider_name: str,
+            model_source_name: str | None,
+            full_text: str,
+        ) -> None:
+            async def _job() -> None:
+                if msg_id in voice_jobs_inflight:
+                    print(f"[SOLO_VOICE_S6_2] skip duplicate bg job msg_id={msg_id}")
+                    return
+                voice_jobs_inflight.add(msg_id)
+                try:
+                    if request_voice_seq is not None and voice_generation_seq.get(sid) != request_voice_seq:
+                        print(f"[SOLO_VOICE_S6_2] skip stale bg job msg_id={msg_id} sid={sid} seq={request_voice_seq}")
+                        return
+                    print(f"[MARKER_156.VOICE.S6_TRACE_BG_JOB_START] msg_id={msg_id}")
+                    await asyncio.wait_for(
+                        _emit_solo_voice_message(
+                            msg_id=msg_id,
+                            agent_name=agent_name,
+                            model_name=model_name,
+                            provider_name=provider_name,
+                            model_source_name=model_source_name,
+                            full_text=full_text,
+                            trace_t0=voice_t0,
+                        ),
+                        timeout=45.0,
+                    )
+                    print(f"[MARKER_156.VOICE.S6_TRACE_BG_JOB_DONE] msg_id={msg_id}")
+                except asyncio.TimeoutError:
+                    print(f"[SOLO_VOICE_S6_2] async emit timeout msg_id={msg_id}")
+                except Exception as exc:
+                    logger.warning("[SOLO_VOICE_S6_2] async emit failed msg_id=%s err=%r", msg_id, exc, exc_info=True)
+                    print(f"[SOLO_VOICE_S6_2] async emit failed msg_id={msg_id} err={exc!r}")
+                finally:
+                    voice_jobs_inflight.discard(msg_id)
+
+            asyncio.create_task(_job())
         if requested_model:
             print(f"[SOCKET] Model override: {requested_model}")
 
@@ -530,35 +1005,36 @@ def register_user_message_handler(sio, app=None):
                         )
 
                     # Phase 67: Build pinned files context with smart selection
-                    pinned_context = (
-                        build_pinned_context(pinned_files, user_query=text)
-                        if pinned_files
-                        else ""
+                    packer = get_context_packer()
+                    packed = await packer.pack(
+                        user_query=text,
+                        pinned_files=pinned_files,
+                        viewport_context=viewport_context,
+                        session_id=sid,
+                        model_name=requested_model,
+                        user_id="default",
+                        zoom_level=float((viewport_context or {}).get("zoom_level", 1.0) or 1.0),
                     )
-
-                    # Phase 71: Build viewport summary for spatial awareness
-                    viewport_summary = (
-                        build_viewport_summary(viewport_context)
-                        if viewport_context
-                        else ""
-                    )
+                    pinned_context = packed.pinned_context
+                    viewport_summary = packed.viewport_summary
                     web_context_summary = build_web_context_summary(web_context)
 
                     # Phase 73: Build JSON dependency context for AI agents
-                    # Phase 73.6: Pass session_id for cold start legend detection
-                    # Phase 73.6.2: Pass model_name for per-model legend tracking
-                    json_context = build_json_context(
-                        pinned_files,
-                        viewport_context,
-                        session_id=sid,
-                        model_name=requested_model,
-                    )
+                    # Packed JSON context + optional JEPA semantic core (Phase 157.1)
+                    json_context = packed.json_context + packed.jepa_context
 
                     # Phase 64.5: Save user message BEFORE model call
                     # Phase 74: Pass pinned_files for group chat context
                     save_chat_message(
                         node_path,
-                        {"role": "user", "text": text, "node_id": node_id, "model_source": model_source},  # MARKER_115_BUG3
+                        {
+                            "role": "user",
+                            "text": text,
+                            "node_id": node_id,
+                            "model_source": model_source,
+                            "message_type": message_type,
+                            "metadata": message_metadata,
+                        },  # MARKER_115_BUG3
                         pinned_files=pinned_files,
                         chat_id=client_chat_id,
                     )
@@ -575,6 +1051,8 @@ def register_user_message_handler(sio, app=None):
                         json_context,
                         web_context_summary,
                     )
+                    if message_type == "voice":
+                        model_prompt = _apply_voice_response_contract(model_prompt, text)
 
                     agent_short_name = get_agent_short_name(requested_model)
                     msg_id = str(uuid_module.uuid4())
@@ -628,6 +1106,23 @@ def register_user_message_handler(sio, app=None):
                         to=sid,
                     )
 
+                    voice_assistant_metadata = None
+                    if message_type == "voice":
+                        logger.info(
+                            "[MARKER_156.VOICE.S6_TRACE_T1_LLM_STREAM_END] msg_id=%s t_since_t0_ms=%.1f",
+                            msg_id,
+                            ((time.perf_counter() - voice_t0) * 1000.0) if voice_t0 else -1.0,
+                        )
+                        print(f"[MARKER_156.VOICE.S6_TRACE_T1_LLM_STREAM_END] msg_id={msg_id}")
+                        _schedule_solo_voice_message(
+                            msg_id=msg_id,
+                            agent_name=agent_short_name,
+                            model_name=requested_model,
+                            provider_name=Provider.OLLAMA.value,
+                            model_source_name=model_source,
+                            full_text=full_response,
+                        )
+
                     # Save to chat history
                     # Phase 74: Pass pinned_files for group chat context
                     # MARKER_CHAT_HISTORY_ATTRIBUTION: Model attribution fix - IMPLEMENTED
@@ -641,6 +1136,13 @@ def register_user_message_handler(sio, app=None):
                             "model_source": model_source,  # MARKER_115_BUG3
                             "text": full_response,
                             "node_id": node_id,
+                            "message_type": "voice" if message_type == "voice" else "text",
+                            "metadata": {
+                                "model": requested_model,
+                                "model_source": model_source,
+                                "model_provider": "ollama",
+                                **(voice_assistant_metadata or {}),
+                            } if message_type == "voice" else {},
                         },
                         pinned_files=pinned_files,
                         chat_id=client_chat_id,
@@ -718,33 +1220,36 @@ def register_user_message_handler(sio, app=None):
                     )
 
                 # Phase 67: Build pinned files context with smart selection
-                pinned_context = (
-                    build_pinned_context(pinned_files, user_query=text)
-                    if pinned_files
-                    else ""
+                packer = get_context_packer()
+                packed = await packer.pack(
+                    user_query=text,
+                    pinned_files=pinned_files,
+                    viewport_context=viewport_context,
+                    session_id=sid,
+                    model_name=requested_model,
+                    user_id="default",
+                    zoom_level=float((viewport_context or {}).get("zoom_level", 1.0) or 1.0),
                 )
-
-                # Phase 71: Build viewport summary for spatial awareness
-                viewport_summary = (
-                    build_viewport_summary(viewport_context) if viewport_context else ""
-                )
+                pinned_context = packed.pinned_context
+                viewport_summary = packed.viewport_summary
                 web_context_summary = build_web_context_summary(web_context)
 
                 # Phase 73: Build JSON dependency context for AI agents
-                # Phase 73.6: Pass session_id for cold start legend detection
-                # Phase 73.6.2: Pass model_name for per-model legend tracking
-                json_context = build_json_context(
-                    pinned_files,
-                    viewport_context,
-                    session_id=sid,
-                    model_name=requested_model,
-                )
+                # Packed JSON context + optional JEPA semantic core (Phase 157.1)
+                json_context = packed.json_context + packed.jepa_context
 
                 # Phase 64.5: Save user message BEFORE model call
                 # Phase 74: Pass pinned_files for group chat context
                 save_chat_message(
                     node_path,
-                    {"role": "user", "text": text, "node_id": node_id, "model_source": model_source},  # MARKER_115_BUG3
+                    {
+                        "role": "user",
+                        "text": text,
+                        "node_id": node_id,
+                        "model_source": model_source,
+                        "message_type": message_type,
+                        "metadata": message_metadata,
+                    },  # MARKER_115_BUG3
                     pinned_files=pinned_files,
                     chat_id=client_chat_id,
                 )
@@ -805,6 +1310,8 @@ def register_user_message_handler(sio, app=None):
                     json_context,
                     web_context_summary,
                 )
+                if message_type == "voice":
+                    model_prompt = _apply_voice_response_contract(model_prompt, text)
 
                 # Phase 93.3: Streaming via provider_registry
                 agent_short_name = get_agent_short_name(requested_model)
@@ -958,6 +1465,23 @@ def register_user_message_handler(sio, app=None):
                         to=sid,
                     )
 
+                voice_assistant_metadata = None
+                if message_type == "voice":
+                    logger.info(
+                        "[MARKER_156.VOICE.S6_TRACE_T1_LLM_STREAM_END] msg_id=%s t_since_t0_ms=%.1f",
+                        msg_id,
+                        ((time.perf_counter() - voice_t0) * 1000.0) if voice_t0 else -1.0,
+                    )
+                    print(f"[MARKER_156.VOICE.S6_TRACE_T1_LLM_STREAM_END] msg_id={msg_id}")
+                    _schedule_solo_voice_message(
+                        msg_id=msg_id,
+                        agent_name=agent_short_name,
+                        model_name=requested_model,
+                        provider_name=detected_provider.value if detected_provider else "unknown",
+                        model_source_name=model_source,
+                        full_text=full_response,
+                    )
+
                 # Save to chat history
                 # Phase 74: Pass pinned_files for group chat context
                 # MARKER_CHAT_HISTORY_ATTRIBUTION: Model attribution fix
@@ -971,6 +1495,13 @@ def register_user_message_handler(sio, app=None):
                         "model_source": model_source,  # MARKER_115_BUG3
                         "text": full_response,
                         "node_id": node_id,
+                        "message_type": "voice" if message_type == "voice" else "text",
+                        "metadata": {
+                            "model": requested_model,
+                            "model_source": model_source,
+                            "model_provider": detected_provider.value if detected_provider else "unknown",
+                            **(voice_assistant_metadata or {}),
+                        } if message_type == "voice" else {},
                     },
                     pinned_files=pinned_files,
                     chat_id=client_chat_id,
@@ -1143,29 +1674,23 @@ def register_user_message_handler(sio, app=None):
                         )
 
                     # Phase 67: Build pinned files context with smart selection
-                    pinned_context = (
-                        build_pinned_context(pinned_files, user_query=clean_text)
-                        if pinned_files
-                        else ""
+                    packer = get_context_packer()
+                    packed = await packer.pack(
+                        user_query=clean_text,
+                        pinned_files=pinned_files,
+                        viewport_context=viewport_context,
+                        session_id=sid,
+                        model_name=model_to_use,
+                        user_id="default",
+                        zoom_level=float((viewport_context or {}).get("zoom_level", 1.0) or 1.0),
                     )
-
-                    # Phase 71: Build viewport summary for spatial awareness
-                    viewport_summary = (
-                        build_viewport_summary(viewport_context)
-                        if viewport_context
-                        else ""
-                    )
+                    pinned_context = packed.pinned_context
+                    viewport_summary = packed.viewport_summary
                     web_context_summary = build_web_context_summary(web_context)
 
                     # Phase 73: Build JSON dependency context for AI agents
-                    # Phase 73.6: Pass session_id for cold start legend detection
-                    # Phase 73.6.2: Pass model_name for per-model legend tracking
-                    json_context = build_json_context(
-                        pinned_files,
-                        viewport_context,
-                        session_id=sid,
-                        model_name=model_to_use,
-                    )
+                    # Packed JSON context + optional JEPA semantic core (Phase 157.1)
+                    json_context = packed.json_context + packed.jepa_context
 
                     # Phase 64.5: Save user message BEFORE model call
                     # Phase 74: Pass pinned_files for group chat context
@@ -1193,6 +1718,8 @@ def register_user_message_handler(sio, app=None):
                         json_context,
                         web_context_summary,
                     )
+                    if message_type == "voice":
+                        model_prompt = _apply_voice_response_contract(model_prompt, clean_text)
 
                     # Call the model directly
                     if is_ollama:
@@ -1323,9 +1850,11 @@ When user asks to "show", "focus", "navigate to" a file - USE vetka_camera_focus
 When user asks about code - USE vetka_search_semantic or read_code_file!"""
 
                         try:
-                            # Auto-detect provider (OpenRouter, XAI, POLZA, etc.)
+                            # Auto-detect provider using explicit source when available.
                             from src.elisya.provider_registry import ProviderRegistry
-                            detected_provider = ProviderRegistry.detect_provider(model_to_use)
+                            detected_provider = ProviderRegistry.detect_provider(
+                                model_to_use, source=model_source
+                            )
 
                             # Build messages with tool guidance (like Ollama path)
                             messages_with_tools = [
@@ -1337,6 +1866,7 @@ When user asks about code - USE vetka_search_semantic or read_code_file!"""
                                 messages=messages_with_tools,
                                 model=model_to_use,
                                 provider=detected_provider,
+                                source=model_source,
                                 temperature=0.7,
                                 tools=model_tools,
                             )
@@ -1500,7 +2030,14 @@ When user asks about code - USE vetka_search_semantic or read_code_file!"""
         # Phase 74: Pass pinned_files for group chat context
         save_chat_message(
             node_path,
-            {"role": "user", "text": text, "node_id": node_id, "model_source": model_source},  # MARKER_115_BUG3
+            {
+                "role": "user",
+                "text": text,
+                "node_id": node_id,
+                "model_source": model_source,
+                "message_type": message_type,
+                "metadata": message_metadata,
+            },  # MARKER_115_BUG3
             pinned_files=pinned_files,
             chat_id=client_chat_id,
         )

@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 # Phase 111.10.1: Global debug flag for context logging
 # Set VETKA_DEBUG_CONTEXT=1 to enable
 DEBUG_CONTEXT = os.getenv("VETKA_DEBUG_CONTEXT", "").lower() in ("1", "true", "yes")
+ADAPTIVE_OUTPUT_DEFAULT = int(os.getenv("VETKA_ADAPTIVE_MAX_OUTPUT_DEFAULT", "4096"))
+ADAPTIVE_OUTPUT_MIN = int(os.getenv("VETKA_ADAPTIVE_MAX_OUTPUT_MIN", "128"))
+ADAPTIVE_OUTPUT_HARD_CAP = int(os.getenv("VETKA_ADAPTIVE_MAX_OUTPUT_HARD_CAP", "8192"))
+ADAPTIVE_CONTEXT_SAFETY = int(os.getenv("VETKA_ADAPTIVE_CONTEXT_SAFETY", "1024"))
 
 
 # MARKER_106d_1: Per-model concurrency limits (Phase 106)
@@ -63,6 +67,58 @@ def get_model_semaphore(model: str) -> asyncio.Semaphore:
         if key in model_lower:
             return MODEL_SEMAPHORES[key]
     return MODEL_SEMAPHORES["default"]
+
+
+def _estimate_message_tokens(messages: List[Dict[str, str]]) -> int:
+    """Fast rough token estimate for adaptive context budgeting."""
+    try:
+        from src.utils.token_utils import estimate_tokens
+    except Exception:
+        estimate_tokens = lambda text: max(1, len(str(text)) // 4)
+
+    total = 0
+    for msg in messages or []:
+        total += estimate_tokens(str(msg.get("content", "")))
+        total += 8  # chat wrapper overhead
+    return max(1, total + 16)
+
+
+async def _resolve_adaptive_max_tokens(
+    *,
+    model: str,
+    messages: List[Dict[str, str]],
+    requested_max_tokens: Optional[int],
+) -> int:
+    """
+    Resolve completion budget from model context length and prompt size.
+    Works for all providers through central call paths.
+    """
+    context_length = 128000
+    try:
+        from src.elisya.llm_model_registry import get_llm_registry
+        profile = await get_llm_registry().get_profile(model)
+        context_length = int(getattr(profile, "context_length", context_length) or context_length)
+    except Exception:
+        # Keep resilient fallback to avoid blocking model calls on registry failures.
+        pass
+
+    prompt_tokens = _estimate_message_tokens(messages)
+    available_for_output = max(0, context_length - prompt_tokens - ADAPTIVE_CONTEXT_SAFETY)
+
+    requested = int(requested_max_tokens) if requested_max_tokens is not None else ADAPTIVE_OUTPUT_DEFAULT
+    target = min(requested, ADAPTIVE_OUTPUT_HARD_CAP)
+    resolved = max(ADAPTIVE_OUTPUT_MIN, min(target, available_for_output or ADAPTIVE_OUTPUT_MIN))
+
+    logger.debug(
+        "[ADAPTIVE_TOKENS] model=%s context=%s prompt=%s available=%s requested=%s resolved=%s",
+        model,
+        context_length,
+        prompt_tokens,
+        available_for_output,
+        requested_max_tokens,
+        resolved,
+    )
+    return resolved
 
 
 # Phase 80.39: Custom exception for xai key exhaustion
@@ -267,6 +323,7 @@ class OpenAIProvider(BaseProvider):
                 "model": clean_model,
                 "messages": messages,
                 "temperature": kwargs.get("temperature", 0.7),
+                "max_tokens": int(kwargs.get("max_tokens", ADAPTIVE_OUTPUT_DEFAULT)),
             }
 
             if tools:
@@ -893,6 +950,7 @@ class OpenRouterProvider(BaseProvider):
                 "model": clean_model,
                 "messages": messages,
                 "temperature": kwargs.get("temperature", 0.7),
+                "max_tokens": int(kwargs.get("max_tokens", ADAPTIVE_OUTPUT_DEFAULT)),
             }
 
             try:
@@ -1457,7 +1515,7 @@ class ProviderRegistry:
             # MARKER_94.8_OPENROUTER_XAI: Models like "x-ai/grok-4" or "xai/grok-4"
             # are OpenRouter models, not direct xAI API
             return Provider.OPENROUTER
-        elif ":" in model_name or model_lower.startswith("ollama/"):
+        elif (":" in model_name and "/" not in model_name) or model_lower.startswith("ollama/"):
             return Provider.OLLAMA
         # Phase 111.10.1: Direct provider routing - models go to their native APIs, not OpenRouter
         # Perplexity: perplexity/sonar, sonar-pro, etc.
@@ -1547,6 +1605,13 @@ async def call_model_v2(
     # Phase 111.9: If source provided, use it for routing
     if provider is None:
         provider = ProviderRegistry.detect_provider(model, source=source)
+
+    # Adaptive completion budget (context-aware, provider-agnostic).
+    kwargs["max_tokens"] = await _resolve_adaptive_max_tokens(
+        model=model,
+        messages=messages,
+        requested_max_tokens=kwargs.get("max_tokens"),
+    )
 
     # Phase 111.9: Check if this is an OpenAI-compatible aggregator
     # that needs OpenAICompatibleProvider instead of registered provider
@@ -1743,6 +1808,13 @@ async def call_model_v2_stream(
     # Phase 111.9: Use source for routing
     if provider is None:
         provider = ProviderRegistry.detect_provider(model, source=source)
+
+    # Adaptive completion budget for streaming as well (prevents context overflow).
+    kwargs["max_tokens"] = await _resolve_adaptive_max_tokens(
+        model=model,
+        messages=messages,
+        requested_max_tokens=kwargs.get("max_tokens"),
+    )
 
     # MARKER_93.2_START: Anti-loop detection setup
     token_history = deque(maxlen=100)
@@ -2176,6 +2248,8 @@ async def _stream_openrouter(
             "messages": messages,
             "stream": True,
             "temperature": kwargs.get("temperature", 0.7),
+            # Adaptive across models/providers (resolved centrally in call_model_v2_stream).
+            "max_tokens": int(kwargs.get("max_tokens", ADAPTIVE_OUTPUT_DEFAULT)),
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:

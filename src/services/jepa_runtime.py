@@ -17,6 +17,8 @@ import hashlib
 import json
 import math
 import os
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -41,6 +43,7 @@ _HTTP_HEALTH_CACHE: Dict[str, Any] = {
     "detail": "",
     "ts": 0.0,
 }
+_HTTP_RUNTIME_PROC: subprocess.Popen | None = None
 
 
 def _normalize(vec: List[float]) -> List[float]:
@@ -89,6 +92,57 @@ def _runtime_urls() -> Tuple[str, str, bool]:
     return url, health_url, enabled
 
 
+def _parse_host_port_from_url(url: str) -> Tuple[str, int] | None:
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        host = parsed.hostname or "127.0.0.1"
+        port = int(parsed.port or 8099)
+        return host, port
+    except Exception:
+        return None
+
+
+def _ensure_http_runtime_started(url: str) -> None:
+    global _HTTP_RUNTIME_PROC
+    if _HTTP_RUNTIME_PROC is not None and _HTTP_RUNTIME_PROC.poll() is None:
+        return
+    host_port = _parse_host_port_from_url(url)
+    if not host_port:
+        return
+    host, port = host_port
+    if host not in {"127.0.0.1", "localhost"}:
+        return
+    env = os.environ.copy()
+    env.setdefault("MCC_JEPA_HTTP_ENABLE", "1")
+    env.setdefault("MCC_JEPA_HTTP_HOST", host)
+    env.setdefault("MCC_JEPA_HTTP_PORT", str(port))
+    env.setdefault("MCC_JEPA_HTTP_URL", url)
+    # Safety-first default for runtime stability.
+    env.setdefault("MCC_JEPA_HTTP_USE_EMBEDDING_BACKEND", "0")
+    try:
+        _HTTP_RUNTIME_PROC = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "src.services.jepa_http_server:app",
+                "--host",
+                host,
+                "--port",
+                str(port),
+                "--log-level",
+                "warning",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
+        )
+    except Exception:
+        _HTTP_RUNTIME_PROC = None
+
+
 def _probe_http_runtime_health(force: bool = False) -> Tuple[bool, str]:
     """
     Lightweight health probe for JEPA HTTP runtime.
@@ -126,6 +180,23 @@ def _probe_http_runtime_health(force: bool = False) -> Tuple[bool, str]:
     _HTTP_HEALTH_CACHE["ts"] = now
     if not enabled and ok:
         detail = f"{detail}|enable_flag_off"
+    if enabled and not ok:
+        _ensure_http_runtime_started(url)
+        # one short retry after local runtime autostart attempt
+        try:
+            time.sleep(0.25)
+            req = urllib.request.Request(url=health_url, method="GET")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = resp.read().decode("utf-8")
+            data = json.loads(body) if body else {}
+            ok = bool(data.get("ok") is True)
+            mode = str(data.get("mode") or "")
+            detail = f"{health_url}|{mode}" if mode else health_url
+            _HTTP_HEALTH_CACHE["ok"] = ok
+            _HTTP_HEALTH_CACHE["detail"] = detail
+            _HTTP_HEALTH_CACHE["ts"] = time.monotonic()
+        except Exception:
+            pass
     return ok, detail
 
 

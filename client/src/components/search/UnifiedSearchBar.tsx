@@ -32,6 +32,12 @@ interface Props {
   contextPrefix?: string;
   /** Compact mode for tight spaces */
   compact?: boolean;
+  /** Optional voice trigger shown as mic icon before first text input */
+  onVoiceTrigger?: () => void;
+  /** External voice state for inline activity indicator */
+  voiceState?: 'idle' | 'listening' | 'thinking' | 'speaking';
+  /** Normalized voice level (0..1) */
+  voiceLevel?: number;
 }
 
 // Inline SVG icons (no external dependencies - Nolan style)
@@ -39,6 +45,15 @@ const SearchIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <circle cx="11" cy="11" r="8" />
     <path d="m21 21-4.35-4.35" />
+  </svg>
+);
+
+const MicIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="9" y="2" width="6" height="12" rx="3" />
+    <path d="M5 10a7 7 0 0 0 14 0" />
+    <path d="M12 17v4" />
+    <path d="M8 21h8" />
   </svg>
 );
 
@@ -246,7 +261,10 @@ export function UnifiedSearchBar({
   onOpenArtifact,
   placeholder = 'Search...',
   contextPrefix = 'vetka/',
-  compact = false
+  compact = false,
+  onVoiceTrigger,
+  voiceState = 'idle',
+  voiceLevel = 0
 }: Props) {
   // Phase 68.3: Search context state
   const [searchContext, setSearchContext] = useState<SearchContext>('vetka');
@@ -543,7 +561,7 @@ export function UnifiedSearchBar({
           const viewportContext = cameraRef ? buildViewportContext(nodes, pinnedFileIds, cameraRef) : undefined;
           // Map context to unified sources
           const sourcesMap: Record<SearchContext, string[]> = {
-            vetka: ['semantic'],
+            vetka: ['semantic', 'file'],
             web: ['web'],
             file: ['file'],
             cloud: [], // not implemented
@@ -631,6 +649,8 @@ export function UnifiedSearchBar({
   }, [activeResults]);
 
   const [isFocused, setIsFocused] = useState(false);
+  const showVoiceTrigger = Boolean(onVoiceTrigger && !query && !activeIsSearching);
+  const showVoiceActivity = voiceState === 'listening' || voiceState === 'speaking';
 
   // Styles (Nolan dark minimal - grayscale only)
   const styles = {
@@ -835,7 +855,43 @@ export function UnifiedSearchBar({
       <div style={{ ...styles.inputWrapper, ...(isFocused ? styles.inputWrapperFocused : {}), position: 'relative' }}>
         {/* MARKER_137.S1_3: Show loading for either WebSocket or unified search */}
         <span style={{ color: activeIsSearching ? '#888' : '#555' }}>
-          {activeIsSearching ? <LoadingSpinner /> : <SearchIcon />}
+          {activeIsSearching ? (
+            <LoadingSpinner />
+          ) : showVoiceActivity ? (
+            <span
+              title={voiceState === 'speaking' ? 'VETKA speaking' : 'VETKA listening'}
+              style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 14 }}
+            >
+              {[0.5, 0.8, 0.6].map((k, i) => {
+                const h = Math.max(3, Math.min(12, Math.round(3 + (voiceLevel * 14 * k))));
+                return (
+                  <span
+                    key={`voice-bar-${i}`}
+                    style={{
+                      width: 2,
+                      height: `${h}px`,
+                      background: '#bcbcbc',
+                      borderRadius: 2,
+                      opacity: voiceState === 'speaking' ? 1 : 0.8,
+                      transition: 'height 80ms linear',
+                    }}
+                  />
+                );
+              })}
+            </span>
+          ) : showVoiceTrigger ? (
+            <button
+              onClick={onVoiceTrigger}
+              style={{ ...styles.iconButton, padding: 0, color: '#8a8a8a' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#8a8a8a')}
+              title="Voice input"
+            >
+              <MicIcon />
+            </button>
+          ) : (
+            <SearchIcon />
+          )}
         </span>
 
         {/* Phase 68.3: Clickable context prefix */}
@@ -889,7 +945,7 @@ export function UnifiedSearchBar({
             // Delay hiding to allow click on menu
             setTimeout(() => setShowContextMenu(false), 200);
           }}
-          placeholder={placeholder}
+          placeholder={showVoiceTrigger ? 'Tap mic to talk...' : placeholder}
           style={styles.input}
         />
 

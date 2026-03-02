@@ -548,16 +548,18 @@ def _batch_get_mgc_scores(file_paths: List[str]) -> Dict[str, float]:
 
         generator = SpiralContextGenerator()
         cache = generator.mgc_cache
+        gen0 = getattr(cache, "gen0", {}) or {}
 
         for path in file_paths:
-            # Check if in any cache generation
-            cached = cache.get(path)
-            if cached:
-                gen = cached.get('generation', 2)
+            # MGCCache.get() is async; avoid un-awaited coroutine in sync ranking path.
+            # Use hot Gen0 map for lightweight scoring, fallback to neutral miss score.
+            entry = gen0.get(path)
+            if entry is not None:
+                gen = int(getattr(entry, "generation", 2))
                 # Gen0 = 1.0, Gen1 = 0.7, Gen2 = 0.4
                 scores[path] = 1.0 - (gen * 0.3)
             else:
-                scores[path] = 0.3  # Not cached
+                scores[path] = 0.3  # Not cached in hot tier
 
         return scores
     except Exception as e:

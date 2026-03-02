@@ -31,6 +31,9 @@ import {
 } from '../utils/apiConverter';
 import { getDevPanelConfig } from '../utils/devConfig';
 import { useChatTreeStore } from '../store/chatTreeStore';
+import { API_BASE } from '../config/api.config';
+
+const TREE_DEBUG = import.meta.env.VITE_TREE_DEBUG === '1';
 
 export function useTreeData() {
   const {
@@ -58,7 +61,7 @@ export function useTreeData() {
     let cancelled = false;
     (async () => {
       try {
-        const initRes = await fetch('http://localhost:5001/api/mcc/init');
+        const initRes = await fetch(`${API_BASE}/mcc/init`);
         let scopeRoot = 'default';
         if (initRes.ok) {
           const init = await initRes.json();
@@ -108,8 +111,10 @@ export function useTreeData() {
         const { nodes: convertedNodes, edges } = convertApiResponse(vetkaResponse);
 
         // MARKER_111_DEBUG: Log node count at each step
-        console.log(`[useTreeData] API returned ${response.tree.nodes?.length ?? 0} nodes`);
-        console.log(`[useTreeData] After conversion: ${Object.keys(convertedNodes).length} nodes`);
+        if (TREE_DEBUG) {
+          console.log(`[useTreeData] API returned ${response.tree.nodes?.length ?? 0} nodes`);
+          console.log(`[useTreeData] After conversion: ${Object.keys(convertedNodes).length} nodes`);
+        }
 
         // MARKER_108_CHAT_FRONTEND: Phase 108.2 - Process chat nodes
         let chatTreeNodes: TreeNode[] = [];
@@ -118,7 +123,9 @@ export function useTreeData() {
         const artifactEdges: typeof edges = [];
 
         if (response.chat_nodes && response.chat_nodes.length > 0) {
-          console.log('[useTreeData] Processing chat nodes:', response.chat_nodes.length);
+          if (TREE_DEBUG) {
+            console.log('[useTreeData] Processing chat nodes:', response.chat_nodes.length);
+          }
 
           // Convert chat nodes to ChatNode type and add to chatTreeStore
           response.chat_nodes.forEach((apiChatNode) => {
@@ -142,8 +149,10 @@ export function useTreeData() {
             });
           }
 
-          console.log('[useTreeData] Converted chat nodes:', chatTreeNodes.length);
-          console.log('[useTreeData] Chat edges:', chatEdges.length);
+          if (TREE_DEBUG) {
+            console.log('[useTreeData] Converted chat nodes:', chatTreeNodes.length);
+            console.log('[useTreeData] Chat edges:', chatEdges.length);
+          }
         }
 
         // MARKER_153.IMPL.G09_ARTIFACT_TREE_FRONTEND:
@@ -155,8 +164,10 @@ export function useTreeData() {
               artifactEdges.push(convertArtifactEdge(apiArtifactEdge, idx));
             });
           }
-          console.log('[useTreeData] Converted artifact nodes:', artifactTreeNodes.length);
-          console.log('[useTreeData] Artifact edges:', artifactEdges.length);
+          if (TREE_DEBUG) {
+            console.log('[useTreeData] Converted artifact nodes:', artifactTreeNodes.length);
+            console.log('[useTreeData] Artifact edges:', artifactEdges.length);
+          }
         }
 
         // Merge file tree nodes and chat nodes
@@ -216,14 +227,16 @@ export function useTreeData() {
               // 0.72 was too strict for many folders and produced degenerate tiny graphs.
               semanticExpansionThreshold: 0.62,
             });
-            console.log('[useTreeData] Knowledge mode response:', {
-              status: kg.status,
-              scope: knowledgeScopePath || 'global',
-              sentFilePositions: Object.keys(sceneFilePositions).length,
-              positions: kg.positions ? Object.keys(kg.positions).length : 0,
-              edges: Array.isArray(kg.edges) ? kg.edges.length : 0,
-              chainEdges: Array.isArray(kg.chain_edges) ? kg.chain_edges.length : 0,
-            });
+            if (TREE_DEBUG) {
+              console.log('[useTreeData] Knowledge mode response:', {
+                status: kg.status,
+                scope: knowledgeScopePath || 'global',
+                sentFilePositions: Object.keys(sceneFilePositions).length,
+                positions: kg.positions ? Object.keys(kg.positions).length : 0,
+                edges: Array.isArray(kg.edges) ? kg.edges.length : 0,
+                chainEdges: Array.isArray(kg.chain_edges) ? kg.chain_edges.length : 0,
+              });
+            }
 
             // Resolver: frontend scene uses TreeNode IDs, KG may return qdrant IDs or paths.
             const pathToSceneNodeId = new Map<string, string>();
