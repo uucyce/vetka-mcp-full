@@ -611,7 +611,7 @@ class ToolExecutor:
 
         try:
             from qdrant_client import QdrantClient
-            client = QdrantClient(host="localhost", port=6333)
+            client = QdrantClient(url="http://localhost:6333")
 
             # Retrieve point by ID
             points = client.retrieve(

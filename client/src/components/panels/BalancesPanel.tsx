@@ -10,7 +10,7 @@
  * @depends none (pure CSS)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 
 interface UsageRecord {
@@ -71,6 +71,9 @@ export function BalancesPanel() {
   // MARKER_126.9A: Selected API key for next pipeline dispatch
   const selectedKey = useStore((s) => s.selectedKey);
   const setSelectedKey = useStore((s) => s.setSelectedKey);
+  const favoriteKeys = useStore((s) => s.favoriteKeys);
+  const toggleFavoriteKey = useStore((s) => s.toggleFavoriteKey);
+  const loadFavorites = useStore((s) => s.loadFavorites);
 
   const handleKeyClick = useCallback((provider: string, key_masked: string) => {
     // Toggle selection: click same key to deselect
@@ -100,10 +103,26 @@ export function BalancesPanel() {
   }, []);
 
   useEffect(() => {
+    loadFavorites();
+  }, [loadFavorites]);
+
+  useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  // MARKER_156.MCC_KEY_FAVORITES.002: Keep starred keys on top (VETKA pattern).
+  const sortedRecords = useMemo(() => {
+    const withIdx = records.map((r, idx) => ({ r, idx }));
+    withIdx.sort((a, b) => {
+      const aFav = favoriteKeys.includes(`${a.r.provider.toLowerCase().trim()}:${a.r.key_masked}`) ? 0 : 1;
+      const bFav = favoriteKeys.includes(`${b.r.provider.toLowerCase().trim()}:${b.r.key_masked}`) ? 0 : 1;
+      if (aFav !== bFav) return aFav - bFav;
+      return a.idx - b.idx;
+    });
+    return withIdx.map((x) => x.r);
+  }, [records, favoriteKeys]);
 
   const handleReset = async () => {
     if (!confirm('Reset all usage counters?')) return;
@@ -247,9 +266,11 @@ export function BalancesPanel() {
             </tr>
           </thead>
           <tbody>
-            {records.map((r, i) => {
+            {sortedRecords.map((r, i) => {
               // MARKER_126.9A: Check if this row is selected
               const isSelected = selectedKey?.provider === r.provider && selectedKey?.key_masked === r.key_masked;
+              const favKeyId = `${r.provider.toLowerCase().trim()}:${r.key_masked}`;
+              const isFavorite = favoriteKeys.includes(favKeyId);
               return (
               <tr
                 key={i}
@@ -267,7 +288,19 @@ export function BalancesPanel() {
                 <td style={{ padding: '7px 0 7px 6px', color: isSelected ? COLORS.text : COLORS.textMuted }}>
                   {isSelected ? '▸ ' : ''}{r.provider}
                 </td>
-                <td style={{ padding: '7px 0', color: isSelected ? COLORS.textMuted : COLORS.textDim }}>{r.key_masked}</td>
+                <td style={{ padding: '7px 0', color: isSelected ? COLORS.textMuted : COLORS.textDim }}>
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFavoriteKey(favKeyId);
+                    }}
+                    style={{ marginRight: 6, color: isFavorite ? COLORS.text : COLORS.textDim, cursor: 'pointer' }}
+                    title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                  >
+                    {isFavorite ? '★' : '☆'}
+                  </span>
+                  {r.key_masked}
+                </td>
                 <td style={{ padding: '7px 0', textAlign: 'right', color: COLORS.textMuted }}>
                   {formatTokens(r.tokens_in)}
                 </td>

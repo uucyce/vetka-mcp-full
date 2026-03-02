@@ -36,6 +36,7 @@ class MessageRequest(BaseModel):
     text: Optional[str] = None  # Backwards compatibility
     agent: Optional[str] = None
     model: Optional[str] = None
+    message_type: Optional[str] = "text"
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -64,6 +65,8 @@ class MessageResponse(BaseModel):
     model: Optional[str] = None
     model_source: Optional[str] = None      # MARKER_152.FIX2: Provider routing (polza, xai, openrouter)
     model_provider: Optional[str] = None    # MARKER_152.FIX2: Provider type for display
+    message_type: Optional[str] = "text"
+    metadata: Optional[Dict[str, Any]] = None
     timestamp: str
 
 
@@ -157,6 +160,8 @@ async def get_chat(chat_id: str, request: Request):
                 model=msg.get("model"),
                 model_source=msg.get("model_source"),          # MARKER_152.FIX2
                 model_provider=msg.get("model_provider"),      # MARKER_152.FIX2
+                message_type=msg.get("message_type", "text"),
+                metadata=msg.get("metadata") or {},
                 timestamp=msg.get("timestamp", "")
             ))
 
@@ -216,6 +221,7 @@ async def add_message(chat_id: str, message: MessageRequest, request: Request):
             "content": message.content or message.text,
             "agent": message.agent,
             "model": message.model,
+            "message_type": message.message_type or "text",
             "metadata": message.metadata or {}
         }
 

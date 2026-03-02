@@ -110,9 +110,22 @@ export function RoleEditor({ role, activePreset }: { role: string; activePreset:
 
   // MARKER_137.7C: Get selected key from Balance panel via Zustand store
   const selectedKey = useStore(s => s.selectedKey);
-  const activeSource = selectedKey?.provider
-    ? KEY_PROVIDER_TO_MODEL_SOURCE[selectedKey.provider] || [selectedKey.provider]
-    : null;
+  const favoriteKeys = useStore(s => s.favoriteKeys);
+  const activeSource = useMemo(() => {
+    // Priority matches VETKA ModelDirectory pattern:
+    // selected key provider > starred providers fallback > no source filter.
+    if (selectedKey?.provider) {
+      return KEY_PROVIDER_TO_MODEL_SOURCE[selectedKey.provider] || [selectedKey.provider];
+    }
+    const starredProviders = Array.from(new Set(
+      favoriteKeys
+        .map((k) => String(k || '').split(':')[0].trim().toLowerCase())
+        .filter(Boolean)
+    ));
+    if (starredProviders.length === 0) return null;
+    const mapped = starredProviders.flatMap((provider) => KEY_PROVIDER_TO_MODEL_SOURCE[provider] || [provider]);
+    return Array.from(new Set(mapped));
+  }, [selectedKey, favoriteKeys]);
 
   // MARKER_137.7D: Filter by source (selected key provider) → deduplicate by id → filter by search
   const filteredModels = useMemo(() => {

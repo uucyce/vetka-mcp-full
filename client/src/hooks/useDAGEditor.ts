@@ -18,8 +18,9 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Connection } from '@xyflow/react';
 import type { DAGNode, DAGEdge, DAGNodeType, EdgeType, Workflow, WorkflowSummary } from '../types/dag';
+import { BACKEND_ORIGIN } from '../config/api.config';
 
-const PIPELINE_API = 'http://localhost:5001';
+const PIPELINE_API = BACKEND_ORIGIN;
 const MAX_HISTORY = 50;
 
 interface DAGSnapshot {

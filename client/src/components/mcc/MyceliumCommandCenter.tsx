@@ -47,7 +47,6 @@ import {
   fetchDagLayoutBiasProfile,
   type DagLayoutBiasProfile,
 } from '../../utils/dagLayoutPreferences';
-import { useMyceliumSocket } from '../../hooks/useMyceliumSocket';
 import { useDAGEditor } from '../../hooks/useDAGEditor';
 import type { DAGNode, DAGEdge, DAGStats, DAGNodeType, NodeStatus, EdgeType } from '../../types/dag';
 import type { TaskData } from '../panels/TaskCard';
@@ -634,11 +633,19 @@ function overlayWorkflowOnSelectedTask(
   visibleWorkflowNodes.forEach((n) => idMap.set(n.id, `wf_${selectedTaskId}_${n.id}`));
   const compactWorkflowLabel = (node: DAGNode): string => {
     const role = String((node as any)?.role || '').toLowerCase();
+    const low = String(node.label || '').toLowerCase();
+    if (low.includes('retry')) return 'Retry Coder';
     if (role === 'architect') return 'Architect';
     if (role === 'scout') return 'Scout';
     if (role === 'researcher') return 'Researcher';
     if (role === 'coder') return 'Coder';
     if (role === 'verifier') return 'Verifier';
+    if (role === 'eval') return 'Eval Agent';
+    if (low.includes('measure')) return 'Measure';
+    if (low.includes('approval')) return 'Approval Gate';
+    if (low.includes('quality')) return 'Quality Gate';
+    if (low.includes('deploy')) return 'Deploy';
+    if (low.includes('eval')) return 'Eval Agent';
     const raw = String(node.label || '').trim();
     if (!raw) return node.id;
     const stripped = raw.replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
@@ -649,19 +656,25 @@ function overlayWorkflowOnSelectedTask(
 
   const workflowStageOrder = (node: DAGNode): number => {
     const role = String((node as any)?.role || '').toLowerCase();
+    const low = String(node.label || '').toLowerCase();
     if (role === 'architect') return 0;
     if (role === 'scout') return 1;
-    if (role === 'researcher') return 2;
-    if (role === 'coder') return 3;
+    if (role === 'researcher') return 1;
+    if (role === 'coder' && low.includes('retry')) return 5;
+    if (role === 'coder') return 2;
+    if (low.includes('measure')) return 3;
     if (role === 'verifier') return 4;
-    if (node.type === 'condition') return 5;
-    if (node.type === 'parallel') return 6;
-    if (node.type === 'loop') return 7;
-    if (node.type === 'transform') return 8;
-    if (node.type === 'group') return 9;
-    if (node.type === 'subtask') return 10;
-    if (node.type === 'proposal') return 11;
-    return 12;
+    if (role === 'eval' || low.includes('eval')) return 4;
+    if (node.type === 'condition' || low.includes('quality')) return 5;
+    if (low.includes('approval')) return 6;
+    if (low.includes('deploy')) return 7;
+    if (node.type === 'proposal') return 8;
+    if (node.type === 'subtask') return 8;
+    if (node.type === 'parallel') return 4;
+    if (node.type === 'loop') return 5;
+    if (node.type === 'transform') return 6;
+    if (node.type === 'group') return 6;
+    return 9;
   };
 
   const remappedNodes: DAGNode[] = visibleWorkflowNodes.map((n) => ({
@@ -956,13 +969,32 @@ function overlayRoadmapNodeChildren(
 
 function buildInlineWorkflowFromPipeline(taskId: string, subtasks: Array<any>): { nodes: DAGNode[]; edges: DAGEdge[] } {
   const nodes: DAGNode[] = [
-    { id: `wf_arch_${taskId}`, type: 'agent', label: '@architect', status: 'done', layer: 1, taskId, role: 'architect', graphKind: 'workflow_agent' },
-    { id: `wf_coder_${taskId}`, type: 'agent', label: '@coder', status: 'running', layer: 1, taskId, role: 'coder', graphKind: 'workflow_agent' },
-    { id: `wf_verifier_${taskId}`, type: 'agent', label: '@verifier', status: 'pending', layer: 1, taskId, role: 'verifier', graphKind: 'workflow_agent' },
+    { id: `wf_arch_${taskId}`, type: 'agent', label: 'Architect (Plan)', status: 'done', layer: 1, taskId, role: 'architect', graphKind: 'workflow_agent' },
+    { id: `wf_scout_${taskId}`, type: 'agent', label: 'Scout (Codebase Recon)', status: 'done', layer: 1, taskId, role: 'scout', graphKind: 'workflow_agent' },
+    { id: `wf_research_${taskId}`, type: 'agent', label: 'Researcher (Web + Docs)', status: 'done', layer: 1, taskId, role: 'researcher', graphKind: 'workflow_agent' },
+    { id: `wf_coder_${taskId}`, type: 'agent', label: 'Coder (Build)', status: 'running', layer: 1, taskId, role: 'coder', graphKind: 'workflow_agent' },
+    { id: `wf_measure_${taskId}`, type: 'parallel', label: 'Measure', status: 'pending', layer: 2, taskId, graphKind: 'workflow_artifact' },
+    { id: `wf_verifier_${taskId}`, type: 'agent', label: 'Verifier', status: 'pending', layer: 2, taskId, role: 'verifier', graphKind: 'workflow_agent' },
+    { id: `wf_eval_${taskId}`, type: 'agent', label: 'Eval Agent', status: 'pending', layer: 2, taskId, graphKind: 'workflow_agent' },
+    { id: `wf_quality_${taskId}`, type: 'condition', label: 'Quality Gate', status: 'pending', layer: 3, taskId, graphKind: 'workflow_artifact' },
+    { id: `wf_retry_${taskId}`, type: 'agent', label: 'Retry Coder', status: 'pending', layer: 3, taskId, role: 'coder', graphKind: 'workflow_agent' },
+    { id: `wf_approval_${taskId}`, type: 'group', label: 'Approval Gate', status: 'pending', layer: 3, taskId, graphKind: 'workflow_artifact' },
+    { id: `wf_deploy_${taskId}`, type: 'subtask', label: 'Deploy', status: 'pending', layer: 4, taskId, graphKind: 'workflow_artifact' },
   ];
   const edges: DAGEdge[] = [
-    { id: `wf_e_arch_coder_${taskId}`, source: `wf_arch_${taskId}`, target: `wf_coder_${taskId}`, type: 'dataflow', strength: 0.7, relationKind: 'passes' },
-    { id: `wf_e_coder_ver_${taskId}`, source: `wf_coder_${taskId}`, target: `wf_verifier_${taskId}`, type: 'temporal', strength: 0.64, relationKind: 'executes' },
+    { id: `wf_e_arch_scout_${taskId}`, source: `wf_arch_${taskId}`, target: `wf_scout_${taskId}`, type: 'structural', strength: 0.72, relationKind: 'plans' },
+    { id: `wf_e_arch_research_${taskId}`, source: `wf_arch_${taskId}`, target: `wf_research_${taskId}`, type: 'structural', strength: 0.72, relationKind: 'plans' },
+    { id: `wf_e_scout_coder_${taskId}`, source: `wf_scout_${taskId}`, target: `wf_coder_${taskId}`, type: 'dataflow', strength: 0.7, relationKind: 'passes' },
+    { id: `wf_e_research_coder_${taskId}`, source: `wf_research_${taskId}`, target: `wf_coder_${taskId}`, type: 'dataflow', strength: 0.7, relationKind: 'passes' },
+    { id: `wf_e_coder_measure_${taskId}`, source: `wf_coder_${taskId}`, target: `wf_measure_${taskId}`, type: 'dataflow', strength: 0.66, relationKind: 'produces' },
+    { id: `wf_e_measure_ver_${taskId}`, source: `wf_measure_${taskId}`, target: `wf_verifier_${taskId}`, type: 'parallel_fork', strength: 0.64, relationKind: 'verifies' },
+    { id: `wf_e_measure_eval_${taskId}`, source: `wf_measure_${taskId}`, target: `wf_eval_${taskId}`, type: 'parallel_fork', strength: 0.64, relationKind: 'scores' },
+    { id: `wf_e_ver_quality_${taskId}`, source: `wf_verifier_${taskId}`, target: `wf_quality_${taskId}`, type: 'dataflow', strength: 0.62, relationKind: 'feeds' },
+    { id: `wf_e_eval_quality_${taskId}`, source: `wf_eval_${taskId}`, target: `wf_quality_${taskId}`, type: 'dataflow', strength: 0.62, relationKind: 'feeds' },
+    { id: `wf_e_quality_retry_${taskId}`, source: `wf_quality_${taskId}`, target: `wf_retry_${taskId}`, type: 'conditional', strength: 0.58, relationKind: 'fails_to' },
+    { id: `wf_e_retry_measure_${taskId}`, source: `wf_retry_${taskId}`, target: `wf_measure_${taskId}`, type: 'feedback', strength: 0.6, relationKind: 'retries' },
+    { id: `wf_e_quality_approval_${taskId}`, source: `wf_quality_${taskId}`, target: `wf_approval_${taskId}`, type: 'conditional', strength: 0.58, relationKind: 'passes_to' },
+    { id: `wf_e_approval_deploy_${taskId}`, source: `wf_approval_${taskId}`, target: `wf_deploy_${taskId}`, type: 'temporal', strength: 0.56, relationKind: 'deploys' },
   ];
   const max = Math.min(Array.isArray(subtasks) ? subtasks.length : 0, 12);
   for (let i = 0; i < max; i += 1) {
@@ -1046,7 +1078,7 @@ function buildInlineWorkflowFromTemplate(taskId: string, template: any): { nodes
   });
 
   const nodeIdSet = new Set(nodes.map((n) => n.id));
-  const edges: DAGEdge[] = rawEdges
+  let edges: DAGEdge[] = rawEdges
     .map((e: any, idx: number): DAGEdge | null => {
       const source = String(e?.source || '');
       const target = String(e?.target || '');
@@ -1062,6 +1094,24 @@ function buildInlineWorkflowFromTemplate(taskId: string, template: any): { nodes
     })
     .filter((e): e is DAGEdge => !!e);
 
+  // MARKER_155A.G28.WF_TEMPLATE_DEDIRECT_ARCH_CODER:
+  // In recon-enabled templates, avoid direct architect->coder shortcut in inline DAG.
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const hasReconRole = nodes.some((n) => {
+    const role = String(n.role || '').toLowerCase();
+    return role === 'scout' || role === 'researcher';
+  });
+  if (hasReconRole) {
+    edges = edges.filter((e) => {
+      const s = byId.get(e.source);
+      const t = byId.get(e.target);
+      if (!s || !t) return true;
+      const sr = String(s.role || '').toLowerCase();
+      const tr = String(t.role || '').toLowerCase();
+      return !(sr === 'architect' && tr === 'coder');
+    });
+  }
+
   return { nodes, edges };
 }
 
@@ -1074,9 +1124,20 @@ function selectInlineWorkflowSource(
   pipelineNodes: DAGNode[],
   pipelineEdges: DAGEdge[],
 ): { nodes: DAGNode[]; edges: DAGEdge[]; source: 'dag' | 'template' | 'pipeline' } {
-  const hasDetailedDagWorkflow = dagNodes.some((n) => n.type !== 'task');
-  if (hasDetailedDagWorkflow) {
-    return { nodes: dagNodes, edges: dagEdges, source: 'dag' };
+  // MARKER_155A.G28.WF_SOURCE_SCOPE_GUARD:
+  // Use DAG source only when it is explicitly workflow-scoped for this selected task.
+  // This prevents architecture-level DAG noise from hijacking inline workflow view.
+  const scopedDagNodes = dagNodes.filter((n) => {
+    if (n.taskId === selectedTaskId && String(n.graphKind || '').startsWith('workflow_')) return true;
+    if (String(n.workflowId || '') === selectedTaskId) return true;
+    if (String(n.id || '').startsWith(`wf_${selectedTaskId}_`)) return true;
+    return false;
+  });
+  const scopedDagIds = new Set(scopedDagNodes.map((n) => n.id));
+  const scopedDagEdges = dagEdges.filter((e) => scopedDagIds.has(e.source) && scopedDagIds.has(e.target));
+  const hasDetailedDagWorkflow = scopedDagNodes.some((n) => n.type !== 'task');
+  if (hasDetailedDagWorkflow && scopedDagEdges.length > 0) {
+    return { nodes: scopedDagNodes, edges: scopedDagEdges, source: 'dag' };
   }
   if (templateNodes.length > 0 && templateEdges.length > 0) {
     return { nodes: templateNodes, edges: templateEdges, source: 'template' };
@@ -1089,9 +1150,6 @@ function selectInlineWorkflowSource(
 }
 
 export function MyceliumCommandCenter() {
-  // WebSocket connection status
-  const { connected } = useMyceliumSocket();
-
   // MCC store state
   const selectedTaskId = useMCCStore(s => s.selectedTaskId);
   const selectTask = useMCCStore(s => s.selectTask);

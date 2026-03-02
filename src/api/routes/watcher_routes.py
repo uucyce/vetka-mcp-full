@@ -951,7 +951,7 @@ async def cleanup_browser_files():
         from qdrant_client import QdrantClient, models
         from src.config import QDRANT_HOST, QDRANT_PORT
 
-        qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        qdrant_client = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
 
         # Delete all points with path starting with "browser://"
         qdrant_client.delete(
@@ -994,7 +994,7 @@ async def cleanup_playground_files(dry_run: bool = False):
         from qdrant_client.models import PointIdsList
         from src.config import QDRANT_HOST, QDRANT_PORT
 
-        qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        qdrant_client = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
         prefixes = ("/data/playgrounds/", "/.playgrounds/")
 
         matched_ids = []

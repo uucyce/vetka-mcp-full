@@ -89,6 +89,7 @@ class StateRequest(BaseModel):
     level: str = "roadmap"
     roadmap_node_id: str = ""
     task_id: str = ""
+    selected_key: Optional[Dict[str, Any]] = None
     history: list[str] = []
 
 
@@ -131,6 +132,7 @@ async def save_state(req: StateRequest):
         level=req.level,
         roadmap_node_id=req.roadmap_node_id,
         task_id=req.task_id,
+        selected_key=req.selected_key,
         history=req.history,
     )
     if not state.save():

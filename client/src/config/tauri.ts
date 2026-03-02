@@ -154,7 +154,7 @@ export async function getBackendConfig(): Promise<BackendConfig> {
   // Browser fallback
   return {
     api_url: import.meta.env.VITE_API_BASE || '/api',
-    socket_url: import.meta.env.DEV ? 'http://localhost:5001' : window.location.origin,
+    socket_url: import.meta.env.DEV ? 'http://127.0.0.1:5001' : window.location.origin,
     is_local: true,
   };
 }

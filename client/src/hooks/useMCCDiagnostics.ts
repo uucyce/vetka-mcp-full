@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const API_BASE = 'http://localhost:5001/api';
-const MIN_FETCH_INTERVAL_MS = 2000;
+const MIN_RUNTIME_FETCH_INTERVAL_MS = 2000;
+const MIN_BUILD_FETCH_INTERVAL_MS = 15000;
 const MAX_EVENT_LOG = 30;
 
 type TriggerSource =
@@ -77,7 +78,8 @@ export function useMCCDiagnostics() {
     eventLog: [],
   });
 
-  const lastFetchRef = useRef(0);
+  const lastRuntimeFetchRef = useRef(0);
+  const lastBuildFetchRef = useRef(0);
   const inFlightRef = useRef(false);
   const queuedRef = useRef(false);
   const aliveRef = useRef(true);
@@ -89,9 +91,18 @@ export function useMCCDiagnostics() {
     }));
   }, []);
 
-  const doFetch = useCallback(async (source: TriggerSource, forceRuntime = false) => {
+  const doFetch = useCallback(async (
+    source: TriggerSource,
+    forceRuntime = false,
+    includeBuild = false
+  ) => {
     const now = Date.now();
-    if (now - lastFetchRef.current < MIN_FETCH_INTERVAL_MS) {
+    const shouldFetchRuntime =
+      forceRuntime || now - lastRuntimeFetchRef.current >= MIN_RUNTIME_FETCH_INTERVAL_MS;
+    const shouldFetchBuild = includeBuild &&
+      (now - lastBuildFetchRef.current >= MIN_BUILD_FETCH_INTERVAL_MS);
+
+    if (!shouldFetchRuntime && !shouldFetchBuild) {
       pushEvent({
         ts: now,
         source,
@@ -113,50 +124,64 @@ export function useMCCDiagnostics() {
     }
 
     inFlightRef.current = true;
-    lastFetchRef.current = now;
+    if (shouldFetchRuntime) {
+      lastRuntimeFetchRef.current = now;
+    }
+    if (shouldFetchBuild) {
+      lastBuildFetchRef.current = now;
+    }
     pushEvent({
       ts: now,
       source,
       action: 'fetch',
-      note: forceRuntime ? 'force-runtime' : 'normal',
+      note: `${forceRuntime ? 'force-runtime' : 'normal'}${shouldFetchBuild ? '+build' : ''}`,
     });
 
     setState(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      const [healthRes, buildRes] = await Promise.all([
-        fetch(`${API_BASE}/mcc/graph/predict/runtime-health?force=${forceRuntime ? 'true' : 'false'}`),
-        fetch(`${API_BASE}/mcc/graph/build-design`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            scope_path: '',
-            max_nodes: 260,
-            include_artifacts: false,
-            use_predictive_overlay: false,
-            max_predicted_edges: 0,
-            min_confidence: 0.55,
-            problem_statement: '',
-            target_outcome: '',
-          }),
-        }),
-      ]);
+      const runtimePromise = shouldFetchRuntime
+        ? fetch(`${API_BASE}/mcc/graph/predict/runtime-health?force=${forceRuntime ? 'true' : 'false'}`)
+        : Promise.resolve(null);
+      const buildPromise = shouldFetchBuild
+        ? fetch(`${API_BASE}/mcc/graph/build-design`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              scope_path: '',
+              max_nodes: 260,
+              include_artifacts: false,
+              use_predictive_overlay: false,
+              max_predicted_edges: 0,
+              min_confidence: 0.55,
+              problem_statement: '',
+              target_outcome: '',
+            }),
+          })
+        : Promise.resolve(null);
+
+      const [healthRes, buildRes] = await Promise.all([runtimePromise, buildPromise]);
 
       if (!aliveRef.current) return;
 
-      const healthJson = healthRes.ok ? await healthRes.json() : null;
-      const buildJson = buildRes.ok ? await buildRes.json() : null;
+      const healthJson = healthRes && healthRes.ok ? await healthRes.json() : null;
+      const buildJson = buildRes && buildRes.ok ? await buildRes.json() : null;
+      const errors: string[] = [];
+      if (healthRes && !healthRes.ok) errors.push(`health=${healthRes.status}`);
+      if (buildRes && !buildRes.ok) errors.push(`build=${buildRes.status}`);
 
       setState(prev => ({
         ...prev,
         loading: false,
-        error: (!healthRes.ok || !buildRes.ok)
-          ? `health=${healthRes.status} build=${buildRes.status}`
-          : null,
+        error: errors.length > 0 ? errors.join(' ') : null,
         lastUpdatedAt: Date.now(),
         lastReason: source,
-        runtimeHealth: (healthJson as RuntimeHealthData | null) || null,
-        buildDesign: (buildJson as BuildDesignData | null) || null,
+        runtimeHealth: shouldFetchRuntime
+          ? ((healthJson as RuntimeHealthData | null) || null)
+          : prev.runtimeHealth,
+        buildDesign: shouldFetchBuild
+          ? ((buildJson as BuildDesignData | null) || null)
+          : prev.buildDesign,
       }));
     } catch (err) {
       if (!aliveRef.current) return;
@@ -169,21 +194,21 @@ export function useMCCDiagnostics() {
       inFlightRef.current = false;
       if (queuedRef.current && aliveRef.current && document.visibilityState === 'visible') {
         queuedRef.current = false;
-        void doFetch(source, false);
+        void doFetch(source, false, false);
       }
     }
   }, [pushEvent]);
 
   useEffect(() => {
     aliveRef.current = true;
-    void doFetch('init', true);
+    void doFetch('init', true, false);
 
-    const onTaskBoard = () => { void doFetch('task-board-updated'); };
-    const onPipelineActivity = () => { void doFetch('pipeline-activity'); };
-    const onFocus = () => { void doFetch('focus'); };
+    const onTaskBoard = () => { void doFetch('task-board-updated', false, false); };
+    const onPipelineActivity = () => { void doFetch('pipeline-activity', false, false); };
+    const onFocus = () => { void doFetch('focus', true, false); };
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
-        void doFetch('visibility');
+        void doFetch('visibility', true, false);
       }
     };
 
@@ -202,7 +227,7 @@ export function useMCCDiagnostics() {
   }, [doFetch]);
 
   const refresh = useCallback((forceRuntime = false) => {
-    void doFetch('manual', forceRuntime);
+    void doFetch('manual', forceRuntime, true);
   }, [doFetch]);
 
   return {

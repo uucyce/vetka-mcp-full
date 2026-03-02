@@ -46,7 +46,7 @@ class ModelProvider(Enum):
     UNKNOWN = "unknown"
 
 
-def detect_provider(model_name: str) -> ModelProvider:
+def detect_provider(model_name: str, source: Optional[str] = None) -> ModelProvider:
     """
     Detect which provider a model belongs to.
 
@@ -61,7 +61,7 @@ def detect_provider(model_name: str) -> ModelProvider:
     # Use canonical implementation
     from src.elisya.provider_registry import ProviderRegistry, Provider
 
-    canonical_provider = ProviderRegistry.detect_provider(model_name)
+    canonical_provider = ProviderRegistry.detect_provider(model_name, source=source)
 
     # Map Provider enum to ModelProvider enum
     provider_map = {

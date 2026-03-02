@@ -55,7 +55,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-const API_BASE = 'http://localhost:5001/api/debug';
+const API_BASE = `${CORE_API_BASE}/debug`;
 
 interface TreeState {
   healthy: boolean;
@@ -626,3 +626,4 @@ export function initBrowserAgentBridge(): void {
 }
 
 export default vetkaAPI;
+import { API_BASE as CORE_API_BASE } from '../config/api.config';

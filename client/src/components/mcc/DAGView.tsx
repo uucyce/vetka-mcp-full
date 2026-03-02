@@ -79,28 +79,41 @@ function layoutInlineWorkflowCanonical(
 
   const roleDepth = (n: DAGNode): number => {
     const role = String((n as any)?.role || '').toLowerCase();
+    const low = String(n.label || '').toLowerCase();
     if (role === 'architect') return 0;
-    if (role === 'coder') return 1;
-    if (role === 'verifier') return 2;
     if (role === 'scout' || role === 'researcher') return 1;
-    if (n.type === 'proposal') return 3;
-    if (n.type === 'subtask') return 2;
-    return 1;
+    if (role === 'coder' && low.includes('retry')) return 5;
+    if (role === 'coder') return 2;
+    if (low.includes('measure')) return 3;
+    if (role === 'verifier') return 4;
+    if (role === 'eval' || low.includes('eval')) return 4;
+    if (n.type === 'condition' || low.includes('quality')) return 5;
+    if (low.includes('approval')) return 6;
+    if (low.includes('deploy')) return 7;
+    if (n.type === 'proposal') return 8;
+    if (n.type === 'subtask') return 8;
+    return 4;
   };
   const roleOrder = (n: DAGNode): number => {
     const role = String((n as any)?.role || '').toLowerCase();
+    const low = String(n.label || '').toLowerCase();
     if (role === 'architect') return 0;
     if (role === 'scout') return 1;
     if (role === 'researcher') return 2;
+    if (role === 'coder' && low.includes('retry')) return 7;
     if (role === 'coder') return 3;
-    if (role === 'verifier') return 4;
-    if (n.type === 'condition') return 5;
-    if (n.type === 'parallel') return 6;
-    if (n.type === 'loop') return 7;
-    if (n.type === 'transform') return 8;
-    if (n.type === 'group') return 9;
-    if (n.type === 'subtask') return 10;
-    if (n.type === 'proposal') return 11;
+    if (low.includes('measure')) return 4;
+    if (role === 'verifier') return 5;
+    if (role === 'eval' || low.includes('eval')) return 6;
+    if (n.type === 'condition' || low.includes('quality')) return 8;
+    if (low.includes('approval')) return 9;
+    if (low.includes('deploy')) return 10;
+    if (n.type === 'parallel') return 11;
+    if (n.type === 'loop') return 12;
+    if (n.type === 'transform') return 13;
+    if (n.type === 'group') return 14;
+    if (n.type === 'subtask') return 15;
+    if (n.type === 'proposal') return 16;
     return 20;
   };
 

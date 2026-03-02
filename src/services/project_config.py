@@ -16,7 +16,7 @@ import subprocess
 import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Dict, Any
 
 # Default config file location
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
@@ -182,6 +182,7 @@ class SessionState:
     level: str = "roadmap"              # roadmap | tasks | workflow | running | results
     roadmap_node_id: str = ""           # selected module in roadmap
     task_id: str = ""                   # selected task
+    selected_key: Optional[Dict[str, Any]] = None  # selected API key {provider, key_masked}
     history: list = field(default_factory=list)  # navigation history for back
     last_updated: str = ""
 

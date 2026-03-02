@@ -83,6 +83,7 @@ from .analytics_routes import router as analytics_router
 
 # MARKER_153.1B: MCC — Mycelium Command Center init, state, project setup
 from .mcc_routes import router as mcc_router
+from .voice_storage_routes import router as voice_storage_router
 
 
 def get_all_routers() -> List[APIRouter]:
@@ -126,6 +127,7 @@ def get_all_routers() -> List[APIRouter]:
         architect_chat_router,  # /api/architect/* (Phase 144.12 - Architect Chat)
         analytics_router,  # /api/analytics/* (Phase 152 - Pipeline analytics dashboard)
         mcc_router,  # /api/mcc/* (Phase 153 - MCC init, state, project setup)
+        voice_storage_router,  # /api/voice/storage/* (solo voice persistence + replay)
     ]
 
 
@@ -206,4 +208,5 @@ __all__ = [
     "architect_chat_router",
     "analytics_router",
     "mcc_router",
+    "voice_storage_router",
 ]

@@ -18,6 +18,7 @@ import { Loader2 } from 'lucide-react';
 import { isTauri, openLiveWebWindow } from '../../config/tauri';
 import { useStore } from '../../store/useStore';
 import { buildViewportContext } from '../../utils/viewport';
+import { readFileViaApi } from '../../utils/fileReadClient';
 
 // Lazy load heavy viewers
 const CodeViewer = lazy(() => import('./viewers/CodeViewer').then(m => ({ default: m.CodeViewer })));
@@ -254,14 +255,7 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
 
     setIsLoading(true);
     try {
-      const response = await fetch('/api/files/read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path }),
-      });
-
-      if (!response.ok) throw new Error('Failed to load');
-      const data = await response.json();
+      const data = await readFileViaApi(path);
 
       setFileData({
         path,

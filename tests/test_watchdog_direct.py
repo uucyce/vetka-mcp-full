@@ -12,11 +12,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from src.scanners.file_watcher import VetkaFileHandler, SUPPORTED_EXTENSIONS, SKIP_PATTERNS
 from watchdog.events import FileCreatedEvent, FileModifiedEvent
 
-def test_callback(event):
+
+def _callback(event):
     print(f"[CALLBACK] Got event: {event}")
 
 # Create handler
-handler = VetkaFileHandler(on_change_callback=test_callback, debounce_ms=100)
+handler = VetkaFileHandler(on_change_callback=_callback, debounce_ms=100)
 
 # Simulate events
 test_path = "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/90_ph/test.md"
@@ -36,3 +37,8 @@ import time
 time.sleep(0.5)
 
 print("\nDone. If callback was called, you should see [CALLBACK] above.")
+
+
+def test_watchdog_config_loaded():
+    """Keep this file pytest-compatible; smoke-check watcher config."""
+    assert ".md" in SUPPORTED_EXTENSIONS

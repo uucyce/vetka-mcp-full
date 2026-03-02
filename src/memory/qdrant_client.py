@@ -101,7 +101,7 @@ class QdrantVetkaClient:
         
         if QDRANT_AVAILABLE:
             try:
-                self.client = QdrantClient(host=host, port=port)
+                self.client = QdrantClient(url=f"http://{host}:{port}")
                 self._initialize_collections()
                 print(f"✅ Qdrant connected ({host}:{port})")
             except Exception as e:

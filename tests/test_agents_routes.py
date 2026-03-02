@@ -1,4 +1,3 @@
-```python
 # file: tests/test_agents_routes.py
 """
 Test suite for Agent Memory Analysis Routes

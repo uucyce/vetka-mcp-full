@@ -210,6 +210,14 @@ class TripleWriteManager:
             return
 
         try:
+            # Use singleton if available, else create new client
+            from src.memory.qdrant_auto_retry import get_qdrant_auto_retry
+            qdrant_singleton = get_qdrant_auto_retry()
+            if qdrant_singleton and qdrant_singleton.is_connected:
+                self.qdrant_client = qdrant_singleton.client
+                logger.info("[TripleWrite] Using Qdrant singleton")
+                return
+            # Fallback: create new client
             self.qdrant_client = QdrantClient(url=self.qdrant_url)
 
             # Ensure collection exists

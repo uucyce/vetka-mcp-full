@@ -19,11 +19,41 @@ fi
 source .venv/bin/activate
 PYTHON_BIN=".venv/bin/python"
 
+# Load centralized runtime policy (if present).
+# Priority:
+# 1) shell-exported vars
+# 2) .env
+# 3) config/runtime.env
+if [ -f ".env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source ".env"
+  set +a
+fi
+
+if [ -f "config/runtime.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "config/runtime.env"
+  set +a
+fi
+
 # Harden local loopback routing against VPN/proxy interference.
 export NO_PROXY="${NO_PROXY:-127.0.0.1,localhost}"
 export no_proxy="${no_proxy:-127.0.0.1,localhost}"
 export QDRANT_HOST="${QDRANT_HOST:-127.0.0.1}"
 export QDRANT_PORT="${QDRANT_PORT:-6333}"
+export VETKA_WATCHER_VERBOSE="${VETKA_WATCHER_VERBOSE:-0}"
+export VETKA_TREE_VERBOSE="${VETKA_TREE_VERBOSE:-0}"
+export VETKA_CONTEXT_PACKER_ENABLED="${VETKA_CONTEXT_PACKER_ENABLED:-true}"
+export VETKA_CONTEXT_PACKER_JEPA_ENABLE="${VETKA_CONTEXT_PACKER_JEPA_ENABLE:-true}"
+export VETKA_CONTEXT_PACKER_TOKEN_PRESSURE="${VETKA_CONTEXT_PACKER_TOKEN_PRESSURE:-0.80}"
+export VETKA_CONTEXT_PACKER_DOCS_THRESHOLD="${VETKA_CONTEXT_PACKER_DOCS_THRESHOLD:-18}"
+export VETKA_CONTEXT_PACKER_ENTROPY_THRESHOLD="${VETKA_CONTEXT_PACKER_ENTROPY_THRESHOLD:-2.50}"
+export VETKA_CONTEXT_PACKER_MODALITY_THRESHOLD="${VETKA_CONTEXT_PACKER_MODALITY_THRESHOLD:-2}"
+export VETKA_CONTEXT_PACKER_HYSTERESIS_ON="${VETKA_CONTEXT_PACKER_HYSTERESIS_ON:-3}"
+export VETKA_CONTEXT_PACKER_HYSTERESIS_OFF="${VETKA_CONTEXT_PACKER_HYSTERESIS_OFF:-2}"
+export VETKA_CONTEXT_PACKER_RECENT_MAX="${VETKA_CONTEXT_PACKER_RECENT_MAX:-300}"
 
 JEPA_RUNTIME_PID=""
 

@@ -10,8 +10,8 @@
 import { create } from 'zustand';
 import type { TaskData } from '../components/panels/TaskCard';
 import { useStore } from './useStore';
+import { API_BASE } from '../config/api.config';
 
-const API_BASE = 'http://localhost:5001/api';
 const API_DEBUG = `${API_BASE}/debug`;
 
 // ── Types ──

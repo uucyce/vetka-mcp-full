@@ -50,6 +50,8 @@ function formatNum(value: number | null | undefined): string {
 function BalanceCompact() {
   const selectedKey = useStore((s) => s.selectedKey);
   const setSelectedKey = useStore((s) => s.setSelectedKey);
+  const favoriteKeys = useStore((s) => s.favoriteKeys);
+  const toggleFavoriteKey = useStore((s) => s.toggleFavoriteKey);
   const [records, setRecords] = useState<BalanceRecord[]>([]);
   const [totalCost, setTotalCost] = useState<number>(0);
   const [loading, setLoading] = useState(true);
@@ -96,10 +98,15 @@ function BalanceCompact() {
       if (!map.has(key)) map.set(key, r);
     }
     return Array.from(map.values()).sort((a, b) => {
+      const aFavId = `${a.provider.toLowerCase().trim()}:${a.key_masked}`;
+      const bFavId = `${b.provider.toLowerCase().trim()}:${b.key_masked}`;
+      const aFav = favoriteKeys.includes(aFavId) ? 0 : 1;
+      const bFav = favoriteKeys.includes(bFavId) ? 0 : 1;
+      if (aFav !== bFav) return aFav - bFav;
       if (a.exhausted !== b.exhausted) return a.exhausted ? 1 : -1;
       return a.provider.localeCompare(b.provider);
     });
-  }, [records]);
+  }, [records, favoriteKeys]);
 
   const selected = useMemo(() => {
     if (!selectedKey) return null;
@@ -152,7 +159,10 @@ function BalanceCompact() {
             </div>
           </div>
         ) : (
-          compactRows.map((r) => (
+          compactRows.map((r) => {
+            const favId = `${r.provider.toLowerCase().trim()}:${r.key_masked}`;
+            const isFav = favoriteKeys.includes(favId);
+            return (
             <button
               key={`${r.provider}-${r.key_masked}`}
               onClick={() => setSelectedKey({ provider: r.provider, key_masked: r.key_masked })}
@@ -170,10 +180,23 @@ function BalanceCompact() {
               }}
               title={`${r.provider} ${r.key_masked}`}
             >
-              <span style={{ maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.provider}</span>
+              <span style={{ maxWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {isFav ? '★ ' : ''}{r.provider}
+              </span>
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFavoriteKey(favId);
+                }}
+                style={{ color: '#7f8893', padding: '0 4px' }}
+                title="Toggle favorite"
+              >
+                {isFav ? '★' : '☆'}
+              </span>
               <span>{formatUsd(r.balance_usd)}</span>
             </button>
-          ))
+            );
+          })
         )}
       </div>
     </div>

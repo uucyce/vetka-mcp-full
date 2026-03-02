@@ -10,6 +10,7 @@
 import { create } from 'zustand';
 import type { ChatMessage, WorkflowStatus } from '../types/chat';
 import type { PerspectiveCamera } from 'three';
+import { API_BASE } from '../config/api.config';
 
 // Backend node types
 export type VetkaNodeType = 'root' | 'branch' | 'leaf';
@@ -640,7 +641,7 @@ export const useStore = create<TreeState>((set, get) => ({
       if (profile) {
         const scopeRoot = String(rootPath || 'default').replace(/\\/g, '/');
         const scopeKey = `dag:${scopeRoot}:architecture`;
-        fetch('http://localhost:5001/api/mcc/layout/preferences', {
+        fetch(`${API_BASE}/mcc/layout/preferences`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

@@ -47,6 +47,7 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
   const activeTab = useDevPanelStore(s => s.activeTab);
   const setActiveTab = useDevPanelStore(s => s.setActiveTab);
   const [toasts, setToasts] = useState<ToastData[]>([]);
+  const showTopTabs = !(standalone && activeTab === 'mcc');
 
   // MARKER_129.C14B: MYCELIUM WebSocket connection
   const { connected: myceliumConnected } = useMyceliumSocket();
@@ -85,63 +86,65 @@ export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPane
   const content = (
     <>
       {/* Tab bar */}
-      <div style={{
-        display: 'flex',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-        padding: '0 12px',
-        background: 'rgba(0,0,0,0.2)',
-      }}>
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              flex: 1,
-              padding: '10px 0',
-              background: 'none',
-              border: 'none',
-              borderBottom: activeTab === tab.id ? '1px solid #e0e0e0' : '1px solid transparent',
-              color: activeTab === tab.id ? '#e0e0e0' : '#444',
-              fontSize: 10,
-              fontFamily: 'monospace',
-              fontWeight: activeTab === tab.id ? 600 : 400,
-              letterSpacing: 1.5,
-              textTransform: 'uppercase',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {showTopTabs && (
+        <div style={{
+          display: 'flex',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          padding: '0 12px',
+          background: 'rgba(0,0,0,0.2)',
+        }}>
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                flex: 1,
+                padding: '10px 0',
+                background: 'none',
+                border: 'none',
+                borderBottom: activeTab === tab.id ? '1px solid #e0e0e0' : '1px solid transparent',
+                color: activeTab === tab.id ? '#e0e0e0' : '#444',
+                fontSize: 10,
+                fontFamily: 'monospace',
+                fontWeight: activeTab === tab.id ? 600 : 400,
+                letterSpacing: 1.5,
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
 
-        {/* MYCELIUM connection indicator */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: '0 8px',
-            fontSize: 9,
-            color: myceliumConnected ? '#4a4' : '#444',
-            fontFamily: 'monospace',
-            letterSpacing: 0.5,
-          }}
-          title={myceliumConnected ? 'MYCELIUM connected' : 'MYCELIUM disconnected'}
-        >
-          <span style={{
-            width: 5, height: 5, borderRadius: '50%',
-            background: myceliumConnected ? '#4a4' : '#333',
-          }} />
-          MYC
+          {/* MYCELIUM connection indicator */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '0 8px',
+              fontSize: 9,
+              color: myceliumConnected ? '#4a4' : '#444',
+              fontFamily: 'monospace',
+              letterSpacing: 0.5,
+            }}
+            title={myceliumConnected ? 'MYCELIUM connected' : 'MYCELIUM disconnected'}
+          >
+            <span style={{
+              width: 5, height: 5, borderRadius: '50%',
+              background: myceliumConnected ? '#4a4' : '#333',
+            }} />
+            MYC
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Tab content */}
       <div style={{
         display: 'flex',
         flexDirection: 'column',
-        height: 'calc(100% - 36px)',
+        height: showTopTabs ? 'calc(100% - 36px)' : '100%',
         color: '#e0e0e0',
         fontSize: 13,
       }}>

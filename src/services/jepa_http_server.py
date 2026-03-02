@@ -109,9 +109,21 @@ def _whiten(vectors: List[np.ndarray]) -> List[np.ndarray]:
 
 
 def _embed_texts_internal(texts: List[str], dim: int) -> List[np.ndarray]:
+    use_embedding_backend = os.environ.get("MCC_JEPA_HTTP_USE_EMBEDDING_BACKEND", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+    vectors: List[np.ndarray] = []
+
+    # Safety-first default:
+    # keep JEPA HTTP runtime process stable even when local embedding backend is flaky
+    # (e.g., crashes in native ML stacks). Enable backend explicitly via env flag.
+    if not use_embedding_backend:
+        vectors = [_hash_vec(t, dim) for t in texts]
+        vectors = _whiten(vectors)
+        return vectors
+
     svc = get_embedding_service()
     raw = svc.get_embedding_batch(texts)
-    vectors: List[np.ndarray] = []
     for i, row in enumerate(raw):
         if isinstance(row, list) and row:
             arr = np.array(row[:dim], dtype=np.float32)

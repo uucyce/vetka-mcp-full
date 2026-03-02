@@ -33,19 +33,20 @@ from src.orchestration.agent_pipeline import AgentPipeline
 class TestFixA_CorrectEndpoint:
     """Test that _emit_progress() uses the correct endpoint URL (MARKER_117_2A_FIX_A)"""
 
-    def test_emit_progress_uses_correct_url(self):
+    @pytest.mark.asyncio
+    async def test_emit_progress_uses_correct_url(self):
         """_emit_progress should POST to /api/debug/mcp/groups/{chat_id}/send"""
         pipeline = AgentPipeline(chat_id="test-group-123")
 
-        with patch("httpx.Client") as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client_cls.return_value.__enter__ = Mock(return_value=mock_client)
-            mock_client_cls.return_value.__exit__ = Mock(return_value=False)
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             mock_response = Mock()
             mock_response.status_code = 200
             mock_client.post.return_value = mock_response
 
-            pipeline._emit_progress("@architect", "Test message")
+            await pipeline._emit_progress("@architect", "Test message")
 
             # Verify correct URL used
             mock_client.post.assert_called_once()
@@ -55,19 +56,20 @@ class TestFixA_CorrectEndpoint:
             assert "/api/debug/mcp/groups/test-group-123/send" in url
             assert "/api/chat/send" not in url  # Old broken URL must NOT be used
 
-    def test_emit_progress_sends_correct_body(self):
+    @pytest.mark.asyncio
+    async def test_emit_progress_sends_correct_body(self):
         """_emit_progress should send agent_id, content, message_type (not group_id/sender_id)"""
         pipeline = AgentPipeline(chat_id="test-group-123")
 
-        with patch("httpx.Client") as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client_cls.return_value.__enter__ = Mock(return_value=mock_client)
-            mock_client_cls.return_value.__exit__ = Mock(return_value=False)
+        with patch("httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             mock_response = Mock()
             mock_response.status_code = 200
             mock_client.post.return_value = mock_response
 
-            pipeline._emit_progress("@coder", "Building feature", 2, 5)
+            await pipeline._emit_progress("@coder", "Building feature", 2, 5)
 
             call_args = mock_client.post.call_args
             body = call_args[1].get("json", call_args[0][1] if len(call_args[0]) > 1 else {})
@@ -81,26 +83,25 @@ class TestFixA_CorrectEndpoint:
             assert "sender_id" not in body
             assert "group_id" not in body
 
-    def test_emit_progress_does_not_crash_on_failure(self):
+    @pytest.mark.asyncio
+    async def test_emit_progress_does_not_crash_on_failure(self):
         """_emit_progress should not raise even if HTTP fails"""
         pipeline = AgentPipeline(chat_id="test-group-123")
 
-        with patch("httpx.Client") as mock_client_cls:
+        with patch("httpx.AsyncClient") as mock_client_cls:
             mock_client_cls.side_effect = Exception("Connection refused")
 
             # Should not raise
-            pipeline._emit_progress("@pipeline", "Test message")
+            await pipeline._emit_progress("@pipeline", "Test message")
 
-    def test_emit_progress_calls_hooks(self):
-        """_emit_progress should still call registered hooks"""
-        pipeline = AgentPipeline(chat_id="test-group-123")
+    @pytest.mark.asyncio
+    async def test_emit_progress_calls_hooks_when_no_emit_target(self):
+        """Hooks are called on fallback path (no sio/sid and no chat_id)."""
+        pipeline = AgentPipeline(chat_id=None)
         hook_called = []
         pipeline.progress_hooks.append(lambda role, msg, idx, total: hook_called.append((role, msg)))
 
-        with patch("httpx.Client") as mock_client_cls:
-            mock_client_cls.side_effect = Exception("Connection refused")
-
-            pipeline._emit_progress("@coder", "Executing")
+        await pipeline._emit_progress("@coder", "Executing")
 
         assert len(hook_called) == 1
         assert hook_called[0] == ("@coder", "Executing")
@@ -149,26 +150,15 @@ class TestFixA_EmitToChat:
 # ═══════════════════════════════════════════════════════════════════════
 
 class TestFixB_MCPBridgeResultCapture:
-    """Test that MCP bridge captures pipeline.execute() result (MARKER_117_2A_FIX_B)"""
+    """Phase 129+: vetka bridge delegates pipeline tools to MCP MYCELIUM."""
 
-    def test_bridge_code_has_result_capture(self):
-        """Verify the MCP bridge code captures execute() return value"""
+    def test_bridge_pipeline_tool_is_deprecated_stub(self):
+        """vetka_mycelium_pipeline should be present as deprecation notice."""
         bridge_path = Path("src/mcp/vetka_mcp_bridge.py")
         content = bridge_path.read_text()
 
-        # Must have 'result = await pipeline.execute' (not bare 'await pipeline.execute')
-        assert "result = await pipeline.execute" in content, \
-            "MCP bridge must capture execute() return value in 'result' variable"
-
-        # Must NOT have bare 'await pipeline.execute' without assignment
-        # (except in comments)
-        lines = content.split('\n')
-        for i, line in enumerate(lines):
-            stripped = line.strip()
-            if stripped.startswith('#') or stripped.startswith('//'):
-                continue
-            if 'await pipeline.execute' in stripped and 'result' not in stripped and 'Old' not in stripped:
-                pytest.fail(f"Line {i+1}: bare 'await pipeline.execute' without result capture: {stripped}")
+        assert "DEPRECATED: vetka_mycelium_pipeline moved to MCP MYCELIUM" in content
+        assert "Use mycelium_pipeline instead" in content
 
     def test_bridge_code_has_completion_notification(self):
         """Verify the MCP bridge sends completion notification to group chat"""

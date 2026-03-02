@@ -81,6 +81,11 @@ class StreamEventType(Enum):
     GROUP_STREAM_START = "group_stream_start"
     GROUP_STREAM_END = "group_stream_end"
     GROUP_TYPING = "group_typing"
+    # MARKER_156.VOICE.S1_STREAM_ENUMS: Voice-specific group events (contract scaffold).
+    GROUP_VOICE_STREAM_START = "group_voice_stream_start"
+    GROUP_VOICE_STREAM_CHUNK = "group_voice_stream_chunk"
+    GROUP_VOICE_STREAM_END = "group_voice_stream_end"
+    GROUP_VOICE_MESSAGE = "group_voice_message"
 
     # Approval events
     APPROVAL_REQUIRED = "approval_required"

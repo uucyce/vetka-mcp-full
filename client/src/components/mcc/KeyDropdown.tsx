@@ -26,6 +26,8 @@ export function KeyDropdown() {
   const selectedKey = useStore(s => s.selectedKey);
   const setSelectedKey = useStore(s => s.setSelectedKey);
   const clearSelectedKey = useStore(s => s.clearSelectedKey);
+  const favoriteKeys = useStore(s => s.favoriteKeys);
+  const toggleFavoriteKey = useStore(s => s.toggleFavoriteKey);
 
   const [open, setOpen] = useState(false);
   const [records, setRecords] = useState<BalanceRecord[]>([]);
@@ -39,10 +41,15 @@ export function KeyDropdown() {
       if (!map.has(key)) map.set(key, r);
     }
     return Array.from(map.values()).sort((a, b) => {
+      const aFavId = `${a.provider.toLowerCase().trim()}:${a.key_masked}`;
+      const bFavId = `${b.provider.toLowerCase().trim()}:${b.key_masked}`;
+      const aFav = favoriteKeys.includes(aFavId) ? 0 : 1;
+      const bFav = favoriteKeys.includes(bFavId) ? 0 : 1;
+      if (aFav !== bFav) return aFav - bFav;
       if (a.exhausted !== b.exhausted) return a.exhausted ? 1 : -1;
       return a.provider.localeCompare(b.provider);
     });
-  }, [records]);
+  }, [records, favoriteKeys]);
 
   const selectedBalance = useMemo(() => {
     if (!selectedKey) return null;
@@ -181,6 +188,8 @@ export function KeyDropdown() {
           )}
 
           {grouped.map(record => {
+            const favKeyId = `${record.provider.toLowerCase().trim()}:${record.key_masked}`;
+            const isFavorite = favoriteKeys.includes(favKeyId);
             const isSelected = selectedKey?.provider === record.provider
               && selectedKey?.key_masked === record.key_masked;
             return (
@@ -212,6 +221,24 @@ export function KeyDropdown() {
                 </span>
                 <span style={{ color: '#888', minWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {record.key_masked}
+                </span>
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFavoriteKey(favKeyId);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: isFavorite ? '#ddd' : '#666',
+                    cursor: 'pointer',
+                    padding: '0 4px',
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                  }}
+                  title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                >
+                  {isFavorite ? '★' : '☆'}
                 </span>
                 <span style={{ marginLeft: 'auto', color: '#999' }}>
                   {formatUsd(record.balance_usd)}

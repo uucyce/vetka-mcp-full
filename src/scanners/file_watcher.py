@@ -38,7 +38,15 @@ from watchdog.events import FileSystemEventHandler, FileSystemEvent
 # FIX_95.9: MARKER_WATCHDOG_002 - macOS FSEvents can miss 'created' events
 # Set USE_POLLING_OBSERVER=1 to use reliable but slower polling instead
 USE_POLLING_OBSERVER = os.environ.get("USE_POLLING_OBSERVER", "0") == "1"
-print(
+WATCHER_VERBOSE = os.environ.get("VETKA_WATCHER_VERBOSE", "0") == "1"
+
+
+def _watcher_log(message: str) -> None:
+    if WATCHER_VERBOSE:
+        print(message)
+
+
+_watcher_log(
     f"[Watcher Module] USE_POLLING_OBSERVER = {USE_POLLING_OBSERVER} (env: {os.environ.get('USE_POLLING_OBSERVER', 'NOT SET')})"
 )
 
@@ -701,7 +709,7 @@ class VetkaFileWatcher:
         event_type = event["type"]
         path = event["path"]
 
-        print(f"[Watcher] {event_type}: {path}")
+        _watcher_log(f"[Watcher] {event_type}: {path}")
 
         # Update adaptive scanner heat
         dir_path = os.path.dirname(path)
@@ -726,7 +734,7 @@ class VetkaFileWatcher:
 
         if not qdrant_client:
             # FIX_95.9: Schedule non-blocking retry instead of blocking sleep
-            print(
+            _watcher_log(
                 f"[Watcher] ⏳ Qdrant unavailable, scheduling background retry for: {path}"
             )
             self._schedule_qdrant_retry(event, retry_count=0)
@@ -740,7 +748,7 @@ class VetkaFileWatcher:
                     event, qdrant_client=qdrant_client, enable_triple_write=True
                 )
                 indexed_successfully = result
-                print(f"[Watcher] ✅ Indexed via TripleWrite: {path}")
+                _watcher_log(f"[Watcher] ✅ Indexed via TripleWrite: {path}")
             except Exception as e:
                 import traceback
 
@@ -786,10 +794,10 @@ class VetkaFileWatcher:
                         intensity = 0.9 if event_type == "created" else 0.7
                         hub.emit_glow_sync(path, intensity, f"watcher:{event_type}")
                     except Exception as glow_err:
-                        print(f"[Watcher] Glow emit failed: {glow_err}")
+                        _watcher_log(f"[Watcher] Glow emit failed: {glow_err}")
 
             except Exception as e:
-                print(f"[Watcher] Error emitting socket event: {e}")
+                _watcher_log(f"[Watcher] Error emitting socket event: {e}")
         # MARKER_90.11_END
 
     def _schedule_qdrant_retry(
@@ -809,7 +817,7 @@ class VetkaFileWatcher:
         """
         if retry_count >= max_retries:
             path = event.get("path", "unknown")
-            print(
+            _watcher_log(
                 f"[Watcher] ⚠️ SKIPPED after {max_retries} retries (Qdrant unavailable): {path}"
             )
             return
@@ -827,7 +835,7 @@ class VetkaFileWatcher:
                         event, qdrant_client=qdrant_client, enable_triple_write=True
                     )
                     if result:
-                        print(
+                        _watcher_log(
                             f"[Watcher] ✅ Retry #{retry_count + 1} via TripleWrite succeeded: {path}"
                         )
                         # Emit update to frontend
@@ -844,15 +852,15 @@ class VetkaFileWatcher:
                                     {"path": path, "event": event, "indexed": True},
                                 )
                     else:
-                        print(
+                        _watcher_log(
                             f"[Watcher] ⚠️ Retry #{retry_count + 1} returned False: {path}"
                         )
                 except Exception as e:
-                    print(f"[Watcher] ❌ Retry #{retry_count + 1} error: {e}")
+                    _watcher_log(f"[Watcher] ❌ Retry #{retry_count + 1} error: {e}")
                     # Schedule another retry
                     self._schedule_qdrant_retry(event, retry_count + 1, max_retries)
             else:
-                print(
+                _watcher_log(
                     f"[Watcher] ⏳ Retry #{retry_count + 1} - still no Qdrant, scheduling next: {path}"
                 )
                 self._schedule_qdrant_retry(event, retry_count + 1, max_retries)
@@ -861,7 +869,7 @@ class VetkaFileWatcher:
         timer = threading.Timer(delay, retry_index)
         timer.daemon = True  # Don't block app shutdown
         timer.start()
-        print(
+        _watcher_log(
             f"[Watcher] 🔄 Scheduled retry #{retry_count + 1} in {delay}s for: {path}"
         )
 
@@ -888,11 +896,11 @@ class VetkaFileWatcher:
                     if self.socketio:
                         # Phase 80.20: Run coroutine in thread's event loop
                         loop.run_until_complete(self.socketio.emit(event_name, data))
-                        print(
+                        _watcher_log(
                             f"[Watcher] Queue emitted {event_name}: {data.get('path', 'unknown')}"
                         )
                 except Exception as e:
-                    print(f"[Watcher] Queue emit error: {e}")
+                    _watcher_log(f"[Watcher] Queue emit error: {e}")
                 finally:
                     self._emit_queue.task_done()
 
@@ -902,7 +910,7 @@ class VetkaFileWatcher:
             target=worker, daemon=True, name="WatcherEmitWorker"
         )
         self._emit_worker_thread.start()
-        print("[Watcher] Emit worker started (queue mode with async support)")
+        _watcher_log("[Watcher] Emit worker started (queue mode with async support)")
 
     def _on_spam_detected(
         self, dir_path: str, event_count: int, suggested_skip: str

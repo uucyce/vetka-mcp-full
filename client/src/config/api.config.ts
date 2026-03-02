@@ -15,7 +15,7 @@
 import { isTauri } from './tauri';
 
 // Default backend URL for Tauri mode
-const TAURI_BACKEND_URL = import.meta.env.VITE_TAURI_BACKEND_URL || 'http://localhost:5001';
+const TAURI_BACKEND_URL = import.meta.env.VITE_TAURI_BACKEND_URL || 'http://127.0.0.1:5001';
 
 /**
  * Check if running in Tauri desktop app
@@ -38,6 +38,23 @@ export const API_BASE = (() => {
 })();
 
 /**
+ * Backend origin without /api suffix.
+ * Useful for modules that need non-API routes or custom sub-path composition.
+ */
+export const BACKEND_ORIGIN = (() => {
+  if (API_BASE.startsWith('http://') || API_BASE.startsWith('https://')) {
+    return API_BASE.replace(/\/api\/?$/, '');
+  }
+  if (IS_TAURI) {
+    return TAURI_BACKEND_URL;
+  }
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return 'http://127.0.0.1:5001';
+})();
+
+/**
  * WebSocket URL for Socket.IO
  * - Tauri: Direct WebSocket to backend
  * - Browser: Through proxy or same origin
@@ -55,7 +72,7 @@ export const getSocketUrl = (): string => {
 
   // Browser development - use backend port
   if (import.meta.env.DEV) {
-    return 'http://localhost:5001';
+    return 'http://127.0.0.1:5001';
   }
 
   // Browser production - use current origin
@@ -63,7 +80,7 @@ export const getSocketUrl = (): string => {
     return window.location.origin;
   }
 
-  return 'http://localhost:5001';
+  return 'http://127.0.0.1:5001';
 };
 
 // Socket.IO path (relative, goes through proxy)
@@ -77,6 +94,7 @@ export const ENV_INFO = {
   isTauri: IS_TAURI,
   isDev: import.meta.env.DEV,
   apiBase: API_BASE,
+  backendOrigin: BACKEND_ORIGIN,
   socketUrl: getSocketUrl(),
 };
 
@@ -88,6 +106,7 @@ if (import.meta.env.DEV) {
 // Export for convenience
 export default {
   API_BASE,
+  BACKEND_ORIGIN,
   getSocketUrl,
   SOCKET_PATH,
   HEALTH_ENDPOINT,

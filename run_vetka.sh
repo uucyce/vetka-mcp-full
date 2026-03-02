@@ -1,6 +1,6 @@
 #!/bin/bash
-# 🌳 VETKA Live 0.3 - One-Click Launch Script
-# Автоматический запуск системы VETKA
+# VETKA Live 0.3 - One-Click Launch Script
+# Automatic VETKA startup
 
 set -e  # Остановить при ошибке
 
@@ -31,64 +31,64 @@ print_info() {
     echo -e "${BLUE}ℹ️ $1${NC}"
 }
 
-# Проверка Python
+# Check Python
 check_python() {
     if command -v python3 &> /dev/null; then
         PYTHON_VERSION=$(python3 --version | cut -d' ' -f2)
         print_status "Python $PYTHON_VERSION найден"
         return 0
     else
-        print_error "Python3 не найден. Установите Python 3.8+"
+        print_error "Python3 not found. Install Python 3.8+"
         exit 1
     fi
 }
 
-# Проверка и создание виртуального окружения
+# Check and create virtual environment
 setup_venv() {
     if [ ! -d ".venv" ]; then
-        print_info "Создание виртуального окружения..."
+        print_info "Creating virtual environment..."
         python3 -m venv .venv
-        print_status "Виртуальное окружение создано"
+        print_status "Virtual environment created"
     else
-        print_status "Виртуальное окружение уже существует"
+        print_status "Virtual environment already exists"
     fi
     
-    # Активация виртуального окружения
+    # Activate virtual environment
     source .venv/bin/activate
-    print_status "Виртуальное окружение активировано"
+    print_status "Virtual environment activated"
 }
 
-# Установка Python зависимостей
+# Install Python dependencies
 install_python_deps() {
-    print_info "Установка Python зависимостей..."
+    print_info "Installing Python dependencies..."
     pip install --upgrade pip
     pip install -r requirements.txt
-    print_status "Python зависимости установлены"
+    print_status "Python dependencies installed"
 }
 
-# Проверка Node.js и установка frontend зависимостей
+# Check Node.js and install frontend dependencies
 setup_frontend() {
     if command -v node &> /dev/null && command -v npm &> /dev/null; then
-        print_status "Node.js и npm найдены"
+        print_status "Node.js and npm found"
         
         if [ -d "frontend" ]; then
-            print_info "Установка frontend зависимостей..."
+            print_info "Installing frontend dependencies..."
             cd frontend
             npm install --silent
             cd ..
-            print_status "Frontend зависимости установлены"
+            print_status "Frontend dependencies installed"
         else
-            print_warning "Папка frontend не найдена"
+            print_warning "frontend directory not found"
         fi
     else
-        print_warning "Node.js или npm не найдены. Frontend может не работать"
+        print_warning "Node.js or npm not found. Frontend may not work"
     fi
 }
 
-# Создание .env файла если не существует
+# Create .env file if missing
 create_env() {
     if [ ! -f ".env" ]; then
-        print_info "Создание .env файла..."
+        print_info "Creating .env file..."
         cat > .env << EOF
 # Weaviate
 WEAVIATE_URL=http://localhost:8080
@@ -107,115 +107,128 @@ OPENROUTER_KEY_3=
 # Gemini (backup)
 GEMINI_API_KEY=
 
-# Flask
-FLASK_PORT=5000
-FLASK_DEBUG=True
+# VETKA FastAPI
+VETKA_HOST=0.0.0.0
+VETKA_PORT=5001
+VETKA_RELOAD=false
+
+# Phase 157.1 - Context Packer / JEPA profile
+VETKA_CONTEXT_PACKER_ENABLED=true
+VETKA_CONTEXT_PACKER_JEPA_ENABLE=true
+VETKA_CONTEXT_PACKER_TOKEN_PRESSURE=0.80
+VETKA_CONTEXT_PACKER_DOCS_THRESHOLD=18
+VETKA_CONTEXT_PACKER_ENTROPY_THRESHOLD=2.50
+VETKA_CONTEXT_PACKER_MODALITY_THRESHOLD=2
+VETKA_CONTEXT_PACKER_HYSTERESIS_ON=3
+VETKA_CONTEXT_PACKER_HYSTERESIS_OFF=2
+VETKA_CONTEXT_PACKER_RECENT_MAX=300
 EOF
-        print_status ".env файл создан"
-        print_warning "Добавьте свои API ключи в .env файл"
+        print_status ".env file created"
+        print_warning "Add your API keys to .env"
     else
-        print_status ".env файл уже существует"
+        print_status ".env file already exists"
     fi
 }
 
-# Проверка Docker
+# Check Docker
 check_docker() {
     if command -v docker &> /dev/null; then
-        print_status "Docker найден"
+        print_status "Docker found"
         return 0
     else
-        print_warning "Docker не найден. Weaviate не будет запущен автоматически"
+        print_warning "Docker not found. Weaviate will not start automatically"
         return 1
     fi
 }
 
-# Запуск Weaviate в Docker
+# Start Weaviate in Docker
 start_weaviate() {
     if check_docker; then
-        print_info "Проверка Weaviate..."
+        print_info "Checking Weaviate..."
         if curl -s http://localhost:8080/v1/meta > /dev/null 2>&1; then
-            print_status "Weaviate уже запущен"
+            print_status "Weaviate already running"
         else
-            print_info "Запуск Weaviate в Docker..."
+            print_info "Starting Weaviate in Docker..."
             docker run -d --name vetka-weaviate -p 8080:8080 -p 50051:50051 semitechnologies/weaviate:latest
             sleep 5
-            print_status "Weaviate запущен"
+            print_status "Weaviate started"
         fi
     else
-        print_warning "Запустите Weaviate вручную: docker run -p 8080:8080 semitechnologies/weaviate:latest"
+        print_warning "Start Weaviate manually: docker run -p 8080:8080 semitechnologies/weaviate:latest"
     fi
 }
 
-# Проверка Ollama
+# Check Ollama
 check_ollama() {
     if command -v ollama &> /dev/null; then
-        print_status "Ollama найден"
+        print_status "Ollama found"
         return 0
     else
-        print_warning "Ollama не найден. Установите Ollama для работы с локальными моделями"
+        print_warning "Ollama not found. Install it for local models"
         return 1
     fi
 }
 
-# Запуск Ollama
+# Start Ollama
 start_ollama() {
     if check_ollama; then
-        print_info "Проверка Ollama..."
+        print_info "Checking Ollama..."
         if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-            print_status "Ollama уже запущен"
+            print_status "Ollama already running"
         else
-            print_info "Запуск Ollama..."
+            print_info "Starting Ollama..."
             ollama serve &
             sleep 3
-            print_status "Ollama запущен"
+            print_status "Ollama started"
         fi
         
-        # Загрузка необходимых моделей
-        print_info "Загрузка моделей Ollama..."
-        ollama pull embeddinggemma:300m > /dev/null 2>&1 || print_warning "Не удалось загрузить embeddinggemma:300m"
-        ollama pull llama3.1:8b > /dev/null 2>&1 || print_warning "Не удалось загрузить llama3.1:8b"
-        ollama pull deepseek-coder:6.7b > /dev/null 2>&1 || print_warning "Не удалось загрузить deepseek-coder:6.7b"
-        ollama pull qwen2:7b > /dev/null 2>&1 || print_warning "Не удалось загрузить qwen2:7b"
-        print_status "Модели Ollama загружены"
+        # Pull key models
+        print_info "Pulling Ollama models..."
+        ollama pull embeddinggemma:300m > /dev/null 2>&1 || print_warning "Failed to pull embeddinggemma:300m"
+        ollama pull llama3.1:8b > /dev/null 2>&1 || print_warning "Failed to pull llama3.1:8b"
+        ollama pull deepseek-coder:6.7b > /dev/null 2>&1 || print_warning "Failed to pull deepseek-coder:6.7b"
+        ollama pull qwen2:7b > /dev/null 2>&1 || print_warning "Failed to pull qwen2:7b"
+        print_status "Ollama models pulled"
     else
-        print_warning "Запустите Ollama вручную: ollama serve"
+        print_warning "Start Ollama manually: ollama serve"
     fi
 }
 
-# Запуск VETKA
+# Start VETKA
 start_vetka() {
-    print_info "Запуск VETKA Live 0.3..."
+    print_info "Starting VETKA Live 0.3..."
     echo ""
-    echo "🌐 Откройте в браузере: http://localhost:5000"
-    echo "📊 Проверка здоровья: http://localhost:5000/api/health"
+    echo "Open in browser: http://localhost:5001"
+    echo "Health check: http://localhost:5001/api/health"
     echo ""
-    echo "🎮 Команды для тестирования:"
+    echo "Test commands:"
     echo "  /bot/create API"
     echo "  /bot/analyze code"
     echo "  /visual/tree"
     echo "  /search/query"
     echo ""
-    echo "⌨️ Горячие клавиши:"
+    echo "Hotkeys:"
     echo "  / - фокус на ввод команды"
     echo "  1-5 - смена режимов визуализации"
     echo "  g - глобальный вид"
     echo "  t - вид дерева"
     echo "  l - вид листьев"
     echo ""
-    echo "🛑 Для остановки нажмите Ctrl+C"
+    echo "Press Ctrl+C to stop"
     echo ""
     
-    # Запуск основного приложения
-    python main.py
+    # Запуск основного приложения через единый entrypoint.
+    # Это гарантирует одинаковый JEPA autostart path (run.sh + main.py).
+    ./run.sh
 }
 
-# Очистка при выходе
+# Cleanup on exit
 cleanup() {
     echo ""
-    print_info "Остановка VETKA..."
-    # Остановка фоновых процессов
+    print_info "Stopping VETKA..."
+    # Stop background processes
     jobs -p | xargs -r kill
-    print_status "VETKA остановлен"
+    print_status "VETKA stopped"
 }
 
 # Установка обработчика сигналов

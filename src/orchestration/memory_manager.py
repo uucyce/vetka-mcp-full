@@ -186,7 +186,7 @@ class MemoryManager:
         """Инициализирует Qdrant клиент"""
         global _INIT_LOGGED
         try:
-            client = QdrantClient(self.qdrant_url)
+            client = QdrantClient(url=self.qdrant_url)
             # Проверяем связь
             client.get_collections()
             if not _INIT_LOGGED:

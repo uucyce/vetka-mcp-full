@@ -95,8 +95,8 @@ _tree_data_cache = {
     "ts": 0.0,
     "response": None,
 }
-_TREE_DATA_TTL_SOFT_SEC = 1.5
-_TREE_DATA_TTL_HARD_SEC = 12.0
+_TREE_DATA_TTL_SOFT_SEC = 6.0
+_TREE_DATA_TTL_HARD_SEC = 24.0
 _tree_data_inflight: Dict[str, asyncio.Event] = {}
 _tree_data_inflight_lock = asyncio.Lock()
 _tree_data_revalidate_tasks: Dict[str, asyncio.Task] = {}
@@ -145,6 +145,17 @@ _cam_metrics_cache = {
 }
 _cam_refresh_lock = asyncio.Lock()
 _cam_refresh_task = None
+_TREE_VERBOSE = str(os.getenv("VETKA_TREE_VERBOSE", "0")).strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+
+def _tree_log(message: str) -> None:
+    if _TREE_VERBOSE:
+        print(message)
 
 
 def get_tree_perf_counters() -> Dict[str, int]:
@@ -221,7 +232,7 @@ async def _get_tree_structure_cached(qdrant, collection_name: str) -> Dict[str, 
         and (now_mono - float(_tree_structure_cache.get("ts", 0.0)))
         <= _TREE_STRUCTURE_TTL_SEC
     ):
-        print(
+        _tree_log(
             f"[TREE_PERF] structure_cache=hit age={now_mono - float(_tree_structure_cache.get('ts', 0.0)):.2f}s"
         )
         return {
@@ -232,7 +243,7 @@ async def _get_tree_structure_cached(qdrant, collection_name: str) -> Dict[str, 
             "files_by_folder": copy.deepcopy(cached_files_by_folder),
         }
 
-    print("[TREE_PERF] structure_cache=miss rebuild=on")
+    _tree_log("[TREE_PERF] structure_cache=miss rebuild=on")
 
     from qdrant_client.models import Filter, FieldCondition, MatchValue
 
@@ -492,11 +503,11 @@ async def _ensure_cam_metrics_async(
                     _cam_metrics_cache["data"] = refreshed or {}
                     _cam_metrics_cache["source_mtime"] = source_mtime
                     _cam_metrics_cache["updated_at"] = time.time()
-                    print(
+                    _tree_log(
                         f"[CAM] Trigger-refresh complete: {len(refreshed or {})} metrics"
                     )
                 except Exception as e:
-                    print(f"[CAM] Trigger-refresh failed: {e}")
+                    _tree_log(f"[CAM] Trigger-refresh failed: {e}")
 
             _cam_refresh_task = asyncio.create_task(_runner())
 
@@ -820,7 +831,7 @@ async def get_tree_data(
             and _tree_data_cache.get("key") == cache_key
             and cache_age <= _TREE_DATA_TTL_SOFT_SEC
         ):
-            print(f"[TREE_PERF] cache=fresh age={cache_age:.2f}s")
+            _tree_log(f"[TREE_PERF] cache=fresh age={cache_age:.2f}s")
             return cached_response
 
         # Serve stale cache fast and refresh in background.
@@ -846,7 +857,7 @@ async def get_tree_data(
                 _tree_data_revalidate_tasks[cache_key] = asyncio.create_task(
                     _revalidate_tree()
                 )
-            print(f"[TREE_PERF] cache=stale age={cache_age:.2f}s revalidate=bg")
+            _tree_log(f"[TREE_PERF] cache=stale age={cache_age:.2f}s revalidate=bg")
             return cached_response
 
     # MARKER_155.PERF.TREE_DATA_SINGLEFLIGHT:
@@ -870,7 +881,7 @@ async def get_tree_data(
             and (now_mono - float(_tree_data_cache.get("ts", 0.0)))
             <= _TREE_DATA_TTL_HARD_SEC
         ):
-            print(
+            _tree_log(
                 f"[TREE_PERF] cache=singleflight_wait age={now_mono - float(_tree_data_cache.get('ts', 0.0)):.2f}s"
             )
             return cached_response
@@ -915,15 +926,15 @@ async def get_tree_data(
         folders = structure.get("folders", {}) or {}
         files_by_folder = structure.get("files_by_folder", {}) or {}
 
-        print(f"[API] Found {all_files_count} files in {collection_name}")
+        _tree_log(f"[API] Found {all_files_count} files in {collection_name}")
         if deleted_count > 0 or browser_count > 0:
             visible_total = sum(len(v) for v in files_by_folder.values())
-            print(
+            _tree_log(
                 f"[API] Ghost files: {deleted_count}, browser files: {browser_count}, total: {visible_total}"
             )
-        print(f"[API] Built {len(folders)} folders")
-        print(f"[API] Calculated created_time for {len(folders)} folders")
-        print(f"[API] Recalculated depth for {len(folders)} folders (root=0)")
+        _tree_log(f"[API] Built {len(folders)} folders")
+        _tree_log(f"[API] Calculated created_time for {len(folders)} folders")
+        _tree_log(f"[API] Recalculated depth for {len(folders)} folders (root=0)")
 
         if all_files_count <= 0:
             response = {"tree": {"nodes": [], "edges": []}}
@@ -940,14 +951,14 @@ async def get_tree_data(
             ).strip().lower() in {"1", "true", "yes", "on"}
             if cam_enabled:
                 cam_metrics = await _ensure_cam_metrics_async(files_by_folder, qdrant)
-                print(
+                _tree_log(
                     f"[CAM] Using cached/triggered metrics for {len(cam_metrics)} files"
                 )
             else:
                 # Fast path by default: no per-request CAM compute.
                 cam_metrics = _cam_metrics_cache.get("data", {})
         except Exception as cam_err:
-            print(f"[CAM] Warning: Could not load CAM metrics: {cam_err}")
+            _tree_log(f"[CAM] Warning: Could not load CAM metrics: {cam_err}")
 
         # ═══════════════════════════════════════════════════════════════════
         # STEP 3: TREE LAYOUT (Phase 111 - Classic inverted DAG)
@@ -969,7 +980,7 @@ async def get_tree_data(
         )
 
         if new_branches or affected_nodes:
-            print(f"[PHASE 15] Detected changes: {len(new_branches)} new branches")
+            _tree_log(f"[PHASE 15] Detected changes: {len(new_branches)} new branches")
             incremental_layout_update(
                 new_branches, affected_nodes, folders, positions, files_by_folder
             )
@@ -1104,7 +1115,7 @@ async def get_tree_data(
                     {"from": folder_id, "to": file_data["id"], "semantics": "contains"}
                 )
 
-        print(f"[API] Tree built: {len(nodes)} nodes, {len(edges)} edges")
+        _tree_log(f"[API] Tree built: {len(nodes)} nodes, {len(edges)} edges")
 
         # ═══════════════════════════════════════════════════════════════════
         # STEP 4.5: Build chat nodes and edges
@@ -1443,7 +1454,7 @@ async def get_tree_data(
         _tree_perf_counters["full_rebuild_count"] = (
             int(_tree_perf_counters.get("full_rebuild_count", 0)) + 1
         )
-        print(
+        _tree_log(
             f"[TREE_PERF] cache=miss rebuild=full took_ms={(time.monotonic() - request_started) * 1000:.1f}"
         )
         _release_tree_inflight()
@@ -1457,7 +1468,7 @@ async def get_tree_data(
         _tree_data_cache["key"] = cache_key
         _tree_data_cache["ts"] = time.monotonic()
         _tree_data_cache["response"] = error_response
-        print(
+        _tree_log(
             f"[TREE_PERF] cache=miss rebuild=error took_ms={(time.monotonic() - request_started) * 1000:.1f}"
         )
         _release_tree_inflight()

@@ -1,3 +1,5 @@
+import { API_BASE as CORE_API_BASE } from '../config/api.config';
+
 export interface DagLayoutBiasProfile {
   vertical_separation_bias: number;
   sibling_spacing_bias: number;
@@ -9,7 +11,7 @@ export interface DagLayoutBiasProfile {
   updated_at?: string;
 }
 
-const API_BASE = 'http://localhost:5001/api/mcc';
+const API_BASE = `${CORE_API_BASE}/mcc`;
 const PROFILE_CACHE = new Map<string, DagLayoutBiasProfile>();
 
 function clamp(v: number, min: number, max: number): number {
@@ -88,4 +90,3 @@ export function inferBiasFromPinnedPositions(
     updated_at: new Date().toISOString(),
   };
 }
-

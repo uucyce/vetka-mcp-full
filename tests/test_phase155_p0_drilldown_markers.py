@@ -120,8 +120,10 @@ def test_workflow_source_arbitration_has_explicit_priority_contract():
     code = _read("client/src/components/mcc/MyceliumCommandCenter.tsx")
     assert "function selectInlineWorkflowSource(" in code
     assert "source: 'dag' | 'template' | 'pipeline'" in code
-    assert "const hasDetailedDagWorkflow = dagNodes.some((n) => n.type !== 'task');" in code
-    assert "if (hasDetailedDagWorkflow)" in code
+    assert "MARKER_155A.G28.WF_SOURCE_SCOPE_GUARD" in code
+    assert "const scopedDagNodes = dagNodes.filter((n) => {" in code
+    assert "const hasDetailedDagWorkflow = scopedDagNodes.some((n) => n.type !== 'task');" in code
+    assert "if (hasDetailedDagWorkflow && scopedDagEdges.length > 0)" in code
     assert "if (templateNodes.length > 0 && templateEdges.length > 0)" in code
     assert "if (pipelineNodes.length > 0 && pipelineEdges.length > 0)" in code
     assert "const selectedWorkflow = selectInlineWorkflowSource(" in code
