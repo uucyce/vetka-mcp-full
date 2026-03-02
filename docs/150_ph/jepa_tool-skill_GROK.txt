@@ -1,0 +1,114 @@
+Да, смысл есть, но **conditional и targeted**, а не как default-tool для всех поисков. Давай разберём шаг за шагом, почему и как это вписывается в вашу VETKA (с учётом умной памяти: CAM/ARC/ELISION/MGC/ENGRAM/STM/HOPE), стриминговых агентов (как в Cursor) и multi-agent чата (команда/роли или соло).
+
+### Почему JEPA как tool/skill имеет смысл (за/против)
+JEPA (Joint Embedding Predictive Architecture) — это не просто эмбеддер, а predictive модель, которая учится предсказывать "missing parts" в latent space (из работ Meta 2023–2025: V-JEPA для видео, VL-JEPA для multimodal). В вашем стеке (из runtime map) она уже интегрирована в MCC/DAG для semantic hydration и predictive overlays, так что превращение её в tool — логичный шаг для агентов.
+
+| Аспект | За (плюсы) | Против (минусы) | Рекомендация для VETKA |
+|--------|------------|----------------|------------------------|
+| **Поиск по кодовой базе** | JEPA хорошо справляется с structured/low-entropy данными (code/text): предсказывает "суть" (key vectors) без полной переиндексации. Например, для code search: предиктит missing imports/dependencies на основе контекста (лучше, чем чистый Qdrant/CAM). В вашем runtime: интегрируется с `mcc_jepa_adapter.py` для embeddings. | Для простых keyword/search (e.g., grep-like) — overkill, добавит latency (200–500ms vs <50ms на algorithmic search via MGC/ENGRAM). Не нужна, если entropy низкая (маленькая база). | Использовать как **conditional tool**: trigger если query complex (e.g., "найди паттерн зависимости в 20+ файлах") или overflow (docs_count >15). Агент в чате: "Предлагаю JEPA-tool для predictive code search" → approve/reject. |
+| **Поиск по материалам в целом (docs/artifacts)** | Shines в multimodal/overlay: предиктит связи (e.g., text+code+images) в DAG. Для исследований: генерит "semantic core" из pinned файлов/viewport, интегрируясь с HOPE/ELISION для compression. Пример: в вашем map JEPA в `semantic_dag_builder.py` для hydration. | Для text-heavy — optional (algorithmic-first via CAM/MGC лучше по ROI: 40–60% compression без overhead). Риск "красивый слой без прироста" на простых запросах. Latency spike в multi-agent (если роли параллельно зовут JEPA). | Как skill в multi-agent: "Research Agent" вызывает JEPA-tool для high-entropy материалов (e.g., "суммаризуй 50 docs с предиктивными gaps"). В соло: интегрировать в чат как optional branch (e.g., `/jepa-search query`). |
+| **Интеграция с агентами и стримингом** | Отлично вписывается в Cursor-like: агент стримит "Reasoning: Использую JEPA для predictive embedding..." → "Tool call: jepa_embed_texts_for_overlay(args)" → approve/edit. В команде: "Lead Agent" делегирует JEPA-tool "Analyst Role" для поиска. Усиливает память (e.g., JEPA-output → STM/ENGRAM для long-term). | Добавляет branching logic в orchestrator (`orchestrator_with_elisya.py`); риск flap на triggers (нужен hysteresis: 3 ON/2 OFF). Не для каждого чат-вызова (из map: не в plain text path). | GO на hybrid: algorithmic-first (Qdrant+CAM), JEPA как tool на triggers (entropy>2.5, modality_mix>2). Стрим: structured events ("tool_call_proposed: JEPA") с контролем. |
+| **Общий ROI для исследований** | +20–30% quality на heavy контексте (multimodal/overflow), как в вашем симуляции. Делает агентов "умнее" для predictive tasks (e.g., "что если добавить X в код?"). | Latency/SLO: p95 <1s с JEPA vs <500ms без. Не для реал-тайм чата (если модели в команде — накопит задержки). | Да, но 5–10% кейсов: как fallback в `context_packer.py`. Для теста: MVP в Phase 157.1 (добавить JEPA-tool в agent_pipeline). |
+
+### Как реализовать в VETKA чате (с агентами и инструментами)
+1. **JEPA как tool/skill**: 
+   - Определите в `mcp/tools/jepa_tools.py`: `jepa_predictive_search(query, chunks, modality='text/code')` → вызывает `mcc_jepa_adapter.embed_texts_for_overlay(...)`.
+   - В multi-agent: роли (e.g., "Researcher") зовут его открыто в стриме: "Tool call: jepa_predictive_search(args)" → пользователь approve/edit args (как в вашем stream_GROK.txt).
+
+2. **Интеграция со стримингом (Cursor-style)**:
+   - В чате: агент стримит reasoning → tool_proposed (JEPA) → ждёт approve/reject via WS (`/ws/agent-control`).
+   - Для команды: multi-agent timeline (каждый роль — свой sub-stream).
+   - Пример event: `{"type": "tool_call_proposed", "tool_name": "jepa_search", "args": {"query": "code patterns in VETKA", "chunks": 20}}`.
+
+3. **Triggers и fallback**:
+   - Adaptive policy: if (token_pressure >0.8 OR entropy>2.5 OR docs>15) → JEPA-tool.
+   - Fallback: algorithmic (MGC/Qdrant) если JEPA down/latency spike.
+
+**Executive takeaway**: Да, смысл есть — JEPA как tool усиливает исследования на complex/multimodal материалах, делая агентов более predictive. Но стартуйте с hybrid (algorithmic-first), чтобы не тормозить чат. Если нужно, дам код для JEPA-tool интеграции в agent_pipeline.
+
+
+
+Да, **полностью можем** — и это один из самых разумных следующих шагов в Phase 157.x.
+
+Создание JEPA как **открытого инструмента** (tool/skill) в вашем agent_pipeline позволит:
+
+- точно замерить реальные цифры latency / quality / compression на **ваших** сценариях (а не на абстрактных бенчмарках),
+- откалибровать триггеры и hysteresis эмпирически,
+- интегрировать в Cursor-style стриминг с approve/edit/reject,
+- получить данные для A/B-тестов (algo-first vs JEPA-conditional).
+
+### Почему это имеет высокий смысл именно сейчас
+Ваши внутренние замеры (200–500+ мс на JEPA-path) — это уже реальная картина, а открытые источники (по состоянию на март 2026) дают только косвенные подтверждения:
+
+- VL-JEPA (Meta, 2025) → selective decoding даёт **2.85×** снижение операций декодирования, inference в embedding-пространстве (non-autoregressive) → значительно ниже latency, чем у классических VLMs (например, ~24 мс vs 86 мс на update в одном из примеров для видео).
+- Eidos (time-series JEPA-вариант, 2026) → inference ~6.71 мс на A100 (batch=1, context=512) — очень быстро для compact-моделей.
+- MTS-JEPA и другие → подчёркивают scaling latency vs batch/window, но gap с PatchTST небольшой при больших батчах.
+- Общий нарратив → JEPA-подходы позиционируются как **low-latency** для real-time (роботика, streaming, video), особенно когда не требуется полная генерация токенов.
+
+Но **публичных чисел именно в мс на ваш сценарий** (text/code + pinned docs + overlay в чате) нет — всё измеряется на video/time-series или в относительных speedup'ах. Поэтому **только ваши логи** дадут правду.
+
+### Как это реализовать (минимальный, но полезный план)
+
+1. **Создать JEPA-tool** (в `mcp/tools/jepa_tools.py` или аналог)
+   ```python
+   class JEPA_predictive_embed(Tool):
+       name = "jepa_semantic_core"
+       description = "Генерирует predictive semantic core из чанков (текст/код/multimodal). Используется при high entropy / overflow для сохранения сути."
+       args_schema = {
+           "chunks": list[str],           # список чанков контекста
+           "query": str,                  # опциональный текущий запрос
+           "modality": str = "text",      # text / code / multimodal
+           "max_chunks": int = 50
+       }
+
+       async def _run(self, chunks: list[str], query: str = "", modality: str = "text", max_chunks: int = 50):
+           # вызов вашего существующего адаптера
+           from src.services.mcc_jepa_adapter import embed_texts_for_overlay
+           selected = chunks[:max_chunks]  # или ранжируем CAM/MGC
+           embeddings, semantic_core = await embed_texts_for_overlay(selected, query=query)
+           return {
+               "semantic_core_desc": semantic_core.get("desc", ""),
+               "compression_ratio": len("".join(chunks)) / len(semantic_core_desc) if semantic_core_desc else 1.0,
+               "latency_ms": ...  # замерить здесь
+           }
+   ```
+
+2. **Интегрировать в agent_pipeline с замерами**
+   В `_stream_execution` добавить опциональный вызов:
+   ```python
+   start = time.perf_counter()
+   jepa_result = await self.tools["jepa_semantic_core"]._run(chunks=relevant_chunks, query=task)
+   latency_ms = (time.perf_counter() - start) * 1000
+
+   yield await self._stream_event("tool_call_result", {
+       "tool_name": "jepa_semantic_core",
+       "tool_result": jepa_result,
+       "latency_ms": round(latency_ms, 1),
+       "trigger_reason": "entropy > 2.5"  # или что сработало
+   })
+   ```
+
+3. **Калибровка триггеров и hysteresis — на реальных данных**
+   Собирать метрики по 100–300 запросам (разные сценарии):
+   - token_pressure, entropy (Shannon на salience scores), docs_count, modality_mix
+   - JEPA latency (p50/p95), quality (cosine sim semantic_core vs full context)
+   - compression ratio, first-token time с/без JEPA
+
+   Затем подогнать:
+   ```python
+   # Пример после сбора логов
+   if latency_p95 > 800:          # жёсткий лимит SLO
+       JEPA_TRIGGER_THRESHOLD_ENTROPY = 3.0  # ужесточить
+   HYSTERESIS_ON = 4
+   HYSTERESIS_OFF = 3
+   ```
+
+4. **A/B и observability**
+   - Feature flag `JEPA_TOOL_ENABLED`
+   - Trace: `state.trace['jepa_latency_ms']`, `jepa_triggered`, `compression_before/after`
+   - Сценарии для теста: text-only chat (ожидаем редко), 20+ pinned docs (часто), multimodal viewport (очень часто)
+
+**Executive вывод (март 2026)**:  
+Да, создаём JEPA-tool → замеряем на ваших нагрузках → калибруем триггеры/hysteresis → получаем production-ready adaptive hybrid. Это даст **реальные цифры**, а не гипотезы, и позволит безопасно rollout'ить в 157.2–157.3.
+
+Хотите, я набросаю полный diff для tools + agent_pipeline с замерами latency? Или сразу план сбора данных (какие логи писать, Prometheus metrics)?

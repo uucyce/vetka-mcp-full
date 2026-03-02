@@ -1,0 +1,300 @@
+2026-03-01T15:25:42.473968Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39117 "-" "python-httpx/0.28.1" 0.002633
+2026-03-01T15:25:42.478911Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40263 "-" "python-httpx/0.28.1" 0.002495
+2026-03-01T15:25:42.483531Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39591 "-" "python-httpx/0.28.1" 0.002460
+2026-03-01T15:25:42.488662Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40735 "-" "python-httpx/0.28.1" 0.002604
+2026-03-01T15:25:42.493453Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 23089 "-" "python-httpx/0.28.1" 0.001964
+2026-03-01T15:27:42.599692Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points HTTP/1.1" 200 55 "-" "python-httpx/0.28.1" 0.001525
+2026-03-01T15:27:44.365946Z  INFO actix_web::middleware::logger: 192.168.65.1 "PUT /collections/vetka_elisya/points?wait=true HTTP/1.1" 200 85 "-" "python-httpx/0.28.1" 0.002799
+2026-03-01T15:27:44.374347Z  INFO actix_web::middleware::logger: 192.168.65.1 "PUT /collections/VetkaTree/points?wait=true HTTP/1.1" 200 86 "-" "python-httpx/0.28.1" 0.003646
+2026-03-01T15:27:44.898183Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 37010 "-" "python-httpx/0.28.1" 0.007755
+2026-03-01T15:27:44.903371Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40652 "-" "python-httpx/0.28.1" 0.002729
+2026-03-01T15:27:44.909969Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40603 "-" "python-httpx/0.28.1" 0.003086
+2026-03-01T15:27:44.916384Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39579 "-" "python-httpx/0.28.1" 0.003960
+2026-03-01T15:27:44.924177Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40098 "-" "python-httpx/0.28.1" 0.003646
+2026-03-01T15:27:44.932707Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39689 "-" "python-httpx/0.28.1" 0.003677
+2026-03-01T15:27:44.938446Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41314 "-" "python-httpx/0.28.1" 0.002911
+2026-03-01T15:27:44.944840Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41469 "-" "python-httpx/0.28.1" 0.003043
+2026-03-01T15:27:44.951624Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40146 "-" "python-httpx/0.28.1" 0.003536
+2026-03-01T15:27:44.956952Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39454 "-" "python-httpx/0.28.1" 0.002990
+2026-03-01T15:27:44.962380Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39406 "-" "python-httpx/0.28.1" 0.002988
+2026-03-01T15:27:44.969918Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39442 "-" "python-httpx/0.28.1" 0.002987
+2026-03-01T15:27:44.975294Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39034 "-" "python-httpx/0.28.1" 0.002820
+2026-03-01T15:27:44.982809Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39138 "-" "python-httpx/0.28.1" 0.002847
+2026-03-01T15:27:44.987714Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40131 "-" "python-httpx/0.28.1" 0.002512
+2026-03-01T15:27:44.992623Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39644 "-" "python-httpx/0.28.1" 0.002659
+2026-03-01T15:27:44.997661Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38720 "-" "python-httpx/0.28.1" 0.002469
+2026-03-01T15:27:45.003036Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39511 "-" "python-httpx/0.28.1" 0.003102
+2026-03-01T15:27:45.008567Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40697 "-" "python-httpx/0.28.1" 0.002692
+2026-03-01T15:27:45.013640Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39340 "-" "python-httpx/0.28.1" 0.002329
+2026-03-01T15:27:45.019347Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38890 "-" "python-httpx/0.28.1" 0.002662
+2026-03-01T15:27:45.024219Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39963 "-" "python-httpx/0.28.1" 0.002515
+2026-03-01T15:27:45.028903Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39856 "-" "python-httpx/0.28.1" 0.002474
+2026-03-01T15:27:45.033497Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39161 "-" "python-httpx/0.28.1" 0.002432
+2026-03-01T15:27:45.038092Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39239 "-" "python-httpx/0.28.1" 0.002372
+2026-03-01T15:27:45.043461Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39492 "-" "python-httpx/0.28.1" 0.002373
+2026-03-01T15:27:45.049027Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40221 "-" "python-httpx/0.28.1" 0.002620
+2026-03-01T15:27:45.053882Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39117 "-" "python-httpx/0.28.1" 0.002436
+2026-03-01T15:27:45.058876Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40261 "-" "python-httpx/0.28.1" 0.002640
+2026-03-01T15:27:45.066556Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39591 "-" "python-httpx/0.28.1" 0.003123
+2026-03-01T15:27:45.071265Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40735 "-" "python-httpx/0.28.1" 0.002342
+2026-03-01T15:27:45.075486Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 23089 "-" "python-httpx/0.28.1" 0.001961
+2026-03-01T15:28:14.957355Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points HTTP/1.1" 200 55 "-" "python-httpx/0.28.1" 0.000730
+2026-03-01T15:28:19.866551Z  INFO actix_web::middleware::logger: 192.168.65.1 "PUT /collections/vetka_elisya/points?wait=true HTTP/1.1" 200 88 "-" "python-httpx/0.28.1" 0.003217
+2026-03-01T15:28:19.873548Z  INFO actix_web::middleware::logger: 192.168.65.1 "PUT /collections/VetkaTree/points?wait=true HTTP/1.1" 200 85 "-" "python-httpx/0.28.1" 0.002261
+2026-03-01T15:28:20.364336Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 37010 "-" "python-httpx/0.28.1" 0.007713
+2026-03-01T15:28:20.373704Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40652 "-" "python-httpx/0.28.1" 0.003818
+2026-03-01T15:28:20.381666Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40603 "-" "python-httpx/0.28.1" 0.003177
+2026-03-01T15:28:20.389231Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39581 "-" "python-httpx/0.28.1" 0.003941
+2026-03-01T15:28:20.396091Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40097 "-" "python-httpx/0.28.1" 0.003039
+2026-03-01T15:28:20.401632Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39689 "-" "python-httpx/0.28.1" 0.003111
+2026-03-01T15:28:20.408566Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41314 "-" "python-httpx/0.28.1" 0.003067
+2026-03-01T15:28:20.414335Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41469 "-" "python-httpx/0.28.1" 0.003130
+2026-03-01T15:28:20.420827Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40146 "-" "python-httpx/0.28.1" 0.003716
+2026-03-01T15:28:20.426311Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39454 "-" "python-httpx/0.28.1" 0.003035
+2026-03-01T15:28:20.431501Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39406 "-" "python-httpx/0.28.1" 0.002754
+2026-03-01T15:28:20.437903Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39441 "-" "python-httpx/0.28.1" 0.003235
+2026-03-01T15:28:20.443325Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39034 "-" "python-httpx/0.28.1" 0.002957
+2026-03-01T15:28:20.448899Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39138 "-" "python-httpx/0.28.1" 0.002871
+2026-03-01T15:28:20.453828Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40131 "-" "python-httpx/0.28.1" 0.002595
+2026-03-01T15:28:20.459116Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39644 "-" "python-httpx/0.28.1" 0.002976
+2026-03-01T15:28:20.464705Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38722 "-" "python-httpx/0.28.1" 0.002566
+2026-03-01T15:28:20.469788Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39512 "-" "python-httpx/0.28.1" 0.002569
+2026-03-01T15:28:20.474634Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40698 "-" "python-httpx/0.28.1" 0.002537
+2026-03-01T15:28:20.479685Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39342 "-" "python-httpx/0.28.1" 0.002621
+2026-03-01T15:28:20.484865Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38890 "-" "python-httpx/0.28.1" 0.002871
+2026-03-01T15:28:20.492047Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39964 "-" "python-httpx/0.28.1" 0.003109
+2026-03-01T15:28:20.498102Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39857 "-" "python-httpx/0.28.1" 0.003079
+2026-03-01T15:28:20.503588Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39161 "-" "python-httpx/0.28.1" 0.002692
+2026-03-01T15:28:20.509244Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39239 "-" "python-httpx/0.28.1" 0.003004
+2026-03-01T15:28:20.515509Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39492 "-" "python-httpx/0.28.1" 0.002811
+2026-03-01T15:28:20.521212Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40220 "-" "python-httpx/0.28.1" 0.002607
+2026-03-01T15:28:20.526341Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39117 "-" "python-httpx/0.28.1" 0.002499
+2026-03-01T15:28:20.532460Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40263 "-" "python-httpx/0.28.1" 0.002587
+2026-03-01T15:28:20.538276Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39591 "-" "python-httpx/0.28.1" 0.003100
+2026-03-01T15:28:20.544065Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40735 "-" "python-httpx/0.28.1" 0.002482
+2026-03-01T15:28:20.549304Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 23087 "-" "python-httpx/0.28.1" 0.002217
+2026-03-01T15:30:13.576573Z  INFO actix_web::middleware::logger: 192.168.65.1 "GET /collections HTTP/1.1" 200 180 "-" "python-httpx/0.28.1" 0.000312
+2026-03-01T15:30:13.579041Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 37010 "-" "python-httpx/0.28.1" 0.007269
+2026-03-01T15:30:13.580589Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_user_memories/points/scroll HTTP/1.1" 200 1586 "-" "python-httpx/0.28.1" 0.001012
+2026-03-01T15:30:13.637463Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40652 "-" "python-httpx/0.28.1" 0.007058
+2026-03-01T15:30:13.647150Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40603 "-" "python-httpx/0.28.1" 0.003186
+2026-03-01T15:30:13.659775Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39581 "-" "python-httpx/0.28.1" 0.003184
+2026-03-01T15:30:13.667408Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40097 "-" "python-httpx/0.28.1" 0.002815
+2026-03-01T15:30:13.677001Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39689 "-" "python-httpx/0.28.1" 0.003162
+2026-03-01T15:30:13.743228Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41313 "-" "python-httpx/0.28.1" 0.007262
+2026-03-01T15:30:14.281491Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41468 "-" "python-httpx/0.28.1" 0.006865
+2026-03-01T15:30:14.335495Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40146 "-" "python-httpx/0.28.1" 0.007360
+2026-03-01T15:30:14.460708Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39454 "-" "python-httpx/0.28.1" 0.006996
+2026-03-01T15:30:14.467934Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39406 "-" "python-httpx/0.28.1" 0.003499
+2026-03-01T15:30:14.473310Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39441 "-" "python-httpx/0.28.1" 0.002563
+2026-03-01T15:30:14.479062Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39034 "-" "python-httpx/0.28.1" 0.002709
+2026-03-01T15:30:14.485063Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39138 "-" "python-httpx/0.28.1" 0.002511
+2026-03-01T15:30:14.490506Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40131 "-" "python-httpx/0.28.1" 0.002665
+2026-03-01T15:30:14.496571Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39644 "-" "python-httpx/0.28.1" 0.002764
+2026-03-01T15:30:14.501998Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38721 "-" "python-httpx/0.28.1" 0.002664
+2026-03-01T15:30:14.507460Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39512 "-" "python-httpx/0.28.1" 0.002531
+2026-03-01T15:30:14.515184Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40698 "-" "python-httpx/0.28.1" 0.002535
+2026-03-01T15:30:14.520716Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39342 "-" "python-httpx/0.28.1" 0.002458
+2026-03-01T15:30:14.526208Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38890 "-" "python-httpx/0.28.1" 0.002438
+2026-03-01T15:30:14.532932Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39964 "-" "python-httpx/0.28.1" 0.002426
+2026-03-01T15:30:14.538626Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39856 "-" "python-httpx/0.28.1" 0.002546
+2026-03-01T15:30:14.543658Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39159 "-" "python-httpx/0.28.1" 0.002415
+2026-03-01T15:30:14.549277Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39238 "-" "python-httpx/0.28.1" 0.002395
+2026-03-01T15:30:14.555214Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39492 "-" "python-httpx/0.28.1" 0.002413
+2026-03-01T15:30:14.560476Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40220 "-" "python-httpx/0.28.1" 0.002386
+2026-03-01T15:30:14.566196Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39117 "-" "python-httpx/0.28.1" 0.002411
+2026-03-01T15:30:14.571231Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40263 "-" "python-httpx/0.28.1" 0.002433
+2026-03-01T15:30:14.577431Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39591 "-" "python-httpx/0.28.1" 0.002320
+2026-03-01T15:30:14.584675Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40735 "-" "python-httpx/0.28.1" 0.002459
+2026-03-01T15:30:14.590215Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 23089 "-" "python-httpx/0.28.1" 0.002178
+2026-03-01T15:30:14.971730Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points HTTP/1.1" 200 559 "-" "python-httpx/0.28.1" 0.026880
+2026-03-01T15:30:15.146212Z  INFO actix_web::middleware::logger: 192.168.65.1 "PUT /collections/vetka_elisya/points?wait=true HTTP/1.1" 200 88 "-" "python-httpx/0.28.1" 0.002191
+2026-03-01T15:30:15.154330Z  INFO actix_web::middleware::logger: 192.168.65.1 "PUT /collections/VetkaTree/points?wait=true HTTP/1.1" 200 86 "-" "python-httpx/0.28.1" 0.004758
+2026-03-01T15:31:14.210094Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 37010 "-" "python-httpx/0.28.1" 0.018300
+2026-03-01T15:31:14.238167Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40651 "-" "python-httpx/0.28.1" 0.007451
+2026-03-01T15:31:14.245249Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40603 "-" "python-httpx/0.28.1" 0.003169
+2026-03-01T15:31:14.316668Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39581 "-" "python-httpx/0.28.1" 0.007024
+2026-03-01T15:31:14.331349Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40098 "-" "python-httpx/0.28.1" 0.005138
+2026-03-01T15:31:14.589667Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39690 "-" "python-httpx/0.28.1" 0.006636
+2026-03-01T15:31:14.595807Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41314 "-" "python-httpx/0.28.1" 0.003191
+2026-03-01T15:31:14.601360Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41470 "-" "python-httpx/0.28.1" 0.002879
+2026-03-01T15:31:14.608186Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40146 "-" "python-httpx/0.28.1" 0.002708
+2026-03-01T15:31:14.613968Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39453 "-" "python-httpx/0.28.1" 0.003009
+2026-03-01T15:31:14.619827Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39406 "-" "python-httpx/0.28.1" 0.003105
+2026-03-01T15:31:14.625694Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39441 "-" "python-httpx/0.28.1" 0.002708
+2026-03-01T15:31:14.632118Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39034 "-" "python-httpx/0.28.1" 0.003104
+2026-03-01T15:31:14.637938Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39138 "-" "python-httpx/0.28.1" 0.002576
+2026-03-01T15:31:14.643036Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40131 "-" "python-httpx/0.28.1" 0.002406
+2026-03-01T15:31:14.648073Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39644 "-" "python-httpx/0.28.1" 0.002357
+2026-03-01T15:31:14.653239Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38720 "-" "python-httpx/0.28.1" 0.002488
+2026-03-01T15:31:14.658409Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39512 "-" "python-httpx/0.28.1" 0.002457
+2026-03-01T15:31:14.663450Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40698 "-" "python-httpx/0.28.1" 0.002447
+2026-03-01T15:31:14.668436Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39342 "-" "python-httpx/0.28.1" 0.002446
+2026-03-01T15:31:14.673526Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38888 "-" "python-httpx/0.28.1" 0.002384
+2026-03-01T15:31:14.678190Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39964 "-" "python-httpx/0.28.1" 0.002279
+2026-03-01T15:31:14.683296Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39854 "-" "python-httpx/0.28.1" 0.002459
+2026-03-01T15:31:14.689057Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39161 "-" "python-httpx/0.28.1" 0.002827
+2026-03-01T15:31:14.694140Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39237 "-" "python-httpx/0.28.1" 0.002632
+2026-03-01T15:31:14.699143Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39492 "-" "python-httpx/0.28.1" 0.002436
+2026-03-01T15:31:14.704581Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40222 "-" "python-httpx/0.28.1" 0.002651
+2026-03-01T15:31:14.709526Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39116 "-" "python-httpx/0.28.1" 0.002402
+2026-03-01T15:31:14.714469Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40263 "-" "python-httpx/0.28.1" 0.002430
+2026-03-01T15:31:14.719210Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39591 "-" "python-httpx/0.28.1" 0.002461
+2026-03-01T15:31:14.724796Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40735 "-" "python-httpx/0.28.1" 0.002420
+2026-03-01T15:31:14.729365Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 23089 "-" "python-httpx/0.28.1" 0.001915
+2026-03-01T15:31:15.520826Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points HTTP/1.1" 200 559 "-" "python-httpx/0.28.1" 0.000705
+2026-03-01T15:31:15.671932Z  INFO actix_web::middleware::logger: 192.168.65.1 "PUT /collections/vetka_elisya/points?wait=true HTTP/1.1" 200 86 "-" "python-httpx/0.28.1" 0.004013
+2026-03-01T15:31:15.688011Z  INFO actix_web::middleware::logger: 192.168.65.1 "PUT /collections/VetkaTree/points?wait=true HTTP/1.1" 200 85 "-" "python-httpx/0.28.1" 0.002937
+2026-03-01T15:31:16.855104Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 37010 "-" "python-httpx/0.28.1" 0.005880
+2026-03-01T15:31:16.862477Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40652 "-" "python-httpx/0.28.1" 0.004223
+2026-03-01T15:31:16.867597Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40603 "-" "python-httpx/0.28.1" 0.002452
+2026-03-01T15:31:16.872274Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39581 "-" "python-httpx/0.28.1" 0.002478
+2026-03-01T15:31:16.876824Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40098 "-" "python-httpx/0.28.1" 0.002434
+2026-03-01T15:31:16.882425Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39687 "-" "python-httpx/0.28.1" 0.002725
+2026-03-01T15:31:16.887187Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41313 "-" "python-httpx/0.28.1" 0.002677
+2026-03-01T15:31:16.892571Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41468 "-" "python-httpx/0.28.1" 0.002704
+2026-03-01T15:31:16.897557Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40145 "-" "python-httpx/0.28.1" 0.002524
+2026-03-01T15:31:16.902509Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39454 "-" "python-httpx/0.28.1" 0.002777
+2026-03-01T15:31:16.908328Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39406 "-" "python-httpx/0.28.1" 0.002976
+2026-03-01T15:31:16.912875Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39441 "-" "python-httpx/0.28.1" 0.002411
+2026-03-01T15:31:16.917434Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39034 "-" "python-httpx/0.28.1" 0.002353
+2026-03-01T15:31:16.922043Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39139 "-" "python-httpx/0.28.1" 0.002585
+2026-03-01T15:31:16.926470Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40131 "-" "python-httpx/0.28.1" 0.002439
+2026-03-01T15:31:16.931286Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39644 "-" "python-httpx/0.28.1" 0.002414
+2026-03-01T15:31:16.935638Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38722 "-" "python-httpx/0.28.1" 0.002309
+2026-03-01T15:31:16.939861Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39512 "-" "python-httpx/0.28.1" 0.002359
+2026-03-01T15:31:16.944134Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40697 "-" "python-httpx/0.28.1" 0.002353
+2026-03-01T15:31:16.948425Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39342 "-" "python-httpx/0.28.1" 0.002279
+2026-03-01T15:31:16.953384Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38890 "-" "python-httpx/0.28.1" 0.002507
+2026-03-01T15:31:16.957819Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39964 "-" "python-httpx/0.28.1" 0.002347
+2026-03-01T15:31:16.962402Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39855 "-" "python-httpx/0.28.1" 0.002394
+2026-03-01T15:31:16.967049Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39161 "-" "python-httpx/0.28.1" 0.002588
+2026-03-01T15:31:16.971426Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39239 "-" "python-httpx/0.28.1" 0.002395
+2026-03-01T15:31:16.976425Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39492 "-" "python-httpx/0.28.1" 0.002335
+2026-03-01T15:31:16.980876Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40220 "-" "python-httpx/0.28.1" 0.002294
+2026-03-01T15:31:16.985534Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39117 "-" "python-httpx/0.28.1" 0.002423
+2026-03-01T15:31:16.990475Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40263 "-" "python-httpx/0.28.1" 0.002505
+2026-03-01T15:31:16.996089Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39589 "-" "python-httpx/0.28.1" 0.002975
+2026-03-01T15:31:17.001058Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40735 "-" "python-httpx/0.28.1" 0.002415
+2026-03-01T15:31:17.005146Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 23089 "-" "python-httpx/0.28.1" 0.001954
+2026-03-01T15:32:18.441238Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 37010 "-" "python-httpx/0.28.1" 0.007207
+2026-03-01T15:32:18.493691Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40651 "-" "python-httpx/0.28.1" 0.007620
+2026-03-01T15:32:18.509743Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40603 "-" "python-httpx/0.28.1" 0.003757
+2026-03-01T15:32:18.575487Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39581 "-" "python-httpx/0.28.1" 0.006726
+2026-03-01T15:32:18.585785Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40098 "-" "python-httpx/0.28.1" 0.004040
+2026-03-01T15:32:18.841815Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39690 "-" "python-httpx/0.28.1" 0.026406
+2026-03-01T15:32:18.849756Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41314 "-" "python-httpx/0.28.1" 0.005017
+2026-03-01T15:32:18.855204Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41468 "-" "python-httpx/0.28.1" 0.002810
+2026-03-01T15:32:18.860236Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40146 "-" "python-httpx/0.28.1" 0.002702
+2026-03-01T15:32:18.865441Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39454 "-" "python-httpx/0.28.1" 0.002958
+2026-03-01T15:32:18.870534Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39404 "-" "python-httpx/0.28.1" 0.002600
+2026-03-01T15:32:18.875550Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39441 "-" "python-httpx/0.28.1" 0.002586
+2026-03-01T15:32:18.881458Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39034 "-" "python-httpx/0.28.1" 0.002790
+2026-03-01T15:32:18.886923Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39138 "-" "python-httpx/0.28.1" 0.002515
+2026-03-01T15:32:18.892341Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40131 "-" "python-httpx/0.28.1" 0.002466
+2026-03-01T15:32:18.897620Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39644 "-" "python-httpx/0.28.1" 0.002483
+2026-03-01T15:32:18.902735Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38722 "-" "python-httpx/0.28.1" 0.002436
+2026-03-01T15:32:18.907971Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39512 "-" "python-httpx/0.28.1" 0.002451
+2026-03-01T15:32:18.912978Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40699 "-" "python-httpx/0.28.1" 0.002344
+2026-03-01T15:32:18.918574Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39342 "-" "python-httpx/0.28.1" 0.002403
+2026-03-01T15:32:18.923520Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38889 "-" "python-httpx/0.28.1" 0.002411
+2026-03-01T15:32:18.928182Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39964 "-" "python-httpx/0.28.1" 0.002408
+2026-03-01T15:32:18.933004Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39855 "-" "python-httpx/0.28.1" 0.002390
+2026-03-01T15:32:18.938026Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39159 "-" "python-httpx/0.28.1" 0.002294
+2026-03-01T15:32:18.942934Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39239 "-" "python-httpx/0.28.1" 0.002394
+2026-03-01T15:32:18.947906Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39492 "-" "python-httpx/0.28.1" 0.002474
+2026-03-01T15:32:18.953076Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40220 "-" "python-httpx/0.28.1" 0.002453
+2026-03-01T15:32:18.957887Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39115 "-" "python-httpx/0.28.1" 0.002594
+2026-03-01T15:32:18.963006Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40263 "-" "python-httpx/0.28.1" 0.002520
+2026-03-01T15:32:18.968525Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39591 "-" "python-httpx/0.28.1" 0.002538
+2026-03-01T15:32:18.973553Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40735 "-" "python-httpx/0.28.1" 0.002550
+2026-03-01T15:32:18.978173Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 23089 "-" "python-httpx/0.28.1" 0.001856
+2026-03-01T15:32:19.790710Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points HTTP/1.1" 200 558 "-" "python-httpx/0.28.1" 0.000803
+2026-03-01T15:32:19.908095Z  INFO actix_web::middleware::logger: 192.168.65.1 "PUT /collections/vetka_elisya/points?wait=true HTTP/1.1" 200 88 "-" "python-httpx/0.28.1" 0.002062
+2026-03-01T15:32:19.925740Z  INFO actix_web::middleware::logger: 192.168.65.1 "PUT /collections/VetkaTree/points?wait=true HTTP/1.1" 200 83 "-" "python-httpx/0.28.1" 0.002904
+2026-03-01T15:32:21.292888Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 37010 "-" "python-httpx/0.28.1" 0.006906
+2026-03-01T15:32:21.298048Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40653 "-" "python-httpx/0.28.1" 0.002790
+2026-03-01T15:32:21.303667Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40601 "-" "python-httpx/0.28.1" 0.002831
+2026-03-01T15:32:21.308733Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39579 "-" "python-httpx/0.28.1" 0.002674
+2026-03-01T15:32:21.313627Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40098 "-" "python-httpx/0.28.1" 0.002446
+2026-03-01T15:32:21.319191Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39688 "-" "python-httpx/0.28.1" 0.002437
+2026-03-01T15:32:21.324273Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41314 "-" "python-httpx/0.28.1" 0.002601
+2026-03-01T15:32:21.329708Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 41469 "-" "python-httpx/0.28.1" 0.002607
+2026-03-01T15:32:21.334820Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40148 "-" "python-httpx/0.28.1" 0.002527
+2026-03-01T15:32:21.339609Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39454 "-" "python-httpx/0.28.1" 0.002613
+2026-03-01T15:32:21.345045Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39406 "-" "python-httpx/0.28.1" 0.002417
+2026-03-01T15:32:21.349719Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39441 "-" "python-httpx/0.28.1" 0.002463
+2026-03-01T15:32:21.354491Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39034 "-" "python-httpx/0.28.1" 0.002465
+2026-03-01T15:32:21.359349Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39138 "-" "python-httpx/0.28.1" 0.002482
+2026-03-01T15:32:21.364401Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40131 "-" "python-httpx/0.28.1" 0.002488
+2026-03-01T15:32:21.369263Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39644 "-" "python-httpx/0.28.1" 0.002441
+2026-03-01T15:32:21.374459Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38722 "-" "python-httpx/0.28.1" 0.002413
+2026-03-01T15:32:21.379895Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39511 "-" "python-httpx/0.28.1" 0.002815
+2026-03-01T15:32:21.384910Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40699 "-" "python-httpx/0.28.1" 0.002517
+2026-03-01T15:32:21.390099Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39342 "-" "python-httpx/0.28.1" 0.002436
+2026-03-01T15:32:21.394884Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 38890 "-" "python-httpx/0.28.1" 0.002445
+2026-03-01T15:32:21.399775Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39964 "-" "python-httpx/0.28.1" 0.002747
+2026-03-01T15:32:21.404651Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39856 "-" "python-httpx/0.28.1" 0.002417
+2026-03-01T15:32:21.410778Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39161 "-" "python-httpx/0.28.1" 0.003209
+2026-03-01T15:32:21.415624Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39239 "-" "python-httpx/0.28.1" 0.002429
+2026-03-01T15:32:21.420434Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39492 "-" "python-httpx/0.28.1" 0.002457
+2026-03-01T15:32:21.425139Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40220 "-" "python-httpx/0.28.1" 0.002402
+2026-03-01T15:32:21.429943Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39117 "-" "python-httpx/0.28.1" 0.002538
+2026-03-01T15:32:21.435109Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40263 "-" "python-httpx/0.28.1" 0.002458
+2026-03-01T15:32:21.439867Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 39591 "-" "python-httpx/0.28.1" 0.002466
+2026-03-01T15:32:21.444671Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 40735 "-" "python-httpx/0.28.1" 0.002410
+2026-03-01T15:32:21.449119Z  INFO actix_web::middleware::logger: 192.168.65.1 "POST /collections/vetka_elisya/points/scroll HTTP/1.1" 200 23089 "-" "python-httpx/0.28.1" 0.002031
+2026-03-01T15:33:05.543726Z  INFO actix_web::middleware::logger: 192.168.65.1 "GET /health HTTP/1.1" 404 0 "-" "curl/8.7.1" 0.000050
+           _                 _    
+  __ _  __| |_ __ __ _ _ __ | |_  
+ / _` |/ _` | '__/ _` | '_ \| __| 
+| (_| | (_| | | | (_| | | | | |_  
+ \__, |\__,_|_|  \__,_|_| |_|\__| 
+    |_|                           
+
+Version: 1.16.2, build: d2834de0
+Access web UI at http://localhost:6333/dashboard
+
+2026-03-01T15:58:13.322290Z  INFO storage::content_manager::consensus::persistent: Loading raft state from ./storage/raft_state.json
+2026-03-01T15:58:13.332225Z  INFO storage::content_manager::toc: Loading collection: VetkaArtifacts
+2026-03-01T15:58:13.358050Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/VetkaArtifacts/0: 0/1 (0%)
+2026-03-01T15:58:13.359470Z  INFO collection::shards::local_shard: Recovered collection VetkaArtifacts: 1/1 (100%)
+2026-03-01T15:58:13.361745Z  INFO storage::content_manager::toc: Loading collection: vetka_metadata
+2026-03-01T15:58:13.366453Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/vetka_metadata/0: 0/1 (0%)
+2026-03-01T15:58:13.366472Z  INFO collection::shards::local_shard: Recovered collection vetka_metadata: 1/1 (100%)
+2026-03-01T15:58:13.367051Z  INFO storage::content_manager::toc: Loading collection: vetka_files
+2026-03-01T15:58:13.392513Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/vetka_files/0: 0/1 (0%)
+2026-03-01T15:58:13.405555Z  INFO collection::shards::local_shard: Recovered collection vetka_files: 1/1 (100%)
+2026-03-01T15:58:13.406316Z  INFO storage::content_manager::toc: Loading collection: VetkaTree
+2026-03-01T15:58:13.471556Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/VetkaTree/0: 0/1 (0%)
+2026-03-01T15:58:13.481735Z  INFO collection::shards::local_shard: Recovered collection VetkaTree: 1/1 (100%)
+2026-03-01T15:58:13.482472Z  INFO storage::content_manager::toc: Loading collection: VetkaChangeLog
+2026-03-01T15:58:13.486482Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/VetkaChangeLog/0: 0/1 (0%)
+2026-03-01T15:58:13.486493Z  INFO collection::shards::local_shard: Recovered collection VetkaChangeLog: 1/1 (100%)
+2026-03-01T15:58:13.487086Z  INFO storage::content_manager::toc: Loading collection: VetkaTrash
+2026-03-01T15:58:13.490699Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/VetkaTrash/0: 0/1 (0%)
+2026-03-01T15:58:13.490709Z  INFO collection::shards::local_shard: Recovered collection VetkaTrash: 1/1 (100%)
+2026-03-01T15:58:13.491115Z  INFO storage::content_manager::toc: Loading collection: VetkaLeaf
+2026-03-01T15:58:13.494188Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/VetkaLeaf/0: 0/1 (0%)
+2026-03-01T15:58:13.494200Z  INFO collection::shards::local_shard: Recovered collection VetkaLeaf: 1/1 (100%)
+2026-03-01T15:58:13.494605Z  INFO storage::content_manager::toc: Loading collection: vetka_elisya
+2026-03-01T15:58:13.567820Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/vetka_elisya/0: 0/1 (0%)
+2026-03-01T15:58:13.578343Z  INFO collection::shards::local_shard: Recovered collection vetka_elisya: 1/1 (100%)
+2026-03-01T15:58:13.578763Z  INFO storage::content_manager::toc: Loading collection: VetkaGroupChat
+2026-03-01T15:58:13.623483Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/VetkaGroupChat/0: 0/1 (0%)
+2026-03-01T15:58:13.632570Z  INFO collection::shards::local_shard: Recovered collection VetkaGroupChat: 1/1 (100%)
+2026-03-01T15:58:13.633257Z  INFO storage::content_manager::toc: Loading collection: vetka_user_memories
+2026-03-01T15:58:13.644864Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/vetka_user_memories/0: 0/1 (0%)
+2026-03-01T15:58:13.647133Z  INFO collection::shards::local_shard: Recovered collection vetka_user_memories: 1/1 (100%)
+2026-03-01T15:58:13.647782Z  INFO storage::content_manager::toc: Loading collection: vetka_mcp_states
+2026-03-01T15:58:13.691337Z  INFO collection::shards::local_shard: Recovering shard ./storage/collections/vetka_mcp_states/0: 0/1 (0%)
+2026-03-01T15:58:13.700981Z  INFO collection::shards::local_shard: Recovered collection vetka_mcp_states: 1/1 (100%)
+2026-03-01T15:58:13.703288Z  INFO qdrant: Distributed mode disabled
+2026-03-01T15:58:13.703318Z  INFO qdrant: Telemetry reporting enabled, id: 0bfea8eb-9a54-46c2-a457-3d5253db49ca
+2026-03-01T15:58:13.732074Z  INFO qdrant::tonic: Qdrant gRPC listening on 6334
+2026-03-01T15:58:13.732088Z  INFO qdrant::tonic: TLS disabled for gRPC API
+2026-03-01T15:58:13.732882Z  INFO qdrant::actix: TLS disabled for REST API
+2026-03-01T15:58:13.733188Z  INFO qdrant::actix: Qdrant HTTP listening on 6333
+2026-03-01T15:58:13.733220Z  INFO actix_server::builder: starting 13 workers
+2026-03-01T15:58:13.733250Z  INFO actix_server::server: Actix runtime found; starting in Actix runtime
+2026-03-01T15:58:13.733258Z  INFO actix_server::server: starting service: "actix-web-service-0.0.0.0:6333", workers: 13, listening on: 0.0.0.0:6333

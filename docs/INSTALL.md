@@ -62,7 +62,7 @@ start_vetka.bat           # Windows
 
 ### Первый запуск:
 1. Запустите лаунчер
-2. Откройте http://localhost:5000
+2. Откройте http://localhost:5001
 3. Попробуйте команды:
    - `/bot/create API`
    - `/bot/analyze code`
@@ -91,8 +91,8 @@ rm -rf [путь установки]/VETKA
 
 ### Конфликт портов:
 - Weaviate: 8080
-- Ollama: 11434  
-- Flask: 5000
+- Ollama: 11434
+- VETKA FastAPI: 5001
 
 Если порты заняты, измените в `.env`:
 ```bash

@@ -1,0 +1,324 @@
+Сделал быстрый recon и оформил единый отчет с маркерами:
+
+  - CODEX_CANONIZATION_MARKER_RECON_2026-02-28.md (/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/
+    docs/155_ph/CODEX_CANONIZATION_MARKER_RECON_2026-02-28.md)
+
+  Внутри:
+
+  1. Что уже есть (input_matrix/SCC, G26/G27/G28, engram prefs).
+  2. Что отсутствует относительно V1.1 roadmap.
+  3. Точная матрица EXISTS/MISSING/INSERT_TARGET по файлам.
+  4. Предложенный новый namespace: MARKER_155B.CANON.*.
+  5. Порядок внедрения на 13 шагов (marker-first).
+
+  И да, по твоему вопросу: напрямую переключить внутреннюю “команду codex mini 5.1” здесь я не могу, но такой marker-
+  recon мы уже делаем быстро и дешево текущими инструментами.
+
+  Если даешь GO, следующим шагом начну с P0 в коде: SCHEMA_LOCK + SCHEMA_VERSIONING + EVENT_SCHEMA с маркерами
+  155B.CANON.*.
+
+
+› go
+
+
+• Начинаю P0 в коде: добавлю canonical schema + versioning + event schema сервис с маркерами 155B.CANON.*, и сразу
+  подключу API-эндпоинты в workflow_routes.py. После этого прогоню точечные тесты.
+
+• Explored
+  └ Read workflow_routes.py, workflow_store.py, agent_pipeline.py, pipeline_history.py
+
+─ Worked for 1m 27s ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Context compacted
+
+• Понял, иду в P0 по канонизации: сначала зафиксирую schema/versioning/event-schema в backend с маркерами 155B, затем
+  добавлю API-эндпоинты и прогоню точечные тесты регресса.
+
+• Explored
+  └ Search APIRouter|/api/workflow|workflow in workflow_routes.py
+    Read workflow_routes.py
+    List services
+    Search workflow
+
+• Ran git -C /Users/danilagulin/Documents/VETKA_Project/vetka_live_03 status --short
+  └  m .claude/worktrees/cranky-borg
+     ? .claude/worktrees/magical-agnesi
+    … +126 lines
+    ?? tests/test_voice_audio_postprocess.py
+    ?? tests/test_voice_emotion_prosody.py
+
+• Explored
+  └ Read workflow_store.py
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Собрал контекст по текущим workflow routes/store; сейчас проверю паттерн тестов для API, чтобы добавить P0 без
+  ломки существующего контракта.
+
+• Ran ls -1 /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tests | rg workflow|cat
+  └ test_jarvis_workflow_router.py
+    test_phase144_workflow_store.py
+    test_workflow_events.py
+
+• Explored
+  └ Read __init__.py, test_agents_routes.py
+    Search workflow_routes|/api/workflow/schema|/api/workflow/event-schema|TestClient\(|client.get\(\"/api/workflow
+in
+           tests
+    Read test_jarvis_workflow_router.py, test_workflow_events.py, test_phase144_workflow_store.py,
+         VETKA_MYCELIUM_CANONIZATION_ROADMAP_V1_2026-02-28.md
+
+─ Worked for 1m 21s ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+• Перехожу к узкому P0: добавляю новый сервис канонической схемы (validator/versioning/event schema + migration),
+  затем подключу 3 API-эндпоинта в workflow_routes.py и тесты на контракт.
+
+• Added Documents/VETKA_Project/vetka_live_03/src/services/workflow_canonical_schema.py (+245 -0)
+      1 +"""
+      2 +MARKER_155B.CANON.SCHEMA_LOCK.V1
+      3 +MARKER_155B.CANON.SCHEMA_VERSIONING.V1
+      4 +MARKER_155B.CANON.EVENT_SCHEMA.V1
+      5 +
+      6 +Canonical DAG schema contract + lightweight validator/migration helpers.
+      7 +Phase 155B (Canonization roadmap P0).
+      8 +"""
+      9 +
+     10 +from __future__ import annotations
+     11 +
+     12 +from copy import deepcopy
+     13 +from dataclasses import dataclass
+     14 +from typing import Any, Dict, List, Tuple
+     15 +
+     16 +
+     17 +CURRENT_SCHEMA_VERSION = "1.0.0"
+     18 +SUPPORTED_SCHEMA_VERSIONS = ("0.9.0", "1.0.0")
+     19 +
+     20 +VALID_NODE_TYPES = {
+     21 +    "phase",
+     22 +    "agent",
+     23 +    "task",
+     24 +    "subtask",
+     25 +    "condition",
+     26 +    "parallel",
+     27 +    "loop",
+     28 +    "transform",
+     29 +    "group",
+     30 +}
+     31 +
+     32 +VALID_EDGE_KINDS = {
+     33 +    "flow",
+     34 +    "conditional",
+     35 +    "dataflow",
+     36 +    "temporal",
+     37 +    "feedback",
+     38 +}
+     39 +
+     40 +VALID_EDGE_CHANNELS = {"explicit", "temporal", "referential", "semantic"}
+     41 +
+     42 +
+     43 +@dataclass
+     44 +class CanonicalValidationResult:
+     45 +    valid: bool
+     46 +    errors: List[str]
+     47 +    warnings: List[str]
+     48 +
+     49 +    def to_dict(self) -> Dict[str, Any]:
+     50 +        return {
+     51 +            "valid": self.valid,
+     52 +            "errors": self.errors,
+     53 +            "warnings": self.warnings,
+     54 +        }
+     55 +
+     56 +
+     57 +def get_schema_versions_payload() -> Dict[str, Any]:
+     58 +    return {
+     59 +        "marker": "MARKER_155B.CANON.SCHEMA_VERSIONING.V1",
+     60 +        "current_schema_version": CURRENT_SCHEMA_VERSION,
+     61 +        "supported_schema_versions": list(SUPPORTED_SCHEMA_VERSIONS),
+     62 +        "semver_policy": {
+     63 +            "major": "breaking structural changes",
+     64 +            "minor": "additive non-breaking fields",
+     65 +            "patch": "non-structural fixes",
+     66 +        },
+     67 +        "storage_contract": {
+     68 +            "G_design": "persisted + versioned workflow registry",
+     69 +            "G_runtime": "persisted immutable run snapshots + latest pointer",
+     70 +            "G_predict": "ephemeral by default, optional persisted approved snapshots",
+     71 +        },
+     72 +    }
+     73 +
+     74 +
+     75 +def get_event_schema_payload() -> Dict[str, Any]:
+     76 +    return {
+     77 +        "marker": "MARKER_155B.CANON.EVENT_SCHEMA.V1",
+     78 +        "schema_version": "1.0.0",
+     79 +        "required_fields": [
+     80 +            "event_id",
+     81 +            "ts",
+     82 +            "run_id",
+     83 +            "task_id",
+     84 +            "role",
+     85 +            "phase",
+     86 +            "action",
+     87 +            "status",
+     88 +            "payload",
+     89 +        ],
+     90 +        "optional_fields": [
+     91 +            "duration_s",
+     92 +            "subtask_idx",
+     93 +            "detail",
+     94 +            "sequence",
+     95 +        ],
+     96 +        "ordering_rules": {
+     97 +            "primary_order": ["ts", "sequence"],
+     98 +            "duplicates": "same event_id is idempotent and ignored after first apply",
+     99 +            "late_events": "accepted and reconciled deterministically by ts/sequence",
+    100 +            "missing_terminal_event": "runtime graph kept open with warning",
+    101 +        },
+    102 +    }
+    103 +
+    104 +
+    105 +def get_canonical_schema_template(version: str = CURRENT_SCHEMA_VERSION) -> Dict[str, Any]:
+    106 +    if version not in SUPPORTED_SCHEMA_VERSIONS:
+    107 +        raise ValueError(f"Unsupported schema version: {version}")
+    108 +    return {
+    109 +        "schema_version": version,
+    110 +        "graph": {
+    111 +            "id": "",
+    112 +            "version": "",
+    113 +            "source_format": "json",
+    114 +            "execution_mode": "design",
+    115 +        },
+    116 +        "nodes": [],
+    117 +        "edges": [],
+    118 +        "layout_hints": {
+    119 +            "orientation": "bottom_up",
+    120 +            "layer_spacing": 120,
+    121 +            "node_spacing": 80,
+    122 +        },
+    123 +    }
+    124 +
+    125 +
+    126 +def migrate_canonical_graph(
+    127 +    payload: Dict[str, Any],
+    128 +    to_version: str = CURRENT_SCHEMA_VERSION,
+    129 +) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    130 +    if to_version not in SUPPORTED_SCHEMA_VERSIONS:
+    131 +        raise ValueError(f"Unsupported target schema version: {to_version}")
+    132 +
+    133 +    migrated = deepcopy(payload)
+    134 +    source_version = str(migrated.get("schema_version") or "0.9.0")
+    135 +    notes: List[str] = []
+    136 +
+    137 +    if source_version == to_version:
+    138 +        return migrated, {
+    139 +            "source_version": source_version,
+    140 +            "target_version": to_version,
+    141 +            "changed": False,
+    142 +            "notes": ["no-op migration"],
+    143 +        }
+    144 +
+    145 +    if source_version == "0.9.0" and to_version == "1.0.0":
+    146 +        migrated.setdefault("graph", {})
+    147 +        migrated.setdefault("nodes", [])
+    148 +        migrated.setdefault("edges", [])
+    149 +        migrated.setdefault(
+    150 +            "layout_hints",
+    151 +            {"orientation": "bottom_up", "layer_spacing": 120, "node_spacing": 80},
+    152 +        )
+    153 +        migrated["schema_version"] = "1.0.0"
+    154 +        notes.append("set default graph/nodes/edges/layout_hints and bumped schema_version")
+    155 +    else:
+    156 +        raise ValueError(f"Unsupported migration path: {source_version} -> {to_version}")
+    157 +
+    158 +    return migrated, {
+    159 +        "source_version": source_version,
+    160 +        "target_version": to_version,
+    161 +        "changed": True,
+    162 +        "notes": notes,
+    163 +    }
+    164 +
+    165 +
+    166 +def validate_canonical_graph(payload: Dict[str, Any]) -> CanonicalValidationResult:
+    167 +    errors: List[str] = []
+    168 +    warnings: List[str] = []
+    169 +
+    170 +    schema_version = str(payload.get("schema_version") or "")
+    171 +    if not schema_version:
+    172 +        errors.append("schema_version is required")
+    173 +    elif schema_version not in SUPPORTED_SCHEMA_VERSIONS:
+    174 +        errors.append(f"unsupported schema_version: {schema_version}")
+    175 +
+    176 +    graph = payload.get("graph")
+    177 +    if not isinstance(graph, dict):
+    178 +        errors.append("graph must be an object")
+    179 +    else:
+    180 +        for field in ("id", "version", "source_format", "execution_mode"):
+    181 +            if field not in graph:
+    182 +                warnings.append(f"graph.{field} missing")
+    183 +
+    184 +    nodes = payload.get("nodes")
+    185 +    edges = payload.get("edges")
+    186 +    if not isinstance(nodes, list):
+    187 +        errors.append("nodes must be an array")
+    188 +        nodes = []
+    189 +    if not isinstance(edges, list):
+    190 +        errors.append("edges must be an array")
+    191 +        edges = []
+    192 +
+    193 +    node_ids = set()
+    194 +    for idx, node in enumerate(nodes):
+    195 +        if not isinstance(node, dict):
+    196 +            errors.append(f"nodes[{idx}] must be an object")
+    197 +            continue
+    198 +        node_id = node.get("id")
+    199 +        if not node_id:
+    200 +            errors.append(f"nodes[{idx}] missing id")
+    201 +            continue
+    202 +        if node_id in node_ids:
+    203 +            errors.append(f"duplicate node id: {node_id}")
+    204 +        node_ids.add(node_id)
+    205 +        node_type = node.get("type")
+    206 +        if node_type and node_type not in VALID_NODE_TYPES:
+    207 +            warnings.append(f"nodes[{idx}] unknown type: {node_type}")
+    208 +        meta = node.get("meta")
+    209 +        if isinstance(meta, dict) and "level" in meta:
+    210 +            level = meta.get("level")
+    211 +            if not isinstance(level, (int, float)):
+    212 +                warnings.append(f"nodes[{idx}].meta.level should be numeric")
+    213 +
+    214 +    for idx, edge in enumerate(edges):
+    215 +        if not isinstance(edge, dict):
+    216 +            errors.append(f"edges[{idx}] must be an object")
+    217 +            continue
+    218 +        source = edge.get("source")
+    219 +        target = edge.get("target")
+    220 +        if not source or not target:
+    221 +            errors.append(f"edges[{idx}] must include source and target")
+    222 +            continue
+    223 +        if source not in node_ids:
+    224 +            warnings.append(f"edges[{idx}] source not found in nodes: {source}")
+    225 +        if target not in node_ids:
+    226 +            warnings.append(f"edges[{idx}] target not found in nodes: {target}")
+    227 +
+    228 +        kind = edge.get("kind")
+    229 +        if kind and kind not in VALID_EDGE_KINDS:
+    230 +            warnings.append(f"edges[{idx}] unknown kind: {kind}")
+    231 +
+    232 +        meta = edge.get("meta")
+    233 +        if isinstance(meta, dict):
+    234 +            channel = meta.get("channel")
+    235 +            if channel and channel not in VALID_EDGE_CHANNELS:
+    236 +                warnings.append(f"edges[{idx}] unknown channel: {channel}")
+    237 +            score = meta.get("score")
+    238 +            if score is not None and not isinstance(score, (int, float)):
+    239 +                warnings.append(f"edges[{idx}].meta.score should be numeric")
+    240 +
+    241 +    layout_hints = payload.get("layout_hints")
+    242 +    if layout_hints is not None and not isinstance(layout_hints, dict):
+    243 +        errors.append("layout_hints must be an object if provided")
+    244 +
+    245 +    return CanonicalValidationResult(valid=not errors, errors=errors, warnings=warnings)
+
+■ You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit
+https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Mar 4th, 2026 5:51 PM.

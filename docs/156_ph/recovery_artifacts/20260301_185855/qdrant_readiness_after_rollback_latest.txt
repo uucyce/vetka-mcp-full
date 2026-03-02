@@ -1,0 +1,11 @@
+19:38:55 i=1 readyz=200 collections=200 body=all shards are ready
+19:38:56 i=2 readyz=200 collections=200 body=all shards are ready
+19:38:57 i=3 readyz=200 collections=200 body=all shards are ready
+19:38:58 i=4 readyz=200 collections=200 body=all shards are ready
+19:38:59 i=5 readyz=200 collections=200 body=all shards are ready
+19:39:00 i=6 readyz=200 collections=200 body=all shards are ready
+19:39:01 i=7 readyz=200 collections=200 body=all shards are ready
+19:39:02 i=8 readyz=200 collections=200 body=all shards are ready
+19:39:03 i=9 readyz=200 collections=200 body=all shards are ready
+19:39:04 i=10 readyz=200 collections=200 body=all shards are ready
+STABLE_OK at i=10

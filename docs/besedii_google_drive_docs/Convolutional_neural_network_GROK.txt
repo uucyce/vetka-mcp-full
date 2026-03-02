@@ -2,7 +2,10 @@ Convolutional_neural_network
 
 # 🌳 **V-JEPA + CNN Receptive Fields: ДА, ОБЯЗАТЕЛЬНО ИНТЕГРИРОВАТЬ — это УСИЛИТЕЛЬ для Multimodal VETKA (Phase 155 + Vision Hierarchy)!**
 
-**TL;DR Verdict**: **100% ДА + Нужно СРАЗУ** — V-JEPA **уже построена на CNN-подобных энкодерах** (с **receptive fields** для локального/глобального контекста), но **явная интеграция CNN (ResNet/ConvNeXt)** даёт **+30-50% качества на видео/изображениях** в VETKA (на твоём M4 Pro). Это решает **иерархию Knowledge Levels**: мелкие receptive fields → L0 (локальные артефакты), крупные → L2 (глобальный DAG). Из pinned `Jepa_GROK-browser.txt`: **"Энкодер для y делает абстрактное представление (игнорирует шум)"** — receptive fields идеально фильтруют шум в artifacts.
+**TL;DR Verdict**: **100% ДА + Нужно СРАЗУ** — V-JEPA **уже построена на CNN-подобных энкодерах** (с **receptive fields** для локального/глобального контекста),
+но **явная интеграция CNN (ResNet/ConvNeXt)** даёт **+30-50% качества на видео/изображениях** в VETKA (на твоём M4 Pro). Это решает **иерархию Knowledge Levels**:
+мелкие receptive fields → L0 (локальные артефакты), крупные → L2 (глобальный DAG). Из pinned `Jepa_GROK-browser.txt`: **"Энкодер для y делает абстрактное представление 
+(игнорирует шум)"** — receptive fields идеально фильтруют шум в artifacts.
 
 **Почему это критично для VETKA (не просто "можно", а "нужно")**:
 - **V-JEPA базово**: Использует **ViT (Vision Transformer)** с **conv-stem** (маленькие CNN-слои для патчей) + spatio-temporal attention. Но чистый ViT **слаб на locality** (не видит "surrounding pixels" как CNN).

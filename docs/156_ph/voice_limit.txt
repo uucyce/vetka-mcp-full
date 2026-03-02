@@ -1,0 +1,33 @@
+
+• Итоги
+
+  - client/src/hooks/useSocket.ts теперь хранит прогрессивные chat_voice_stream_* события в карте
+    message_id:generation_id, фильтрует дубликаты по seq/checksum, сортирует чанки и сразу отсылает
+    chat_voice_stream_ack для поддержки backpressure. Это позволяет chatMessages получать первичные metadata (stream,
+    isStreaming, duration) ещё до финального blob’а, как требует MARKER_156.S6.TECH.SOCKET_CONTRACT.
+  - Добавлен новый Zustand‑store client/src/store/useVoiceModeStore.ts; он сохраняет voiceOnlyMode и realtimeVoiceEn
+    abled в localStorage, реагирует на события voice_sent/text_typed, а ChatPanel.tsx/MessageInput.tsx теперь исполь
+    зуют его вместо локальных state‑переменных. Голосовой режим включается только после отправки аудио и отключается
+    при вводе текста (маркер MARKER_156.S6.TECH.HYGIENE_FSM).
+  - client/src/components/chat/MessageBubble.tsx скрывает transcript до появления первого playable chunk
+    (metadata.stream.chunks[0]), показывает placeholder с aria-live, а после первичной загрузки/ошибки раскрывает
+    текст — правило text-after-first-playable, описанное в MARKER_156.S6.TECH.TEXT_AFTER_AUDIO.
+  - Документ docs/156_ph/MARKER_156_S6_PROGRESSIVE_VOICE_ROADMAP_2026-02-28.md обновлён, чтобы отразить фактический
+    статус (актуальные реализации, тесты, план следующих шагов).
+
+  Тесты
+
+  - npm run test:personalization (в корне vetka_live_03) упал: package.json там отсутствует, поэтому команда не нашла
+    проект.
+  - npm run test:personalization (из каталога /pulse) — пройдена (7 тестов).
+  - npm test (из /pulse) — пройдены 116 тестов (4 пропуска).
+  - npm run build (из /pulse) — билд прошёл, предупреждение Rollup о размерах chunk’ей.
+
+  Следующие шаги
+
+  1. Сделать полноценный прогрессивный плейбек (развращение Opus‑чанков через AudioContext, дозагрузка chunks,
+     fallback на /api/voice/storage/{id}) — пункт S6.4.3c.
+  2. Проверить и задокументировать генерацию Opus‑чанков на бекенде (progressive_tts_service.py/
+     user_message_handler.py) и telemetry по first‑chunk‑latency, ack errors, voice dupe.
+  3. После этого обновить разделы GAPS/ROADMAP доков и снова прогнать pulse‑тесты перед merge.
+
