@@ -104,6 +104,7 @@ _trash/
 .playgrounds/
 .claude/worktrees/
 .vetka-playground-pg_*
+config/runtime.env
 
 # Runtime data (keep only minimal templates/placeholders tracked)
 data/**
