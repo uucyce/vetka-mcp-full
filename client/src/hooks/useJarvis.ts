@@ -12,6 +12,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { useStore } from '../store/useStore';
+import { buildViewportContext } from '../utils/viewport';
+import { BACKEND_ORIGIN } from '../config/api.config';
 
 // Jarvis state machine
 type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -26,12 +29,25 @@ interface UseJarvisReturn {
   stopListening: () => void;
   toggle: () => Promise<void>;
   isListening: boolean;
+  selectedLlmModel: string;
+  setSelectedLlmModel: (modelId: string) => void;
 }
 
 // Audio processing configuration
 const SAMPLE_RATE = 16000; // 16kHz for Whisper
 const CHUNK_SIZE = 4096;
 const SMOOTHING_FACTOR = 0.3; // For audio level smoothing
+
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: any) => void) | null;
+  onerror: ((event: any) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
 
 export const useJarvis = (): UseJarvisReturn => {
   // State management
@@ -40,6 +56,13 @@ export const useJarvis = (): UseJarvisReturn => {
   const [response, setResponse] = useState<string>('');
   const [audioLevel, setAudioLevel] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
+  const [selectedLlmModel, setSelectedLlmModelState] = useState<string>(() => {
+    try {
+      return localStorage.getItem('jarvis_llm_model') || '';
+    } catch {
+      return '';
+    }
+  });
 
   // Refs for persistent values
   const socketRef = useRef<Socket | null>(null);
@@ -50,10 +73,68 @@ export const useJarvis = (): UseJarvisReturn => {
   const smoothedLevelRef = useRef<number>(0);
   const playbackContextRef = useRef<AudioContext | null>(null);
   const conversationActiveRef = useRef<boolean>(false);  // Track if in conversation mode
+  const captureActiveRef = useRef<boolean>(false);
+  const transcriptHintRef = useRef<string>('');
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+
+  const stopSpeechRecognition = useCallback(() => {
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch {
+        // no-op
+      }
+      speechRecognitionRef.current = null;
+    }
+  }, []);
+
+  const buildJarvisContextSnapshot = useCallback(() => {
+    const state = useStore.getState();
+    const pinnedIds = state.pinnedFileIds || [];
+    const nodes = state.nodes || {};
+
+    const pinnedFiles = pinnedIds
+      .map((nodeId) => nodes[nodeId])
+      .filter(Boolean)
+      .slice(0, 12)
+      .map((node) => ({
+        id: node.id,
+        name: node.name,
+        path: node.path,
+        type: node.type,
+      }));
+
+    const viewportContext = state.cameraRef
+      ? buildViewportContext(nodes, pinnedIds, state.cameraRef)
+      : undefined;
+
+    const openChatMessages = (state.chatMessages || [])
+      .slice(-10)
+      .map((m) => ({
+        role: m.role,
+        content: (m.content || '').slice(0, 300),
+        timestamp: m.timestamp,
+      }));
+
+    return {
+      pinned_files: pinnedFiles.length > 0 ? pinnedFiles : undefined,
+      viewport_context: viewportContext,
+      open_chat_context: state.currentChatId
+        ? {
+            chat_id: state.currentChatId,
+            messages: openChatMessages,
+          }
+        : undefined,
+      cam_context: {
+        source: 'jarvis_live_button',
+      },
+      llm_model: selectedLlmModel || undefined,
+    };
+  }, [selectedLlmModel]);
 
   // Initialize socket connection
   useEffect(() => {
-    const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:5001', {
+    const socket = io(import.meta.env.VITE_API_URL || BACKEND_ORIGIN, {
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 1000,
@@ -194,7 +275,7 @@ export const useJarvis = (): UseJarvisReturn => {
         // Convert to Int16 and send to backend
         const int16Data = float32ToInt16(inputData);
 
-        if (socketRef.current?.connected) {
+        if (captureActiveRef.current && socketRef.current?.connected) {
           socketRef.current.emit('jarvis_audio_chunk', {
             audio: int16Data.buffer,
             sample_rate: SAMPLE_RATE,
@@ -208,10 +289,54 @@ export const useJarvis = (): UseJarvisReturn => {
 
       // Emit start event with user_id
       if (socketRef.current?.connected) {
-        socketRef.current.emit('jarvis_listen_start', { user_id: 'default_user' });
+        transcriptHintRef.current = '';
+        socketRef.current.emit('jarvis_listen_start', {
+          user_id: 'default_user',
+          ...buildJarvisContextSnapshot(),
+        });
+      }
+
+      // Browser STT fallback (used when backend STT model is unavailable)
+      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SR) {
+        const recognition: SpeechRecognitionLike = new SR();
+        recognition.lang = 'ru-RU';
+        recognition.interimResults = true;
+        recognition.continuous = true;
+        recognition.onresult = (event: any) => {
+          let finalText = '';
+          for (let i = 0; i < event.results.length; i++) {
+            const result = event.results[i];
+            if (result?.isFinal) {
+              finalText += String(result[0]?.transcript || '') + ' ';
+            }
+          }
+          if (finalText.trim()) {
+            transcriptHintRef.current = (transcriptHintRef.current + ' ' + finalText).trim();
+          }
+        };
+        recognition.onerror = () => {
+          // silent: fallback is optional
+        };
+        recognition.onend = () => {
+          if (captureActiveRef.current) {
+            try {
+              recognition.start();
+            } catch {
+              // no-op
+            }
+          }
+        };
+        speechRecognitionRef.current = recognition;
+        try {
+          recognition.start();
+        } catch {
+          speechRecognitionRef.current = null;
+        }
       }
 
       // Activate conversation mode
+      captureActiveRef.current = true;
       conversationActiveRef.current = true;
       setState('listening');
       console.log('Jarvis listening started (conversation active)');
@@ -231,13 +356,32 @@ export const useJarvis = (): UseJarvisReturn => {
 
     // Emit stop event with user_id
     if (socketRef.current?.connected) {
-      socketRef.current.emit('jarvis_listen_stop', { user_id: 'default_user' });
+      socketRef.current.emit('jarvis_listen_stop', {
+        user_id: 'default_user',
+        transcript_hint: transcriptHintRef.current || undefined,
+        ...buildJarvisContextSnapshot(),
+      });
     }
 
+    captureActiveRef.current = false;
+    stopSpeechRecognition();
     cleanup();
     setState('idle');
     setAudioLevel(0);
     smoothedLevelRef.current = 0;
+  }, [buildJarvisContextSnapshot, stopSpeechRecognition]);
+
+  const setSelectedLlmModel = useCallback((modelId: string) => {
+    setSelectedLlmModelState(modelId);
+    try {
+      if (modelId) {
+        localStorage.setItem('jarvis_llm_model', modelId);
+      } else {
+        localStorage.removeItem('jarvis_llm_model');
+      }
+    } catch {
+      // no-op
+    }
   }, []);
 
   /**
@@ -261,6 +405,8 @@ export const useJarvis = (): UseJarvisReturn => {
     if (state === 'speaking') {
       // Stop playback and end conversation
       conversationActiveRef.current = false;
+      captureActiveRef.current = false;
+      stopSpeechRecognition();
       if (playbackContextRef.current) {
         await playbackContextRef.current.close();
         playbackContextRef.current = null;
@@ -271,6 +417,8 @@ export const useJarvis = (): UseJarvisReturn => {
     if (state === 'thinking') {
       // End conversation even during thinking
       conversationActiveRef.current = false;
+      captureActiveRef.current = false;
+      stopSpeechRecognition();
       console.log('Ending conversation during thinking');
       setState('idle');
       return;
@@ -282,13 +430,14 @@ export const useJarvis = (): UseJarvisReturn => {
     } else if (state === 'idle') {
       await startListening();
     }
-  }, [state, startListening, stopListening]);
+  }, [state, startListening, stopListening, stopSpeechRecognition]);
 
   /**
    * Cleanup audio resources
    */
   const cleanup = (): void => {
     // Stop processor
+    captureActiveRef.current = false;
     if (processorRef.current) {
       processorRef.current.disconnect();
       processorRef.current.onaudioprocess = null;
@@ -377,5 +526,7 @@ export const useJarvis = (): UseJarvisReturn => {
     stopListening,
     toggle,
     isListening: state === 'listening',
+    selectedLlmModel,
+    setSelectedLlmModel,
   };
 };

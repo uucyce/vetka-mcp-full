@@ -514,6 +514,7 @@ class JarvisSession:
     stt_confidence: float = 1.0
     prediction_confidence: float = 1.0
     is_interrupted: bool = False
+    client_context: Dict[str, Any] = field(default_factory=dict)
 
     def reset_buffer(self):
         """Clear audio buffer and VAD state"""
@@ -525,6 +526,39 @@ class JarvisSession:
         self.stt_confidence = 1.0
         self.prediction_confidence = 1.0
         self.is_interrupted = False
+
+
+def _extract_client_context(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract bounded Jarvis context payload from socket event data."""
+    if not isinstance(data, dict):
+        return {}
+
+    context: Dict[str, Any] = {}
+
+    viewport_context = data.get("viewport_context")
+    if isinstance(viewport_context, dict):
+        context["viewport_context"] = viewport_context
+
+    pinned_files = data.get("pinned_files")
+    if isinstance(pinned_files, list):
+        context["pinned_files"] = pinned_files[:12]
+
+    open_chat_context = data.get("open_chat_context")
+    if isinstance(open_chat_context, dict):
+        messages = open_chat_context.get("messages")
+        if isinstance(messages, list):
+            open_chat_context = {**open_chat_context, "messages": messages[-10:]}
+        context["open_chat_context"] = open_chat_context
+
+    cam_context = data.get("cam_context")
+    if isinstance(cam_context, dict):
+        context["cam_context"] = cam_context
+
+    llm_model = data.get("llm_model")
+    if isinstance(llm_model, str) and llm_model.strip():
+        context["llm_model"] = llm_model.strip()
+
+    return context
 
     def add_audio_chunk(self, chunk: bytes):
         """Add audio chunk to buffer"""
@@ -567,6 +601,7 @@ def register_jarvis_handlers(sio):
             session = JarvisSession(user_id=user_id)
             session.state = JarvisState.LISTENING
             session.reset_buffer()
+            session.client_context = _extract_client_context(data)
 
             _active_sessions[sid] = session
 
@@ -601,8 +636,8 @@ def register_jarvis_handlers(sio):
                 return
 
             if session.state != JarvisState.LISTENING:
-                logger.warning(
-                    f"[JARVIS] Received audio chunk in wrong state: {session.state} for sid={sid}"
+                logger.debug(
+                    f"[JARVIS] Ignoring audio chunk in state={session.state} for sid={sid}"
                 )
                 return
 
@@ -678,10 +713,15 @@ def register_jarvis_handlers(sio):
                 return
 
             user_id = data.get('user_id')
+            transcript_hint = (data.get('transcript_hint') or '').strip()
             if user_id != session.user_id:
                 logger.warning(
                     f"[JARVIS] User ID mismatch: session={session.user_id}, data={user_id}"
                 )
+
+            stop_context = _extract_client_context(data)
+            if stop_context:
+                session.client_context.update(stop_context)
 
             logger.info(
                 f"[JARVIS] Listen stopped for user {session.user_id}, "
@@ -703,8 +743,13 @@ def register_jarvis_handlers(sio):
 
             if len(audio_data) < 1000:
                 logger.warning(f"[JARVIS] Audio buffer too small: {len(audio_data)} bytes")
-                transcript = ""
-                stt_confidence = 0.0
+                if transcript_hint:
+                    transcript = transcript_hint
+                    stt_confidence = 0.78
+                    logger.info("[JARVIS] Using transcript_hint due to small audio buffer")
+                else:
+                    transcript = ""
+                    stt_confidence = 0.0
             elif HAS_MLX_WHISPER:
                 # Convert Int16 PCM to WAV file for Whisper
                 try:
@@ -750,12 +795,35 @@ def register_jarvis_handlers(sio):
 
                 except Exception as e:
                     logger.error(f"[JARVIS] STT failed: {e}")
-                    transcript = "[STT Error]"
-                    stt_confidence = 0.0
+                    if transcript_hint:
+                        transcript = transcript_hint
+                        stt_confidence = 0.72
+                        logger.info("[JARVIS] Using transcript_hint due to STT failure")
+                    else:
+                        transcript = "[STT Error]"
+                        stt_confidence = 0.0
             else:
-                logger.warning("[JARVIS] No STT engine available")
-                transcript = "[No STT available]"
-                stt_confidence = 0.0
+                if transcript_hint:
+                    logger.info("[JARVIS] No STT engine, using transcript_hint from client")
+                    transcript = transcript_hint
+                    stt_confidence = 0.70
+                else:
+                    # Fallback to shared realtime STT chain (gemini/openai/deepgram/whisper local)
+                    # so Jarvis can still work when mlx_whisper is missing.
+                    try:
+                        from src.api.handlers.voice_realtime_providers import stt_from_pcm_bytes
+                        transcript = (await stt_from_pcm_bytes(audio_data, provider="gemini")).strip()
+                        if transcript:
+                            logger.info("[JARVIS] STT from realtime provider fallback")
+                            stt_confidence = 0.62
+                        else:
+                            logger.warning("[JARVIS] No STT engine available and realtime fallback returned empty")
+                            transcript = "[No STT available]"
+                            stt_confidence = 0.0
+                    except Exception as e:
+                        logger.warning(f"[JARVIS] No STT engine and realtime fallback failed: {e}")
+                        transcript = "[No STT available]"
+                        stt_confidence = 0.0
 
             session.transcript = transcript
             session.stt_confidence = stt_confidence
@@ -835,7 +903,11 @@ def register_jarvis_handlers(sio):
                     llm_start = time.perf_counter()
 
                     llm = get_jarvis_llm()
-                    context = await get_jarvis_context(session.user_id, transcript)
+                    context = await get_jarvis_context(
+                        session.user_id,
+                        transcript,
+                        extra_context=session.client_context,
+                    )
 
                     # Define the prediction function for timeout wrapper
                     async def _generate_llm_response(text: str) -> str:

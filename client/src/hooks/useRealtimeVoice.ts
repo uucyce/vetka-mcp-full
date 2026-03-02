@@ -36,7 +36,7 @@ interface VoiceClientToServer {
   voice_utterance_end: () => void;
   voice_stream_end: () => void;
   voice_interrupt: () => void;
-  voice_config: (data: { model?: string; tts_voice?: string; stt_provider?: string }) => void;
+  voice_config: (data: { model?: string; tts_voice?: string; stt_provider?: string; chat_mode?: boolean }) => void;
 }
 
 export interface UseRealtimeVoiceOptions {
@@ -48,6 +48,7 @@ export interface UseRealtimeVoiceOptions {
   model?: string;           // LLM model to use
   ttsVoice?: string;        // TTS voice ID
   sttProvider?: string;     // STT provider (whisper/deepgram/openai)
+  chatMode?: boolean;       // Chat input mode: STT only, no voice-router LLM/TTS
 }
 
 export interface VoiceState {
@@ -194,9 +195,10 @@ export function useRealtimeVoice(options: UseRealtimeVoiceOptions = {}) {
         model: options.model,
         tts_voice: options.ttsVoice,
         stt_provider: options.sttProvider,
+        chat_mode: options.chatMode,
       });
     }
-  }, [options.model, options.ttsVoice, options.sttProvider]);
+  }, [options.model, options.ttsVoice, options.sttProvider, options.chatMode]);
 
   // Play TTS chunks
   const playNextChunk = useCallback(async () => {

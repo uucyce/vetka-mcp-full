@@ -9,6 +9,7 @@ Runs on port 5002 with custom voice generation capabilities.
 
 import base64
 import io
+import os
 import time
 from typing import Optional
 
@@ -17,6 +18,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uvicorn
+from src.voice.audio_postprocess import apply_prosody_to_audio, float_audio_to_wav_bytes
 
 # MLX audio imports
 try:
@@ -31,6 +33,10 @@ class TTSRequest(BaseModel):
     text: str
     language: str = "English"
     speaker: str = "ryan"
+    speed: Optional[float] = None
+    pitch: Optional[int] = None
+    energy: Optional[float] = None
+    pause_profile: Optional[str] = None
 
 
 class TTSResponse(BaseModel):
@@ -42,7 +48,31 @@ class TTSResponse(BaseModel):
 
 # Global model instance
 model = None
-MODEL_NAME = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
+_MODEL_PROFILES = {
+    "4bit": "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-4bit",
+    "5bit": "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-5bit",
+    "6bit": "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-6bit",
+    "8bit": "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit",
+}
+
+
+def _resolve_model_config() -> tuple[str, str]:
+    """
+    MARKER_156.VOICE.S6_QWEN_PROFILE_SWITCH:
+    Select active model by profile with optional direct override.
+    """
+    explicit_model = os.getenv("QWEN_TTS_MODEL", "").strip()
+    if explicit_model:
+        return "custom", explicit_model
+
+    profile = os.getenv("QWEN_TTS_PROFILE", "4bit").strip().lower()
+    if profile not in _MODEL_PROFILES:
+        print(f"[TTS] Unknown QWEN_TTS_PROFILE={profile!r}, fallback to 4bit")
+        profile = "4bit"
+    return profile, _MODEL_PROFILES[profile]
+
+
+MODEL_PROFILE, MODEL_NAME = _resolve_model_config()
 
 # FastAPI app
 app = FastAPI(
@@ -73,8 +103,10 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy" if model is not None else "unhealthy",
+        "profile": MODEL_PROFILE,
         "model": MODEL_NAME,
-        "model_loaded": model is not None
+        "model_loaded": model is not None,
+        "available_profiles": sorted(_MODEL_PROFILES.keys()),
     }
 
 
@@ -119,16 +151,23 @@ async def generate_speech(request: TTSRequest):
         # Concatenate all chunks
         full_audio = np.concatenate(audio_chunks)
 
-        # Convert float32 [-1, 1] to int16 [-32768, 32767]
-        audio_int16 = (full_audio * 32767).astype(np.int16)
+        # S6.4.1: Apply local prosody controls (speed/pitch/energy/pause) post generation.
+        processed_audio = apply_prosody_to_audio(
+            full_audio,
+            sample_rate=24000,
+            speed=request.speed,
+            pitch=request.pitch,
+            energy=request.energy,
+            pause_profile=request.pause_profile,
+        )
 
         # Calculate duration in seconds
         sample_rate = 24000
-        duration = len(audio_int16) / sample_rate
+        duration = len(processed_audio) / sample_rate
 
-        # Convert to bytes and encode as base64
-        audio_bytes = audio_int16.tobytes()
-        audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+        # Convert to real WAV bytes and encode as base64.
+        audio_bytes = float_audio_to_wav_bytes(processed_audio, sample_rate=sample_rate)
+        audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
 
         generation_time = time.time() - start_time
         print(f"Generated {duration:.2f}s audio in {generation_time:.2f}s (RTF: {generation_time/duration:.2f}x)")
@@ -151,6 +190,7 @@ async def root():
     return {
         "service": "MLX Qwen3-TTS Server",
         "version": "1.0.0",
+        "profile": MODEL_PROFILE,
         "model": MODEL_NAME,
         "endpoints": {
             "health": "GET /health",
@@ -164,6 +204,7 @@ if __name__ == "__main__":
     import sys
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5003
     print(f"Starting MLX Qwen3-TTS Server on port {port}...")
+    print(f"Profile: {MODEL_PROFILE}")
     print(f"Model: {MODEL_NAME}")
     print("Endpoints:")
     print(f"  - POST http://localhost:{port}/tts/generate")

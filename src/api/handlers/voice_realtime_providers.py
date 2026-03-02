@@ -17,6 +17,7 @@ import struct
 from typing import Optional, AsyncGenerator, List
 
 from src.utils.unified_key_manager import get_key_manager
+from src.voice.qwen_voice_catalog import normalize_qwen_voice_id
 
 logger = logging.getLogger(__name__)
 
@@ -265,49 +266,27 @@ async def stt_openai(audio_bytes: bytes) -> str:
         return ""
 
 
-async def stt_from_pcm_bytes(audio_bytes: bytes, provider: str = "gemini") -> str:
+async def stt_from_pcm_bytes(audio_bytes: bytes, provider: str = "whisper") -> str:
     """
-    Main STT entry point - LINEAR fallback chain (NO recursion!)
+    Main STT entry point - strict provider mode (NO fallback chain).
 
     Args:
         audio_bytes: Raw PCM audio bytes (Int16 LE, 16kHz, mono)
-        provider: Preferred STT provider name
-
-    Fallback chain: preferred -> gemini -> openai -> deepgram -> whisper_local
-    Each provider returns "" on failure, we try next in chain.
+        provider: Selected STT provider name
     """
-    # Build provider chain starting with preferred
-    providers = []
-    if provider == "deepgram":
-        providers = ["deepgram", "gemini", "openai", "whisper"]
-    elif provider == "openai":
-        providers = ["openai", "gemini", "deepgram", "whisper"]
-    elif provider == "whisper":
-        providers = ["whisper", "gemini", "openai", "deepgram"]
-    else:
-        providers = ["gemini", "openai", "deepgram", "whisper"]
+    prov = (provider or "whisper").strip().lower()
+    logger.info(f"[STT] Using provider: {prov}")
 
-    # Try each provider in order
-    for prov in providers:
-        logger.info(f"[STT] Trying provider: {prov}")
-        result = ""
+    if prov == "gemini":
+        return await stt_gemini(audio_bytes)
+    if prov == "openai":
+        return await stt_openai(audio_bytes)
+    if prov == "deepgram":
+        return await stt_deepgram(audio_bytes)
+    if prov == "whisper":
+        return await stt_whisper_local(audio_bytes)
 
-        if prov == "gemini":
-            result = await stt_gemini(audio_bytes)
-        elif prov == "openai":
-            result = await stt_openai(audio_bytes)
-        elif prov == "deepgram":
-            result = await stt_deepgram(audio_bytes)
-        elif prov == "whisper":
-            result = await stt_whisper_local(audio_bytes)
-
-        if result and result.strip():
-            logger.info(f"[STT] Success with {prov}")
-            return result
-        else:
-            logger.warning(f"[STT] {prov} failed, trying next...")
-
-    logger.error("[STT] All providers failed!")
+    logger.error(f"[STT] Unknown provider '{prov}'")
     return ""
 
 
@@ -383,7 +362,7 @@ async def llm_stream_response(
     conversation_history: Optional[List[dict]] = None
 ) -> AsyncGenerator[str, None]:
     """
-    Stream LLM response - tries X.AI (Grok) first, then OpenRouter
+    Stream LLM response in strict model/provider mode (NO fallback).
 
     Args:
         prompt: User's message
@@ -413,17 +392,13 @@ async def llm_stream_response(
     else:
         messages.append({"role": "user", "content": prompt})
 
-    # Try X.AI (Grok) API directly first - PRIORITY
-    if "grok" in model.lower():
-        grok_model = model if not "/" in model else model.split("/")[-1]
-        has_response = False
-        async for token in llm_stream_grok(messages, grok_model):
-            has_response = True
+    # Direct XAI mode only for raw grok model IDs (without provider prefix).
+    if "grok" in model.lower() and "/" not in model:
+        async for token in llm_stream_grok(messages, model):
             yield token
-        if has_response:
-            return
+        return
 
-    # Fallback to OpenRouter
+    # Otherwise: OpenRouter with the exact selected model ID.
     km = get_key_manager()
     api_key = km.get_openrouter_key()
 
@@ -431,26 +406,6 @@ async def llm_stream_response(
         logger.error("[LLM] No OpenRouter key in KeyManager!")
         yield "Sorry, I couldn't process that."
         return
-
-    # Build model ID for OpenRouter
-    model_id = model
-    if not "/" in model_id:
-        if "grok" in model_id.lower():
-            # Map old Grok names to current OpenRouter model IDs
-            grok_map = {
-                "grok-beta": "x-ai/grok-3-mini-beta",  # grok-beta -> grok-3-mini (fast, free tier)
-                "grok-2": "x-ai/grok-3-mini-beta",     # grok-2 retired -> grok-3-mini
-                "grok-3": "x-ai/grok-3-mini-beta",     # grok-3 -> grok-3-mini
-                "grok-3-mini": "x-ai/grok-3-mini-beta",
-                "grok-4": "x-ai/grok-4",
-            }
-            model_id = grok_map.get(model_id.lower(), "x-ai/grok-3-mini-beta")
-        elif "claude" in model_id.lower():
-            model_id = f"anthropic/{model_id}"
-        elif "gpt" in model_id.lower():
-            model_id = f"openai/{model_id}"
-        elif "gemini" in model_id.lower():
-            model_id = f"google/{model_id}"
 
     # messages already built above
     try:
@@ -468,7 +423,7 @@ async def llm_stream_response(
                     "X-Title": "VETKA Voice",
                 },
                 json={
-                    "model": model_id,
+                    "model": model,
                     "messages": messages,
                     "stream": True,
                     "max_tokens": 500,
@@ -603,22 +558,43 @@ async def tts_piper_local(text: str, voice: str = "en_US-amy-medium") -> str:
 
 async def tts_sentence_to_base64(text: str, voice: str = "bella") -> str:
     """
-    Main TTS entry point - routes to appropriate provider
+    Main TTS entry point - strict local Qwen TTS (no browser fallback)
 
     Args:
         text: Text to speak
         voice: Voice name/ID
     """
-    # Try ElevenLabs first
-    result = await tts_elevenlabs(text, voice)
-    if result:
-        return result
+    text_clean = (text or "").strip()
+    if not text_clean:
+        return ""
+    try:
+        import httpx
+        from src.voice.tts_server_manager import is_tts_running, start_tts_server
 
-    # Fallback to Piper local
-    result = await tts_piper_local(text)
-    if result:
-        return result
+        if not is_tts_running():
+            start_tts_server(wait_ready=True, timeout=20.0)
 
-    # No TTS available - frontend will use browser TTS
-    logger.warning("[TTS] No TTS provider available, frontend should use browser TTS")
-    return ""
+        language = "ru" if any("\u0400" <= ch <= "\u04FF" for ch in text_clean) else "en"
+        speaker = normalize_qwen_voice_id((voice or "ryan").strip(), default="ryan")
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            health = await client.get("http://127.0.0.1:5003/health", timeout=4.0)
+            if health.status_code != 200:
+                logger.warning("[TTS] Qwen server health failed: %s", health.status_code)
+                return ""
+            resp = await client.post(
+                "http://127.0.0.1:5003/tts/generate",
+                json={
+                    "text": text_clean,
+                    "language": language,
+                    "speaker": speaker,
+                },
+            )
+            if resp.status_code != 200:
+                logger.error("[TTS] Qwen server error: %s", resp.status_code)
+                return ""
+            payload = resp.json() if resp.content else {}
+            audio = payload.get("audio") if isinstance(payload, dict) else None
+            return audio or ""
+    except Exception as exc:
+        logger.error("[TTS] Qwen realtime synthesis failed: %s", exc)
+        return ""

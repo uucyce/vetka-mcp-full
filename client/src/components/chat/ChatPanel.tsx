@@ -26,6 +26,7 @@ import type { ChatMessage, SearchResult } from '../../types/chat';
 import { savePinnedFiles, getChatsForFile } from '../../utils/chatApi';
 import { API_BASE } from '../../config/api.config';
 import { isTauri, openLiveWebWindow } from '../../config/tauri';
+import { useVoiceModeStore } from '../../store/useVoiceModeStore';
 
 // Phase 48.3: Reply target type
 // Phase 111.10.2: Added source for multi-provider routing
@@ -36,12 +37,20 @@ interface ReplyTarget {
   source?: string;  // Phase 111.10.2: Provider source (poe, polza, etc.)
 }
 
+interface MessageRouteSnapshot {
+  replyTo: ReplyTarget | null;
+  selectedModel: string | null;
+  selectedModelSource: string | null;
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   leftPanel: 'none' | 'history' | 'models';
   setLeftPanel: (value: 'none' | 'history' | 'models') => void;
 }
+
+type VoiceReplyMode = 'text_only' | 'voice_auto' | 'voice_forced';
 
 export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   const chatMessages = useStore((s) => s.chatMessages);
@@ -67,7 +76,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
   // Phase 45: Use Socket.IO instead of HTTP
   // Phase 57.3: Added joinGroup, leaveGroup for group creation
-  const { sendMessage, isConnected, joinGroup, leaveGroup, sendGroupMessage } = useSocket();
+  const { sendMessage, isConnected, joinGroup, leaveGroup, sendGroupMessage, transcribeVoiceSample } = useSocket();
 
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -105,6 +114,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   // Phase 111.9: Source for multi-provider routing (poe, polza, openrouter, etc.)
   const [selectedModelSource, setSelectedModelSource] = useState<string | null>(null);
+  // Phase 48.3: Reply target state (must be declared before memos that read it).
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
 
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
@@ -243,13 +254,27 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   const [voiceModels, setVoiceModels] = useState<string[]>([]);
 
   // Phase 60.5: Voice-only mode toggle (Trigger 2)
-  const [voiceOnlyMode, setVoiceOnlyMode] = useState(false);
-
+  // S6.3: Solo chat starts in voice mode by default until user sends plain text.
+  const voiceOnlyMode = useVoiceModeStore((state) => state.voiceOnlyMode);
+  const enableVoiceMode = useVoiceModeStore((state) => state.enableVoiceMode);
+  const disableVoiceMode = useVoiceModeStore((state) => state.disableVoiceMode);
+  const setVoiceOnlyMode = useVoiceModeStore((state) => state.setVoiceOnlyMode);
   // Phase 60.5: Auto-continue voice after response (Trigger 3)
   const [autoContinueVoice, setAutoContinueVoice] = useState(false);
 
   // Phase 60.5.1: Realtime voice mode (PCM streaming + VAD)
-  const [realtimeVoiceEnabled, setRealtimeVoiceEnabled] = useState(false);
+  // S6.3: keep in sync with solo voice default policy.
+  const realtimeVoiceEnabled = useVoiceModeStore((state) => state.realtimeVoiceEnabled);
+  const setRealtimeStore = useVoiceModeStore((state) => state.setRealtimeVoiceEnabled);
+  // MARKER_156.VOICE.S5_UI_POLICY: User-facing voice reply policy switch.
+  const [voiceReplyMode, setVoiceReplyMode] = useState<VoiceReplyMode>(() => {
+    if (typeof window === 'undefined') return 'voice_auto';
+    const saved = localStorage.getItem('vetka_voice_reply_mode');
+    if (saved === 'voice_auto' || saved === 'voice_forced' || saved === 'text_only') {
+      return saved;
+    }
+    return 'voice_auto';
+  });
 
   // Phase I5: Chat drop zone state for file pinning
   const [isDragOver, setIsDragOver] = useState(false);
@@ -275,6 +300,12 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       })
       .catch(e => console.warn('[ChatPanel] Failed to load voice models:', e));
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vetka_voice_reply_mode', voiceReplyMode);
+    }
+  }, [voiceReplyMode]);
 
   // Phase 54.4: Listen for external event to switch to scanner tab
   useEffect(() => {
@@ -437,6 +468,65 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       }));
     };
 
+    // MARKER_156.VOICE.S1_CHAT_VOICE_EVENT: Handle final voice message payload in group timeline.
+    const handleGroupVoiceMessage = (e: CustomEvent) => {
+      const data = e.detail;
+      if (data.group_id !== activeGroupId) return;
+
+      const messageId = data.id || crypto.randomUUID();
+      const agent = String(data.agent_id || '').replace('@', '') as ChatMessage['agent'];
+      const fullMessage = data.full_message || data.text_preview || '';
+      const audioMeta = data.metadata?.audio || {};
+      const voiceMeta = data.metadata?.voice || {};
+
+      useStore.setState((state) => {
+        const existing = state.chatMessages.find((m) => m.id === messageId);
+
+        if (existing) {
+          return {
+            chatMessages: state.chatMessages.map((msg) =>
+              msg.id === messageId
+                ? {
+                    ...msg,
+                    type: 'voice',
+                    content: fullMessage || msg.content,
+                    metadata: {
+                      ...msg.metadata,
+                      ...(data.metadata || {}),
+                      isStreaming: false,
+                      audio: audioMeta,
+                      voice: voiceMeta,
+                    },
+                  }
+                : msg
+            ),
+          };
+        }
+
+        return {
+          chatMessages: [
+            ...state.chatMessages,
+            {
+              id: messageId,
+              role: 'assistant',
+              agent,
+              content: fullMessage,
+              type: 'voice',
+              timestamp: new Date().toISOString(),
+              metadata: {
+                ...(data.metadata || {}),
+                model: data.metadata?.model,
+                model_source: data.metadata?.model_source,
+                audio: audioMeta,
+                voice: voiceMeta,
+                isStreaming: false,
+              },
+            },
+          ],
+        };
+      });
+    };
+
     const handleGroupError = (e: CustomEvent) => {
       const data = e.detail;
       console.error('[ChatPanel] Group error:', data.error);
@@ -453,6 +543,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     window.addEventListener('group-stream-start', handleGroupStreamStart as EventListener);
     window.addEventListener('group-stream-token', handleGroupStreamToken as EventListener);
     window.addEventListener('group-stream-end', handleGroupStreamEnd as EventListener);
+    window.addEventListener('group-voice-message', handleGroupVoiceMessage as EventListener);
     window.addEventListener('group-error', handleGroupError as EventListener);
 
     return () => {
@@ -460,6 +551,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       window.removeEventListener('group-stream-start', handleGroupStreamStart as EventListener);
       window.removeEventListener('group-stream-token', handleGroupStreamToken as EventListener);
       window.removeEventListener('group-stream-end', handleGroupStreamEnd as EventListener);
+      window.removeEventListener('group-voice-message', handleGroupVoiceMessage as EventListener);
       window.removeEventListener('group-error', handleGroupError as EventListener);
       // Phase 111.21: Cleanup RAF on unmount
       if (groupRafIdRef.current) {
@@ -615,7 +707,6 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   }, [activeGroupId, currentGroupParticipants.length]);
 
   // Phase 48.3: Reply-to state
-  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
 
   // Phase 80.9: Group ID copy state
   const [groupIdCopied, setGroupIdCopied] = useState(false);
@@ -916,8 +1007,22 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     }
   }, [addChatMessage, joinGroup]);
 
-  const handleSend = useCallback(() => {
-    if (!input.trim()) return;
+  const handleSend = useCallback((
+    overrideText?: string,
+    options?: {
+      skipLocalUserMessage?: boolean;
+      userMessageType?: ChatMessage['type'];
+      userMetadata?: ChatMessage['metadata'];
+      routeSnapshot?: MessageRouteSnapshot;
+    }
+  ) => {
+    const textToSend = (overrideText ?? input).trim();
+    if (!textToSend) return;
+    const outboundMessageType = options?.userMessageType || 'text';
+    const routeSnapshot = options?.routeSnapshot;
+    const effectiveReplyTo = routeSnapshot?.replyTo ?? replyTo;
+    const effectiveSelectedModel = routeSnapshot?.selectedModel ?? selectedModel;
+    const effectiveSelectedModelSource = routeSnapshot?.selectedModelSource ?? selectedModelSource;
 
     // Phase 45: Check socket connection
     if (!isConnected) {
@@ -939,7 +1044,12 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     // Phase 80.35: Pass replyTo.id for reply routing
     if (activeGroupId) {
       // console.log('[Chat] Sending GROUP message to:', activeGroupId);
-      sendGroupMessage(activeGroupId, 'user', input.trim(), replyTo?.id);
+      const inferredVoiceInput = voiceOnlyMode || realtimeVoiceEnabled;
+      sendGroupMessage(activeGroupId, 'user', textToSend, {
+        replyToId: effectiveReplyTo?.id,
+        voiceReplyMode,
+        voiceInput: inferredVoiceInput,
+      });
       // Don't add user message locally - backend will broadcast it back
       setInput('');
       setReplyTo(null);  // Phase 80.35: Clear reply after sending
@@ -947,27 +1057,34 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       return;
     }
 
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: input,
-      type: 'text',
-      timestamp: new Date().toISOString(),
-    };
+    if (outboundMessageType !== 'voice') {
+      disableVoiceMode('text_typed');
+      setRealtimeStore(false);
+    }
 
-    addChatMessage(userMessage);
+    if (!options?.skipLocalUserMessage) {
+      const userMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: textToSend,
+        type: outboundMessageType,
+        timestamp: new Date().toISOString(),
+        metadata: options?.userMetadata,
+      };
+      addChatMessage(userMessage);
+    }
 
     // console.log('[Chat] Sending message via Socket.IO');
 
     // Phase 48.3: Use replyTo model if replying, otherwise selectedModel
     // Phase 57.2: Also try to extract model from @mention in input
-    let modelToUse = replyTo?.model || selectedModel || undefined;
+    let modelToUse = effectiveReplyTo?.model || effectiveSelectedModel || undefined;
 
     // Phase 57.2: If no model selected, try to extract from @mention in input
     // This handles cases like "@nvidia/nemotron-3-nano-30b-a3b:free" typed/pasted directly
     if (!modelToUse) {
       // Match full model IDs including / for provider prefix
-      const mentionMatch = input.match(/@([\w\-.:\/]+)/);
+      const mentionMatch = textToSend.match(/@([\w\-.:\/]+)/);
       if (mentionMatch) {
         const mentionedModel = mentionMatch[1];
         // Check if it looks like a model ID (contains / or :)
@@ -993,7 +1110,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       if (!fileName) {
         // Extract first 4 meaningful words from message (skip common words)
         const skipWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'not', 'only', 'same', 'so', 'than', 'too', 'very', 'just', 'and', 'but', 'or', 'nor', 'yet', 'both', 'either', 'neither', 'i', 'me', 'my', 'you', 'your', 'he', 'she', 'it', 'we', 'they', 'this', 'that', 'what', 'which', 'who', 'whom']);
-        const words = input.trim()
+        const words = textToSend
           .replace(/@[\w\-.:\/]+/g, '')  // Remove @mentions
           .split(/\s+/)
           .filter(w => w.length > 2 && !skipWords.has(w.toLowerCase()))
@@ -1018,22 +1135,207 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       // Phase 111.9: Pass modelSource for multi-provider routing
       // Phase 111.10.2: Use replyTo.source if replying, otherwise selectedModelSource
       // MARKER_109_14: Pass fileName for chat naming
-      const sourceToUse = replyTo?.source || selectedModelSource || undefined;
-      sendMessage(input.trim(), contextPath, modelToUse, newChatId, sourceToUse, fileName);
+      const sourceToUse = effectiveReplyTo?.source || effectiveSelectedModelSource || undefined;
+      sendMessage(
+        textToSend,
+        contextPath,
+        modelToUse,
+        newChatId,
+        sourceToUse,
+        fileName,
+        {
+          messageType: options?.userMessageType || 'text',
+          messageMetadata: (options?.userMetadata || {}) as Record<string, unknown>,
+        }
+      );
     } else {
       // Existing chat - use currentChatId from state
       // Phase 111.9: Pass modelSource for multi-provider routing
       // Phase 111.10.2: Use replyTo.source if replying, otherwise selectedModelSource
-      const sourceToUse = replyTo?.source || selectedModelSource || undefined;
-      sendMessage(input.trim(), contextPath, modelToUse, currentChatId || undefined, sourceToUse);
+      const sourceToUse = effectiveReplyTo?.source || effectiveSelectedModelSource || undefined;
+      sendMessage(
+        textToSend,
+        contextPath,
+        modelToUse,
+        currentChatId || undefined,
+        sourceToUse,
+        undefined,
+        {
+          messageType: options?.userMessageType || 'text',
+          messageMetadata: (options?.userMetadata || {}) as Record<string, unknown>,
+        }
+      );
     }
 
     setInput('');
-    setSelectedModel(null);
-    setSelectedModelSource(null);  // Phase 111.9: Clear source too
-    setReplyTo(null);  // Clear reply after sending
+    if (!routeSnapshot) {
+      setSelectedModel(null);
+      setSelectedModelSource(null);  // Phase 111.9: Clear source too
+      setReplyTo(null);  // Clear reply after sending
+    }
     setIsTyping(true);
-  }, [input, isConnected, selectedNode, selectedModel, replyTo, addChatMessage, sendMessage, setIsTyping, activeTab, lastScannedFolder, activeGroupId, sendGroupMessage, currentChatInfo, pinnedFileIds, nodes]);
+  }, [input, isConnected, selectedNode, selectedModel, replyTo, addChatMessage, sendMessage, setIsTyping, activeTab, lastScannedFolder, activeGroupId, sendGroupMessage, currentChatInfo, pinnedFileIds, nodes, voiceOnlyMode, realtimeVoiceEnabled, voiceReplyMode]);
+
+  const blobToBase64 = useCallback((blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = String(reader.result || '');
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        if (!base64) {
+          reject(new Error('Failed to encode audio'));
+          return;
+        }
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error('Failed to read audio blob'));
+      reader.readAsDataURL(blob);
+    });
+  }, []);
+
+  const uploadVoiceSample = useCallback(async (blob: Blob): Promise<{
+    storage_id: string;
+    url: string;
+    format?: string;
+    duration_ms?: number | null;
+  } | null> => {
+    try {
+      const ext = (blob.type || '').includes('wav')
+        ? 'wav'
+        : ((blob.type || '').includes('mp4') ? 'mp4' : 'webm');
+      const form = new FormData();
+      form.append('file', blob, `voice_sample.${ext}`);
+
+      const response = await fetch(`${API_BASE}/voice/storage`, {
+        method: 'POST',
+        body: form,
+      });
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const handleVoiceRecorded = useCallback(async (payload: {
+    blob: Blob;
+    waveform: number[];
+    durationMs: number;
+    mimeType: string;
+  }) => {
+    if (!isConnected) {
+      addChatMessage({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: 'Error: Not connected to server',
+        type: 'text',
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    if (activeGroupId) {
+      addChatMessage({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: 'Group voice upload will be connected next. Solo voice is active now.',
+        type: 'text',
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const routeSnapshot: MessageRouteSnapshot = {
+      replyTo,
+      selectedModel,
+      selectedModelSource,
+    };
+    setReplyTo(null);
+    setSelectedModel(null);
+    setSelectedModelSource(null);
+    const messageId = crypto.randomUUID();
+    const audioUrl = URL.createObjectURL(payload.blob);
+
+    addChatMessage({
+      id: messageId,
+      role: 'user',
+      content: 'Распознаю голосовое...',
+      type: 'voice',
+      timestamp: new Date().toISOString(),
+      metadata: {
+        audio: {
+          url: audioUrl,
+          format: payload.mimeType || 'audio/webm',
+          duration_ms: payload.durationMs,
+          waveform: payload.waveform,
+        },
+      },
+    });
+
+    try {
+      const uploadPromise = uploadVoiceSample(payload.blob);
+      const audioBase64 = await blobToBase64(payload.blob);
+      const adaptiveSttTimeoutMs = Math.max(
+        45000,
+        Math.min(180000, Math.floor(payload.durationMs * 2.5 + 30000))
+      );
+      const transcript = (
+        await transcribeVoiceSample(audioBase64, 'whisper', { timeoutMs: adaptiveSttTimeoutMs })
+      ).trim();
+      if (!transcript) throw new Error('STT returned empty');
+      const upload = await uploadPromise;
+
+      useStore.setState((state) => ({
+        chatMessages: state.chatMessages.map((msg) =>
+          msg.id === messageId
+            ? {
+                ...msg,
+                content: transcript,
+                metadata: {
+                  ...msg.metadata,
+                  audio: {
+                    ...(msg.metadata?.audio || {}),
+                    storage_id: upload?.storage_id || null,
+                    format: upload?.format || payload.mimeType || 'audio/webm',
+                    duration_ms: upload?.duration_ms ?? payload.durationMs,
+                  },
+                },
+              }
+            : msg
+        ),
+      }));
+
+      // Voice reply mode ON after successful voice message in solo chat.
+      enableVoiceMode('voice_sent');
+      setRealtimeStore(true);
+
+      handleSend(transcript, {
+        skipLocalUserMessage: true,
+        userMessageType: 'voice',
+        routeSnapshot,
+        userMetadata: {
+          audio: {
+            storage_id: upload?.storage_id || null,
+            format: upload?.format || payload.mimeType || 'audio/webm',
+            duration_ms: upload?.duration_ms ?? payload.durationMs,
+            waveform: payload.waveform,
+          },
+        },
+      });
+    } catch (err) {
+      const errorText = err instanceof Error ? err.message : 'Voice transcription failed';
+      useStore.setState((state) => ({
+        chatMessages: state.chatMessages.map((msg) =>
+          msg.id === messageId
+            ? {
+                ...msg,
+                content: `Ошибка STT: ${errorText}`,
+              }
+            : msg
+        ),
+      }));
+    }
+  }, [activeGroupId, addChatMessage, blobToBase64, handleSend, isConnected, replyTo, selectedModel, selectedModelSource, transcribeVoiceSample, uploadVoiceSample]);
 
   // Phase 57.9: Listen for auto-send event (triggered by Ask Hostess button)
   useEffect(() => {
@@ -1376,14 +1678,16 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           // Regular chat - load from chat history
           // MARKER_152.FIX2: Include model + model_source in loaded messages
           for (const msg of data.messages || []) {
+            const msgType = (msg.message_type || msg.type || (msg.metadata?.audio ? 'voice' : 'text')) as ChatMessage['type'];
             addChatMessage({
               id: msg.id || crypto.randomUUID(),
               role: msg.role,
               content: msg.content,
               agent: msg.agent,
-              type: msg.role === 'user' ? 'text' : 'text',
+              type: msgType,
               timestamp: msg.timestamp || new Date().toISOString(),
               metadata: {
+                ...(msg.metadata || {}),
                 model: msg.model || undefined,
                 model_source: msg.model_source || undefined,
                 model_provider: msg.model_provider || undefined,
@@ -2468,6 +2772,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
             </div>
           )}
 
+          {/* S6 UX: hide solo voice lock badge in chat header */}
+
           {activeTab === 'chat' && currentWorkflow && <WorkflowProgress workflow={currentWorkflow} />}
 
           {/* Phase 57.3: Active group indicator */}
@@ -2493,6 +2799,37 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
               <span style={{ color: '#aaa' }}>Group Active</span>
               <span style={{ color: '#555' }}>|</span>
               <span style={{ color: '#666', fontSize: 10 }}>Use @role to mention</span>
+              <span style={{ color: '#555' }}>|</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                {([
+                  { id: 'text_only', label: 'Text' },
+                  { id: 'voice_auto', label: 'Auto' },
+                  { id: 'voice_forced', label: 'Voice' },
+                ] as Array<{ id: VoiceReplyMode; label: string }>).map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setVoiceReplyMode(item.id)}
+                    title={
+                      item.id === 'text_only'
+                        ? 'Always text replies'
+                        : item.id === 'voice_auto'
+                          ? 'Voice input activates voice replies'
+                          : 'Always voice replies'
+                    }
+                    style={{
+                      background: voiceReplyMode === item.id ? '#232323' : '#151515',
+                      border: voiceReplyMode === item.id ? '1px solid #4a9eff' : '1px solid #333',
+                      color: voiceReplyMode === item.id ? '#b7d8ff' : '#777',
+                      borderRadius: 4,
+                      fontSize: 10,
+                      padding: '2px 6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
               <span style={{ color: '#555' }}>|</span>
               {/* Phase 80.9: Group ID badge with copy */}
               <button
@@ -3233,7 +3570,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           autoContinueVoice={autoContinueVoice}
           onAutoContinueVoiceChange={setAutoContinueVoice}
           realtimeVoiceEnabled={realtimeVoiceEnabled}
-          onRealtimeVoiceChange={setRealtimeVoiceEnabled}
+          onRealtimeVoiceChange={setRealtimeStore}
+          onVoiceRecorded={handleVoiceRecorded}
         />
       </div>
 

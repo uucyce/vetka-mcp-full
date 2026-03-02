@@ -24,7 +24,8 @@ import logging
 import aiohttp
 import asyncio
 import json
-from typing import Optional, Dict, Any, AsyncGenerator
+from pathlib import Path
+from typing import Optional, Dict, Any, AsyncGenerator, List, Tuple
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,89 @@ VOICE_OPTIONS = {
     "repeat_penalty": 1.1,
     "num_ctx": 2048,          # Smaller context = faster
 }
+
+_FAVORITES_PATH = Path("data/favorites.json")
+
+
+def _read_favorite_models() -> List[str]:
+    """Load favorite model IDs from shared favorites storage."""
+    if not _FAVORITES_PATH.exists():
+        return []
+    try:
+        payload = json.loads(_FAVORITES_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning(f"[JarvisLLM] Could not read favorites: {exc}")
+        return []
+    models = payload.get("models", [])
+    if not isinstance(models, list):
+        return []
+    return [str(m).strip() for m in models if str(m).strip()]
+
+
+def _route_for_model(model_id: str) -> str:
+    return "provider_registry" if "/" in model_id else "ollama"
+
+
+def resolve_jarvis_text_model(
+    default_model: str = DEFAULT_MODEL,
+    preferred_model: Optional[str] = None,
+    favorites: Optional[List[str]] = None,
+    registry: Optional[Any] = None,
+) -> Tuple[str, str, str]:
+    """
+    Resolve text model for Jarvis:
+    preferred -> favorites -> free cloud(phonebook) -> local fallback -> default.
+    """
+    if preferred_model:
+        model_id = str(preferred_model).strip()
+        if model_id:
+            return model_id, _route_for_model(model_id), "preferred"
+
+    if registry is None:
+        try:
+            from src.services.model_registry import get_model_registry
+            registry = get_model_registry()
+        except Exception:
+            registry = None
+
+    if favorites is None:
+        favorites = _read_favorite_models()
+
+    if favorites:
+        by_id: Dict[str, Dict[str, Any]] = {}
+        if registry is not None:
+            try:
+                by_id = {m.get("id", ""): m for m in registry.get_all()}
+            except Exception:
+                by_id = {}
+
+        for model_id in favorites:
+            model_meta = by_id.get(model_id)
+            if model_meta and model_meta.get("type") == "voice":
+                continue
+            return model_id, _route_for_model(model_id), "favorite"
+
+    if registry is not None:
+        try:
+            free_cloud = [
+                m for m in registry.get_free()
+                if getattr(getattr(m, "type", None), "value", "") == "cloud_free"
+            ]
+            if free_cloud:
+                free_cloud.sort(key=lambda m: float(getattr(m, "rating", 0.0)), reverse=True)
+                return free_cloud[0].id, "provider_registry", "free_cloud"
+        except Exception as exc:
+            logger.debug(f"[JarvisLLM] free cloud resolve skipped: {exc}")
+
+        try:
+            local_models = registry.get_local()
+            if local_models:
+                local_models.sort(key=lambda m: float(getattr(m, "rating", 0.0)), reverse=True)
+                return local_models[0].id, "ollama", "local_fallback"
+        except Exception as exc:
+            logger.debug(f"[JarvisLLM] local fallback resolve skipped: {exc}")
+
+    return default_model, _route_for_model(default_model), "default"
 
 
 @dataclass
@@ -130,6 +214,41 @@ Avoid bullet points, code blocks, or long explanations unless explicitly asked."
             if current_focus:
                 base_system += f"\n\nUser is currently working on: {current_focus}"
 
+            cam_context = context.get("cam_context")
+            if cam_context:
+                base_system += f"\n\nCAM context:\n{json.dumps(cam_context, ensure_ascii=False)}"
+
+            viewport_context = context.get("viewport_context")
+            if viewport_context:
+                base_system += f"\n\nViewport context:\n{json.dumps(viewport_context, ensure_ascii=False)}"
+
+            pinned_files = context.get("pinned_files")
+            if isinstance(pinned_files, list) and pinned_files:
+                pinned_preview = []
+                for item in pinned_files[:8]:
+                    if isinstance(item, dict):
+                        pinned_preview.append(item.get("path") or item.get("name") or str(item))
+                    else:
+                        pinned_preview.append(str(item))
+                base_system += "\n\nPinned files:\n- " + "\n- ".join(pinned_preview)
+
+            open_chat_context = context.get("open_chat_context")
+            if isinstance(open_chat_context, dict):
+                chat_id = open_chat_context.get("chat_id")
+                messages = open_chat_context.get("messages", [])
+                lines = []
+                for msg in messages[-6:]:
+                    if not isinstance(msg, dict):
+                        continue
+                    role = str(msg.get("role", "unknown"))
+                    content = str(msg.get("content", "")).strip()
+                    if content:
+                        lines.append(f"{role}: {content[:180]}")
+                if chat_id or lines:
+                    section = f"chat_id={chat_id}\n" if chat_id else ""
+                    section += "\n".join(lines)
+                    base_system += f"\n\nOpen chat context:\n{section}"
+
         return base_system
 
     def _enrich_prompt(self, prompt: str, user_id: str) -> str:
@@ -191,10 +310,34 @@ Avoid bullet points, code blocks, or long explanations unless explicitly asked."
         # Build prompts
         system_prompt = self._build_system_prompt(user_id, context)
         user_prompt = self._enrich_prompt(transcript, user_id)
+        preferred_model = context.get("llm_model") if isinstance(context, dict) else None
+        model_id, route, reason = resolve_jarvis_text_model(
+            default_model=self.config.model,
+            preferred_model=preferred_model,
+        )
+        logger.info(f"[JarvisLLM] Text model resolved: {model_id} route={route} reason={reason}")
+
+        if route == "provider_registry":
+            try:
+                from src.elisya.provider_registry import call_model_v2
+
+                response = await call_model_v2(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    model=model_id,
+                )
+                content = response.get("message", {}).get("content", "").strip()
+                if content:
+                    return content
+                logger.warning(f"[JarvisLLM] Empty provider_registry response for {model_id}, fallback to ollama")
+            except Exception as exc:
+                logger.warning(f"[JarvisLLM] provider_registry call failed for {model_id}: {exc}")
 
         # Prepare Ollama request
         payload = {
-            "model": self.config.model,
+            "model": model_id if route == "ollama" else self.config.model,
             "prompt": user_prompt,
             "system": system_prompt,
             "stream": False,
@@ -318,7 +461,11 @@ Avoid bullet points, code blocks, or long explanations unless explicitly asked."
 
 # === Context Building Helpers ===
 
-async def get_jarvis_context(user_id: str, transcript: str) -> Dict[str, Any]:
+async def get_jarvis_context(
+    user_id: str,
+    transcript: str,
+    extra_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """
     Build context from VETKA memory systems for Jarvis.
 
@@ -361,6 +508,24 @@ async def get_jarvis_context(user_id: str, transcript: str) -> Dict[str, Any]:
             logger.debug(f"[JarvisContext] Engram formality: {formality}")
     except Exception as e:
         logger.warning(f"[JarvisContext] Engram unavailable: {e}")
+
+    # CAM summary from current transcript
+    try:
+        from src.memory.surprise_detector import get_compression_advice
+        cam_advice = get_compression_advice(transcript or "")
+        context["cam_context"] = {
+            "overall_surprise": cam_advice.get("overall_surprise"),
+            "compression_level": cam_advice.get("compression_level"),
+            "high_surprise_ratio": cam_advice.get("high_surprise_ratio"),
+        }
+    except Exception as e:
+        logger.debug(f"[JarvisContext] CAM unavailable: {e}")
+
+    # Client-side context from Jarvis button flow
+    if isinstance(extra_context, dict):
+        for key in ("viewport_context", "pinned_files", "open_chat_context", "cam_context", "llm_model"):
+            if key in extra_context and extra_context.get(key) is not None:
+                context[key] = extra_context.get(key)
 
     return context
 

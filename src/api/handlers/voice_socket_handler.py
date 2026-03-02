@@ -34,6 +34,7 @@ NEW Socket.IO events (Phase 60.5.1 - Realtime):
 """
 
 import logging
+import asyncio
 from typing import Optional
 
 from .voice_handler import get_voice_service
@@ -106,32 +107,59 @@ def register_voice_socket_handlers(sio, app=None):
         audio_base64 = data.get('audio')
         provider = data.get('provider')
         is_final = data.get('final', True)
+        request_id = data.get('request_id')
+        timeout_ms_raw = data.get('timeout_ms')
+        try:
+            timeout_ms = int(timeout_ms_raw) if timeout_ms_raw is not None else 45000
+        except Exception:
+            timeout_ms = 45000
+        timeout_ms = max(5000, min(300000, timeout_ms))
 
         if not audio_base64:
-            await sio.emit('voice_error', {'error': 'No audio data received'}, to=sid)
+            await sio.emit(
+                'voice_error',
+                {'error': 'No audio data received', 'request_id': request_id},
+                to=sid,
+            )
             return
 
         try:
             # Transcribe audio
-            text = await voice_service.speech_to_text(audio_base64, provider)
+            text = await asyncio.wait_for(
+                voice_service.speech_to_text(audio_base64, provider),
+                timeout=timeout_ms / 1000.0,
+            )
 
             if text:
                 await sio.emit('voice_transcribed', {
                     'text': text,
                     'final': is_final,
-                    'provider': provider or 'whisper'
+                    'provider': provider or 'whisper',
+                    'request_id': request_id,
                 }, to=sid)
                 logger.info(f"[Voice] Transcribed: '{text[:50]}...'")
             else:
                 await sio.emit('voice_transcribed', {
                     'text': '',
                     'final': is_final,
-                    'error': 'No speech detected'
+                    'error': 'No speech detected',
+                    'request_id': request_id,
                 }, to=sid)
 
+        except asyncio.TimeoutError:
+            logger.warning(f"[Voice] STT timeout after {timeout_ms}ms")
+            await sio.emit(
+                'voice_error',
+                {'error': f'Voice transcription timeout ({timeout_ms}ms)', 'request_id': request_id},
+                to=sid,
+            )
         except Exception as e:
             logger.error(f"[Voice] STT error: {e}")
-            await sio.emit('voice_error', {'error': str(e)}, to=sid)
+            await sio.emit(
+                'voice_error',
+                {'error': str(e), 'request_id': request_id},
+                to=sid,
+            )
 
     @sio.on('voice_stop')
     async def handle_voice_stop(sid):

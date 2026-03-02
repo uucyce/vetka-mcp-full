@@ -12,7 +12,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   agent?: 'PM' | 'Dev' | 'QA' | 'Architect' | 'Hostess';
   content: string;
-  type: 'text' | 'code' | 'plan' | 'compound';
+  // MARKER_156.VOICE.S1_CONTRACT_TYPES: Voice messages are first-class chat timeline items.
+  type: 'text' | 'code' | 'plan' | 'compound' | 'voice';
   timestamp: string;
   metadata?: {
     model?: string;
@@ -34,6 +35,21 @@ export interface ChatMessage {
       model?: string;
       text_preview: string;         // First ~100 chars of the message
       timestamp: string;
+    };
+    // MARKER_156.VOICE.S1_CONTRACT_AUDIO: Persisted audio payload contract for voice bubbles.
+    audio?: {
+      format?: string | null;
+      duration_ms?: number | null;
+      waveform?: number[];
+      storage_id?: string | null;
+      url?: string | null;
+    };
+    // MARKER_156.VOICE.S1_CONTRACT_VOICE: Voice identity metadata for model/provider lock logic.
+    voice?: {
+      voice_id?: string | null;
+      tts_provider?: string | null;
+      model_identity_key?: string;
+      persona_tag?: string | null;
     };
   };
   sections?: {

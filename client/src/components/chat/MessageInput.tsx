@@ -46,6 +46,12 @@ interface Props {
   // Phase 60.5.1: Realtime voice mode
   realtimeVoiceEnabled?: boolean;
   onRealtimeVoiceChange?: (enabled: boolean) => void;
+  onVoiceRecorded?: (payload: {
+    blob: Blob;
+    waveform: number[];
+    durationMs: number;
+    mimeType: string;
+  }) => void | Promise<void>;
   // TODO_CAM_UI: Pass CAM context suggestions to enrich input hints
   cam_suggestions?: string[];  // Show hot/warm files in placeholder or autocomplete
 }
@@ -70,7 +76,8 @@ function drawWave(
   height: number,
   phase: number,
   intensity: number,
-  mode: VoiceMode = 'listening'
+  mode: VoiceMode = 'listening',
+  bars?: number[]
 ) {
   const centerY = height / 2;
   const amplitude = 10 * Math.max(0.3, intensity);
@@ -78,6 +85,22 @@ function drawWave(
   const color = getWaveColor(mode);
 
   ctx.clearRect(0, 0, width, height);
+  if (bars && bars.length > 0) {
+    const barCount = bars.length;
+    const gap = 2;
+    const barWidth = Math.max(2, Math.floor((width - (barCount - 1) * gap) / barCount));
+    for (let i = 0; i < barCount; i += 1) {
+      const amp = Math.max(0.02, Math.min(1, bars[i]));
+      const h = Math.max(3, Math.round(amp * (height - 4)));
+      const x = i * (barWidth + gap);
+      const y = Math.round((height - h) / 2);
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.2 + amp * 0.8;
+      ctx.fillRect(x, y, barWidth, h);
+    }
+    ctx.globalAlpha = 1;
+    return;
+  }
   ctx.beginPath();
 
   for (let x = 0; x < width; x++) {
@@ -134,6 +157,7 @@ export function MessageInput({
   onAutoContinueVoiceChange,
   realtimeVoiceEnabled = false,
   onRealtimeVoiceChange,
+  onVoiceRecorded,
 }: Props) {
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
@@ -144,20 +168,38 @@ export function MessageInput({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sampleRafRef = useRef<number | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const waveformRef = useRef<number[]>([]);
+  const liveBarsRef = useRef<number[]>([]);
+  const recordingStartRef = useRef<number>(0);
   const animationRef = useRef<number | undefined>(undefined);
   const phaseRef = useRef<number>(0);
   const intensityIntervalRef = useRef<any>(null);
+  const autoSendTimerRef = useRef<number | null>(null);
+  const [isSampleRecording, setIsSampleRecording] = useState(false);
 
   // Phase 60.5.1: Realtime voice hook
   // In realtime mode, we DON'T write transcript to input - it's pure audio pipeline
   const realtimeVoice = useRealtimeVoice({
+    chatMode: true,
     model: selectedModel || undefined,
     onTranscript: (text, isFinal) => {
-      // Just log - don't write to input in realtime mode
-      // The pipeline is: Mic → STT → LLM → TTS → Audio
       if (isFinal && text.trim()) {
-        // console.log('[Realtime] Transcript:', text);
+        // Route transcript into the normal chat send flow (provider routing + group policy).
         setStatusText(`"${text.slice(0, 40)}${text.length > 40 ? '...' : ''}"`);
+        onChange(text.trim());
+        if (autoSendTimerRef.current) {
+          window.clearTimeout(autoSendTimerRef.current);
+        }
+        autoSendTimerRef.current = window.setTimeout(() => {
+          onSend();
+          autoSendTimerRef.current = null;
+        }, 60);
       }
     },
     onLLMToken: (token) => {
@@ -239,26 +281,31 @@ export function MessageInput({
 
   // Determine button mode:
   // - isListening → Stop button
-  // - hasVoiceModel && !hasTextAfter → Mic button (voice mode available)
-  // - replyTo voice model && empty input → Mic button
-  // - hasText → Send button
-  // - empty → Send button (disabled)
-  const hasText = value.trim().length > 0;
+  // - only @model mentions (no user payload text) → Mic button
+  // - user payload text present → Send button
+  const escapeForRegex = useCallback((raw: string) => raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), []);
+  const hasRawText = value.trim().length > 0;
+  let payloadText = value
+    .replace(/@[a-zA-Z0-9\-_/.:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  // S6.3: model picker can insert plain model id without @mention.
+  // Treat standalone selected model token as routing hint, not user payload text.
+  if (selectedModel) {
+    const modelTokenRegex = new RegExp(`^${escapeForRegex(selectedModel)}\\s*`, 'i');
+    payloadText = payloadText.replace(modelTokenRegex, '').trim();
+  }
+  const hasText = payloadText.length > 0;
 
   // Phase 60.5: Voice mode triggers:
   // 1. @mention of voice model (no text after)
   // 2. Reply to voice model message (empty input)
   // 3. Selected model from ModelDirectory is voice model (empty input)
   // 4. Voice-only mode toggle (always show mic unless typing)
-  const showVoiceMode = (
-    (voiceModelDetection.hasVoiceModel && !voiceModelDetection.hasTextAfter) ||
-    (isReplyingToVoiceModel && !hasText) ||
-    (isSelectedModelVoice && !hasText) ||
-    (voiceOnlyMode && !hasText)
-  ) && !isListening;
+  const showVoiceMode = !hasText && !isListening && !isSampleRecording && !disabled;
 
   // Combined active state (legacy or realtime)
-  const isVoiceActive = isListening || realtimeVoice.isListening;
+  const isVoiceActive = isSampleRecording || isListening || realtimeVoice.isListening;
   const effectiveIntensity = realtimeVoice.isListening
     ? Math.min(1, realtimeVoice.audioLevel * 3)  // Scale audio level
     : intensity;
@@ -278,7 +325,8 @@ export function MessageInput({
     if (!ctx) return;
 
     const animate = () => {
-      drawWave(ctx, canvas.width, canvas.height, phaseRef.current, effectiveIntensity, voiceMode);
+      const realtimeBars = isSampleRecording ? liveBarsRef.current : undefined;
+      drawWave(ctx, canvas.width, canvas.height, phaseRef.current, effectiveIntensity, voiceMode, realtimeBars);
       phaseRef.current += 0.07;
       animationRef.current = requestAnimationFrame(animate);
     };
@@ -290,7 +338,7 @@ export function MessageInput({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isVoiceActive, effectiveIntensity, voiceMode]);
+  }, [isVoiceActive, effectiveIntensity, voiceMode, isSampleRecording]);
 
   // Detect @ typing for mentions
   // MARKER_94.7_AT_DETECTION: @ symbol detection trigger
@@ -411,6 +459,176 @@ export function MessageInput({
     }
   }, []);
 
+  const normalizeWaveform = useCallback((samples: number[], points: number = 40) => {
+    if (samples.length === 0) return new Array(points).fill(0.08);
+    const out: number[] = [];
+    const step = Math.max(1, Math.floor(samples.length / points));
+    for (let i = 0; i < samples.length; i += step) {
+      const chunk = samples.slice(i, i + step);
+      const avg = chunk.reduce((acc, v) => acc + v, 0) / chunk.length;
+      out.push(Math.max(0.02, Math.min(1, Number(avg.toFixed(4)))));
+      if (out.length >= points) break;
+    }
+    while (out.length < points) out.push(out[out.length - 1] || 0.08);
+    return out;
+  }, []);
+
+  const cleanupSampleRecording = useCallback(() => {
+    if (sampleRafRef.current) {
+      cancelAnimationFrame(sampleRafRef.current);
+      sampleRafRef.current = null;
+    }
+    if (analyserRef.current) {
+      analyserRef.current.disconnect();
+      analyserRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      mediaStreamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+  }, []);
+
+  const stopSampleRecording = useCallback(() => {
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== 'inactive') {
+      rec.stop();
+    } else {
+      cleanupSampleRecording();
+      setIsSampleRecording(false);
+      setStatusText(null);
+      setIntensity(0.5);
+    }
+  }, [cleanupSampleRecording]);
+
+  const startSampleRecording = useCallback(async () => {
+    if (disabled || isLoading || isSampleRecording) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      mediaStreamRef.current = stream;
+      chunksRef.current = [];
+      waveformRef.current = [];
+      recordingStartRef.current = Date.now();
+
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : (MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+
+      audioContextRef.current = new AudioContext();
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 512;
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      source.connect(analyserRef.current);
+      const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+      const freqArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+
+      const sampleLevel = () => {
+        const analyser = analyserRef.current;
+        if (!analyser) return;
+        analyser.getByteTimeDomainData(dataArray);
+        let sumSq = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const v = (dataArray[i] - 128) / 128;
+          sumSq += v * v;
+        }
+        const rms = Math.sqrt(sumSq / dataArray.length);
+        const level = Math.min(1, Math.max(0.02, rms * 5));
+        setIntensity(level);
+        waveformRef.current.push(level);
+        analyser.getByteFrequencyData(freqArray);
+        const barsCount = 28;
+        const bucketSize = Math.max(1, Math.floor(freqArray.length / barsCount));
+        const bars: number[] = [];
+        for (let b = 0; b < barsCount; b += 1) {
+          const start = b * bucketSize;
+          const end = Math.min(freqArray.length, start + bucketSize);
+          let sum = 0;
+          for (let i = start; i < end; i += 1) sum += freqArray[i];
+          const avg = end > start ? sum / (end - start) : 0;
+          bars.push(Math.max(0.02, Math.min(1, avg / 255)));
+        }
+        liveBarsRef.current = bars;
+        sampleRafRef.current = requestAnimationFrame(sampleLevel);
+      };
+
+      recorder.ondataavailable = (e: BlobEvent) => {
+        if (e.data && e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const durationMs = Math.max(1, Date.now() - recordingStartRef.current);
+        const finalMime = mimeType || recorder.mimeType || 'audio/webm';
+        const blob = new Blob(chunksRef.current, { type: finalMime });
+        const waveform = normalizeWaveform(waveformRef.current);
+
+        setIsSampleRecording(false);
+        setStatusText('Отправляю голосовое...');
+        cleanupSampleRecording();
+        liveBarsRef.current = [];
+        setIntensity(0.5);
+
+        try {
+          await onVoiceRecorded?.({
+            blob,
+            waveform,
+            durationMs,
+            mimeType: finalMime,
+          });
+        } finally {
+          setStatusText(null);
+        }
+      };
+
+      recorder.start(120);
+      setIsSampleRecording(true);
+      setStatusText('Запись...');
+      sampleRafRef.current = requestAnimationFrame(sampleLevel);
+    } catch (e) {
+      console.error('[Voice] Sample record start failed:', e);
+      setStatusText('Нет доступа к микрофону');
+      setTimeout(() => setStatusText(null), 2500);
+      cleanupSampleRecording();
+      setIsSampleRecording(false);
+    }
+  }, [cleanupSampleRecording, disabled, isLoading, isSampleRecording, normalizeWaveform, onVoiceRecorded]);
+
+  // Cleanup media/timers on unmount.
+  useEffect(() => {
+    return () => {
+      if (autoSendTimerRef.current) {
+        window.clearTimeout(autoSendTimerRef.current);
+      }
+      cleanupSampleRecording();
+    };
+  }, [cleanupSampleRecording]);
+
+  // Keep ChatPanel aware of active voice mode for backend voice policy wiring.
+  useEffect(() => {
+    onRealtimeVoiceChange?.(realtimeVoice.isListening || realtimeVoice.isModelSpeaking || isSampleRecording);
+  }, [isSampleRecording, onRealtimeVoiceChange, realtimeVoice.isListening, realtimeVoice.isModelSpeaking]);
+
+  // If user starts typing, explicitly drop voice mode flags.
+  useEffect(() => {
+    if (hasText) {
+      onRealtimeVoiceChange?.(false);
+      onVoiceOnlyModeChange?.(false);
+    }
+  }, [hasText, onRealtimeVoiceChange, onVoiceOnlyModeChange]);
+
   // Phase 60.5: Trigger 3 - Auto-continue voice after model response
   // When isLoading goes from true to false and autoContinueVoice is on,
   // start listening again (simulates continuous voice dialog)
@@ -423,6 +641,7 @@ export function MessageInput({
     if (wasLoading && !isLoading && autoContinueVoice) {
       // Check if we should auto-start voice (voice mode conditions met)
       const shouldAutoStart =
+        (!hasText && hasRawText) ||
         (voiceModelDetection.hasVoiceModel && !voiceModelDetection.hasTextAfter) ||
         isReplyingToVoiceModel ||
         isSelectedModelVoice ||
@@ -441,12 +660,18 @@ export function MessageInput({
         return () => clearTimeout(timer);
       }
     }
-  }, [isLoading, autoContinueVoice, voiceModelDetection, isReplyingToVoiceModel, isSelectedModelVoice, voiceOnlyMode, isListening, startListening, realtimeVoiceEnabled, realtimeVoice]);
+  }, [isLoading, autoContinueVoice, hasText, hasRawText, voiceModelDetection, isReplyingToVoiceModel, isSelectedModelVoice, voiceOnlyMode, isListening, startListening, realtimeVoiceEnabled, realtimeVoice]);
 
   // Smart button click handler
   // Phase 60.5.1: Voice models now use realtime pipeline automatically
   // MARKER_90.1_START: Fix voice/text priority
   const handleButtonClick = useCallback(() => {
+    // PRIORITY 0: sample recording must always stop on button click.
+    if (isSampleRecording) {
+      stopSampleRecording();
+      return;
+    }
+
     // PRIORITY 1: If user typed text, ALWAYS send text (regardless of voice model)
     if (hasText) {
       // Stop any active voice recording first
@@ -458,11 +683,7 @@ export function MessageInput({
 
     // PRIORITY 2: Voice mode active (empty input + voice model selected/mentioned)
     if (showVoiceMode || voiceOnlyMode || isSelectedModelVoice) {
-      if (realtimeVoice.isListening) {
-        realtimeVoice.stopListening();
-      } else {
-        realtimeVoice.startListening();
-      }
+      startSampleRecording();
       return;
     }
 
@@ -470,7 +691,7 @@ export function MessageInput({
     if (isListening) {
       stopListening();
     }
-  }, [isListening, showVoiceMode, hasText, stopListening, onSend, realtimeVoice, voiceOnlyMode, isSelectedModelVoice]);
+  }, [hasText, isListening, isSampleRecording, isSelectedModelVoice, onSend, realtimeVoice, showVoiceMode, startSampleRecording, stopListening, stopSampleRecording, voiceOnlyMode]);
   // MARKER_90.1_END
 
   // Keyboard handling
@@ -478,19 +699,29 @@ export function MessageInput({
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        if (value.trim()) {
+        if (isSampleRecording) {
+          stopSampleRecording();
+          return;
+        }
+        if (hasText) {
           if (isListening) stopListening();
           if (realtimeVoice.isListening) realtimeVoice.stopListening();
           onSend();
+        } else if (showVoiceMode) {
+          startSampleRecording();
         }
       }
       if (e.key === 'Escape') {
         setShowMentions(false);
+        if (isSampleRecording) {
+          stopSampleRecording();
+          return;
+        }
         if (isListening) stopListening();
         if (realtimeVoice.isListening) realtimeVoice.stopListening();
       }
     },
-    [value, onSend, isListening, stopListening, realtimeVoice]
+    [hasText, isListening, isSampleRecording, onSend, realtimeVoice, showVoiceMode, startSampleRecording, stopListening, stopSampleRecording]
   );
 
   // Auto-resize textarea
@@ -506,6 +737,9 @@ export function MessageInput({
   const getButtonStyle = () => {
     if (isLoading) {
       return { bg: '#2a2a2a', color: '#555', shadow: 'none' };
+    }
+    if (isSampleRecording) {
+      return { bg: '#1a2a3a', color: '#4a9eff', shadow: '0 0 22px rgba(74, 158, 255, 0.55)' };
     }
     // Phase 60.5.1: Realtime voice states
     if (realtimeVoice.isModelSpeaking) {
@@ -640,6 +874,8 @@ export function MessageInput({
               ? realtimeVoice.isSpeaking
                 ? 'Говорите...'
                 : 'Слушаю...'
+              : isSampleRecording
+              ? 'Запись голосового...'
               : isListening
               ? 'Говорите...'
               : replyTo
@@ -689,6 +925,8 @@ export function MessageInput({
               ? 'Перебить модель'
               : realtimeVoice.isListening
               ? 'Остановить'
+              : isSampleRecording
+              ? 'Остановить и отправить'
               : isListening
               ? 'Остановить запись'
               : showVoiceMode
@@ -700,7 +938,7 @@ export function MessageInput({
             <Loader2 size={18} className="vetka-spin" />
           ) : realtimeVoice.isModelSpeaking ? (
             <Volume2 size={18} />
-          ) : realtimeVoice.isListening || isListening ? (
+          ) : realtimeVoice.isListening || isListening || isSampleRecording ? (
             <Square size={14} fill="currentColor" />
           ) : showVoiceMode ? (
             <Mic size={20} />

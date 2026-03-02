@@ -54,6 +54,7 @@ class VoiceSession:
     model: str = "grok-3-mini"  # Updated: grok-beta retired, use grok-3-mini
     tts_voice: str = "bella"
     stt_provider: str = "whisper"  # Default to local Whisper (no API limits!)
+    chat_mode: bool = False  # Chat input mode: only STT, LLM/TTS handled by chat pipeline
 
     # Conversation context
     conversation_history: List[dict] = field(default_factory=list)
@@ -227,8 +228,13 @@ class VoiceRouter:
             session.tts_voice = config['tts_voice']
         if 'stt_provider' in config and config['stt_provider']:
             session.stt_provider = config['stt_provider']
+        if 'chat_mode' in config:
+            session.chat_mode = bool(config['chat_mode'])
 
-        logger.info(f"[Voice:{session_id}] Config: model={session.model}, voice={session.tts_voice}, stt={session.stt_provider}")
+        logger.info(
+            f"[Voice:{session_id}] Config: model={session.model}, voice={session.tts_voice}, "
+            f"stt={session.stt_provider}, chat_mode={session.chat_mode}"
+        )
 
     async def _process_utterance(self, session: VoiceSession):
         """
@@ -260,6 +266,12 @@ class VoiceRouter:
 
             # Add to conversation history
             session.add_user_message(transcript)
+
+            # Chat mode: stop here (STT only). Chat pipeline handles LLM/TTS.
+            if session.chat_mode:
+                session.state = VoiceState.IDLE
+                await self.emit(session.session_id, 'voice_status', {'status': 'idle'})
+                return
 
             # 3. LLM (streaming)
             session.state = VoiceState.GENERATING
@@ -326,13 +338,14 @@ class VoiceRouter:
                 if audio_chunk:
                     await self.emit(session.session_id, 'voice_tts_chunk', {
                         'audio': audio_chunk,  # base64
-                        'format': 'mp3'
+                        'format': 'wav'
                     })
                 else:
-                    # No TTS available - use browser TTS fallback
-                    await self.emit(session.session_id, 'voice_tts_browser', {
-                        'text': sentence
+                    await self.emit(session.session_id, 'voice_error', {
+                        'error': 'Qwen TTS unavailable',
+                        'silent': True,
                     })
+                    logger.warning(f"[Voice:{session.session_id}] Qwen TTS unavailable, sentence skipped")
 
             # Done
             await self.emit(session.session_id, 'voice_model_speaking', {'speaking': False})
