@@ -12,9 +12,13 @@ from __future__ import annotations
 
 import os
 import time
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.search.file_search_service import search_files
+
+DESCRIPTIVE_MIN_WORDS = max(4, int(os.getenv("VETKA_DESCRIPTIVE_MIN_WORDS", "4")))
 
 TEXT_EXTENSIONS = {
     ".py", ".js", ".ts", ".tsx", ".jsx", ".md", ".txt", ".json", ".yaml", ".yml",
@@ -41,6 +45,28 @@ def _normalize_item(
 
 
 def _file_search(query: str, limit: int) -> List[Dict[str, Any]]:
+    # Prefer Phase 157 file search engine (intent-aware + JEPA-assisted rerank).
+    try:
+        payload = search_files(query=query, limit=limit, mode="keyword")
+        rows = payload.get("results", []) if payload.get("success") else []
+        out: List[Dict[str, Any]] = []
+        for item in rows[:limit]:
+            path = item.get("path") or item.get("title") or ""
+            out.append(
+                _normalize_item(
+                    source="file",
+                    title=str(path),
+                    snippet=str(item.get("snippet", "")),
+                    score=float(item.get("score", 0.0)),
+                    url=f"file://{path}",
+                )
+            )
+        if out:
+            return out
+    except Exception:
+        pass
+
+    # Legacy fallback path.
     query_l = query.lower().strip()
     if not query_l:
         return []
@@ -96,6 +122,14 @@ def _file_search(query: str, limit: int) -> List[Dict[str, Any]]:
                     return results
 
     return results
+
+
+def _is_descriptive_query(query: str) -> bool:
+    q = (query or "").lower().strip()
+    words = [w for w in re.split(r"[^a-zA-Zа-яА-Я0-9_]+", q) if w]
+    file_like = any(x in q for x in [".py", ".md", ".txt", "marker_", "/", "\\"])
+    markers = ["найди файл где", "не помню", "документ", "где ", "про ", "какой файл"]
+    return (len(words) >= DESCRIPTIVE_MIN_WORDS and not file_like) or any(m in q for m in markers)
 
 
 def _semantic_search(query: str, limit: int) -> List[Dict[str, Any]]:
@@ -185,6 +219,9 @@ def run_unified_search(
     _ = viewport_context
     selected_sources = sources or ["file", "semantic", "web", "social"]
     selected_sources = [s for s in selected_sources if s in {"file", "semantic", "web", "social"}]
+    # Phase 157: descriptive document queries in vetka context must include file source.
+    if _is_descriptive_query(query) and "file" not in selected_sources:
+        selected_sources.append("file")
 
     started = time.time()
     if not query or len(query.strip()) < 2:

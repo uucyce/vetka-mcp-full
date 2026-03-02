@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import time
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -22,7 +23,11 @@ TEXT_EXTENSIONS = {
     ".toml", ".ini", ".html", ".css", ".sql", ".go", ".rs", ".java", ".c", ".cpp",
 }
 
+logger = logging.getLogger("VETKA_FILE_SEARCH")
+DESCRIPTIVE_MIN_WORDS = max(4, int(os.getenv("VETKA_DESCRIPTIVE_MIN_WORDS", "4")))
+
 _RU_EN_HINTS = {
+    "абревиат": ["abbreviation", "abbreviations", "acronym", "abbr"],
     "аббревиат": ["abbreviation", "abbreviations", "acronym", "abbr"],
     "памят": ["memory", "dag", "cam", "arc", "elision", "engram", "hope"],
     "матриц": ["matrix", "matrices", "capability_matrix", "input_matrix"],
@@ -55,7 +60,8 @@ def _is_descriptive_query(query: str) -> bool:
     words = _tokenize_query(q)
     markers = ["найди файл где", "не помню", "документ", "про ", "где ", "какой файл"]
     file_like = any(x in q for x in [".py", ".md", ".txt", "marker_", "/", "\\"])
-    return (len(words) >= 6 and not file_like) or any(m in q for m in markers)
+    multiword_nl = (len(words) >= DESCRIPTIVE_MIN_WORDS and not file_like)
+    return multiword_nl or any(m in q for m in markers)
 
 
 def _expand_query_terms(query: str, max_terms: int = 14) -> List[str]:
@@ -371,6 +377,11 @@ def _jepa_rescore_rows(rows: List[Dict[str, Any]], query: str, limit: int) -> Li
         jr = embed_texts_for_overlay(texts=texts, target_dim=128)
         vectors = getattr(jr, "vectors", []) or []
         if len(vectors) != len(texts):
+            logger.info(
+                "[MARKER_157.JEPA.FILE] skipped reason=vector_mismatch vectors=%d texts=%d",
+                len(vectors),
+                len(texts),
+            )
             return rows
         qv = vectors[0]
         rescored: List[Dict[str, Any]] = []
@@ -381,8 +392,16 @@ def _jepa_rescore_rows(rows: List[Dict[str, Any]], query: str, limit: int) -> Li
             nr["jepa_score"] = round(js, 6)
             rescored.append(nr)
         rescored.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
+        logger.info(
+            "[MARKER_157.JEPA.FILE] applied query='%s' rows=%d provider_mode=%s top_jepa=%.4f",
+            query[:80],
+            len(rescored),
+            getattr(jr, "provider_mode", "unknown"),
+            float(rescored[0].get("jepa_score", 0.0)) if rescored else 0.0,
+        )
         return rescored + rows[max(limit * 4, 120):]
-    except Exception:
+    except Exception as e:
+        logger.warning("[MARKER_157.JEPA.FILE] failed error=%s", str(e)[:200])
         return rows
 
 
@@ -396,6 +415,14 @@ def _rerank_items(items: List[Dict[str, Any]], query: str) -> List[Dict[str, Any
     terms = _expand_query_terms(query)
     descriptive = _is_descriptive_query(query)
     core_terms = [t for t in terms if t not in {"docs", "marker", "phase", "ph", "file", "doc"}]
+    q_has_abbrev = any(
+        t.startswith("аббрев") or t.startswith("абрев") or "abbreviat" in t or t == "abbr"
+        for t in terms
+    ) or ("аббрев" in ql or "абрев" in ql)
+    q_has_memory = any("памят" in t or t in {"memory", "cam", "arc", "elision", "engram"} for t in terms) or ("памят" in ql)
+    q_has_runtime = any(t in {"runtime", "map", "157", "phase", "marker"} or "фаз" in t for t in terms) or ("runtime" in ql)
+    q_has_matrix = any("матриц" in t or t in {"matrix", "input", "inputs", "scanner", "contract"} for t in terms) or ("матриц" in ql or "инпут" in ql)
+    q_has_stream = any("стрим" in t or t in {"stream", "streaming", "grok"} for t in terms) or ("стрим" in ql or "grok" in ql)
 
     ranked: List[Dict[str, Any]] = []
     for item in items:
@@ -423,15 +450,17 @@ def _rerank_items(items: List[Dict[str, Any]], query: str) -> List[Dict[str, Any
             s += min(1.0, strong_hits * 0.12)
 
             # High-value concept combos for descriptive doc retrieval.
-            if "abbreviat" in p_l and "memory" in p_l:
+            if q_has_abbrev and q_has_memory and "abbreviat" in p_l and "memory" in p_l:
                 s += 1.2
-            if "input" in p_l and "matrix" in p_l:
+            if q_has_abbrev and "abbreviat" in p_l:
+                s += 0.8
+            if q_has_matrix and "input" in p_l and "matrix" in p_l:
                 s += 1.2
-            if "runtime" in p_l and "map" in p_l and ("157" in p_l or "phase_157" in p_l):
+            if q_has_runtime and "runtime" in p_l and "map" in p_l and ("157" in p_l or "phase_157" in p_l):
                 s += 1.2
-            if "memory" in p_l and ("integration" in p_l or "systems_summary" in p_l):
+            if q_has_memory and (not q_has_abbrev) and "memory" in p_l and ("integration" in p_l or "systems_summary" in p_l):
                 s += 1.0
-            if "stream" in p_l and "grok" in p_l:
+            if q_has_stream and "stream" in p_l and "grok" in p_l:
                 s += 1.0
 
         # Prefer workspace/project locations.

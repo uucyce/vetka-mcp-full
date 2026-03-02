@@ -47,7 +47,7 @@ RRF_K = int(os.getenv("VETKA_RRF_K", "60"))
 FILE_WEIGHT = float(os.getenv("VETKA_FILE_WEIGHT", "0.35"))
 JEPA_REORDER_WEIGHT = float(os.getenv("VETKA_HYBRID_JEPA_REORDER_WEIGHT", "0.35"))
 HYBRID_JEPA_ENABLED = os.getenv("VETKA_HYBRID_JEPA_ENABLED", "true").lower() == "true"
-HYBRID_JEPA_INTENT_MIN_WORDS = int(os.getenv("VETKA_HYBRID_JEPA_INTENT_MIN_WORDS", "6"))
+HYBRID_JEPA_INTENT_MIN_WORDS = max(4, int(os.getenv("VETKA_HYBRID_JEPA_INTENT_MIN_WORDS", "4")))
 
 # Cache configuration
 HYBRID_CACHE_TTL = int(os.getenv("VETKA_HYBRID_CACHE_TTL", "300"))  # 5 minutes
@@ -63,6 +63,18 @@ def _is_descriptive_query(query: str) -> bool:
     file_like = any(x in q for x in [".py", ".md", ".txt", "marker_", "/", "\\"])
     markers = ["не помню", "найди файл где", "документ", "где ", "про "]
     return (len(words) >= HYBRID_JEPA_INTENT_MIN_WORDS and not file_like) or any(m in q for m in markers)
+
+
+def _is_explicit_file_finder_query(query: str) -> bool:
+    q = (query or "").lower().strip()
+    markers = [
+        "найди файл",
+        "какой файл",
+        "где файл",
+        "find file",
+        "which file",
+    ]
+    return any(m in q for m in markers)
 
 
 class HybridSearchService:
@@ -288,6 +300,7 @@ class HybridSearchService:
 
             # Run searches in parallel using asyncio
             tasks = []
+            normalized_by_source: Dict[str, List[Dict[str, Any]]] = {}
 
             # 1. Semantic search (Qdrant)
             if mode in ("semantic", "hybrid") and self.qdrant:
@@ -321,35 +334,48 @@ class HybridSearchService:
 
                     if result:
                         # Normalize results to common format
-                            source = "qdrant" if task_name == "semantic" else ("weaviate" if task_name == "keyword" else "file")
-                            normalized = normalize_results(result, source)
-                            if normalized:
-                                results_lists.append(normalized)
-                                sources_used.append(task_name)
+                        source = "qdrant" if task_name == "semantic" else ("weaviate" if task_name == "keyword" else "file")
+                        normalized = normalize_results(result, source)
+                        if normalized:
+                            normalized_by_source[task_name] = normalized
+                            results_lists.append(normalized)
+                            sources_used.append(task_name)
 
-                            # Set weight based on mode
-                            if mode == "hybrid":
-                                if task_name == "semantic":
-                                    weights.append(SEMANTIC_WEIGHT)
-                                elif task_name == "keyword":
-                                    weights.append(KEYWORD_WEIGHT)
-                                elif task_name == "file":
-                                    weights.append(FILE_WEIGHT)
-                            else:
-                                weights.append(1.0)
+                        # Set weight based on mode
+                        if mode == "hybrid":
+                            if task_name == "semantic":
+                                weights.append(SEMANTIC_WEIGHT)
+                            elif task_name == "keyword":
+                                weights.append(KEYWORD_WEIGHT)
+                            elif task_name == "file":
+                                weights.append(FILE_WEIGHT)
+                        else:
+                            weights.append(1.0)
 
-            # 3. RRF Fusion if multiple sources
-            if len(results_lists) > 1:
-                fused = weighted_rrf(results_lists, weights, k=RRF_K, top_n=limit)
-                actual_mode = "hybrid"
-            elif len(results_lists) == 1:
-                fused = results_lists[0][:limit]
-                actual_mode = sources_used[0] if sources_used else mode
+            # Phase 157 runtime policy:
+            # explicit "find file" intent should prioritize local file retrieval to avoid semantic noise.
+            if (
+                mode == "hybrid"
+                and query_intent == "descriptive"
+                and _is_explicit_file_finder_query(query)
+                and normalized_by_source.get("file")
+            ):
+                fused = normalized_by_source["file"][:limit]
+                actual_mode = "file"
+                sources_used = ["file"]
             else:
-                fused = []
-                # FIX_95.1_MODE_NONE: Preserve requested mode instead of "none"
-                # This allows frontend to show correct mode even with 0 results
-                actual_mode = mode  # Was: "none" - bug caused confusion in UI
+                # 3. RRF Fusion if multiple sources
+                if len(results_lists) > 1:
+                    fused = weighted_rrf(results_lists, weights, k=RRF_K, top_n=limit)
+                    actual_mode = "hybrid"
+                elif len(results_lists) == 1:
+                    fused = results_lists[0][:limit]
+                    actual_mode = sources_used[0] if sources_used else mode
+                else:
+                    fused = []
+                    # FIX_95.1_MODE_NONE: Preserve requested mode instead of "none"
+                    # This allows frontend to show correct mode even with 0 results
+                    actual_mode = mode  # Was: "none" - bug caused confusion in UI
 
             # Optional JEPA reorder for descriptive queries.
             if query_intent == "descriptive":
