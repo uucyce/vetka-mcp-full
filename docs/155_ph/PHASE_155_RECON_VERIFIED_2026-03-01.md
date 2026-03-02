@@ -1,5 +1,7 @@
 # PHASE 155 RECON — VERIFIED VS CODEBASE (2026-03-01)
 
+> Superseded by: `docs/155_ph/PHASE_155_RECON_FINAL_2026-03-02.md`
+
 **Scope:** Marker audit verification against actual codebase  
 **Status:** Verified
 
