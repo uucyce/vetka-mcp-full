@@ -35,7 +35,7 @@ import { PlaygroundBadge } from './PlaygroundBadge';
 // MARKER_155.WIZARD.001: Wizard flow for steps 1-3
 import { WizardContainer, type WizardStep } from './WizardContainer';
 import { ToastContainer } from './ToastContainer';
-import { useMCCStore } from '../../store/useMCCStore';
+import { useMCCStore, type WorkflowSourceMode } from '../../store/useMCCStore';
 import { useStore } from '../../store/useStore';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useRoadmapDAG } from '../../hooks/useRoadmapDAG';
@@ -93,6 +93,19 @@ interface DagCompareRow {
     density?: number;
   };
   error?: string;
+}
+
+interface WorkflowGraphSourcePayload {
+  marker?: string;
+  graph_source?: string;
+  task_id?: string;
+  runtime_graph?: Record<string, any>;
+  design_graph?: Record<string, any>;
+  predict_graph?: {
+    nodes?: any[];
+    edges?: any[];
+    stats?: Record<string, any>;
+  };
 }
 
 type FocusDisplayMode = 'all' | 'selected_deps' | 'selected_only';
@@ -284,6 +297,26 @@ function adaptVersionEdge(raw: any, idx: number): DAGEdge {
     strength: Math.max(0.25, Math.min(1.0, Number(raw?.strength ?? raw?.score ?? raw?.confidence ?? 0.8))),
     relationKind,
   };
+}
+
+function extractCanonicalNodesEdges(graph: any): { nodes: any[]; edges: any[] } {
+  if (!graph || typeof graph !== 'object') return { nodes: [], edges: [] };
+  if (Array.isArray(graph.nodes) && Array.isArray(graph.edges)) {
+    return { nodes: graph.nodes, edges: graph.edges };
+  }
+  for (const key of ['l2_overview', 'l2', 'l1']) {
+    const section = graph?.[key];
+    if (section && typeof section === 'object' && Array.isArray(section.nodes) && Array.isArray(section.edges)) {
+      return { nodes: section.nodes, edges: section.edges };
+    }
+  }
+  return { nodes: [], edges: [] };
+}
+
+function resolveWorkflowGraphEndpoint(mode: WorkflowSourceMode): string {
+  if (mode === 'runtime') return 'runtime-graph';
+  if (mode === 'predict') return 'predict-graph';
+  return 'design-graph';
 }
 
 // MARKER_155A.P1.ADAPTERS: Normalize backend graph payloads to MCC DAG types.
@@ -1289,6 +1322,8 @@ export function MyceliumCommandCenter() {
   const focusRestoreSource = useMCCStore(s => s.focusRestoreSource);
   const setFocusRestorePolicy = useMCCStore(s => s.setFocusRestorePolicy);
   const setFocusRestoreSource = useMCCStore(s => s.setFocusRestoreSource);
+  const workflowSourceMode = useMCCStore(s => s.workflowSourceMode);
+  const setWorkflowSourceMode = useMCCStore(s => s.setWorkflowSourceMode);
   const persistSessionState = useMCCStore(s => s.persistSessionState);
   const layoutPins = useMCCStore(s => s.layoutPins);
   const setLayoutPinsForKey = useMCCStore(s => s.setLayoutPinsForKey);
@@ -1369,6 +1404,9 @@ export function MyceliumCommandCenter() {
   const [showDagCompareMatrix, setShowDagCompareMatrix] = useState(false);
   const [selectedDagCompareName, setSelectedDagCompareName] = useState<string | null>(null);
   const [debugMode, setDebugMode] = useState(false);
+  const [workflowSourcePayload, setWorkflowSourcePayload] = useState<WorkflowGraphSourcePayload | null>(null);
+  const [workflowSourceLoading, setWorkflowSourceLoading] = useState(false);
+  const [workflowSourceError, setWorkflowSourceError] = useState<string | null>(null);
   // MARKER_153.6C: Toast notifications for pipeline/system events
   const { toasts, addToast, dismissToast } = useToast();
 
@@ -1546,6 +1584,52 @@ export function MyceliumCommandCenter() {
     fetchDagVersionPayload(activeDagVersionId);
   }, [activeDagVersionId, fetchDagVersionPayload]);
 
+  useEffect(() => {
+    if (!mccReady || !hasProject || navLevel === 'first_run') {
+      setWorkflowSourcePayload(null);
+      setWorkflowSourceError(null);
+      setWorkflowSourceLoading(false);
+      return;
+    }
+    const endpoint = resolveWorkflowGraphEndpoint(workflowSourceMode);
+    const taskKey = String(activeDagVersionId || selectedTaskId || 'latest');
+    const scopeQuery = projectScopePath ? `&scope_path=${encodeURIComponent(projectScopePath)}` : '';
+    let cancelled = false;
+    setWorkflowSourceLoading(true);
+    setWorkflowSourceError(null);
+    fetch(`${API_BASE}/workflow/${endpoint}/${encodeURIComponent(taskKey)}?max_nodes=600${scopeQuery}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(String(body?.detail || `HTTP ${res.status}`));
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setWorkflowSourcePayload(data || null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setWorkflowSourcePayload(null);
+        setWorkflowSourceError(err instanceof Error ? err.message : 'Failed to fetch workflow source graph');
+      })
+      .finally(() => {
+        if (!cancelled) setWorkflowSourceLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    mccReady,
+    hasProject,
+    navLevel,
+    workflowSourceMode,
+    activeDagVersionId,
+    selectedTaskId,
+    projectScopePath,
+  ]);
+
   const versionRoadmapGraph = useMemo(() => {
     const dagPayload = activeDagVersionPayload?.dag_payload || {};
     const design = dagPayload?.design_graph || {};
@@ -1560,11 +1644,37 @@ export function MyceliumCommandCenter() {
       verifier: dagPayload?.verifier || activeDagVersionPayload?.build_meta?.verifier || null,
     };
   }, [activeDagVersionPayload]);
+  const sourceModeRoadmapGraph = useMemo(() => {
+    if (!workflowSourcePayload) return null;
+    if (workflowSourceMode === 'predict') {
+      const predict = workflowSourcePayload.predict_graph || {};
+      const rawNodes = Array.isArray(predict?.nodes) ? predict.nodes : [];
+      const rawEdges = Array.isArray(predict?.edges) ? predict.edges : [];
+      if (rawNodes.length === 0 || rawEdges.length === 0) return null;
+      return {
+        nodes: rawNodes.map((n: any) => adaptVersionNode(n)),
+        edges: rawEdges.map((e: any, idx: number) => adaptVersionEdge({ ...e, type: 'predicted', relationKind: 'predicted' }, idx)),
+        crossEdges: [] as DAGEdge[],
+        verifier: null,
+      };
+    }
+    const graphPayload = workflowSourceMode === 'runtime'
+      ? workflowSourcePayload.runtime_graph
+      : workflowSourcePayload.design_graph;
+    const extracted = extractCanonicalNodesEdges(graphPayload);
+    if (extracted.nodes.length === 0 || extracted.edges.length === 0) return null;
+    return {
+      nodes: extracted.nodes.map((n: any) => adaptVersionNode(n)),
+      edges: extracted.edges.map((e: any, idx: number) => adaptVersionEdge(e, idx)),
+      crossEdges: [] as DAGEdge[],
+      verifier: null,
+    };
+  }, [workflowSourcePayload, workflowSourceMode]);
 
-  const roadmapNodes = versionRoadmapGraph?.nodes || roadmap.nodes;
-  const roadmapEdges = versionRoadmapGraph?.edges || roadmap.edges;
-  const roadmapCrossEdges = versionRoadmapGraph?.crossEdges || roadmap.crossEdges;
-  const roadmapVerifier = versionRoadmapGraph?.verifier || roadmap.verifier;
+  const roadmapNodes = sourceModeRoadmapGraph?.nodes || versionRoadmapGraph?.nodes || roadmap.nodes;
+  const roadmapEdges = sourceModeRoadmapGraph?.edges || versionRoadmapGraph?.edges || roadmap.edges;
+  const roadmapCrossEdges = sourceModeRoadmapGraph?.crossEdges || versionRoadmapGraph?.crossEdges || roadmap.crossEdges;
+  const roadmapVerifier = sourceModeRoadmapGraph?.verifier || versionRoadmapGraph?.verifier || roadmap.verifier;
   const selectedDagCompareRow = useMemo(() => {
     if (!selectedDagCompareName) return null;
     return dagCompareRows.find((r) => r.name === selectedDagCompareName) || null;
@@ -1593,6 +1703,15 @@ export function MyceliumCommandCenter() {
       color: '#ef8d8d',
     };
   }, [roadmapVerifier]);
+
+  const workflowSourceBadge = useMemo(() => {
+    const source = String(workflowSourcePayload?.graph_source || '');
+    const mode = workflowSourceMode.toUpperCase();
+    if (workflowSourceLoading) return `${mode} · loading`;
+    if (workflowSourceError) return `${mode} · error`;
+    if (!source) return `${mode} · default`;
+    return `${mode} · ${source}`;
+  }, [workflowSourceMode, workflowSourcePayload?.graph_source, workflowSourceLoading, workflowSourceError]);
 
   // MARKER_153.7C: Architect Captain recommendations
   const captain = useCaptain(mccReady && hasProject);
@@ -2721,13 +2840,6 @@ export function MyceliumCommandCenter() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [sendFocusToArchitect]);
 
-  // MARKER_143.P3: Get selected task title for breadcrumb
-  const selectedTaskTitle = useMemo(() => {
-    if (!selectedTaskId) return null;
-    const t = tasks.find(t => t.id === selectedTaskId);
-    return t?.title || selectedTaskId.slice(0, 12);
-  }, [selectedTaskId, tasks]);
-
   return (
     <div
       style={{
@@ -3100,42 +3212,6 @@ export function MyceliumCommandCenter() {
             </div>
           )}
 
-          {/* MARKER_143.P3: Task breadcrumb — shows when filtered by task */}
-          {selectedTaskId && selectedTaskTitle && (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '3px 10px',
-                background: 'rgba(255,255,255,0.03)',
-                borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
-                fontSize: 9,
-                flexShrink: 0,
-              }}
-            >
-              <span style={{ color: '#555' }}>Task:</span>
-              <span style={{ color: '#ccc', fontWeight: 600 }}>{selectedTaskTitle}</span>
-              <button
-                onClick={() => selectTask(null)}
-                style={{
-                  background: 'transparent',
-                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-                  borderRadius: 2,
-                  color: '#888',
-                  fontSize: 8,
-                  padding: '0px 4px',
-                  cursor: 'pointer',
-                  fontFamily: 'monospace',
-                  marginLeft: 'auto',
-                }}
-                title="Show all tasks"
-              >
-                show all
-              </button>
-            </div>
-          )}
-
           {/* DAG View — level-aware rendering + MARKER_154.5A transition */}
           <div style={{ flex: 1, minHeight: 0, position: 'relative' }} data-onboarding="dag-canvas">
             <ReactFlowProvider>
@@ -3233,6 +3309,80 @@ export function MyceliumCommandCenter() {
                 }}
               >
                 Press <span style={{ color: NOLAN_PALETTE.textAccent, fontWeight: 600 }}>Enter</span> to drill into {selectedNode?.startsWith('task_overlay_') ? 'workflow' : navLevel === 'roadmap' ? 'module' : 'task'}
+              </div>
+            )}
+
+            {/* MARKER_155B.CANON.UI_SOURCE_MODE.V1:
+                Persistent workflow source mode switch (runtime|design|predict). */}
+            {navLevel !== 'first_run' && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  left: debugMode ? 148 : 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(0,0,0,0.68)',
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 4,
+                  padding: '3px 6px',
+                  zIndex: 10,
+                  fontFamily: 'monospace',
+                }}
+              >
+                {(['runtime', 'design', 'predict'] as WorkflowSourceMode[]).map((mode) => {
+                  const active = workflowSourceMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => setWorkflowSourceMode(mode)}
+                      style={{
+                        border: `1px solid ${active ? '#6e8aa8' : NOLAN_PALETTE.borderDim}`,
+                        borderRadius: 3,
+                        background: active ? 'rgba(142, 203, 255, 0.14)' : '#14171a',
+                        color: active ? '#bfe1ff' : '#8593a3',
+                        fontSize: 9,
+                        letterSpacing: 0.3,
+                        padding: '1px 6px',
+                        cursor: 'pointer',
+                        textTransform: 'uppercase',
+                      }}
+                      title={`Workflow source mode: ${mode}`}
+                    >
+                      {mode}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* MARKER_155B.CANON.UI_SOURCE_BADGE.V1:
+                Visible source badge reflecting active source mode and response source. */}
+            {navLevel !== 'first_run' && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 34,
+                  left: debugMode ? 148 : 8,
+                  background: 'rgba(0,0,0,0.65)',
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 4,
+                  padding: '2px 8px',
+                  fontSize: 9,
+                  color: workflowSourceError ? '#ef8d8d' : workflowSourceLoading ? '#f0cf7a' : '#8ecbff',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.45,
+                  zIndex: 9,
+                  fontFamily: 'monospace',
+                  maxWidth: 220,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={workflowSourceError || `workflow source: ${workflowSourceBadge}`}
+              >
+                Source: {workflowSourceBadge}
               </div>
             )}
 
