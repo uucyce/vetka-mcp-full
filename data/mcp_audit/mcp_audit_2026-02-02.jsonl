@@ -1,4 +1,0 @@
-{"timestamp": "2026-02-02T01:37:16.385535", "client_id": "test-agent", "tool": "unknown_tool", "arguments": {}, "success": false, "duration_ms": null, "error": "tool_not_found"}
-{"timestamp": "2026-02-02T01:37:16.386424", "client_id": "agent-001", "tool": "vetka_create_branch", "arguments": {"name": "test", "parent_path": "src"}, "success": true, "duration_ms": 0.02, "result_summary": "status=dry_run"}
-{"timestamp": "2026-02-02T01:37:56.866671", "client_id": "test-agent", "tool": "unknown_tool", "arguments": {}, "success": false, "duration_ms": null, "error": "tool_not_found"}
-{"timestamp": "2026-02-02T01:37:56.867635", "client_id": "agent-001", "tool": "vetka_create_branch", "arguments": {"name": "test", "parent_path": "src"}, "success": true, "duration_ms": 0.02, "result_summary": "status=dry_run"}

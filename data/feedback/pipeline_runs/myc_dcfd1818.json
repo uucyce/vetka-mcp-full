@@ -1,8 +1,0 @@
-{
-  "task_id": "myc_dcfd1818",
-  "status": "failed",
-  "task": "Create a Python utility file src/utils/string_helpers.py with 3 functions: slugify(text) that converts text to URL-friendly slug, truncate(text, max_len=100) that truncates with ellipsis, and word_cou",
-  "preset": "dragon_bronze",
-  "detail": "TypeError: MyceliumWSBroadcaster.broadcast_pipeline_activity() got an unexpected keyword argument 'extra'",
-  "ts": "2026-02-11T15:35:26Z"
-}

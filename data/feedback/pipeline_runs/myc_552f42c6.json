@@ -1,8 +1,0 @@
-{
-  "task_id": "myc_552f42c6",
-  "status": "completed",
-  "task": "Create a simple Python utility file at src/utils/favorite_utils.py with a FavoriteStore class that has add_favorite(item_id), remove_favorite(item_id), list_favorites() methods using a dictionary. Als",
-  "preset": "dragon_bronze",
-  "detail": "{'task_id': 'task_1771086738', 'task': 'Create a simple Python utility file at src/utils/favorite_utils.py with a FavoriteStore class that has add_favorite(item_id), remove_favorite(item_id), list_favorites() methods using a dictionary. Also create tests/test_favorite_utils.py with 3 unit tests.', 'phase_type': 'build', 'status': 'done', 'subtasks': [{'description': 'Create src/utils/favorite_utils.py with FavoriteStore class using a dictionary to store favorites', 'needs_research': False, 'ques",
-  "ts": "2026-02-14T16:43:14Z"
-}

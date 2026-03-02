@@ -1,8 +1,0 @@
-{
-  "task_id": "myc_6969dc9d",
-  "status": "completed",
-  "task": "Create a Python utility file src/utils/string_helpers.py with 3 functions: slugify(text) converts text to URL-friendly slug using regex, truncate(text, max_len=100) truncates with '...' ellipsis, and ",
-  "preset": "dragon_bronze",
-  "detail": "{'task_id': 'task_1770826207', 'task': \"Create a Python utility file src/utils/string_helpers.py with 3 functions: slugify(text) converts text to URL-friendly slug using regex, truncate(text, max_len=100) truncates with '...' ellipsis, and word_count(text) returns integer word count. Include docstrings, type hints, and a simple __main__ block with examples.\", 'phase_type': 'build', 'status': 'done', 'subtasks': [{'description': 'Create src/utils/string_helpers.py with initial structure and impor",
-  "ts": "2026-02-11T16:15:03Z"
-}

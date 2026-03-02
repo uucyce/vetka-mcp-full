@@ -1,8 +1,0 @@
-{
-  "task_id": "myc_fc717b0d",
-  "status": "completed",
-  "task": "Create HeartbeatChip.tsx React component in client/src/components/mcc/HeartbeatChip.tsx\n\nREQUIREMENTS:\n- Compact chip (24px height) showing heartbeat status: \"ON 47s\" (green pulse) or \"OFF\" (gray)\n- C",
-  "preset": "dragon_silver",
-  "detail": "{'task_id': 'task_1771093463', 'task': 'Create HeartbeatChip.tsx React component in client/src/components/mcc/HeartbeatChip.tsx\\n\\nREQUIREMENTS:\\n- Compact chip (24px height) showing heartbeat status: \"ON 47s\" (green pulse) or \"OFF\" (gray)\\n- Click: toggle heartbeat on/off via POST /api/debug/heartbeat/settings { enabled: !current }\\n- Right-click: interval selector popup (1m=60, 5m=300, 15m=900, 1h=3600, 1d=86400)\\n- Countdown timer: shows seconds until next tick, updates every 1s\\n- Fetch stat",
-  "ts": "2026-02-14T18:30:05Z"
-}

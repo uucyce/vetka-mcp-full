@@ -1,2 +1,0 @@
-{"timestamp": "2026-02-13T18:05:52.421235", "client_id": "test-agent", "tool": "unknown_tool", "arguments": {}, "success": false, "duration_ms": null, "error": "tool_not_found"}
-{"timestamp": "2026-02-13T18:05:52.422211", "client_id": "agent-001", "tool": "vetka_create_branch", "arguments": {"name": "test", "parent_path": "src"}, "success": true, "duration_ms": 0.04, "result_summary": "status=dry_run"}

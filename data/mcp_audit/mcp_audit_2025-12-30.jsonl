@@ -1,8 +1,0 @@
-{"timestamp": "2025-12-30T07:10:25.497603", "client_id": "test-agent", "tool": "unknown_tool", "arguments": {}, "success": false, "duration_ms": null, "error": "tool_not_found"}
-{"timestamp": "2025-12-30T07:10:25.497942", "client_id": "agent-001", "tool": "vetka_create_branch", "arguments": {"name": "test", "parent_path": "src"}, "success": true, "duration_ms": 0.01, "result_summary": "status=dry_run"}
-{"timestamp": "2025-12-30T07:27:29.442759", "client_id": "test-agent", "tool": "unknown_tool", "arguments": {}, "success": false, "duration_ms": null, "error": "tool_not_found"}
-{"timestamp": "2025-12-30T07:27:29.443036", "client_id": "agent-001", "tool": "vetka_create_branch", "arguments": {"name": "test", "parent_path": "src"}, "success": true, "duration_ms": 0.02, "result_summary": "status=dry_run"}
-{"timestamp": "2025-12-30T07:38:19.314163", "client_id": "test-agent", "tool": "unknown_tool", "arguments": {}, "success": false, "duration_ms": null, "error": "tool_not_found"}
-{"timestamp": "2025-12-30T07:38:19.314416", "client_id": "agent-001", "tool": "vetka_create_branch", "arguments": {"name": "test", "parent_path": "src"}, "success": true, "duration_ms": 0.02, "result_summary": "status=dry_run"}
-{"timestamp": "2025-12-30T08:00:38.100664", "client_id": "test-agent", "tool": "unknown_tool", "arguments": {}, "success": false, "duration_ms": null, "error": "tool_not_found"}
-{"timestamp": "2025-12-30T08:00:38.100886", "client_id": "agent-001", "tool": "vetka_create_branch", "arguments": {"name": "test", "parent_path": "src"}, "success": true, "duration_ms": 0.01, "result_summary": "status=dry_run"}

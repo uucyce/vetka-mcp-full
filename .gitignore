@@ -102,6 +102,23 @@ _trash/
 
 # Phase 146: Playground worktrees (ephemeral sandboxes)
 .playgrounds/
+.claude/worktrees/
+.vetka-playground-pg_*
+
+# Runtime data (keep only minimal templates/placeholders tracked)
+data/**
+!data/.gitkeep
+!data/raw/
+!data/raw/.gitkeep
+!data/artifacts/
+!data/artifacts/.gitkeep
+!data/changelog/
+!data/changelog/.gitkeep
+!data/templates/
+!data/templates/**
+!data/trufflehog_patterns.json
+!data/config.example.json
+!data/connectors_tokens.example.json
 
 # Tauri build artifacts
 client/src-tauri/target/
