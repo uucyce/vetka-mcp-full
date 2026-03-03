@@ -15,7 +15,7 @@ import { getViewerType } from './utils/fileTypes';
 import { MarkdownViewer } from './viewers/MarkdownViewer';
 import { Toolbar } from './Toolbar';
 import { Loader2 } from 'lucide-react';
-import { isTauri, openLiveWebWindow } from '../../config/tauri';
+import { isTauri, openLiveWebWindow, saveTextFileNative } from '../../config/tauri';
 import { useStore } from '../../store/useStore';
 import { buildViewportContext } from '../../utils/viewport';
 import { readFileViaApi } from '../../utils/fileReadClient';
@@ -145,6 +145,7 @@ interface Props {
   file?: FileInfo | null;
   rawContent?: RawContent | null;  // Phase 48.5.1: Direct content display
   onClose?: () => void;
+  isChatOpen?: boolean;
   // Phase 60.4: Allow editing raw content
   onContentChange?: (content: string) => void;
   // Phase 104.9: Approval level for staged artifacts
@@ -155,10 +156,11 @@ interface Props {
   initialSeekSec?: number;
 }
 
-export function ArtifactPanel({ file, rawContent, onClose, onContentChange, approvalLevel, artifactId, initialSeekSec }: Props) {
+export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, onContentChange, approvalLevel, artifactId, initialSeekSec }: Props) {
   const setActiveWebContext = useStore((state) => state.setActiveWebContext);
   const nodes = useStore((state) => state.nodes);
   const pinnedFileIds = useStore((state) => state.pinnedFileIds);
+  const togglePinFile = useStore((state) => state.togglePinFile);
   const cameraRef = useStore((state) => state.cameraRef);
   const selectedId = useStore((state) => state.selectedId);
   const [fileData, setFileData] = useState<FileData | null>(null);
@@ -597,16 +599,29 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
 
   // Actions
   const handleCopy = () => navigator.clipboard.writeText(fileData?.content || '');
-  const handleDownload = () => {
-    if (!fileData) return;
-    const filename = fileData.path.split('/').pop() || 'file';
-    const blob = new Blob([fileData.content], { type: 'text/plain' });
+  const downloadViaBrowser = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => {
+      if (a.parentNode) a.parentNode.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 0);
+  };
+
+  const handleDownload = async () => {
+    if (!fileData) return;
+    const filename = fileData.path.split('/').pop() || 'file';
+    if (isTauri()) {
+      await saveTextFileNative(filename, fileData.content, 'Save artifact');
+      return;
+    }
+    downloadViaBrowser(fileData.content, filename);
   };
 
   // Phase 48.5.1: Render raw content
@@ -1068,6 +1083,37 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
   // Phase 60.4: Copy current content (edited or original)
   const handleCopyRaw = () => navigator.clipboard.writeText(isEditing ? editableContent : (rawContent?.content || ''));
 
+  const normalizeFsPath = useCallback((p?: string | null): string => {
+    const src = String(p || '').trim();
+    if (!src) return '';
+    let decoded = src.replace(/^file:\/\//, '');
+    try {
+      decoded = decodeURIComponent(decoded);
+    } catch {
+      // Keep best-effort path.
+    }
+    return decoded.replace(/\\/g, '/').replace(/\/+$/, '');
+  }, []);
+
+  const currentArtifactPath = useMemo(() => (
+    normalizeFsPath(fileData?.path || file?.path || '')
+  ), [fileData?.path, file?.path, normalizeFsPath]);
+
+  const pinTargetNodeId = useMemo(() => {
+    if (!currentArtifactPath) return null;
+    const matchId = Object.keys(nodes).find((id) => normalizeFsPath(nodes[id]?.path) === currentArtifactPath);
+    return matchId || null;
+  }, [currentArtifactPath, nodes, normalizeFsPath]);
+
+  const isPinnedInChat = useMemo(() => (
+    Boolean(pinTargetNodeId && pinnedFileIds.includes(pinTargetNodeId))
+  ), [pinTargetNodeId, pinnedFileIds]);
+
+  const handlePinToChat = useCallback(() => {
+    if (!isChatOpen || !pinTargetNodeId) return;
+    togglePinFile(pinTargetNodeId);
+  }, [isChatOpen, pinTargetNodeId, togglePinFile]);
+
   // Phase 60.4: Save edited raw content
   const handleSaveRaw = () => {
     if (onContentChange && rawHasChanges) {
@@ -1092,7 +1138,7 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
   };
 
   // Phase 60.4: Save As / Duplicate - download with custom name
-  const handleSaveAs = () => {
+  const handleSaveAs = async () => {
     const content = isRawContentMode
       ? (isEditing ? editableContent : rawContent?.content || '')
       : (fileData?.content || '');
@@ -1102,14 +1148,11 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
 
     const newName = prompt('Save as:', defaultName);
     if (!newName) return;
-
-    const blob = new Blob([content], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = newName;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (isTauri()) {
+      await saveTextFileNative(newName, content, 'Save artifact as');
+      return;
+    }
+    downloadViaBrowser(content, newName);
   };
 
   return (
@@ -1152,19 +1195,22 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
             onEdit={rawContent.type === 'web' ? undefined : () => setIsEditing(!isEditing)}
             onUndo={rawContent.type === 'web' ? undefined : handleUndo}
             onSave={rawContent.type === 'web' ? undefined : handleSaveRaw}
-            onSaveAs={handleSaveAs}
+            onSaveAs={() => { void handleSaveAs(); }}
             onCopy={handleCopyRaw}
             onDownload={() => {
               const content = isEditing ? editableContent : rawContent.content;
-              const blob = new Blob([content], { type: 'text/plain' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = 'response.txt';
-              a.click();
-              URL.revokeObjectURL(url);
+              if (isTauri()) {
+                void saveTextFileNative('response.txt', content, 'Save artifact response');
+                return;
+              }
+              downloadViaBrowser(content, 'response.txt');
             }}
-            onRefresh={() => {}}
+            onRefresh={undefined}
+            onPin={handlePinToChat}
+            isPinned={isPinnedInChat}
+            pinVisible={Boolean(pinTargetNodeId)}
+            pinDisabled={!isChatOpen || !pinTargetNodeId}
+            pinTitle={!pinTargetNodeId ? 'File is not indexed in VETKA tree' : (!isChatOpen ? 'Open chat to pin context' : (isPinnedInChat ? 'Unpin from chat context' : 'Pin to chat context'))}
             onClose={onClose}
           />
         </>
@@ -1415,11 +1461,16 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
           isSaving={isSaving}
           onEdit={() => setIsEditing(!isEditing)}
           onSave={saveFile}
-          onSaveAs={handleSaveAs}
+          onSaveAs={() => { void handleSaveAs(); }}
           onCopy={handleCopy}
-          onDownload={handleDownload}
+          onDownload={() => { void handleDownload(); }}
           onOpenInFinder={handleOpenInFinder}
           onRefresh={() => file && loadFile(file.path)}
+          onPin={handlePinToChat}
+          isPinned={isPinnedInChat}
+          pinVisible={Boolean(pinTargetNodeId)}
+          pinDisabled={!isChatOpen || !pinTargetNodeId}
+          pinTitle={!pinTargetNodeId ? 'File is not indexed in VETKA tree' : (!isChatOpen ? 'Open chat to pin context' : (isPinnedInChat ? 'Unpin from chat context' : 'Pin to chat context'))}
           onClose={onClose}
         />
       )}

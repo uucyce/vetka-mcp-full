@@ -8,7 +8,8 @@
  * @used_by ArtifactPanel
  */
 
-import { Edit3, Save, Copy, Download, RefreshCw, X, Loader2, FolderOpen, Undo2, FilePlus2 } from 'lucide-react';
+import { Edit3, Save, Copy, Download, RefreshCw, X, Loader2, FolderOpen, Undo2, FilePlus2, Pin, Check } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Props {
   filename: string;
@@ -28,6 +29,11 @@ interface Props {
   onDownload?: () => void;
   onRefresh?: () => void;
   onOpenInFinder?: () => void;  // Phase 60.4: Open file in Finder
+  onPin?: () => void;
+  isPinned?: boolean;
+  pinVisible?: boolean;
+  pinDisabled?: boolean;
+  pinTitle?: string;
   onClose?: () => void;
 }
 
@@ -49,8 +55,26 @@ export function Toolbar({
   onDownload,
   onRefresh,
   onOpenInFinder,
+  onPin,
+  isPinned,
+  pinVisible,
+  pinDisabled,
+  pinTitle,
   onClose
 }: Props) {
+  const [firedAction, setFiredAction] = useState<string | null>(null);
+  const actionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (actionTimerRef.current) clearTimeout(actionTimerRef.current);
+  }, []);
+
+  const flashAction = (actionKey: string) => {
+    if (actionTimerRef.current) clearTimeout(actionTimerRef.current);
+    setFiredAction(actionKey);
+    actionTimerRef.current = setTimeout(() => setFiredAction(null), 1100);
+  };
+
   const formatSize = (bytes?: number) => {
     if (!bytes) return '';
     if (bytes < 1024) return `${bytes} B`;
@@ -78,27 +102,32 @@ export function Toolbar({
     transition: 'all 0.15s',
   };
 
-  const Btn = ({ onClick, active, disabled, children, title, accent }: {
+  const Btn = ({ onClick, active, disabled, children, successChildren, title, actionKey }: {
     onClick?: () => void;
     active?: boolean;
     disabled?: boolean;
     children: React.ReactNode;
+    successChildren?: React.ReactNode;
     title: string;
-    accent?: boolean;
+    actionKey: string;
   }) => (
     <button
-      onClick={onClick}
+      onClick={() => {
+        if (disabled || !onClick) return;
+        onClick();
+        flashAction(actionKey);
+      }}
       title={title}
       disabled={disabled}
       style={{
         ...btnBase,
-        color: disabled ? '#333' : accent ? '#60a5fa' : active ? '#fff' : '#666',
-        background: active ? '#3b82f6' : 'transparent',
-        opacity: disabled ? 0.3 : 1,
+        color: disabled ? '#3f3f3f' : active || firedAction === actionKey ? '#ffffff' : '#808080',
+        background: active || firedAction === actionKey ? 'rgba(255,255,255,0.10)' : 'transparent',
+        opacity: disabled ? 0.35 : 1,
         cursor: disabled ? 'not-allowed' : 'pointer',
       }}
     >
-      {children}
+      {firedAction === actionKey && successChildren ? successChildren : children}
     </button>
   );
 
@@ -112,33 +141,67 @@ export function Toolbar({
       borderTop: '1px solid #222',
     }}>
       {onEdit && (
-        <Btn onClick={onEdit} active={isEditing} title={isEditing ? 'Editing' : 'Edit'}>
+        <Btn onClick={onEdit} active={isEditing} title={isEditing ? 'Editing' : 'Edit'} actionKey="edit">
           <Edit3 size={16} />
         </Btn>
       )}
       {/* Phase 60.4: Undo button (when editing and can undo) */}
       {isEditing && onUndo && (
-        <Btn onClick={onUndo} title="Undo (Ctrl+Z)" disabled={!canUndo}>
+        <Btn onClick={onUndo} title="Undo (Ctrl+Z)" disabled={!canUndo} actionKey="undo">
           <Undo2 size={16} />
         </Btn>
       )}
       {/* Phase 60.4: Save button - always visible when onSave provided, accent when hasChanges */}
       {onSave && (
-        <Btn onClick={onSave} accent={hasChanges} title={isSaving ? 'Saving...' : hasChanges ? 'Save changes' : 'No changes'} disabled={isSaving || !hasChanges}>
+        <Btn
+          onClick={onSave}
+          title={isSaving ? 'Saving...' : hasChanges ? 'Save changes' : 'No changes'}
+          disabled={isSaving || !hasChanges}
+          actionKey="save"
+          successChildren={<Check size={16} />}
+        >
           {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
         </Btn>
       )}
       {/* Phase 60.4: Save As / Duplicate */}
       {onSaveAs && (
-        <Btn onClick={onSaveAs} title="Save As / Duplicate">
+        <Btn onClick={onSaveAs} title="Save As / Duplicate" actionKey="save_as" successChildren={<Check size={16} />}>
           <FilePlus2 size={16} />
         </Btn>
       )}
-      {onCopy && <Btn onClick={onCopy} title="Copy to clipboard"><Copy size={16} /></Btn>}
-      {onDownload && <Btn onClick={onDownload} title="Download"><Download size={16} /></Btn>}
+      {onCopy && (
+        <Btn onClick={onCopy} title="Copy to clipboard" actionKey="copy" successChildren={<Check size={16} />}>
+          <Copy size={16} />
+        </Btn>
+      )}
+      {onDownload && (
+        <Btn onClick={onDownload} title="Download" actionKey="download" successChildren={<Check size={16} />}>
+          <Download size={16} />
+        </Btn>
+      )}
       {/* Phase 60.4: Open in Finder button */}
-      {onOpenInFinder && <Btn onClick={onOpenInFinder} title="Open in Finder"><FolderOpen size={16} /></Btn>}
-      {onRefresh && <Btn onClick={onRefresh} title="Refresh"><RefreshCw size={16} /></Btn>}
+      {onOpenInFinder && (
+        <Btn onClick={onOpenInFinder} title="Open in Finder" actionKey="finder" successChildren={<Check size={16} />}>
+          <FolderOpen size={16} />
+        </Btn>
+      )}
+      {onRefresh && (
+        <Btn onClick={onRefresh} title="Refresh" actionKey="refresh" successChildren={<Check size={16} />}>
+          <RefreshCw size={16} />
+        </Btn>
+      )}
+      {pinVisible && (
+        <Btn
+          onClick={onPin}
+          active={Boolean(isPinned)}
+          title={pinTitle || (isPinned ? 'Unpin from chat context' : 'Pin to chat context')}
+          actionKey="pin"
+          disabled={pinDisabled || !onPin}
+          successChildren={<Check size={16} />}
+        >
+          <Pin size={16} />
+        </Btn>
+      )}
 
       <div style={{ flex: 1, textAlign: 'center' }}>
         <span style={{ fontSize: 11, color: '#666' }}>{filename}</span>
@@ -153,7 +216,11 @@ export function Toolbar({
         )}
       </div>
 
-      {onClose && <Btn onClick={onClose} title="Close"><X size={16} /></Btn>}
+      {onClose && (
+        <Btn onClick={onClose} title="Close" actionKey="close">
+          <X size={16} />
+        </Btn>
+      )}
     </div>
   );
 }

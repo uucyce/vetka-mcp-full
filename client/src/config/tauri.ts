@@ -90,6 +90,8 @@ let _invoke: any = null;
 let _listen: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _open: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _save: any = null;
 
 async function getInvoke() {
   if (!isTauri()) return null;
@@ -131,6 +133,20 @@ async function getOpen() {
     }
   }
   return _open;
+}
+
+async function getSave() {
+  if (!isTauri()) return null;
+  if (!_save) {
+    try {
+      const mod = await import('@tauri-apps/plugin-dialog');
+      _save = mod.save;
+    } catch (e) {
+      console.warn('[Tauri] Failed to import save from @tauri-apps/plugin-dialog:', e);
+      return null;
+    }
+  }
+  return _save;
 }
 
 // ============================================
@@ -213,6 +229,42 @@ export async function openFolderDialog(title: string = 'Select folder to scan'):
     return selected as string | null;
   } catch (e) {
     console.warn('Native folder dialog failed:', e);
+    return null;
+  }
+}
+
+/**
+ * Open native Save dialog and write text file via Tauri command.
+ * Returns saved path, null on cancel/error, browser mode always null.
+ */
+export async function saveTextFileNative(
+  suggestedName: string,
+  content: string,
+  title: string = 'Save file'
+): Promise<string | null> {
+  const save = await getSave();
+  if (!save) return null;
+
+  try {
+    const selected = await save({
+      title,
+      defaultPath: suggestedName,
+      // Keep dialog config minimal for Tauri v2 compatibility.
+      // Wildcard filters like '*' can break dialog opening in some runtimes.
+      filters: [
+        { name: 'Text', extensions: ['txt', 'md', 'json', 'log', 'csv', 'ts', 'tsx', 'js', 'py'] },
+      ],
+    });
+
+    if (!selected) return null;
+    const targetPath = Array.isArray(selected) ? String(selected[0] || '') : String(selected);
+    if (!targetPath) return null;
+
+    const result = await writeFileNative(targetPath, content);
+    if (!result) return null;
+    return targetPath;
+  } catch (e) {
+    console.warn('Native save dialog/write failed:', e);
     return null;
   }
 }

@@ -49,6 +49,23 @@ interface NodeContextMenuState {
   nodeType: string;
 }
 
+interface MediaStartupState {
+  status: 'idle' | 'running' | 'ready' | 'error';
+  scopePath: string;
+  message: string;
+  fallbackQuestions?: Array<{
+    id: string;
+    question: string;
+    prefill?: string;
+    priority?: number;
+  }>;
+  stats?: {
+    media_files?: number;
+    audio_files?: number;
+    video_files?: number;
+  };
+}
+
 // ============================================================================
 // MARKER_111.21_FRUSTUM: Phase 112.2 - Frustum Culling Component
 // Phase 112.6: Adaptive Foveated Spot - screen-position LOD
@@ -231,7 +248,7 @@ export default function App() {
     sourceUrl?: string;
   } | null>(null);
   const [artifactSeekSec, setArtifactSeekSec] = useState<number | undefined>(undefined);
-  const [treeViewMode, setTreeViewMode] = useState<'directed' | 'knowledge'>('directed');
+  const [treeViewMode, setTreeViewMode] = useState<'directed' | 'knowledge' | 'media_edit'>('directed');
   const [nodeContextMenu, setNodeContextMenu] = useState<NodeContextMenuState>({
     visible: false,
     clientX: 0,
@@ -261,6 +278,11 @@ export default function App() {
     candidates: string[];
     onSelect: (path: string) => void;
   } | null>(null);
+  const [mediaStartup, setMediaStartup] = useState<MediaStartupState>({
+    status: 'idle',
+    scopePath: '',
+    message: '',
+  });
 
   // Phase 52.4: Handle click on empty space to deselect
   const handleCanvasClick = () => {
@@ -315,6 +337,55 @@ export default function App() {
       togglePinFile(nodeId);
     }
   }, [allNodes, togglePinFile]);
+
+  const startMediaModeStartup = useCallback(async (scopePath: string) => {
+    setMediaStartup({
+      status: 'running',
+      scopePath,
+      message: 'MCP_MEDIA: analyzing scope...',
+    });
+    try {
+      const resp = await fetch('/api/artifacts/media/startup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope_path: scopePath,
+          quick_scan_limit: 5000,
+        }),
+      });
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const payload = await resp.json();
+      const stats = payload?.stats || {};
+      const eta = Number(payload?.estimated_ready_sec || 0);
+      const msg = `MCP_MEDIA ready: media=${stats.media_files || 0} (audio=${stats.audio_files || 0}, video=${stats.video_files || 0}), ETA ${eta.toFixed(1)}s`;
+      const fallbackQuestions = Array.isArray(payload?.fallback_questions) ? payload.fallback_questions : [];
+      setMediaStartup({
+        status: 'ready',
+        scopePath: String(payload?.scope_path || scopePath || ''),
+        message: msg,
+        fallbackQuestions,
+        stats: {
+          media_files: Number(stats.media_files || 0),
+          audio_files: Number(stats.audio_files || 0),
+          video_files: Number(stats.video_files || 0),
+        },
+      });
+      window.setTimeout(() => {
+        setMediaStartup((prev) => (prev.status === 'ready'
+          ? { status: 'idle', scopePath: prev.scopePath, message: '', fallbackQuestions: [] }
+          : prev));
+      }, 5500);
+    } catch {
+      setMediaStartup({
+        status: 'error',
+        scopePath,
+        message: 'MCP_MEDIA startup failed. Using fallback directed pipeline.',
+        fallbackQuestions: [],
+      });
+    }
+  }, []);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -675,8 +746,19 @@ export default function App() {
 
     const handleTreeModeChanged = (evt: Event) => {
       const e = evt as CustomEvent;
-      const mode = String(e.detail?.mode || '').toLowerCase() === 'knowledge' ? 'knowledge' : 'directed';
+      const rawMode = String(e.detail?.mode || '').toLowerCase();
+      const mode = rawMode === 'knowledge' ? 'knowledge' : rawMode === 'media_edit' ? 'media_edit' : 'directed';
       setTreeViewMode(mode);
+      const scopePath = String(e.detail?.scopePath || '');
+      if (mode === 'media_edit') {
+        void startMediaModeStartup(scopePath);
+      } else {
+        setMediaStartup({
+          status: 'idle',
+          scopePath: '',
+          message: '',
+        });
+      }
     };
 
     const closeContextMenu = () => {
@@ -692,7 +774,7 @@ export default function App() {
       window.removeEventListener('vetka-tree-mode-changed', handleTreeModeChanged);
       window.removeEventListener('click', closeContextMenu);
     };
-  }, []);
+  }, [startMediaModeStartup]);
 
   // Phase 50.2: ChestIcon component
   // MARKER_118.1B: ChestIcon — иконка артефакта (сундук)
@@ -794,6 +876,7 @@ export default function App() {
           setArtifactContent(null);
           setArtifactSeekSec(undefined);
         }}
+        isChatOpen={isChatOpen}
         file={artifactFile}
         rawContent={artifactContent}
         initialSeekSec={artifactSeekSec}
@@ -1076,6 +1159,111 @@ export default function App() {
           >
             Knowledge Mode
           </button>
+
+          <button
+            disabled={nodeContextMenu.nodeType !== 'folder'}
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('vetka-switch-tree-mode', {
+                  detail: { mode: 'media_edit', scopePath: nodeContextMenu.nodePath },
+                })
+              );
+              if (nodeContextMenu.nodeType === 'folder' && nodeContextMenu.nodePath) {
+                setCameraCommand({
+                  target: nodeContextMenu.nodePath,
+                  zoom: 'medium',
+                  highlight: true,
+                });
+              }
+              setNodeContextMenu((prev) => ({ ...prev, visible: false }));
+            }}
+            style={{
+              width: '100%',
+              textAlign: 'left',
+              padding: '10px 12px',
+              border: 'none',
+              borderTop: '1px solid #2a2a2a',
+              background: treeViewMode === 'media_edit' ? 'rgba(16,185,129,0.16)' : 'transparent',
+              color: nodeContextMenu.nodeType !== 'folder' ? '#6b6b6b' : (treeViewMode === 'media_edit' ? '#6ee7b7' : '#d4d4d4'),
+              cursor: nodeContextMenu.nodeType === 'folder' ? 'pointer' : 'not-allowed',
+              fontSize: 13,
+              opacity: nodeContextMenu.nodeType === 'folder' ? 1 : 0.75,
+            }}
+          >
+            Media Edit Mode
+          </button>
+        </div>
+      )}
+
+      {mediaStartup.status !== 'idle' && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 2100,
+            minWidth: 360,
+            maxWidth: 760,
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: `1px solid ${mediaStartup.status === 'error' ? '#7f1d1d' : mediaStartup.status === 'running' ? '#1e3a8a' : '#14532d'}`,
+            background: mediaStartup.status === 'error'
+              ? 'rgba(127,29,29,0.35)'
+              : mediaStartup.status === 'running'
+                ? 'rgba(30,58,138,0.35)'
+                : 'rgba(20,83,45,0.35)',
+            color: mediaStartup.status === 'error' ? '#fecaca' : mediaStartup.status === 'running' ? '#bfdbfe' : '#bbf7d0',
+            fontSize: 12,
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div>{mediaStartup.message}</div>
+          {mediaStartup.status === 'ready' && (mediaStartup.fallbackQuestions?.length || 0) > 0 && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {mediaStartup.fallbackQuestions?.slice(0, 3).map((q) => (
+                <div
+                  key={q.id}
+                  style={{
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 6,
+                    padding: '6px 8px',
+                    background: 'rgba(0,0,0,0.18)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ fontSize: 11, color: '#d1d5db' }}>{q.question}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsChatOpen(true);
+                      window.dispatchEvent(new CustomEvent('vetka-chat-prefill', {
+                        detail: {
+                          message: q.prefill || q.question,
+                          autoSend: false,
+                        },
+                      }));
+                    }}
+                    style={{
+                      border: '1px solid #334155',
+                      background: '#0f172a',
+                      color: '#bfdbfe',
+                      borderRadius: 4,
+                      padding: '2px 8px',
+                      fontSize: 10,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Ask Jarvis
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
