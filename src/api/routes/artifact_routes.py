@@ -1424,19 +1424,23 @@ async def media_export_premiere_xml(body: MediaExportPremiereXMLRequest, request
         ),
         request,
     )
-    from src.services.converters.premiere_xml_converter import build_premiere_xml_from_transcript
+    from src.services.premiere_adapter import PremiereExportRequest, get_premiere_adapter
 
-    xml_content = build_premiere_xml_from_transcript(
-        source_path=str(target),
-        transcript_normalized_json=tx.get("transcript_normalized_json") or {},
-        sequence_name=str(body.sequence_name or "VETKA_Sequence"),
-        fps=float(body.fps),
+    adapter = get_premiere_adapter("xml_interchange")
+    artifact = adapter.export_from_transcript(
+        PremiereExportRequest(
+            source_path=str(target),
+            transcript_normalized_json=tx.get("transcript_normalized_json") or {},
+            sequence_name=str(body.sequence_name or "VETKA_Sequence"),
+            fps=float(body.fps),
+            lane="premiere_xml",
+        )
     )
     return {
         "success": True,
         "format": "premiere_xml",
         "xml_root": "xmeml",
-        "xml_content": xml_content,
+        "xml_content": artifact.xml_text,
         "source_path": str(target),
         "sequence_name": str(body.sequence_name or "VETKA_Sequence"),
         "fps": float(body.fps),
@@ -1471,19 +1475,23 @@ async def media_export_fcpxml(body: MediaExportFCPXMLRequest, request: Request):
         ),
         request,
     )
-    from src.services.converters.fcpxml_converter import build_fcpxml_from_transcript
+    from src.services.premiere_adapter import PremiereExportRequest, get_premiere_adapter
 
-    xml_content = build_fcpxml_from_transcript(
-        source_path=str(target),
-        transcript_normalized_json=tx.get("transcript_normalized_json") or {},
-        sequence_name=str(body.sequence_name or "VETKA_Sequence"),
-        fps=float(body.fps),
+    adapter = get_premiere_adapter("xml_interchange")
+    artifact = adapter.export_from_transcript(
+        PremiereExportRequest(
+            source_path=str(target),
+            transcript_normalized_json=tx.get("transcript_normalized_json") or {},
+            sequence_name=str(body.sequence_name or "VETKA_Sequence"),
+            fps=float(body.fps),
+            lane="fcpxml",
+        )
     )
     return {
         "success": True,
         "format": "fcpxml",
         "xml_root": "fcpxml",
-        "xml_content": xml_content,
+        "xml_content": artifact.xml_text,
         "source_path": str(target),
         "sequence_name": str(body.sequence_name or "VETKA_Sequence"),
         "fps": float(body.fps),
