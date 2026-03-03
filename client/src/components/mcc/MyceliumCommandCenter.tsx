@@ -2646,9 +2646,34 @@ export function MyceliumCommandCenter() {
       addToast('error', `Edge blocked: ${err}`);
       return;
     }
-    dagEditor.handleConnect({ source, target } as any);
+    const inlinePrefix = selectedTaskId ? `wf_${selectedTaskId}_` : '';
+    const sourceInner = inlinePrefix && source.startsWith(inlinePrefix) ? source.slice(inlinePrefix.length) : source;
+    const targetInner = inlinePrefix && target.startsWith(inlinePrefix) ? target.slice(inlinePrefix.length) : target;
+    let blocked = false;
+    setInlineWorkflowEdges((prev) => {
+      const duplicate = prev.some((e) => e.source === sourceInner && e.target === targetInner);
+      if (duplicate) {
+        blocked = true;
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          id: `user_e_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          source: sourceInner,
+          target: targetInner,
+          type: 'structural',
+          relationKind: 'executes',
+          strength: 0.68,
+        } as DAGEdge,
+      ];
+    });
+    if (blocked) {
+      addToast('error', 'Edge blocked: duplicate edge');
+      return;
+    }
     addToast('success', 'Edge added');
-  }, [addToast, dagEditor, validateInlineWorkflowConnect]);
+  }, [addToast, selectedTaskId, setInlineWorkflowEdges, validateInlineWorkflowConnect]);
 
   // MARKER_155E.WE.USER_EDGE_EDITING_RUNTIME.V1
   const handleInlineWorkflowReconnect = useCallback((oldEdge: any, connection: { source: string | null; target: string | null }) => {
@@ -2664,13 +2689,56 @@ export function MyceliumCommandCenter() {
       addToast('error', `Edge update blocked: ${err}`);
       return;
     }
-    const ok = dagEditor.updateEdgeConnection(edgeId, source, target);
-    if (!ok) {
-      addToast('error', 'Edge update blocked: duplicate or missing edge');
+    const inlinePrefix = selectedTaskId ? `wf_${selectedTaskId}_` : '';
+    const sourceInner = inlinePrefix && source.startsWith(inlinePrefix) ? source.slice(inlinePrefix.length) : source;
+    const targetInner = inlinePrefix && target.startsWith(inlinePrefix) ? target.slice(inlinePrefix.length) : target;
+    const edgeIdInner = inlinePrefix && edgeId.startsWith(inlinePrefix) ? edgeId.slice(inlinePrefix.length) : edgeId;
+    const oldSource = String(oldEdge?.source || '');
+    const oldTarget = String(oldEdge?.target || '');
+    const oldSourceInner = inlinePrefix && oldSource.startsWith(inlinePrefix) ? oldSource.slice(inlinePrefix.length) : oldSource;
+    const oldTargetInner = inlinePrefix && oldTarget.startsWith(inlinePrefix) ? oldTarget.slice(inlinePrefix.length) : oldTarget;
+
+    let status: 'ok' | 'missing' | 'duplicate' = 'missing';
+    setInlineWorkflowEdges((prev) => {
+      const idx = prev.findIndex((e) => e.id === edgeIdInner);
+      const fallbackIdx = idx >= 0
+        ? idx
+        : prev.findIndex((e) => e.source === oldSourceInner && e.target === oldTargetInner);
+      if (fallbackIdx < 0) {
+        status = 'missing';
+        return prev;
+      }
+      const duplicate = prev.some((e, i) => i !== fallbackIdx && e.source === sourceInner && e.target === targetInner);
+      if (duplicate) {
+        status = 'duplicate';
+        return prev;
+      }
+      status = 'ok';
+      const next = [...prev];
+      next[fallbackIdx] = { ...next[fallbackIdx], source: sourceInner, target: targetInner };
+      return next;
+    });
+    if (status !== 'ok') {
+      addToast('error', `Edge update blocked: ${status === 'duplicate' ? 'duplicate edge' : 'missing edge'}`);
       return;
     }
     addToast('success', 'Edge updated');
-  }, [addToast, dagEditor, validateInlineWorkflowConnect]);
+  }, [addToast, selectedTaskId, setInlineWorkflowEdges, validateInlineWorkflowConnect]);
+
+  const removeInlineWorkflowEdge = useCallback((renderEdge: { id?: string; source?: string; target?: string }) => {
+    const edgeId = String(renderEdge?.id || '');
+    const inlinePrefix = selectedTaskId ? `wf_${selectedTaskId}_` : '';
+    const edgeIdInner = inlinePrefix && edgeId.startsWith(inlinePrefix) ? edgeId.slice(inlinePrefix.length) : edgeId;
+    const source = String(renderEdge?.source || '');
+    const target = String(renderEdge?.target || '');
+    const sourceInner = inlinePrefix && source.startsWith(inlinePrefix) ? source.slice(inlinePrefix.length) : source;
+    const targetInner = inlinePrefix && target.startsWith(inlinePrefix) ? target.slice(inlinePrefix.length) : target;
+    setInlineWorkflowEdges((prev) => prev.filter((e) => {
+      if (edgeIdInner && e.id === edgeIdInner) return false;
+      if (sourceInner && targetInner && e.source === sourceInner && e.target === targetInner) return false;
+      return true;
+    }));
+  }, [selectedTaskId, setInlineWorkflowEdges]);
 
   // MARKER_144.3: Context menu handlers
   const handleContextMenu = useCallback((_event: React.MouseEvent, target: { kind: 'canvas' | 'node' | 'edge'; id?: string; position: { x: number; y: number } }) => {
@@ -3456,7 +3524,7 @@ export function MyceliumCommandCenter() {
                     onReconnect={canEditInlineWorkflowEdges ? ((oldEdge, c) => handleInlineWorkflowReconnect(oldEdge as any, c as any)) : undefined}
                     onNodesDelete={isReadOnlyLevel ? undefined : (deletedNodes) => deletedNodes.forEach(n => dagEditor.removeNode(n.id))}
                     onEdgesDelete={canEditInlineWorkflowEdges
-                      ? (deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))
+                      ? (deletedEdges) => deletedEdges.forEach((e) => removeInlineWorkflowEdge(e as any))
                       : (isReadOnlyLevel ? undefined : (deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id)))}
                     onContextMenu={navLevel === 'roadmap' || !isReadOnlyLevel ? handleContextMenu : undefined}
                     contextMenuEnabled={navLevel === 'roadmap' ? true : editMode}
@@ -4015,7 +4083,7 @@ export function MyceliumCommandCenter() {
           onDeleteNode={navLevel === 'roadmap' ? undefined : dagEditor.removeNode}
           onDuplicateNode={navLevel === 'roadmap' ? undefined : handleDuplicateNode}
           onDeleteEdge={navLevel === 'roadmap'
-            ? (canEditInlineWorkflowEdges ? dagEditor.removeEdge : undefined)
+            ? (canEditInlineWorkflowEdges ? ((edgeId) => removeInlineWorkflowEdge({ id: edgeId })) : undefined)
             : dagEditor.removeEdge}
         />
       )}
