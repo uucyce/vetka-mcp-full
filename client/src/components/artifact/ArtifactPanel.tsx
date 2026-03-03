@@ -10,7 +10,7 @@
  * MARKER_104_VISUAL - L2 approval editing with subtle gray styling
  */
 
-import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getViewerType } from './utils/fileTypes';
 import { MarkdownViewer } from './viewers/MarkdownViewer';
 import { Toolbar } from './Toolbar';
@@ -19,6 +19,7 @@ import { isTauri, openLiveWebWindow } from '../../config/tauri';
 import { useStore } from '../../store/useStore';
 import { buildViewportContext } from '../../utils/viewport';
 import { readFileViaApi } from '../../utils/fileReadClient';
+import './ArtifactPanel.css';
 
 // Lazy load heavy viewers
 const CodeViewer = lazy(() => import('./viewers/CodeViewer').then(m => ({ default: m.CodeViewer })));
@@ -54,6 +55,79 @@ interface FileData {
   fileSize?: number;
   createdAt?: number;
   modifiedAt?: number;
+}
+
+interface MediaPreviewData {
+  success: boolean;
+  path: string;
+  mime_type: string;
+  modality: 'audio' | 'video';
+  size_bytes: number;
+  duration_sec: number;
+  waveform_bins: number[];
+  waveform_sample_rate: number;
+  timeline_segments: Array<{
+    start_sec: number;
+    end_sec: number;
+    duration_sec: number;
+    text: string;
+    confidence: number;
+    chunk_id: string;
+    timeline_lane?: 'video_main' | 'audio_sync' | 'take_alt_y' | 'take_alt_z';
+    lane_index?: number;
+    take_id?: string;
+    sync_group_id?: string;
+  }>;
+  preview?: {
+    aspect_ratio?: string | null;
+    recommended_zoom?: number;
+  };
+  degraded_mode?: boolean;
+  degraded_reason?: string;
+}
+
+interface SemanticLinkItem {
+  relation_type: 'hero' | 'action' | 'location' | 'theme' | string;
+  score: number;
+  parent_file_path: string;
+  start_sec: number;
+  end_sec: number;
+  text: string;
+  timeline_lane?: string;
+  take_id?: string;
+  sync_group_id?: string;
+}
+
+interface RhythmAssistData {
+  success: boolean;
+  modality: 'audio' | 'video';
+  duration_sec: number;
+  energy_track: number[];
+  rhythm_features: {
+    cut_density: {
+      per_sec: number;
+      per_min: number;
+    };
+    motion_volatility: number;
+    phase_markers: Array<{
+      time_sec: number;
+      kind: string;
+      strength: number;
+    }>;
+  };
+  music_binding: {
+    target_bpm: number;
+    rhythm_profile: string;
+  };
+  recommended_shot_sec: number;
+  pulse_bridge: {
+    available: boolean;
+    mode: string;
+    degraded_reason?: string;
+  };
+  recommendations: string[];
+  degraded_mode?: boolean;
+  degraded_reason?: string;
 }
 
 // Phase 48.5.1: Raw content for chat responses
@@ -97,6 +171,20 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
   const [webMarkdown, setWebMarkdown] = useState<string>('');
   const [webSaveNote, setWebSaveNote] = useState<string>('');
   const [activeSeekSec, setActiveSeekSec] = useState<number | undefined>(initialSeekSec);
+  // MARKER_158.P5_1_TIMELINE_ZOOM: Montage-ready zoom for waveform/segment strips.
+  const [timelineZoom, setTimelineZoom] = useState<number>(1);
+  const [mediaPreview, setMediaPreview] = useState<MediaPreviewData | null>(null);
+  const [semanticLinks, setSemanticLinks] = useState<{
+    loading: boolean;
+    error: string;
+    forChunkId: string;
+    items: SemanticLinkItem[];
+  }>({ loading: false, error: '', forChunkId: '', items: [] });
+  const [rhythmAssist, setRhythmAssist] = useState<{
+    loading: boolean;
+    error: string;
+    data: RhythmAssistData | null;
+  }>({ loading: false, error: '', data: null });
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -134,6 +222,147 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
   useEffect(() => {
     setActiveSeekSec(initialSeekSec);
   }, [initialSeekSec]);
+
+  useEffect(() => {
+    const loadMediaPreview = async () => {
+      if (!fileData?.path || !file) {
+        setMediaPreview(null);
+        return;
+      }
+      const fileType = getViewerType(file.name);
+      const mimeType = fileData.mimeType || '';
+      const isMedia = fileType === 'audio' || fileType === 'video' || mimeType.startsWith('audio/') || mimeType.startsWith('video/');
+      if (!isMedia) {
+        setMediaPreview(null);
+        return;
+      }
+      try {
+        const resp = await fetch('/api/artifacts/media/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: fileData.path,
+            waveform_bins: 120,
+            preview_segments_limit: 64,
+          }),
+        });
+        if (!resp.ok) {
+          setMediaPreview(null);
+          return;
+        }
+        const data = await resp.json();
+        setMediaPreview(data?.success ? data as MediaPreviewData : null);
+      } catch {
+        setMediaPreview(null);
+      }
+    };
+    loadMediaPreview();
+  }, [fileData?.path, file?.name, fileData?.mimeType]);
+
+  useEffect(() => {
+    const loadRhythmAssist = async () => {
+      if (!fileData?.path || !file) {
+        setRhythmAssist({ loading: false, error: '', data: null });
+        return;
+      }
+      const fileType = getViewerType(file.name);
+      const mimeType = fileData.mimeType || '';
+      const isMedia = fileType === 'audio' || fileType === 'video' || mimeType.startsWith('audio/') || mimeType.startsWith('video/');
+      if (!isMedia) {
+        setRhythmAssist({ loading: false, error: '', data: null });
+        return;
+      }
+      setRhythmAssist({ loading: true, error: '', data: null });
+      try {
+        const resp = await fetch('/api/artifacts/media/rhythm-assist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: fileData.path,
+            bins: 120,
+            segments_limit: 256,
+          }),
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const payload = await resp.json();
+        setRhythmAssist({
+          loading: false,
+          error: '',
+          data: payload?.success ? (payload as RhythmAssistData) : null,
+        });
+      } catch {
+        setRhythmAssist({ loading: false, error: 'rhythm_assist_unavailable', data: null });
+      }
+    };
+    loadRhythmAssist();
+  }, [fileData?.path, file?.name, fileData?.mimeType]);
+
+  useEffect(() => {
+    const media = videoRef.current || audioRef.current;
+    if (!media) return;
+    const syncSeek = () => setActiveSeekSec(media.currentTime);
+    media.addEventListener('timeupdate', syncSeek);
+    return () => media.removeEventListener('timeupdate', syncSeek);
+  }, [fileData?.path, fileData?.mimeType]);
+
+  const timelineWidthPct = useMemo(() => Math.max(100, Math.round(timelineZoom * 100)), [timelineZoom]);
+  const rhythmOverlay = useMemo(() => {
+    const duration = mediaPreview?.duration_sec || 0;
+    const rhythmDuration = rhythmAssist.data?.duration_sec || 0;
+    const track = Array.isArray(rhythmAssist.data?.energy_track) ? rhythmAssist.data?.energy_track : [];
+    const phases = Array.isArray(rhythmAssist.data?.rhythm_features?.phase_markers)
+      ? rhythmAssist.data.rhythm_features.phase_markers
+      : [];
+    if (!duration || !track.length) {
+      return { bars: [] as Array<{ leftPct: number; widthPct: number; amp: number }>, markers: [] as Array<{ leftPct: number; kind: string }> };
+    }
+    const baseDuration = rhythmDuration > 0 ? rhythmDuration : duration;
+    const barWidth = 100 / Math.max(1, track.length);
+    const bars = track.map((amp, idx) => {
+      const leftPct = (idx / Math.max(1, track.length)) * 100;
+      const widthPct = Math.max(0.22, barWidth);
+      return {
+        leftPct: Math.max(0, Math.min(100, leftPct)),
+        widthPct: Math.max(0, Math.min(100 - leftPct, widthPct)),
+        amp: Math.max(0, Math.min(1, Number(amp) || 0)),
+      };
+    });
+    const markers = phases.slice(0, 128).map((m) => ({
+      leftPct: Math.max(0, Math.min(100, ((Number(m.time_sec) || 0) / Math.max(0.001, baseDuration)) * 100)),
+      kind: String(m.kind || 'phase'),
+    }));
+    return { bars, markers };
+  }, [mediaPreview?.duration_sec, rhythmAssist.data]);
+
+  const handleSegmentClick = useCallback(async (seg: MediaPreviewData['timeline_segments'][number]) => {
+    setActiveSeekSec(seg.start_sec);
+    const queryText = String(seg.text || '').trim();
+    if (!fileData?.path || !queryText) {
+      setSemanticLinks({ loading: false, error: '', forChunkId: String(seg.chunk_id || ''), items: [] });
+      return;
+    }
+    setSemanticLinks({ loading: true, error: '', forChunkId: String(seg.chunk_id || ''), items: [] });
+    try {
+      const resp = await fetch('/api/artifacts/media/semantic-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: fileData.path,
+          query_text: queryText,
+          start_sec: seg.start_sec,
+          end_sec: seg.end_sec,
+          limit: 12,
+          include_same_file: true,
+        }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const payload = await resp.json();
+      const items = Array.isArray(payload?.links) ? payload.links as SemanticLinkItem[] : [];
+      setSemanticLinks({ loading: false, error: '', forChunkId: String(seg.chunk_id || ''), items });
+    } catch {
+      setSemanticLinks({ loading: false, error: 'semantic_links_unavailable', forChunkId: String(seg.chunk_id || ''), items: [] });
+    }
+  }, [fileData?.path]);
 
   // MARKER_104_VISUAL - Listen for artifact-approval CustomEvent from useSocket.ts
   useEffect(() => {
@@ -968,6 +1197,203 @@ export function ArtifactPanel({ file, rawContent, onClose, onContentChange, appr
               }}
             >
               timeline: t={activeSeekSec.toFixed(1)}s
+            </div>
+          )}
+          {mediaPreview && (
+            <div className="artifact-media-preview">
+              <div className="artifact-media-preview-header">
+                <div className="artifact-media-preview-meta">
+                  <span>{mediaPreview.modality.toUpperCase()} preview</span>
+                  <span className="artifact-media-preview-badge">{mediaPreview.mime_type}</span>
+                  {mediaPreview.degraded_mode && (
+                    <span className="artifact-media-preview-badge degraded" title={mediaPreview.degraded_reason || 'degraded'}>
+                      degraded
+                    </span>
+                  )}
+                </div>
+                <span>{mediaPreview.duration_sec.toFixed(1)}s</span>
+              </div>
+              <div className="artifact-media-preview-zoom">
+                {[1, 2, 4].map((zoom) => (
+                  <button
+                    key={`zoom-${zoom}`}
+                    type="button"
+                    onClick={() => setTimelineZoom(zoom)}
+                    className={timelineZoom === zoom ? 'active' : ''}
+                  >
+                    {zoom}x
+                  </button>
+                ))}
+              </div>
+              {mediaPreview.waveform_bins?.length > 0 && (
+                <div className="artifact-media-preview-strip">
+                  <div
+                    className="artifact-media-waveform"
+                    style={{
+                      minWidth: `${timelineWidthPct}%`,
+                      gridTemplateColumns: `repeat(${mediaPreview.waveform_bins.length}, 1fr)`,
+                    }}
+                  >
+                  {mediaPreview.waveform_bins.map((amp, idx) => (
+                    <div
+                      key={`wf-${idx}`}
+                      className="artifact-media-waveform-bar"
+                      style={{ height: `${Math.max(6, Math.round(amp * 100))}%` }}
+                    />
+                  ))}
+                  </div>
+                </div>
+              )}
+              {mediaPreview.timeline_segments?.length > 0 && mediaPreview.duration_sec > 0 && (
+                <div className="artifact-media-preview-strip">
+                  {(['video_main', 'audio_sync', 'take_alt_y'] as const).map((lane) => {
+                    const laneSegments = mediaPreview.timeline_segments.filter((seg) => (seg.timeline_lane || 'video_main') === lane);
+                    if (laneSegments.length === 0) return null;
+                    return (
+                      <div key={`lane-${lane}`} className="artifact-media-lane-row">
+                        <div className="artifact-media-lane-label">{lane}</div>
+                        <div
+                          className="artifact-media-timeline"
+                          style={{ minWidth: `${timelineWidthPct}%` }}
+                        >
+                          {rhythmOverlay.bars.length > 0 && (
+                            <div className="artifact-rhythm-overlay-track" aria-hidden="true">
+                              {rhythmOverlay.bars.map((bar, idx) => (
+                                <div
+                                  key={`rob-${lane}-${idx}`}
+                                  className="artifact-rhythm-overlay-bar"
+                                  style={{
+                                    left: `${bar.leftPct}%`,
+                                    width: `${bar.widthPct}%`,
+                                    opacity: `${0.1 + bar.amp * 0.55}`,
+                                  }}
+                                />
+                              ))}
+                              {rhythmOverlay.markers.map((marker, idx) => (
+                                <div
+                                  key={`rom-${lane}-${idx}`}
+                                  className="artifact-rhythm-overlay-marker"
+                                  style={{ left: `${marker.leftPct}%` }}
+                                  title={marker.kind}
+                                />
+                              ))}
+                            </div>
+                          )}
+                          {typeof activeSeekSec === 'number' && (
+                            <div
+                              className="artifact-media-playhead"
+                              style={{
+                                left: `${Math.max(0, Math.min(100, (activeSeekSec / mediaPreview.duration_sec) * 100))}%`,
+                              }}
+                            />
+                          )}
+                          {laneSegments.map((seg, idx) => {
+                            const leftPct = Math.max(0, Math.min(100, (seg.start_sec / mediaPreview.duration_sec) * 100));
+                            const widthPct = Math.max(
+                              0.6,
+                              Math.min(100 - leftPct, ((Math.max(seg.end_sec, seg.start_sec) - seg.start_sec) / mediaPreview.duration_sec) * 100)
+                            );
+                            const isActive = typeof activeSeekSec === 'number' && activeSeekSec >= seg.start_sec && activeSeekSec <= seg.end_sec;
+                            return (
+                                <button
+                                  key={seg.chunk_id || `${lane}-seg-${idx}`}
+                                  type="button"
+                                  onClick={() => { void handleSegmentClick(seg); }}
+                                  title={`${lane} • ${seg.start_sec.toFixed(2)}s — ${seg.end_sec.toFixed(2)}s`}
+                                  className={`artifact-media-segment lane-${lane}${isActive ? ' active' : ''}`}
+                                  style={{
+                                    left: `${leftPct}%`,
+                                    width: `${widthPct}%`,
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {mediaPreview.timeline_segments.some((seg) => (seg.timeline_lane || 'video_main') === 'take_alt_z') && (
+                    <div className="artifact-media-lane-note">take_alt_z detected (experimental)</div>
+                  )}
+                </div>
+              )}
+              {(semanticLinks.loading || semanticLinks.items.length > 0 || semanticLinks.error) && (
+                <div className="artifact-semantic-links">
+                  <div className="artifact-semantic-links-title">semantic links</div>
+                  {semanticLinks.loading && (
+                    <div className="artifact-semantic-links-note">loading...</div>
+                  )}
+                  {semanticLinks.error && !semanticLinks.loading && (
+                    <div className="artifact-semantic-links-note">{semanticLinks.error}</div>
+                  )}
+                  {!semanticLinks.loading && semanticLinks.items.slice(0, 8).map((link, idx) => (
+                    <button
+                      key={`sl-${idx}-${link.parent_file_path}-${link.start_sec}`}
+                      type="button"
+                      className="artifact-semantic-link-item"
+                      onClick={() => {
+                        const currentPath = String(fileData?.path || '');
+                        if (link.parent_file_path === currentPath) {
+                          setActiveSeekSec(link.start_sec);
+                          return;
+                        }
+                        const pathParts = String(link.parent_file_path).replace(/\\/g, '/').split('/');
+                        const fileName = pathParts[pathParts.length - 1] || 'artifact';
+                        window.dispatchEvent(new CustomEvent('vetka-open-artifact', {
+                          detail: {
+                            filePath: link.parent_file_path,
+                            fileName,
+                            startSec: link.start_sec,
+                          },
+                        }));
+                      }}
+                    >
+                      <span className={`artifact-semantic-rel rel-${link.relation_type}`}>{link.relation_type}</span>
+                      <span className="artifact-semantic-time">{link.start_sec.toFixed(1)}s</span>
+                      <span className="artifact-semantic-text">{link.text || '(empty)'}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {(rhythmAssist.loading || rhythmAssist.data || rhythmAssist.error) && (
+                <div className="artifact-rhythm-assist">
+                  <div className="artifact-rhythm-assist-title">rhythm assist (P5.6)</div>
+                  {rhythmAssist.loading && (
+                    <div className="artifact-rhythm-note">analyzing...</div>
+                  )}
+                  {rhythmAssist.error && !rhythmAssist.loading && (
+                    <div className="artifact-rhythm-note">{rhythmAssist.error}</div>
+                  )}
+                  {rhythmAssist.data && !rhythmAssist.loading && (
+                    <>
+                      <div className="artifact-rhythm-metrics">
+                        <span>cut/min: {rhythmAssist.data.rhythm_features.cut_density.per_min.toFixed(2)}</span>
+                        <span>motion: {rhythmAssist.data.rhythm_features.motion_volatility.toFixed(3)}</span>
+                        <span>bpm: {rhythmAssist.data.music_binding.target_bpm}</span>
+                        <span>shot: {rhythmAssist.data.recommended_shot_sec.toFixed(2)}s</span>
+                      </div>
+                      <div className="artifact-rhythm-reco-list">
+                        {rhythmAssist.data.recommendations.slice(0, 3).map((r, i) => (
+                          <div key={`rr-${i}`} className="artifact-rhythm-reco-item">{r}</div>
+                        ))}
+                      </div>
+                      <div className="artifact-rhythm-phases">
+                        {rhythmAssist.data.rhythm_features.phase_markers.slice(0, 12).map((m, i) => (
+                          <button
+                            key={`pm-${i}`}
+                            type="button"
+                            className="artifact-rhythm-phase-btn"
+                            onClick={() => setActiveSeekSec(m.time_sec)}
+                            title={m.kind}
+                          >
+                            {m.time_sec.toFixed(1)}s
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
           <div style={{ flex: 1, overflow: 'hidden' }}>
