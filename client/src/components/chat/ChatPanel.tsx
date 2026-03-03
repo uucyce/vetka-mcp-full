@@ -1352,6 +1352,25 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     };
   }, [input, handleSend]);
 
+  // MARKER_158.P5_3_CHAT_PREFILL: Media-mode guided fallback questions can prefill chat input.
+  useEffect(() => {
+    const handlePrefill = (evt: Event) => {
+      const e = evt as CustomEvent;
+      const msg = String(e.detail?.message || '').trim();
+      const autoSend = Boolean(e.detail?.autoSend);
+      if (!msg) return;
+      setInput(msg);
+      if (autoSend) {
+        window.setTimeout(() => window.dispatchEvent(new CustomEvent('vetka-auto-send-message')), 60);
+      }
+    };
+
+    window.addEventListener('vetka-chat-prefill', handlePrefill);
+    return () => {
+      window.removeEventListener('vetka-chat-prefill', handlePrefill);
+    };
+  }, []);
+
   // Phase 48.3: Handle reply callback
   // Phase 111.10.2: Extract source from model name if present
   const handleReply = useCallback((msg: ReplyTarget) => {
@@ -1552,6 +1571,14 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
   // Phase 107.2: New Chat button handler
   const handleNewChat = useCallback(() => {
+    // Flush current chat pins before switching context, then start new chat clean.
+    if (currentChatId && !isHydratingChatPinsRef.current) {
+      const pinnedPaths = pinnedFileIds
+        .map((id) => normalizeFsPath(String(nodes[id]?.path || '')))
+        .filter(Boolean);
+      void savePinnedFiles(currentChatId, pinnedFileIds, pinnedPaths);
+    }
+
     // 1. Clear current chat state
     clearChat();
 
@@ -1560,6 +1587,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     setCurrentChatId(null);
     // FIX_109.4: Clear store
     setStoreChatId(null);
+    // New chat must not inherit pinned context from previous chat.
+    clearPinnedFiles();
 
     // 3. Leave group if in group chat
     if (activeGroupId) {
@@ -1568,7 +1597,17 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     }
 
     console.log('[ChatPanel] Started new chat');
-  }, [clearChat, activeGroupId, leaveGroup, setStoreChatId]);
+  }, [
+    activeGroupId,
+    clearChat,
+    clearPinnedFiles,
+    currentChatId,
+    leaveGroup,
+    nodes,
+    normalizeFsPath,
+    pinnedFileIds,
+    setStoreChatId,
+  ]);
 
   // Phase 50.1: Handle selecting a chat from history
   // Phase 52.2: Added camera focus on chat selection
