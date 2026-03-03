@@ -48,11 +48,22 @@ interface Props {
   onClose: () => void;
   leftPanel: 'none' | 'history' | 'models';
   setLeftPanel: (value: 'none' | 'history' | 'models') => void;
+  onVoiceTrigger?: () => void;
+  voiceState?: 'idle' | 'listening' | 'thinking' | 'speaking';
+  voiceLevel?: number;
 }
 
 type VoiceReplyMode = 'text_only' | 'voice_auto' | 'voice_forced';
 
-export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
+export function ChatPanel({
+  isOpen,
+  onClose,
+  leftPanel,
+  setLeftPanel,
+  onVoiceTrigger,
+  voiceState,
+  voiceLevel,
+}: Props) {
   const chatMessages = useStore((s) => s.chatMessages);
   const currentWorkflow = useStore((s) => s.currentWorkflow);
   const isTyping = useStore((s) => s.isTyping);
@@ -1570,7 +1581,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   }, [renameValue, currentChatInfo, activeGroupId, currentChatId]);
 
   // Phase 107.2: New Chat button handler
-  const handleNewChat = useCallback(() => {
+  const handleNewChat = useCallback(async () => {
     // Flush current chat pins before switching context, then start new chat clean.
     if (currentChatId && !isHydratingChatPinsRef.current) {
       const pinnedPaths = pinnedFileIds
@@ -1596,7 +1607,56 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       setActiveGroupId(null);
     }
 
-    console.log('[ChatPanel] Started new chat');
+    // Create persisted draft chat immediately so rename works before first message.
+    const firstPinnedNode = pinnedFileIds.length > 0 ? nodes[pinnedFileIds[0]] : null;
+    const contextType: 'file' | 'folder' = selectedNode?.type === 'folder' ? 'folder' : 'file';
+    const draftName = firstPinnedNode?.name || selectedNode?.name || 'New Chat';
+
+    try {
+      const response = await fetch('/api/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          display_name: draftName,
+          context_type: contextType,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const createdId = String(data.chat_id || '');
+        if (createdId) {
+          setCurrentChatId(createdId);
+          setStoreChatId(createdId);
+          setCurrentChatInfo({
+            id: createdId,
+            displayName: draftName,
+            fileName: draftName,
+            contextType,
+            isSaved: true,
+          });
+          setRenameValue(draftName);
+          setIsRenaming(true);
+          window.dispatchEvent(new CustomEvent('chat-created', { detail: { chatId: createdId } }));
+          console.log('[ChatPanel] Started new persisted chat:', createdId);
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('[ChatPanel] Failed to create draft chat:', error);
+    }
+
+    // Fallback (should be rare): keep UI usable and allow first-message creation path.
+    setCurrentChatInfo({
+      id: '',
+      displayName: draftName,
+      fileName: draftName,
+      contextType,
+      isSaved: false,
+    });
+    setRenameValue(draftName);
+    setIsRenaming(true);
+    console.log('[ChatPanel] Started new chat in fallback mode');
   }, [
     activeGroupId,
     clearChat,
@@ -1606,8 +1666,26 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     nodes,
     normalizeFsPath,
     pinnedFileIds,
+    selectedNode,
     setStoreChatId,
   ]);
+
+  // Keep header title in sync when chat is renamed from sidebar/history.
+  useEffect(() => {
+    const handleChatRenamed = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const chatId = String(detail.chatId || '');
+      const newName = String(detail.newName || '').trim();
+      if (!chatId || !newName) return;
+      setCurrentChatInfo((prev) => {
+        if (!prev) return prev;
+        if (prev.id !== chatId) return prev;
+        return { ...prev, displayName: newName, fileName: newName };
+      });
+    };
+    window.addEventListener('chat-renamed', handleChatRenamed);
+    return () => window.removeEventListener('chat-renamed', handleChatRenamed);
+  }, []);
 
   // Phase 50.1: Handle selecting a chat from history
   // Phase 52.2: Added camera focus on chat selection
@@ -2947,6 +3025,9 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           <UnifiedSearchBar
             onSelectResult={handleSearchSelect}
             onPinResult={handleSearchPin}
+            onVoiceTrigger={onVoiceTrigger}
+            voiceState={voiceState}
+            voiceLevel={voiceLevel}
             onOpenArtifact={async (result) => {
               // MARKER_142.IMPL_STEP_6_CHAT_PARITY: Keep web artifact behavior aligned with App.tsx
               const source = String((result as any).source || '');

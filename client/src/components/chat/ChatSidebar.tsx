@@ -130,6 +130,15 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     };
   }, [chats]);
 
+  // Keep sidebar history fresh when a new draft chat is created from ChatPanel.
+  useEffect(() => {
+    const handleChatCreated = () => {
+      void loadChats(true);
+    };
+    window.addEventListener('chat-created', handleChatCreated);
+    return () => window.removeEventListener('chat-created', handleChatCreated);
+  }, [isOpen]);
+
   const loadChats = async (reset: boolean = false) => {
     if (reset) {
       setLoading(true);
@@ -337,9 +346,13 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
 
       if (response.ok) {
         // Update local state
-        setChats(chats.map(c =>
-          c.id === chat.id ? { ...c, display_name: newName.trim() } : c
+        const normalizedName = newName.trim();
+        setChats(prev => prev.map(c =>
+          c.id === chat.id ? { ...c, display_name: normalizedName } : c
         ));
+        window.dispatchEvent(new CustomEvent('chat-renamed', {
+          detail: { chatId: chat.id, newName: normalizedName }
+        }));
       } else {
         console.error(`[ChatSidebar] Error renaming chat: ${response.status}`);
       }
