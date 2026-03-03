@@ -240,6 +240,7 @@ interface DAGViewProps {
   // MARKER_144.2: Edit mode props (additive — all optional)
   editMode?: boolean;
   onConnect?: (connection: Connection) => void;
+  onReconnect?: (oldEdge: Edge, newConnection: Connection) => void;
   onNodesDelete?: (nodes: Node[]) => void;
   onEdgesDelete?: (edges: Edge[]) => void;
   // MARKER_144.3: Context menu callback
@@ -283,6 +284,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
   // MARKER_144.2: Edit mode props (default: read-only, no regression)
   editMode = false,
   onConnect,
+  onReconnect,
   onNodesDelete,
   onEdgesDelete,
   // MARKER_144.3: Context menu
@@ -1098,6 +1100,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
         connectionLineStyle={{ stroke: '#7d8590', strokeWidth: 1.8 }}
         // MARKER_144.2: Edit mode handlers (no-op when editMode=false)
         onConnect={editMode ? onConnect : undefined}
+        onReconnect={editMode ? onReconnect : undefined}
         onNodesDelete={editMode ? onNodesDelete : undefined}
         onEdgesDelete={editMode ? onEdgesDelete : undefined}
         deleteKeyCode={editMode ? 'Delete' : null}

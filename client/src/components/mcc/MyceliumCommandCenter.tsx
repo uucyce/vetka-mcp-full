@@ -2589,7 +2589,11 @@ export function MyceliumCommandCenter() {
   );
 
   // MARKER_155E.WE.EDGE_VALIDATION_POLICY.V1
-  const validateInlineWorkflowConnect = useCallback((sourceId: string, targetId: string): string | null => {
+  const validateInlineWorkflowConnect = useCallback((
+    sourceId: string,
+    targetId: string,
+    options?: { ignoreEdgeId?: string },
+  ): string | null => {
     if (!selectedTaskId) return 'workflow task context missing';
     if (!sourceId || !targetId) return 'source/target missing';
     if (sourceId === targetId) return 'self-loop is not allowed';
@@ -2604,12 +2608,17 @@ export function MyceliumCommandCenter() {
       return 'source or target node not found';
     }
 
-    const duplicate = graphForView.edges.some((e) => e.source === sourceId && e.target === targetId);
+    const duplicate = graphForView.edges.some((e) => (
+      e.id !== options?.ignoreEdgeId
+      && e.source === sourceId
+      && e.target === targetId
+    ));
     if (duplicate) return 'duplicate edge';
 
     // Keep structural flow acyclic on direct connect.
     const adj = new Map<string, string[]>();
     for (const e of graphForView.edges) {
+      if (e.id === options?.ignoreEdgeId) continue;
       if (!e.source.startsWith(inlinePrefix) || !e.target.startsWith(inlinePrefix)) continue;
       const arr = adj.get(e.source) || [];
       arr.push(e.target);
@@ -2639,6 +2648,28 @@ export function MyceliumCommandCenter() {
     }
     dagEditor.handleConnect({ source, target } as any);
     addToast('success', 'Edge added');
+  }, [addToast, dagEditor, validateInlineWorkflowConnect]);
+
+  // MARKER_155E.WE.USER_EDGE_EDITING_RUNTIME.V1
+  const handleInlineWorkflowReconnect = useCallback((oldEdge: any, connection: { source: string | null; target: string | null }) => {
+    const source = String(connection.source || '');
+    const target = String(connection.target || '');
+    const edgeId = String(oldEdge?.id || '');
+    if (!edgeId) {
+      addToast('error', 'Edge update blocked: edge id missing');
+      return;
+    }
+    const err = validateInlineWorkflowConnect(source, target, { ignoreEdgeId: edgeId });
+    if (err) {
+      addToast('error', `Edge update blocked: ${err}`);
+      return;
+    }
+    const ok = dagEditor.updateEdgeConnection(edgeId, source, target);
+    if (!ok) {
+      addToast('error', 'Edge update blocked: duplicate or missing edge');
+      return;
+    }
+    addToast('success', 'Edge updated');
   }, [addToast, dagEditor, validateInlineWorkflowConnect]);
 
   // MARKER_144.3: Context menu handlers
@@ -3422,6 +3453,7 @@ export function MyceliumCommandCenter() {
                     // test compatibility marker: navLevel === 'roadmap' ? false : editMode
                     editMode={canEditInlineWorkflowEdges ? true : (navLevel === 'roadmap' ? false : (navLevel === 'tasks' ? false : editMode))}
                     onConnect={canEditInlineWorkflowEdges ? (c => handleInlineWorkflowConnect(c as any)) : (isReadOnlyLevel ? undefined : dagEditor.handleConnect)}
+                    onReconnect={canEditInlineWorkflowEdges ? ((oldEdge, c) => handleInlineWorkflowReconnect(oldEdge as any, c as any)) : undefined}
                     onNodesDelete={isReadOnlyLevel ? undefined : (deletedNodes) => deletedNodes.forEach(n => dagEditor.removeNode(n.id))}
                     onEdgesDelete={canEditInlineWorkflowEdges
                       ? (deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))
