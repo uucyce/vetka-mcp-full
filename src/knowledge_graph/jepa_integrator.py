@@ -36,6 +36,21 @@ class JepaRuntimeConfig:
     enabled: bool = os.environ.get("MCC_JEPA_HTTP_ENABLE", "").strip().lower() in {"1", "true", "yes"}
 
 
+@dataclass
+class JepaVideoProfile:
+    target_fps: float = float(os.environ.get("MCC_VJEPA_VIDEO_TARGET_FPS", "2.0"))
+    window_sec: float = float(os.environ.get("MCC_VJEPA_VIDEO_WINDOW_SEC", "8.0"))
+    stride_sec: float = float(os.environ.get("MCC_VJEPA_VIDEO_STRIDE_SEC", "2.0"))
+
+    @classmethod
+    def from_values(cls, *, target_fps: float, window_sec: float, stride_sec: float) -> "JepaVideoProfile":
+        return cls(
+            target_fps=max(0.25, min(float(target_fps), 12.0)),
+            window_sec=max(1.0, min(float(window_sec), 30.0)),
+            stride_sec=max(0.25, min(float(stride_sec), 15.0)),
+        )
+
+
 def _normalize(vec: np.ndarray) -> np.ndarray:
     n = float(np.linalg.norm(vec))
     if n <= 1e-12:
@@ -68,6 +83,49 @@ class JepaIntegrator:
         self.max_frames = int(max(4, min(max_frames, 128)))
         self.embedding_dim = int(max(64, min(embedding_dim, 2048)))
         self.runtime = JepaRuntimeConfig()
+        self.video_profile = JepaVideoProfile.from_values(
+            target_fps=float(os.environ.get("MCC_VJEPA_VIDEO_TARGET_FPS", "2.0")),
+            window_sec=float(os.environ.get("MCC_VJEPA_VIDEO_WINDOW_SEC", "8.0")),
+            stride_sec=float(os.environ.get("MCC_VJEPA_VIDEO_STRIDE_SEC", "2.0")),
+        )
+
+    def override_video_profile(self, *, target_fps: float, window_sec: float, stride_sec: float) -> None:
+        self.video_profile = JepaVideoProfile.from_values(
+            target_fps=target_fps,
+            window_sec=window_sec,
+            stride_sec=stride_sec,
+        )
+
+    def _collect_frame_indices(self, frame_count: int, fps_actual: float, duration_sec: float) -> List[int]:
+        if frame_count <= 0:
+            return []
+        target_fps = max(0.25, float(self.video_profile.target_fps))
+        window_sec = max(1.0, float(self.video_profile.window_sec))
+        stride_sec = max(0.25, float(self.video_profile.stride_sec))
+        sample_step = 1.0 / target_fps
+        times: List[float] = []
+        cursor = 0.0
+        hard_guard = int(max(1, math.ceil(duration_sec * target_fps * 3)))
+        while cursor < duration_sec and len(times) < hard_guard:
+            win_end = min(duration_sec, cursor + window_sec)
+            t = cursor
+            while t < win_end and len(times) < hard_guard:
+                times.append(t)
+                t += sample_step
+            cursor += stride_sec
+        # Keep insertion order and de-duplicate close timestamps via frame indices.
+        seen: set[int] = set()
+        indices: List[int] = []
+        for t in times:
+            idx = int(round(t * fps_actual))
+            idx = max(0, min(frame_count - 1, idx))
+            if idx in seen:
+                continue
+            seen.add(idx)
+            indices.append(idx)
+            if len(indices) >= self.max_frames:
+                break
+        return indices
 
     def extract_video_frames(self, video_path: str) -> List[np.ndarray]:
         """Extract representative frames from video (OpenCV optional)."""
@@ -81,17 +139,22 @@ class JepaIntegrator:
         if not cap.isOpened():
             return []
         frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        step = max(1, frame_count // max(1, self.max_frames))
+        fps_actual = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        if fps_actual <= 0.0:
+            fps_actual = 24.0
+        duration_sec = float(frame_count) / max(fps_actual, 1e-6)
+        indices = self._collect_frame_indices(frame_count, fps_actual, duration_sec)
+        if not indices:
+            cap.release()
+            return []
         frames: List[np.ndarray] = []
-        for i in range(0, max(1, frame_count), step):
+        for i in indices:
             cap.set(cv2.CAP_PROP_POS_FRAMES, i)
             ok, frame = cap.read()
             if not ok:
                 continue
             frame = cv2.resize(frame, (224, 224))
             frames.append(frame.astype(np.uint8))
-            if len(frames) >= self.max_frames:
-                break
         cap.release()
         return frames
 
@@ -103,6 +166,11 @@ class JepaIntegrator:
             "path": path,
             "dim": self.embedding_dim,
             "max_frames": self.max_frames,
+            "video_profile": {
+                "target_fps": float(self.video_profile.target_fps),
+                "window_sec": float(self.video_profile.window_sec),
+                "stride_sec": float(self.video_profile.stride_sec),
+            },
             "transcript": transcript or "",
         }
         req = urllib.request.Request(
