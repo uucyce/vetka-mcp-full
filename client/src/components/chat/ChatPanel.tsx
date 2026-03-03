@@ -1608,9 +1608,9 @@ export function ChatPanel({
     }
 
     // Create persisted draft chat immediately so rename works before first message.
-    const firstPinnedNode = pinnedFileIds.length > 0 ? nodes[pinnedFileIds[0]] : null;
-    const contextType: 'file' | 'folder' = selectedNode?.type === 'folder' ? 'folder' : 'file';
-    const draftName = firstPinnedNode?.name || selectedNode?.name || 'New Chat';
+    // Explicit "New Chat" must start clean and must not inherit previous file names.
+    const contextType: 'topic' = 'topic';
+    const draftName = 'New Chat';
 
     try {
       const response = await fetch('/api/chats', {

@@ -77,6 +77,8 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [searchMatchedChatIds, setSearchMatchedChatIds] = useState<string[] | null>(null);
+  const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const LIMIT = 50;
 
   // MARKER_129.2C: IntersectionObserver for infinite scroll
@@ -326,14 +328,21 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
     }
   };
 
-  // Phase 74: Rename chat functionality
-  const handleRenameChat = async (e: React.MouseEvent, chat: Chat) => {
+  // Phase 74: Inline rename in sidebar (prompt() is unreliable in Tauri)
+  const handleRenameChat = (e: React.MouseEvent, chat: Chat) => {
     e.stopPropagation();
+    const currentName = (chat.display_name || chat.file_name || '').trim();
+    setRenamingChatId(chat.id);
+    setRenameValue(currentName);
+  };
 
-    const currentName = chat.display_name || chat.file_name;
-    const newName = prompt('Enter new name for this chat:', currentName);
+  const submitRenameChat = async (chat: Chat) => {
+    const currentName = (chat.display_name || chat.file_name || '').trim();
+    const nextName = renameValue.trim();
 
-    if (!newName || newName.trim() === '' || newName.trim() === currentName) {
+    setRenamingChatId(null);
+
+    if (!nextName || nextName === currentName) {
       return;
     }
 
@@ -341,12 +350,12 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       const response = await fetch(`/api/chats/${chat.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ display_name: newName.trim() })
+        body: JSON.stringify({ display_name: nextName })
       });
 
       if (response.ok) {
         // Update local state
-        const normalizedName = newName.trim();
+        const normalizedName = nextName;
         setChats(prev => prev.map(c =>
           c.id === chat.id ? { ...c, display_name: normalizedName } : c
         ));
@@ -467,7 +476,27 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                     <circle cx="12" cy="7" r="4"/>
                   </svg>
                 )}
-                <span style={{ marginLeft: 6 }}>{chat.display_name || chat.file_name}</span>
+                {renamingChatId === chat.id ? (
+                  <input
+                    autoFocus
+                    value={renameValue}
+                    className="chat-sidebar-rename-input"
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onBlur={() => { void submitRenameChat(chat); }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void submitRenameChat(chat);
+                      } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        setRenamingChatId(null);
+                      }
+                    }}
+                  />
+                ) : (
+                  <span style={{ marginLeft: 6 }}>{chat.display_name || chat.file_name}</span>
+                )}
               </div>
               <div className="chat-sidebar-item-meta">
                 <span className="chat-sidebar-item-time">
