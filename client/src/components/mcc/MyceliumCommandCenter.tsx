@@ -2554,6 +2554,12 @@ export function MyceliumCommandCenter() {
 
   // MARKER_155.1A: Read-only levels (no DAG editing — roadmap + tasks)
   const isReadOnlyLevel = navLevel === 'roadmap' || navLevel === 'tasks';
+  // MARKER_155E.WE.USER_EDGE_EDITING_RUNTIME.V1
+  const canEditInlineWorkflowEdges =
+    navLevel === 'roadmap' &&
+    isInlineWorkflowFocus &&
+    editMode &&
+    Boolean(selectedTaskId);
 
   // MARKER_144.2: DAG Editor hook — manages workflow editing state
   // Uses effectiveNodes/effectiveEdges as initial data, provides mutators
@@ -2581,6 +2587,59 @@ export function MyceliumCommandCenter() {
       }
     },
   );
+
+  // MARKER_155E.WE.EDGE_VALIDATION_POLICY.V1
+  const validateInlineWorkflowConnect = useCallback((sourceId: string, targetId: string): string | null => {
+    if (!selectedTaskId) return 'workflow task context missing';
+    if (!sourceId || !targetId) return 'source/target missing';
+    if (sourceId === targetId) return 'self-loop is not allowed';
+
+    const inlinePrefix = `wf_${selectedTaskId}_`;
+    if (!sourceId.startsWith(inlinePrefix) || !targetId.startsWith(inlinePrefix)) {
+      return 'connection must stay inside selected workflow';
+    }
+
+    const nodeById = new Map(graphForView.nodes.map((n) => [n.id, n]));
+    if (!nodeById.has(sourceId) || !nodeById.has(targetId)) {
+      return 'source or target node not found';
+    }
+
+    const duplicate = graphForView.edges.some((e) => e.source === sourceId && e.target === targetId);
+    if (duplicate) return 'duplicate edge';
+
+    // Keep structural flow acyclic on direct connect.
+    const adj = new Map<string, string[]>();
+    for (const e of graphForView.edges) {
+      if (!e.source.startsWith(inlinePrefix) || !e.target.startsWith(inlinePrefix)) continue;
+      const arr = adj.get(e.source) || [];
+      arr.push(e.target);
+      adj.set(e.source, arr);
+    }
+    const seen = new Set<string>();
+    const stack = [targetId];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      if (cur === sourceId) return 'cycle is not allowed for direct structural edge';
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      for (const nxt of adj.get(cur) || []) stack.push(nxt);
+    }
+
+    return null;
+  }, [graphForView.edges, graphForView.nodes, selectedTaskId]);
+
+  // MARKER_155E.WE.USER_EDGE_EDITING_RUNTIME.V1
+  const handleInlineWorkflowConnect = useCallback((connection: { source: string | null; target: string | null }) => {
+    const source = String(connection.source || '');
+    const target = String(connection.target || '');
+    const err = validateInlineWorkflowConnect(source, target);
+    if (err) {
+      addToast('error', `Edge blocked: ${err}`);
+      return;
+    }
+    dagEditor.handleConnect({ source, target } as any);
+    addToast('success', 'Edge added');
+  }, [addToast, dagEditor, validateInlineWorkflowConnect]);
 
   // MARKER_144.3: Context menu handlers
   const handleContextMenu = useCallback((_event: React.MouseEvent, target: { kind: 'canvas' | 'node' | 'edge'; id?: string; position: { x: number; y: number } }) => {
@@ -3361,14 +3420,16 @@ export function MyceliumCommandCenter() {
                       // (lines "fly away then back"). Keep only explicit pin persistence.
                     }}
                     // test compatibility marker: navLevel === 'roadmap' ? false : editMode
-                    editMode={navLevel === 'roadmap' ? false : (navLevel === 'tasks' ? false : editMode)}
-                    onConnect={isReadOnlyLevel ? undefined : dagEditor.handleConnect}
+                    editMode={canEditInlineWorkflowEdges ? true : (navLevel === 'roadmap' ? false : (navLevel === 'tasks' ? false : editMode))}
+                    onConnect={canEditInlineWorkflowEdges ? (c => handleInlineWorkflowConnect(c as any)) : (isReadOnlyLevel ? undefined : dagEditor.handleConnect)}
                     onNodesDelete={isReadOnlyLevel ? undefined : (deletedNodes) => deletedNodes.forEach(n => dagEditor.removeNode(n.id))}
-                    onEdgesDelete={isReadOnlyLevel ? undefined : (deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))}
+                    onEdgesDelete={canEditInlineWorkflowEdges
+                      ? (deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id))
+                      : (isReadOnlyLevel ? undefined : (deletedEdges) => deletedEdges.forEach(e => dagEditor.removeEdge(e.id)))}
                     onContextMenu={navLevel === 'roadmap' || !isReadOnlyLevel ? handleContextMenu : undefined}
                     contextMenuEnabled={navLevel === 'roadmap' ? true : editMode}
                     onPaneDoubleClick={isReadOnlyLevel
-                      ? undefined
+                      ? (canEditInlineWorkflowEdges ? handlePaneDoubleClick : undefined)
                       : handlePaneDoubleClick
                     }
                     onNodeDoubleClick={handleLevelAwareNodeDoubleClick}
@@ -3921,7 +3982,9 @@ export function MyceliumCommandCenter() {
           }
           onDeleteNode={navLevel === 'roadmap' ? undefined : dagEditor.removeNode}
           onDuplicateNode={navLevel === 'roadmap' ? undefined : handleDuplicateNode}
-          onDeleteEdge={navLevel === 'roadmap' ? undefined : dagEditor.removeEdge}
+          onDeleteEdge={navLevel === 'roadmap'
+            ? (canEditInlineWorkflowEdges ? dagEditor.removeEdge : undefined)
+            : dagEditor.removeEdge}
         />
       )}
 
