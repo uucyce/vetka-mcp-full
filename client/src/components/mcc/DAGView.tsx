@@ -730,6 +730,9 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           String(edge.id || '').startsWith('rd_') ||
           String((edge as any).className || '').includes('wf-inline-edge') ||
           String((edge as any).className || '').includes('wf-bridge-edge');
+        const isFeedback =
+          String((edge as any).type || '').toLowerCase() === 'feedback' ||
+          String((edge as any).relationKind || '').toLowerCase() === 'retries';
         return {
           ...edge,
           // MARKER_155A.G27.GLOBAL_HANDLE_FLOW:
@@ -742,6 +745,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
             ...(edge.style || {}),
             strokeWidth: isMicroInline ? 0.7 : Number((edge.style as any)?.strokeWidth || 1),
             opacity: isMicroInline ? 0.78 : Number((edge.style as any)?.opacity || 1),
+            strokeDasharray: isFeedback ? '4 3' : (edge.style as any)?.strokeDasharray,
           },
         };
       }),
@@ -840,6 +844,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
       setEdges(baseEdgesRef.current);
       setNodes(nds => nds.map(n => ({
         ...n,
+        selected: false,
         style: { ...n.style, opacity: 1 },
       })));
       return;
@@ -877,6 +882,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
       }));
       setNodes(nds => nds.map(n => ({
         ...n,
+        selected: focusIds.has(n.id),
         style: {
           ...n.style,
           opacity: 1,
@@ -904,6 +910,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
     // Update nodes: dim unconnected
     setNodes(nds => nds.map(n => ({
       ...n,
+      selected: focusIds.has(n.id),
       style: {
         ...n.style,
         opacity: connectedNodeIds.has(n.id) ? 1.0 : 0.25,

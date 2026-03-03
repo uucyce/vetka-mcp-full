@@ -11,11 +11,13 @@
  * @status active
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { MiniWindow } from './MiniWindow';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { useDevPanelStore } from '../../store/useDevPanelStore';
 import { useMCCDiagnostics } from '../../hooks/useMCCDiagnostics';
+import { useMCCStore } from '../../store/useMCCStore';
+import type { MiniContextPayload } from './MiniContext';
 
 const API_BASE = 'http://localhost:5001/api';
 
@@ -72,6 +74,28 @@ interface AgentSummary {
 interface AgentsData {
   period: string;
   agents: Record<string, AgentSummary>;
+}
+
+const NEUTRAL_FAIL = '#90978f';
+const NEUTRAL_WARN = '#c1b27c';
+
+interface MiniStatsProps {
+  context?: MiniContextPayload;
+}
+
+function resolveContextSubtitle(context?: MiniContextPayload): string {
+  if (!context || context.scope === 'project') return 'scope: project';
+  if (context.nodeKind === 'task') return `scope: task (${context.label})`;
+  if (context.nodeKind === 'agent') return `scope: agent (${context.role || context.label})`;
+  if (context.nodeKind === 'file' || context.nodeKind === 'directory') return `scope: ${context.nodeKind} (${context.label})`;
+  return `scope: node (${context.label})`;
+}
+
+function resolveAgentLane(role?: string): string | null {
+  const r = String(role || '').toLowerCase().trim();
+  if (r === 'verifier') return 'lane: checks (pass/fail)';
+  if (r === 'eval') return 'lane: scoring (quality)';
+  return null;
 }
 
 function useSummaryData() {
@@ -187,10 +211,38 @@ function StatBox({ label, value, unit }: { label: string; value: string | number
 }
 
 // Compact: 4 stat boxes
-function StatsCompact() {
+function StatsCompact({ context }: MiniStatsProps) {
   const { data, loading } = useSummaryData();
   const setStatsMode = useDevPanelStore(s => s.setStatsMode);
   const diagnostics = useMCCDiagnostics();
+  const tasks = useMCCStore(s => s.tasks);
+  const streamEvents = useMCCStore(s => s.streamEvents);
+  const scopeSubtitle = useMemo(() => resolveContextSubtitle(context), [context]);
+
+  const contextualLine = useMemo(() => {
+    if (!context || context.scope === 'project') {
+      return null;
+    }
+    if (context.taskId) {
+      const task = tasks.find((t) => t.id === context.taskId || `task_overlay_${t.id}` === context.nodeId);
+      const events = streamEvents.filter((e) => e.taskId === (context.taskId || task?.id));
+      return `task: ${task?.status || context.status || '-'} · events: ${events.length}`;
+    }
+    if (context.role) {
+      const role = String(context.role).toLowerCase();
+      const roleAliases = role === 'eval' ? ['eval', 'verifier'] : [role];
+      const events = streamEvents.filter((e) => roleAliases.includes(String(e.role || '').toLowerCase()));
+      const lane = resolveAgentLane(role);
+      return lane
+        ? `role: ${role} · events: ${events.length} · ${lane}`
+        : `role: ${role} · events: ${events.length}`;
+    }
+    if (context.path) {
+      const linkedTasks = tasks.filter((t) => String(t.module || '').includes(context.path || ''));
+      return `linked tasks: ${linkedTasks.length}`;
+    }
+    return `node: ${context.nodeId || '-'}`;
+  }, [context, tasks, streamEvents]);
 
   if (loading || !data) {
     return (
@@ -208,11 +260,14 @@ function StatsCompact() {
   };
 
   const rate = data.success_rate ?? 0;
-  const successColor = rate >= 70 ? '#8a8' : rate >= 50 ? '#aa8' : '#a66';
+  const successColor = rate >= 70 ? '#8a8' : rate >= 50 ? NEUTRAL_WARN : NEUTRAL_FAIL;
   const cost = data.total_cost_usd ?? 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'center', gap: 8 }}>
+      <div style={{ color: '#7f8893', fontSize: 8, textTransform: 'uppercase', letterSpacing: 0.35 }}>
+        {scopeSubtitle}
+      </div>
       <div style={{ display: 'flex', gap: 4 }}>
         <StatBox label="Runs" value={data.total_pipelines ?? 0} />
         <StatBox
@@ -227,6 +282,12 @@ function StatsCompact() {
         <StatBox label="Cost" value={`$${cost.toFixed(2)}`} />
       </div>
 
+      {contextualLine ? (
+        <div style={{ color: '#8e98a4', fontSize: 8, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`, paddingTop: 4 }}>
+          {contextualLine}
+        </div>
+      ) : null}
+
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -236,17 +297,23 @@ function StatsCompact() {
         borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`,
       }}>
         <div style={{ display: 'flex', gap: 6 }}>
+          <span style={{ fontSize: 8, color: '#9aa4af' }}>
+            wf:{context?.workflowSourceMode || 'runtime'}
+          </span>
           <span style={{
             fontSize: 8,
-            color: diagnostics.buildDesign?.verifier?.decision === 'pass' ? '#67e6bf' : diagnostics.buildDesign?.verifier?.decision === 'warn' ? '#f7d070' : '#ef8d8d',
+            color: diagnostics.buildDesign?.verifier?.decision === 'pass' ? '#67e6bf' : diagnostics.buildDesign?.verifier?.decision === 'warn' ? '#f7d070' : NEUTRAL_FAIL,
           }}>
             graph:{String(diagnostics.buildDesign?.verifier?.decision || '-')}
           </span>
           <span style={{
             fontSize: 8,
-            color: diagnostics.runtimeHealth?.ok ? '#67e6bf' : '#ef8d8d',
+            color: diagnostics.runtimeHealth?.ok ? '#67e6bf' : NEUTRAL_FAIL,
           }}>
             rt:{diagnostics.runtimeHealth?.ok ? 'ok' : 'down'}
+          </span>
+          <span style={{ fontSize: 8, color: '#8e98a4' }}>
+            retry:dashed
           </span>
         </div>
         <button
@@ -347,7 +414,7 @@ function AgentPerformanceSection() {
               {stats.total_runs} runs
             </span>
             <span style={{
-              color: successRate >= 70 ? '#8a8' : successRate >= 50 ? '#aa8' : '#a66',
+              color: successRate >= 70 ? '#8a8' : successRate >= 50 ? NEUTRAL_WARN : NEUTRAL_FAIL,
               fontSize: 9,
               width: 40,
             }}>
@@ -398,8 +465,9 @@ function AgentPerformanceSection() {
 }
 
 // Expanded: detailed stats
-function StatsExpanded() {
+function StatsExpanded({ context }: MiniStatsProps) {
   const { data, loading, refresh } = useSummaryData();
+  const scopeSubtitle = useMemo(() => resolveContextSubtitle(context), [context]);
 
   if (loading || !data) {
     return (
@@ -415,6 +483,9 @@ function StatsExpanded() {
 
   return (
     <div style={{ padding: '12px 16px', fontFamily: 'monospace' }}>
+      <div style={{ color: '#7f8893', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.35, marginBottom: 10 }}>
+        {scopeSubtitle}
+      </div>
       {/* Summary row */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
         <StatBox label="Total Runs" value={data.total_pipelines ?? 0} />
@@ -464,7 +535,7 @@ function StatsExpanded() {
                 {stats.count} runs
               </span>
               <span style={{
-                color: stats.success_rate >= 70 ? '#8a8' : '#a66',
+                color: stats.success_rate >= 70 ? '#8a8' : NEUTRAL_FAIL,
                 fontSize: 10,
               }}>
                 {Math.round(stats.success_rate)}%
@@ -501,7 +572,7 @@ function StatsExpanded() {
   );
 }
 
-export function MiniStats() {
+export function MiniStats({ context }: MiniStatsProps) {
   return (
     <MiniWindow
       windowId="stats" // MARKER_155.DRAGGABLE.012: Unique ID for position persistence
@@ -510,8 +581,8 @@ export function MiniStats() {
       position="top-right"
       compactWidth={200}
       compactHeight={120}
-      compactContent={<StatsCompact />}
-      expandedContent={<StatsExpanded />}
+      compactContent={<StatsCompact context={context} />}
+      expandedContent={<StatsExpanded context={context} />}
     />
   );
 }

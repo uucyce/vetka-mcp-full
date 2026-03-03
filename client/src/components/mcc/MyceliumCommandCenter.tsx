@@ -29,6 +29,7 @@ import { MiniChat } from './MiniChat';
 import { MiniTasks } from './MiniTasks';
 import { MiniStats } from './MiniStats';
 import { MiniBalance } from './MiniBalance';
+import { MiniContext, type MiniContextKind, type MiniContextPayload } from './MiniContext';
 import { StepIndicator } from './StepIndicator';
 import { FirstRunView } from './FirstRunView';
 import { PlaygroundBadge } from './PlaygroundBadge';
@@ -667,18 +668,19 @@ function overlayWorkflowOnSelectedTask(
   const compactWorkflowLabel = (node: DAGNode): string => {
     const role = String((node as any)?.role || '').toLowerCase();
     const low = String(node.label || '').toLowerCase();
+    const idLow = String(node.id || '').toLowerCase();
+    if (idLow.includes('eval') || low.includes('eval')) return 'Eval Agent';
+    if (idLow.includes('verifier') || role === 'verifier') return 'Verifier';
     if (low.includes('retry')) return 'Retry Coder';
     if (role === 'architect') return 'Architect';
     if (role === 'scout') return 'Scout';
     if (role === 'researcher') return 'Researcher';
     if (role === 'coder') return 'Coder';
-    if (role === 'verifier') return 'Verifier';
     if (role === 'eval') return 'Eval Agent';
     if (low.includes('measure')) return 'Measure';
     if (low.includes('approval')) return 'Approval Gate';
     if (low.includes('quality')) return 'Quality Gate';
     if (low.includes('deploy')) return 'Deploy';
-    if (low.includes('eval')) return 'Eval Agent';
     const raw = String(node.label || '').trim();
     if (!raw) return node.id;
     const stripped = raw.replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
@@ -690,14 +692,15 @@ function overlayWorkflowOnSelectedTask(
   const workflowStageOrder = (node: DAGNode): number => {
     const role = String((node as any)?.role || '').toLowerCase();
     const low = String(node.label || '').toLowerCase();
+    const idLow = String(node.id || '').toLowerCase();
     if (role === 'architect') return 0;
     if (role === 'scout') return 1;
     if (role === 'researcher') return 1;
     if (role === 'coder' && low.includes('retry')) return 5;
     if (role === 'coder') return 2;
     if (low.includes('measure')) return 3;
-    if (role === 'verifier') return 4;
-    if (role === 'eval' || low.includes('eval')) return 4;
+    if (idLow.includes('eval') || role === 'eval' || low.includes('eval')) return 4;
+    if (idLow.includes('verifier') || role === 'verifier') return 4;
     if (node.type === 'condition' || low.includes('quality')) return 5;
     if (low.includes('approval')) return 6;
     if (low.includes('deploy')) return 7;
@@ -762,6 +765,7 @@ function overlayWorkflowOnSelectedTask(
     const s = nodeById.get(e.source);
     const t = nodeById.get(e.target);
     if (!s || !t) return false;
+    if (e.type === 'feedback' || e.relationKind === 'retries') return true;
     const sd = workflowStageOrder(s);
     const td = workflowStageOrder(t);
     if (td >= sd) return true;
@@ -776,6 +780,7 @@ function overlayWorkflowOnSelectedTask(
       return a.id.localeCompare(b.id);
     })
     .filter((e) => {
+      if (e.type === 'feedback' || e.relationKind === 'retries') return true;
       const inN = incomingCount.get(e.target) || 0;
       const outN = outgoingCount.get(e.source) || 0;
       if (inN >= 2 || outN >= 3) return false;
@@ -1008,10 +1013,11 @@ function buildInlineWorkflowFromPipeline(taskId: string, subtasks: Array<any>): 
     { id: `wf_coder_${taskId}`, type: 'agent', label: 'Coder (Build)', status: 'running', layer: 1, taskId, role: 'coder', graphKind: 'workflow_agent' },
     { id: `wf_measure_${taskId}`, type: 'parallel', label: 'Measure', status: 'pending', layer: 2, taskId, graphKind: 'workflow_artifact' },
     { id: `wf_verifier_${taskId}`, type: 'agent', label: 'Verifier', status: 'pending', layer: 2, taskId, role: 'verifier', graphKind: 'workflow_agent' },
-    { id: `wf_eval_${taskId}`, type: 'agent', label: 'Eval Agent', status: 'pending', layer: 2, taskId, graphKind: 'workflow_agent' },
+    { id: `wf_eval_${taskId}`, type: 'agent', label: 'Eval Agent', status: 'pending', layer: 2, taskId, role: 'eval', graphKind: 'workflow_agent' },
     { id: `wf_quality_${taskId}`, type: 'condition', label: 'Quality Gate', status: 'pending', layer: 3, taskId, graphKind: 'workflow_artifact' },
-    { id: `wf_retry_${taskId}`, type: 'agent', label: 'Retry Coder', status: 'pending', layer: 3, taskId, role: 'coder', graphKind: 'workflow_agent' },
-    { id: `wf_approval_${taskId}`, type: 'group', label: 'Approval Gate', status: 'pending', layer: 3, taskId, graphKind: 'workflow_artifact' },
+    // MARKER_155A.WD.RUNTIME_APPROVAL_GATE_COMPACT.V1:
+    // Keep approval as compact gate node (not a large group container).
+    { id: `wf_approval_${taskId}`, type: 'condition', label: 'Approval', status: 'pending', layer: 3, taskId, graphKind: 'workflow_artifact' },
     { id: `wf_deploy_${taskId}`, type: 'subtask', label: 'Deploy', status: 'pending', layer: 4, taskId, graphKind: 'workflow_artifact' },
   ];
   const edges: DAGEdge[] = [
@@ -1024,8 +1030,9 @@ function buildInlineWorkflowFromPipeline(taskId: string, subtasks: Array<any>): 
     { id: `wf_e_measure_eval_${taskId}`, source: `wf_measure_${taskId}`, target: `wf_eval_${taskId}`, type: 'parallel_fork', strength: 0.64, relationKind: 'scores' },
     { id: `wf_e_ver_quality_${taskId}`, source: `wf_verifier_${taskId}`, target: `wf_quality_${taskId}`, type: 'dataflow', strength: 0.62, relationKind: 'feeds' },
     { id: `wf_e_eval_quality_${taskId}`, source: `wf_eval_${taskId}`, target: `wf_quality_${taskId}`, type: 'dataflow', strength: 0.62, relationKind: 'feeds' },
-    { id: `wf_e_quality_retry_${taskId}`, source: `wf_quality_${taskId}`, target: `wf_retry_${taskId}`, type: 'conditional', strength: 0.58, relationKind: 'fails_to' },
-    { id: `wf_e_retry_measure_${taskId}`, source: `wf_retry_${taskId}`, target: `wf_measure_${taskId}`, type: 'feedback', strength: 0.6, relationKind: 'retries' },
+    // MARKER_155A.WD.RUNTIME_PIPELINE_RETRY_EDGE.V1:
+    // Retry is represented as feedback edge back to coder, not separate retry node.
+    { id: `wf_e_quality_retry_${taskId}`, source: `wf_quality_${taskId}`, target: `wf_coder_${taskId}`, type: 'feedback', strength: 0.6, relationKind: 'retries' },
     { id: `wf_e_quality_approval_${taskId}`, source: `wf_quality_${taskId}`, target: `wf_approval_${taskId}`, type: 'conditional', strength: 0.58, relationKind: 'passes_to' },
     { id: `wf_e_approval_deploy_${taskId}`, source: `wf_approval_${taskId}`, target: `wf_deploy_${taskId}`, type: 'temporal', strength: 0.56, relationKind: 'deploys' },
   ];
@@ -1088,7 +1095,16 @@ function buildInlineWorkflowFromTemplate(taskId: string, template: any): { nodes
 
   const nodes: DAGNode[] = rawNodes.map((n: any, idx: number) => {
     const nodeType = asNodeType(String(n?.type || 'agent'));
-    const role = String(n?.data?.role || '').toLowerCase();
+    const rawRole = String(n?.data?.role || n?.role || '').toLowerCase().trim();
+    const labelLow = String(n?.label || '').toLowerCase();
+    const idLow = String(n?.id || '').toLowerCase();
+    const role = rawRole || (
+      idLow.includes('eval') || labelLow.includes('eval')
+        ? 'eval'
+        : idLow.includes('verifier') || labelLow.includes('verifier') || labelLow.includes('critic')
+          ? 'verifier'
+          : ''
+    );
     const status: NodeStatus = role === 'coder' ? 'running' : 'pending';
     const layer = nodeType === 'agent' ? 1 : (nodeType === 'subtask' ? 2 : 3);
     const nodeId = String(n?.id || `template_node_${idx}`);
@@ -1149,6 +1165,7 @@ function buildInlineWorkflowFromTemplate(taskId: string, template: any): { nodes
 }
 
 function selectInlineWorkflowSource(
+  workflowSourceMode: string,
   selectedTaskId: string,
   dagNodes: DAGNode[],
   dagEdges: DAGEdge[],
@@ -1169,6 +1186,12 @@ function selectInlineWorkflowSource(
   const scopedDagIds = new Set(scopedDagNodes.map((n) => n.id));
   const scopedDagEdges = dagEdges.filter((e) => scopedDagIds.has(e.source) && scopedDagIds.has(e.target));
   const hasDetailedDagWorkflow = scopedDagNodes.some((n) => n.type !== 'task');
+
+  // MARKER_155A.WD.RUNTIME_SOURCE_PRIORITY.V1:
+  // In runtime mode, inline workflow must prioritize pipeline-observed flow.
+  if (workflowSourceMode === 'runtime' && pipelineNodes.length > 0 && pipelineEdges.length > 0) {
+    return { nodes: pipelineNodes, edges: pipelineEdges, source: 'pipeline' };
+  }
   if (hasDetailedDagWorkflow && scopedDagEdges.length > 0) {
     return { nodes: scopedDagNodes, edges: scopedDagEdges, source: 'dag' };
   }
@@ -1190,6 +1213,8 @@ export function MyceliumCommandCenter() {
   const tasks = useMCCStore(s => s.tasks);
   const summary = useMCCStore(s => s.summary);
   const executeWorkflow = useMCCStore(s => s.executeWorkflow);
+  const activePreset = useMCCStore(s => s.activePreset || 'dragon_silver');
+  const presetMap = useMCCStore(s => s.presets);
 
   // DAG data state
   const [dagNodes, setDagNodes] = useState<DAGNode[]>([]);
@@ -1324,6 +1349,8 @@ export function MyceliumCommandCenter() {
   const setFocusRestoreSource = useMCCStore(s => s.setFocusRestoreSource);
   const workflowSourceMode = useMCCStore(s => s.workflowSourceMode);
   const setWorkflowSourceMode = useMCCStore(s => s.setWorkflowSourceMode);
+  const isWorkflowRuntimeForced = navLevel === 'roadmap' && taskDrillState === 'expanded' && Boolean(selectedTaskId);
+  const effectiveWorkflowSourceMode: WorkflowSourceMode = isWorkflowRuntimeForced ? 'runtime' : workflowSourceMode;
   const persistSessionState = useMCCStore(s => s.persistSessionState);
   const layoutPins = useMCCStore(s => s.layoutPins);
   const setLayoutPinsForKey = useMCCStore(s => s.setLayoutPinsForKey);
@@ -1584,52 +1611,6 @@ export function MyceliumCommandCenter() {
     fetchDagVersionPayload(activeDagVersionId);
   }, [activeDagVersionId, fetchDagVersionPayload]);
 
-  useEffect(() => {
-    if (!mccReady || !hasProject || navLevel === 'first_run') {
-      setWorkflowSourcePayload(null);
-      setWorkflowSourceError(null);
-      setWorkflowSourceLoading(false);
-      return;
-    }
-    const endpoint = resolveWorkflowGraphEndpoint(workflowSourceMode);
-    const taskKey = String(activeDagVersionId || selectedTaskId || 'latest');
-    const scopeQuery = projectScopePath ? `&scope_path=${encodeURIComponent(projectScopePath)}` : '';
-    let cancelled = false;
-    setWorkflowSourceLoading(true);
-    setWorkflowSourceError(null);
-    fetch(`${API_BASE}/workflow/${endpoint}/${encodeURIComponent(taskKey)}?max_nodes=600${scopeQuery}`)
-      .then(async (res) => {
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(String(body?.detail || `HTTP ${res.status}`));
-        }
-        return res.json();
-      })
-      .then((data) => {
-        if (cancelled) return;
-        setWorkflowSourcePayload(data || null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setWorkflowSourcePayload(null);
-        setWorkflowSourceError(err instanceof Error ? err.message : 'Failed to fetch workflow source graph');
-      })
-      .finally(() => {
-        if (!cancelled) setWorkflowSourceLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    mccReady,
-    hasProject,
-    navLevel,
-    workflowSourceMode,
-    activeDagVersionId,
-    selectedTaskId,
-    projectScopePath,
-  ]);
-
   const versionRoadmapGraph = useMemo(() => {
     const dagPayload = activeDagVersionPayload?.dag_payload || {};
     const design = dagPayload?.design_graph || {};
@@ -1646,7 +1627,7 @@ export function MyceliumCommandCenter() {
   }, [activeDagVersionPayload]);
   const sourceModeRoadmapGraph = useMemo(() => {
     if (!workflowSourcePayload) return null;
-    if (workflowSourceMode === 'predict') {
+    if (effectiveWorkflowSourceMode === 'predict') {
       const predict = workflowSourcePayload.predict_graph || {};
       const rawNodes = Array.isArray(predict?.nodes) ? predict.nodes : [];
       const rawEdges = Array.isArray(predict?.edges) ? predict.edges : [];
@@ -1658,7 +1639,7 @@ export function MyceliumCommandCenter() {
         verifier: null,
       };
     }
-    const graphPayload = workflowSourceMode === 'runtime'
+    const graphPayload = effectiveWorkflowSourceMode === 'runtime'
       ? workflowSourcePayload.runtime_graph
       : workflowSourcePayload.design_graph;
     const extracted = extractCanonicalNodesEdges(graphPayload);
@@ -1669,7 +1650,7 @@ export function MyceliumCommandCenter() {
       crossEdges: [] as DAGEdge[],
       verifier: null,
     };
-  }, [workflowSourcePayload, workflowSourceMode]);
+  }, [workflowSourcePayload, effectiveWorkflowSourceMode]);
 
   const roadmapNodes = sourceModeRoadmapGraph?.nodes || versionRoadmapGraph?.nodes || roadmap.nodes;
   const roadmapEdges = sourceModeRoadmapGraph?.edges || versionRoadmapGraph?.edges || roadmap.edges;
@@ -1706,12 +1687,12 @@ export function MyceliumCommandCenter() {
 
   const workflowSourceBadge = useMemo(() => {
     const source = String(workflowSourcePayload?.graph_source || '');
-    const mode = workflowSourceMode.toUpperCase();
+    const mode = effectiveWorkflowSourceMode.toUpperCase();
     if (workflowSourceLoading) return `${mode} · loading`;
     if (workflowSourceError) return `${mode} · error`;
     if (!source) return `${mode} · default`;
     return `${mode} · ${source}`;
-  }, [workflowSourceMode, workflowSourcePayload?.graph_source, workflowSourceLoading, workflowSourceError]);
+  }, [effectiveWorkflowSourceMode, workflowSourcePayload?.graph_source, workflowSourceLoading, workflowSourceError]);
 
   // MARKER_153.7C: Architect Captain recommendations
   const captain = useCaptain(mccReady && hasProject);
@@ -2227,6 +2208,9 @@ export function MyceliumCommandCenter() {
     navLevel === 'roadmap' &&
     taskDrillState === 'expanded' &&
     Boolean(selectedTaskId);
+  // MARKER_155A.WD.WORKFLOW_RUNTIME_ONLY_TRUTH.V1:
+  // Workflow UX in grandma mode is runtime-only truth. Design/predict are diagnostics only.
+  const workflowInlineSourceMode: WorkflowSourceMode = 'runtime';
   const isRoadmapNodeInlineFocus =
     navLevel === 'roadmap' &&
     roadmapNodeDrillState === 'expanded' &&
@@ -2278,6 +2262,59 @@ export function MyceliumCommandCenter() {
     });
   }, [isInlineWorkflowFocus, isRoadmapNodeInlineFocus]);
 
+  useEffect(() => {
+    if (!isInlineWorkflowFocus) return;
+    if (workflowSourceMode !== 'runtime') {
+      setWorkflowSourceMode('runtime');
+    }
+  }, [isInlineWorkflowFocus, setWorkflowSourceMode, workflowSourceMode]);
+
+  useEffect(() => {
+    if (!mccReady || !hasProject || navLevel === 'first_run') {
+      setWorkflowSourcePayload(null);
+      setWorkflowSourceError(null);
+      setWorkflowSourceLoading(false);
+      return;
+    }
+    const endpoint = resolveWorkflowGraphEndpoint(effectiveWorkflowSourceMode);
+    const taskKey = String(activeDagVersionId || selectedTaskId || 'latest');
+    const scopeQuery = projectScopePath ? `&scope_path=${encodeURIComponent(projectScopePath)}` : '';
+    let cancelled = false;
+    setWorkflowSourceLoading(true);
+    setWorkflowSourceError(null);
+    fetch(`${API_BASE}/workflow/${endpoint}/${encodeURIComponent(taskKey)}?max_nodes=600${scopeQuery}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(String(body?.detail || `HTTP ${res.status}`));
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setWorkflowSourcePayload(data || null);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setWorkflowSourcePayload(null);
+        setWorkflowSourceError(err instanceof Error ? err.message : 'Failed to fetch workflow source graph');
+      })
+      .finally(() => {
+        if (!cancelled) setWorkflowSourceLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    mccReady,
+    hasProject,
+    navLevel,
+    effectiveWorkflowSourceMode,
+    activeDagVersionId,
+    selectedTaskId,
+    projectScopePath,
+  ]);
+
   const graphForView = useMemo(() => {
     let roadmapNodeExpanded = { nodes: effectiveNodes, edges: effectiveEdgesWithPredicted };
     if (
@@ -2295,9 +2332,10 @@ export function MyceliumCommandCenter() {
 
     if (isInlineWorkflowFocus && selectedTaskId) {
       // MARKER_155A.G24.WF_SOURCE_ARBITRATION:
-      // Explicit source priority:
-      // 1) detailed DAG result, 2) workflow template, 3) pipeline fallback.
+      // Source priority depends on mode:
+      // runtime -> pipeline first, otherwise DAG -> template -> pipeline.
       const selectedWorkflow = selectInlineWorkflowSource(
+        workflowInlineSourceMode,
         selectedTaskId,
         dagNodes,
         dagEdges,
@@ -2346,14 +2384,76 @@ export function MyceliumCommandCenter() {
     roadmapNodeDrillState,
     isInlineWorkflowFocus,
     navLevel,
-    selectedTaskId,
-    taskDrillState,
-  ]);
+      selectedTaskId,
+      workflowInlineSourceMode,
+      taskDrillState,
+    ]);
+
+  // MARKER_155A.WA.SELECTION_ROUTER_BASE.V1:
+  // Normalize current DAG selection into a stable context envelope for mini-windows.
+  const miniContextPayload = useMemo<MiniContextPayload>(() => {
+    const focusIds = selectedNodeIds.length > 0
+      ? selectedNodeIds
+      : selectedNode
+        ? [selectedNode]
+        : [];
+    const primaryId = focusIds[0] || null;
+    const primaryNode = primaryId
+      ? graphForView.nodes.find((n) => n.id === primaryId) || null
+      : null;
+    let roleKey = String(primaryNode?.role || '').toLowerCase().trim();
+    if (roleKey === 'eval') roleKey = 'verifier';
+    const presetRoles = (presetMap?.[activePreset] as any)?.roles || {};
+    const presetRoleModel = roleKey ? String(presetRoles?.[roleKey] || '') : '';
+    const resolvedModel = String(primaryNode?.model || '').trim() || presetRoleModel || undefined;
+
+    const resolveKind = (): MiniContextKind => {
+      if (!primaryNode) return 'project';
+      if (primaryNode.graphKind === 'project_dir') return 'directory';
+      if (primaryNode.graphKind === 'project_file') return 'file';
+      if (primaryNode.graphKind === 'workflow_agent' || primaryNode.type === 'agent') return 'agent';
+      if (primaryNode.id.startsWith('task_overlay_') || primaryNode.type === 'task' || primaryNode.type === 'roadmap_task') return 'task';
+      if (primaryNode.graphKind === 'workflow_artifact') return 'workflow';
+      return 'node';
+    };
+
+    return {
+      scope: primaryNode ? 'node' : 'project',
+      navLevel,
+      focusScopeKey,
+      workflowSourceMode: effectiveWorkflowSourceMode,
+      selectedNodeIds: focusIds,
+      nodeId: primaryNode?.id || null,
+      nodeKind: resolveKind(),
+      label: String(primaryNode?.label || 'Project'),
+      status: primaryNode?.status,
+      role: primaryNode?.role,
+      model: resolvedModel,
+      taskId: primaryNode?.taskId,
+      graphKind: primaryNode?.graphKind,
+      path: (() => {
+        const rawPath = primaryNode?.projectNodeId
+          || (primaryNode?.metadata as any)?.path
+          || (primaryNode?.metadata as any)?.file_path;
+        return rawPath ? String(rawPath) : undefined;
+      })(),
+    };
+  }, [activePreset, effectiveWorkflowSourceMode, focusScopeKey, graphForView.nodes, navLevel, presetMap, selectedNode, selectedNodeIds]);
+
+  const miniContextNodeData = useMemo(
+    () => (miniContextPayload.nodeId
+      ? graphForView.nodes.find((n) => n.id === miniContextPayload.nodeId) || null
+      : null),
+    [graphForView.nodes, miniContextPayload.nodeId],
+  );
 
   // MARKER_155.P4.FOCUS_ACROSS_ZOOM:
   // Keep multi-focus stable across drill/zoom transitions, drop stale ids only.
   useEffect(() => {
-    const liveIds = new Set(effectiveNodes.map(n => n.id));
+    // MARKER_155A.WC.SELECTION_ROUTER_WORKFLOW_FIX.V1:
+    // Selection validity must use rendered graph nodes (graphForView),
+    // otherwise inline workflow nodes are dropped immediately after click.
+    const liveIds = new Set(graphForView.nodes.map(n => n.id));
     setSelectedNodeIds(prev => {
       const filtered = prev.filter(id => liveIds.has(id));
       return sameIds(prev, filtered) ? prev : filtered;
@@ -2361,7 +2461,7 @@ export function MyceliumCommandCenter() {
     if (selectedNode && !liveIds.has(selectedNode)) {
       setSelectedNode(null);
     }
-  }, [effectiveNodes, selectedNode]);
+  }, [graphForView.nodes, selectedNode]);
 
   // MARKER_155.P4_2.FOCUS_MEMORY:
   // Persist focus context per LOD scope key and restore after drill/zoom transitions.
@@ -2379,7 +2479,7 @@ export function MyceliumCommandCenter() {
 
   useEffect(() => {
     if (navLevel === 'first_run') return;
-    const liveIds = new Set(effectiveNodes.map(n => n.id));
+    const liveIds = new Set(graphForView.nodes.map(n => n.id));
     if (liveIds.size === 0) return;
     const current = uniqueIds([
       ...selectedNodeIds.filter(id => liveIds.has(id)),
@@ -2445,7 +2545,7 @@ export function MyceliumCommandCenter() {
     focusScopeKey,
     navLevel,
     navRoadmapNodeId,
-    effectiveNodes,
+    graphForView.nodes,
     selectedNode,
     selectedNodeIds,
     setFocusRestoreSource,
@@ -2881,8 +2981,9 @@ export function MyceliumCommandCenter() {
 
       {/* ═══ MARKER_155.CLEANUP: Header removed — using FooterActionBar instead ═══ */}
       
-      {/* ═══ MARKER_153.5A: Breadcrumb Bar — navigation path ═══ */}
-      {navLevel !== 'first_run' ? <MCCBreadcrumb /> : null}
+      {/* MARKER_155A.WC.GRANDMA_BREADCRUMB_DEV_ONLY.V1:
+          Breadcrumb is dev-only in grandma mode user surface. */}
+      {debugMode && navLevel !== 'first_run' ? <MCCBreadcrumb /> : null}
 
       {/* ═══ MARKER_155.FLOW.STEPS: 5-step progress indicator ═══ */}
       {debugMode && (
@@ -3281,11 +3382,12 @@ export function MyceliumCommandCenter() {
             {navLevel !== 'first_run' && (
               <>
                 <div data-onboarding="mini-chat">
-                  <MiniChat />
+                  <MiniChat context={miniContextPayload} />
                 </div>
                 <MiniTasks />
-                <MiniStats />
+                <MiniStats context={miniContextPayload} />
                 <MiniBalance />
+                <MiniContext context={miniContextPayload} nodeData={miniContextNodeData} onViewArtifact={handleViewArtifact} />
               </>
             )}
 
@@ -3314,7 +3416,7 @@ export function MyceliumCommandCenter() {
 
             {/* MARKER_155B.CANON.UI_SOURCE_MODE.V1:
                 Persistent workflow source mode switch (runtime|design|predict). */}
-            {navLevel !== 'first_run' && (
+            {debugMode && navLevel !== 'first_run' && (
               <div
                 style={{
                   position: 'absolute',
@@ -3331,8 +3433,8 @@ export function MyceliumCommandCenter() {
                   fontFamily: 'monospace',
                 }}
               >
-                {(['runtime', 'design', 'predict'] as WorkflowSourceMode[]).map((mode) => {
-                  const active = workflowSourceMode === mode;
+                {((isInlineWorkflowFocus ? ['runtime'] : ['runtime', 'design', 'predict']) as WorkflowSourceMode[]).map((mode) => {
+                  const active = effectiveWorkflowSourceMode === mode;
                   return (
                     <button
                       key={mode}
@@ -3359,7 +3461,7 @@ export function MyceliumCommandCenter() {
 
             {/* MARKER_155B.CANON.UI_SOURCE_BADGE.V1:
                 Visible source badge reflecting active source mode and response source. */}
-            {navLevel !== 'first_run' && (
+            {debugMode && navLevel !== 'first_run' && (
               <div
                 style={{
                   position: 'absolute',
@@ -3370,7 +3472,7 @@ export function MyceliumCommandCenter() {
                   borderRadius: 4,
                   padding: '2px 8px',
                   fontSize: 9,
-                  color: workflowSourceError ? '#ef8d8d' : workflowSourceLoading ? '#f0cf7a' : '#8ecbff',
+                  color: workflowSourceError ? '#9a9386' : workflowSourceLoading ? '#f0cf7a' : '#8ecbff',
                   textTransform: 'uppercase',
                   letterSpacing: 0.45,
                   zIndex: 9,
@@ -3718,7 +3820,7 @@ export function MyceliumCommandCenter() {
           })()}
 
           {/* Stream Panel — collapsible bottom */}
-          {showStream && <StreamPanel maxEvents={8} />}
+          {showStream && <StreamPanel maxEvents={8} context={miniContextPayload} />}
         </div>
         {/* MARKER_155.CLEANUP: Right panel removed — using floating mini-windows instead */}
       </div>

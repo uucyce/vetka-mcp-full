@@ -10,18 +10,68 @@
  * @status active
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { MiniWindow } from './MiniWindow';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+import type { MiniContextPayload } from './MiniContext';
+import { useMCCStore } from '../../store/useMCCStore';
 
 const API_BASE = 'http://localhost:5001/api';
 
+interface MiniChatProps {
+  context?: MiniContextPayload;
+}
+
+function useChatModelLabel(context?: MiniContextPayload): string {
+  const activePreset = useMCCStore((s) => s.activePreset || 'dragon_silver');
+  const presets = useMCCStore((s) => s.presets);
+  const fetchPresets = useMCCStore((s) => s.fetchPresets);
+
+  useEffect(() => {
+    fetchPresets();
+  }, [fetchPresets]);
+
+  const presetRoles = ((presets?.[activePreset] as any)?.roles || {}) as Record<string, string>;
+  const architectPresetModel = String(presetRoles?.architect || '');
+  const roleKey = context?.role ? String(context.role).toLowerCase() : '';
+  const effectiveRoleKey = roleKey === 'eval' ? 'verifier' : roleKey;
+  const rolePresetModel = effectiveRoleKey ? String(presetRoles?.[effectiveRoleKey] || '') : '';
+
+  if (!context || context.scope === 'project') {
+    return architectPresetModel || 'from preset';
+  }
+  if (context.model) return context.model;
+  if (context.nodeKind === 'agent' && rolePresetModel) return rolePresetModel;
+  return 'from preset';
+}
+
+function openContextModelChooser() {
+  window.dispatchEvent(new CustomEvent('mcc-miniwindow-open', {
+    detail: { windowId: 'context', expanded: true },
+  }));
+}
+
+function resolveChatScope(context?: MiniContextPayload): { scope: 'project' | 'task' | 'agent' | 'node'; label: string } {
+  if (!context || context.scope === 'project') {
+    return { scope: 'project', label: 'Project architect' };
+  }
+  if (context.nodeKind === 'task') {
+    return { scope: 'task', label: `Task architect: ${context.label}` };
+  }
+  if (context.nodeKind === 'agent') {
+    return { scope: 'agent', label: `Agent context: ${context.role || context.label}` };
+  }
+  return { scope: 'node', label: `Node context: ${context.label}` };
+}
+
 // Compact content: one-line input + last answer
-function ChatCompact() {
+function ChatCompact({ context }: MiniChatProps) {
   const [input, setInput] = useState('');
   const [lastAnswer, setLastAnswer] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const scope = useMemo(() => resolveChatScope(context), [context]);
+  const modelLabel = useChatModelLabel(context);
 
   useEffect(() => {
     const handlePrefill = (event: Event) => {
@@ -46,7 +96,20 @@ function ChatCompact() {
       const res = await fetch(`${API_BASE}/chat/quick`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, role: 'architect' }),
+        body: JSON.stringify({
+          message,
+          role: 'architect',
+          context: {
+            chat_scope: scope.scope,
+            nav_level: context?.navLevel,
+            focus_scope_key: context?.focusScopeKey,
+            node_id: context?.nodeId,
+            node_kind: context?.nodeKind,
+            task_id: context?.taskId,
+            role: context?.role,
+            selected_node_ids: context?.selectedNodeIds || [],
+          },
+        }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -68,6 +131,43 @@ function ChatCompact() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <div
+          style={{
+            color: '#7f8893',
+            fontSize: 8,
+            textTransform: 'uppercase',
+            letterSpacing: 0.35,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+          title={scope.label}
+        >
+          {scope.label}
+        </div>
+        <button
+          type="button"
+          onClick={openContextModelChooser}
+          style={{
+            border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+            background: 'transparent',
+            color: '#9aa4af',
+            borderRadius: 4,
+            fontSize: 8,
+            padding: '1px 5px',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+            maxWidth: 110,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+          title={`Model: ${modelLabel}. Click to open Context model chooser.`}
+        >
+          {modelLabel}
+        </button>
+      </div>
       {/* Last answer */}
       <div
         style={{
@@ -130,11 +230,13 @@ function ChatCompact() {
 
 // Expanded content: placeholder for full ArchitectChat
 // In future, this imports and wraps ArchitectChat component with mode='expanded'
-function ChatExpanded() {
+function ChatExpanded({ context }: MiniChatProps) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([]);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const scope = useMemo(() => resolveChatScope(context), [context]);
+  const modelLabel = useChatModelLabel(context);
 
   useEffect(() => {
     const handlePrefill = (event: Event) => {
@@ -159,7 +261,20 @@ function ChatExpanded() {
       const res = await fetch(`${API_BASE}/chat/quick`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, role: 'architect' }),
+        body: JSON.stringify({
+          message,
+          role: 'architect',
+          context: {
+            chat_scope: scope.scope,
+            nav_level: context?.navLevel,
+            focus_scope_key: context?.focusScopeKey,
+            node_id: context?.nodeId,
+            node_kind: context?.nodeKind,
+            task_id: context?.taskId,
+            role: context?.role,
+            selected_node_ids: context?.selectedNodeIds || [],
+          },
+        }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -175,6 +290,42 @@ function ChatExpanded() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Messages */}
       <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px' }}>
+        <div
+          style={{
+            color: '#7f8893',
+            fontSize: 8,
+            textTransform: 'uppercase',
+            letterSpacing: 0.35,
+            marginBottom: 8,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+          }}
+        >
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scope.label}</span>
+          <button
+            type="button"
+            onClick={openContextModelChooser}
+            style={{
+              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              background: 'transparent',
+              color: '#9aa4af',
+              borderRadius: 4,
+              fontSize: 8,
+              padding: '1px 6px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              maxWidth: 180,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={`Model: ${modelLabel}. Click to open Context model chooser.`}
+          >
+            model: {modelLabel}
+          </button>
+        </div>
         {messages.length === 0 && (
           <div style={{ color: '#444', fontSize: 10, textAlign: 'center', marginTop: 40 }}>
             Ask the architect about your project...
@@ -257,7 +408,7 @@ function ChatExpanded() {
   );
 }
 
-export function MiniChat() {
+export function MiniChat({ context }: MiniChatProps) {
   return (
     <MiniWindow
       windowId="chat" // MARKER_155.DRAGGABLE.011: Unique ID for position persistence
@@ -266,8 +417,8 @@ export function MiniChat() {
       position="bottom-left"
       compactWidth={210}
       compactHeight={130}
-      compactContent={<ChatCompact />}
-      expandedContent={<ChatExpanded />}
+      compactContent={<ChatCompact context={context} />}
+      expandedContent={<ChatExpanded context={context} />}
     />
   );
 }
