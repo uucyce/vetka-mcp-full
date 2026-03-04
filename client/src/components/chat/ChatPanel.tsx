@@ -2078,16 +2078,26 @@ export function ChatPanel({
   }, [isResizing, leftPanel, chatWidth, chatPosition]);
 
   // MARKER_PIN_UI_2: Vertical resize for pinned list area (same behavior family as scanner panel).
+  // MARKER_159.PIN.RESIZE_BIDIRECTIONAL: Fixed to work both UP and DOWN
+  const pinnedResizeStartY = useRef<number>(0);
+  const pinnedResizeStartHeight = useRef<number>(120);
+  
+  const handlePinnedResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    pinnedResizeStartY.current = e.clientY;
+    pinnedResizeStartHeight.current = pinnedPanelHeight;
+    setIsPinnedPanelResizing(true);
+  }, [pinnedPanelHeight]);
+
   useEffect(() => {
     if (!isPinnedPanelResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const headerHeight = 56; // approximate fixed height of pinned block header
-      const panelTop = messagesContainerRef.current
-        ? messagesContainerRef.current.getBoundingClientRect().top
-        : 0;
-      const nextHeight = e.clientY - panelTop - headerHeight;
-      const clamped = Math.max(120, Math.min(360, nextHeight));
+      // Calculate delta from start position - INVERTED: drag DOWN = increase height
+      const deltaY = e.clientY - pinnedResizeStartY.current; // positive = drag DOWN
+      const newHeight = pinnedResizeStartHeight.current + deltaY;
+      // Allow 0 (hidden) to 500 (max)
+      const clamped = Math.max(0, Math.min(500, newHeight));
       setPinnedPanelHeight(clamped);
     };
 
@@ -3357,10 +3367,12 @@ export function ChatPanel({
               )}
             </div>
 
-            <div style={{
-              height: pinnedPanelHeight,
-              minHeight: 120,
-              maxHeight: 360,
+              <div 
+                data-pinned-section
+                style={{
+                  height: pinnedPanelHeight,
+                  minHeight: 0,  // Allow hidden
+                  maxHeight: 500,
               overflowY: 'auto',
               padding: '0 10px 6px 10px',
               display: 'flex',
@@ -3489,16 +3501,25 @@ export function ChatPanel({
             </div>
 
             <div
-              onMouseDown={() => setIsPinnedPanelResizing(true)}
+              onMouseDown={handlePinnedResizeStart}
+              // MARKER_159.PIN.RESIZE_FIX: Added hover effect for better UX
+              onMouseEnter={(e) => {
+                if (!isPinnedPanelResizing) e.currentTarget.style.backgroundColor = '#1a1a1a';
+              }}
+              onMouseLeave={(e) => {
+                if (!isPinnedPanelResizing) e.currentTarget.style.backgroundColor = 'transparent';
+              }}
               title="Drag to resize pinned files list"
               style={{
                 height: 10,
-                cursor: 'ns-resize',
-                borderTop: '1px solid #202020',
+                cursor: isPinnedPanelResizing ? 'ns-resize' : 'ns-resize',
+                borderTop: isPinnedPanelResizing ? '2px solid #4a9eff' : '1px solid #202020',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#555',
+                color: isPinnedPanelResizing ? '#4a9eff' : '#555',
+                backgroundColor: isPinnedPanelResizing ? 'rgba(74, 158, 255, 0.1)' : 'transparent',
+                transition: 'all 0.15s ease',
               }}
             >
               <div style={{ width: 34, height: 3, borderRadius: 2, background: '#2c2c2c' }} />
