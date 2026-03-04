@@ -50,6 +50,25 @@ _STOP_TOKENS = {
     "the", "for", "with", "from", "that", "this", "find", "file", "doc",
 }
 
+_DOC_PREF_TOKENS = {
+    "doc", "docs", "документ", "доки", "markdown", "readme", "md",
+    "marker", "phase", "фаз", "отчет", "report", "runtime", "map",
+}
+
+_TEST_NOISE_MARKERS = (
+    "/tests/",
+    "/test/",
+    "/testdata/",
+    "/fixtures/",
+    "/fixture/",
+    "/mock/",
+    "/mocks/",
+    "/samples/",
+    "/sample/",
+    "/benchmarks/",
+    "/benchmark/",
+)
+
 
 def _tokenize_query(query: str) -> List[str]:
     return [t for t in re.split(r"[^a-zA-Zа-яА-Я0-9_]+", (query or "").lower()) if len(t) >= 2]
@@ -231,6 +250,40 @@ def _name_search_walk(root: Path, query_l: str, limit: int) -> List[Tuple[str, s
     return out
 
 
+def _name_search_find(root: Path, query: str, limit: int) -> List[Tuple[str, str, float]]:
+    """
+    Non-indexed filename search using `find` with timeout.
+    Useful fallback when Spotlight index is stale.
+    """
+    if not shutil.which("find"):
+        return []
+    q = str(query or "").strip()
+    if len(q) < 2:
+        return []
+    # Escape minimal glob-sensitive chars for predictable matching.
+    safe = q.replace("[", r"\[").replace("]", r"\]").replace("*", r"\*").replace("?", r"\?")
+    pattern = f"*{safe}*"
+    cmd = ["find", str(root), "-type", "f", "-iname", pattern]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=4, check=False)
+    except Exception:
+        return []
+    if proc.returncode != 0:
+        return []
+    out: List[Tuple[str, str, float]] = []
+    ql = q.lower()
+    for line in proc.stdout.splitlines():
+        p = (line or "").strip()
+        if not p or not os.path.isfile(p):
+            continue
+        name = Path(p).name
+        score = _score_filename_match(name, ql)
+        out.append((p, p, score))
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _name_search_walk_terms(root: Path, terms: List[str], limit: int) -> List[Tuple[str, str, float]]:
     out: List[Tuple[str, str, float]] = []
     if not terms:
@@ -337,20 +390,33 @@ def _content_search_rg_terms(root: Path, terms: List[str], limit: int) -> List[T
     return out
 
 
-def _docs_catalog_candidates(cwd: Path, limit: int) -> List[Tuple[str, str, float]]:
+def _docs_catalog_candidates(cwd: Path, terms: List[str], limit: int) -> List[Tuple[str, str, float]]:
     docs_dir = cwd / "docs"
     if not docs_dir.exists():
         return []
     out: List[Tuple[str, str, float]] = []
+    filtered_terms = [t for t in terms if len(t) >= 3 and t not in _STOP_TOKENS]
+    min_hits = 2 if len(filtered_terms) >= 4 else 1
     for p in docs_dir.rglob("*"):
         if not p.is_file():
             continue
         if p.suffix.lower() not in TEXT_EXTENSIONS:
             continue
-        out.append((str(p), p.name, 0.2))
-        if len(out) >= limit:
-            break
-    return out
+        p_l = p.as_posix().lower()
+        hits = [t for t in filtered_terms if t in p_l]
+        if len(hits) < min_hits:
+            continue
+        score = 0.45 + min(0.45, len(hits) * 0.08)
+        out.append((str(p), ",".join(hits[:5]) or p.name, score))
+    out.sort(key=lambda x: x[2], reverse=True)
+    return out[:limit]
+
+
+def _query_prefers_docs(query: str, terms: List[str]) -> bool:
+    q = (query or "").lower()
+    if any(t in q for t in ("док", "doc", "docs", "readme", "markdown", "marker", "phase", "фаз", "отчет", "report")):
+        return True
+    return any(t in _DOC_PREF_TOKENS for t in terms)
 
 
 def _cosine(a: List[float], b: List[float]) -> float:
@@ -423,6 +489,7 @@ def _rerank_items(items: List[Dict[str, Any]], query: str) -> List[Dict[str, Any
     q_has_runtime = any(t in {"runtime", "map", "157", "phase", "marker"} or "фаз" in t for t in terms) or ("runtime" in ql)
     q_has_matrix = any("матриц" in t or t in {"matrix", "input", "inputs", "scanner", "contract"} for t in terms) or ("матриц" in ql or "инпут" in ql)
     q_has_stream = any("стрим" in t or t in {"stream", "streaming", "grok"} for t in terms) or ("стрим" in ql or "grok" in ql)
+    q_targets_tests = any(t in ql for t in ("test", "tests", "pytest", "fixture", "mock", "тест"))
 
     ranked: List[Dict[str, Any]] = []
     for item in items:
@@ -482,6 +549,8 @@ def _rerank_items(items: List[Dict[str, Any]], query: str) -> List[Dict[str, Any
             s -= 0.5
         if "/tests/" in p:
             s -= 0.25
+        if not q_targets_tests and any(marker in p for marker in _TEST_NOISE_MARKERS):
+            s -= 0.55 if descriptive else 0.3
         if "/docs/" in p:
             s += 0.25 if descriptive else 0.05
 
@@ -512,6 +581,7 @@ def search_files(
     ql = q.lower()
     descriptive = _is_descriptive_query(q)
     expanded_terms = _expand_query_terms(q)
+    prefer_docs = _query_prefers_docs(q, expanded_terms)
     if descriptive:
         focused = []
         for candidate in [cwd / "docs", cwd / "src", cwd / "data", cwd, cwd.parent]:
@@ -528,8 +598,9 @@ def search_files(
             narrowed.append(r)
         if narrowed:
             roots = narrowed
-        # Add docs catalog upfront to ensure candidate recall for descriptive prompts.
-        merged.extend(_docs_catalog_candidates(cwd, max(5000, safe_limit * 40)))
+        # Add lightweight docs seed with term-filtering to recover key docs without flooding noise.
+        docs_seed_limit = max(60, min(240, safe_limit * 8))
+        merged.extend(_docs_catalog_candidates(cwd, expanded_terms, docs_seed_limit))
     for idx, root in enumerate(roots):
         # On macOS with Spotlight provider, keep full filesystem root as fallback.
         # If we already have enough hits from focused roots, skip expensive "/".
@@ -544,6 +615,8 @@ def search_files(
             else:
                 if provider == "mdfind":
                     root_hits = _name_search_mdfind(root, q, safe_limit)
+                    if not root_hits:
+                        root_hits = _name_search_find(root, q, safe_limit)
                     if not root_hits and root.as_posix() in walk_fallback_roots:
                         root_hits = _name_search_walk(root, ql, safe_limit)
                     merged.extend(root_hits)
@@ -556,6 +629,8 @@ def search_files(
             else:
                 if provider == "mdfind":
                     root_hits = _name_search_mdfind(root, q, safe_limit)
+                    if not root_hits:
+                        root_hits = _name_search_find(root, q, safe_limit)
                     if not root_hits and root.as_posix() in walk_fallback_roots:
                         root_hits = _name_search_walk(root, ql, safe_limit)
                     merged.extend(root_hits)

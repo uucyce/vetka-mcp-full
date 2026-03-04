@@ -1,0 +1,47 @@
+name: Publish Public Mirrors
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Git ref to publish from (e.g. main, HEAD, tag)"
+        required: false
+        default: "main"
+      dry_run:
+        description: "Run without pushing"
+        required: false
+        default: "false"
+      visibility:
+        description: "Mirror repo visibility (public|private)"
+        required: false
+        default: "public"
+  push:
+    branches:
+      - main
+
+jobs:
+  publish-mirrors:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate git tools
+        run: |
+          git --version
+          bash --version
+
+      - name: Publish mirrors
+        env:
+          PUBLIC_MIRROR_TOKEN: ${{ secrets.PUBLIC_MIRROR_TOKEN }}
+          PUBLIC_GH_OWNER: danilagoleen
+          SOURCE_REF: ${{ github.event.inputs.source_ref || github.ref_name }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          PUBLIC_MIRROR_VISIBILITY: ${{ github.event.inputs.visibility || 'public' }}
+        run: |
+          ./scripts/release/publish_public_mirrors.sh

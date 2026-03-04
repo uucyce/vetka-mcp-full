@@ -56,3 +56,22 @@ def test_search_files_filename_mdfind_falls_back_to_walk(tmp_path, monkeypatch):
     result = svc.search_files(query="fallback", limit=10, mode="filename")
     assert result["success"] is True
     assert any("fallback_hit.md" in h.get("title", "") for h in result["results"])
+
+
+def test_rerank_deprioritizes_test_noise_for_descriptive_queries():
+    items = [
+        {
+            "path": "/repo/tests/fixtures/MARKER_157_ABBREVIATIONS_RUNTIME_MAP_2026-03-01.md",
+            "snippet": "fixture copy",
+            "score": 0.95,
+        },
+        {
+            "path": "/repo/docs/157_ph/MARKER_157_ABBREVIATIONS_RUNTIME_MAP_2026-03-01.md",
+            "snippet": "canonical doc",
+            "score": 0.92,
+        },
+    ]
+
+    ranked = svc._rerank_items(items, "Найди runtime map phase 157")
+    top = ranked[0]["path"]
+    assert "/docs/157_ph/" in top

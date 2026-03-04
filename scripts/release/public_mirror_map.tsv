@@ -1,0 +1,8 @@
+src/mcp	vetka-mcp-core	main
+src/bridge	vetka-bridge-core	main
+src/search	vetka-search-retrieval	main
+src/memory	vetka-memory-stack	main
+src/scanners	vetka-ingest-engine	main
+src/elisya	vetka-elisya-runtime	main
+src/orchestration	vetka-orchestration-core	main
+client/src/components/chat	vetka-chat-ui	main
