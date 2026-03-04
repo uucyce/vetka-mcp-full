@@ -283,6 +283,17 @@ export default function App() {
     scopePath: '',
     message: '',
   });
+  const [isFolderCleanupBusy, setIsFolderCleanupBusy] = useState(false);
+  const [folderCleanupProgress, setFolderCleanupProgress] = useState(0);
+  const [folderCleanupPath, setFolderCleanupPath] = useState('');
+
+  useEffect(() => {
+    if (!isFolderCleanupBusy) return;
+    const timer = window.setInterval(() => {
+      setFolderCleanupProgress((prev) => (prev >= 92 ? 92 : prev + 4));
+    }, 120);
+    return () => window.clearInterval(timer);
+  }, [isFolderCleanupBusy]);
 
   // Phase 52.4: Handle click on empty space to deselect
   const handleCanvasClick = () => {
@@ -1192,6 +1203,171 @@ export default function App() {
           >
             Media Edit Mode
           </button>
+
+          {/* MARKER_159.CLEAN_UI_CONTEXT_MENU: Folder-level selective cleanup action */}
+          <div
+            style={{
+              borderTop: '1px solid #2a2a2a',
+              marginTop: 2,
+            }}
+          />
+
+          <div
+            style={{
+              color: '#7e7e7e',
+              fontSize: 10,
+              padding: '8px 12px 6px',
+              letterSpacing: 0.4,
+              textTransform: 'uppercase',
+            }}
+          >
+            VETKA Cleanup
+          </div>
+
+          <button
+            disabled={nodeContextMenu.nodeType !== 'folder' || isFolderCleanupBusy}
+            onClick={() => {
+              if (isFolderCleanupBusy) {
+                return;
+              }
+              if (nodeContextMenu.nodeType !== 'folder' || !nodeContextMenu.nodePath) {
+                return;
+              }
+
+              const targetPath = String(nodeContextMenu.nodePath || '');
+              if (!targetPath) return;
+
+              // Close menu first to avoid click-through/reentry with native dialogs.
+              setNodeContextMenu((prev) => ({ ...prev, visible: false }));
+
+              const confirmed = window.confirm(
+                `Clean folder from VETKA index?\n\n` +
+                `Folder: ${targetPath}\n\n` +
+                `This removes data from VETKA only (search/tree/index/watchdog).\n` +
+                `Files on disk will remain untouched.`
+              );
+              if (!confirmed) return;
+
+              setFolderCleanupPath(targetPath);
+              setFolderCleanupProgress(8);
+              setIsFolderCleanupBusy(true);
+              void (async () => {
+                try {
+                  const res = await fetch('/api/watcher/cleanup-folder-from-vetka', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      path: targetPath,
+                      dry_run: false,
+                      block_watchdog: true,
+                    }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok || !data?.success) {
+                    alert(`Cleanup failed: ${data?.detail || data?.error || res.status}`);
+                    return;
+                  }
+
+                  const qd = Number(data?.qdrant_deleted || 0);
+                  const wv = Number(data?.weaviate_deleted || 0);
+                  setFolderCleanupProgress(100);
+                  alert(
+                    `Cleaned from VETKA:\n` +
+                    `Qdrant: ${qd}\n` +
+                    `Weaviate: ${wv}\n\n` +
+                    `Watchdog block: ${data?.watchdog_blocked ? 'ON' : 'OFF'}\n` +
+                    `Disk files: preserved`
+                  );
+
+                  // Ensure graph/search views refresh immediately after cleanup.
+                  window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
+                  window.dispatchEvent(new CustomEvent('vetka-switch-to-scanner'));
+                } catch (err) {
+                  alert('Cleanup failed. Check backend logs.');
+                } finally {
+                  setIsFolderCleanupBusy(false);
+                  window.setTimeout(() => {
+                    setFolderCleanupProgress(0);
+                    setFolderCleanupPath('');
+                  }, 180);
+                }
+              })();
+            }}
+            style={{
+              width: '100%',
+              textAlign: 'left',
+              padding: '10px 12px',
+              border: 'none',
+              borderTop: '1px solid #2a2a2a',
+              background: 'transparent',
+              color: nodeContextMenu.nodeType !== 'folder' ? '#6b6b6b' : '#ffb4b4',
+              cursor: nodeContextMenu.nodeType === 'folder' ? 'pointer' : 'not-allowed',
+              fontSize: 13,
+              opacity: (nodeContextMenu.nodeType === 'folder' && !isFolderCleanupBusy) ? 1 : 0.75,
+            }}
+            title="Remove this folder from VETKA index only (files stay on disk)"
+          >
+            {isFolderCleanupBusy ? 'Cleaning Folder...' : 'Clean Folder from VETKA'}
+          </button>
+        </div>
+      )}
+
+      {isFolderCleanupBusy && (
+        <div
+          style={{
+            position: 'fixed',
+            left: '50%',
+            bottom: 24,
+            transform: 'translateX(-50%)',
+            width: 360,
+            maxWidth: 'calc(100vw - 32px)',
+            background: 'rgba(20,20,20,0.92)',
+            border: '1px solid #3a3a3a',
+            borderRadius: 10,
+            padding: '10px 12px',
+            zIndex: 2300,
+            boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div style={{ color: '#d7d7d7', fontSize: 12, fontWeight: 600 }}>
+            Cleaning folder from VETKA
+          </div>
+          <div
+            style={{
+              color: '#9a9a9a',
+              fontSize: 11,
+              marginTop: 4,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+            title={folderCleanupPath}
+          >
+            {folderCleanupPath}
+          </div>
+          <div
+            style={{
+              marginTop: 8,
+              height: 6,
+              borderRadius: 999,
+              background: '#2a2a2a',
+              overflow: 'hidden',
+              border: '1px solid #343434',
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.max(0, Math.min(100, folderCleanupProgress))}%`,
+                height: '100%',
+                background: '#9a9a9a',
+                transition: 'width 140ms linear',
+              }}
+            />
+          </div>
+          <div style={{ color: '#a8a8a8', fontSize: 11, marginTop: 6, textAlign: 'right' }}>
+            {Math.round(folderCleanupProgress)}%
+          </div>
         </div>
       )}
 

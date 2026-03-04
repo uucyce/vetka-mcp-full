@@ -419,8 +419,17 @@ class VetkaFileHandler(FileSystemEventHandler):
 
     def _should_skip(self, path: str) -> bool:
         """Check if path should be skipped."""
+        abs_path = os.path.abspath(path)
         for pattern in SKIP_PATTERNS:
-            if pattern in path:
+            if not isinstance(pattern, str):
+                continue
+            # If pattern is an absolute filesystem path, enforce directory-prefix semantics.
+            # MARKER_159.CLEAN_WATCHDOG_BLOCK: absolute path blocks use folder-prefix match.
+            if os.path.isabs(pattern):
+                abs_pattern = os.path.abspath(pattern)
+                if abs_path == abs_pattern or abs_path.startswith(abs_pattern + os.sep):
+                    return True
+            elif pattern in path:
                 return True
         return False
 
@@ -565,6 +574,8 @@ class VetkaFileWatcher:
         """
         self.observers: Dict[str, Observer] = {}
         self.watched_dirs: Set[str] = set()
+        # MARKER_159.CLEAN_WATCHDOG_PERSIST: persisted user folder blocks.
+        self.user_blocked_patterns: Set[str] = set()
         self.socketio = socketio
         self.qdrant_client = qdrant_client
         self.state_file = state_file
@@ -1048,6 +1059,7 @@ class VetkaFileWatcher:
         try:
             state = {
                 "watched_dirs": list(self.watched_dirs),
+                "user_blocked_patterns": sorted(list(self.user_blocked_patterns)),
                 "heat_scores": self.adaptive_scanner.get_all_heat_scores(),
                 "saved_at": time.time(),
             }
@@ -1061,6 +1073,11 @@ class VetkaFileWatcher:
         try:
             with open(self.state_file, "r") as f:
                 state = json.load(f)
+
+            # Restore persisted user block patterns before directory watchers start.
+            for pattern in state.get("user_blocked_patterns", []):
+                if isinstance(pattern, str):
+                    self.add_user_block_pattern(pattern, persist=False)
 
             # Restore watched directories (parents first reduces nested duplicates).
             watched_dirs = [p for p in state.get("watched_dirs", []) if isinstance(p, str)]
@@ -1081,6 +1098,27 @@ class VetkaFileWatcher:
             print("[Watcher] No state file found, starting fresh")
         except Exception as e:
             print(f"[Watcher] Error loading state: {e}")
+
+    def add_user_block_pattern(self, pattern: str, persist: bool = True) -> bool:
+        """
+        Add a user-level persistent block pattern.
+
+        Pattern is normalized to absolute path and applied to runtime SKIP_PATTERNS.
+        """
+        normalized = os.path.abspath(os.path.expanduser(str(pattern).strip()))
+        if not normalized:
+            return False
+
+        if normalized not in SKIP_PATTERNS:
+            SKIP_PATTERNS.append(normalized)
+
+        added = normalized not in self.user_blocked_patterns
+        self.user_blocked_patterns.add(normalized)
+
+        if persist:
+            self._save_state()
+
+        return added
 
     def stop_all(self) -> None:
         """Stop all watchers and emit worker."""

@@ -36,7 +36,7 @@ logger = logging.getLogger("VETKA_QDRANT")
 
 try:
     from qdrant_client import QdrantClient
-    from qdrant_client.models import PointStruct, Distance, VectorParams, Filter, FieldCondition, MatchAny
+    from qdrant_client.models import PointStruct, Distance, VectorParams, Filter, FieldCondition, MatchAny, MatchValue
     # RecreateCollectionRequest is deprecated in qdrant-client 1.15+
     QDRANT_AVAILABLE = True
 except ImportError:
@@ -355,12 +355,17 @@ class QdrantVetkaClient:
             # Phase 68.2: Filter to only scanned_file types (excludes chat and browser_file which have no tree nodes)
             search_filter = None
             if file_types_only and QDRANT_AVAILABLE:
+                # MARKER_159.CLEAN_SEARCH_EXCLUDE_DELETED
                 search_filter = Filter(
                     must=[
                         FieldCondition(
                             key='type',
                             match=MatchAny(any=['scanned_file'])  # Only scanned files have tree nodes
-                        )
+                        ),
+                        FieldCondition(
+                            key='deleted',
+                            match=MatchValue(value=False)
+                        ),
                     ]
                 )
 
@@ -426,12 +431,17 @@ class QdrantVetkaClient:
             # FIX_95.3_FILENAME_SCROLL: Try scanned_file filter first, fallback to all points
             search_filter = None
             if QDRANT_AVAILABLE:
+                # MARKER_159.CLEAN_SEARCH_EXCLUDE_DELETED
                 search_filter = Filter(
                     must=[
                         FieldCondition(
                             key='type',
                             match=MatchAny(any=['scanned_file'])
-                        )
+                        ),
+                        FieldCondition(
+                            key='deleted',
+                            match=MatchValue(value=False)
+                        ),
                     ]
                 )
 

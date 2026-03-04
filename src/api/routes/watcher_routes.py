@@ -33,6 +33,13 @@ from src.scanners.mime_policy import validate_ingest_target
 router = APIRouter(prefix="/api/watcher", tags=["watcher"])
 
 
+def _qdrant_base_url() -> str:
+    """Resolve Qdrant base URL from runtime env (no src.config dependency)."""
+    host = os.getenv("QDRANT_HOST", "127.0.0.1")
+    port = os.getenv("QDRANT_PORT", "6333")
+    return f"http://{host}:{port}"
+
+
 # ============================================================
 # PYDANTIC MODELS
 # ============================================================
@@ -72,6 +79,13 @@ class IndexFileRequest(BaseModel):
     """Request to index a single file by its real path."""
     path: str
     recursive: Optional[bool] = False
+
+
+class CleanupFolderRequest(BaseModel):
+    """Request to remove one folder from VETKA index only (disk files untouched)."""
+    path: str
+    dry_run: Optional[bool] = False
+    block_watchdog: Optional[bool] = True
 
 
 # ============================================================
@@ -949,9 +963,8 @@ async def cleanup_browser_files():
     """
     try:
         from qdrant_client import QdrantClient, models
-        from src.config import QDRANT_HOST, QDRANT_PORT
 
-        qdrant_client = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+        qdrant_client = QdrantClient(url=_qdrant_base_url())
 
         # Delete all points with path starting with "browser://"
         qdrant_client.delete(
@@ -992,9 +1005,8 @@ async def cleanup_playground_files(dry_run: bool = False):
     try:
         from qdrant_client import QdrantClient
         from qdrant_client.models import PointIdsList
-        from src.config import QDRANT_HOST, QDRANT_PORT
 
-        qdrant_client = QdrantClient(url=f"http://{QDRANT_HOST}:{QDRANT_PORT}")
+        qdrant_client = QdrantClient(url=_qdrant_base_url())
         prefixes = ("/data/playgrounds/", "/.playgrounds/")
 
         matched_ids = []
@@ -1045,6 +1057,166 @@ async def cleanup_playground_files(dry_run: bool = False):
 
     except Exception as e:
         print(f"[Watcher] Playground cleanup error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# MARKER_159.CLEAN_API_FOLDER_SCOPE
+# Selective cleanup for one folder from VETKA stores + optional watchdog block.
+@router.post("/cleanup-folder-from-vetka")
+async def cleanup_folder_from_vetka(req: CleanupFolderRequest, request: Request):
+    """
+    Selectively remove one folder from VETKA index/storage.
+
+    IMPORTANT:
+    - Removes from VETKA stores only (Qdrant + Weaviate)
+    - Does NOT delete files from disk
+    - Optionally blocks watchdog updates for this folder
+    """
+    import requests as http_requests
+
+    raw_path = (req.path or "").strip()
+    if not raw_path:
+        raise HTTPException(status_code=400, detail="Path is required")
+
+    target_path = os.path.abspath(os.path.expanduser(raw_path))
+    target_prefix = target_path.replace("\\", "/")
+    if not os.path.isdir(target_path):
+        raise HTTPException(status_code=400, detail=f"Path is not a directory: {target_path}")
+
+    try:
+        from qdrant_client import QdrantClient
+        from qdrant_client.models import PointIdsList
+
+        qdrant_client = QdrantClient(url=_qdrant_base_url())
+
+        matched_ids = []
+        matched_paths = set()
+        offset = None
+
+        while True:
+            points, offset = qdrant_client.scroll(
+                collection_name="vetka_elisya",
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                p = str(payload.get("path", "")).replace("\\", "/")
+                if p and (p == target_prefix or p.startswith(target_prefix + "/")):
+                    matched_ids.append(point.id)
+                    matched_paths.add(p)
+            if offset is None:
+                break
+
+        # Weaviate match pass (file_path prefix in VetkaLeaf objects)
+        weaviate_url = "http://localhost:8080"
+        weaviate_candidates = []
+        try:
+            resp = http_requests.get(
+                f"{weaviate_url}/v1/objects?class=VetkaLeaf&limit=10000",
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                weaviate_candidates = resp.json().get("objects", []) or []
+        except Exception:
+            weaviate_candidates = []
+
+        weaviate_ids = []
+        for obj in weaviate_candidates:
+            props = obj.get("properties", {}) or {}
+            file_path = str(props.get("file_path", "")).replace("\\", "/")
+            if file_path and (file_path == target_prefix or file_path.startswith(target_prefix + "/")):
+                obj_id = obj.get("id")
+                if obj_id:
+                    weaviate_ids.append(str(obj_id))
+
+        # MARKER_159.CLEAN_API_DRY_RUN: Preview counts without mutating storage.
+        if bool(req.dry_run):
+            return {
+                "success": True,
+                "dry_run": True,
+                "path": target_path,
+                "message": "Dry run complete; no data deleted",
+                "qdrant_matched": len(matched_ids),
+                "weaviate_matched": len(weaviate_ids),
+                "watchdog_will_block": bool(req.block_watchdog),
+            }
+
+        # Delete from Qdrant
+        qdrant_deleted = 0
+        batch_size = 200
+        for i in range(0, len(matched_ids), batch_size):
+            batch = matched_ids[i:i + batch_size]
+            qdrant_client.delete(
+                collection_name="vetka_elisya",
+                points_selector=PointIdsList(points=batch),
+                wait=True,
+            )
+            qdrant_deleted += len(batch)
+
+        # Delete from Weaviate
+        weaviate_deleted = 0
+        for obj_id in weaviate_ids:
+            try:
+                d = http_requests.delete(
+                    f"{weaviate_url}/v1/objects/VetkaLeaf/{obj_id}",
+                    timeout=10,
+                )
+                if d.status_code in (200, 204):
+                    weaviate_deleted += 1
+            except Exception:
+                continue
+
+        # MARKER_159.CLEAN_WATCHDOG_BLOCK: Prevent re-index of cleaned folder.
+        block_added = False
+        removed_watchers = []
+        if bool(req.block_watchdog):
+            socketio = getattr(request.app.state, "socketio", None)
+            qdrant_manager = getattr(request.app.state, "qdrant_manager", None)
+            qdrant_for_watcher = None
+            if qdrant_manager and hasattr(qdrant_manager, "client"):
+                qdrant_for_watcher = qdrant_manager.client
+            watcher = get_watcher(socketio=socketio, qdrant_client=qdrant_for_watcher)
+
+            if hasattr(watcher, "add_user_block_pattern"):
+                block_added = bool(watcher.add_user_block_pattern(target_path, persist=True))
+            else:
+                if target_path not in SKIP_PATTERNS:
+                    SKIP_PATTERNS.append(target_path)
+                    block_added = True
+
+            for watched in list(watcher.watched_dirs):
+                watched_norm = os.path.abspath(str(watched))
+                if watched_norm == target_path or watched_norm.startswith(target_path + os.sep):
+                    if watcher.remove_directory(watched_norm):
+                        removed_watchers.append(watched_norm)
+
+        # Invalidate tree cache immediately if route module is loaded
+        try:
+            from src.api.routes import tree_routes
+            tree_routes._tree_structure_cache["folders"] = None
+            tree_routes._tree_structure_cache["files_by_folder"] = None
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "dry_run": False,
+            "path": target_path,
+            "message": "Folder cleaned from VETKA index (disk files preserved)",
+            "qdrant_deleted": qdrant_deleted,
+            "weaviate_deleted": weaviate_deleted,
+            "watchdog_blocked": bool(req.block_watchdog),
+            "watchdog_block_added": block_added,
+            "watchers_removed": removed_watchers,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Watcher] Folder cleanup error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
