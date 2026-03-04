@@ -94,7 +94,10 @@ publish_one() {
   fi
 
   ensure_repo_exists "${repo_name}"
-  git push --force "${remote_url}" "${split_sha}:refs/heads/${branch}"
+  if ! git push --force "${remote_url}" "${split_sha}:refs/heads/${branch}"; then
+    echo "[mirror] push failed for ${repo_name}@${branch}" >&2
+    return 1
+  fi
   echo "[mirror] published ${repo_name}@${branch}"
 }
 
