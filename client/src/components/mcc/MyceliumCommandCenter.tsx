@@ -239,27 +239,46 @@ function adaptVersionNode(raw: any): DAGNode {
       taskId: 'invalid',
     };
   }
-  if (raw.type && raw.status !== undefined) {
-    return raw as DAGNode;
-  }
-  const kind = String(raw.kind || '');
-  const graphKind =
+  const rawType = normalizeNodeType(String(raw.type || raw.node_type || 'roadmap_task'));
+  const rawStatus = normalizeStatus(String(raw.status || 'pending'));
+  const kind = String(raw.kind || raw.graphKind || '');
+  const graphKind = (
     kind === 'root'
       ? 'project_root'
       : kind === 'folder'
         ? 'project_dir'
-        : 'project_file';
+        : kind === 'file'
+          ? 'project_file'
+          : kind === 'project_task' || kind === 'workflow_agent' || kind === 'workflow_artifact'
+            ? kind
+            : undefined
+  ) as DAGNode['graphKind'];
+  const layerRaw = raw.layer;
+  const layer =
+    typeof layerRaw === 'number'
+      ? layerRaw
+      : Number.isFinite(Number(layerRaw))
+        ? Number(layerRaw)
+        : 0;
+  // Do not pass through stale absolute layout coordinates from saved snapshots.
+  // DAGView will apply current canonical layout policy.
+  const metadata = { ...(raw.metadata || {}) };
+  delete (metadata as any).x;
+  delete (metadata as any).y;
+  delete (metadata as any).position;
   return {
     id: String(raw.id || `node_${Math.random().toString(36).slice(2, 8)}`),
-    type: 'roadmap_task',
+    type: rawType,
     label: String(raw.label || raw.id || 'node'),
-    status: 'pending',
-    layer: typeof raw.layer === 'number' ? raw.layer : 0,
-    taskId: String(raw.id || 'node'),
+    status: rawStatus,
+    layer,
+    taskId: String(raw.taskId || raw.task_id || raw.id || 'node'),
     description: String(raw?.metadata?.parent || ''),
-    graphKind: graphKind as any,
-    projectNodeId: String(raw.id || 'node'),
-    metadata: raw.metadata || {},
+    graphKind,
+    projectNodeId: String(raw.projectNodeId || raw.project_node_id || raw.id || 'node'),
+    role: raw.role || undefined,
+    workflowId: raw.workflowId || raw.workflow_id || undefined,
+    metadata,
   };
 }
 
@@ -614,18 +633,33 @@ function overlayTasksOnRoadmap(
       anchorState,
     });
 
-    const edgeAnchors = effectiveAnchors;
-
-    for (const anchor of edgeAnchors) {
+    // MARKER_155E.ROADMAP_TASK_ANCHOR_ALWAYS_VISIBLE.V1:
+    // Always show at least one task->code anchor so users can see where task belongs.
+    // Selected task reveals full anchor set.
+    const primaryAnchor = effectiveAnchors[0] || null;
+    if (primaryAnchor) {
       taskEdges.push({
-        id: `overlay-affects-${anchor}-${task.id}`,
-        source: anchor,
+        id: `overlay-affects-primary-${primaryAnchor}-${task.id}`,
+        source: primaryAnchor,
         target: id,
         targetHandle: 'target-bottom',
         type: 'structural',
         relationKind: 'affects',
-        strength: anchorState === 'suggested' ? 0.42 : 0.72,
+        strength: anchorState === 'suggested' ? 0.4 : 0.62,
       });
+    }
+    if (selectedTaskId && task.id === selectedTaskId) {
+      for (const anchor of effectiveAnchors.slice(1)) {
+        taskEdges.push({
+          id: `overlay-affects-${anchor}-${task.id}`,
+          source: anchor,
+          target: id,
+          targetHandle: 'target-bottom',
+          type: 'structural',
+          relationKind: 'affects',
+          strength: anchorState === 'suggested' ? 0.42 : 0.72,
+        });
+      }
     }
   }
 
@@ -633,6 +667,8 @@ function overlayTasksOnRoadmap(
     if (!overlayTaskIds.has(task.id)) continue;
     for (const depId of task.dependencies || []) {
       if (!overlayTaskIds.has(depId)) continue;
+      if (!selectedTaskId) continue;
+      if (task.id !== selectedTaskId && depId !== selectedTaskId) continue;
       taskEdges.push({
         id: `overlay-dep-${depId}-${task.id}`,
         source: `task_overlay_${depId}`,
@@ -1350,7 +1386,11 @@ export function MyceliumCommandCenter() {
   const workflowSourceMode = useMCCStore(s => s.workflowSourceMode);
   const setWorkflowSourceMode = useMCCStore(s => s.setWorkflowSourceMode);
   const isWorkflowRuntimeForced = navLevel === 'roadmap' && taskDrillState === 'expanded' && Boolean(selectedTaskId);
-  const effectiveWorkflowSourceMode: WorkflowSourceMode = isWorkflowRuntimeForced ? 'runtime' : workflowSourceMode;
+  const normalizedWorkflowSourceMode: WorkflowSourceMode =
+    workflowSourceMode === 'design' || workflowSourceMode === 'predict' || workflowSourceMode === 'runtime'
+      ? workflowSourceMode
+      : 'design';
+  const effectiveWorkflowSourceMode: WorkflowSourceMode = isWorkflowRuntimeForced ? 'runtime' : normalizedWorkflowSourceMode;
   const persistSessionState = useMCCStore(s => s.persistSessionState);
   const layoutPins = useMCCStore(s => s.layoutPins);
   const setLayoutPinsForKey = useMCCStore(s => s.setLayoutPinsForKey);
@@ -1611,6 +1651,9 @@ export function MyceliumCommandCenter() {
     fetchDagVersionPayload(activeDagVersionId);
   }, [activeDagVersionId, fetchDagVersionPayload]);
 
+  const roadmapSourceOverrideEnabled =
+    debugMode || (navLevel === 'roadmap' && taskDrillState === 'expanded' && Boolean(selectedTaskId));
+
   const versionRoadmapGraph = useMemo(() => {
     const dagPayload = activeDagVersionPayload?.dag_payload || {};
     const design = dagPayload?.design_graph || {};
@@ -1626,6 +1669,7 @@ export function MyceliumCommandCenter() {
     };
   }, [activeDagVersionPayload]);
   const sourceModeRoadmapGraph = useMemo(() => {
+    if (!roadmapSourceOverrideEnabled) return null;
     if (!workflowSourcePayload) return null;
     if (effectiveWorkflowSourceMode === 'predict') {
       const predict = workflowSourcePayload.predict_graph || {};
@@ -1650,7 +1694,7 @@ export function MyceliumCommandCenter() {
       crossEdges: [] as DAGEdge[],
       verifier: null,
     };
-  }, [workflowSourcePayload, effectiveWorkflowSourceMode]);
+  }, [workflowSourcePayload, effectiveWorkflowSourceMode, roadmapSourceOverrideEnabled]);
 
   const roadmapNodes = sourceModeRoadmapGraph?.nodes || versionRoadmapGraph?.nodes || roadmap.nodes;
   const roadmapEdges = sourceModeRoadmapGraph?.edges || versionRoadmapGraph?.edges || roadmap.edges;
@@ -1687,7 +1731,7 @@ export function MyceliumCommandCenter() {
 
   const workflowSourceBadge = useMemo(() => {
     const source = String(workflowSourcePayload?.graph_source || '');
-    const mode = effectiveWorkflowSourceMode.toUpperCase();
+    const mode = String(effectiveWorkflowSourceMode || 'runtime').toUpperCase();
     if (workflowSourceLoading) return `${mode} · loading`;
     if (workflowSourceError) return `${mode} · error`;
     if (!source) return `${mode} · default`;
@@ -2122,13 +2166,20 @@ export function MyceliumCommandCenter() {
     // MARKER_155.P1.TOPOLOGY_DEFAULT:
     // Base roadmap view is topology-first, but keep task->task dependency edges stable.
     const topologyEdges = effectiveEdges.filter(e => e.type === 'structural');
-    const focusIds = new Set<string>(
+    const rawFocusIds = new Set<string>(
       selectedNodeIds.length > 0
         ? selectedNodeIds
         : selectedNode
           ? [selectedNode]
           : []
     );
+    // Keep roadmap clean by default: task list auto-selection should not force dependency overlays.
+    const hasOnlyTaskOverlayFocus =
+      rawFocusIds.size > 0 &&
+      Array.from(rawFocusIds).every((id) => String(id).startsWith('task_overlay_'));
+    const focusIds = (hasOnlyTaskOverlayFocus && taskDrillState !== 'expanded')
+      ? new Set<string>()
+      : rawFocusIds;
     if (focusIds.size === 0) return topologyEdges;
 
     const nodeIds = new Set(effectiveNodes.map(n => n.id));
@@ -2178,7 +2229,7 @@ export function MyceliumCommandCenter() {
 
     if (overlay.length === 0 && crossOverlay.length === 0 && baseDependencyOverlay.length === 0) return topologyEdges;
     return [...topologyEdges, ...baseDependencyOverlay, ...crossOverlay, ...overlay];
-  }, [effectiveEdges, effectiveNodes, predictedEdges, navLevel, selectedNode, selectedNodeIds, roadmapCrossEdges]);
+  }, [debugMode, effectiveEdges, effectiveNodes, predictedEdges, navLevel, selectedNode, selectedNodeIds, roadmapCrossEdges, taskDrillState]);
 
   // MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1:
   // Keep MiniTasks selection and roadmap task_overlay node selection synchronized.
@@ -2264,10 +2315,25 @@ export function MyceliumCommandCenter() {
 
   useEffect(() => {
     if (!isInlineWorkflowFocus) return;
-    if (workflowSourceMode !== 'runtime') {
+    if (workflowSourceMode !== 'runtime' && typeof setWorkflowSourceMode === 'function') {
       setWorkflowSourceMode('runtime');
     }
   }, [isInlineWorkflowFocus, setWorkflowSourceMode, workflowSourceMode]);
+
+  // MARKER_155E.ROADMAP_DEFAULT_TASK_ANCHOR_SELECTION.V1:
+  // Auto-pick one active task so task->architecture linkage is visible by default.
+  useEffect(() => {
+    if (navLevel !== 'roadmap') return;
+    if (selectedTaskId) return;
+    if (!tasks.length) return;
+    const preferred =
+      tasks.find((t) => t.status === 'running' || t.status === 'claimed') ||
+      tasks.find((t) => t.status === 'queued' || t.status === 'pending') ||
+      tasks[0];
+    if (preferred?.id) {
+      selectTask(preferred.id);
+    }
+  }, [navLevel, selectedTaskId, selectTask, tasks]);
 
   useEffect(() => {
     if (!mccReady || !hasProject || navLevel === 'first_run') {
@@ -3599,7 +3665,11 @@ export function MyceliumCommandCenter() {
                   return (
                     <button
                       key={mode}
-                      onClick={() => setWorkflowSourceMode(mode)}
+                      onClick={() => {
+                        if (typeof setWorkflowSourceMode === 'function') {
+                          setWorkflowSourceMode(mode);
+                        }
+                      }}
                       style={{
                         border: `1px solid ${active ? '#6e8aa8' : NOLAN_PALETTE.borderDim}`,
                         borderRadius: 3,

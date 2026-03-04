@@ -116,6 +116,7 @@ function saveFocusRestorePolicy(policy: FocusRestorePolicy): void {
 // MARKER_153.1C: Navigation level type for Matryoshka drill-down
 // MARKER_154.1B: Added 'first_run' level for Phase 154 Matryoshka simplification
 export type NavLevel = 'first_run' | 'roadmap' | 'tasks' | 'workflow' | 'running' | 'results';
+export type WorkflowSourceMode = 'runtime' | 'design' | 'predict';
 
 // ── MARKER_154.1B: Level Configuration (single source of truth) ──
 export interface ActionDef {
@@ -230,6 +231,7 @@ interface MCCState {
 
   // MARKER_155.4: Camera position for zoom-based navigation
   cameraPosition: { x: number; y: number; zoom: number } | null;
+  workflowSourceMode: WorkflowSourceMode;
   focusedNodeId: string | null;
   focusRestorePolicy: FocusRestorePolicy;
   focusRestoreSource: FocusRestoreSource;
@@ -270,6 +272,7 @@ interface MCCState {
   goToLevel: (level: NavLevel) => void;
   // MARKER_155.4: Camera position actions
   setCameraPosition: (pos: { x: number; y: number; zoom: number } | null) => void;
+  setWorkflowSourceMode: (mode: WorkflowSourceMode) => void;
   setFocusedNodeId: (nodeId: string | null) => void;
   setFocusRestorePolicy: (policy: FocusRestorePolicy) => void;
   setFocusRestoreSource: (source: FocusRestoreSource) => void;
@@ -328,6 +331,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
 
   // MARKER_155.4: Camera position initial state
   cameraPosition: null,
+  workflowSourceMode: 'design',
   focusedNodeId: null,
   focusRestorePolicy: loadFocusRestorePolicy(),
   focusRestoreSource: null,
@@ -666,6 +670,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
 
   // MARKER_155.4: Camera position actions
   setCameraPosition: (pos) => set({ cameraPosition: pos }),
+  setWorkflowSourceMode: (mode) => set({ workflowSourceMode: mode }),
   setFocusedNodeId: (nodeId) => set({ focusedNodeId: nodeId }),
   setFocusRestorePolicy: (policy) => {
     saveFocusRestorePolicy(policy);
