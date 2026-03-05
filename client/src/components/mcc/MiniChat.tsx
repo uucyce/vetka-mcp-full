@@ -15,11 +15,52 @@ import { MiniWindow } from './MiniWindow';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import type { MiniContextPayload } from './MiniContext';
 import { useMCCStore } from '../../store/useMCCStore';
+import type { MycoHelperMode } from '../../store/useMCCStore';
 
 const API_BASE = 'http://localhost:5001/api';
 
 interface MiniChatProps {
   context?: MiniContextPayload;
+}
+
+const MYCO_MODE_ORDER: MycoHelperMode[] = ['off', 'passive', 'active'];
+
+function nextMycoMode(mode: MycoHelperMode): MycoHelperMode {
+  const idx = MYCO_MODE_ORDER.indexOf(mode);
+  if (idx < 0) return 'off';
+  return MYCO_MODE_ORDER[(idx + 1) % MYCO_MODE_ORDER.length];
+}
+
+function mycoModeLabel(mode: MycoHelperMode): string {
+  if (mode === 'passive') return 'myco:p';
+  if (mode === 'active') return 'myco:a';
+  return 'myco:off';
+}
+
+function isMycoTrigger(message: string): boolean {
+  const m = String(message || '').trim().toLowerCase();
+  return m.startsWith('/myco') || m.startsWith('/help myco') || m === '?';
+}
+
+function buildMycoReply(context?: MiniContextPayload): string {
+  const level = String(context?.navLevel || 'roadmap');
+  const kind = String(context?.nodeKind || 'project');
+  const label = String(context?.label || 'project');
+  const role = String(context?.role || '');
+  const scopeLine = `you are in ${level} view`;
+  if (!context || context.scope === 'project') {
+    return `🍄 MYCO\n- ${scopeLine}\n- this is project-level context\n- next: click a node and ask /myco again`;
+  }
+  if (kind === 'task') {
+    return `🍄 MYCO\n- ${scopeLine}\n- selected task: ${label}\n- next: press Enter to drill into workflow`;
+  }
+  if (kind === 'agent') {
+    return `🍄 MYCO\n- ${scopeLine}\n- selected agent: ${role || label}\n- next: open Context to review model/prompt`;
+  }
+  if (kind === 'file' || kind === 'directory') {
+    return `🍄 MYCO\n- ${scopeLine}\n- selected code scope: ${label}\n- next: inspect Context and linked tasks`;
+  }
+  return `🍄 MYCO\n- ${scopeLine}\n- selected node: ${label}\n- next: ask architect or open Context`;
 }
 
 function useChatModelLabel(context?: MiniContextPayload): string {
@@ -72,6 +113,8 @@ function ChatCompact({ context }: MiniChatProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const scope = useMemo(() => resolveChatScope(context), [context]);
   const modelLabel = useChatModelLabel(context);
+  const helperMode = useMCCStore((s) => s.helperMode);
+  const setHelperMode = useMCCStore((s) => s.setHelperMode);
 
   useEffect(() => {
     const handlePrefill = (event: Event) => {
@@ -89,6 +132,14 @@ function ChatCompact({ context }: MiniChatProps) {
     if (!input.trim() || loading) return;
     const message = input.trim();
     setInput('');
+    if (isMycoTrigger(message)) {
+      if (helperMode === 'off') {
+        setLastAnswer('🍄 MYCO is off. Click myco:off -> myco:p');
+        return;
+      }
+      setLastAnswer(buildMycoReply(context));
+      return;
+    }
     setLoading(true);
     setLastAnswer(null);
 
@@ -119,7 +170,7 @@ function ChatCompact({ context }: MiniChatProps) {
     } finally {
       setLoading(false);
     }
-  }, [input, loading]);
+  }, [context, helperMode, input, loading]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -146,27 +197,46 @@ function ChatCompact({ context }: MiniChatProps) {
         >
           {scope.label}
         </div>
-        <button
-          type="button"
-          onClick={openContextModelChooser}
-          style={{
-            border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-            background: 'transparent',
-            color: '#9aa4af',
-            borderRadius: 4,
-            fontSize: 8,
-            padding: '1px 5px',
-            cursor: 'pointer',
-            fontFamily: 'monospace',
-            maxWidth: 110,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-          title={`Model: ${modelLabel}. Click to open Context model chooser.`}
-        >
-          {modelLabel}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            type="button"
+            onClick={() => setHelperMode(nextMycoMode(helperMode))}
+            style={{
+              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              background: 'transparent',
+              color: helperMode === 'off' ? '#7f8893' : '#b4bdc8',
+              borderRadius: 4,
+              fontSize: 8,
+              padding: '1px 5px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+            }}
+            title="Toggle MYCO helper mode"
+          >
+            {mycoModeLabel(helperMode)}
+          </button>
+          <button
+            type="button"
+            onClick={openContextModelChooser}
+            style={{
+              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              background: 'transparent',
+              color: '#9aa4af',
+              borderRadius: 4,
+              fontSize: 8,
+              padding: '1px 5px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              maxWidth: 110,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+            title={`Model: ${modelLabel}. Click to open Context model chooser.`}
+          >
+            {modelLabel}
+          </button>
+        </div>
       </div>
       {/* Last answer */}
       <div
@@ -183,7 +253,7 @@ function ChatCompact({ context }: MiniChatProps) {
         ) : lastAnswer ? (
           lastAnswer.slice(0, 200)
         ) : (
-          'Ask the architect anything...'
+          'Ask the architect... (/myco)'
         )}
       </div>
 
@@ -237,6 +307,8 @@ function ChatExpanded({ context }: MiniChatProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const scope = useMemo(() => resolveChatScope(context), [context]);
   const modelLabel = useChatModelLabel(context);
+  const helperMode = useMCCStore((s) => s.helperMode);
+  const setHelperMode = useMCCStore((s) => s.setHelperMode);
 
   useEffect(() => {
     const handlePrefill = (event: Event) => {
@@ -255,6 +327,14 @@ function ChatExpanded({ context }: MiniChatProps) {
     const message = input.trim();
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: message }]);
+    if (isMycoTrigger(message)) {
+      if (helperMode === 'off') {
+        setMessages(prev => [...prev, { role: 'helper_myco', content: 'MYCO is off. Toggle to passive/active.' }]);
+        return;
+      }
+      setMessages(prev => [...prev, { role: 'helper_myco', content: buildMycoReply(context) }]);
+      return;
+    }
     setLoading(true);
 
     try {
@@ -284,7 +364,7 @@ function ChatExpanded({ context }: MiniChatProps) {
     } finally {
       setLoading(false);
     }
-  }, [input, loading]);
+  }, [context, helperMode, input, loading]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -304,27 +384,46 @@ function ChatExpanded({ context }: MiniChatProps) {
           }}
         >
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{scope.label}</span>
-          <button
-            type="button"
-            onClick={openContextModelChooser}
-            style={{
-              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-              background: 'transparent',
-              color: '#9aa4af',
-              borderRadius: 4,
-              fontSize: 8,
-              padding: '1px 6px',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              maxWidth: 180,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-            }}
-            title={`Model: ${modelLabel}. Click to open Context model chooser.`}
-          >
-            model: {modelLabel}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => setHelperMode(nextMycoMode(helperMode))}
+              style={{
+                border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                background: 'transparent',
+                color: helperMode === 'off' ? '#7f8893' : '#b4bdc8',
+                borderRadius: 4,
+                fontSize: 8,
+                padding: '1px 6px',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+              }}
+              title="Toggle MYCO helper mode"
+            >
+              {mycoModeLabel(helperMode)}
+            </button>
+            <button
+              type="button"
+              onClick={openContextModelChooser}
+              style={{
+                border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                background: 'transparent',
+                color: '#9aa4af',
+                borderRadius: 4,
+                fontSize: 8,
+                padding: '1px 6px',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                maxWidth: 180,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={`Model: ${modelLabel}. Click to open Context model chooser.`}
+            >
+              model: {modelLabel}
+            </button>
+          </div>
         </div>
         {messages.length === 0 && (
           <div style={{ color: '#444', fontSize: 10, textAlign: 'center', marginTop: 40 }}>
@@ -339,7 +438,7 @@ function ChatExpanded({ context }: MiniChatProps) {
               textTransform: 'uppercase',
               marginBottom: 2,
             }}>
-              {msg.role === 'user' ? 'YOU' : 'ARCHITECT'}
+              {msg.role === 'user' ? 'YOU' : msg.role === 'helper_myco' ? 'MYCO' : 'ARCHITECT'}
             </div>
             <div style={{
               color: NOLAN_PALETTE.text,

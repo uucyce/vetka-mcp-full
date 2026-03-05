@@ -57,6 +57,16 @@ export interface PresetConfig {
   roles: Record<string, string>;
 }
 
+export interface MCCProjectTab {
+  project_id: string;
+  source_type: string;
+  source_path: string;
+  sandbox_path: string;
+  quota_gb?: number;
+  created_at?: string;
+  last_opened_at?: string;
+}
+
 // MARKER_155A.P2.PIN_LAYOUT: Persist manual node positions per graph context.
 export interface NodePinPosition {
   x: number;
@@ -69,6 +79,7 @@ export type FocusRestoreSource = 'current' | 'memory' | 'default' | null;
 
 const LAYOUT_PINS_STORAGE_KEY = 'mcc_layout_pins_v1';
 const FOCUS_RESTORE_POLICY_STORAGE_KEY = 'mcc_focus_restore_policy_v1';
+const MYCO_HELPER_MODE_STORAGE_KEY = 'mcc_myco_helper_mode_v1';
 
 function loadLayoutPins(): LayoutPinsMap {
   if (typeof window === 'undefined') return {};
@@ -111,12 +122,33 @@ function saveFocusRestorePolicy(policy: FocusRestorePolicy): void {
   }
 }
 
+function loadMycoHelperMode(): MycoHelperMode {
+  if (typeof window === 'undefined') return 'off';
+  try {
+    const raw = window.localStorage.getItem(MYCO_HELPER_MODE_STORAGE_KEY);
+    if (raw === 'off' || raw === 'passive' || raw === 'active') return raw;
+    return 'off';
+  } catch {
+    return 'off';
+  }
+}
+
+function saveMycoHelperMode(mode: MycoHelperMode): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(MYCO_HELPER_MODE_STORAGE_KEY, mode);
+  } catch {
+    // ignore persistence errors
+  }
+}
+
 // ── Store ──
 
 // MARKER_153.1C: Navigation level type for Matryoshka drill-down
 // MARKER_154.1B: Added 'first_run' level for Phase 154 Matryoshka simplification
 export type NavLevel = 'first_run' | 'roadmap' | 'tasks' | 'workflow' | 'running' | 'results';
 export type WorkflowSourceMode = 'runtime' | 'design' | 'predict';
+export type MycoHelperMode = 'off' | 'passive' | 'active';
 
 // ── MARKER_154.1B: Level Configuration (single source of truth) ──
 export interface ActionDef {
@@ -228,10 +260,16 @@ interface MCCState {
   navHistory: NavLevel[];
   hasProject: boolean;
   projectConfig: Record<string, any> | null;
+  // MARKER_161.7.MULTIPROJECT.UI.ACTIVE_PROJECT_STATE.V1:
+  // Current store is single-project; future tab-shell extends this into activeProjectId + projectTabs[].
+  activeProjectId: string;
+  projectTabs: MCCProjectTab[];
+  projectTabsLoading: boolean;
 
   // MARKER_155.4: Camera position for zoom-based navigation
   cameraPosition: { x: number; y: number; zoom: number } | null;
   workflowSourceMode: WorkflowSourceMode;
+  helperMode: MycoHelperMode;
   focusedNodeId: string | null;
   focusRestorePolicy: FocusRestorePolicy;
   focusRestoreSource: FocusRestoreSource;
@@ -266,6 +304,8 @@ interface MCCState {
   }>;
   // MARKER_153.1C: Navigation actions
   initMCC: () => Promise<void>;
+  refreshProjectTabs: () => Promise<void>;
+  activateProjectTab: (projectId: string) => Promise<boolean>;
   drillDown: (level: NavLevel, context?: { roadmapNodeId?: string; taskId?: string }) => void;
   goBack: () => void;
   // MARKER_154.1B: Direct level jump (no history push — used by breadcrumb clicks)
@@ -273,6 +313,7 @@ interface MCCState {
   // MARKER_155.4: Camera position actions
   setCameraPosition: (pos: { x: number; y: number; zoom: number } | null) => void;
   setWorkflowSourceMode: (mode: WorkflowSourceMode) => void;
+  setHelperMode: (mode: MycoHelperMode) => void;
   setFocusedNodeId: (nodeId: string | null) => void;
   setFocusRestorePolicy: (policy: FocusRestorePolicy) => void;
   setFocusRestoreSource: (source: FocusRestoreSource) => void;
@@ -328,10 +369,15 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   navHistory: [] as NavLevel[],
   hasProject: false,
   projectConfig: null,
+  activeProjectId: '',
+  projectTabs: [],
+  projectTabsLoading: false,
 
   // MARKER_155.4: Camera position initial state
   cameraPosition: null,
   workflowSourceMode: 'design',
+  // MARKER_162.MYCO.MODE_TOGGLE.V1: persisted helper guide mode.
+  helperMode: loadMycoHelperMode(),
   focusedNodeId: null,
   focusRestorePolicy: loadFocusRestorePolicy(),
   focusRestoreSource: null,
@@ -569,14 +615,25 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   // ── MARKER_153.1C: Init MCC — load project config + session state ──
   // MARKER_154.1B: first_run level when no project configured
   initMCC: async () => {
+    // MARKER_161.7.MULTIPROJECT.UI.INIT_ROUTE.V1:
+    // Future init will hydrate tab list + active project context before DAG fetch.
     try {
       const res = await fetch(`${API_BASE}/mcc/init`);
       if (!res.ok) {
         // No backend → first_run
-        set({ hasProject: false, projectConfig: null, navLevel: 'first_run', navHistory: [] });
+        set({
+          hasProject: false,
+          projectConfig: null,
+          activeProjectId: '',
+          projectTabs: [],
+          navLevel: 'first_run',
+          navHistory: [],
+        });
         return;
       }
       const data = await res.json();
+      const tabs = Array.isArray(data.projects) ? data.projects : [];
+      const activeProjectId = String(data.active_project_id || '');
 
       if (data.has_project && data.session_state) {
         const ss = data.session_state || {};
@@ -596,6 +653,8 @@ export const useMCCStore = create<MCCState>((set, get) => ({
         set({
           hasProject: true,
           projectConfig: data.project_config,
+          activeProjectId: activeProjectId || String(data?.project_config?.project_id || ''),
+          projectTabs: tabs,
           navLevel: 'roadmap',
           navRoadmapNodeId: '',
           navTaskId: '',
@@ -603,11 +662,62 @@ export const useMCCStore = create<MCCState>((set, get) => ({
         });
       } else {
         // MARKER_154.1B: No project → first_run level
-        set({ hasProject: false, projectConfig: null, navLevel: 'first_run', navHistory: [] });
+        set({
+          hasProject: false,
+          projectConfig: null,
+          activeProjectId: activeProjectId,
+          projectTabs: tabs,
+          navLevel: 'first_run',
+          navHistory: [],
+        });
       }
     } catch (err) {
       console.error('[MCC] Init failed:', err);
-      set({ hasProject: false, projectConfig: null, navLevel: 'first_run', navHistory: [] });
+      set({
+        hasProject: false,
+        projectConfig: null,
+        activeProjectId: '',
+        projectTabs: [],
+        navLevel: 'first_run',
+        navHistory: [],
+      });
+    }
+  },
+
+  refreshProjectTabs: async () => {
+    set({ projectTabsLoading: true });
+    try {
+      const res = await fetch(`${API_BASE}/mcc/projects/list`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const tabs = Array.isArray(data?.projects) ? data.projects : [];
+      const active = String(data?.active_project_id || '');
+      set({
+        projectTabs: tabs,
+        activeProjectId: active || get().activeProjectId,
+      });
+    } catch (err) {
+      console.error('[MCC] refreshProjectTabs failed:', err);
+    } finally {
+      set({ projectTabsLoading: false });
+    }
+  },
+
+  activateProjectTab: async (projectId) => {
+    const pid = String(projectId || '').trim();
+    if (!pid) return false;
+    try {
+      const res = await fetch(`${API_BASE}/mcc/projects/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: pid }),
+      });
+      if (!res.ok) return false;
+      await get().initMCC();
+      return true;
+    } catch (err) {
+      console.error('[MCC] activateProjectTab failed:', err);
+      return false;
     }
   },
 
@@ -671,6 +781,10 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   // MARKER_155.4: Camera position actions
   setCameraPosition: (pos) => set({ cameraPosition: pos }),
   setWorkflowSourceMode: (mode) => set({ workflowSourceMode: mode }),
+  setHelperMode: (mode) => {
+    saveMycoHelperMode(mode);
+    set({ helperMode: mode });
+  },
   setFocusedNodeId: (nodeId) => set({ focusedNodeId: nodeId }),
   setFocusRestorePolicy: (policy) => {
     saveFocusRestorePolicy(policy);
