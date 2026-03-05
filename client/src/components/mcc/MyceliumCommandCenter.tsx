@@ -1046,7 +1046,7 @@ function buildInlineWorkflowFromPipeline(taskId: string, subtasks: Array<any>): 
     { id: `wf_arch_${taskId}`, type: 'agent', label: 'Architect (Plan)', status: 'done', layer: 1, taskId, role: 'architect', graphKind: 'workflow_agent' },
     { id: `wf_scout_${taskId}`, type: 'agent', label: 'Scout (Codebase Recon)', status: 'done', layer: 1, taskId, role: 'scout', graphKind: 'workflow_agent' },
     { id: `wf_research_${taskId}`, type: 'agent', label: 'Researcher (Web + Docs)', status: 'done', layer: 1, taskId, role: 'researcher', graphKind: 'workflow_agent' },
-    { id: `wf_coder_${taskId}`, type: 'agent', label: 'Coder (Build)', status: 'running', layer: 1, taskId, role: 'coder', graphKind: 'workflow_agent' },
+    { id: `wf_coder_${taskId}`, type: 'agent', label: 'Coder (Build)', status: 'pending', layer: 1, taskId, role: 'coder', graphKind: 'workflow_agent' },
     { id: `wf_measure_${taskId}`, type: 'parallel', label: 'Measure', status: 'pending', layer: 2, taskId, graphKind: 'workflow_artifact' },
     { id: `wf_verifier_${taskId}`, type: 'agent', label: 'Verifier', status: 'pending', layer: 2, taskId, role: 'verifier', graphKind: 'workflow_agent' },
     { id: `wf_eval_${taskId}`, type: 'agent', label: 'Eval Agent', status: 'pending', layer: 2, taskId, role: 'eval', graphKind: 'workflow_agent' },
@@ -1141,7 +1141,7 @@ function buildInlineWorkflowFromTemplate(taskId: string, template: any): { nodes
           ? 'verifier'
           : ''
     );
-    const status: NodeStatus = role === 'coder' ? 'running' : 'pending';
+    const status: NodeStatus = 'pending';
     const layer = nodeType === 'agent' ? 1 : (nodeType === 'subtask' ? 2 : 3);
     const nodeId = String(n?.id || `template_node_${idx}`);
     return {
@@ -1372,6 +1372,11 @@ export function MyceliumCommandCenter() {
   const initMCC = useMCCStore(s => s.initMCC);
   const hasProject = useMCCStore(s => s.hasProject);
   const projectConfig = useMCCStore(s => s.projectConfig);
+  const projectTabs = useMCCStore(s => s.projectTabs);
+  const activeProjectId = useMCCStore(s => s.activeProjectId);
+  const activateProjectTab = useMCCStore(s => s.activateProjectTab);
+  const refreshProjectTabs = useMCCStore(s => s.refreshProjectTabs);
+  const projectTabsLoading = useMCCStore(s => s.projectTabsLoading);
   const navLevel = useMCCStore(s => s.navLevel);
   const navRoadmapNodeId = useMCCStore(s => s.navRoadmapNodeId);
   const drillDown = useMCCStore(s => s.drillDown);
@@ -1457,6 +1462,8 @@ export function MyceliumCommandCenter() {
   }, [wizardStep]);
 
   // MARKER_153.5B: Roadmap DAG data hook
+  // MARKER_161.7.MULTIPROJECT.UI.TAB_SCOPE_BIND.V1:
+  // Future tab-shell binds roadmap scope to active project tab instead of global single project.
   const projectScopePath = projectConfig?.source_path || projectConfig?.sandbox_path || '';
   const roadmap = useRoadmapDAG(projectScopePath);
   const [dagVersions, setDagVersions] = useState<DagVersionSummary[]>([]);
@@ -1747,6 +1754,11 @@ export function MyceliumCommandCenter() {
       setMccReady(true);
     });
   }, [initMCC]);
+
+  useEffect(() => {
+    if (!mccReady) return;
+    refreshProjectTabs();
+  }, [mccReady, refreshProjectTabs]);
 
   useEffect(() => {
     loadFavorites();
@@ -3213,6 +3225,81 @@ export function MyceliumCommandCenter() {
       {debugMode && (
         <div data-onboarding="step-indicator">
           <StepIndicator />
+        </div>
+      )}
+
+      {/* MARKER_161.7.MULTIPROJECT.UI.TAB_SHELL_RENDER.V1:
+          Compact project tabs row for active-project scope switching. */}
+      {navLevel !== 'first_run' && (hasProject || projectTabs.length > 0) && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '4px 8px',
+            borderBottom: `1px solid ${NOLAN_PALETTE.border}`,
+            background: NOLAN_PALETTE.bgDim,
+            fontSize: 9,
+            flexShrink: 0,
+            overflowX: 'auto',
+          }}
+        >
+          {projectTabs.map((p) => {
+            const projectId = String(p?.project_id || '');
+            const path = String(p?.source_path || p?.sandbox_path || projectId);
+            const name = path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || projectId || 'project';
+            const isActive = projectId && projectId === activeProjectId;
+            return (
+              <button
+                key={projectId || name}
+                onClick={async () => {
+                  if (!projectId || isActive) return;
+                  const ok = await activateProjectTab(projectId);
+                  if (!ok) {
+                    addToast('error', 'Failed to switch project tab');
+                  } else {
+                    addToast('info', `Switched project: ${name}`);
+                  }
+                }}
+                style={{
+                  border: `1px solid ${isActive ? NOLAN_PALETTE.borderLight : NOLAN_PALETTE.borderDim}`,
+                  borderRadius: '6px 6px 0 0',
+                  borderBottom: isActive ? `1px solid ${NOLAN_PALETTE.bg}` : `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  marginBottom: isActive ? -1 : 0,
+                  background: isActive ? NOLAN_PALETTE.bg : NOLAN_PALETTE.bgLight,
+                  color: isActive ? NOLAN_PALETTE.text : NOLAN_PALETTE.textMuted,
+                  padding: '2px 8px',
+                  cursor: isActive ? 'default' : 'pointer',
+                  whiteSpace: 'nowrap',
+                  opacity: projectId ? 1 : 0.7,
+                }}
+                title={`${name} · ${projectId}`}
+                disabled={!projectId || isActive}
+              >
+                {name}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setShowOnboarding(true)}
+            style={{
+              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              borderRadius: '6px 6px 0 0',
+              borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              background: NOLAN_PALETTE.bgLight,
+              color: NOLAN_PALETTE.text,
+              padding: '2px 8px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              marginLeft: 2,
+            }}
+            title="Create and open a new project tab"
+          >
+            + project
+          </button>
+          {projectTabsLoading && (
+            <span style={{ color: '#67707c', marginLeft: 2, whiteSpace: 'nowrap' }}>tabs…</span>
+          )}
         </div>
       )}
       {/* MARKER_155A.G21.PLAYGROUND_ENTRY: Always-available playground entry for existing projects. */}
