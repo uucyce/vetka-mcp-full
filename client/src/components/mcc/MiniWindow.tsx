@@ -10,7 +10,7 @@
  * @status active
  */
 
-import { useState, useCallback, useRef, useEffect, type CSSProperties, type ReactNode } from 'react';
+import { useState, useCallback, useRef, useEffect, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import Draggable from 'react-draggable';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
@@ -52,6 +52,38 @@ interface MiniWindowProps {
   onToggle?: (expanded: boolean) => void;
   /** Explicit initial position override (diagnostic-safe). */
   initialPosition?: { x: number; y: number };
+}
+
+interface DockEntry {
+  windowId: string;
+  title: string;
+  icon: string;
+}
+
+const dockRegistry = new Map<string, DockEntry>();
+
+function getDockEntries(): DockEntry[] {
+  return Array.from(dockRegistry.values());
+}
+
+function emitDockUpdate() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent('mcc-miniwindow-dock-updated', {
+      detail: { entries: getDockEntries() },
+    }),
+  );
+}
+
+function addDockEntry(entry: DockEntry) {
+  dockRegistry.set(entry.windowId, entry);
+  emitDockUpdate();
+}
+
+function removeDockEntry(windowId: string) {
+  if (!dockRegistry.has(windowId)) return;
+  dockRegistry.delete(windowId);
+  emitDockUpdate();
 }
 
 function storageKey(windowId: string): string {
@@ -208,6 +240,7 @@ export function MiniWindow({
   const savedPositionRef = useRef<boolean>(hasSavedPosition(windowId));
   const savedSizeRef = useRef<boolean>(hasSavedSize(windowId));
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [minimized, setMinimized] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [sizeState, setSizeState] = useState<Size>(initialSize);
@@ -237,14 +270,35 @@ export function MiniWindow({
 
   const toggle = useCallback(() => {
     const next = !expanded;
+    if (next) {
+      setMinimized(false);
+      removeDockEntry(windowId);
+    }
     setExpanded(next);
     onToggle?.(next);
-  }, [expanded, onToggle]);
+  }, [expanded, onToggle, windowId]);
 
   const collapse = useCallback(() => {
     setExpanded(false);
     onToggle?.(false);
   }, [onToggle]);
+
+  const minimize = useCallback(() => {
+    setExpanded(false);
+    setMinimized(true);
+    onToggle?.(false);
+    addDockEntry({ windowId, title, icon });
+  }, [icon, onToggle, title, windowId]);
+
+  const restoreFromDock = useCallback(
+    (expand = false) => {
+      setMinimized(false);
+      removeDockEntry(windowId);
+      setExpanded(expand);
+      onToggle?.(expand);
+    },
+    [onToggle, windowId],
+  );
 
   // MARKER_155.DRAGGABLE.006: Handle drag stop - save position
   const handleDragStop = useCallback(
@@ -279,12 +333,17 @@ export function MiniWindow({
       const detail = (event as CustomEvent)?.detail || {};
       if (String(detail.windowId || '') !== String(windowId)) return;
       const nextExpanded = detail.expanded !== undefined ? Boolean(detail.expanded) : true;
-      setExpanded(nextExpanded);
-      onToggle?.(nextExpanded);
+      restoreFromDock(nextExpanded);
     };
     window.addEventListener('mcc-miniwindow-open', handleWindowOpen as EventListener);
     return () => window.removeEventListener('mcc-miniwindow-open', handleWindowOpen as EventListener);
-  }, [windowId, onToggle]);
+  }, [windowId, restoreFromDock]);
+
+  useEffect(() => {
+    return () => {
+      removeDockEntry(windowId);
+    };
+  }, [windowId]);
 
   // Click outside to close (expanded only)
   const handleOverlayClick = useCallback(
@@ -435,9 +494,9 @@ export function MiniWindow({
   return (
     <>
       {/* MARKER_155.DRAGGABLE.008: Compact mode — draggable corner card */}
-      {!expanded && (
+      {!expanded && !minimized && (
         <Draggable
-          nodeRef={nodeRef}
+          nodeRef={nodeRef as unknown as RefObject<HTMLElement>}
           position={positionState}
           onStart={handleDragStart}
           onStop={handleDragStop}
@@ -495,6 +554,20 @@ export function MiniWindow({
                   {title}
                 </span>
                 <button
+                  onClick={minimize}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#666',
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    padding: '0 4px',
+                  }}
+                  title="Minimize"
+                >
+                  -
+                </button>
+                <button
                   onClick={toggle}
                   style={{
                     background: 'none',
@@ -550,7 +623,7 @@ export function MiniWindow({
 
       {/* MARKER_155.DRAGGABLE.010: Expanded mode — centered overlay (not draggable) */}
       <AnimatePresence>
-        {expanded && (
+        {expanded && !minimized && (
           <motion.div
             ref={overlayRef}
             onClick={handleOverlayClick}
@@ -611,6 +684,20 @@ export function MiniWindow({
                   {title}
                 </span>
                 <button
+                  onClick={minimize}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: NOLAN_PALETTE.textMuted,
+                    cursor: 'pointer',
+                    fontSize: 14,
+                    padding: '0 4px',
+                  }}
+                  title="Minimize"
+                >
+                  -
+                </button>
+                <button
                   onClick={collapse}
                   style={{
                     background: 'none',
@@ -647,5 +734,118 @@ export function MiniWindow({
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+/**
+ * MARKER_163.MCC.MINIWINDOW_DOCK.V1:
+ * Shared bottom dock for minimized mini windows.
+ */
+export function MiniWindowDock() {
+  const [entries, setEntries] = useState<DockEntry[]>(() => getDockEntries());
+
+  useEffect(() => {
+    const handleDockUpdate = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || {};
+      if (Array.isArray(detail.entries)) {
+        setEntries(detail.entries as DockEntry[]);
+        return;
+      }
+      setEntries(getDockEntries());
+    };
+    window.addEventListener('mcc-miniwindow-dock-updated', handleDockUpdate as EventListener);
+    return () => window.removeEventListener('mcc-miniwindow-dock-updated', handleDockUpdate as EventListener);
+  }, []);
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: '50%',
+        bottom: 10,
+        transform: 'translateX(-50%)',
+        display: 'flex',
+        gap: 8,
+        alignItems: 'center',
+        zIndex: 360,
+        pointerEvents: 'auto',
+      }}
+    >
+      {entries.map((entry) => (
+        <div
+          key={entry.windowId}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+            background: 'rgba(6, 6, 6, 0.92)',
+            color: '#c4ccd5',
+            borderRadius: 6,
+            padding: '4px 8px',
+            fontFamily: 'monospace',
+            fontSize: 10,
+            maxWidth: 220,
+          }}
+          title={entry.title}
+        >
+          <span style={{ fontSize: 10, flexShrink: 0 }}>{entry.icon}</span>
+          <span
+            style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              maxWidth: 130,
+            }}
+          >
+            {entry.title}
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent('mcc-miniwindow-open', {
+                  detail: { windowId: entry.windowId, expanded: false },
+                }),
+              )
+            }
+            style={{
+              border: 'none',
+              background: 'none',
+              color: '#d4dbe4',
+              cursor: 'pointer',
+              fontSize: 11,
+              padding: '0 2px',
+            }}
+            title="Restore"
+          >
+            ↗
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent('mcc-miniwindow-open', {
+                  detail: { windowId: entry.windowId, expanded: true },
+                }),
+              )
+            }
+            style={{
+              border: 'none',
+              background: 'none',
+              color: '#d4dbe4',
+              cursor: 'pointer',
+              fontSize: 11,
+              padding: '0 2px',
+            }}
+            title="Expand"
+          >
+            ⤢
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }

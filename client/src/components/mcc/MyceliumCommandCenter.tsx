@@ -18,7 +18,6 @@ import { StreamPanel } from './StreamPanel';
 import { DAGContextMenu, type ContextMenuTarget } from './DAGContextMenu';
 import { NodePicker } from './NodePicker';
 import { OnboardingOverlay } from './OnboardingOverlay';
-import { OnboardingModal } from './OnboardingModal';
 import { MCCBreadcrumb } from './MCCBreadcrumb';
 import { FooterActionBar } from './FooterActionBar';
 import { MatryoshkaTransition } from './MatryoshkaTransition';
@@ -30,13 +29,14 @@ import { MiniTasks } from './MiniTasks';
 import { MiniStats } from './MiniStats';
 import { MiniBalance } from './MiniBalance';
 import { MiniContext, type MiniContextKind, type MiniContextPayload } from './MiniContext';
+import { MiniWindowDock } from './MiniWindow';
 import { StepIndicator } from './StepIndicator';
 import { FirstRunView } from './FirstRunView';
 import { PlaygroundBadge } from './PlaygroundBadge';
 // MARKER_155.WIZARD.001: Wizard flow for steps 1-3
 import { WizardContainer, type WizardStep } from './WizardContainer';
 import { ToastContainer } from './ToastContainer';
-import { useMCCStore, type WorkflowSourceMode } from '../../store/useMCCStore';
+import { useMCCStore, type WorkflowSourceMode, type MycoHelperMode } from '../../store/useMCCStore';
 import { useStore } from '../../store/useStore';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useRoadmapDAG } from '../../hooks/useRoadmapDAG';
@@ -51,6 +51,9 @@ import {
 import { useDAGEditor } from '../../hooks/useDAGEditor';
 import type { DAGNode, DAGEdge, DAGStats, DAGNodeType, NodeStatus, EdgeType } from '../../types/dag';
 import type { TaskData } from '../panels/TaskCard';
+import mycoIdleQuestion from '../../assets/myco/myco_idle_question.png';
+import mycoReadySmile from '../../assets/myco/myco_ready_smile.png';
+import mycoSpeakingLoop from '../../assets/myco/myco_speaking_loop.apng';
 
 const API_BASE = 'http://localhost:5001/api';
 
@@ -113,6 +116,21 @@ type FocusDisplayMode = 'all' | 'selected_deps' | 'selected_only';
 type FocusRestoreSource = 'current' | 'memory' | 'default';
 type TaskDrillState = 'collapsed' | 'expanded';
 type RoadmapNodeDrillState = 'collapsed' | 'expanded';
+type MycoBadgeVisualState = 'idle' | 'speaking' | 'ready';
+
+const MYCO_MODE_ORDER: MycoHelperMode[] = ['off', 'passive', 'active'];
+
+function nextMycoMode(mode: MycoHelperMode): MycoHelperMode {
+  const idx = MYCO_MODE_ORDER.indexOf(mode);
+  if (idx < 0) return 'off';
+  return MYCO_MODE_ORDER[(idx + 1) % MYCO_MODE_ORDER.length];
+}
+
+function mycoModeCompactLabel(mode: MycoHelperMode): string {
+  if (mode === 'passive') return 'p';
+  if (mode === 'active') return 'a';
+  return 'off';
+}
 
 function uniqueIds(ids: Array<string | null | undefined>): string[] {
   return Array.from(new Set(ids.filter(Boolean) as string[]));
@@ -1381,6 +1399,7 @@ export function MyceliumCommandCenter() {
   const navRoadmapNodeId = useMCCStore(s => s.navRoadmapNodeId);
   const drillDown = useMCCStore(s => s.drillDown);
   const goBack = useMCCStore(s => s.goBack);
+  const goToLevel = useMCCStore(s => s.goToLevel);
   const cameraPosition = useMCCStore(s => s.cameraPosition);
   const setCameraPosition = useMCCStore(s => s.setCameraPosition);
   const setFocusedNodeId = useMCCStore(s => s.setFocusedNodeId);
@@ -1399,11 +1418,14 @@ export function MyceliumCommandCenter() {
   const persistSessionState = useMCCStore(s => s.persistSessionState);
   const layoutPins = useMCCStore(s => s.layoutPins);
   const setLayoutPinsForKey = useMCCStore(s => s.setLayoutPinsForKey);
+  const helperMode = useMCCStore(s => s.helperMode);
+  const setHelperMode = useMCCStore(s => s.setHelperMode);
   const selectedKey = useStore(s => s.selectedKey);
   const loadFavorites = useStore(s => s.loadFavorites);
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [mccReady, setMccReady] = useState(false);
   const [cameraLOD, setCameraLOD] = useState<LODLevel>('tasks');
+  const [mycoBadgeVisualState, setMycoBadgeVisualState] = useState<MycoBadgeVisualState>('idle');
+  const mycoBadgeTimersRef = useRef<number[]>([]);
   const dagGraphIdentity = useMemo(
     () => `${navLevel}:${navRoadmapNodeId || 'none'}`,
     [navLevel, navRoadmapNodeId],
@@ -1426,6 +1448,11 @@ export function MyceliumCommandCenter() {
   // MARKER_155.MEMORY.ENGRAM_DAG_PREFS.V1:
   // Shared layout intent profile from ENGRAM (MCC + VETKA).
   const [layoutBiasProfile, setLayoutBiasProfile] = useState<DagLayoutBiasProfile | null>(null);
+  const mycoBadgeIconSrc = useMemo(() => {
+    if (mycoBadgeVisualState === 'speaking') return mycoSpeakingLoop;
+    if (mycoBadgeVisualState === 'ready') return mycoReadySmile;
+    return mycoIdleQuestion;
+  }, [mycoBadgeVisualState]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1440,6 +1467,31 @@ export function MyceliumCommandCenter() {
       cancelled = true;
     };
   }, [layoutPreferenceScopeKey]);
+
+  // MARKER_162.P2.MYCO.AVATAR_RESPONSE_ANIM.V1:
+  // Top-row MYCO icon animates when helper emits reply event.
+  useEffect(() => {
+    const clearTimers = () => {
+      mycoBadgeTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      mycoBadgeTimersRef.current = [];
+    };
+    const onMycoReply = () => {
+      clearTimers();
+      setMycoBadgeVisualState('speaking');
+      const readyTimer = window.setTimeout(() => {
+        setMycoBadgeVisualState('ready');
+      }, 1200);
+      const idleTimer = window.setTimeout(() => {
+        setMycoBadgeVisualState('idle');
+      }, 3200);
+      mycoBadgeTimersRef.current = [readyTimer, idleTimer];
+    };
+    window.addEventListener('mcc-myco-reply', onMycoReply as EventListener);
+    return () => {
+      window.removeEventListener('mcc-myco-reply', onMycoReply as EventListener);
+      clearTimers();
+    };
+  }, []);
 
   // MARKER_155.WIZARD.028: Wizard navigation handlers (after initMCC declared)
   const handleWizardComplete = useCallback((step: WizardStep, data: any) => {
@@ -1919,15 +1971,8 @@ export function MyceliumCommandCenter() {
     fetchPredictiveOverlay();
   }, [fetchPredictiveOverlay]);
 
-  // MARKER_155A.P0.ONBOARDING_REBIND:
-  // Legacy modal onboarding is disabled for first-run flow (FirstRunView owns setup UX).
-  useEffect(() => {
-    if (mccReady && !hasProject && navLevel !== 'first_run') {
-      setShowOnboarding(true);
-    } else if (navLevel === 'first_run') {
-      setShowOnboarding(false);
-    }
-  }, [mccReady, hasProject, navLevel]);
+  // MARKER_161.8.MULTIPROJECT.UI.NO_MODAL_ONBOARDING.V1:
+  // Project creation uses in-canvas first_run flow only (no onboarding modal overlay).
 
   // MARKER_143.P3: Refetch DAG when selectedTaskId changes
   useEffect(() => {
@@ -3230,7 +3275,7 @@ export function MyceliumCommandCenter() {
 
       {/* MARKER_161.7.MULTIPROJECT.UI.TAB_SHELL_RENDER.V1:
           Compact project tabs row for active-project scope switching. */}
-      {navLevel !== 'first_run' && (hasProject || projectTabs.length > 0) && (
+      {(hasProject || projectTabs.length > 0) && (
         <div
           style={{
             display: 'flex',
@@ -3280,8 +3325,29 @@ export function MyceliumCommandCenter() {
               </button>
             );
           })}
+          {navLevel === 'first_run' && (
+            <button
+              style={{
+                border: `1px solid ${NOLAN_PALETTE.borderLight}`,
+                borderRadius: '6px 6px 0 0',
+                borderBottom: `1px solid ${NOLAN_PALETTE.bg}`,
+                marginBottom: -1,
+                background: NOLAN_PALETTE.bg,
+                color: NOLAN_PALETTE.text,
+                padding: '2px 8px',
+                cursor: 'default',
+                whiteSpace: 'nowrap',
+              }}
+              title="Draft tab setup in progress"
+              disabled
+            >
+              new_project
+            </button>
+          )}
           <button
-            onClick={() => setShowOnboarding(true)}
+            onClick={() => {
+              goToLevel('first_run');
+            }}
             style={{
               border: `1px solid ${NOLAN_PALETTE.borderDim}`,
               borderRadius: '6px 6px 0 0',
@@ -3300,6 +3366,40 @@ export function MyceliumCommandCenter() {
           {projectTabsLoading && (
             <span style={{ color: '#67707c', marginLeft: 2, whiteSpace: 'nowrap' }}>tabs…</span>
           )}
+          <div style={{ marginLeft: 'auto' }} />
+          <button
+            type="button"
+            onClick={() => setHelperMode(nextMycoMode(helperMode))}
+            // MARKER_162.P2.MYCO.TOPROW_BUTTON.V1:
+            // Grandma-mode needs explicit helper button outside tiny chat chip.
+            title={`MYCO helper (${helperMode}). Click to cycle: off -> passive -> active`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 5,
+              border: `1px solid ${helperMode === 'off' ? NOLAN_PALETTE.borderDim : NOLAN_PALETTE.borderLight}`,
+              borderRadius: '6px 6px 0 0',
+              borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              background: NOLAN_PALETTE.bgLight,
+              color: helperMode === 'off' ? NOLAN_PALETTE.textMuted : NOLAN_PALETTE.text,
+              padding: '1px 8px 2px 6px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              minWidth: 64,
+            }}
+          >
+            <img
+              src={mycoBadgeIconSrc}
+              alt="MYCO"
+              style={{
+                width: 12,
+                height: 16,
+                objectFit: 'contain',
+              }}
+            />
+            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: 0.3 }}>MYCO</span>
+            <span style={{ fontSize: 8, opacity: 0.75 }}>{mycoModeCompactLabel(helperMode)}</span>
+          </button>
         </div>
       )}
       {/* MARKER_155A.G21.PLAYGROUND_ENTRY: Always-available playground entry for existing projects. */}
@@ -3628,9 +3728,15 @@ export function MyceliumCommandCenter() {
           <div style={{ flex: 1, minHeight: 0, position: 'relative' }} data-onboarding="dag-canvas">
             <ReactFlowProvider>
               <MatryoshkaTransition navLevel={navLevel} inPlace>
-                {/* MARKER_154.16A: First Run — show welcome screen instead of DAG */}
+                {/* MARKER_161.8.MULTIPROJECT.UI.DRAFT_TAB_EMPTY_CANVAS.V1 */}
                 {navLevel === 'first_run' ? (
-                  <FirstRunView />
+                  <div
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      background: '#020202',
+                    }}
+                  />
                 ) : (loading || roadmap.loading) ? (
                   <div
                     style={{
@@ -3693,7 +3799,7 @@ export function MyceliumCommandCenter() {
             </ReactFlowProvider>
 
             {/* MARKER_154.11A: Mini-windows — floating overlays in DAG canvas */}
-            {navLevel !== 'first_run' && (
+            {navLevel !== 'first_run' ? (
               <>
                 <div data-onboarding="mini-chat">
                   <MiniChat context={miniContextPayload} />
@@ -3702,8 +3808,95 @@ export function MyceliumCommandCenter() {
                 <MiniStats context={miniContextPayload} />
                 <MiniBalance />
                 <MiniContext context={miniContextPayload} nodeData={miniContextNodeData} onViewArtifact={handleViewArtifact} />
+                <MiniWindowDock />
+              </>
+            ) : (
+              <>
+                {/* MARKER_161.8.MULTIPROJECT.UI.DRAFT_TAB_MINI_DEFAULTS.V1 */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 14,
+                    left: 14,
+                    width: 290,
+                    minHeight: 120,
+                    border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                    borderRadius: 10,
+                    background: 'rgba(7,9,11,0.88)',
+                    padding: 12,
+                    color: NOLAN_PALETTE.textDim,
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    zIndex: 20,
+                  }}
+                >
+                  <div style={{ color: NOLAN_PALETTE.text, fontSize: 12, marginBottom: 6 }}>Tasks</div>
+                  <div>no project context yet</div>
+                </div>
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 150,
+                    left: 14,
+                    width: 290,
+                    minHeight: 120,
+                    border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                    borderRadius: 10,
+                    background: 'rgba(7,9,11,0.88)',
+                    padding: 12,
+                    color: NOLAN_PALETTE.textDim,
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    zIndex: 20,
+                  }}
+                >
+                  <div style={{ color: NOLAN_PALETTE.text, fontSize: 12, marginBottom: 6 }}>Chat</div>
+                  <div>architect context will appear after project setup</div>
+                </div>
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 14,
+                    right: 14,
+                    width: 250,
+                    minHeight: 150,
+                    border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                    borderRadius: 10,
+                    background: 'rgba(7,9,11,0.88)',
+                    padding: 12,
+                    color: NOLAN_PALETTE.textDim,
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    zIndex: 20,
+                  }}
+                >
+                  <div style={{ color: NOLAN_PALETTE.text, fontSize: 12, marginBottom: 6 }}>Stats</div>
+                  <div>defaults</div>
+                </div>
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 180,
+                    right: 14,
+                    width: 250,
+                    minHeight: 110,
+                    border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                    borderRadius: 10,
+                    background: 'rgba(7,9,11,0.88)',
+                    padding: 12,
+                    color: NOLAN_PALETTE.textDim,
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    zIndex: 20,
+                  }}
+                >
+                  <div style={{ color: NOLAN_PALETTE.text, fontSize: 12, marginBottom: 6 }}>Context</div>
+                  <div>empty</div>
+                </div>
               </>
             )}
+
+            {navLevel === 'first_run' && <FirstRunView />}
 
             {/* MARKER_153.5G + 155.1A: Double-click hint at roadmap and tasks levels */}
             {(navLevel === 'roadmap' || navLevel === 'tasks') && effectiveNodes.length > 0 && selectedNode && (
@@ -4262,11 +4455,6 @@ export function MyceliumCommandCenter() {
           onAdvance={onboardingAdvance}
           onDismiss={onboardingDismiss}
         />
-      )}
-
-      {/* MARKER_153.3B: Project setup wizard — shows when no project configured */}
-      {showOnboarding && (
-        <OnboardingModal onComplete={() => setShowOnboarding(false)} />
       )}
 
       {/* MARKER_153.6D: Toast notifications — top-right overlay */}
