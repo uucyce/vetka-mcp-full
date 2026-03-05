@@ -83,6 +83,14 @@ interface MiniStatsProps {
   context?: MiniContextPayload;
 }
 
+interface PrefetchWorkflowSelectionDiagnostics {
+  workflow_id?: string;
+  workflow_name?: string;
+  reinforcement?: string[];
+  reinforcement_policy?: Record<string, any>;
+  reason?: string;
+}
+
 function resolveContextSubtitle(context?: MiniContextPayload): string {
   if (!context || context.scope === 'project') return 'scope: project';
   if (context.nodeKind === 'task') return `scope: task (${context.label})`;
@@ -96,6 +104,61 @@ function resolveAgentLane(role?: string): string | null {
   if (r === 'verifier') return 'lane: checks (pass/fail)';
   if (r === 'eval') return 'lane: scoring (quality)';
   return null;
+}
+
+function usePrefetchReinforcement(context?: MiniContextPayload) {
+  const [diag, setDiag] = useState<PrefetchWorkflowSelectionDiagnostics | null>(null);
+  const [loading, setLoading] = useState(false);
+  const requestKey = useMemo(() => {
+    const scope = context?.scope || 'project';
+    const kind = context?.nodeKind || 'project';
+    const label = String(context?.label || '').trim();
+    const role = String(context?.role || '').trim();
+    return `${scope}:${kind}:${role}:${label}`;
+  }, [context?.scope, context?.nodeKind, context?.label, context?.role]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const taskDescription =
+      String(context?.label || '').trim() ||
+      (context?.scope === 'project' ? 'project architect planning' : 'context planning');
+    const taskType = context?.nodeKind === 'agent'
+      ? 'build'
+      : context?.nodeKind === 'task'
+        ? 'test'
+        : 'build';
+    const complexity = context?.scope === 'project' ? 7 : 5;
+
+    setLoading(true);
+    fetch(`${API_BASE}/mcc/prefetch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task_description: taskDescription,
+        task_type: taskType,
+        complexity,
+      }),
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (cancelled || !data) return;
+        const wf = data?.diagnostics?.workflow_selection;
+        setDiag(wf && typeof wf === 'object' ? wf : null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDiag(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [requestKey]);
+
+  return { diag, loading };
 }
 
 function useSummaryData() {
@@ -215,6 +278,7 @@ function StatsCompact({ context }: MiniStatsProps) {
   const { data, loading } = useSummaryData();
   const setStatsMode = useDevPanelStore(s => s.setStatsMode);
   const diagnostics = useMCCDiagnostics();
+  const prefetchDiag = usePrefetchReinforcement(context);
   const tasks = useMCCStore(s => s.tasks);
   const streamEvents = useMCCStore(s => s.streamEvents);
   const scopeSubtitle = useMemo(() => resolveContextSubtitle(context), [context]);
@@ -314,6 +378,15 @@ function StatsCompact({ context }: MiniStatsProps) {
           </span>
           <span style={{ fontSize: 8, color: '#8e98a4' }}>
             retry:dashed
+          </span>
+          <span style={{ fontSize: 8, color: '#8e98a4' }} title="OpenHands reinforcement from prefetch diagnostics">
+            rh:{
+              prefetchDiag.loading
+                ? '...'
+                : ((prefetchDiag.diag?.reinforcement || []).length > 0
+                  ? (prefetchDiag.diag?.reinforcement || []).slice(0, 2).join('+')
+                  : 'off')
+            }
           </span>
         </div>
         <button

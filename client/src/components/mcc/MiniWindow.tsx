@@ -272,6 +272,20 @@ export function MiniWindow({
     return () => window.removeEventListener('keydown', handleKey);
   }, [expanded, collapse]);
 
+  // MARKER_155F.MINIWINDOW.OPEN_EVENT_BIND.V1:
+  // Allow other mini-windows (for example MiniChat model chip) to open/close this window by id.
+  useEffect(() => {
+    const handleWindowOpen = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || {};
+      if (String(detail.windowId || '') !== String(windowId)) return;
+      const nextExpanded = detail.expanded !== undefined ? Boolean(detail.expanded) : true;
+      setExpanded(nextExpanded);
+      onToggle?.(nextExpanded);
+    };
+    window.addEventListener('mcc-miniwindow-open', handleWindowOpen as EventListener);
+    return () => window.removeEventListener('mcc-miniwindow-open', handleWindowOpen as EventListener);
+  }, [windowId, onToggle]);
+
   // Click outside to close (expanded only)
   const handleOverlayClick = useCallback(
     (e: React.MouseEvent) => {
