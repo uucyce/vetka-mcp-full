@@ -18,10 +18,14 @@
 - `PHASE_162_P2_MYCO_TOPBAR_TITLE_ROADMAP_2026-03-06.md`
 - `PHASE_162_P2_RECON_AND_IMPL_REPORT_2026-03-06.md`
 
+5. P3.P0 recon:
+- `PHASE_162_P3_P0_HIDDEN_MEMORY_RECON_REPORT_2026-03-06.md`
+
 ## Current status
 - `P0` complete.
 - `P1` complete (passive-mode skeleton + store mode + chat role wiring).
-- `P2` in progress (top-row MYCO UI + title simplification + chat/dock behavior polish).
+- `P2` complete (top-row MYCO UI + title simplification + chat/dock behavior polish).
+- `P3.P0` complete (hidden memory recon + marker lock for narrow implementation).
 
 ## Root P2 contract (fixed)
 1. Add `MYCO` button (icon + label) in MCC top tab-row.
