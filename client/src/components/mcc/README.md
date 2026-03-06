@@ -11,18 +11,34 @@ From global graph view to focused execution in one surface:
 - open operational windows without losing context,
 - keep task flow, chat, context, and telemetry synchronized in real time.
 
-It is built for live orchestration, not generic chat dashboards:
+Built for live orchestration, not generic chat dashboards:
 - graph-first workspace where each operation is contextual to node/task state,
 - persistent mini-window cockpit (Tasks, Chat, Context, Stats, Balance),
 - fast window choreography: expand, minimize to dock, restore at last user position,
 - low-noise black-and-white interface optimized for dense operational sessions.
 
-## Why This Module Exists
+## TL;DR
 
-`mycelium` is split as a standalone OSS module so contributors can evolve MCC UX/runtime coupling independently from the full VETKA monorepo.
+- If you want a visual, non-black-box operator surface for agent workflows, start here.
+- If you want one-click turnkey automation with no graph context, this is probably not your first stop.
 
-Source-of-truth path in monorepo:
-- `client/src/components/mcc`
+## Quick Start
+
+This repository is a module mirror (`client/src/components/mcc`), not a full standalone app distribution.
+
+To run the complete stack locally:
+
+```bash
+cd /Users/danilagulin/Documents/VETKA_Project/vetka_live_03
+source .venv/bin/activate
+./run.sh
+```
+
+Backend API default: `http://127.0.0.1:5001`
+
+For this module itself:
+- source-of-truth in monorepo: `client/src/components/mcc`
+- public mirror repo: `danilagoleen/mycelium`
 
 ## Core Capabilities
 
@@ -34,7 +50,6 @@ Source-of-truth path in monorepo:
 
 ## Visual Showcase
 
-![MCC overview](docs/showcase/01-overview.png)
 ![DAG drilldown](docs/showcase/02-drilldown.png)
 ![Chat panel (base)](docs/showcase/03-chat-empty.png)
 ![Chat panel (MYCO linked)](docs/showcase/04-chat-myco.png)
@@ -74,6 +89,15 @@ Design origin:
   `У нас в Рязани, грибы с глазами, их едят, они глядят.`
   Approximate English sense: `In Ryazan, mushrooms have eyes; when eaten, they still watch.`
 
+## Honest Positioning
+
+Compared to automation-first tools, Mycelium emphasizes:
+- visibility over hidden chains,
+- operator control over opaque autonomy,
+- context continuity over chat-only interaction.
+
+This is not black PR against any project; it is a product choice.
+
 ## Ecosystem Dependencies
 
 `mycelium` is UI-first, but it reaches full value in the VETKA module graph:
@@ -86,17 +110,17 @@ Design origin:
 
 Without these modules, `mycelium` remains a strong standalone UI shell; with them, it becomes a full command center.
 
-## Open Source Attribution
-
-Primary upstream libraries and licenses are listed in:
-- `OPEN_SOURCE_CREDITS.md`
-
 ## Contributing
 
 1. Fork and create a feature branch.
 2. Use Conventional Commits.
 3. Include screenshots/video for UI behavior changes.
 4. Open PR with concise behavioral notes.
+
+## Open Source Attribution
+
+Primary upstream libraries and licenses are listed in:
+- `OPEN_SOURCE_CREDITS.md`
 
 ## License
 

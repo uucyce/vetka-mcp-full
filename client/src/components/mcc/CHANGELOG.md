@@ -10,6 +10,7 @@ All notable changes to this module are documented here.
 - Added visual showcase gallery with MCC screenshots.
 - Added README hero block and MYCO section (role, behavior, design origin).
 - Added MYCO logo set + loop animation assets (APNG and GIF fallback).
+- Removed deprecated MYCO preview assets and README duplication noise.
 
 ## [0.1.0] - 2026-03-06
 ### Added
