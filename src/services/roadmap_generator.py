@@ -459,15 +459,15 @@ class RoadmapGenerator:
     async def analyze_project(cls, config: ProjectConfig) -> RoadmapDAG:
         """
         Full project analysis:
-        1. Scan directory structure (prefer source_path over sandbox)
+        1. Scan directory structure (prefer sandbox_path for isolated MCC project scope)
         2. Generate roadmap (static for now, LLM in future)
         3. Save to disk
         """
-        # MARKER_155.1A: Prefer source_path (original project) for scanning.
-        # Sandbox may be a small copy; source has full architecture.
-        scan_path = config.source_path
+        # MARKER_161.9.MULTIPROJECT.ISOLATION.ROADMAP_SANDBOX_FIRST.V1:
+        # MCC project tabs must be isolated by playground/workspace.
+        scan_path = config.sandbox_path
         if not scan_path or not os.path.isdir(scan_path):
-            scan_path = config.sandbox_path
+            scan_path = config.source_path
         scan = cls.scan_project_structure(scan_path)
         dag = cls.generate_static_roadmap(scan, config.project_id)
         dag.save()

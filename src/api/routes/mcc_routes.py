@@ -47,6 +47,26 @@ def _sandbox_source_mtime(path: str) -> float:
         return 0.0
 
 
+def _norm_abs(path: str) -> str:
+    return os.path.realpath(os.path.abspath(os.path.expanduser(str(path or "").strip())))
+
+
+def _paths_overlap_or_nested(path_a: str, path_b: str) -> bool:
+    """
+    MARKER_161.9.MULTIPROJECT.ISOLATION.PATH_GUARD.V1
+    True when paths are equal or one contains the other.
+    """
+    a = _norm_abs(path_a)
+    b = _norm_abs(path_b)
+    if not a or not b:
+        return False
+    try:
+        common = os.path.commonpath([a, b])
+    except Exception:
+        return False
+    return common == a or common == b
+
+
 async def _get_sandbox_status_cached(config: "ProjectConfig") -> dict:
     now = time.monotonic()
     source_mtime = _sandbox_source_mtime(config.sandbox_path)
@@ -116,11 +136,15 @@ class ProjectInitRequest(BaseModel):
     source_type: str       # "local" | "git" | "empty"
     source_path: str       # absolute path or git URL
     sandbox_path: str = "" # optional absolute path for playground/sandbox root
+    # MARKER_161.9.MULTIPROJECT.NAMING.API_CONTRACT.V1
+    project_name: str = "" # optional user-facing project name (tab + display)
     quota_gb: int = 10
 
 class ProjectInitResponse(BaseModel):
     success: bool
     project_id: str = ""
+    # MARKER_161.9.MULTIPROJECT.NAMING.API_CONTRACT.V1
+    project_name: str = ""
     sandbox_path: str = ""
     errors: list[str] = []
 
@@ -272,6 +296,7 @@ async def project_init(req: ProjectInitRequest):
         source_path=effective_source_path,
         quota_gb=req.quota_gb,
         sandbox_path=str(req.sandbox_path or ""),
+        project_name=str(req.project_name or ""),
     )
 
     # Validate
@@ -283,6 +308,10 @@ async def project_init(req: ProjectInitRequest):
             errors.append(f"Source path not found: {effective_source_path}")
         elif not os.path.isdir(effective_source_path):
             errors.append(f"Source path is not a directory: {effective_source_path}")
+        elif _paths_overlap_or_nested(effective_source_path, config.sandbox_path):
+            errors.append(
+                "sandbox_path must be isolated from source_path (no equal/nested paths)"
+            )
 
     if errors:
         return ProjectInitResponse(success=False, errors=errors)
@@ -387,6 +416,7 @@ async def project_init(req: ProjectInitRequest):
     return ProjectInitResponse(
         success=True,
         project_id=config.project_id,
+        project_name=str(config.display_name or ""),
         sandbox_path=config.sandbox_path,
     )
 
@@ -638,7 +668,8 @@ async def get_condensed_graph(
 
     resolved_scope = (scope_path or "").strip()
     if not resolved_scope:
-        resolved_scope = config.source_path or config.sandbox_path
+        # MARKER_161.9.MULTIPROJECT.ISOLATION.SANDBOX_SCOPE_DEFAULT.V1
+        resolved_scope = config.sandbox_path or config.source_path
     resolved_scope = os.path.abspath(os.path.expanduser(resolved_scope))
 
     if not os.path.isdir(resolved_scope):
@@ -903,7 +934,8 @@ async def predict_graph_overlay(req: PredictGraphRequest):
 
     resolved_scope = (req.scope_path or "").strip()
     if not resolved_scope:
-        resolved_scope = config.source_path or config.sandbox_path
+        # MARKER_161.9.MULTIPROJECT.ISOLATION.SANDBOX_SCOPE_DEFAULT.V1
+        resolved_scope = config.sandbox_path or config.source_path
     resolved_scope = os.path.abspath(os.path.expanduser(resolved_scope))
 
     if not os.path.isdir(resolved_scope):
@@ -991,7 +1023,8 @@ async def build_design_graph(req: BuildDesignGraphRequest):
 
     resolved_scope = (req.scope_path or "").strip()
     if not resolved_scope:
-        resolved_scope = config.source_path or config.sandbox_path
+        # MARKER_161.9.MULTIPROJECT.ISOLATION.SANDBOX_SCOPE_DEFAULT.V1
+        resolved_scope = config.sandbox_path or config.source_path
     resolved_scope = os.path.abspath(os.path.expanduser(resolved_scope))
 
     if not os.path.isdir(resolved_scope):
@@ -1154,7 +1187,8 @@ async def auto_compare_dag_versions(req: DagAutoCompareRequest):
     resolved_scope = str(req.scope_path or "").strip()
     if source_kind == "scope":
         if not resolved_scope and config is not None:
-            resolved_scope = str(config.source_path or config.sandbox_path or "")
+            # MARKER_161.9.MULTIPROJECT.ISOLATION.SANDBOX_SCOPE_DEFAULT.V1
+            resolved_scope = str(config.sandbox_path or config.source_path or "")
         resolved_scope = os.path.abspath(os.path.expanduser(resolved_scope)) if resolved_scope else ""
         if not resolved_scope or not os.path.isdir(resolved_scope):
             raise HTTPException(status_code=400, detail=f"Invalid scope_path for source_kind=scope: {resolved_scope}")
