@@ -55,9 +55,10 @@ Source-of-truth path in monorepo:
 
 MYCO is the in-graph context companion for operators.
 
-![MYCO ready](docs/showcase/09-myco-ready.png)
-![MYCO speaking](docs/showcase/11-myco-speaking.apng)
-![MYCO idle](docs/showcase/10-myco-idle.png)
+![MYCO logo (alert)](docs/showcase/12-myco-logo-alert.png)
+![MYCO logo (speak)](docs/showcase/13-myco-logo-speak.png)
+![MYCO loop (APNG)](docs/showcase/14-myco-logo-loop.apng)
+![MYCO loop (GIF fallback)](docs/showcase/15-myco-logo-loop.gif)
 
 What MYCO does:
 - sees current task and graph context,
