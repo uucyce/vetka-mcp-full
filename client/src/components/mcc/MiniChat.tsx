@@ -150,8 +150,12 @@ function ChatCompact({ context }: MiniChatProps) {
   }, []);
 
   useEffect(() => {
-    const onActivate = () => {
-      if (helperMode === 'off') return;
+    const onActivate = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      const force = Boolean(detail.force);
+      // MARKER_162.P2.MYCO.TOP_ACTIVATE_RACE_GUARD.V1:
+      // `force` allows deterministic first response on top->chat handoff.
+      if (helperMode === 'off' && !force) return;
       emitMycoReplyEvent();
       setLastAnswer(buildMycoReply(context));
     };
@@ -179,8 +183,10 @@ function ChatCompact({ context }: MiniChatProps) {
   }, []);
 
   useEffect(() => {
-    const onActivate = () => {
-      if (helperMode === 'off') return;
+    const onActivate = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      const force = Boolean(detail.force);
+      if (helperMode === 'off' && !force) return;
       emitMycoReplyEvent();
       setMessages(prev => [...prev, { role: 'helper_myco', content: buildMycoReply(context) }]);
     };

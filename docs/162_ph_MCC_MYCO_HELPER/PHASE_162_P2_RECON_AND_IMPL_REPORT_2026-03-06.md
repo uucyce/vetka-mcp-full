@@ -48,6 +48,14 @@ Status: `IMPLEMENTED + VERIFIED (narrow)`
 - Top MYCO click now performs deterministic handoff: switches to helper mode, restores chat window, and triggers immediate MYCO speech event.
 20. `MARKER_162.P2.MYCO.DOCK_ICON_STYLE_PRESERVE.V1`
 - Removed temporary mushroom emoji override in dock; chat icon style remains consistent with existing UI icon set.
+21. `MARKER_162.P2.MYCO.TOP_ACTIVATE_RACE_GUARD.V1`
+- `mcc-myco-activate` handlers now accept forced activation payload to avoid `off->passive` state race; MYCO speaks on first top-click reliably.
+22. `MARKER_162.P2.MYCO.TOP_HINT_COMIC_BUBBLE.V1`
+- Top hint capsule switched to comic speech-bubble styling with pointer tail toward top MYCO avatar.
+23. `MARKER_162.P2.MYCO.TOP_AVATAR_NO_CLIP.V1`
+- Top avatar/button geometry adjusted to stay fully visible inside tab row (no vertical clipping).
+24. `MARKER_162.P2.MYCO.INSTR_GUIDE_SYNC.V1`
+- Recon aligned with `docs/161_ph_MCC_TRM/MYCO_AGENT_INSTRUCTIONS_GUIDE_V1_2026-03-06.md`; phase notes now track follow-up split into RAG-ready instruction files.
 
 ## Files changed
 1. `client/src/components/mcc/MiniChat.tsx`
@@ -56,6 +64,7 @@ Status: `IMPLEMENTED + VERIFIED (narrow)`
 - Added top-row MYCO button.
 - Added icon animation listener and timed visual states.
 - Bound top-row toggle to helper mode store.
+ - Added forced activation payload and top comic-bubble hint rendering.
 3. `client/src-tauri/tauri.conf.json`
 - `mycelium` window title: `MYCELIUM`.
 4. `client/src-tauri/src/main.rs`
@@ -84,3 +93,4 @@ Status: `IMPLEMENTED + VERIFIED (narrow)`
 ## Out of scope intentionally
 1. Native custom titlebar embedding (requires `decorations: false` and cross-platform drag/controls rework).
 2. Replacing all chat MYCO controls (P2 keeps existing chips as secondary control).
+3. Full split of instruction guide into three standalone RAG bundles (`myco_core`, `agent_roles`, `user_playbook`) moved to next doc-only step.

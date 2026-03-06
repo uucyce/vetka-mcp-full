@@ -3320,7 +3320,9 @@ export function MyceliumCommandCenter() {
         detail: { windowId: 'chat', expanded: false },
       }),
     );
-    window.dispatchEvent(new CustomEvent('mcc-myco-activate', { detail: { ts: Date.now() } }));
+    // MARKER_162.P2.MYCO.TOP_ACTIVATE_RACE_GUARD.V1:
+    // Force payload guarantees first-click MYCO speech even before helperMode state settles.
+    window.dispatchEvent(new CustomEvent('mcc-myco-activate', { detail: { ts: Date.now(), force: true, source: 'topbar' } }));
   }, [setHelperMode]);
 
   useEffect(() => {
@@ -3484,7 +3486,7 @@ export function MyceliumCommandCenter() {
             // Helper hint is pinned near visual center (slightly left), independent from right controls.
             style={{
               position: 'absolute',
-              left: '46%',
+              left: '44%',
               top: 4,
               transform: 'translateX(-50%)',
               display: 'inline-flex',
@@ -3515,8 +3517,10 @@ export function MyceliumCommandCenter() {
                   padding: 0,
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
-                  width: 44,
-                  height: 42,
+                  // MARKER_162.P2.MYCO.TOP_AVATAR_NO_CLIP.V1:
+                  // Keep top avatar fully inside tab-row vertical bounds.
+                  width: 40,
+                  height: 32,
                   overflow: 'visible',
                 }}
               >
@@ -3524,8 +3528,8 @@ export function MyceliumCommandCenter() {
                   src={mycoBadgeIconSrc}
                   alt="Helper"
                   style={{
-                    width: 30,
-                    height: 39,
+                    width: 24,
+                    height: 30,
                     objectFit: 'contain',
                     display: 'block',
                   }}
@@ -3557,6 +3561,9 @@ export function MyceliumCommandCenter() {
                 // Fixed width hint prevents positional jitter while message length changes.
                 title={mycoTopHint}
                 style={{
+                  // MARKER_162.P2.MYCO.TOP_HINT_COMIC_BUBBLE.V1:
+                  // Top MYCO hint uses comic-style speech bubble with pointer tail to avatar.
+                  position: 'relative',
                   width: 244,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -3565,10 +3572,34 @@ export function MyceliumCommandCenter() {
                   fontSize: 9,
                   border: `1px solid ${NOLAN_PALETTE.borderDim}`,
                   borderRadius: 6,
-                  padding: '1px 6px',
+                  padding: '3px 8px',
                   background: '#0a0d12',
                 }}
               >
+                <span
+                  style={{
+                    position: 'absolute',
+                    left: -8,
+                    top: 10,
+                    width: 0,
+                    height: 0,
+                    borderTop: '6px solid transparent',
+                    borderBottom: '6px solid transparent',
+                    borderRight: `8px solid ${NOLAN_PALETTE.borderDim}`,
+                  }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    left: -6,
+                    top: 11,
+                    width: 0,
+                    height: 0,
+                    borderTop: '5px solid transparent',
+                    borderBottom: '5px solid transparent',
+                    borderRight: '7px solid #0a0d12',
+                  }}
+                />
                 {mycoTopHint}
               </div>
             </div>

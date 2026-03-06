@@ -73,3 +73,17 @@ Protocol: `RECON -> REPORT -> WAIT GO -> IMPL NARROW -> VERIFY`
 8. `MARKER_162.P2.MYCO.CHAT_SINGLE_LEFT_ANCHOR.V1`
 9. `MARKER_162.P2.MYCO.CHAT_BUBBLE_TAIL.V1`
 10. `MARKER_162.P2.MYCO.WINDOW_TITLE_DOC_SYNC.V1`
+
+## P2.3 behavior + docs sync (2026-03-06)
+1. Top-click handoff to chat must be race-safe: MYCO always speaks on first activation.
+2. Top hint in `off` mode renders as comic speech bubble with pointer tail to MYCO avatar.
+3. MYCO top avatar should not be visually clipped inside tab row.
+4. Integrate parallel-agent instructions guide into MYCO docs and roadmap:
+- source: `docs/161_ph_MCC_TRM/MYCO_AGENT_INSTRUCTIONS_GUIDE_V1_2026-03-06.md`
+- action: align Phase 162 contracts and keep split-to-RAG as planned follow-up.
+
+## Markers (P2.3)
+1. `MARKER_162.P2.MYCO.TOP_ACTIVATE_RACE_GUARD.V1`
+2. `MARKER_162.P2.MYCO.TOP_HINT_COMIC_BUBBLE.V1`
+3. `MARKER_162.P2.MYCO.TOP_AVATAR_NO_CLIP.V1`
+4. `MARKER_162.P2.MYCO.INSTR_GUIDE_SYNC.V1`
