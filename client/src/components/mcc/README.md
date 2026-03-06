@@ -2,6 +2,15 @@
 
 Mycelium Command Center is a DAG-native operator UI for multi-agent runtime control.
 
+## Hero
+
+![Mycelium Hero](docs/showcase/01-overview.png)
+
+From global graph view to focused execution in one surface:
+- read system topology at a glance,
+- open operational windows without losing context,
+- keep task flow, chat, context, and telemetry synchronized in real time.
+
 It is built for live orchestration, not generic chat dashboards:
 - graph-first workspace where each operation is contextual to node/task state,
 - persistent mini-window cockpit (Tasks, Chat, Context, Stats, Balance),
@@ -41,6 +50,28 @@ Source-of-truth path in monorepo:
 3. A window can be expanded or minimized to dock, then restored to the last user position.
 4. New workflow scope can be opened as a new visual tab/window context.
 5. Operator actions in one surface update others through shared runtime state.
+
+## MYCO (Mycelium Context Operator)
+
+MYCO is the in-graph context companion for operators.
+
+![MYCO ready](docs/showcase/09-myco-ready.png)
+![MYCO speaking](docs/showcase/11-myco-speaking.apng)
+![MYCO idle](docs/showcase/10-myco-idle.png)
+
+What MYCO does:
+- sees current task and graph context,
+- suggests next actions when the state changes,
+- speaks/animates when new messages arrive,
+- escalates to a senior route when deeper support is needed.
+
+Design origin:
+- homage to the mushroom from Mario,
+- visual wink to the bitten-apple era, but as a bitten mushroom,
+- light reference to *Alice in Wonderland*,
+- and a personal easter egg from Ryazan folklore:
+  `У нас в Рязани, грибы с глазами, их едят, они глядят.`
+  Approximate English sense: `In Ryazan, mushrooms have eyes; when eaten, they still watch.`
 
 ## Ecosystem Dependencies
 

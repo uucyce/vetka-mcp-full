@@ -8,6 +8,7 @@ All notable changes to this module are documented here.
   clearer runtime value proposition, and stronger contribution guidance.
 - Added "How it works" and ecosystem dependency map (`vetka-*` modules).
 - Added visual showcase gallery with MCC screenshots.
+- Added README hero block and MYCO section (role, behavior, design origin).
 
 ## [0.1.0] - 2026-03-06
 ### Added
