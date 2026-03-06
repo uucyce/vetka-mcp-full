@@ -87,3 +87,22 @@ Protocol: `RECON -> REPORT -> WAIT GO -> IMPL NARROW -> VERIFY`
 2. `MARKER_162.P2.MYCO.TOP_HINT_COMIC_BUBBLE.V1`
 3. `MARKER_162.P2.MYCO.TOP_AVATAR_NO_CLIP.V1`
 4. `MARKER_162.P2.MYCO.INSTR_GUIDE_SYNC.V1`
+
+## Carry-forward to next phase (memory/rag backend-only)
+1. Hidden scan/index of instructions and readmes into triple-memory for MYCO/agents.
+2. ENGRAM binding for MYCO:
+- user name;
+- latest tasks per project;
+- latest workflow context.
+3. Local-first retrieval path:
+- JEPA + Gemma as fast local answer path;
+- API escalation only when local confidence is insufficient.
+4. Strict UX rule:
+- no new memory widgets or toggles in MCC UI; all memory work remains invisible in UI.
+
+## Markers (carry-forward)
+1. `MARKER_162.P3.MYCO.HIDDEN_TRIPLE_MEMORY_INDEX.V1`
+2. `MARKER_162.P3.MYCO.README_SCAN_PIPELINE.V1`
+3. `MARKER_162.P3.MYCO.ENGRAM_USER_TASK_MEMORY.V1`
+4. `MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1`
+5. `MARKER_162.P3.MYCO.NO_UI_MEMORY_SURFACE.V1`

@@ -152,3 +152,47 @@ Root locked items for next narrow slice:
 2. Keep top-row passive hints rules-based and cheap; only chat deep-dive escalates to L2/L3.
 3. Reuse existing chunked routing contracts from:
 - `docs/157_ph/MARKER_157_4_VETKA_JARVIS_HANDOFF_ROADMAP_2026-03-05.md`
+
+## 13) Memory + hidden indexing addendum (2026-03-06)
+Goal: MYCO и агенты должны использовать расширенную память/инструкции без UI-шума.
+
+1. Hidden instruction indexing (no UI surface):
+- просканировать и индексировать readme/contracts/guides в internal triple-memory;
+- индекс хранится как backend/runtime слой, без новых кнопок/панелей;
+- retrieval идёт только через MYCO/agent runtime path.
+
+2. Triple-memory routing contract:
+- STM: текущий контекст сессии/viewport/focus;
+- ENGRAM: долговременные факты (пользователь, последние задачи, устойчивые предпочтения);
+- MGC/CAM (working graph cache): быстрые структурные связи и saliency.
+
+3. JEPA + local Gemma fast path:
+- при локальном режиме сначала JEPA-summary + Gemma retrieval-answer;
+- API escalation только при недостаточной уверенности/покрытии.
+
+4. ENGRAM integration (MYCO baseline):
+- помнить имя пользователя;
+- помнить последние задачи по каждому проекту;
+- помнить последние активные workflow контексты;
+- поднимать эти факты проактивно в ответах MYCO (кратко, без шума).
+
+5. Source glossary alignment:
+- semantic tags и memory aliases синхронизировать по:
+  `docs/besedii_google_drive_docs/VETKA_MEMORY_DAG_ABBREVIATIONS_2026-02-22.md`
+
+## 13.1) Markers (memory addendum)
+1. `MARKER_162.P3.MYCO.HIDDEN_TRIPLE_MEMORY_INDEX.V1`
+2. `MARKER_162.P3.MYCO.README_SCAN_PIPELINE.V1`
+3. `MARKER_162.P3.MYCO.ENGRAM_USER_TASK_MEMORY.V1`
+4. `MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1`
+5. `MARKER_162.P3.MYCO.NO_UI_MEMORY_SURFACE.V1`
+
+## 13.2) Narrow implementation checklist (next step)
+1. Сформировать список источников для скрытого индексирования (readme/contracts/phase docs).
+2. Добавить ingestion job в memory pipeline (без UI endpoints).
+3. Привязать retrieval к MYCO chat/controller path.
+4. Добавить memory payload в MYCO context builder (`user_name`, `recent_tasks_by_project`).
+5. Добавить тесты контрактов:
+- hidden index exists;
+- MYCO получает ENGRAM поля;
+- в UI не появляется новых memory-элементов.
