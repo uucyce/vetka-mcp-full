@@ -7,6 +7,18 @@ Protocol: `RECON -> REPORT -> WAIT GO -> IMPL NARROW -> VERIFY`
 Идея правильная и своевременная: это не "косметика", а обязательный слой объяснимости (comprehension layer) для grandma-mode.
 Нужен именно контекстный guide, который объясняет текущий LOD/viewport и действие пользователя, а не еще один постоянный шумный UI-элемент.
 
+## 0.1) Current priority addendum (2026-03-06)
+1. MYCO topology contract:
+- `off`: MYCO + system hints in top center lane.
+- `passive`: MYCO and hints move into chat lane.
+2. Minimized chat contract:
+- restoring chat from dock must immediately restore MYCO speaking presence.
+3. Message ownership contract:
+- MYCO guidance must look explicitly spoken by MYCO (single anchor + bubble-tail).
+4. Proactive context contract (next slice):
+- trigger by focus/hover/selection/context-change events (not by blind timer),
+- short hint first, deep explain in chat on demand.
+
 ## 1) Выделенные пункты из твоего потока (as requirements)
 1. Нужен helper-режим (вкл/выкл), без постоянного навязывания.
 2. Helper должен понимать контекст интерфейса:
@@ -122,3 +134,21 @@ Protocol: `RECON -> REPORT -> WAIT GO -> IMPL NARROW -> VERIFY`
 ## 10) GO gate for implementation
 Start implementation only after explicit command:
 `GO 162-P0`.
+
+---
+
+## 11) P2 extension (2026-03-06)
+Root locked items for next narrow slice:
+1. Add MYCO button (`icon + label`) in MCC top tab-row.
+2. Click toggles helper mode (`off / passive / active`).
+3. MYCO icon switches to animated state while helper is responding, then returns to default.
+4. MCC window title simplified to `MYCELIUM`.
+
+## 12) Next-phase routing note (aligned with Phase 157 handoff)
+1. MYCO detailed answers in chat should use staged routing:
+- L1: lightweight local model for instant guidance.
+- L2: stronger local model for deeper explanation.
+- L3: API fallback using favorite/last-used key-model pair.
+2. Keep top-row passive hints rules-based and cheap; only chat deep-dive escalates to L2/L3.
+3. Reuse existing chunked routing contracts from:
+- `docs/157_ph/MARKER_157_4_VETKA_JARVIS_HANDOFF_ROADMAP_2026-03-05.md`

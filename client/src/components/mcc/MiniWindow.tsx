@@ -14,6 +14,7 @@ import { useState, useCallback, useRef, useEffect, type CSSProperties, type Reac
 import Draggable from 'react-draggable';
 import { motion, AnimatePresence } from 'framer-motion';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+import { useMCCStore } from '../../store/useMCCStore';
 
 type Position = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 type Size = { width: number; height: number };
@@ -743,6 +744,20 @@ export function MiniWindow({
  */
 export function MiniWindowDock() {
   const [entries, setEntries] = useState<DockEntry[]>(() => getDockEntries());
+  const helperMode = useMCCStore((s) => s.helperMode);
+
+  const restoreEntry = useCallback((entry: DockEntry, expanded: boolean) => {
+    if (entry.windowId === 'chat' && helperMode !== 'off') {
+      // MARKER_162.P2.MYCO.DOCK_RESTORE_SPEAKING.V1:
+      // Restoring chat while helper is active triggers MYCO speaking animation.
+      window.dispatchEvent(new CustomEvent('mcc-myco-reply', { detail: { ts: Date.now() } }));
+    }
+    window.dispatchEvent(
+      new CustomEvent('mcc-miniwindow-open', {
+        detail: { windowId: entry.windowId, expanded },
+      }),
+    );
+  }, [helperMode]);
 
   useEffect(() => {
     const handleDockUpdate = (event: Event) => {
@@ -791,7 +806,9 @@ export function MiniWindowDock() {
           }}
           title={entry.title}
         >
-          <span style={{ fontSize: 10, flexShrink: 0 }}>{entry.icon}</span>
+          <span style={{ fontSize: 10, flexShrink: 0 }}>
+            {entry.windowId === 'chat' && helperMode !== 'off' ? '🍄' : entry.icon}
+          </span>
           <span
             style={{
               overflow: 'hidden',
@@ -804,13 +821,7 @@ export function MiniWindowDock() {
           </span>
           <button
             type="button"
-            onClick={() =>
-              window.dispatchEvent(
-                new CustomEvent('mcc-miniwindow-open', {
-                  detail: { windowId: entry.windowId, expanded: false },
-                }),
-              )
-            }
+            onClick={() => restoreEntry(entry, false)}
             style={{
               border: 'none',
               background: 'none',
@@ -825,13 +836,7 @@ export function MiniWindowDock() {
           </button>
           <button
             type="button"
-            onClick={() =>
-              window.dispatchEvent(
-                new CustomEvent('mcc-miniwindow-open', {
-                  detail: { windowId: entry.windowId, expanded: true },
-                }),
-              )
-            }
+            onClick={() => restoreEntry(entry, true)}
             style={{
               border: 'none',
               background: 'none',

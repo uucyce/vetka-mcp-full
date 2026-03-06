@@ -76,6 +76,9 @@ interface DagVersionSummary {
   node_count: number;
   edge_count: number;
   decision: string;
+  graph_source?: string;
+  trm_status?: string;
+  trm_profile?: string;
   markers: string[];
 }
 
@@ -88,6 +91,15 @@ interface DagCompareRow {
     use_predictive_overlay?: boolean;
     max_predicted_edges?: number;
   };
+  graph_source?: string;
+  trm_meta?: {
+    status?: string;
+    applied?: boolean;
+    profile?: string;
+    accepted_count?: number;
+    rejected_count?: number;
+    reason?: string;
+  };
   scorecard?: {
     score?: number;
     decision?: string;
@@ -95,6 +107,8 @@ interface DagCompareRow {
     edge_count?: number;
     orphan_rate?: number;
     density?: number;
+    trm_gate?: number;
+    graph_source?: string;
   };
   error?: string;
 }
@@ -102,6 +116,7 @@ interface DagCompareRow {
 interface WorkflowGraphSourcePayload {
   marker?: string;
   graph_source?: string;
+  trm_meta?: Record<string, any>;
   task_id?: string;
   runtime_graph?: Record<string, any>;
   design_graph?: Record<string, any>;
@@ -118,18 +133,12 @@ type TaskDrillState = 'collapsed' | 'expanded';
 type RoadmapNodeDrillState = 'collapsed' | 'expanded';
 type MycoBadgeVisualState = 'idle' | 'speaking' | 'ready';
 
-const MYCO_MODE_ORDER: MycoHelperMode[] = ['off', 'passive', 'active'];
+const MYCO_MODE_ORDER: MycoHelperMode[] = ['off', 'passive'];
 
 function nextMycoMode(mode: MycoHelperMode): MycoHelperMode {
   const idx = MYCO_MODE_ORDER.indexOf(mode);
   if (idx < 0) return 'off';
   return MYCO_MODE_ORDER[(idx + 1) % MYCO_MODE_ORDER.length];
-}
-
-function mycoModeCompactLabel(mode: MycoHelperMode): string {
-  if (mode === 'passive') return 'p';
-  if (mode === 'active') return 'a';
-  return 'off';
 }
 
 function uniqueIds(ids: Array<string | null | undefined>): string[] {
@@ -1426,6 +1435,9 @@ export function MyceliumCommandCenter() {
   const [cameraLOD, setCameraLOD] = useState<LODLevel>('tasks');
   const [mycoBadgeVisualState, setMycoBadgeVisualState] = useState<MycoBadgeVisualState>('idle');
   const mycoBadgeTimersRef = useRef<number[]>([]);
+  const [mycoTopHint, setMycoTopHint] = useState<string>('ready');
+  const mycoHintTimersRef = useRef<number[]>([]);
+  const mycoTopHintKeyRef = useRef<string>('');
   const dagGraphIdentity = useMemo(
     () => `${navLevel}:${navRoadmapNodeId || 'none'}`,
     [navLevel, navRoadmapNodeId],
@@ -1480,10 +1492,10 @@ export function MyceliumCommandCenter() {
       setMycoBadgeVisualState('speaking');
       const readyTimer = window.setTimeout(() => {
         setMycoBadgeVisualState('ready');
-      }, 1200);
+      }, 1500);
       const idleTimer = window.setTimeout(() => {
         setMycoBadgeVisualState('idle');
-      }, 3200);
+      }, 3900);
       mycoBadgeTimersRef.current = [readyTimer, idleTimer];
     };
     window.addEventListener('mcc-myco-reply', onMycoReply as EventListener);
@@ -1725,6 +1737,11 @@ export function MyceliumCommandCenter() {
       edges: edgesRaw.map((e: any, idx: number) => adaptVersionEdge(e, idx)),
       crossEdges: crossRaw.map((e: any, idx: number) => adaptVersionEdge(e, idx)),
       verifier: dagPayload?.verifier || activeDagVersionPayload?.build_meta?.verifier || null,
+      graphSource: String(dagPayload?.graph_source || activeDagVersionPayload?.build_meta?.graph_source || 'baseline'),
+      trmMeta:
+        (dagPayload?.trm_meta && typeof dagPayload?.trm_meta === 'object'
+          ? dagPayload?.trm_meta
+          : activeDagVersionPayload?.build_meta?.trm_meta) || null,
     };
   }, [activeDagVersionPayload]);
   const sourceModeRoadmapGraph = useMemo(() => {
@@ -1740,6 +1757,8 @@ export function MyceliumCommandCenter() {
         edges: rawEdges.map((e: any, idx: number) => adaptVersionEdge({ ...e, type: 'predicted', relationKind: 'predicted' }, idx)),
         crossEdges: [] as DAGEdge[],
         verifier: null,
+        graphSource: String(workflowSourcePayload?.graph_source || 'baseline'),
+        trmMeta: (workflowSourcePayload?.trm_meta && typeof workflowSourcePayload?.trm_meta === 'object') ? workflowSourcePayload.trm_meta : null,
       };
     }
     const graphPayload = effectiveWorkflowSourceMode === 'runtime'
@@ -1752,6 +1771,8 @@ export function MyceliumCommandCenter() {
       edges: extracted.edges.map((e: any, idx: number) => adaptVersionEdge(e, idx)),
       crossEdges: [] as DAGEdge[],
       verifier: null,
+      graphSource: String(workflowSourcePayload?.graph_source || 'baseline'),
+      trmMeta: (workflowSourcePayload?.trm_meta && typeof workflowSourcePayload?.trm_meta === 'object') ? workflowSourcePayload.trm_meta : null,
     };
   }, [workflowSourcePayload, effectiveWorkflowSourceMode, roadmapSourceOverrideEnabled]);
 
@@ -1759,6 +1780,18 @@ export function MyceliumCommandCenter() {
   const roadmapEdges = sourceModeRoadmapGraph?.edges || versionRoadmapGraph?.edges || roadmap.edges;
   const roadmapCrossEdges = sourceModeRoadmapGraph?.crossEdges || versionRoadmapGraph?.crossEdges || roadmap.crossEdges;
   const roadmapVerifier = sourceModeRoadmapGraph?.verifier || versionRoadmapGraph?.verifier || roadmap.verifier;
+  const roadmapGraphSource = String(
+    sourceModeRoadmapGraph?.graphSource
+      || versionRoadmapGraph?.graphSource
+      || roadmap.graphSource
+      || 'baseline',
+  );
+  const roadmapTrmMeta = (
+    sourceModeRoadmapGraph?.trmMeta
+    || versionRoadmapGraph?.trmMeta
+    || roadmap.trmMeta
+    || null
+  ) as Record<string, any> | null;
   const selectedDagCompareRow = useMemo(() => {
     if (!selectedDagCompareName) return null;
     return dagCompareRows.find((r) => r.name === selectedDagCompareName) || null;
@@ -1796,6 +1829,30 @@ export function MyceliumCommandCenter() {
     if (!source) return `${mode} · default`;
     return `${mode} · ${source}`;
   }, [effectiveWorkflowSourceMode, workflowSourcePayload?.graph_source, workflowSourceLoading, workflowSourceError]);
+
+  const trmDiagnosticsUi = useMemo(() => {
+    // MARKER_161.TRM.UI.DIAGNOSTICS_CHIP.V1:
+    // Visible TRM refine diagnostics in roadmap view (source + gate outcome).
+    const source = String(roadmapGraphSource || 'baseline').toLowerCase();
+    const meta = roadmapTrmMeta || {};
+    const status = String(meta.status || '').toLowerCase();
+    const profile = String(meta.profile || '');
+    const accepted = Number(meta.accepted_count || 0);
+    const rejected = Number(meta.rejected_count || 0);
+    if (source !== 'trm_refined' && !status) return null;
+
+    const sourceLabel = source === 'trm_refined' ? 'TRM Source: Refined' : `TRM Source: ${source || 'baseline'}`;
+    const gateLabel = status ? `gate:${status}` : 'gate:n/a';
+    const statsLabel = `acc:${accepted} rej:${rejected}`;
+    const profileLabel = profile ? `profile:${profile}` : 'profile:off';
+
+    return {
+      title: `${sourceLabel} · ${gateLabel}`,
+      summary: `${profileLabel} · ${statsLabel}`,
+      hint: `TRM diagnostics: source=${source || 'baseline'}, status=${status || 'n/a'}, profile=${profile || 'off'}, accepted=${accepted}, rejected=${rejected}`,
+      color: source === 'trm_refined' ? '#8ecbff' : '#9a9386',
+    };
+  }, [roadmapGraphSource, roadmapTrmMeta]);
 
   // MARKER_153.7C: Architect Captain recommendations
   const captain = useCaptain(mccReady && hasProject);
@@ -2300,6 +2357,49 @@ export function MyceliumCommandCenter() {
     setFocusedNodeId(overlayId);
     setFocusRestoreSource('current');
   }, [effectiveNodes, navLevel, selectedTaskId, setFocusRestoreSource, setFocusedNodeId]);
+
+  useEffect(() => {
+    const clearTimers = () => {
+      mycoHintTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      mycoHintTimersRef.current = [];
+    };
+    const focusIds = selectedNodeIds.length > 0 ? selectedNodeIds : (selectedNode ? [selectedNode] : []);
+    const focusId = focusIds[0] || '';
+    const node = focusId ? effectiveNodes.find((n) => n.id === focusId) : null;
+    const nodeLabel = String(node?.label || focusId || '');
+    const drillTarget = selectedNode?.startsWith('task_overlay_')
+      ? 'workflow'
+      : navLevel === 'roadmap'
+        ? 'module'
+        : 'task';
+    let hint = 'select node • create task • run workflow';
+    if ((navLevel === 'roadmap' || navLevel === 'tasks') && selectedNode) {
+      // MARKER_162.P2.MYCO.TOP_SYSTEM_HINT_PRIORITY.V1:
+      // Top helper hint has priority over generic context title while node is selected.
+      hint = `Press Enter to drill into ${drillTarget}`;
+    } else if (nodeLabel) {
+      hint = `${nodeLabel}`;
+    } else if (selectedTaskId) {
+      hint = `task ${selectedTaskId} linked`;
+    } else if (navLevel === 'workflow') {
+      hint = 'workflow context: open node and inspect roles';
+    } else if (navLevel === 'tasks') {
+      hint = 'tasks context: choose task to inspect workflow';
+    } else if (navLevel === 'roadmap') {
+      hint = 'roadmap context: click node to inspect links';
+    }
+    clearTimers();
+    setMycoTopHint(hint);
+    const hintKey = `${helperMode}:${navLevel}:${selectedTaskId || ''}:${focusId}:${hint}`;
+    if (mycoTopHintKeyRef.current !== hintKey) {
+      mycoTopHintKeyRef.current = hintKey;
+      setMycoBadgeVisualState('speaking');
+      const readyTimer = window.setTimeout(() => setMycoBadgeVisualState('ready'), 1500);
+      const idleTimer = window.setTimeout(() => setMycoBadgeVisualState('idle'), 3900);
+      mycoHintTimersRef.current = [readyTimer, idleTimer];
+    }
+    return () => clearTimers();
+  }, [effectiveNodes, helperMode, navLevel, selectedNode, selectedNodeIds, selectedTaskId]);
 
   const focusIdsForView = useMemo(
     () => new Set<string>(
@@ -3221,6 +3321,11 @@ export function MyceliumCommandCenter() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [sendFocusToArchitect]);
 
+  useEffect(() => {
+    // Keep window caption aligned with current brand naming.
+    document.title = 'MYCELIUM';
+  }, []);
+
   return (
     <div
       style={{
@@ -3287,6 +3392,10 @@ export function MyceliumCommandCenter() {
             fontSize: 9,
             flexShrink: 0,
             overflowX: 'auto',
+            overflowY: 'visible',
+            position: 'relative',
+            paddingTop: 8,
+            minHeight: 44,
           }}
         >
           {projectTabs.map((p) => {
@@ -3367,39 +3476,101 @@ export function MyceliumCommandCenter() {
             <span style={{ color: '#67707c', marginLeft: 2, whiteSpace: 'nowrap' }}>tabs…</span>
           )}
           <div style={{ marginLeft: 'auto' }} />
-          <button
-            type="button"
-            onClick={() => setHelperMode(nextMycoMode(helperMode))}
-            // MARKER_162.P2.MYCO.TOPROW_BUTTON.V1:
-            // Grandma-mode needs explicit helper button outside tiny chat chip.
-            title={`MYCO helper (${helperMode}). Click to cycle: off -> passive -> active`}
+          {helperMode === 'off' && (
+            <div
+            // MARKER_162.P2.MYCO.TOP_CENTER_ANCHOR.V1:
+            // Helper hint is pinned near visual center (slightly left), independent from right controls.
             style={{
+              position: 'absolute',
+              left: '46%',
+              top: 4,
+              transform: 'translateX(-50%)',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 5,
-              border: `1px solid ${helperMode === 'off' ? NOLAN_PALETTE.borderDim : NOLAN_PALETTE.borderLight}`,
-              borderRadius: '6px 6px 0 0',
-              borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
-              background: NOLAN_PALETTE.bgLight,
-              color: helperMode === 'off' ? NOLAN_PALETTE.textMuted : NOLAN_PALETTE.text,
-              padding: '1px 8px 2px 6px',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              minWidth: 64,
+              gap: 8,
+              pointerEvents: 'auto',
+              zIndex: 3,
             }}
           >
-            <img
-              src={mycoBadgeIconSrc}
-              alt="MYCO"
-              style={{
-                width: 12,
-                height: 16,
-                objectFit: 'contain',
-              }}
-            />
-            <span style={{ fontSize: 9, fontWeight: 600, letterSpacing: 0.3 }}>MYCO</span>
-            <span style={{ fontSize: 8, opacity: 0.75 }}>{mycoModeCompactLabel(helperMode)}</span>
-          </button>
+              <button
+                type="button"
+                // MARKER_162.P2.MYCO.MODE_TOGGLE_TOPROW.V1:
+                // Top-row helper switch is primary launcher.
+                onClick={() => setHelperMode(nextMycoMode(helperMode))}
+                // MARKER_162.P2.MYCO.TOPROW_BUTTON.V1:
+                // Grandma-mode needs explicit helper launcher outside chat.
+                title={`Helper mode (${helperMode}). Click to toggle helper chat`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  border: `1px solid ${helperMode === 'off' ? NOLAN_PALETTE.borderDim : NOLAN_PALETTE.borderLight}`,
+                  borderRadius: '6px 6px 0 0',
+                  borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  background: NOLAN_PALETTE.bgLight,
+                  color: helperMode === 'off' ? NOLAN_PALETTE.textMuted : NOLAN_PALETTE.text,
+                  padding: 0,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  width: 44,
+                  height: 42,
+                  overflow: 'visible',
+                }}
+              >
+                <img
+                  src={mycoBadgeIconSrc}
+                  alt="Helper"
+                  style={{
+                    width: 30,
+                    height: 39,
+                    objectFit: 'contain',
+                    display: 'block',
+                  }}
+                />
+                {mycoBadgeVisualState !== 'idle' && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: -3,
+                      right: -2,
+                      width: 10,
+                      height: 10,
+                      borderRadius: 99,
+                      border: `1px solid ${NOLAN_PALETTE.borderLight}`,
+                      background: '#0f1115',
+                      color: '#e8edf4',
+                      fontSize: 8,
+                      lineHeight: '9px',
+                      textAlign: 'center',
+                      fontWeight: 700,
+                    }}
+                  >
+                    !
+                  </span>
+                )}
+              </button>
+              <div
+                // MARKER_162.P2.MYCO.TOP_HINT_FIXED_WIDTH.V1:
+                // Fixed width hint prevents positional jitter while message length changes.
+                title={mycoTopHint}
+                style={{
+                  width: 244,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  color: '#aab4c0',
+                  fontSize: 9,
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 6,
+                  padding: '1px 6px',
+                  background: '#0a0d12',
+                }}
+              >
+                {mycoTopHint}
+              </div>
+            </div>
+          )}
         </div>
       )}
       {/* MARKER_155A.G21.PLAYGROUND_ENTRY: Always-available playground entry for existing projects. */}
@@ -3898,28 +4069,8 @@ export function MyceliumCommandCenter() {
 
             {navLevel === 'first_run' && <FirstRunView />}
 
-            {/* MARKER_153.5G + 155.1A: Double-click hint at roadmap and tasks levels */}
-            {(navLevel === 'roadmap' || navLevel === 'tasks') && effectiveNodes.length > 0 && selectedNode && (
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: showStream ? 110 : 10,
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  background: 'rgba(0,0,0,0.85)',
-                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-                  borderRadius: 4,
-                  padding: '4px 12px',
-                  fontSize: 9,
-                  color: '#aaa',
-                  fontFamily: 'monospace',
-                  zIndex: 10,
-                  pointerEvents: 'none',
-                }}
-              >
-                Press <span style={{ color: NOLAN_PALETTE.textAccent, fontWeight: 600 }}>Enter</span> to drill into {selectedNode?.startsWith('task_overlay_') ? 'workflow' : navLevel === 'roadmap' ? 'module' : 'task'}
-              </div>
-            )}
+            {/* MARKER_162.P2.MYCO.TOP_SYSTEM_HINT_PRIORITY.V1:
+                Drill hint moved from bottom overlay into top MYCO hint channel. */}
 
             {/* MARKER_155B.CANON.UI_SOURCE_MODE.V1:
                 Persistent workflow source mode switch (runtime|design|predict). */}
@@ -4148,6 +4299,40 @@ export function MyceliumCommandCenter() {
                 onClick={() => addToast('info', `${jepaRuntimeUi.title} · ${jepaRuntimeUi.hint}`)}
               >
                 <span>{jepaRuntimeUi.title}</span>
+              </div>
+            )}
+
+            {/* MARKER_161.TRM.UI.SOURCE_BADGE.V1:
+                TRM source observability badge (baseline vs trm_refined). */}
+            {/* MARKER_161.TRM.UI.DIAGNOSTICS_CHIP.V1:
+                Compact TRM gate diagnostics (profile, accepted/rejected). */}
+            {debugMode && navLevel === 'roadmap' && trmDiagnosticsUi && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 64,
+                  right: 8,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'rgba(0,0,0,0.70)',
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 4,
+                  padding: '4px 10px',
+                  fontSize: 10,
+                  color: trmDiagnosticsUi.color,
+                  letterSpacing: 0.35,
+                  zIndex: 9,
+                  pointerEvents: 'auto',
+                  fontFamily: 'monospace',
+                  cursor: 'help',
+                  maxWidth: 420,
+                }}
+                title={trmDiagnosticsUi.hint}
+                onClick={() => addToast('info', trmDiagnosticsUi.hint)}
+              >
+                <span>{trmDiagnosticsUi.title}</span>
+                <span style={{ color: '#7b8390' }}>{trmDiagnosticsUi.summary}</span>
               </div>
             )}
           </div>
