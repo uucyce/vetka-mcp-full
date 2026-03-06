@@ -2,7 +2,8 @@
 // Phase 100.1: Basic commands
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri_plugin_dialog::DialogExt;
 use url::Url;
 use std::sync::{Mutex, OnceLock};
 
@@ -82,6 +83,282 @@ pub fn get_system_info() -> SystemInfo {
         tauri_version: "2.0".to_string(),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
     }
+}
+
+/// MARKER_161.7.MULTIPROJECT.TAURI.NATIVE_FOLDER_PICKER.V1
+/// Fallback native folder picker for MCC onboarding when JS plugin dialog bridge is unavailable.
+#[tauri::command]
+pub async fn pick_folder_native(app: AppHandle, title: Option<String>) -> Result<Option<String>, String> {
+    let mut builder = app.dialog().file();
+    if let Some(t) = title.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        builder = builder.set_title(t);
+    }
+    let selected = builder
+        .blocking_pick_folder()
+        .and_then(|p| p.into_path().ok())
+        .map(|p| p.to_string_lossy().to_string());
+    Ok(selected)
+}
+
+/// MARKER_159.WINFS.R1_CMD: Native window-level fullscreen toggle.
+#[tauri::command]
+pub fn set_window_fullscreen(
+    app: AppHandle,
+    window_label: Option<String>,
+    fullscreen: bool,
+) -> Result<bool, String> {
+    let label = window_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("main")
+        .to_string();
+
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| format!("Window not found: {label}"))?;
+
+    window
+        .set_fullscreen(fullscreen)
+        .map_err(|e| format!("set_fullscreen failed: {e}"))?;
+
+    if fullscreen {
+        let _ = window.set_focus();
+    }
+    Ok(true)
+}
+
+/// MARKER_159.C2.WINFS.STATE_CMD: Read current native fullscreen state by window label.
+#[tauri::command]
+pub fn get_window_fullscreen(
+    app: AppHandle,
+    window_label: Option<String>,
+) -> Result<bool, String> {
+    let label = window_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("main")
+        .to_string();
+
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| format!("Window not found: {label}"))?;
+
+    window
+        .is_fullscreen()
+        .map_err(|e| format!("is_fullscreen failed: {e}"))
+}
+
+/// MARKER_159.C2.WINFS.TOGGLE_CURRENT: Toggle fullscreen for the current (calling) window.
+#[tauri::command]
+pub fn toggle_current_window_fullscreen(window: WebviewWindow) -> Result<bool, String> {
+    let current = window
+        .is_fullscreen()
+        .map_err(|e| format!("is_fullscreen failed: {e}"))?;
+    let next = !current;
+
+    window
+        .set_fullscreen(next)
+        .map_err(|e| format!("set_fullscreen failed: {e}"))?;
+
+    if next {
+        let _ = window.set_focus();
+    }
+    Ok(next)
+}
+
+/// MARKER_159.C2.WINFS.GET_CURRENT: Read fullscreen state for current (calling) window.
+#[tauri::command]
+pub fn get_current_window_fullscreen(window: WebviewWindow) -> Result<bool, String> {
+    window
+        .is_fullscreen()
+        .map_err(|e| format!("is_fullscreen failed: {e}"))
+}
+
+/// MARKER_159.C2.WINFS.SET_CURRENT: Set fullscreen state for current (calling) window.
+#[tauri::command]
+pub fn set_current_window_fullscreen(window: WebviewWindow, fullscreen: bool) -> Result<bool, String> {
+    window
+        .set_fullscreen(fullscreen)
+        .map_err(|e| format!("set_fullscreen failed: {e}"))?;
+    if fullscreen {
+        let _ = window.set_focus();
+    }
+    window
+        .is_fullscreen()
+        .map_err(|e| format!("is_fullscreen verify failed: {e}"))
+}
+
+/// MARKER_159.WINFS.R2_CMD: Open/reuse detached artifact media window.
+#[tauri::command]
+pub fn open_artifact_media_window(
+    app: AppHandle,
+    path: String,
+    name: Option<String>,
+    extension: Option<String>,
+    artifact_id: Option<String>,
+    in_vetka: Option<bool>,
+    initial_seek_sec: Option<f64>,
+) -> Result<bool, String> {
+    let clean_path = path.trim();
+    if clean_path.is_empty() {
+        return Err("path is required".to_string());
+    }
+
+    let label = "artifact-media".to_string();
+    let window_title = name
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("Artifact Media")
+        .to_string();
+
+    let mut route = format!("/artifact-media?path={}", urlencoding::encode(clean_path));
+    if let Some(v) = name.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        route.push_str("&name=");
+        route.push_str(&urlencoding::encode(v));
+    }
+    if let Some(v) = extension.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        route.push_str("&extension=");
+        route.push_str(&urlencoding::encode(v));
+    }
+    if let Some(v) = artifact_id.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        route.push_str("&artifact_id=");
+        route.push_str(&urlencoding::encode(v));
+    }
+    if let Some(v) = in_vetka {
+        route.push_str("&in_vetka=");
+        route.push_str(if v { "1" } else { "0" });
+    }
+    if let Some(seek) = initial_seek_sec.filter(|v| v.is_finite() && *v >= 0.0) {
+        route.push_str("&seek=");
+        route.push_str(&format!("{seek:.3}"));
+    }
+
+    if let Some(existing) = app.get_webview_window(&label) {
+        // MARKER_159.C4.WINDOW_RECREATE_ENFORCED:
+        // avoid stale titlebar/window-style state by recreating artifact windows on each open.
+        let _ = existing.close();
+    }
+
+    // MARKER_159.C2.WINDOW_SIZE_DEFAULT: smaller default detached artifact window.
+    let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::App(route.into()))
+        .title(window_title)
+        .inner_size(960.0, 680.0)
+        .min_inner_size(760.0, 460.0)
+        .resizable(true)
+        .focused(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    window.set_focus().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// MARKER_159.C1_OPEN_PATH: Open/reuse native artifact window (generic route).
+#[tauri::command]
+pub fn open_artifact_window(
+    app: AppHandle,
+    path: String,
+    name: Option<String>,
+    extension: Option<String>,
+    artifact_id: Option<String>,
+    in_vetka: Option<bool>,
+    initial_seek_sec: Option<f64>,
+    content_mode: Option<String>,
+    window_label: Option<String>,
+) -> Result<bool, String> {
+    let clean_path = path.trim();
+    if clean_path.is_empty() {
+        return Err("path is required".to_string());
+    }
+
+    let label = window_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("artifact-main")
+        .to_string();
+
+    let window_title = name
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("Artifact")
+        .to_string();
+
+    let mode = content_mode
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| matches!(*v, "file" | "raw" | "web"))
+        .unwrap_or("file")
+        .to_string();
+
+    let mut route = format!(
+        "/artifact-window?path={}&content_mode={}&window_label={}",
+        urlencoding::encode(clean_path),
+        urlencoding::encode(&mode),
+        urlencoding::encode(&label),
+    );
+    if let Some(v) = name.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        route.push_str("&name=");
+        route.push_str(&urlencoding::encode(v));
+    }
+    if let Some(v) = extension.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        route.push_str("&extension=");
+        route.push_str(&urlencoding::encode(v));
+    }
+    if let Some(v) = artifact_id.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        route.push_str("&artifact_id=");
+        route.push_str(&urlencoding::encode(v));
+    }
+    if let Some(v) = in_vetka {
+        route.push_str("&in_vetka=");
+        route.push_str(if v { "1" } else { "0" });
+    }
+    if let Some(seek) = initial_seek_sec.filter(|v| v.is_finite() && *v >= 0.0) {
+        route.push_str("&seek=");
+        route.push_str(&format!("{seek:.3}"));
+    }
+
+    if let Some(existing) = app.get_webview_window(&label) {
+        // MARKER_159.C4.WINDOW_RECREATE_ENFORCED:
+        // avoid stale titlebar/window-style state by recreating artifact windows on each open.
+        let _ = existing.close();
+    }
+
+    let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::App(route.into()))
+        .title(window_title)
+        .inner_size(960.0, 680.0)
+        .min_inner_size(760.0, 460.0)
+        .resizable(true)
+        .focused(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    window.set_focus().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// MARKER_159.WINFS.R2_CMD: Close detached artifact media window by label.
+#[tauri::command]
+pub fn close_artifact_media_window(
+    app: AppHandle,
+    window_label: Option<String>,
+) -> Result<bool, String> {
+    let label = window_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("artifact-media")
+        .to_string();
+
+    if let Some(window) = app.get_webview_window(&label) {
+        window.close().map_err(|e| e.to_string())?;
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -15,7 +15,7 @@ import { getViewerType } from './utils/fileTypes';
 import { MarkdownViewer } from './viewers/MarkdownViewer';
 import { Toolbar } from './Toolbar';
 import { Loader2 } from 'lucide-react';
-import { isTauri, openLiveWebWindow, saveTextFileNative } from '../../config/tauri';
+import { closeArtifactMediaWindow, isTauri, openArtifactMediaWindow, openLiveWebWindow, saveTextFileNative } from '../../config/tauri';
 import { useStore } from '../../store/useStore';
 import { buildViewportContext } from '../../utils/viewport';
 import { readFileViaApi } from '../../utils/fileReadClient';
@@ -24,6 +24,8 @@ import './ArtifactPanel.css';
 // Lazy load heavy viewers
 const CodeViewer = lazy(() => import('./viewers/CodeViewer').then(m => ({ default: m.CodeViewer })));
 const ImageViewer = lazy(() => import('./viewers/ImageViewer').then(m => ({ default: m.ImageViewer })));
+const VideoArtifactPlayer = lazy(() => import('./viewers/VideoArtifactPlayer').then(m => ({ default: m.VideoArtifactPlayer })));
+const MEDIA_TIMEUPDATE_THROTTLE_MS = 120;
 
 function ViewerLoading() {
   return (
@@ -81,6 +83,16 @@ interface MediaPreviewData {
   preview?: {
     aspect_ratio?: string | null;
     recommended_zoom?: number;
+  };
+  playback?: {
+    source_url?: string;
+    strategy?: string;
+    requires_proxy?: boolean;
+    sources_scale?: Partial<Record<'full' | 'half' | 'quarter' | 'eighth' | 'sixteenth', string>>;
+  };
+  preview_assets?: {
+    poster_url?: string;
+    animated_preview_url_300ms?: string;
   };
   degraded_mode?: boolean;
   degraded_reason?: string;
@@ -154,9 +166,27 @@ interface Props {
   artifactId?: string;
   // Phase 153: Optional timestamp seek target for media artifacts
   initialSeekSec?: number;
+  // Phase 159 R2: Embedded panel vs detached media window mode
+  windowMode?: 'embedded' | 'detached';
+  // Phase 159 C2: explicit detached window label authority (artifact-main/artifact-media).
+  detachedWindowLabel?: string;
+  // Phase 159 C3: detached route hint from parent window (file already in VETKA tree or not).
+  detachedInitialInVetka?: boolean;
 }
 
-export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, onContentChange, approvalLevel, artifactId, initialSeekSec }: Props) {
+export function ArtifactPanel({
+  file,
+  rawContent,
+  onClose,
+  isChatOpen = false,
+  onContentChange,
+  approvalLevel,
+  artifactId,
+  initialSeekSec,
+  windowMode = 'embedded',
+  detachedWindowLabel = 'artifact-media',
+  detachedInitialInVetka,
+}: Props) {
   const setActiveWebContext = useStore((state) => state.setActiveWebContext);
   const nodes = useStore((state) => state.nodes);
   const pinnedFileIds = useStore((state) => state.pinnedFileIds);
@@ -187,8 +217,16 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
     error: string;
     data: RhythmAssistData | null;
   }>({ loading: false, error: '', data: null });
+  const [mediaInfoOpen, setMediaInfoOpen] = useState<boolean>(false);
+  const [isMediaFullscreen, setIsMediaFullscreen] = useState<boolean>(false);
+  const [isIndexingToVetka, setIsIndexingToVetka] = useState(false);
+  const [locallyIndexedPath, setLocallyIndexedPath] = useState<string | null>(null);
+  const [isFavorite, setIsFavorite] = useState(false);
+  // Phase 48.5.1: Handle raw content mode
+  const isRawContentMode = !!rawContent;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const lastTimeupdateRef = useRef<number>(0);
 
   // Phase 60.4: Editable raw content state
   const [editableContent, setEditableContent] = useState<string>('');
@@ -196,6 +234,128 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
 
   // MARKER_104_VISUAL - L2 approval state
   const [currentApprovalLevel, setCurrentApprovalLevel] = useState<ApprovalLevel | undefined>(approvalLevel);
+
+  const normalizePath = useCallback((p: string) => {
+    const raw = String(p || '').trim();
+    if (!raw) return '';
+    const withoutScheme = raw.replace(/^file:\/\//, '');
+    let decoded = withoutScheme;
+    try {
+      decoded = decodeURIComponent(withoutScheme);
+    } catch {
+      // keep as-is
+    }
+    return decoded.replace(/\\/g, '/').replace(/\/+$/, '');
+  }, []);
+
+  const detachedCurrentPath = useMemo(() => normalizePath(fileData?.path || file?.path || ''), [fileData?.path, file?.path, normalizePath]);
+  const detachedBasename = useMemo(() => {
+    const p = detachedCurrentPath || '';
+    const parts = p.split('/');
+    return parts[parts.length - 1] || '';
+  }, [detachedCurrentPath]);
+  const isFileMode = !isRawContentMode && Boolean(detachedCurrentPath);
+
+  useEffect(() => {
+    if (!detachedCurrentPath) return;
+    if (locallyIndexedPath && locallyIndexedPath !== detachedCurrentPath) {
+      setLocallyIndexedPath(null);
+    }
+  }, [detachedCurrentPath, locallyIndexedPath]);
+
+  const isInVetka = useMemo(() => {
+    if (locallyIndexedPath && locallyIndexedPath === detachedCurrentPath) return true;
+    if (windowMode === 'detached' && typeof detachedInitialInVetka === 'boolean') {
+      return detachedInitialInVetka;
+    }
+    if (!detachedCurrentPath) return false;
+    return Object.values(nodes).some((node: any) => {
+      const nodePath = normalizePath(String(node?.path || ''));
+      return nodePath === detachedCurrentPath || nodePath.endsWith(`/${detachedCurrentPath}`) || detachedCurrentPath.endsWith(`/${nodePath}`);
+    });
+  }, [windowMode, detachedInitialInVetka, nodes, detachedCurrentPath, normalizePath, locallyIndexedPath]);
+
+  useEffect(() => {
+    if (windowMode !== 'detached') return;
+    if (!detachedCurrentPath) {
+      setIsFavorite(false);
+      return;
+    }
+
+    const loadFavoriteState = async () => {
+      try {
+        if (artifactId || (detachedCurrentPath.includes('/data/artifacts/') || detachedCurrentPath.includes('/src/vetka_out/'))) {
+          const resp = await fetch('/api/artifacts');
+          if (!resp.ok) return;
+          const data = await resp.json();
+          const list = data.artifacts || [];
+          const match = list.find((a: any) => a.id === artifactId || a.file_path === detachedCurrentPath || a.name === detachedBasename);
+          setIsFavorite(Boolean(match?.is_favorite));
+          return;
+        }
+        const resp = await fetch('/api/tree/favorites');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const map = data.favorites || {};
+        setIsFavorite(Boolean(map[detachedCurrentPath]));
+      } catch {
+        // no-op
+      }
+    };
+    void loadFavoriteState();
+  }, [windowMode, artifactId, detachedCurrentPath, detachedBasename]);
+
+  const handleAddToVetkaDetached = useCallback(async () => {
+    if (windowMode !== 'detached') return;
+    if (!detachedCurrentPath || isIndexingToVetka || isInVetka) return;
+    setIsIndexingToVetka(true);
+    try {
+      const response = await fetch('/api/watcher/index-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: detachedCurrentPath }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.detail || data?.error || `HTTP ${response.status}`);
+      }
+      setLocallyIndexedPath(detachedCurrentPath);
+      window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
+    } catch (err) {
+      console.error('[ArtifactPanel] Add to VETKA failed:', err);
+    } finally {
+      setIsIndexingToVetka(false);
+    }
+  }, [windowMode, detachedCurrentPath, isIndexingToVetka, isInVetka]);
+
+  const handleToggleFavoriteDetached = useCallback(async () => {
+    if (windowMode !== 'detached') return;
+    const next = !isFavorite;
+    try {
+      if (artifactId || (detachedCurrentPath.includes('/data/artifacts/') || detachedCurrentPath.includes('/src/vetka_out/'))) {
+        const targetArtifactId = artifactId || detachedBasename || file?.name || 'artifact';
+        const response = await fetch(`/api/artifacts/${encodeURIComponent(targetArtifactId)}/favorite`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_favorite: next }),
+        });
+        if (!response.ok) return;
+      } else if (detachedCurrentPath) {
+        const response = await fetch('/api/tree/favorite', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: detachedCurrentPath, is_favorite: next }),
+        });
+        if (!response.ok) return;
+      } else {
+        return;
+      }
+      setIsFavorite(next);
+      window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
+    } catch (err) {
+      console.error('[ArtifactPanel] Favorite toggle failed:', err);
+    }
+  }, [windowMode, isFavorite, artifactId, detachedCurrentPath, detachedBasename, file?.name]);
 
   // MARKER_145.VIEWPORT_SAVE_ANCHOR: Recommend nearest viewport node path as default save target.
   const getRecommendedSaveNodePath = useCallback((): string => {
@@ -224,6 +384,10 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
   useEffect(() => {
     setActiveSeekSec(initialSeekSec);
   }, [initialSeekSec]);
+
+  useEffect(() => {
+    setIsMediaFullscreen(false);
+  }, [fileData?.path, windowMode]);
 
   useEffect(() => {
     const loadMediaPreview = async () => {
@@ -400,9 +564,6 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
   const MAX_UNDO_HISTORY = 10;
   const undoHistoryRef = useRef<string[]>([]);
   const [canUndo, setCanUndo] = useState(false);
-
-  // Phase 48.5.1: Handle raw content mode
-  const isRawContentMode = !!rawContent;
 
   // Phase 60.4: Sync editable content when rawContent changes
   useEffect(() => {
@@ -956,7 +1117,24 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
     const fileUrl = `/api/files/raw?path=${encodeURIComponent(path)}`;
     const mimeType = fileData.mimeType || 'application/octet-stream';
     const isBase64 = fileData.encoding === 'base64';
-    const mediaSrc = isBase64 ? `data:${mimeType};base64,${content}` : fileUrl;
+    const streamMedia = fileType === 'audio' || fileType === 'video' || mimeType.startsWith('audio/') || mimeType.startsWith('video/');
+    const previewPlaybackSrc = mediaPreview?.playback?.source_url;
+    const mediaSrc = streamMedia ? fileUrl : (isBase64 ? `data:${mimeType};base64,${content}` : fileUrl);
+    const videoPoster = mediaPreview?.preview_assets?.poster_url;
+    const videoQualitySources: Partial<Record<'Auto' | 'Original' | 'Preview', string>> = {
+      Auto: fileUrl,
+      Original: fileUrl,
+    };
+    if (previewPlaybackSrc && previewPlaybackSrc !== fileUrl) {
+      videoQualitySources.Preview = previewPlaybackSrc;
+    }
+    const videoQualityScaleSources: Partial<Record<'full' | 'half' | 'quarter' | 'eighth' | 'sixteenth', string>> = {
+      full: mediaPreview?.playback?.sources_scale?.full || fileUrl,
+      half: mediaPreview?.playback?.sources_scale?.half,
+      quarter: mediaPreview?.playback?.sources_scale?.quarter,
+      eighth: mediaPreview?.playback?.sources_scale?.eighth,
+      sixteenth: mediaPreview?.playback?.sources_scale?.sixteenth,
+    };
 
     if (/^https?:\/\//i.test(path)) {
       return <MarkdownViewer content={content} />;
@@ -1017,17 +1195,35 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
       case 'audio':
         return (
           <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <audio ref={audioRef} controls style={{ width: '100%', maxWidth: 720 }}>
+            <audio
+              ref={audioRef}
+              controls
+              onTimeUpdate={() => handleMediaTimeUpdate(audioRef.current)}
+              style={{ width: '100%', maxWidth: 720 }}
+            >
               <source src={mediaSrc} type={mimeType} />
             </audio>
           </div>
         );
       case 'video':
         return (
-          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <video ref={videoRef} controls style={{ width: '100%', maxHeight: '100%' }}>
-              <source src={mediaSrc} type={mimeType} />
-            </video>
+          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: windowMode === 'detached' ? 0 : 16 }}>
+            <div style={{ width: '100%', maxWidth: windowMode === 'detached' ? 'none' : 1280, height: '100%' }}>
+              <Suspense fallback={<ViewerLoading />}>
+                <VideoArtifactPlayer
+                  key={`${fileData.path}:${mediaSrc}`}
+                  src={mediaSrc}
+                  mediaPath={fileData.path}
+                  poster={videoPoster}
+                  mimeType={mimeType}
+                  qualitySources={videoQualitySources}
+                  qualityScaleSources={videoQualityScaleSources}
+                  windowLabel={windowMode === 'detached' ? detachedWindowLabel : 'main'}
+                  controlsOffsetBottom={0}
+                  onFullscreenChange={setIsMediaFullscreen}
+                />
+              </Suspense>
+            </div>
           </div>
         );
       case 'pdf':
@@ -1042,7 +1238,12 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
         if (mimeType.startsWith('audio/')) {
           return (
             <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-              <audio ref={audioRef} controls style={{ width: '100%', maxWidth: 720 }}>
+              <audio
+                ref={audioRef}
+                controls
+                onTimeUpdate={() => handleMediaTimeUpdate(audioRef.current)}
+                style={{ width: '100%', maxWidth: 720 }}
+              >
                 <source src={mediaSrc} type={mimeType} />
               </audio>
             </div>
@@ -1050,10 +1251,21 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
         }
         if (mimeType.startsWith('video/')) {
           return (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-              <video ref={videoRef} controls style={{ width: '100%', maxHeight: '100%' }}>
-                <source src={mediaSrc} type={mimeType} />
-              </video>
+            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: windowMode === 'detached' ? 0 : 16 }}>
+              <Suspense fallback={<ViewerLoading />}>
+                <VideoArtifactPlayer
+                  key={`${fileData.path}:${mediaSrc}`}
+                  src={mediaSrc}
+                  mediaPath={fileData.path}
+                  poster={videoPoster}
+                  mimeType={mimeType}
+                  qualitySources={videoQualitySources}
+                  qualityScaleSources={videoQualityScaleSources}
+                  windowLabel={windowMode === 'detached' ? detachedWindowLabel : 'main'}
+                  controlsOffsetBottom={0}
+                  onFullscreenChange={setIsMediaFullscreen}
+                />
+              </Suspense>
             </div>
           );
         }
@@ -1137,6 +1349,52 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
     }
   };
 
+  const isMediaArtifact = Boolean(
+    fileData && (
+      ['audio', 'video'].includes(getViewerType(fileData.path || file?.name || '')) ||
+      String(fileData.mimeType || '').startsWith('audio/') ||
+      String(fileData.mimeType || '').startsWith('video/')
+    )
+  );
+
+  const handleOpenDetachedMediaWindow = useCallback(async () => {
+    if (!isTauri()) return;
+    if (windowMode === 'detached') return;
+    if (!fileData?.path || !isMediaArtifact) return;
+
+    const fallbackName = String(file?.name || '').trim() || String(fileData.path || '').replace(/\\/g, '/').split('/').pop() || 'media';
+    const extFromPath = String(fileData.path || '').replace(/\\/g, '/').split('.').pop() || '';
+    const extension = String(file?.extension || extFromPath || '').replace(/^\./, '');
+
+    const opened = await openArtifactMediaWindow({
+      path: fileData.path,
+      name: fallbackName,
+      extension: extension || undefined,
+      artifactId,
+      inVetka: isInVetka,
+      initialSeekSec: Number.isFinite(activeSeekSec as number) ? activeSeekSec : undefined,
+    });
+
+    if (opened && typeof onClose === 'function') {
+      onClose();
+    }
+  }, [activeSeekSec, artifactId, file?.extension, file?.name, fileData?.path, isInVetka, isMediaArtifact, onClose, windowMode]);
+
+  const handleCloseDetachedWindow = useCallback(async () => {
+    if (windowMode !== 'detached') {
+      onClose?.();
+      return;
+    }
+    if (!isTauri()) {
+      window.close();
+      return;
+    }
+    const closed = await closeArtifactMediaWindow(detachedWindowLabel);
+    if (!closed) {
+      window.close();
+    }
+  }, [detachedWindowLabel, onClose, windowMode]);
+
   // Phase 60.4: Save As / Duplicate - download with custom name
   const handleSaveAs = async () => {
     const content = isRawContentMode
@@ -1154,6 +1412,14 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
     }
     downloadViaBrowser(content, newName);
   };
+
+  const handleMediaTimeUpdate = useCallback((el: HTMLMediaElement | null) => {
+    if (!el) return;
+    const now = Date.now();
+    if (now - lastTimeupdateRef.current < MEDIA_TIMEUPDATE_THROTTLE_MS) return;
+    lastTimeupdateRef.current = now;
+    if (Number.isFinite(el.currentTime)) setActiveSeekSec(el.currentTime);
+  }, []);
 
   return (
     <div style={{
@@ -1232,20 +1498,20 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
       {/* File mode - Viewer */}
       {!isRawContentMode && fileData && (
         <>
-          {activeSeekSec !== undefined && (
+          {activeSeekSec !== undefined && isMediaArtifact && mediaInfoOpen && (
             <div
               style={{
                 padding: '6px 12px',
                 borderBottom: '1px solid #232323',
                 fontSize: 11,
-                color: '#fbbf24',
-                background: 'rgba(245, 158, 11, 0.08)',
+                color: '#9ca3af',
+                background: 'rgba(255, 255, 255, 0.03)',
               }}
             >
               timeline: t={activeSeekSec.toFixed(1)}s
             </div>
           )}
-          {mediaPreview && (
+          {mediaPreview && mediaInfoOpen && (
             <div className="artifact-media-preview">
               <div className="artifact-media-preview-header">
                 <div className="artifact-media-preview-meta">
@@ -1270,6 +1536,13 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
                     {zoom}x
                   </button>
                 ))}
+              </div>
+              <div className="artifact-media-preview-strip" style={{ fontSize: 11, color: '#9ca3af' }}>
+                <div>mime: {mediaPreview.mime_type}</div>
+                <div>source: {mediaPreview.playback?.strategy || 'direct'}</div>
+                {mediaPreview.degraded_mode && (
+                  <div>degraded: {mediaPreview.degraded_reason || 'unknown'}</div>
+                )}
               </div>
               {mediaPreview.waveform_bins?.length > 0 && (
                 <div className="artifact-media-preview-strip">
@@ -1363,6 +1636,26 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
                   )}
                 </div>
               )}
+              {mediaPreview.modality === 'video' && mediaPreview.preview_assets?.poster_url && (
+                <div className="artifact-media-preview-strip">
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>poster</div>
+                  <img
+                    src={mediaPreview.preview_assets.poster_url}
+                    alt="video poster preview"
+                    style={{ width: 180, aspectRatio: '16 / 9', objectFit: 'cover', borderRadius: 6, border: '1px solid #2f2f2f' }}
+                  />
+                </div>
+              )}
+              {mediaPreview.modality === 'video' && mediaPreview.preview_assets?.animated_preview_url_300ms && (
+                <div className="artifact-media-preview-strip">
+                  <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>dynamic preview 300ms</div>
+                  <img
+                    src={mediaPreview.preview_assets.animated_preview_url_300ms}
+                    alt="video dynamic preview"
+                    style={{ width: 180, aspectRatio: '16 / 9', objectFit: 'cover', borderRadius: 6, border: '1px solid #2f2f2f' }}
+                  />
+                </div>
+              )}
               {(semanticLinks.loading || semanticLinks.items.length > 0 || semanticLinks.error) && (
                 <div className="artifact-semantic-links">
                   <div className="artifact-semantic-links-title">semantic links</div>
@@ -1449,7 +1742,7 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
       )}
 
       {/* File mode - Toolbar */}
-      {!isRawContentMode && fileData && (
+      {!isRawContentMode && fileData && !(isMediaArtifact && windowMode === 'detached' && isMediaFullscreen) && (
         <Toolbar
           filename={file?.name || ''}
           filePath={fileData.path}
@@ -1459,19 +1752,30 @@ export function ArtifactPanel({ file, rawContent, onClose, isChatOpen = false, o
           isEditing={isEditing}
           hasChanges={fileData.hasChanges}
           isSaving={isSaving}
-          onEdit={() => setIsEditing(!isEditing)}
-          onSave={saveFile}
-          onSaveAs={() => { void handleSaveAs(); }}
-          onCopy={handleCopy}
+          onEdit={isMediaArtifact ? undefined : () => setIsEditing(!isEditing)}
+          onSave={isMediaArtifact ? undefined : saveFile}
+          onSaveAs={isMediaArtifact ? undefined : () => { void handleSaveAs(); }}
+          onCopy={isMediaArtifact ? undefined : handleCopy}
+          onInfo={isMediaArtifact ? () => setMediaInfoOpen((v) => !v) : undefined}
+          infoActive={isMediaArtifact ? mediaInfoOpen : undefined}
           onDownload={() => { void handleDownload(); }}
           onOpenInFinder={handleOpenInFinder}
           onRefresh={() => file && loadFile(file.path)}
+          onDetach={isMediaArtifact && windowMode !== 'detached' ? () => { void handleOpenDetachedMediaWindow(); } : undefined}
           onPin={handlePinToChat}
           isPinned={isPinnedInChat}
           pinVisible={Boolean(pinTargetNodeId)}
           pinDisabled={!isChatOpen || !pinTargetNodeId}
           pinTitle={!pinTargetNodeId ? 'File is not indexed in VETKA tree' : (!isChatOpen ? 'Open chat to pin context' : (isPinnedInChat ? 'Unpin from chat context' : 'Pin to chat context'))}
-          onClose={onClose}
+          detachedShowFavorite={windowMode === 'detached' && (isInVetka || !isFileMode)}
+          detachedFavoriteActive={isFavorite}
+          detachedFavoriteBusy={false}
+          onDetachedFavoriteToggle={() => { void handleToggleFavoriteDetached(); }}
+          detachedShowVetka={windowMode === 'detached' && isFileMode && !isInVetka}
+          detachedVetkaBusy={isIndexingToVetka}
+          onDetachedVetkaAdd={() => { void handleAddToVetkaDetached(); }}
+          onClose={windowMode === 'detached' ? () => { void handleCloseDetachedWindow(); } : onClose}
+          compact={windowMode === 'detached' && isMediaArtifact}
         />
       )}
     </div>

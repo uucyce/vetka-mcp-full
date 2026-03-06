@@ -8,7 +8,7 @@
  * @used_by ArtifactPanel
  */
 
-import { Edit3, Save, Copy, Download, RefreshCw, X, Loader2, FolderOpen, Undo2, FilePlus2, Pin, Check } from 'lucide-react';
+import { Edit3, Save, Copy, Download, RefreshCw, X, Loader2, FolderOpen, Undo2, FilePlus2, Pin, Check, Info, ExternalLink } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 interface Props {
@@ -29,12 +29,23 @@ interface Props {
   onDownload?: () => void;
   onRefresh?: () => void;
   onOpenInFinder?: () => void;  // Phase 60.4: Open file in Finder
+  onInfo?: () => void;
+  infoActive?: boolean;
+  onDetach?: () => void;
   onPin?: () => void;
   isPinned?: boolean;
   pinVisible?: boolean;
   pinDisabled?: boolean;
   pinTitle?: string;
+  detachedShowFavorite?: boolean;
+  detachedFavoriteActive?: boolean;
+  detachedFavoriteBusy?: boolean;
+  onDetachedFavoriteToggle?: () => void;
+  detachedShowVetka?: boolean;
+  detachedVetkaBusy?: boolean;
+  onDetachedVetkaAdd?: () => void;
   onClose?: () => void;
+  compact?: boolean;
 }
 
 export function Toolbar({
@@ -55,12 +66,23 @@ export function Toolbar({
   onDownload,
   onRefresh,
   onOpenInFinder,
+  onInfo,
+  infoActive,
+  onDetach,
   onPin,
   isPinned,
   pinVisible,
   pinDisabled,
   pinTitle,
-  onClose
+  detachedShowFavorite,
+  detachedFavoriteActive,
+  detachedFavoriteBusy,
+  onDetachedFavoriteToggle,
+  detachedShowVetka,
+  detachedVetkaBusy,
+  onDetachedVetkaAdd,
+  onClose,
+  compact = false,
 }: Props) {
   const [firedAction, setFiredAction] = useState<string | null>(null);
   const actionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,7 +116,7 @@ export function Toolbar({
   };
 
   const btnBase = {
-    padding: 8,
+    padding: compact ? 6 : 8,
     borderRadius: 4,
     border: 'none',
     background: 'transparent',
@@ -136,7 +158,7 @@ export function Toolbar({
       display: 'flex',
       alignItems: 'center',
       gap: 4,
-      padding: 8,
+      padding: compact ? 6 : 8,
       background: 'rgba(15, 15, 15, 0.95)',
       borderTop: '1px solid #222',
     }}>
@@ -190,6 +212,16 @@ export function Toolbar({
           <RefreshCw size={16} />
         </Btn>
       )}
+      {onInfo && (
+        <Btn onClick={onInfo} active={Boolean(infoActive)} title="Media info" actionKey="info">
+          <Info size={16} />
+        </Btn>
+      )}
+      {onDetach && (
+        <Btn onClick={onDetach} title="Open detached media window" actionKey="detach" successChildren={<Check size={16} />}>
+          <ExternalLink size={16} />
+        </Btn>
+      )}
       {pinVisible && (
         <Btn
           onClick={onPin}
@@ -203,18 +235,55 @@ export function Toolbar({
         </Btn>
       )}
 
-      <div style={{ flex: 1, textAlign: 'center' }}>
-        <span style={{ fontSize: 11, color: '#666' }}>{filename}</span>
-        {fileSize !== undefined && (
-          <span style={{ fontSize: 11, color: '#444', marginLeft: 8 }}>({formatSize(fileSize)})</span>
-        )}
-        {(createdAt || modifiedAt) && (
-          <div style={{ fontSize: 10, color: '#4f4f4f', marginTop: 2 }}>
-            <span>Created: {formatDate(createdAt)}</span>
-            <span style={{ marginLeft: 8 }}>Modified: {formatDate(modifiedAt)}</span>
-          </div>
-        )}
-      </div>
+      {!compact && (
+        <div style={{ flex: 1, textAlign: 'center' }}>
+          <span style={{ fontSize: 11, color: '#666' }}>{filename}</span>
+          {fileSize !== undefined && (
+            <span style={{ fontSize: 11, color: '#444', marginLeft: 8 }}>({formatSize(fileSize)})</span>
+          )}
+          {(createdAt || modifiedAt) && (
+            <div style={{ fontSize: 10, color: '#4f4f4f', marginTop: 2 }}>
+              <span>Created: {formatDate(createdAt)}</span>
+              <span style={{ marginLeft: 8 }}>Modified: {formatDate(modifiedAt)}</span>
+            </div>
+          )}
+        </div>
+      )}
+      {compact && <div style={{ flex: 1 }} />}
+
+      {detachedShowFavorite && (
+        <Btn
+          onClick={onDetachedFavoriteToggle}
+          active={Boolean(detachedFavoriteActive)}
+          disabled={Boolean(detachedFavoriteBusy)}
+          title={detachedFavoriteActive ? 'Remove favorite' : 'Add favorite'}
+          actionKey="detached-favorite"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
+            <path d="M12 3.7l2.6 5.2 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" fill={detachedFavoriteActive ? 'currentColor' : 'none'} />
+          </svg>
+        </Btn>
+      )}
+
+      {detachedShowVetka && (
+        <Btn
+          onClick={onDetachedVetkaAdd}
+          disabled={Boolean(detachedVetkaBusy)}
+          title={detachedVetkaBusy ? 'Adding to VETKA...' : 'Add to VETKA'}
+          actionKey="detached-vetka"
+        >
+          {detachedVetkaBusy ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round">
+              <circle cx="12" cy="12" r="9" />
+              <line x1="12" y1="6" x2="12" y2="18" />
+              <path d="M12 12 L8 7" />
+              <path d="M12 12 L16 7" />
+            </svg>
+          )}
+        </Btn>
+      )}
 
       {onClose && (
         <Btn onClick={onClose} title="Close" actionKey="close">
