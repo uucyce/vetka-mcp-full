@@ -1,34 +1,39 @@
 # mycelium
 
-Mycelium Command Center (MCC) UI module from VETKA.
+Mycelium Command Center is a DAG-native operator UI for multi-agent runtime control.
 
-This module provides the multi-window command center experience:
-- task operations and dispatch surfaces,
-- chat/context/stats/balance mini-windows,
-- DAG-centric workspace for project and workflow navigation,
-- keyboard-driven control and compact operator workflows.
+It is built for live orchestration, not generic chat dashboards:
+- graph-first workspace where each operation is contextual to node/task state,
+- persistent mini-window cockpit (Tasks, Chat, Context, Stats, Balance),
+- fast window choreography: expand, minimize to dock, restore at last user position,
+- low-noise black-and-white interface optimized for dense operational sessions.
 
-## Scope
+## Why This Module Exists
 
-Extracted from monorepo prefix:
+`mycelium` is split as a standalone OSS module so contributors can evolve MCC UX/runtime coupling independently from the full VETKA monorepo.
+
+Source-of-truth path in monorepo:
 - `client/src/components/mcc`
-
-Monorepo source of truth remains:
-- `danilagoleen/vetka`
 
 ## Core Capabilities
 
-- Floating mini-windows with drag/resize/expand.
-- Dock/minimize behavior for mini-windows (toolbar-like preview strip).
-- DAG workspace integration (selection-aware context across windows).
-- Operational overlays for tasks, stats, balance, and workflow stream.
+- DAG-centric command center with selection-aware side windows.
+- Multi-window runtime shell (drag, resize, maximize, minimize/dock, restore).
+- Taskboard and heartbeat control surfaces for execution flow.
+- Embedded chat/context loop for operator-in-the-graph workflows.
+- Balance/stats overlays for runtime cost and throughput visibility.
 
-## Development
+## Open Source Attribution
 
-1. Fork repository.
-2. Create branch: `feature/<name>` or `fix/<name>`.
-3. Use Conventional Commits.
-4. Open PR with screenshots/video for UI changes.
+Primary upstream libraries and licenses are listed in:
+- `OPEN_SOURCE_CREDITS.md`
+
+## Contributing
+
+1. Fork and create a feature branch.
+2. Use Conventional Commits.
+3. Include screenshots/video for UI behavior changes.
+4. Open PR with concise behavioral notes.
 
 ## License
 
