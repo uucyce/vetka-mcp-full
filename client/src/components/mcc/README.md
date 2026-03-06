@@ -23,6 +23,17 @@ Source-of-truth path in monorepo:
 - Embedded chat/context loop for operator-in-the-graph workflows.
 - Balance/stats overlays for runtime cost and throughput visibility.
 
+## Visual Showcase
+
+![MCC overview](docs/showcase/01-overview.png)
+![DAG drilldown](docs/showcase/02-drilldown.png)
+![Chat panel (base)](docs/showcase/03-chat-empty.png)
+![Chat panel (MYCO linked)](docs/showcase/04-chat-myco.png)
+![Left rail + graph workspace](docs/showcase/05-left-rail.png)
+![Tasks expanded modal](docs/showcase/06-tasks-modal.png)
+![Stats expanded modal](docs/showcase/07-stats-modal.png)
+![Wide command-center layout](docs/showcase/08-wide-layout.png)
+
 ## How It Works (Simple)
 
 1. The center canvas is the project DAG and workflow graph.
