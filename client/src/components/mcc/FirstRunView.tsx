@@ -19,7 +19,7 @@ type SourceMode = 'local' | 'git' | 'empty';
 
 function inferWorkspacePath(sourceMode: SourceMode, sourcePath: string): string {
   const clean = String(sourcePath || '').trim().replace(/\\/g, '/');
-  if (!clean) return '/tmp/mycelium_project_playground';
+  if (!clean) return '';
   if (sourceMode === 'git') {
     const repo = clean.replace(/\.git$/i, '').split('/').filter(Boolean).pop() || 'repo';
     return `/tmp/${repo}_playground`;
@@ -29,6 +29,13 @@ function inferWorkspacePath(sourceMode: SourceMode, sourcePath: string): string 
   const name = parts[parts.length - 1] || 'project';
   const parent = parts.length > 1 ? `/${parts.slice(0, -1).join('/')}` : '/tmp';
   return `${parent}/${name}_playground`;
+}
+
+function inferProjectNameFromWorkspace(workspacePath: string): string {
+  const clean = String(workspacePath || '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
+  if (!clean) return '';
+  const base = clean.split('/').filter(Boolean).pop() || '';
+  return String(base || '').trim();
 }
 
 export function FirstRunView() {
@@ -56,10 +63,11 @@ export function FirstRunView() {
 
   useEffect(() => {
     if (step !== 'workspace') return;
+    if (sourceMode === 'empty') return;
     if (!workspacePath.trim() && suggestedWorkspace) {
       setWorkspacePath(suggestedWorkspace);
     }
-  }, [step, workspacePath, suggestedWorkspace]);
+  }, [step, workspacePath, suggestedWorkspace, sourceMode]);
 
   const pickLocalSource = useCallback(async () => {
     if (!isTauri()) {
@@ -103,10 +111,13 @@ export function FirstRunView() {
     setError('');
 
     try {
+      const projectName = inferProjectNameFromWorkspace(sandbox) || 'name_project';
       const payload = {
         source_type: sourceMode === 'empty' ? 'empty' : sourceMode,
         source_path: sourceMode === 'empty' ? '' : String(sourcePath || '').trim(),
         sandbox_path: sandbox,
+        // MARKER_161.9.MULTIPROJECT.NAMING.API_CONTRACT.V1
+        project_name: projectName,
         quota_gb: 10,
       };
 
@@ -155,15 +166,12 @@ export function FirstRunView() {
           padding: 18,
         }}
       >
-        <div style={{ color: NOLAN_PALETTE.text, fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
-          Continue with an existing project or create a new project
-        </div>
-        <div style={{ color: NOLAN_PALETTE.textDim, fontSize: 11, marginBottom: 14 }}>
-          Choose source, then choose workspace location.
+        <div style={{ color: NOLAN_PALETTE.text, fontSize: 18, fontWeight: 700, marginBottom: 14 }}>
+          Project location and name
         </div>
 
         {step === 'choose' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
             <button
               onClick={() => { void pickLocalSource(); }}
               style={{ border: `1px solid ${NOLAN_PALETTE.border}`, borderRadius: 8, background: NOLAN_PALETTE.bgDim, color: NOLAN_PALETTE.text, padding: '16px 10px', cursor: 'pointer' }}
@@ -177,6 +185,18 @@ export function FirstRunView() {
             >
               <div style={{ fontSize: 20, fontWeight: 700 }}>From Git</div>
               <div style={{ fontSize: 11, color: NOLAN_PALETTE.textMuted, marginTop: 6 }}>Clone repository URL</div>
+            </button>
+            <button
+              onClick={() => {
+                setSourceMode('empty');
+                setSourcePath('');
+                setError('');
+                setStep('workspace');
+              }}
+              style={{ border: `1px solid ${NOLAN_PALETTE.border}`, borderRadius: 8, background: NOLAN_PALETTE.bgDim, color: NOLAN_PALETTE.text, padding: '16px 10px', cursor: 'pointer' }}
+            >
+              <div style={{ fontSize: 20, fontWeight: 700 }}>New Project</div>
+              <div style={{ fontSize: 11, color: NOLAN_PALETTE.textMuted, marginTop: 6 }}>Start from empty workspace</div>
             </button>
           </div>
         )}
@@ -207,7 +227,7 @@ export function FirstRunView() {
             <input
               value={workspacePath}
               onChange={(e) => setWorkspacePath(e.target.value)}
-              placeholder={suggestedWorkspace || '/tmp/mycelium_project_playground'}
+              placeholder={suggestedWorkspace || '/tmp/playgrounds/name_project'}
               style={{ width: '100%', boxSizing: 'border-box', borderRadius: 6, border: `1px solid ${NOLAN_PALETTE.border}`, background: NOLAN_PALETTE.bg, color: NOLAN_PALETTE.text, padding: '9px 10px', fontFamily: 'monospace', fontSize: 12 }}
             />
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
