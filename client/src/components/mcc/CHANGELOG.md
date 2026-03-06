@@ -6,6 +6,7 @@ All notable changes to this module are documented here.
 ### Changed
 - Repositioned module documentation for OSS: DAG-native operator UI framing,
   clearer runtime value proposition, and stronger contribution guidance.
+- Added "How it works" and ecosystem dependency map (`vetka-*` modules).
 
 ## [0.1.0] - 2026-03-06
 ### Added

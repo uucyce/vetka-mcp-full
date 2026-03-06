@@ -23,6 +23,26 @@ Source-of-truth path in monorepo:
 - Embedded chat/context loop for operator-in-the-graph workflows.
 - Balance/stats overlays for runtime cost and throughput visibility.
 
+## How It Works (Simple)
+
+1. The center canvas is the project DAG and workflow graph.
+2. Each mini-window is a focused operational surface (Tasks, Chat, Context, Stats, Balance).
+3. A window can be expanded or minimized to dock, then restored to the last user position.
+4. New workflow scope can be opened as a new visual tab/window context.
+5. Operator actions in one surface update others through shared runtime state.
+
+## Ecosystem Dependencies
+
+`mycelium` is UI-first, but it reaches full value in the VETKA module graph:
+- `vetka-orchestration-core`: execution orchestration contracts and state flow.
+- `vetka-elisya-runtime`: runtime routing and assistant behavior integration.
+- `vetka-mcp-core`: MCP transport and tool gateway layer.
+- `vetka-bridge-core`: cross-agent bridge integration.
+- `vetka-memory-stack`: long/short memory and context persistence path.
+- `vetka-search-retrieval` + `vetka-ingest-engine`: semantic retrieval and ingest pipeline.
+
+Without these modules, `mycelium` remains a strong standalone UI shell; with them, it becomes a full command center.
+
 ## Open Source Attribution
 
 Primary upstream libraries and licenses are listed in:
