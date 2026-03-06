@@ -12,6 +12,8 @@ All notable changes to this module are documented here.
 - Added MYCO logo set + loop animation assets (APNG and GIF fallback).
 - Removed deprecated MYCO preview assets and README duplication noise.
 - Simplified MYCO media block to a single large animation.
+- Added explicit attribution split in docs:
+  `Direct dependencies` vs `Inspired patterns` with concrete template/code refs.
 
 ## [0.1.0] - 2026-03-06
 ### Added

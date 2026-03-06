@@ -34,6 +34,38 @@ monorepo as source of truth.
 Module sync notes and latest mirror SHAs are tracked in:
 - `docs/160_git/MARKER_160_MODULE_REPOS_STATUS_2026-03-04.md`
 
+## Open Source Usage Transparency
+
+VETKA follows explicit attribution with two separate buckets:
+
+- `Direct dependencies` (runtime libraries/protocols used in code and builds)
+- `Inspired patterns` (workflow contracts or architecture ideas adapted into VETKA)
+
+Primary evidence files:
+
+- `THIRD_PARTY_NOTICES.md` (root dependencies and licenses)
+- module-level credits:
+  - `src/mcp/OPEN_SOURCE_CREDITS.md`
+  - `src/bridge/OPEN_SOURCE_CREDITS.md`
+  - `src/search/OPEN_SOURCE_CREDITS.md`
+  - `src/memory/OPEN_SOURCE_CREDITS.md`
+  - `src/scanners/OPEN_SOURCE_CREDITS.md`
+  - `src/elisya/OPEN_SOURCE_CREDITS.md`
+  - `src/orchestration/OPEN_SOURCE_CREDITS.md`
+  - `client/src/components/chat/OPEN_SOURCE_CREDITS.md`
+  - `client/src/components/mcc/OPEN_SOURCE_CREDITS.md`
+
+Quick audited snapshot:
+
+- Direct dependencies include: MCP SDK, FastAPI/Starlette/Uvicorn, HTTPX,
+  websockets/socketio, Qdrant, Weaviate, LangGraph, React/TypeScript/React Flow.
+- Inspired patterns currently documented in code/templates include:
+  n8n/ComfyUI converters, OpenHands-style collaboration template,
+  G3 critic-coder template, Ralph loop template.
+
+Latest recon marker:
+- `docs/160_git/MARKER_160_OPENSOURCE_USAGE_AUDIT_2026-03-06.md`
+
 ## Search (Phase 157)
 
 Current search stack supports:

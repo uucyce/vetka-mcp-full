@@ -119,6 +119,10 @@ Without these modules, `mycelium` remains a strong standalone UI shell; with the
 Primary upstream libraries and licenses are listed in:
 - `OPEN_SOURCE_CREDITS.md`
 
+Transparency note:
+- `Direct dependencies` are listed as concrete runtime/UI libraries.
+- `Inspired patterns` are listed separately to avoid mixing ideas with code provenance.
+
 ## License
 
 MIT (`LICENSE`).
