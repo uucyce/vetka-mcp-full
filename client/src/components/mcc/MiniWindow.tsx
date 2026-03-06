@@ -806,9 +806,7 @@ export function MiniWindowDock() {
           }}
           title={entry.title}
         >
-          <span style={{ fontSize: 10, flexShrink: 0 }}>
-            {entry.windowId === 'chat' && helperMode !== 'off' ? '🍄' : entry.icon}
-          </span>
+          <span style={{ fontSize: 10, flexShrink: 0 }}>{entry.icon}</span>
           <span
             style={{
               overflow: 'hidden',

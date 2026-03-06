@@ -36,7 +36,7 @@ import { PlaygroundBadge } from './PlaygroundBadge';
 // MARKER_155.WIZARD.001: Wizard flow for steps 1-3
 import { WizardContainer, type WizardStep } from './WizardContainer';
 import { ToastContainer } from './ToastContainer';
-import { useMCCStore, type WorkflowSourceMode, type MycoHelperMode } from '../../store/useMCCStore';
+import { useMCCStore, type WorkflowSourceMode } from '../../store/useMCCStore';
 import { useStore } from '../../store/useStore';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useRoadmapDAG } from '../../hooks/useRoadmapDAG';
@@ -132,14 +132,6 @@ type FocusRestoreSource = 'current' | 'memory' | 'default';
 type TaskDrillState = 'collapsed' | 'expanded';
 type RoadmapNodeDrillState = 'collapsed' | 'expanded';
 type MycoBadgeVisualState = 'idle' | 'speaking' | 'ready';
-
-const MYCO_MODE_ORDER: MycoHelperMode[] = ['off', 'passive'];
-
-function nextMycoMode(mode: MycoHelperMode): MycoHelperMode {
-  const idx = MYCO_MODE_ORDER.indexOf(mode);
-  if (idx < 0) return 'off';
-  return MYCO_MODE_ORDER[(idx + 1) % MYCO_MODE_ORDER.length];
-}
 
 function uniqueIds(ids: Array<string | null | undefined>): string[] {
   return Array.from(new Set(ids.filter(Boolean) as string[]));
@@ -3321,6 +3313,16 @@ export function MyceliumCommandCenter() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [sendFocusToArchitect]);
 
+  const activateMycoInChat = useCallback(() => {
+    setHelperMode('passive');
+    window.dispatchEvent(
+      new CustomEvent('mcc-miniwindow-open', {
+        detail: { windowId: 'chat', expanded: false },
+      }),
+    );
+    window.dispatchEvent(new CustomEvent('mcc-myco-activate', { detail: { ts: Date.now() } }));
+  }, [setHelperMode]);
+
   useEffect(() => {
     // Keep window caption aligned with current brand naming.
     document.title = 'MYCELIUM';
@@ -3496,10 +3498,10 @@ export function MyceliumCommandCenter() {
                 type="button"
                 // MARKER_162.P2.MYCO.MODE_TOGGLE_TOPROW.V1:
                 // Top-row helper switch is primary launcher.
-                onClick={() => setHelperMode(nextMycoMode(helperMode))}
+                onClick={() => activateMycoInChat()}
                 // MARKER_162.P2.MYCO.TOPROW_BUTTON.V1:
                 // Grandma-mode needs explicit helper launcher outside chat.
-                title={`Helper mode (${helperMode}). Click to toggle helper chat`}
+                title={`Helper mode (${helperMode}). Click to open helper chat`}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',

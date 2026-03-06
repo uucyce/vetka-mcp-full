@@ -44,6 +44,10 @@ Status: `IMPLEMENTED + VERIFIED (narrow)`
 - MYCO assistant messages in expanded chat render inside a comic-style bubble with a left pointer tail.
 18. `MARKER_162.P2.MYCO.WINDOW_TITLE_DOC_SYNC.V1`
 - UI naming synchronized to `MYCELIUM` in onboarding title and document title binding.
+19. `MARKER_162.P2.MYCO.TOP_CLICK_OPENS_CHAT.V1`
+- Top MYCO click now performs deterministic handoff: switches to helper mode, restores chat window, and triggers immediate MYCO speech event.
+20. `MARKER_162.P2.MYCO.DOCK_ICON_STYLE_PRESERVE.V1`
+- Removed temporary mushroom emoji override in dock; chat icon style remains consistent with existing UI icon set.
 
 ## Files changed
 1. `client/src/components/mcc/MiniChat.tsx`

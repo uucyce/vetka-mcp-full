@@ -150,6 +150,16 @@ function ChatCompact({ context }: MiniChatProps) {
   }, []);
 
   useEffect(() => {
+    const onActivate = () => {
+      if (helperMode === 'off') return;
+      emitMycoReplyEvent();
+      setLastAnswer(buildMycoReply(context));
+    };
+    window.addEventListener('mcc-myco-activate', onActivate as EventListener);
+    return () => window.removeEventListener('mcc-myco-activate', onActivate as EventListener);
+  }, [context, helperMode]);
+
+  useEffect(() => {
     const clearTimers = () => {
       mycoAvatarTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
       mycoAvatarTimersRef.current = [];
@@ -167,6 +177,16 @@ function ChatCompact({ context }: MiniChatProps) {
       clearTimers();
     };
   }, []);
+
+  useEffect(() => {
+    const onActivate = () => {
+      if (helperMode === 'off') return;
+      emitMycoReplyEvent();
+      setMessages(prev => [...prev, { role: 'helper_myco', content: buildMycoReply(context) }]);
+    };
+    window.addEventListener('mcc-myco-activate', onActivate as EventListener);
+    return () => window.removeEventListener('mcc-myco-activate', onActivate as EventListener);
+  }, [context, helperMode]);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || loading) return;
