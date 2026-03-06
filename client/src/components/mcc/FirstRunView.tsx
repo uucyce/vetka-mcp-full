@@ -38,6 +38,19 @@ function inferProjectNameFromWorkspace(workspacePath: string): string {
   return String(base || '').trim();
 }
 
+function normalizeAbsPath(input: string): string {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  return raw.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+function pathsOverlapOrNested(pathA: string, pathB: string): boolean {
+  const a = normalizeAbsPath(pathA);
+  const b = normalizeAbsPath(pathB);
+  if (!a || !b) return false;
+  return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+}
+
 export function FirstRunView() {
   // MARKER_161.8.MULTIPROJECT.UI.GRANDMA_FLOW_SOURCE_STEP.V2
   // MARKER_161.8.MULTIPROJECT.UI.DRAFT_TAB_DELAYED_OVERLAY.V1
@@ -50,6 +63,7 @@ export function FirstRunView() {
   const inputRef = useRef<HTMLInputElement>(null);
   const drillDown = useMCCStore((s) => s.drillDown);
   const initMCC = useMCCStore((s) => s.initMCC);
+  const projectTabs = useMCCStore((s) => s.projectTabs);
 
   useEffect(() => {
     const t = window.setTimeout(() => setStep('choose'), 900);
@@ -106,6 +120,20 @@ export function FirstRunView() {
       setError('Choose source path first');
       return;
     }
+    if (sourceMode === 'local' && pathsOverlapOrNested(sourcePath, sandbox)) {
+      setError('Workspace must be isolated from source path (no nested/equal folders)');
+      return;
+    }
+    // MARKER_161.9.MULTIPROJECT.ISOLATION.UI_REGISTRY_PRECHECK.V1
+    for (const tab of projectTabs) {
+      const tabName = String((tab as any)?.display_name || (tab as any)?.project_id || 'project');
+      const tabSandbox = String((tab as any)?.sandbox_path || '');
+      const tabSource = String((tab as any)?.source_path || '');
+      if (pathsOverlapOrNested(sandbox, tabSandbox) || pathsOverlapOrNested(sandbox, tabSource)) {
+        setError(`Workspace overlaps existing project: ${tabName}`);
+        return;
+      }
+    }
 
     setStep('creating');
     setError('');
@@ -139,7 +167,7 @@ export function FirstRunView() {
       setError(err instanceof Error ? err.message : 'Create failed');
       setStep('error');
     }
-  }, [workspacePath, sourceMode, sourcePath, initMCC, drillDown]);
+  }, [workspacePath, sourceMode, sourcePath, projectTabs, initMCC, drillDown]);
 
   if (step === 'hidden') return null;
 

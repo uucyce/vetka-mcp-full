@@ -67,6 +67,33 @@ def _paths_overlap_or_nested(path_a: str, path_b: str) -> bool:
     return common == a or common == b
 
 
+def _find_registry_path_conflict(candidate_path: str) -> tuple[bool, str]:
+    """
+    MARKER_161.9.MULTIPROJECT.ISOLATION.REGISTRY_GUARD.V1
+    Ensure a new workspace path does not overlap with any existing project scope.
+    """
+    candidate = _norm_abs(candidate_path)
+    if not candidate:
+        return False, ""
+    try:
+        from src.services.mcc_project_registry import list_projects as _list_projects
+
+        listing = _list_projects()
+        for row in list(listing.get("projects") or []):
+            pid = str(row.get("project_id") or "").strip()
+            pname = str(row.get("display_name") or pid or "project").strip()
+            existing_sandbox = str(row.get("sandbox_path") or "").strip()
+            existing_source = str(row.get("source_path") or "").strip()
+            for existing in (existing_sandbox, existing_source):
+                if not existing:
+                    continue
+                if _paths_overlap_or_nested(candidate, existing):
+                    return True, f"path overlaps with existing project '{pname}' ({pid})"
+    except Exception:
+        return False, ""
+    return False, ""
+
+
 async def _get_sandbox_status_cached(config: "ProjectConfig") -> dict:
     now = time.monotonic()
     source_mtime = _sandbox_source_mtime(config.sandbox_path)
@@ -312,6 +339,11 @@ async def project_init(req: ProjectInitRequest):
             errors.append(
                 "sandbox_path must be isolated from source_path (no equal/nested paths)"
             )
+    has_conflict, conflict_reason = _find_registry_path_conflict(config.sandbox_path)
+    if has_conflict:
+        errors.append(
+            f"sandbox_path must be isolated from existing projects ({conflict_reason})"
+        )
 
     if errors:
         return ProjectInitResponse(success=False, errors=errors)
