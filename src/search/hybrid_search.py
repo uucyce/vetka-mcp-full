@@ -45,6 +45,7 @@ KEYWORD_WEIGHT = float(os.getenv("VETKA_KEYWORD_WEIGHT", "0.3"))
 GRAPH_WEIGHT = float(os.getenv("VETKA_GRAPH_WEIGHT", "0.2"))
 RRF_K = int(os.getenv("VETKA_RRF_K", "60"))
 FILE_WEIGHT = float(os.getenv("VETKA_FILE_WEIGHT", "0.35"))
+FILENAME_WEIGHT = float(os.getenv("VETKA_FILENAME_WEIGHT", "0.45"))
 JEPA_REORDER_WEIGHT = float(os.getenv("VETKA_HYBRID_JEPA_REORDER_WEIGHT", "0.35"))
 HYBRID_JEPA_ENABLED = os.getenv("VETKA_HYBRID_JEPA_ENABLED", "true").lower() == "true"
 HYBRID_JEPA_INTENT_MIN_WORDS = max(4, int(os.getenv("VETKA_HYBRID_JEPA_INTENT_MIN_WORDS", "4")))
@@ -75,6 +76,25 @@ def _is_explicit_file_finder_query(query: str) -> bool:
         "which file",
     ]
     return any(m in q for m in markers)
+
+
+def _is_lexical_filename_query(query: str) -> bool:
+    """
+    Short lexical queries should include filename search source in vetka/hybrid path.
+    Example: 'abbreviation', 'auth', 'router', 'marker_157'.
+    """
+    q = (query or "").strip().lower()
+    if not q:
+        return False
+    words = [w for w in q.split() if w]
+    if len(words) > 2:
+        return False
+    if len(q) < 3:
+        return False
+    # File-ish token patterns are strong filename intent signals.
+    if any(ch in q for ch in ("_", "-", ".", "/")):
+        return True
+    return len(words) == 1
 
 
 class HybridSearchService:
@@ -308,10 +328,16 @@ class HybridSearchService:
                     ("semantic", self._semantic_search(query, limit * 2, collection))
                 )
 
-            # 2. Keyword search (Weaviate BM25)
-            if mode in ("keyword", "hybrid") and self.weaviate:
+            # 2. Keyword search (Weaviate BM25, Qdrant fallback)
+            if mode in ("keyword", "hybrid") and (self.weaviate or self.qdrant):
                 tasks.append(
                     ("keyword", self._keyword_search(query, limit * 2, collection))
+                )
+
+            # 2.1 Filename search source for lexical/name-like vetka queries.
+            if mode in ("keyword", "hybrid") and self.qdrant and _is_lexical_filename_query(query):
+                tasks.append(
+                    ("filename", self._filename_search(query, limit * 2, collection))
                 )
 
             # 3. Local file search source (especially useful for descriptive doc queries).
@@ -334,7 +360,13 @@ class HybridSearchService:
 
                     if result:
                         # Normalize results to common format
-                        source = "qdrant" if task_name == "semantic" else ("weaviate" if task_name == "keyword" else "file")
+                        source_map = {
+                            "semantic": "qdrant",
+                            "keyword": "weaviate",
+                            "file": "file",
+                            "filename": "filename",
+                        }
+                        source = source_map.get(task_name, task_name)
                         normalized = normalize_results(result, source)
                         if normalized:
                             normalized_by_source[task_name] = normalized
@@ -349,6 +381,8 @@ class HybridSearchService:
                                 weights.append(KEYWORD_WEIGHT)
                             elif task_name == "file":
                                 weights.append(FILE_WEIGHT)
+                            elif task_name == "filename":
+                                weights.append(FILENAME_WEIGHT)
                         else:
                             weights.append(1.0)
 
@@ -404,6 +438,7 @@ class HybridSearchService:
                     "semantic_weight": SEMANTIC_WEIGHT,
                     "keyword_weight": KEYWORD_WEIGHT,
                     "file_weight": FILE_WEIGHT,
+                    "filename_weight": FILENAME_WEIGHT,
                     "rrf_k": RRF_K,
                 },
             }
@@ -514,9 +549,32 @@ class HybridSearchService:
         Returns:
             List of results with score, path, content, etc.
         """
+        async def _qdrant_fallback() -> List[Dict]:
+            if not self.qdrant:
+                return []
+            try:
+                qdrant_collection = {
+                    "tree": "vetka_tree",
+                    "leaf": "vetka_elisya",
+                    "shared": "vetka_shared",
+                }.get(collection, "vetka_elisya")
+                rows = self.qdrant.search_by_content(
+                    query=query,
+                    limit=limit,
+                    collection=qdrant_collection,
+                )
+                for r in rows:
+                    r["source"] = "qdrant_keyword"
+                if rows:
+                    logger.info(f"[KEYWORD] Qdrant content fallback returned {len(rows)} rows")
+                return rows
+            except Exception as e:
+                logger.debug(f"[KEYWORD] Qdrant content fallback failed: {e}")
+                return []
+
         if not self.weaviate:
-            logger.warning("[KEYWORD] Weaviate not available")
-            return []
+            logger.warning("[KEYWORD] Weaviate not available, using Qdrant content fallback")
+            return await _qdrant_fallback()
 
         try:
             col_name = COLLECTIONS.get(collection, collection)
@@ -531,7 +589,7 @@ class HybridSearchService:
                     f"[KEYWORD] BM25 returned 0 results for '{query}'. "
                     f"Weaviate collection '{col_name}' may be empty - needs data sync from Qdrant."
                 )
-                return []
+                return await _qdrant_fallback()
 
             # Normalize Weaviate results
             # FIX_95.11: Include 'name' field from file_name mapping
@@ -560,7 +618,7 @@ class HybridSearchService:
 
         except Exception as e:
             logger.error(f"[KEYWORD] BM25 search failed: {e}")
-            return []
+            return await _qdrant_fallback()
 
     async def _filename_search(
         self, query: str, limit: int, collection: str

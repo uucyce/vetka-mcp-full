@@ -32,7 +32,7 @@ import { useTreeData } from './hooks/useTreeData';
 import { useSocket } from './hooks/useSocket';
 import type { SearchResult } from './types/chat';
 import { calculateAdaptiveLODWithFloor } from './utils/lod';
-import { isTauri, onWebArtifactSaved, openLiveWebWindow } from './config/tauri';
+import { isTauri, onWebArtifactSaved, openArtifactWindow, openLiveWebWindow } from './config/tauri';
 import {
   computeLabelScore,
   selectTopLabels,
@@ -64,6 +64,22 @@ interface MediaStartupState {
     audio_files?: number;
     video_files?: number;
   };
+}
+
+interface ArtifactOpenPayload {
+  file?: {
+    path: string;
+    name: string;
+    extension?: string;
+    artifactId?: string;
+  } | null;
+  content?: {
+    content: string;
+    title: string;
+    type?: 'text' | 'markdown' | 'code' | 'web';
+    sourceUrl?: string;
+  } | null;
+  initialSeekSec?: number;
 }
 
 // ============================================================================
@@ -286,6 +302,54 @@ export default function App() {
   const [isFolderCleanupBusy, setIsFolderCleanupBusy] = useState(false);
   const [folderCleanupProgress, setFolderCleanupProgress] = useState(0);
   const [folderCleanupPath, setFolderCleanupPath] = useState('');
+  const [folderCleanupConfirmPath, setFolderCleanupConfirmPath] = useState<string | null>(null);
+
+  const isEmbeddedArtifactFallbackForced = useCallback(() => {
+    if (!isTauri()) return true;
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      if (qs.get('vetka_force_embedded_artifact') === '1') return true;
+    } catch {
+      // Keep guard resilient.
+    }
+    try {
+      return window.localStorage.getItem('vetka_force_embedded_artifact') === '1';
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const openArtifactEmbeddedFallback = useCallback((payload: ArtifactOpenPayload) => {
+    setArtifactFile(payload.file ?? null);
+    setArtifactContent(payload.content ?? null);
+    setArtifactSeekSec(payload.initialSeekSec);
+    setIsArtifactOpen(true);
+    console.info('[MARKER_159.C1_OPEN_PATH] opened_via=embedded_fallback');
+  }, [setArtifactFile, setArtifactContent, setArtifactSeekSec, setIsArtifactOpen]);
+
+  const openArtifact = useCallback(async (payload: ArtifactOpenPayload) => {
+    const file = payload.file ?? null;
+    const path = String(file?.path || '').trim();
+    const forceEmbedded = isEmbeddedArtifactFallbackForced();
+
+    if (!forceEmbedded && isTauri() && path) {
+      const ok = await openArtifactWindow({
+        path,
+        name: file?.name,
+        extension: file?.extension,
+        artifactId: file?.artifactId,
+        initialSeekSec: payload.initialSeekSec,
+        contentMode: 'file',
+        windowLabel: 'artifact-main',
+      });
+      if (ok) {
+        console.info('[MARKER_159.C1_OPEN_PATH] opened_via=native_window');
+        return;
+      }
+    }
+
+    openArtifactEmbeddedFallback(payload);
+  }, [isEmbeddedArtifactFallbackForced, openArtifactEmbeddedFallback]);
 
   useEffect(() => {
     if (!isFolderCleanupBusy) return;
@@ -293,6 +357,54 @@ export default function App() {
       setFolderCleanupProgress((prev) => (prev >= 92 ? 92 : prev + 4));
     }, 120);
     return () => window.clearInterval(timer);
+  }, [isFolderCleanupBusy]);
+
+  const runFolderCleanup = useCallback(async (targetPath: string) => {
+    if (!targetPath || isFolderCleanupBusy) return;
+
+    setFolderCleanupConfirmPath(null);
+    setFolderCleanupPath(targetPath);
+    setFolderCleanupProgress(8);
+    setIsFolderCleanupBusy(true);
+
+    try {
+      const res = await fetch('/api/watcher/cleanup-folder-from-vetka', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: targetPath,
+          dry_run: false,
+          block_watchdog: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        alert(`Cleanup failed: ${data?.detail || data?.error || res.status}`);
+        return;
+      }
+
+      const qd = Number(data?.qdrant_deleted || 0);
+      const wv = Number(data?.weaviate_deleted || 0);
+      setFolderCleanupProgress(100);
+      alert(
+        `Cleaned from VETKA:\n` +
+        `Qdrant: ${qd}\n` +
+        `Weaviate: ${wv}\n\n` +
+        `Watchdog block: ${data?.watchdog_blocked ? 'ON' : 'OFF'}\n` +
+        `Disk files: preserved`
+      );
+
+      window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
+      window.dispatchEvent(new CustomEvent('vetka-switch-to-scanner'));
+    } catch (err) {
+      alert('Cleanup failed. Check backend logs.');
+    } finally {
+      setIsFolderCleanupBusy(false);
+      window.setTimeout(() => {
+        setFolderCleanupProgress(0);
+        setFolderCleanupPath('');
+      }, 180);
+    }
   }, [isFolderCleanupBusy]);
 
   // Phase 52.4: Handle click on empty space to deselect
@@ -320,15 +432,16 @@ export default function App() {
         return;
       }
       // Browser fallback: open existing artifact panel web preview.
-      setArtifactFile(null);
-      setArtifactContent({
-        title: result.name || 'Web result',
-        type: 'web',
-        content: result.preview || '',
-        sourceUrl: result.path || '',
+      openArtifactEmbeddedFallback({
+        file: null,
+        content: {
+          title: result.name || 'Web result',
+          type: 'web',
+          content: result.preview || '',
+          sourceUrl: result.path || '',
+        },
+        initialSeekSec: undefined,
       });
-      setArtifactSeekSec(undefined);
-      setIsArtifactOpen(true);
       return;
     }
 
@@ -339,7 +452,7 @@ export default function App() {
     }
     // Fly camera to result
     setCameraCommand({ target: result.path, zoom: 'close', highlight: true });
-  }, [allNodes, selectNode, selectedNode, setCameraCommand, setArtifactFile, setArtifactContent, setIsArtifactOpen]);
+  }, [allNodes, openArtifactEmbeddedFallback, selectNode, selectedNode, setCameraCommand]);
 
   const handleSearchPin = useCallback((result: SearchResult) => {
     // Find node by path and toggle pin
@@ -637,10 +750,11 @@ export default function App() {
       const e = evt as CustomEvent;
       const { path, name, extension } = e.detail || {};
       if (!path || !name) return;
-      setArtifactFile({ path, name, extension });
-      setArtifactContent(null);
-      setArtifactSeekSec(undefined);
-      setIsArtifactOpen(true);
+      void openArtifact({
+        file: { path, name, extension },
+        content: null,
+        initialSeekSec: undefined,
+      });
       console.log('[App] Phase 118.2: Opening artifact via double-click:', name);
     };
 
@@ -674,10 +788,11 @@ export default function App() {
       }
       const extension = fileName.includes('.') ? fileName.split('.').pop() : undefined;
 
-      setArtifactFile({ path: filePath, name: fileName, extension });
-      setArtifactContent(null);
-      setArtifactSeekSec(startSec);
-      setIsArtifactOpen(true);
+      await openArtifact({
+        file: { path: filePath, name: fileName, extension, artifactId },
+        content: null,
+        initialSeekSec: startSec,
+      });
     };
 
     const handleOpenArtifactEvent = (evt: Event) => {
@@ -691,7 +806,7 @@ export default function App() {
       window.removeEventListener('vetka-open-artifact-file', handleOpenArtifactFile);
       window.removeEventListener('vetka-open-artifact', handleOpenArtifactEvent);
     };
-  }, []);
+  }, [openArtifact]);
 
   // Phase 65: G key for grab mode (Blender-style node movement)
   // MARKER_109_DEVPANEL: Cmd+Shift+D for dev panel
@@ -816,7 +931,8 @@ export default function App() {
       onDropToTree={handleDropToTree}
       onDropToChat={handleDropToChat}
     >
-    <div style={{ width: '100vw', height: '100vh', background: '#0a0a0a' }}>
+    <div style={{ position: 'fixed', inset: 0, background: '#0a0a0a' }}>
+      {/* MARKER_159.C2.FULLSCREEN_LAYOUT_FIXED_INSET: avoid 100vh white-gap artifacts in native fullscreen. */}
       <Canvas
         camera={{
           position: [0, 500, 1000],
@@ -929,15 +1045,16 @@ export default function App() {
                   // Browser fallback (non-Tauri runtime only)
                   const title = result.name || 'Web result';
                   const url = result.path || '';
-                  setArtifactFile(null);
-                  setArtifactContent({
-                    title,
-                    type: 'web',
-                    content: result.preview || '',
-                    sourceUrl: url,
+                  openArtifactEmbeddedFallback({
+                    file: null,
+                    content: {
+                      title,
+                      type: 'web',
+                      content: result.preview || '',
+                      sourceUrl: url,
+                    },
+                    initialSeekSec: undefined,
                   });
-                  setArtifactSeekSec(undefined);
-                  setIsArtifactOpen(true);
                   return;
                 }
 
@@ -946,14 +1063,15 @@ export default function App() {
                   ? result.path.replace(/^file:\/\//, '')
                   : result.path;
                 const ext = result.name.includes('.') ? result.name.split('.').pop() : undefined;
-                setArtifactFile({
-                  path: normalizedPath,
-                  name: result.name,
-                  extension: ext
+                await openArtifact({
+                  file: {
+                    path: normalizedPath,
+                    name: result.name,
+                    extension: ext,
+                  },
+                  content: null,
+                  initialSeekSec: undefined,
                 });
-                setArtifactContent(null);
-                setArtifactSeekSec(undefined);
-                setIsArtifactOpen(true);
               }}
               placeholder="Search..."
               contextPrefix="vetka/"
@@ -969,9 +1087,9 @@ export default function App() {
           {/* Icons next to search bar */}
           <div style={{
             display: 'flex',
-            flexDirection: 'column',
+            flexDirection: 'row',
+            alignItems: 'center',
             gap: 8,
-            paddingTop: 4,
           }}>
             {/* Chat toggle button */}
             <button
@@ -1011,7 +1129,27 @@ export default function App() {
 
             {/* Artifact/Chest button */}
             <button
-              onClick={() => setIsArtifactOpen(!isArtifactOpen)}
+              onClick={() => {
+                if (isArtifactOpen) {
+                  setIsArtifactOpen(false);
+                  setArtifactFile(null);
+                  setArtifactContent(null);
+                  setArtifactSeekSec(undefined);
+                  return;
+                }
+                if (!selectedNode || selectedNode.type === 'folder') return;
+                const extension = selectedNode.name.includes('.') ? selectedNode.name.split('.').pop() : undefined;
+                void openArtifact({
+                  file: {
+                    path: selectedNode.path,
+                    name: selectedNode.name,
+                    extension,
+                    artifactId: String(selectedNode.metadata?.artifact_id || ''),
+                  },
+                  content: null,
+                  initialSeekSec: undefined,
+                });
+              }}
               disabled={!selectedNode}
               style={{
                 width: 36,
@@ -1237,61 +1375,9 @@ export default function App() {
               const targetPath = String(nodeContextMenu.nodePath || '');
               if (!targetPath) return;
 
-              // Close menu first to avoid click-through/reentry with native dialogs.
+              // Close menu first to avoid click-through/reentry issues.
               setNodeContextMenu((prev) => ({ ...prev, visible: false }));
-
-              const confirmed = window.confirm(
-                `Clean folder from VETKA index?\n\n` +
-                `Folder: ${targetPath}\n\n` +
-                `This removes data from VETKA only (search/tree/index/watchdog).\n` +
-                `Files on disk will remain untouched.`
-              );
-              if (!confirmed) return;
-
-              setFolderCleanupPath(targetPath);
-              setFolderCleanupProgress(8);
-              setIsFolderCleanupBusy(true);
-              void (async () => {
-                try {
-                  const res = await fetch('/api/watcher/cleanup-folder-from-vetka', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      path: targetPath,
-                      dry_run: false,
-                      block_watchdog: true,
-                    }),
-                  });
-                  const data = await res.json();
-                  if (!res.ok || !data?.success) {
-                    alert(`Cleanup failed: ${data?.detail || data?.error || res.status}`);
-                    return;
-                  }
-
-                  const qd = Number(data?.qdrant_deleted || 0);
-                  const wv = Number(data?.weaviate_deleted || 0);
-                  setFolderCleanupProgress(100);
-                  alert(
-                    `Cleaned from VETKA:\n` +
-                    `Qdrant: ${qd}\n` +
-                    `Weaviate: ${wv}\n\n` +
-                    `Watchdog block: ${data?.watchdog_blocked ? 'ON' : 'OFF'}\n` +
-                    `Disk files: preserved`
-                  );
-
-                  // Ensure graph/search views refresh immediately after cleanup.
-                  window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
-                  window.dispatchEvent(new CustomEvent('vetka-switch-to-scanner'));
-                } catch (err) {
-                  alert('Cleanup failed. Check backend logs.');
-                } finally {
-                  setIsFolderCleanupBusy(false);
-                  window.setTimeout(() => {
-                    setFolderCleanupProgress(0);
-                    setFolderCleanupPath('');
-                  }, 180);
-                }
-              })();
+              setFolderCleanupConfirmPath(targetPath);
             }}
             style={{
               width: '100%',
@@ -1309,6 +1395,77 @@ export default function App() {
           >
             {isFolderCleanupBusy ? 'Cleaning Folder...' : 'Clean Folder from VETKA'}
           </button>
+        </div>
+      )}
+
+      {folderCleanupConfirmPath && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2350,
+            backdropFilter: 'blur(2px)',
+          }}
+          onClick={() => setFolderCleanupConfirmPath(null)}
+        >
+          <div
+            style={{
+              width: 520,
+              maxWidth: 'calc(100vw - 24px)',
+              background: 'rgba(24,24,24,0.95)',
+              border: '1px solid #3a3a3a',
+              borderRadius: 12,
+              padding: 16,
+              color: '#d7d7d7',
+              boxShadow: '0 16px 36px rgba(0,0,0,0.45)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 15, fontWeight: 600 }}>Clean folder from VETKA index?</div>
+            <div style={{ fontSize: 12, color: '#a1a1a1', marginTop: 8, lineHeight: 1.4 }}>
+              Folder: {folderCleanupConfirmPath}
+            </div>
+            <div style={{ fontSize: 12, color: '#bcbcbc', marginTop: 12, lineHeight: 1.45 }}>
+              This removes data from VETKA only (search/tree/index/watchdog). Files on disk remain untouched.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+              <button
+                type="button"
+                onClick={() => setFolderCleanupConfirmPath(null)}
+                style={{
+                  border: '1px solid #3d3d3d',
+                  background: '#2a2a2a',
+                  color: '#d0d0d0',
+                  borderRadius: 8,
+                  padding: '8px 14px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!folderCleanupConfirmPath) return;
+                  void runFolderCleanup(folderCleanupConfirmPath);
+                }}
+                style={{
+                  border: '1px solid #5a5a5a',
+                  background: '#3f3f3f',
+                  color: '#f1f1f1',
+                  borderRadius: 8,
+                  padding: '8px 14px',
+                  cursor: 'pointer',
+                }}
+              >
+                Clean
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

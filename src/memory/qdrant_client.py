@@ -445,33 +445,41 @@ class QdrantVetkaClient:
                     ]
                 )
 
-            # Get all points with filter (up to 2000 for filename matching)
-            # Phase 68.2: Increased from 500 to 2000 for better coverage
-            points, _ = self.client.scroll(
-                collection_name=collection_name,
-                limit=2000,  # Increased for better filename coverage
-                scroll_filter=search_filter,
-                with_payload=True,
-                with_vectors=False
-            )
+            def _scroll_all_points(scroll_filter):
+                points_acc = []
+                offset = None
+                # MARKER_161.RECON.QDRANT_FILENAME_PAGINATION_GAP:
+                # iterate through full collection pages, not only first scroll page.
+                while True:
+                    page, offset = self.client.scroll(
+                        collection_name=collection_name,
+                        limit=512,
+                        offset=offset,
+                        scroll_filter=scroll_filter,
+                        with_payload=True,
+                        with_vectors=False,
+                    )
+                    if page:
+                        points_acc.extend(page)
+                    if offset is None:
+                        break
+                return points_acc
+
+            points = _scroll_all_points(search_filter)
 
             # FIX_95.3: Fallback - if no scanned_file found, search ALL points by path
             logger.info(f"[FILENAME] Scroll with type=scanned_file returned {len(points)} points")
             if not points:
                 logger.info(f"[FILENAME] No scanned_file entries, searching all points for '{filename_pattern}'")
-                points, _ = self.client.scroll(
-                    collection_name=collection_name,
-                    limit=2000,
-                    scroll_filter=None,  # No type filter
-                    with_payload=True,
-                    with_vectors=False
-                )
+                points = _scroll_all_points(None)
                 logger.info(f"[FILENAME] Fallback scroll (no filter) returned {len(points)} points")
 
             # Filter by filename pattern (case-insensitive substring match)
             # FIX_95.3: Search in BOTH 'name' field AND last part of 'path'
             results = []
             for point in points:
+                if bool(point.payload.get('deleted', False)):
+                    continue
                 name = point.payload.get('name', '')
                 path = point.payload.get('path', '')
                 # Extract filename from path if name is empty
@@ -554,6 +562,10 @@ class QdrantVetkaClient:
                         FieldCondition(
                             key='type',
                             match=MatchAny(any=['scanned_file'])
+                        ),
+                        FieldCondition(
+                            key='deleted',
+                            match=MatchValue(value=False)
                         )
                     ]
                 )

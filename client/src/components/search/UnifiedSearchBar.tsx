@@ -649,8 +649,21 @@ export function UnifiedSearchBar({
   }, [activeResults]);
 
   const [isFocused, setIsFocused] = useState(false);
+  const [thinkingDots, setThinkingDots] = useState('.');
   const showVoiceTrigger = Boolean(onVoiceTrigger && !query && !activeIsSearching);
   const showVoiceActivity = voiceState === 'listening' || voiceState === 'speaking';
+  const showThinkingIndicator = voiceState === 'thinking';
+
+  useEffect(() => {
+    if (!showThinkingIndicator) {
+      setThinkingDots('.');
+      return;
+    }
+    const t = window.setInterval(() => {
+      setThinkingDots((prev) => (prev.length >= 3 ? '.' : `${prev}.`));
+    }, 320);
+    return () => window.clearInterval(t);
+  }, [showThinkingIndicator]);
 
   // Styles (Nolan dark minimal - grayscale only)
   const styles = {
@@ -716,9 +729,9 @@ export function UnifiedSearchBar({
     },
     resultItem: {
       display: 'flex',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       justifyContent: 'space-between',
-      padding: compact ? '6px 10px' : '8px 12px',
+      padding: compact ? '5px 9px' : '6px 10px',
       cursor: 'pointer',
       borderBottom: '1px solid #222',
       transition: 'background 0.15s',
@@ -743,7 +756,7 @@ export function UnifiedSearchBar({
     },
     resultName: {
       color: '#fff',
-      fontSize: compact ? '12px' : '13px',
+      fontSize: compact ? '12px' : '12px',
       fontWeight: 500,
       overflow: 'hidden',
       textOverflow: 'ellipsis',
@@ -751,7 +764,7 @@ export function UnifiedSearchBar({
     },
     resultPath: {
       color: '#555',
-      fontSize: compact ? '10px' : '11px',
+      fontSize: compact ? '10px' : '10px',
       marginTop: '2px',
       overflow: 'hidden',
       textOverflow: 'ellipsis',
@@ -766,7 +779,7 @@ export function UnifiedSearchBar({
     resultRelevance: {
       color: '#666',
       fontSize: '10px',
-      minWidth: '30px',
+      minWidth: '26px',
       textAlign: 'right' as const,
     },
     sortButton: {
@@ -959,6 +972,21 @@ export function UnifiedSearchBar({
           >
             <CloseIcon />
           </button>
+        )}
+
+        {showThinkingIndicator && (
+          <span
+            style={{
+              color: '#8a8a8a',
+              fontSize: compact ? '11px' : '12px',
+              marginLeft: 6,
+              whiteSpace: 'nowrap',
+              userSelect: 'none',
+            }}
+            title="Voice response in progress"
+          >
+            ВЕТКА думает{thinkingDots}
+          </span>
         )}
 
         {/* Phase 68.3: Context selector dropdown - vetka/ active, others need backend */}
@@ -1299,6 +1327,8 @@ export function UnifiedSearchBar({
             const pinned = isPinned(result);
             const isWebRow = String(result.source || '').startsWith('web') || /^https?:\/\//i.test(result.path);
             const isFileRow = searchContext === 'file';
+            const isVetkaRow = searchContext === 'vetka';
+            const useExpandedText = isWebRow || isFileRow || isVetkaRow;
 
             return (
               <div
@@ -1324,12 +1354,12 @@ export function UnifiedSearchBar({
                     <div
                       style={{
                         ...styles.resultName,
-                        ...((isWebRow || isFileRow) ? {
+                        ...(useExpandedText ? {
                           display: '-webkit-box',
                           WebkitLineClamp: 2,
                           WebkitBoxOrient: 'vertical' as const,
                           whiteSpace: 'normal' as const,
-                          lineHeight: 1.25,
+                          lineHeight: 1.18,
                           overflow: 'hidden',
                         } : {}),
                       }}
@@ -1339,14 +1369,14 @@ export function UnifiedSearchBar({
                     <div
                       style={{
                         ...styles.resultPath,
-                        ...((isWebRow || isFileRow) ? {
+                        ...(useExpandedText ? {
                           display: '-webkit-box',
                           WebkitLineClamp: isFileRow ? 2 : 1,
                           WebkitBoxOrient: 'vertical' as const,
                           whiteSpace: 'normal' as const,
                           overflowWrap: 'anywhere' as const,
-                          lineHeight: 1.25,
-                          marginTop: '3px',
+                          lineHeight: 1.18,
+                          marginTop: '2px',
                         } : {}),
                       }}
                     >
@@ -1378,12 +1408,12 @@ export function UnifiedSearchBar({
 
                   {/* MARKER_144.IMPL_STEP_3_READABILITY_FIX: compact web rows, keep metadata on vetka/file */}
                   {!isWebRow && (
-                    <span style={{ color: '#666', fontSize: '10px', minWidth: '55px', textAlign: 'right' as const }}>
+                    <span style={{ color: '#666', fontSize: '10px', minWidth: '42px', textAlign: 'right' as const }}>
                       {formatBytes(result.size || 0)}
                     </span>
                   )}
                   {!isWebRow && (
-                    <span style={{ color: '#666', fontSize: '10px', minWidth: '60px', textAlign: 'right' as const }}>
+                    <span style={{ color: '#666', fontSize: '10px', minWidth: '48px', textAlign: 'right' as const }}>
                       {formatDate(result.modified_time || 0)}
                     </span>
                   )}
