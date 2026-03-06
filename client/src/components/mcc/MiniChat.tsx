@@ -54,18 +54,18 @@ function buildMycoReply(context?: MiniContextPayload): string {
   const role = String(context?.role || '');
   const scopeLine = `you are in ${level} view`;
   if (!context || context.scope === 'project') {
-    return `🍄\n- ${scopeLine}\n- this is project-level context\n- next: click a node and ask again`;
+    return `MYCO\n- ${scopeLine}\n- this is project-level context\n- next: click a node and ask again`;
   }
   if (kind === 'task') {
-    return `🍄\n- ${scopeLine}\n- selected task: ${label}\n- next: press Enter to drill into workflow`;
+    return `MYCO\n- ${scopeLine}\n- selected task: ${label}\n- next: press Enter to drill into workflow`;
   }
   if (kind === 'agent') {
-    return `🍄\n- ${scopeLine}\n- selected agent: ${role || label}\n- next: open Context to review model/prompt`;
+    return `MYCO\n- ${scopeLine}\n- selected agent: ${role || label}\n- next: open Context to review model/prompt`;
   }
   if (kind === 'file' || kind === 'directory') {
-    return `🍄\n- ${scopeLine}\n- selected code scope: ${label}\n- next: inspect Context and linked tasks`;
+    return `MYCO\n- ${scopeLine}\n- selected code scope: ${label}\n- next: inspect Context and linked tasks`;
   }
-  return `🍄\n- ${scopeLine}\n- selected node: ${label}\n- next: ask architect or open Context`;
+  return `MYCO\n- ${scopeLine}\n- selected node: ${label}\n- next: ask architect or open Context`;
 }
 
 function useChatModelLabel(context?: MiniContextPayload): string {
@@ -200,7 +200,7 @@ function ChatCompact({ context }: MiniChatProps) {
     setInput('');
     if (isMycoTrigger(message)) {
       if (helperMode === 'off') {
-        setLastAnswer('🍄 helper is off. Toggle helper icon.');
+        setLastAnswer('MYCO helper is off. Toggle helper icon.');
         return;
       }
       emitMycoReplyEvent();

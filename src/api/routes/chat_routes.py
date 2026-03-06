@@ -158,7 +158,7 @@ def _build_myco_quick_reply(message: str, payload: Dict[str, Any], context: Dict
     prompt = str(message or "").strip()
     if prompt.lower() in {"?", "/myco", "/help myco", "help"}:
         return (
-            f"🍄 {user_name}, quick guide:\n"
+            f"MYCO {user_name}, quick guide:\n"
             f"- focus: {label}\n"
             f"- mode: {fast_mode}\n"
             f"- hidden memory sources: {indexed_sources}\n"
@@ -167,7 +167,7 @@ def _build_myco_quick_reply(message: str, payload: Dict[str, Any], context: Dict
 
     task_line = f"- active task: {active_task_title}" if active_task_title else "- active task: not pinned"
     return (
-        f"🍄 {user_name}, context loaded.\n"
+        f"MYCO {user_name}, context loaded.\n"
         f"- focus: {label}\n"
         f"{task_line}\n"
         f"- project: {active_project_id or 'n/a'}\n"
@@ -286,7 +286,7 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
         except Exception as e:
             return {
                 "success": True,
-                "response": f"🍄 helper fallback: {str(e)[:160]}",
+                "response": f"MYCO helper fallback: {str(e)[:160]}",
                 "role": "helper_myco",
                 "mode": "fallback",
             }
