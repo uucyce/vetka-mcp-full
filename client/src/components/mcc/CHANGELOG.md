@@ -1,0 +1,9 @@
+# Changelog
+
+All notable changes to this module are documented here.
+
+## [0.1.0] - 2026-03-06
+### Added
+- Initial public mirror bootstrap for `mycelium` from `client/src/components/mcc`.
+- MCC mini-window minimize + bottom dock restore flow.
+- Module docs bootstrap (`README.md`, `OPEN_SOURCE_CREDITS.md`, `CHANGELOG.md`).

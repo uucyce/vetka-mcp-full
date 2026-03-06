@@ -6,3 +6,4 @@ src/scanners	vetka-ingest-engine	main
 src/elisya	vetka-elisya-runtime	main
 src/orchestration	vetka-orchestration-core	main
 client/src/components/chat	vetka-chat-ui	main
+client/src/components/mcc	mycelium	main
