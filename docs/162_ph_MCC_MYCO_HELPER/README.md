@@ -20,12 +20,15 @@
 
 5. P3.P0 recon:
 - `PHASE_162_P3_P0_HIDDEN_MEMORY_RECON_REPORT_2026-03-06.md`
+6. P3.P1 implementation:
+- `PHASE_162_P3_P1_HIDDEN_MEMORY_IMPL_REPORT_2026-03-06.md`
 
 ## Current status
 - `P0` complete.
 - `P1` complete (passive-mode skeleton + store mode + chat role wiring).
 - `P2` complete (top-row MYCO UI + title simplification + chat/dock behavior polish).
 - `P3.P0` complete (hidden memory recon + marker lock for narrow implementation).
+- `P3.P1` complete (hidden memory bridge + quick chat fastpath + ENGRAM payload contract).
 
 ## Root P2 contract (fixed)
 1. Add `MYCO` button (icon + label) in MCC top tab-row.

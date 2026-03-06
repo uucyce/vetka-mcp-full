@@ -216,8 +216,9 @@ function ChatCompact({ context }: MiniChatProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message,
-          role: 'architect',
+          role: helperMode !== 'off' ? 'helper_myco' : 'architect',
           context: {
+            helper_mode: helperMode,
             chat_scope: scope.scope,
             nav_level: context?.navLevel,
             focus_scope_key: context?.focusScopeKey,
@@ -231,6 +232,7 @@ function ChatCompact({ context }: MiniChatProps) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (helperMode !== 'off') emitMycoReplyEvent();
       setLastAnswer(data.response || data.message || '(no response)');
     } catch (err) {
       setLastAnswer('⚠ Failed to get response');
@@ -458,8 +460,9 @@ function ChatExpanded({ context }: MiniChatProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message,
-          role: 'architect',
+          role: helperMode !== 'off' ? 'helper_myco' : 'architect',
           context: {
+            helper_mode: helperMode,
             chat_scope: scope.scope,
             nav_level: context?.navLevel,
             focus_scope_key: context?.focusScopeKey,
@@ -473,7 +476,12 @@ function ChatExpanded({ context }: MiniChatProps) {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setMessages(prev => [...prev, { role: 'assistant', content: data.response || data.message || '' }]);
+      if (helperMode !== 'off') {
+        emitMycoReplyEvent();
+        setMessages(prev => [...prev, { role: 'helper_myco', content: data.response || data.message || '' }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'assistant', content: data.response || data.message || '' }]);
+      }
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: '⚠ Error getting response' }]);
     } finally {

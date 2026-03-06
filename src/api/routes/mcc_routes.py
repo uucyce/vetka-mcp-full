@@ -761,6 +761,16 @@ class LayoutPreferenceUpdateRequest(BaseModel):
     profile: Dict[str, Any]
 
 
+class MycoHiddenReindexRequest(BaseModel):
+    max_files: int = 240
+    max_chunks: int = 2400
+
+
+class MycoContextRequest(BaseModel):
+    user_id: str = "danila"
+    focus: Dict[str, Any] = {}
+
+
 class CreateDagVersionRequest(BaseModel):
     """
     MARKER_155.ARCHITECT_BUILD.DAG_VERSIONS.API.V1
@@ -1267,6 +1277,53 @@ async def update_layout_preferences(req: LayoutPreferenceUpdateRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update layout preferences: {e}")
+
+
+# ──────────────────────────────────────────────────────────────
+# MARKER_162.P3: MYCO hidden memory + context bridge
+# ──────────────────────────────────────────────────────────────
+
+@router.post("/myco/hidden-index/reindex")
+async def myco_hidden_index_reindex(req: MycoHiddenReindexRequest):
+    """
+    MARKER_162.P3.MYCO.HIDDEN_TRIPLE_MEMORY_INDEX.V1
+    MARKER_162.P3.MYCO.README_SCAN_PIPELINE.V1
+    Reindex hidden MYCO instruction corpus into triple-memory.
+    """
+    from src.services.myco_memory_bridge import reindex_hidden_instruction_memory
+
+    try:
+        result = reindex_hidden_instruction_memory(
+            max_files=int(req.max_files),
+            max_chunks=int(req.max_chunks),
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MYCO hidden reindex failed: {e}")
+
+
+@router.post("/myco/context")
+async def myco_context(req: MycoContextRequest):
+    """
+    MARKER_162.P3.MYCO.ENGRAM_USER_TASK_MEMORY.V1
+    MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1
+    MARKER_162.P3.MYCO.NO_UI_MEMORY_SURFACE.V1
+    Return hidden MYCO context payload for backend/runtime usage.
+    """
+    from src.services.myco_memory_bridge import build_myco_memory_payload
+
+    config = _load_active_project_config()
+    project_id = str(config.project_id) if config else ""
+
+    try:
+        payload = build_myco_memory_payload(
+            user_id=str(req.user_id or "danila"),
+            active_project_id=project_id,
+            focus=dict(req.focus or {}),
+        )
+        return {"success": True, "payload": payload}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"MYCO context build failed: {e}")
 
 
 # ──────────────────────────────────────────────────────────────

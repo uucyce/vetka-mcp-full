@@ -64,6 +64,18 @@ class ClearHistoryRequest(BaseModel):
     path: str
 
 
+class QuickChatRequest(BaseModel):
+    """
+    Lightweight MCC chat contract.
+    Used by MiniChat quick path.
+    """
+
+    message: str
+    role: str = "architect"
+    user_id: str = "danila"
+    context: Dict[str, Any] = {}
+
+
 # ============================================================
 # HELPER FUNCTIONS
 # ============================================================
@@ -117,6 +129,53 @@ def _load_chat_history(chat_dir: Path, node_path: str) -> list:
     return []
 
 
+def _build_myco_quick_reply(message: str, payload: Dict[str, Any], context: Dict[str, Any]) -> str:
+    """
+    MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1
+    Lightweight MYCO response builder with hidden memory payload.
+    """
+    focus = dict(context or {})
+    label = str(
+        focus.get("label")
+        or focus.get("task_id")
+        or focus.get("taskId")
+        or focus.get("node_id")
+        or focus.get("nodeId")
+        or "project"
+    )
+    user_name = str(payload.get("user_name") or payload.get("user_id") or "operator")
+    active_project_id = str(payload.get("active_project_id") or "")
+    recent = payload.get("recent_tasks_by_project") or {}
+    active_recent = recent.get(active_project_id) if isinstance(recent, dict) and active_project_id else None
+    active_recent = active_recent if isinstance(active_recent, list) else []
+    active_task = active_recent[0] if active_recent else {}
+    active_task_title = str(active_task.get("title") or "").strip()
+    fastpath = payload.get("fastpath") or {}
+    fast_mode = str(fastpath.get("mode") or "local")
+    hidden = payload.get("hidden_index") or {}
+    indexed_sources = int(hidden.get("source_count") or 0)
+
+    prompt = str(message or "").strip()
+    if prompt.lower() in {"?", "/myco", "/help myco", "help"}:
+        return (
+            f"🍄 {user_name}, quick guide:\n"
+            f"- focus: {label}\n"
+            f"- mode: {fast_mode}\n"
+            f"- hidden memory sources: {indexed_sources}\n"
+            f"- next: double-click node to drill or ask for task dispatch"
+        )
+
+    task_line = f"- active task: {active_task_title}" if active_task_title else "- active task: not pinned"
+    return (
+        f"🍄 {user_name}, context loaded.\n"
+        f"- focus: {label}\n"
+        f"{task_line}\n"
+        f"- project: {active_project_id or 'n/a'}\n"
+        f"- hidden memory index: {indexed_sources} sources\n"
+        f"- tell me: explain node / plan next action / map dependencies"
+    )
+
+
 # ============================================================
 # ROUTES
 # ============================================================
@@ -163,6 +222,95 @@ async def clear_chat_history(req: ClearHistoryRequest, request: Request):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/quick")
+async def api_chat_quick(req: QuickChatRequest, request: Request):
+    """
+    MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1
+    MARKER_162.P3.MYCO.ENGRAM_USER_TASK_MEMORY.V1
+    Lightweight chat endpoint for MCC MiniChat.
+    """
+    msg = str(req.message or "").strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="message is required")
+
+    role = str(req.role or "architect").strip().lower()
+    context = dict(req.context or {})
+    helper_mode = str(context.get("helper_mode") or context.get("helperMode") or "").strip().lower()
+    is_myco = role == "helper_myco" or helper_mode in {"passive", "active"} or msg.lower() in {"?", "/myco", "/help myco", "help"}
+
+    if is_myco:
+        try:
+            from src.services.project_config import ProjectConfig
+            from src.services.myco_memory_bridge import build_myco_memory_payload
+            from src.orchestration.context_packer import get_context_packer
+
+            cfg = ProjectConfig.load()
+            payload = build_myco_memory_payload(
+                user_id=str(req.user_id or "danila"),
+                active_project_id=str(getattr(cfg, "project_id", "") or ""),
+                focus=context,
+            )
+
+            # Optional JEPA summary signal from context packer when prompt/context is verbose.
+            packed: Dict[str, Any] = {}
+            try:
+                packer = get_context_packer()
+                packed = packer.pack_context(
+                    user_message=msg,
+                    context_data={
+                        "myco_focus": context,
+                        "myco_payload": {
+                            "user_name": payload.get("user_name"),
+                            "active_project_id": payload.get("active_project_id"),
+                            "recent_tasks_by_project": payload.get("recent_tasks_by_project"),
+                        },
+                    },
+                    max_context_chars=2200,
+                ) or {}
+            except Exception:
+                packed = {}
+
+            response = _build_myco_quick_reply(msg, payload, context)
+            return {
+                "success": True,
+                "response": response,
+                "role": "helper_myco",
+                "mode": "local_fastpath",
+                "fastpath": payload.get("fastpath"),
+                "hidden_index": payload.get("hidden_index"),
+                "packed_meta": packed.get("meta", {}),
+                "marker": "MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1",
+            }
+        except Exception as e:
+            return {
+                "success": True,
+                "response": f"🍄 helper fallback: {str(e)[:160]}",
+                "role": "helper_myco",
+                "mode": "fallback",
+            }
+
+    # Architect quick path fallback: route to regular /chat pipeline.
+    try:
+        chat_req = ChatRequest(
+            message=msg,
+            node_id=str(context.get("node_id") or context.get("nodeId") or ""),
+            node_path=str(context.get("focus_scope_key") or context.get("focusScopeKey") or ""),
+            file_path=str(context.get("file_path") or ""),
+        )
+        result = await api_chat(chat_req, request)
+        if isinstance(result, dict):
+            result.setdefault("success", True)
+            return result
+        return {"success": True, "response": str(result)}
+    except Exception as e:
+        return {
+            "success": True,
+            "response": f"⚠ quick architect fallback: {str(e)[:160]}",
+            "role": "assistant",
+            "mode": "fallback",
+        }
 
 
 @router.post("/chat")
