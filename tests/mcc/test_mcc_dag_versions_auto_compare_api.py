@@ -20,8 +20,14 @@ def _payload() -> dict:
         "persist_versions": True,
         "set_primary_best": False,
         "variants": [
-            {"name": "api_clean", "max_nodes": 140, "use_predictive_overlay": False},
-            {"name": "api_balanced", "max_nodes": 200, "use_predictive_overlay": False},
+            {"name": "api_baseline", "max_nodes": 140, "use_predictive_overlay": False, "trm_profile": "off"},
+            {
+                "name": "api_trm_light",
+                "max_nodes": 200,
+                "use_predictive_overlay": False,
+                "trm_profile": "light",
+                "trm_policy": {"enabled": True, "seed": 3},
+            },
         ],
         "records": [
             {"id": "src", "path": "src", "kind": "dir"},
@@ -63,8 +69,9 @@ def test_auto_compare_api_creates_ranked_variants_and_versions(client: TestClien
     assert data["success"] is True
     assert data["count"] == 2
     assert len(data["variants"]) == 2
-    assert data["best"]["name"] in {"api_clean", "api_balanced"}
+    assert data["best"]["name"] in {"api_baseline", "api_trm_light"}
     assert data["variants"][0]["scorecard"]["score"] >= data["variants"][1]["scorecard"]["score"]
+    assert "MARKER_161.TRM.VERSION_META.V1" in data["markers"]
 
     # Ensure persisted variants are visible through list endpoint.
     listed = client.get("/api/mcc/dag-versions/list")
@@ -72,6 +79,9 @@ def test_auto_compare_api_creates_ranked_variants_and_versions(client: TestClien
     payload = listed.json()
     assert payload["success"] is True
     assert payload["count"] >= 2
+    assert "graph_source" in payload["versions"][0]
+    assert "trm_status" in payload["versions"][0]
+    assert "trm_profile" in payload["versions"][0]
 
 
 def test_auto_compare_api_rejects_empty_variants(client: TestClient) -> None:

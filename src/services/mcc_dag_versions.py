@@ -73,6 +73,11 @@ def _ensure_project_bucket(store: Dict[str, Any], project_id: str) -> Dict[str, 
 def _version_summary(v: Dict[str, Any]) -> Dict[str, Any]:
     build_meta = v.get("build_meta") or {}
     verifier = build_meta.get("verifier") or {}
+    trm_meta = build_meta.get("trm_meta") or {}
+    trm_variant = build_meta.get("trm_variant") or {}
+    graph_source = str(build_meta.get("graph_source") or "")
+    if not graph_source:
+        graph_source = "trm_refined" if bool(trm_meta.get("applied")) else "baseline"
     return {
         "version_id": str(v.get("version_id", "")),
         "name": str(v.get("name", "")),
@@ -83,6 +88,9 @@ def _version_summary(v: Dict[str, Any]) -> Dict[str, Any]:
         "node_count": int(v.get("node_count", 0)),
         "edge_count": int(v.get("edge_count", 0)),
         "decision": str(verifier.get("decision", "")),
+        "graph_source": graph_source,
+        "trm_status": str(trm_meta.get("status") or ""),
+        "trm_profile": str(trm_meta.get("profile") or trm_variant.get("profile") or ""),
         "markers": list(v.get("markers") or []),
     }
 
@@ -102,6 +110,8 @@ def create_dag_version(
     MARKER_155.ARCHITECT_BUILD.DAG_VERSIONS.CREATE.V1
     Create and persist DAG version snapshot for project.
     """
+    # MARKER_161.TRM.VERSION_META.V1:
+    # Phase-161 hook: persist TRM policy/refinement metadata per DAG snapshot.
     store = _load_store()
     bucket = _ensure_project_bucket(store, project_id)
     versions: List[Dict[str, Any]] = bucket["versions"]

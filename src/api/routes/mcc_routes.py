@@ -17,11 +17,13 @@ import os
 import shutil
 import asyncio
 import time
+import tempfile
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
 from src.services.project_config import ProjectConfig, SessionState
+from src.services.mcc_trm_config import resolve_trm_policy
 
 router = APIRouter(prefix="/api/mcc", tags=["MCC"])
 
@@ -65,6 +67,40 @@ async def _get_sandbox_status_cached(config: "ProjectConfig") -> dict:
     return status
 
 
+def _load_active_project_config() -> Optional["ProjectConfig"]:
+    # MARKER_161.7.MULTIPROJECT.API.ACTIVE_PROJECT_RESOLVE.V1:
+    # Resolve active project from registry with legacy fallback.
+    try:
+        from src.services.mcc_project_registry import get_active_project
+
+        cfg = get_active_project()
+        if cfg is not None:
+            return cfg
+    except Exception:
+        pass
+    return ProjectConfig.load()
+
+
+def _load_active_session_state(project_id: str) -> "SessionState":
+    # MARKER_161.7.MULTIPROJECT.API.ACTIVE_SESSION_RESOLVE.V1:
+    # Session state is stored per active project when registry is available.
+    try:
+        from src.services.mcc_project_registry import load_session_for_project
+
+        return load_session_for_project(project_id)
+    except Exception:
+        return SessionState.load()
+
+
+def _save_active_session_state(project_id: str, state: "SessionState") -> bool:
+    try:
+        from src.services.mcc_project_registry import save_session_for_project
+
+        return bool(save_session_for_project(project_id, state))
+    except Exception:
+        return bool(state.save())
+
+
 # ──────────────────────────────────────────────────────────────
 # Request/Response models
 # ──────────────────────────────────────────────────────────────
@@ -73,10 +109,13 @@ class InitResponse(BaseModel):
     has_project: bool
     project_config: Optional[dict] = None
     session_state: Optional[dict] = None
+    active_project_id: str = ""
+    projects: List[Dict[str, Any]] = []
 
 class ProjectInitRequest(BaseModel):
-    source_type: str       # "local" | "git"
+    source_type: str       # "local" | "git" | "empty"
     source_path: str       # absolute path or git URL
+    sandbox_path: str = "" # optional absolute path for playground/sandbox root
     quota_gb: int = 10
 
 class ProjectInitResponse(BaseModel):
@@ -84,6 +123,10 @@ class ProjectInitResponse(BaseModel):
     project_id: str = ""
     sandbox_path: str = ""
     errors: list[str] = []
+
+
+class ProjectActivateRequest(BaseModel):
+    project_id: str
 
 class StateRequest(BaseModel):
     level: str = "roadmap"
@@ -98,23 +141,50 @@ class StateRequest(BaseModel):
 # ──────────────────────────────────────────────────────────────
 
 @router.get("/init", response_model=InitResponse)
-async def mcc_init():
+async def mcc_init(project_id: str = Query("", description="Optional project_id to activate before init")):
     """
     Called on frontend mount. Returns:
     - has_project: bool — whether a project is configured
     - project_config: dict — project settings (if exists)
     - session_state: dict — last navigation state (if exists)
-    """
-    config = ProjectConfig.load()
-    if config is None:
-        return InitResponse(has_project=False)
 
-    state = SessionState.load()
+    MARKER_161.7.MULTIPROJECT.API.INIT_ACTIVE_PROJECT.V1:
+    Migration point for active project tab context in MCC.
+    """
+    try:
+        from src.services.mcc_project_registry import (
+            activate_project,
+            ensure_registry_bootstrap,
+            list_projects,
+        )
+
+        ensure_registry_bootstrap()
+        if str(project_id or "").strip():
+            try:
+                activate_project(str(project_id).strip())
+            except Exception:
+                # Ignore invalid activation in init path; fallback below.
+                pass
+        listing = list_projects()
+    except Exception:
+        listing = {"active_project_id": "", "projects": []}
+
+    config = _load_active_project_config()
+    if config is None:
+        return InitResponse(
+            has_project=False,
+            active_project_id=str(listing.get("active_project_id", "")),
+            projects=list(listing.get("projects") or []),
+        )
+
+    state = _load_active_session_state(config.project_id)
     from dataclasses import asdict
     return InitResponse(
         has_project=True,
         project_config=asdict(config),
         session_state=asdict(state),
+        active_project_id=str(listing.get("active_project_id", "") or config.project_id),
+        projects=list(listing.get("projects") or []),
     )
 
 
@@ -128,6 +198,10 @@ async def save_state(req: StateRequest):
     Called on every navigation change. Persists current level + selection.
     Survives server restart.
     """
+    config = _load_active_project_config()
+    if config is None:
+        raise HTTPException(status_code=404, detail="No project configured")
+
     state = SessionState(
         level=req.level,
         roadmap_node_id=req.roadmap_node_id,
@@ -135,7 +209,7 @@ async def save_state(req: StateRequest):
         selected_key=req.selected_key,
         history=req.history,
     )
-    if not state.save():
+    if not _save_active_session_state(config.project_id, state):
         raise HTTPException(status_code=500, detail="Failed to save session state")
     return {"ok": True}
 
@@ -147,7 +221,11 @@ async def save_state(req: StateRequest):
 @router.get("/state")
 async def get_state():
     """Get current session state for Zustand hydration."""
-    state = SessionState.load()
+    config = _load_active_project_config()
+    if config is None:
+        state = SessionState()
+    else:
+        state = _load_active_session_state(config.project_id)
     from dataclasses import asdict
     return asdict(state)
 
@@ -167,57 +245,84 @@ async def project_init(req: ProjectInitRequest):
 
     Note: Qdrant indexing and Roadmap generation happen asynchronously
     after this call returns (Wave 3-4).
+
+    MARKER_161.7.MULTIPROJECT.API.PROJECT_CREATE.V1:
+    Future behavior: create project record in registry and optionally auto-activate tab.
     """
-    # Check if project already exists
-    existing = ProjectConfig.load()
-    if existing is not None:
-        return ProjectInitResponse(
-            success=False,
-            errors=["Project already configured. Delete first to reconfigure."],
-        )
+    # MARKER_161.8.MULTIPROJECT.API.EMPTY_SOURCE_BOOTSTRAP.V1
+    # Support "skip source" flow by creating an empty temporary source folder.
+    req_source_type = str(req.source_type or "").strip().lower()
+    req_source_path = str(req.source_path or "").strip()
+    effective_source_type = req_source_type
+    effective_source_path = req_source_path
+
+    if req_source_type == "empty":
+        temp_source = tempfile.mkdtemp(prefix="mycelium_empty_source_")
+        try:
+            with open(os.path.join(temp_source, "README.md"), "w", encoding="utf-8") as f:
+                f.write("# New Project\n")
+        except Exception:
+            pass
+        effective_source_type = "local"
+        effective_source_path = temp_source
 
     # Create config
     config = ProjectConfig.create_new(
-        source_type=req.source_type,
-        source_path=req.source_path,
+        source_type=effective_source_type,
+        source_path=effective_source_path,
         quota_gb=req.quota_gb,
+        sandbox_path=str(req.sandbox_path or ""),
     )
 
     # Validate
     errors = config.validate()
 
     # Validate source exists
-    if req.source_type == "local":
-        if not os.path.exists(req.source_path):
-            errors.append(f"Source path not found: {req.source_path}")
-        elif not os.path.isdir(req.source_path):
-            errors.append(f"Source path is not a directory: {req.source_path}")
+    if effective_source_type == "local":
+        if not os.path.exists(effective_source_path):
+            errors.append(f"Source path not found: {effective_source_path}")
+        elif not os.path.isdir(effective_source_path):
+            errors.append(f"Source path is not a directory: {effective_source_path}")
 
     if errors:
         return ProjectInitResponse(success=False, errors=errors)
 
     # Create sandbox directory
+    skipped_copy_sources: list[str] = []
     try:
         os.makedirs(config.sandbox_path, exist_ok=True)
 
-        if req.source_type == "local":
+        if effective_source_type == "local":
             # Copy project to sandbox
             # shutil.copytree needs dst to not exist, so remove first
             if os.path.exists(config.sandbox_path):
                 shutil.rmtree(config.sandbox_path)
+            # MARKER_161.8.MULTIPROJECT.API.TOLERANT_LOCAL_COPY.V1
+            # Some large trees mutate during copy (generated datasets, transient artifacts).
+            # Do best-effort copy and skip files that vanish mid-flight.
+            def _copy2_best_effort(src: str, dst: str) -> str:
+                try:
+                    return shutil.copy2(src, dst)
+                except FileNotFoundError:
+                    skipped_copy_sources.append(src)
+                    return dst
+
             shutil.copytree(
-                req.source_path,
+                effective_source_path,
                 config.sandbox_path,
                 ignore=shutil.ignore_patterns(
                     'node_modules', '.git', '__pycache__', '*.pyc',
                     'dist', 'build', '.next', 'target',
                 ),
+                copy_function=_copy2_best_effort,
+                ignore_dangling_symlinks=True,
+                symlinks=True,
             )
-        elif req.source_type == "git":
+        elif effective_source_type == "git":
             # Git clone — shallow
             import subprocess
             result = subprocess.run(
-                ["git", "clone", "--depth=1", req.source_path, config.sandbox_path],
+                ["git", "clone", "--depth=1", effective_source_path, config.sandbox_path],
                 capture_output=True, text=True, timeout=120,
             )
             if result.returncode != 0:
@@ -228,8 +333,28 @@ async def project_init(req: ProjectInitRequest):
     except PermissionError:
         return ProjectInitResponse(
             success=False,
-            errors=[f"Permission denied: cannot read {req.source_path}"],
+            errors=[f"Permission denied: cannot read {effective_source_path}"],
         )
+    except shutil.Error as e:
+        # Keep previous behavior readable, but tolerate transient missing-file entries.
+        transient = []
+        fatal = []
+        for item in list(getattr(e, "args", [])[:1] or []):
+            if isinstance(item, list):
+                for triple in item:
+                    if isinstance(triple, (list, tuple)) and len(triple) >= 3:
+                        src = str(triple[0])
+                        err = str(triple[2])
+                        if "No such file or directory" in err:
+                            transient.append(src)
+                        else:
+                            fatal.append(str(triple))
+        if fatal:
+            return ProjectInitResponse(
+                success=False,
+                errors=[f"Copy failed: {fatal[:2]}"],
+            )
+        skipped_copy_sources.extend(transient)
     except OSError as e:
         return ProjectInitResponse(
             success=False,
@@ -240,14 +365,60 @@ async def project_init(req: ProjectInitRequest):
     if not config.save():
         return ProjectInitResponse(success=False, errors=["Failed to save config"])
 
+    try:
+        from src.services.mcc_project_registry import upsert_project
+
+        upsert_project(config, set_active=True)
+    except Exception:
+        pass
+
     # Initialize default session state
-    SessionState().save()
+    _save_active_session_state(config.project_id, SessionState())
+
+    if skipped_copy_sources:
+        try:
+            print(
+                f"[MCC] project/init skipped {len(skipped_copy_sources)} transient files during copy "
+                f"(source={effective_source_path})"
+            )
+        except Exception:
+            pass
 
     return ProjectInitResponse(
         success=True,
         project_id=config.project_id,
         sandbox_path=config.sandbox_path,
     )
+
+
+@router.get("/projects/list")
+async def list_projects():
+    """
+    MARKER_161.7.MULTIPROJECT.API.PROJECTS_LIST.V1
+    List project registry summaries and active project pointer.
+    """
+    from src.services.mcc_project_registry import ensure_registry_bootstrap, list_projects as _list
+
+    ensure_registry_bootstrap()
+    result = _list()
+    return {"success": True, **result}
+
+
+@router.post("/projects/activate")
+async def activate_project(req: ProjectActivateRequest):
+    """
+    MARKER_161.7.MULTIPROJECT.API.PROJECTS_ACTIVATE.V1
+    Activate project context for subsequent MCC /init and DAG operations.
+    """
+    from src.services.mcc_project_registry import activate_project as _activate
+
+    try:
+        result = _activate(str(req.project_id or "").strip())
+        return {"success": True, **result}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to activate project: {e}")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -263,6 +434,17 @@ async def delete_project():
     from src.services.project_config import CONFIG_PATH, SESSION_STATE_PATH
 
     deleted = []
+    config = _load_active_project_config()
+
+    if config is not None:
+        try:
+            from src.services.mcc_project_registry import remove_project as _remove_project
+
+            _remove_project(str(config.project_id))
+            deleted.append(f"registry:{config.project_id}")
+        except Exception:
+            pass
+
     for path in [CONFIG_PATH, SESSION_STATE_PATH]:
         if os.path.exists(path):
             os.remove(path)
@@ -292,7 +474,7 @@ async def sandbox_status():
     Get sandbox disk usage and quota status.
     Used by SandboxDropdown to show [Sandbox ✓ 2.1/10GB] or [No Sandbox].
     """
-    config = ProjectConfig.load()
+    config = _load_active_project_config()
     if config is None:
         return SandboxStatusResponse(exists=False)
     status = await _get_sandbox_status_cached(config)
@@ -309,7 +491,7 @@ async def sandbox_recreate(req: SandboxRecreateRequest):
     Delete and recreate sandbox from source.
     Used when sandbox gets corrupted or user wants a fresh copy.
     """
-    config = ProjectConfig.load()
+    config = _load_active_project_config()
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -374,7 +556,7 @@ async def delete_sandbox():
     Delete sandbox directory (but keep project config).
     Sandbox can be recreated via POST /api/mcc/sandbox/recreate.
     """
-    config = ProjectConfig.load()
+    config = _load_active_project_config()
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -395,7 +577,7 @@ async def update_quota(quota_gb: int):
     if quota_gb < 1 or quota_gb > 100:
         raise HTTPException(status_code=400, detail="quota_gb must be 1-100")
 
-    config = ProjectConfig.load()
+    config = _load_active_project_config()
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -422,7 +604,7 @@ async def get_roadmap():
     """
     from src.services.roadmap_generator import RoadmapDAG, RoadmapGenerator
 
-    config = ProjectConfig.load()
+    config = _load_active_project_config()
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -450,7 +632,7 @@ async def get_condensed_graph(
     """
     from src.services.mcc_scc_graph import build_condensed_graph
 
-    config = ProjectConfig.load()
+    config = _load_active_project_config()
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -482,7 +664,7 @@ async def generate_roadmap():
     """Regenerate roadmap from current sandbox state."""
     from src.services.roadmap_generator import RoadmapGenerator
 
-    config = ProjectConfig.load()
+    config = _load_active_project_config()
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -540,6 +722,8 @@ class PredictRuntimeHealthResponse(BaseModel):
 
 
 class BuildDesignGraphRequest(BaseModel):
+    # MARKER_161.TRM.API.BUILD_DESIGN_INPUT.V1:
+    # Phase-161 extension point for TRM policy/config payload (kept disabled by default).
     scope_path: str = ""
     max_nodes: int = 600
     include_artifacts: bool = False
@@ -548,12 +732,17 @@ class BuildDesignGraphRequest(BaseModel):
     use_predictive_overlay: bool = True
     max_predicted_edges: int = 120
     min_confidence: float = 0.55
+    trm_profile: str = "off"
+    trm_policy: Dict[str, Any] = {}
 
 
 class BuildDesignFromArrayRequest(BaseModel):
     """
     MARKER_155.ARCHITECT_BUILD.ARRAY_API.V1
     Generic array payload for algorithmic offload DAG build.
+
+    MARKER_161.TRM.API.BUILD_FROM_ARRAY_INPUT.V1:
+    Phase-161 extension point for TRM adapter policy over arbitrary record/relation arrays.
     """
     scope_name: str = "array_scope"
     records: List[Dict[str, Any]] = []
@@ -562,6 +751,8 @@ class BuildDesignFromArrayRequest(BaseModel):
     use_predictive_overlay: bool = False
     max_predicted_edges: int = 120
     min_confidence: float = 0.55
+    trm_profile: str = "off"
+    trm_policy: Dict[str, Any] = {}
 
 
 class LayoutPreferenceUpdateRequest(BaseModel):
@@ -589,6 +780,8 @@ class SetPrimaryDagVersionRequest(BaseModel):
 
 
 class DagCompareVariantRequest(BaseModel):
+    # MARKER_161.TRM.API.AUTO_COMPARE_INPUT.V1:
+    # Phase-161 extension point for TRM profile toggles in compare variants.
     name: str = ""
     max_nodes: int = 600
     use_predictive_overlay: bool = False
@@ -596,6 +789,8 @@ class DagCompareVariantRequest(BaseModel):
     min_confidence: float = 0.55
     problem_statement: str = ""
     target_outcome: str = ""
+    trm_profile: str = "off"
+    trm_policy: Dict[str, Any] = {}
 
 
 class DagAutoCompareRequest(BaseModel):
@@ -615,8 +810,35 @@ class DagAutoCompareRequest(BaseModel):
     set_primary_best: bool = False
 
 
+def _with_trm_contract_meta(result: Dict[str, Any], trm_profile: str, trm_policy: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    MARKER_161.TRM.CONFIG.CONTRACT.V1
+    W1 contract extension only:
+    - accepts TRM policy/profile inputs
+    - publishes stable response metadata
+    - does not mutate DAG behavior yet
+    """
+    out = dict(result or {})
+    if isinstance(out.get("trm_meta"), dict):
+        out["graph_source"] = str(out.get("graph_source") or ("trm_refined" if bool(out["trm_meta"].get("applied")) else "baseline"))
+        return out
+
+    policy = resolve_trm_policy(trm_profile=trm_profile, trm_policy=trm_policy)
+    out["graph_source"] = str(out.get("graph_source") or "baseline")
+    out["trm_meta"] = {
+        "status": "disabled",
+        "enabled": False,
+        "applied": False,
+        "profile": str(policy.get("profile") or "off"),
+        "policy": policy,
+        "reason": "phase161_w1_contract_only",
+        "markers": ["MARKER_161.TRM.CONFIG.CONTRACT.V1"],
+    }
+    return out
+
+
 def _resolve_project_id_for_versions() -> str:
-    config = ProjectConfig.load()
+    config = _load_active_project_config()
     if config and config.project_id:
         return str(config.project_id)
     return "default_project"
@@ -631,14 +853,28 @@ async def run_prefetch(req: PrefetchRequest):
     from src.services.architect_prefetch import ArchitectPrefetch
     from dataclasses import asdict
 
-    config = ProjectConfig.load()
+    config = _load_active_project_config()
     ctx = ArchitectPrefetch.prepare(
         task_description=req.task_description,
         task_type=req.task_type,
         complexity=req.complexity,
         config=config,
     )
-    return asdict(ctx)
+    payload = asdict(ctx)
+    payload["diagnostics"] = {
+        "workflow_selection": {
+            "workflow_id": str(ctx.workflow_id or ""),
+            "workflow_name": str(ctx.workflow_name or ""),
+            "reinforcement": list(ctx.workflow_reinforcement or []),
+            "reinforcement_policy": dict(ctx.workflow_reinforcement_policy or {}),
+            "reason": (
+                "openhands_reinforcement_enabled"
+                if bool((ctx.workflow_reinforcement_policy or {}).get("enabled"))
+                else "base_family_only"
+            ),
+        }
+    }
+    return payload
 
 
 @router.post("/graph/predict")
@@ -651,7 +887,7 @@ async def predict_graph_overlay(req: PredictGraphRequest):
     from src.services.mcc_predictive_overlay import build_predictive_overlay
     from src.services.mcc_jepa_adapter import JepaRuntimeUnavailableError
 
-    config = ProjectConfig.load()
+    config = _load_active_project_config()
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -739,7 +975,7 @@ async def build_design_graph(req: BuildDesignGraphRequest):
     """
     from src.services.mcc_architect_builder import build_design_dag
 
-    config = ProjectConfig.load()
+    config = _load_active_project_config()
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -762,8 +998,14 @@ async def build_design_graph(req: BuildDesignGraphRequest):
             bool(req.use_predictive_overlay),
             int(req.max_predicted_edges),
             float(req.min_confidence),
+            str(req.trm_profile or "off"),
+            dict(req.trm_policy or {}),
         )
-        return result
+        return _with_trm_contract_meta(
+            result=dict(result or {}),
+            trm_profile=str(req.trm_profile or "off"),
+            trm_policy=dict(req.trm_policy or {}),
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -791,8 +1033,14 @@ async def build_design_graph_from_array(req: BuildDesignFromArrayRequest):
             bool(req.use_predictive_overlay),
             int(req.max_predicted_edges),
             float(req.min_confidence),
+            str(req.trm_profile or "off"),
+            dict(req.trm_policy or {}),
         )
-        return result
+        return _with_trm_contract_meta(
+            result=dict(result or {}),
+            trm_profile=str(req.trm_profile or "off"),
+            trm_policy=dict(req.trm_policy or {}),
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -892,7 +1140,7 @@ async def auto_compare_dag_versions(req: DagAutoCompareRequest):
     source_kind = str(req.source_kind or "scope").strip().lower()
     project_id = _resolve_project_id_for_versions()
 
-    config = ProjectConfig.load()
+    config = _load_active_project_config()
     resolved_scope = str(req.scope_path or "").strip()
     if source_kind == "scope":
         if not resolved_scope and config is not None:

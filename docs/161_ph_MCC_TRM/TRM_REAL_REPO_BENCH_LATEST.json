@@ -1,0 +1,88 @@
+{
+  "scope_root": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03",
+  "max_nodes": 320,
+  "baseline_no_overlay": {
+    "duration_sec": 4.6033,
+    "node_count": 57,
+    "edge_count": 56,
+    "decision": "pass",
+    "spectral": {
+      "lambda2": 0.03553135730046297,
+      "eigengap": 0.014880211295606287,
+      "component_count": 1,
+      "status": "ok"
+    },
+    "score": {
+      "score": 100.0,
+      "breakdown": {
+        "decision": 30.0,
+        "acyclic": 18.0,
+        "monotonic": 14.0,
+        "orphan_rate": 14.0,
+        "spectral_status": 12.0,
+        "components": 6.0,
+        "density": 2.414035087719298,
+        "size": 4.0
+      },
+      "decision": "pass",
+      "acyclic": true,
+      "monotonic_layers": true,
+      "orphan_rate": 0.0,
+      "density": 0.017543859649122806,
+      "component_count": 1,
+      "node_count": 57,
+      "edge_count": 56
+    },
+    "overlay_enabled": false,
+    "overlay_predicted_edges": 0,
+    "markers": [
+      "MARKER_155.ARCHITECT_BUILD.CONTRACT.V1",
+      "MARKER_155.ARCHITECT_BUILD.VERIFIER.V1",
+      "MARKER_155.ARCHITECT_BUILD.JEPA_OVERLAY.V1"
+    ]
+  },
+  "overlay_on_jepa_path": {
+    "duration_sec": 3.6215,
+    "node_count": 57,
+    "edge_count": 56,
+    "decision": "pass",
+    "spectral": {
+      "lambda2": 0.03553135730046297,
+      "eigengap": 0.014880211295606287,
+      "component_count": 1,
+      "status": "ok"
+    },
+    "score": {
+      "score": 100.0,
+      "breakdown": {
+        "decision": 30.0,
+        "acyclic": 18.0,
+        "monotonic": 14.0,
+        "orphan_rate": 14.0,
+        "spectral_status": 12.0,
+        "components": 6.0,
+        "density": 2.414035087719298,
+        "size": 4.0
+      },
+      "decision": "pass",
+      "acyclic": true,
+      "monotonic_layers": true,
+      "orphan_rate": 0.0,
+      "density": 0.017543859649122806,
+      "component_count": 1,
+      "node_count": 57,
+      "edge_count": 56
+    },
+    "overlay_enabled": false,
+    "overlay_predicted_edges": 120,
+    "markers": [
+      "MARKER_155.ARCHITECT_BUILD.CONTRACT.V1",
+      "MARKER_155.ARCHITECT_BUILD.VERIFIER.V1",
+      "MARKER_155.ARCHITECT_BUILD.JEPA_OVERLAY.V1"
+    ]
+  },
+  "trm_status": {
+    "implemented": false,
+    "note": "TRM integration is planned in Phase 161; benchmark slot reserved."
+  }
+}

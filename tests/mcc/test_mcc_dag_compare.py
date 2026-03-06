@@ -91,3 +91,27 @@ def test_auto_compare_rejects_invalid_source_kind() -> None:
             records=_sample_records(),
             relations=_sample_relations(),
         )
+
+
+def test_auto_compare_supports_trm_profiles_and_emits_graph_source() -> None:
+    out = run_dag_auto_compare(
+        project_id="trm_compare_project",
+        variants=[
+            {"name": "baseline", "max_nodes": 140, "use_predictive_overlay": False, "trm_profile": "off"},
+            {"name": "trm_light", "max_nodes": 140, "use_predictive_overlay": False, "trm_profile": "light", "trm_policy": {"enabled": True, "seed": 11}},
+            {"name": "trm_balanced", "max_nodes": 140, "use_predictive_overlay": False, "trm_profile": "balanced", "trm_policy": {"enabled": True, "seed": 11}},
+        ],
+        source_kind="array",
+        records=_sample_records(),
+        relations=_sample_relations(),
+        scope_name="array_scope",
+        persist_versions=False,
+        set_primary_best=False,
+    )
+    assert out["success"] is True
+    assert out["count"] == 3
+    assert "MARKER_161.TRM.COMPARE.VARIANT_POLICY.V1" in out["markers"]
+    assert "MARKER_161.TRM.COMPARE.SCORECARD_EXT.V1" in out["markers"]
+    for row in out["variants"]:
+        assert row["graph_source"] in {"baseline", "trm_refined"}
+        assert isinstance(row.get("trm_meta"), dict)

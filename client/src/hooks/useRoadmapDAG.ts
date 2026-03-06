@@ -47,6 +47,8 @@ interface RoadmapData {
       status?: 'ok' | 'warn' | 'fail';
     };
   } | null;
+  graphSource: string;
+  trmMeta: Record<string, any> | null;
   loading: boolean;
   error: string | null;
 }
@@ -695,6 +697,8 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
   const [edges, setEdges] = useState<DAGEdge[]>([]);
   const [crossEdges, setCrossEdges] = useState<DAGEdge[]>([]);
   const [verifier, setVerifier] = useState<RoadmapData['verifier']>(null);
+  const [graphSource, setGraphSource] = useState<string>('baseline');
+  const [trmMeta, setTrmMeta] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -702,6 +706,8 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
     setLoading(true);
     setError(null);
     try {
+      // MARKER_161.TRM.UI.SOURCE_BADGE.V1:
+      // Phase-161 hook: expose refined graph source lineage (baseline/trm_refined) in UI diagnostics.
       // MARKER_155.ARCHITECT_BUILD.UI_BIND.V1:
       // Preferred source: architect build endpoint returns design_graph + verifier contract.
       const buildRes = await fetch(`${API_BASE}/mcc/graph/build-design`, {
@@ -734,6 +740,8 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
             type: 'temporal',
           })));
           setVerifier(buildData?.verifier || null);
+          setGraphSource(String(buildData?.graph_source || 'baseline'));
+          setTrmMeta((buildData?.trm_meta && typeof buildData.trm_meta === 'object') ? buildData.trm_meta : null);
           return;
         }
       }
@@ -760,6 +768,8 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
           // that can reintroduce horizontal rails/spaghetti.
           const useRawL2 = true;
           if (useRawL2) {
+            // MARKER_161.TRM.UI.RENDER_GUARD.V1:
+            // Phase-161 policy: preserve backend topology, avoid destructive client rewiring.
             setNodes(sourceNodes.map(mapCondensedL2Node));
             setEdges(sourceEdges.map(mapCondensedL2Edge));
             setCrossEdges(crossEdgesRaw.map((e, i) => ({
@@ -769,6 +779,8 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
               type: 'temporal',
             })));
             setVerifier(null);
+            setGraphSource('baseline');
+            setTrmMeta(null);
           } else {
             // Legacy fallback path.
             const l2Edges = thinCondensedEdges(l2Nodes, l2EdgesRaw);
@@ -782,6 +794,8 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
               type: 'temporal',
             })));
             setVerifier(null);
+            setGraphSource('baseline');
+            setTrmMeta(null);
           }
           return;
         }
@@ -800,6 +814,8 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
             setEdges(mapped.edges);
             setCrossEdges([]);
             setVerifier(null);
+            setGraphSource('baseline');
+            setTrmMeta(null);
             return;
           }
         }
@@ -811,6 +827,10 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
         // No project configured — not an error
         setNodes([]);
         setEdges([]);
+        setCrossEdges([]);
+        setVerifier(null);
+        setGraphSource('baseline');
+        setTrmMeta(null);
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -823,6 +843,8 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
       setEdges(mappedEdges);
       setCrossEdges([]);
       setVerifier(null);
+      setGraphSource('baseline');
+      setTrmMeta(null);
     } catch (err) {
       console.warn('[Roadmap] Fetch failed:', err);
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -830,6 +852,8 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
       setEdges([]);
       setCrossEdges([]);
       setVerifier(null);
+      setGraphSource('baseline');
+      setTrmMeta(null);
     } finally {
       setLoading(false);
     }
@@ -851,5 +875,16 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
     }
   }, [fetchRoadmap]);
 
-  return { nodes, edges, crossEdges, verifier, loading, error, fetchRoadmap, regenerateRoadmap };
+  return {
+    nodes,
+    edges,
+    crossEdges,
+    verifier,
+    graphSource,
+    trmMeta,
+    loading,
+    error,
+    fetchRoadmap,
+    regenerateRoadmap,
+  };
 }

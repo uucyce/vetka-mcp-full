@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import os
+import copy
 from collections import defaultdict, deque
 from typing import Any, Dict, List, Set, Tuple
 
@@ -30,6 +31,7 @@ except Exception:  # pragma: no cover
 
 from src.services.mcc_predictive_overlay import build_predictive_overlay
 from src.services.mcc_scc_graph import build_condensed_graph
+from src.services.mcc_trm_adapter import propose_trm_candidates
 
 
 def _path_dir(path: str) -> str:
@@ -738,6 +740,197 @@ def _verifier_report(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -
     }
 
 
+def _trm_refine_gate(
+    runtime_graph: Dict[str, Any],
+    design_graph: Dict[str, Any],
+    baseline_verifier: Dict[str, Any],
+    trm_profile: str = "off",
+    trm_policy: Dict[str, Any] | None = None,
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    """
+    MARKER_161.TRM.BUILDER.REFINE_GATE.V1
+    Apply TRM candidates only if verifier-safe. Otherwise rollback to baseline.
+    """
+    baseline_graph = copy.deepcopy(design_graph)
+    baseline_edges = [dict(e) for e in (baseline_graph.get("edges") or []) if isinstance(e, dict)]
+    baseline_nodes = [dict(n) for n in (baseline_graph.get("nodes") or []) if isinstance(n, dict)]
+    node_layer = {str(n.get("id") or ""): int(n.get("layer", 0) or 0) for n in baseline_nodes if str(n.get("id") or "")}
+    node_ids = set(node_layer.keys())
+
+    candidate_bundle = propose_trm_candidates(
+        runtime_graph=runtime_graph,
+        design_graph=baseline_graph,
+        trm_profile=trm_profile,
+        trm_policy=trm_policy or {},
+    )
+    status = str(candidate_bundle.get("status") or "disabled")
+    profile = str(candidate_bundle.get("profile") or "off")
+    policy = dict(candidate_bundle.get("policy") or {})
+
+    if status != "ready":
+        trm_meta = {
+            "status": status,
+            "profile": profile,
+            "policy": policy,
+            "applied": False,
+            "accepted_count": 0,
+            "rejected_count": 0,
+            "reason": "adapter_not_ready",
+            "markers": [
+                "MARKER_161.TRM.BUILDER.ENTRY.V1",
+                "MARKER_161.TRM.BUILDER.REFINE_GATE.V1",
+                "MARKER_161.TRM.BUILDER.EXIT_PAYLOAD.V1",
+            ],
+            "adapter": candidate_bundle,
+            "verifier_before": baseline_verifier,
+            "verifier_after": baseline_verifier,
+        }
+        return baseline_graph, baseline_verifier, trm_meta
+
+    trial_graph = copy.deepcopy(baseline_graph)
+    trial_edges = [dict(e) for e in (trial_graph.get("edges") or []) if isinstance(e, dict)]
+    edge_index = {
+        (str(e.get("source") or ""), str(e.get("target") or ""), str(e.get("type") or "structural")): i
+        for i, e in enumerate(trial_edges)
+    }
+    succ: Dict[str, Set[str]] = defaultdict(set)
+    for e in trial_edges:
+        s = str(e.get("source") or "")
+        t = str(e.get("target") or "")
+        if s and t:
+            succ[s].add(t)
+
+    def _creates_cycle(source: str, target: str) -> bool:
+        if source == target:
+            return True
+        dq: deque[str] = deque([target])
+        seen: Set[str] = {target}
+        while dq:
+            cur = dq.popleft()
+            if cur == source:
+                return True
+            for nxt in succ.get(cur, set()):
+                if nxt not in seen:
+                    seen.add(nxt)
+                    dq.append(nxt)
+        return False
+
+    accepted = 0
+    rejected = 0
+    max_steps = max(0, min(int(policy.get("max_refine_steps") or 0), 64))
+    steps = 0
+
+    # Apply rerank candidates as edge metadata updates (topology-preserving).
+    for cand in (candidate_bundle.get("candidates") or {}).get("edge_rerank", []):
+        if steps >= max_steps:
+            break
+        s = str(cand.get("source") or "")
+        t = str(cand.get("target") or "")
+        if not s or not t:
+            rejected += 1
+            continue
+        k = (s, t, "structural")
+        idx = edge_index.get(k)
+        if idx is None:
+            rejected += 1
+            continue
+        trial_edges[idx]["trm_confidence"] = float(cand.get("confidence") or 0.0)
+        trial_edges[idx]["trm_reason"] = str(cand.get("reason") or "edge_rerank")
+        accepted += 1
+        steps += 1
+
+    # Apply insertion candidates only if monotonic and acyclic.
+    for cand in (candidate_bundle.get("candidates") or {}).get("edge_insertions", []):
+        if steps >= max_steps:
+            break
+        s = str(cand.get("source") or "")
+        t = str(cand.get("target") or "")
+        if s not in node_ids or t not in node_ids:
+            rejected += 1
+            continue
+        if int(node_layer.get(s, 0)) >= int(node_layer.get(t, 0)):
+            rejected += 1
+            continue
+        if _creates_cycle(s, t):
+            rejected += 1
+            continue
+        k = (s, t, "trm_dependency")
+        if k in edge_index:
+            rejected += 1
+            continue
+        trial_edges.append(
+            {
+                "source": s,
+                "target": t,
+                "type": "trm_dependency",
+                "score": float(cand.get("confidence") or 0.0),
+                "confidence": float(cand.get("confidence") or 0.0),
+                "trm_reason": str(cand.get("reason") or "edge_insertion"),
+            }
+        )
+        edge_index[k] = len(trial_edges) - 1
+        succ[s].add(t)
+        accepted += 1
+        steps += 1
+
+    trial_graph["edges"] = trial_edges
+    verifier_after = _verifier_report(
+        [dict(n) for n in (trial_graph.get("nodes") or []) if isinstance(n, dict)],
+        [dict(e) for e in (trial_graph.get("edges") or []) if isinstance(e, dict)],
+    )
+    gate_ok = (
+        bool(verifier_after.get("acyclic"))
+        and bool(verifier_after.get("monotonic_layers"))
+        and str(verifier_after.get("decision") or "fail") in {"pass", "warn"}
+    )
+
+    if gate_ok and accepted > 0:
+        trial_graph.setdefault("pipeline", {})
+        trial_graph["pipeline"]["trm_refine"] = {
+            "applied": True,
+            "accepted_count": int(accepted),
+            "rejected_count": int(rejected),
+            "profile": profile,
+        }
+        trm_meta = {
+            "status": "applied",
+            "profile": profile,
+            "policy": policy,
+            "applied": True,
+            "accepted_count": int(accepted),
+            "rejected_count": int(rejected),
+            "reason": "verifier_gate_pass",
+            "markers": [
+                "MARKER_161.TRM.BUILDER.ENTRY.V1",
+                "MARKER_161.TRM.BUILDER.REFINE_GATE.V1",
+                "MARKER_161.TRM.BUILDER.EXIT_PAYLOAD.V1",
+            ],
+            "adapter": candidate_bundle,
+            "verifier_before": baseline_verifier,
+            "verifier_after": verifier_after,
+        }
+        return trial_graph, verifier_after, trm_meta
+
+    trm_meta = {
+        "status": "rejected",
+        "profile": profile,
+        "policy": policy,
+        "applied": False,
+        "accepted_count": 0,
+        "rejected_count": int(rejected + accepted),
+        "reason": "verifier_gate_fail_or_no_effect",
+        "markers": [
+            "MARKER_161.TRM.BUILDER.ENTRY.V1",
+            "MARKER_161.TRM.BUILDER.REFINE_GATE.V1",
+            "MARKER_161.TRM.BUILDER.EXIT_PAYLOAD.V1",
+        ],
+        "adapter": candidate_bundle,
+        "verifier_before": baseline_verifier,
+        "verifier_after": verifier_after,
+    }
+    return baseline_graph, baseline_verifier, trm_meta
+
+
 def _safe_path_fragment(raw: Any, fallback: str) -> str:
     base = str(raw or fallback).strip().replace("\\", "/")
     base = base.replace(" ", "_")
@@ -928,6 +1121,8 @@ def build_design_dag(
     use_predictive_overlay: bool = True,
     max_predicted_edges: int = 120,
     min_confidence: float = 0.55,
+    trm_profile: str = "off",
+    trm_policy: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """
     Build architecture Design DAG package for Architect flow.
@@ -935,6 +1130,8 @@ def build_design_dag(
     Returns runtime graph, design graph, optional predictive overlay,
     and verifier/eval diagnostics.
     """
+    # MARKER_161.TRM.BUILDER.ENTRY.V1:
+    # Phase-161 hook: baseline->TRM refine gate starts here (no behavior change yet).
     scope_root = os.path.abspath(os.path.expanduser(scope_root))
     if not os.path.isdir(scope_root):
         raise ValueError(f"Invalid scope root: {scope_root}")
@@ -969,8 +1166,18 @@ def build_design_dag(
             min_confidence=min_confidence,
         )
 
-    verifier = _verifier_report(design_graph["nodes"], design_graph["edges"])
+    baseline_verifier = _verifier_report(design_graph["nodes"], design_graph["edges"])
+    design_graph, verifier, trm_meta = _trm_refine_gate(
+        runtime_graph=runtime_graph,
+        design_graph=design_graph,
+        baseline_verifier=baseline_verifier,
+        trm_profile=trm_profile,
+        trm_policy=trm_policy or {},
+    )
+    graph_source = "trm_refined" if bool(trm_meta.get("applied")) else "baseline"
 
+    # MARKER_161.TRM.BUILDER.EXIT_PAYLOAD.V1:
+    # Phase-161 hook: emit TRM diagnostics/meta in stable response contract.
     return {
         "scope_root": scope_root,
         "architect_context": {
@@ -987,10 +1194,15 @@ def build_design_dag(
         "design_graph": design_graph,
         "predictive_overlay": overlay,
         "verifier": verifier,
+        "graph_source": graph_source,
+        "trm_meta": trm_meta,
         "markers": [
             "MARKER_155.ARCHITECT_BUILD.CONTRACT.V1",
             "MARKER_155.ARCHITECT_BUILD.VERIFIER.V1",
             "MARKER_155.ARCHITECT_BUILD.JEPA_OVERLAY.V1",
+            "MARKER_161.TRM.BUILDER.ENTRY.V1",
+            "MARKER_161.TRM.BUILDER.REFINE_GATE.V1",
+            "MARKER_161.TRM.BUILDER.EXIT_PAYLOAD.V1",
         ],
     }
 
@@ -1003,6 +1215,8 @@ def build_design_dag_from_arrays(
     use_predictive_overlay: bool = False,
     max_predicted_edges: int = 120,
     min_confidence: float = 0.55,
+    trm_profile: str = "off",
+    trm_policy: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """
     MARKER_155.ARCHITECT_BUILD.ARRAY_CORE.V1
@@ -1013,6 +1227,8 @@ def build_design_dag_from_arrays(
     - MARKER_155.ARCHITECT_BUILD.ARRAY_CORE.V2_POLICY
       TODO: pluggable schema adapters + policy-driven edge arbitration.
     """
+    # MARKER_161.TRM.BUILDER.ARRAY_BRIDGE.V1:
+    # Phase-161 hook: normalize arbitrary arrays for TRM-compatible feature bridge.
     records = [r for r in (records or []) if isinstance(r, dict)]
     relations = [r for r in (relations or []) if isinstance(r, dict)]
     if not records:
@@ -1047,7 +1263,17 @@ def build_design_dag_from_arrays(
                 "markers": ["MARKER_155.ARCHITECT_BUILD.JEPA_OVERLAY.V1"],
             }
 
-    verifier = _verifier_report(design_graph["nodes"], design_graph["edges"])
+    baseline_verifier = _verifier_report(design_graph["nodes"], design_graph["edges"])
+    design_graph, verifier, trm_meta = _trm_refine_gate(
+        runtime_graph=runtime_graph,
+        design_graph=design_graph,
+        baseline_verifier=baseline_verifier,
+        trm_profile=trm_profile,
+        trm_policy=trm_policy or {},
+    )
+    graph_source = "trm_refined" if bool(trm_meta.get("applied")) else "baseline"
+    # MARKER_161.TRM.BUILDER.REFINE_GATE.V1:
+    # Phase-161 hook: apply TRM mutations only behind verifier-safe policy gates.
     return {
         "scope_root": scope_name,
         "architect_context": {
@@ -1065,10 +1291,15 @@ def build_design_dag_from_arrays(
         "design_graph": design_graph,
         "predictive_overlay": overlay,
         "verifier": verifier,
+        "graph_source": graph_source,
+        "trm_meta": trm_meta,
         "markers": [
             "MARKER_155.ARCHITECT_BUILD.CONTRACT.V1",
             "MARKER_155.ARCHITECT_BUILD.ARRAY_CORE.V1",
             "MARKER_155.ARCHITECT_BUILD.VERIFIER.V1",
             "MARKER_155.ARCHITECT_BUILD.JEPA_OVERLAY.V1",
+            "MARKER_161.TRM.BUILDER.ENTRY.V1",
+            "MARKER_161.TRM.BUILDER.REFINE_GATE.V1",
+            "MARKER_161.TRM.BUILDER.EXIT_PAYLOAD.V1",
         ],
     }

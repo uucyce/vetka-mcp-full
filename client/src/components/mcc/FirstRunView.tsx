@@ -1,356 +1,228 @@
 /**
- * MARKER_154.16A: FirstRunView — clean welcome screen for first-time project setup.
+ * MARKER_154.16A: FirstRunView — clean project setup surface.
  *
- * Shown at navLevel='first_run'. Three options:
- * 1. Folder — select local project directory
- * 2. URL — clone git repository
- * 3. Text — describe project idea (AI generates roadmap)
- *
- * After selection: scanning → roadmap → auto-transition to 'roadmap' level.
- *
- * @phase 154
- * @wave 5
- * @status active
+ * P161.8 update:
+ * - In-interface modal overlay (no route-level onboarding page)
+ * - delayed appearance over empty draft tab canvas
+ * - source -> workspace flow with skip support
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+import { isTauri, openFolderDialog } from '../../config/tauri';
 
 const API_BASE = 'http://localhost:5001/api';
 
-type Step = 'choose' | 'input' | 'scanning' | 'done' | 'error';
-type SourceType = 'folder' | 'url' | 'text';
+type Step = 'hidden' | 'choose' | 'source_input' | 'workspace' | 'creating' | 'error';
+type SourceMode = 'local' | 'git' | 'empty';
 
-const OPTIONS = [
-  {
-    key: 'folder' as SourceType,
-    icon: '📁',
-    label: 'Local Folder',
-    desc: 'Point to an existing project directory',
-    shortcut: '1',
-  },
-  {
-    key: 'url' as SourceType,
-    icon: '🔗',
-    label: 'Git URL',
-    desc: 'Clone a repository and analyze',
-    shortcut: '2',
-  },
-  {
-    key: 'text' as SourceType,
-    icon: '📝',
-    label: 'Describe',
-    desc: 'Tell us what you want to build',
-    shortcut: '3',
-  },
-];
+function inferWorkspacePath(sourceMode: SourceMode, sourcePath: string): string {
+  const clean = String(sourcePath || '').trim().replace(/\\/g, '/');
+  if (!clean) return '/tmp/mycelium_project_playground';
+  if (sourceMode === 'git') {
+    const repo = clean.replace(/\.git$/i, '').split('/').filter(Boolean).pop() || 'repo';
+    return `/tmp/${repo}_playground`;
+  }
+  const parts = clean.replace(/\/+$/, '').split('/').filter(Boolean);
+  if (!parts.length) return '/tmp/mycelium_project_playground';
+  const name = parts[parts.length - 1] || 'project';
+  const parent = parts.length > 1 ? `/${parts.slice(0, -1).join('/')}` : '/tmp';
+  return `${parent}/${name}_playground`;
+}
 
 export function FirstRunView() {
-  const [step, setStep] = useState<Step>('choose');
-  const [source, setSource] = useState<SourceType | null>(null);
-  const [inputValue, setInputValue] = useState('');
-  const [progress, setProgress] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
-  const drillDown = useMCCStore(s => s.drillDown);
+  // MARKER_161.8.MULTIPROJECT.UI.GRANDMA_FLOW_SOURCE_STEP.V2
+  // MARKER_161.8.MULTIPROJECT.UI.DRAFT_TAB_DELAYED_OVERLAY.V1
+  const [step, setStep] = useState<Step>('hidden');
+  const [sourceMode, setSourceMode] = useState<SourceMode>('local');
+  const [sourcePath, setSourcePath] = useState('');
+  const [workspacePath, setWorkspacePath] = useState('');
+  const [error, setError] = useState('');
 
-  const handleSelect = useCallback((type: SourceType) => {
-    setSource(type);
-    setStep('input');
-    setTimeout(() => inputRef.current?.focus(), 100);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const drillDown = useMCCStore((s) => s.drillDown);
+  const initMCC = useMCCStore((s) => s.initMCC);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setStep('choose'), 900);
+    return () => window.clearTimeout(t);
   }, []);
 
-  const handleSubmit = useCallback(async () => {
-    if (!source || !inputValue.trim()) return;
-    setStep('scanning');
-    setError(null);
-    setProgress('Initializing project...');
+  const suggestedWorkspace = useMemo(
+    () => inferWorkspacePath(sourceMode, sourcePath),
+    [sourceMode, sourcePath],
+  );
+
+  useEffect(() => {
+    if (step !== 'workspace') return;
+    if (!workspacePath.trim() && suggestedWorkspace) {
+      setWorkspacePath(suggestedWorkspace);
+    }
+  }, [step, workspacePath, suggestedWorkspace]);
+
+  const pickLocalSource = useCallback(async () => {
+    if (!isTauri()) {
+      setSourceMode('local');
+      setStep('source_input');
+      return;
+    }
+    const picked = await openFolderDialog('Select project source folder');
+    if (picked && String(picked).trim()) {
+      setSourceMode('local');
+      setSourcePath(String(picked));
+      setError('');
+      setStep('workspace');
+      return;
+    }
+    setSourceMode('local');
+    setStep('source_input');
+  }, []);
+
+  const pickWorkspace = useCallback(async () => {
+    if (!isTauri()) return;
+    const picked = await openFolderDialog('Select workspace folder');
+    if (picked && String(picked).trim()) {
+      setWorkspacePath(String(picked));
+      setError('');
+    }
+  }, []);
+
+  const submit = useCallback(async () => {
+    const sandbox = String(workspacePath || '').trim();
+    if (!sandbox) {
+      setError('Choose where to create workspace');
+      return;
+    }
+    if (sourceMode !== 'empty' && !String(sourcePath || '').trim()) {
+      setError('Choose source path first');
+      return;
+    }
+
+    setStep('creating');
+    setError('');
 
     try {
-      // Map source type for API
-      const sourceType = source === 'folder' ? 'local' : source === 'url' ? 'git' : 'text';
+      const payload = {
+        source_type: sourceMode === 'empty' ? 'empty' : sourceMode,
+        source_path: sourceMode === 'empty' ? '' : String(sourcePath || '').trim(),
+        sandbox_path: sandbox,
+        quota_gb: 10,
+      };
 
-      setProgress('Scanning project structure...');
       const res = await fetch(`${API_BASE}/mcc/project/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source_type: sourceType,
-          source_path: inputValue.trim(),
-          quota_gb: 10,
-        }),
+        body: JSON.stringify(payload),
       });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || data.message || `HTTP ${res.status}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setError(String(data?.errors?.[0] || data?.detail || `HTTP ${res.status}`));
+        setStep('error');
+        return;
       }
 
-      setProgress('Building roadmap...');
-      // Trigger roadmap generation
-      await fetch(`${API_BASE}/mcc/roadmap/generate`, { method: 'POST' }).catch(() => {});
-
-      setProgress('Ready!');
-      setStep('done');
-
-      // Auto-navigate to roadmap after short delay
-      setTimeout(() => {
-        drillDown('roadmap');
-      }, 800);
+      await initMCC();
+      drillDown('roadmap');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : 'Create failed');
       setStep('error');
     }
-  }, [source, inputValue, drillDown]);
+  }, [workspacePath, sourceMode, sourcePath, initMCC, drillDown]);
+
+  if (step === 'hidden') return null;
 
   return (
     <div
       style={{
-        width: '100%',
-        height: '100%',
+        position: 'absolute',
+        inset: 0,
+        background: 'rgba(0,0,0,0.32)',
         display: 'flex',
-        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
+        zIndex: 35,
+        pointerEvents: 'auto',
         fontFamily: 'monospace',
-        background: NOLAN_PALETTE.bg,
       }}
     >
-      {/* Logo / Title */}
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <div style={{ fontSize: 28, marginBottom: 8 }}>🌳</div>
-        <div style={{
-          color: NOLAN_PALETTE.text,
-          fontSize: 16,
-          fontWeight: 700,
-          letterSpacing: 2,
-        }}>
-          VETKA
+      <div
+        style={{
+          width: 680,
+          background: NOLAN_PALETTE.bgLight,
+          border: `1px solid ${NOLAN_PALETTE.border}`,
+          borderRadius: 10,
+          padding: 18,
+        }}
+      >
+        <div style={{ color: NOLAN_PALETTE.text, fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
+          Continue with an existing project or create a new project
         </div>
-        <div style={{
-          color: NOLAN_PALETTE.textMuted,
-          fontSize: 10,
-          marginTop: 4,
-        }}>
-          What project are we building?
+        <div style={{ color: NOLAN_PALETTE.textDim, fontSize: 11, marginBottom: 14 }}>
+          Choose source, then choose workspace location.
         </div>
-      </div>
 
-      {/* Step: Choose */}
-      {step === 'choose' && (
-        <div style={{ display: 'flex', gap: 12 }}>
-          {OPTIONS.map(opt => (
+        {step === 'choose' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <button
-              key={opt.key}
-              onClick={() => handleSelect(opt.key)}
-              style={{
-                width: 140,
-                padding: '16px 12px',
-                background: 'rgba(20,20,20,0.9)',
-                border: `1px solid ${NOLAN_PALETTE.border}`,
-                borderRadius: 8,
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 8,
-                transition: 'all 0.15s',
-                fontFamily: 'monospace',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.borderColor = NOLAN_PALETTE.text;
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.borderColor = NOLAN_PALETTE.border;
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
+              onClick={() => { void pickLocalSource(); }}
+              style={{ border: `1px solid ${NOLAN_PALETTE.border}`, borderRadius: 8, background: NOLAN_PALETTE.bgDim, color: NOLAN_PALETTE.text, padding: '16px 10px', cursor: 'pointer' }}
             >
-              <span style={{ fontSize: 20 }}>{opt.icon}</span>
-              <span style={{ color: NOLAN_PALETTE.text, fontSize: 11, fontWeight: 600 }}>
-                {opt.label}
-              </span>
-              <span style={{ color: '#555', fontSize: 8, textAlign: 'center', lineHeight: 1.3 }}>
-                {opt.desc}
-              </span>
-              <span style={{ color: '#333', fontSize: 7 }}>
-                Press {opt.shortcut}
-              </span>
+              <div style={{ fontSize: 20, fontWeight: 700 }}>From Disk</div>
+              <div style={{ fontSize: 11, color: NOLAN_PALETTE.textMuted, marginTop: 6 }}>Copy existing folder</div>
             </button>
-          ))}
-        </div>
-      )}
-
-      {/* Step: Input */}
-      {step === 'input' && source && (
-        <div style={{ width: 360, textAlign: 'center' }}>
-          <div style={{ color: NOLAN_PALETTE.textMuted, fontSize: 10, marginBottom: 8 }}>
-            {source === 'folder' && 'Enter project directory path:'}
-            {source === 'url' && 'Enter git repository URL:'}
-            {source === 'text' && 'Describe your project idea:'}
+            <button
+              onClick={() => { setSourceMode('git'); setStep('source_input'); }}
+              style={{ border: `1px solid ${NOLAN_PALETTE.border}`, borderRadius: 8, background: NOLAN_PALETTE.bgDim, color: NOLAN_PALETTE.text, padding: '16px 10px', cursor: 'pointer' }}
+            >
+              <div style={{ fontSize: 20, fontWeight: 700 }}>From Git</div>
+              <div style={{ fontSize: 11, color: NOLAN_PALETTE.textMuted, marginTop: 6 }}>Clone repository URL</div>
+            </button>
           </div>
+        )}
 
-          {source === 'text' ? (
-            <textarea
-              ref={inputRef as any}
-              value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit();
-                if (e.key === 'Escape') { setStep('choose'); setSource(null); }
-              }}
-              placeholder="A React dashboard for managing AI pipelines..."
-              rows={4}
-              style={{
-                width: '100%',
-                background: NOLAN_PALETTE.bgDim,
-                border: `1px solid ${NOLAN_PALETTE.border}`,
-                borderRadius: 6,
-                color: NOLAN_PALETTE.text,
-                fontFamily: 'monospace',
-                fontSize: 11,
-                padding: '8px 12px',
-                outline: 'none',
-                resize: 'none',
-              }}
-            />
-          ) : (
+        {step === 'source_input' && (
+          <div>
+            <div style={{ color: NOLAN_PALETTE.textDim, fontSize: 10, marginBottom: 6 }}>
+              {sourceMode === 'git' ? 'Git repository URL' : 'Source folder path'}
+            </div>
             <input
-              ref={inputRef as any}
-              value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') handleSubmit();
-                if (e.key === 'Escape') { setStep('choose'); setSource(null); }
-              }}
-              placeholder={
-                source === 'folder'
-                  ? '/Users/me/projects/my-app'
-                  : 'https://github.com/org/repo.git'
-              }
-              style={{
-                width: '100%',
-                background: NOLAN_PALETTE.bgDim,
-                border: `1px solid ${NOLAN_PALETTE.border}`,
-                borderRadius: 6,
-                color: NOLAN_PALETTE.text,
-                fontFamily: 'monospace',
-                fontSize: 11,
-                padding: '8px 12px',
-                outline: 'none',
-              }}
+              ref={inputRef}
+              autoFocus
+              value={sourcePath}
+              onChange={(e) => setSourcePath(e.target.value)}
+              placeholder={sourceMode === 'git' ? 'https://github.com/org/repo.git' : '/Users/you/projects/my-app'}
+              style={{ width: '100%', boxSizing: 'border-box', borderRadius: 6, border: `1px solid ${NOLAN_PALETTE.border}`, background: NOLAN_PALETTE.bg, color: NOLAN_PALETTE.text, padding: '9px 10px', fontFamily: 'monospace', fontSize: 12 }}
             />
-          )}
-
-          <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'center' }}>
-            <button
-              onClick={() => { setStep('choose'); setSource(null); setInputValue(''); }}
-              style={{
-                padding: '6px 16px',
-                background: NOLAN_PALETTE.bg,
-                border: `1px solid ${NOLAN_PALETTE.border}`,
-                borderRadius: 4,
-                color: NOLAN_PALETTE.textMuted,
-                fontSize: 10,
-                cursor: 'pointer',
-                fontFamily: 'monospace',
-              }}
-            >
-              ← Back
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={!inputValue.trim()}
-              style={{
-                padding: '6px 20px',
-                background: inputValue.trim() ? '#1a1a1a' : NOLAN_PALETTE.bg,
-                border: `1px solid ${inputValue.trim() ? NOLAN_PALETTE.text : NOLAN_PALETTE.border}`,
-                borderRadius: 4,
-                color: inputValue.trim() ? NOLAN_PALETTE.text : '#555',
-                fontSize: 10,
-                fontWeight: 600,
-                cursor: inputValue.trim() ? 'pointer' : 'default',
-                fontFamily: 'monospace',
-              }}
-            >
-              Initialize →
-            </button>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button onClick={() => setStep('choose')} style={{ flex: 1, borderRadius: 6, border: `1px solid ${NOLAN_PALETTE.border}`, background: NOLAN_PALETTE.bg, color: NOLAN_PALETTE.textMuted, padding: '9px 10px', cursor: 'pointer' }}>Back</button>
+              <button onClick={() => setStep('workspace')} disabled={!sourcePath.trim()} style={{ flex: 2, borderRadius: 6, border: `1px solid ${sourcePath.trim() ? NOLAN_PALETTE.borderLight : NOLAN_PALETTE.border}`, background: sourcePath.trim() ? NOLAN_PALETTE.bgDim : NOLAN_PALETTE.bg, color: sourcePath.trim() ? NOLAN_PALETTE.text : NOLAN_PALETTE.textDim, padding: '9px 10px', cursor: sourcePath.trim() ? 'pointer' : 'not-allowed' }}>Next: Workspace</button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Step: Scanning */}
-      {step === 'scanning' && (
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            color: NOLAN_PALETTE.text,
-            fontSize: 12,
-            marginBottom: 8,
-          }}>
-            ⏳ {progress}
-          </div>
-          <div style={{
-            width: 200,
-            height: 2,
-            background: 'rgba(255,255,255,0.05)',
-            borderRadius: 1,
-            overflow: 'hidden',
-            margin: '0 auto',
-          }}>
-            <div
-              style={{
-                height: '100%',
-                width: '60%',
-                background: NOLAN_PALETTE.text,
-                borderRadius: 1,
-                animation: 'progressPulse 1.5s ease-in-out infinite',
-              }}
+        {(step === 'workspace' || step === 'creating' || step === 'error') && (
+          <div>
+            <div style={{ color: NOLAN_PALETTE.textDim, fontSize: 10, marginBottom: 6 }}>Workspace path (where this tab project will live)</div>
+            <input
+              value={workspacePath}
+              onChange={(e) => setWorkspacePath(e.target.value)}
+              placeholder={suggestedWorkspace || '/tmp/mycelium_project_playground'}
+              style={{ width: '100%', boxSizing: 'border-box', borderRadius: 6, border: `1px solid ${NOLAN_PALETTE.border}`, background: NOLAN_PALETTE.bg, color: NOLAN_PALETTE.text, padding: '9px 10px', fontFamily: 'monospace', fontSize: 12 }}
             />
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button onClick={() => { void pickWorkspace(); }} style={{ flex: 1, borderRadius: 6, border: `1px solid ${NOLAN_PALETTE.border}`, background: NOLAN_PALETTE.bg, color: NOLAN_PALETTE.textMuted, padding: '9px 10px', cursor: 'pointer' }}>Choose Folder</button>
+              <button onClick={() => setStep(sourceMode === 'empty' ? 'choose' : 'source_input')} style={{ flex: 1, borderRadius: 6, border: `1px solid ${NOLAN_PALETTE.border}`, background: NOLAN_PALETTE.bg, color: NOLAN_PALETTE.textMuted, padding: '9px 10px', cursor: 'pointer' }}>Back</button>
+              <button onClick={() => { void submit(); }} disabled={!workspacePath.trim() || step === 'creating'} style={{ flex: 2, borderRadius: 6, border: `1px solid ${workspacePath.trim() ? NOLAN_PALETTE.borderLight : NOLAN_PALETTE.border}`, background: workspacePath.trim() ? NOLAN_PALETTE.bgDim : NOLAN_PALETTE.bg, color: workspacePath.trim() ? NOLAN_PALETTE.text : NOLAN_PALETTE.textDim, padding: '9px 10px', cursor: workspacePath.trim() ? 'pointer' : 'not-allowed' }}>{step === 'creating' ? 'Creating...' : 'Create Tab Project'}</button>
+            </div>
+            {error && (
+              <div style={{ marginTop: 10, border: `1px solid ${NOLAN_PALETTE.border}`, borderRadius: 6, background: NOLAN_PALETTE.bg, color: NOLAN_PALETTE.text, padding: '8px 10px', fontSize: 10 }}>
+                {error}
+              </div>
+            )}
           </div>
-          <style>{`
-            @keyframes progressPulse {
-              0% { width: 20%; opacity: 0.5; }
-              50% { width: 80%; opacity: 1; }
-              100% { width: 20%; opacity: 0.5; }
-            }
-          `}</style>
-        </div>
-      )}
-
-      {/* Step: Done */}
-      {step === 'done' && (
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 24, marginBottom: 8 }}>✓</div>
-          <div style={{ color: '#8a8', fontSize: 12 }}>
-            Project initialized! Entering roadmap...
-          </div>
-        </div>
-      )}
-
-      {/* Step: Error */}
-      {step === 'error' && (
-        <div style={{ textAlign: 'center', maxWidth: 360 }}>
-          <div style={{ color: '#a66', fontSize: 12, marginBottom: 8 }}>
-            ⚠ {error}
-          </div>
-          <button
-            onClick={() => { setStep('choose'); setError(null); }}
-            style={{
-              padding: '6px 16px',
-              background: NOLAN_PALETTE.bg,
-              border: `1px solid ${NOLAN_PALETTE.border}`,
-              borderRadius: 4,
-              color: NOLAN_PALETTE.textMuted,
-              fontSize: 10,
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-            }}
-          >
-            ← Try again
-          </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.services.mcc_architect_builder import build_design_dag, build_design_dag_from_arrays
 from src.services.mcc_dag_versions import create_dag_version, set_primary_version
+from src.services.mcc_trm_config import resolve_trm_policy
 
 
 def _clamp01(v: float) -> float:
@@ -36,11 +37,37 @@ def _safe_name(raw: Any, idx: int) -> str:
     return text or f"variant_{idx + 1}"
 
 
+def _normalize_variant_trm(variant: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+    """
+    MARKER_161.TRM.COMPARE.VARIANT_POLICY.V1
+    Resolve TRM profile/policy per compare variant.
+    Supports explicit fields and name-derived presets.
+    """
+    name = str(variant.get("name") or "").strip().lower()
+    explicit_profile = str(variant.get("trm_profile") or "").strip().lower()
+    if not explicit_profile:
+        if "trm_balanced" in name:
+            explicit_profile = "balanced"
+        elif "trm_light" in name:
+            explicit_profile = "light"
+        elif "baseline" in name:
+            explicit_profile = "off"
+    if not explicit_profile:
+        explicit_profile = "off"
+    policy = resolve_trm_policy(
+        trm_profile=explicit_profile,
+        trm_policy=dict(variant.get("trm_policy") or {}),
+    )
+    return str(policy.get("profile") or "off"), policy
+
+
 def _score_verifier(verifier: Dict[str, Any], node_count: int, edge_count: int) -> Dict[str, Any]:
     """
     MARKER_155.ARCHITECT_BUILD.DAG_COMPARE.SCORECARD.V1
     Score DAG quality for compare-runs (0..100).
     """
+    # MARKER_161.TRM.COMPARE.SCORECARD_EXT.V1:
+    # Phase-161 hook: extend score with TRM refinement diagnostics/readability deltas.
     decision = str(verifier.get("decision") or "warn").lower()
     acyclic = bool(verifier.get("acyclic", False))
     monotonic = bool(verifier.get("monotonic_layers", False))
@@ -113,7 +140,11 @@ def _run_scope_variant(
     variant: Dict[str, Any],
     default_max_nodes: int,
     include_artifacts: bool,
+    trm_profile: str,
+    trm_policy: Dict[str, Any],
 ) -> Dict[str, Any]:
+    # MARKER_161.TRM.COMPARE.VARIANT_POLICY.V1:
+    # Phase-161 hook: support TRM profile presets per variant.
     max_nodes = max(50, min(_to_int(variant.get("max_nodes"), default_max_nodes), 5000))
     max_predicted_edges = max(0, min(_to_int(variant.get("max_predicted_edges"), 120), 2000))
     min_confidence = max(0.0, min(_to_float(variant.get("min_confidence"), 0.55), 0.99))
@@ -130,6 +161,8 @@ def _run_scope_variant(
         use_predictive_overlay=use_predictive_overlay,
         max_predicted_edges=max_predicted_edges,
         min_confidence=min_confidence,
+        trm_profile=trm_profile,
+        trm_policy=trm_policy,
     )
 
 
@@ -139,6 +172,8 @@ def _run_array_variant(
     scope_name: str,
     variant: Dict[str, Any],
     default_max_nodes: int,
+    trm_profile: str,
+    trm_policy: Dict[str, Any],
 ) -> Dict[str, Any]:
     max_nodes = max(50, min(_to_int(variant.get("max_nodes"), default_max_nodes), 5000))
     max_predicted_edges = max(0, min(_to_int(variant.get("max_predicted_edges"), 120), 2000))
@@ -153,6 +188,8 @@ def _run_array_variant(
         use_predictive_overlay=use_predictive_overlay,
         max_predicted_edges=max_predicted_edges,
         min_confidence=min_confidence,
+        trm_profile=trm_profile,
+        trm_policy=trm_policy,
     )
 
 
@@ -192,6 +229,7 @@ def run_dag_auto_compare(
     rows: List[Dict[str, Any]] = []
     for idx, variant in enumerate(raw_variants):
         name = _safe_name(variant.get("name"), idx)
+        trm_profile, trm_policy = _normalize_variant_trm(variant)
         try:
             if source_kind_safe == "scope":
                 built = _run_scope_variant(
@@ -199,6 +237,8 @@ def run_dag_auto_compare(
                     variant=variant,
                     default_max_nodes=default_max_nodes,
                     include_artifacts=include_artifacts,
+                    trm_profile=trm_profile,
+                    trm_policy=trm_policy,
                 )
             else:
                 recs = [dict(x) for x in (records or []) if isinstance(x, dict)]
@@ -211,11 +251,25 @@ def run_dag_auto_compare(
                     scope_name=scope_name,
                     variant=variant,
                     default_max_nodes=default_max_nodes,
+                    trm_profile=trm_profile,
+                    trm_policy=trm_policy,
                 )
 
             verifier = built.get("verifier") or {}
+            trm_meta = built.get("trm_meta") or {}
+            graph_source = str(built.get("graph_source") or ("trm_refined" if bool(trm_meta.get("applied")) else "baseline"))
             node_count, edge_count = _extract_counts(built)
             scorecard = _score_verifier(verifier, node_count=node_count, edge_count=edge_count)
+            trm_bonus = 0.0
+            if bool(trm_meta.get("applied")):
+                trm_bonus = 1.5
+            elif str(trm_meta.get("status") or "") == "rejected":
+                trm_bonus = -0.25
+            if trm_bonus:
+                scorecard["score"] = round(max(0.0, min(100.0, float(scorecard.get("score") or 0.0) + trm_bonus)), 3)
+            scorecard.setdefault("breakdown", {})
+            scorecard["breakdown"]["trm_gate"] = float(trm_bonus)
+            scorecard["graph_source"] = graph_source
 
             version_record: Optional[Dict[str, Any]] = None
             if persist_versions:
@@ -226,6 +280,8 @@ def run_dag_auto_compare(
                         "design_graph": built.get("design_graph") or {},
                         "runtime_graph": built.get("runtime_graph") or {},
                         "verifier": verifier,
+                        "graph_source": graph_source,
+                        "trm_meta": trm_meta,
                         "predictive_overlay": built.get("predictive_overlay") or {},
                         "markers": list(built.get("markers") or []),
                     },
@@ -236,6 +292,9 @@ def run_dag_auto_compare(
                         "verifier": verifier,
                         "scorecard": scorecard,
                         "variant_params": dict(variant),
+                        "trm_variant": {"profile": trm_profile, "policy": trm_policy},
+                        "trm_meta": trm_meta,
+                        "graph_source": graph_source,
                         "runner": {
                             "source_kind": source_kind_safe,
                             "default_max_nodes": int(default_max_nodes),
@@ -247,6 +306,9 @@ def run_dag_auto_compare(
                         "MARKER_155.ARCHITECT_BUILD.DAG_COMPARE.SCORECARD.V1",
                         "MARKER_155.ARCHITECT_BUILD.DAG_COMPARE.AUTORUN.V1",
                         "MARKER_155.ARCHITECT_BUILD.DAG_COMPARE.PERSIST.V1",
+                        "MARKER_161.TRM.COMPARE.VARIANT_POLICY.V1",
+                        "MARKER_161.TRM.COMPARE.SCORECARD_EXT.V1",
+                        "MARKER_161.TRM.VERSION_META.V1",
                     ],
                     set_primary=False,
                 )
@@ -257,6 +319,8 @@ def run_dag_auto_compare(
                     "variant_params": dict(variant),
                     "scorecard": scorecard,
                     "verifier": verifier,
+                    "graph_source": graph_source,
+                    "trm_meta": trm_meta,
                     "version_id": str((version_record or {}).get("version_id") or ""),
                     "created_at": str((version_record or {}).get("created_at") or ""),
                 }
@@ -273,6 +337,8 @@ def run_dag_auto_compare(
                         "acyclic": False,
                         "monotonic_layers": False,
                     },
+                    "graph_source": "baseline",
+                    "trm_meta": {"status": "degraded", "applied": False},
                     "version_id": "",
                     "created_at": "",
                 }
@@ -307,6 +373,8 @@ def run_dag_auto_compare(
             "MARKER_155.ARCHITECT_BUILD.DAG_COMPARE.SCORECARD.V1",
             "MARKER_155.ARCHITECT_BUILD.DAG_COMPARE.AUTORUN.V1",
             "MARKER_155.ARCHITECT_BUILD.DAG_COMPARE.PERSIST.V1",
+            "MARKER_161.TRM.COMPARE.VARIANT_POLICY.V1",
+            "MARKER_161.TRM.COMPARE.SCORECARD_EXT.V1",
+            "MARKER_161.TRM.VERSION_META.V1",
         ],
     }
-
