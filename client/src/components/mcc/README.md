@@ -70,10 +70,7 @@ For this module itself:
 
 MYCO is the in-graph context companion for operators.
 
-![MYCO logo (alert)](docs/showcase/12-myco-logo-alert.png)
-![MYCO logo (speak)](docs/showcase/13-myco-logo-speak.png)
 ![MYCO loop (APNG)](docs/showcase/14-myco-logo-loop.apng)
-![MYCO loop (GIF fallback)](docs/showcase/15-myco-logo-loop.gif)
 
 What MYCO does:
 - sees current task and graph context,
