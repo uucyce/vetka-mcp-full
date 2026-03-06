@@ -107,7 +107,9 @@ function resolveChatScope(context?: MiniContextPayload): { scope: 'project' | 't
   if (context.nodeKind === 'agent') {
     return { scope: 'agent', label: `Agent context: ${context.role || context.label}` };
   }
-  return { scope: 'node', label: `Node context: ${context.label}` };
+  // MARKER_162.P4.P1.MYCO.NO_FILE_LABEL_NOISE_IN_CHAT.V1:
+  // File/node names stay in Context window; chat header remains generic.
+  return { scope: 'node', label: 'Node context' };
 }
 
 function buildMycoHeaderHint(context?: MiniContextPayload): string {
@@ -117,10 +119,25 @@ function buildMycoHeaderHint(context?: MiniContextPayload): string {
   return String(context.label || context.nodeId || 'node context');
 }
 
+function buildMycoContextKey(context?: MiniContextPayload): string {
+  return [
+    String(context?.scope || 'project'),
+    String(context?.navLevel || 'roadmap'),
+    String(context?.focusScopeKey || ''),
+    String(context?.nodeId || ''),
+    String(context?.nodeKind || ''),
+    String(context?.taskId || ''),
+    String(context?.role || ''),
+    String(context?.label || ''),
+    (context?.selectedNodeIds || []).join('|'),
+  ].join('::');
+}
+
 // Compact content: one-line input + last answer
 function ChatCompact({ context }: MiniChatProps) {
   const [input, setInput] = useState('');
   const [lastAnswer, setLastAnswer] = useState<string | null>(null);
+  const [lastAnswerSource, setLastAnswerSource] = useState<'helper' | 'assistant' | null>(null);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const scope = useMemo(() => resolveChatScope(context), [context]);
@@ -131,11 +148,22 @@ function ChatCompact({ context }: MiniChatProps) {
   const setHelperMode = useMCCStore((s) => s.setHelperMode);
   const [mycoAvatarState, setMycoAvatarState] = useState<MycoAvatarVisualState>('idle');
   const mycoAvatarTimersRef = useRef<number[]>([]);
+  const proactiveContextKeyRef = useRef<string>('');
   const mycoAvatarSrc = useMemo(() => {
     if (mycoAvatarState === 'speaking') return mycoSpeakingLoop;
     if (mycoAvatarState === 'ready') return mycoReadySmile;
     return mycoIdleQuestion;
   }, [mycoAvatarState]);
+
+  useEffect(() => {
+    // MARKER_162.P4.P1.MYCO.OFF_MODE_NO_HELPER_ECHO.V1:
+    // When helper is off (architect mode), stale helper reply must not stay visible in compact chat.
+    if (helperMode !== 'off') return;
+    if (lastAnswerSource === 'helper') {
+      setLastAnswer(null);
+      setLastAnswerSource(null);
+    }
+  }, [helperMode, lastAnswerSource]);
 
   useEffect(() => {
     const handlePrefill = (event: Event) => {
@@ -158,9 +186,26 @@ function ChatCompact({ context }: MiniChatProps) {
       if (helperMode === 'off' && !force) return;
       emitMycoReplyEvent();
       setLastAnswer(buildMycoReply(context));
+      setLastAnswerSource('helper');
     };
     window.addEventListener('mcc-myco-activate', onActivate as EventListener);
     return () => window.removeEventListener('mcc-myco-activate', onActivate as EventListener);
+  }, [context, helperMode]);
+
+  useEffect(() => {
+    // MARKER_162.P4.P1.MYCO.CONTEXT_PROACTIVE_CHAT_COMPACT.V1:
+    // In helper mode, proactively answer on meaningful context change (deduped by stable key).
+    if (helperMode === 'off') {
+      setLastAnswerSource(null);
+      proactiveContextKeyRef.current = '';
+      return;
+    }
+    const key = `compact:${helperMode}:${buildMycoContextKey(context)}`;
+    if (proactiveContextKeyRef.current === key) return;
+    proactiveContextKeyRef.current = key;
+    emitMycoReplyEvent();
+    setLastAnswer(buildMycoReply(context));
+    setLastAnswerSource('helper');
   }, [context, helperMode]);
 
   useEffect(() => {
@@ -182,29 +227,16 @@ function ChatCompact({ context }: MiniChatProps) {
     };
   }, []);
 
-  useEffect(() => {
-    const onActivate = (event: Event) => {
-      const detail = (event as CustomEvent).detail || {};
-      const force = Boolean(detail.force);
-      if (helperMode === 'off' && !force) return;
-      emitMycoReplyEvent();
-      setMessages(prev => [...prev, { role: 'helper_myco', content: buildMycoReply(context) }]);
-    };
-    window.addEventListener('mcc-myco-activate', onActivate as EventListener);
-    return () => window.removeEventListener('mcc-myco-activate', onActivate as EventListener);
-  }, [context, helperMode]);
-
   const handleSend = useCallback(async () => {
+    // MARKER_162.P4.P1.MYCO.COMPACT_NO_STALE_SETMESSAGES.V1:
+    // Compact mode owns `lastAnswer` only; avoid expanded-chat state writes here.
     if (!input.trim() || loading) return;
     const message = input.trim();
     setInput('');
-    if (isMycoTrigger(message)) {
-      if (helperMode === 'off') {
-        setLastAnswer('MYCO helper is off. Toggle helper icon.');
-        return;
-      }
+    if (isMycoTrigger(message) && helperMode !== 'off') {
       emitMycoReplyEvent();
       setLastAnswer(buildMycoReply(context));
+      setLastAnswerSource('helper');
       return;
     }
     setLoading(true);
@@ -234,8 +266,10 @@ function ChatCompact({ context }: MiniChatProps) {
       const data = await res.json();
       if (helperMode !== 'off') emitMycoReplyEvent();
       setLastAnswer(data.response || data.message || '(no response)');
+      setLastAnswerSource(helperMode !== 'off' ? 'helper' : 'assistant');
     } catch (err) {
       setLastAnswer('⚠ Failed to get response');
+      setLastAnswerSource(helperMode !== 'off' ? 'helper' : 'assistant');
     } finally {
       setLoading(false);
     }
@@ -337,7 +371,7 @@ function ChatCompact({ context }: MiniChatProps) {
       >
         {loading ? (
           <span style={{ color: '#555' }}>thinking...</span>
-        ) : lastAnswer ? (
+        ) : lastAnswer && !(helperMode === 'off' && lastAnswerSource === 'helper') ? (
           lastAnswer.slice(0, 200)
         ) : (
           helperMode !== 'off'
@@ -401,6 +435,7 @@ function ChatExpanded({ context }: MiniChatProps) {
   const mycoHeaderHint = useMemo(() => buildMycoHeaderHint(context), [context]);
   const [mycoAvatarState, setMycoAvatarState] = useState<MycoAvatarVisualState>('idle');
   const mycoAvatarTimersRef = useRef<number[]>([]);
+  const proactiveContextKeyRef = useRef<string>('');
   const mycoAvatarSrc = useMemo(() => {
     if (mycoAvatarState === 'speaking') return mycoSpeakingLoop;
     if (mycoAvatarState === 'ready') return mycoReadySmile;
@@ -418,6 +453,25 @@ function ChatExpanded({ context }: MiniChatProps) {
     window.addEventListener('mcc-chat-prefill', handlePrefill as EventListener);
     return () => window.removeEventListener('mcc-chat-prefill', handlePrefill as EventListener);
   }, []);
+
+  useEffect(() => {
+    // MARKER_162.P4.P1.MYCO.CONTEXT_PROACTIVE_CHAT_EXPANDED.V1:
+    // Expanded helper chat mirrors compact proactive guidance on context switch.
+    if (helperMode === 'off') {
+      proactiveContextKeyRef.current = '';
+      return;
+    }
+    const key = `expanded:${helperMode}:${buildMycoContextKey(context)}`;
+    if (proactiveContextKeyRef.current === key) return;
+    proactiveContextKeyRef.current = key;
+    const reply = buildMycoReply(context);
+    emitMycoReplyEvent();
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.role === 'helper_myco' && last?.content === reply) return prev;
+      return [...prev, { role: 'helper_myco', content: reply }];
+    });
+  }, [context, helperMode]);
 
   useEffect(() => {
     const clearTimers = () => {
@@ -443,11 +497,7 @@ function ChatExpanded({ context }: MiniChatProps) {
     const message = input.trim();
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: message }]);
-    if (isMycoTrigger(message)) {
-      if (helperMode === 'off') {
-        setMessages(prev => [...prev, { role: 'helper_myco', content: 'Helper is off. Toggle helper icon to passive/active.' }]);
-        return;
-      }
+    if (isMycoTrigger(message) && helperMode !== 'off') {
       emitMycoReplyEvent();
       setMessages(prev => [...prev, { role: 'helper_myco', content: buildMycoReply(context) }]);
       return;
@@ -568,7 +618,10 @@ function ChatExpanded({ context }: MiniChatProps) {
               : 'Ask the architect about your project...'}
           </div>
         )}
-        {messages.map((msg, i) => (
+        {(helperMode === 'off'
+          ? messages.filter((m) => m.role !== 'helper_myco')
+          : messages
+        ).map((msg, i) => (
           <div key={i} style={{ marginBottom: 8 }}>
             <div style={{
               color: msg.role === 'user' ? NOLAN_PALETTE.textAccent : NOLAN_PALETTE.textMuted,
