@@ -1,0 +1,1027 @@
+client/src/components/activity/ActivityMonitor.tsx:161:          <button
+client/src/components/activity/ActivityMonitor.tsx:163:            onClick={() => setFilter('all')}
+client/src/components/activity/ActivityMonitor.tsx:167:          <button
+client/src/components/activity/ActivityMonitor.tsx:169:            onClick={() => setFilter('chat')}
+client/src/components/activity/ActivityMonitor.tsx:173:          <button
+client/src/components/activity/ActivityMonitor.tsx:175:            onClick={() => setFilter('mcp')}
+client/src/components/activity/ActivityMonitor.tsx:179:          <button
+client/src/components/activity/ActivityMonitor.tsx:181:            onClick={() => setFilter('artifact')}
+client/src/components/activity/ActivityMonitor.tsx:185:          <button
+client/src/components/activity/ActivityMonitor.tsx:187:            onClick={() => setFilter('commit')}
+client/src/components/activity/ActivityMonitor.tsx:203:              onClick={() => toggleExpanded(activity.id)}
+client/src/components/activity/ActivityMonitor.tsx:230:          <button className="activity-load-more" onClick={loadMore}>
+client/src/components/artifact/ArtifactWindow.tsx:194:    <button
+client/src/components/artifact/ArtifactWindow.tsx:195:      onClick={handleToggleFavorite}
+client/src/components/artifact/ArtifactWindow.tsx:197:      title={isFavorite ? 'Remove favorite' : 'Add favorite'}
+client/src/components/artifact/ArtifactWindow.tsx:218:    <button
+client/src/components/artifact/ArtifactWindow.tsx:219:      onClick={handleAddToVetka}
+client/src/components/artifact/ArtifactWindow.tsx:222:      title={isIndexingToVetka ? 'Adding to VETKA...' : 'Add to VETKA'}
+client/src/components/artifact/ArtifactWindow.tsx:252:      title={title}
+client/src/components/artifact/viewers/MarkdownViewer.tsx:64:              onClick={(e) => void handleLinkClick(e, href)}
+client/src/components/mcc/HeartbeatToggle.tsx:37:    <button
+client/src/components/mcc/HeartbeatToggle.tsx:38:      onClick={toggleHeartbeat}
+client/src/components/mcc/HeartbeatToggle.tsx:54:      title={heartbeat.enabled ? "Pause heartbeat" : "Start heartbeat"}
+client/src/App.tsx:229:          onClick={() => selectNode(node.id)}
+client/src/App.tsx:1126:            <button
+client/src/App.tsx:1127:              onClick={() => {
+client/src/App.tsx:1156:              title="Open chat"
+client/src/App.tsx:1162:            <button
+client/src/App.tsx:1163:              onClick={() => {
+client/src/App.tsx:1212:              title={selectedNode ? 'View artifact' : 'Select a file first'}
+client/src/App.tsx:1218:            <button
+client/src/App.tsx:1219:              onClick={() => invoke('open_mycelium').catch(console.error)}
+client/src/App.tsx:1243:              title="Mycelium Command Center"
+client/src/App.tsx:1268:          onClick={(e) => e.stopPropagation()}
+client/src/App.tsx:1278:          <button
+client/src/App.tsx:1280:            onClick={() => {
+client/src/App.tsx:1311:          <button
+client/src/App.tsx:1313:            onClick={() => {
+client/src/App.tsx:1344:          <button
+client/src/App.tsx:1346:            onClick={() => {
+client/src/App.tsx:1397:          <button
+client/src/App.tsx:1399:            onClick={() => {
+client/src/App.tsx:1426:            title="Remove this folder from VETKA index only (files stay on disk)"
+client/src/App.tsx:1445:          onClick={() => setFolderCleanupConfirmPath(null)}
+client/src/App.tsx:1458:            onClick={(e) => e.stopPropagation()}
+client/src/App.tsx:1468:              <button
+client/src/App.tsx:1470:                onClick={() => setFolderCleanupConfirmPath(null)}
+client/src/App.tsx:1482:              <button
+client/src/App.tsx:1484:                onClick={() => {
+client/src/App.tsx:1534:            title={folderCleanupPath}
+client/src/App.tsx:1604:                  <button
+client/src/App.tsx:1606:                    onClick={() => {
+client/src/App.tsx:1704:                <button
+client/src/App.tsx:1706:                  onClick={() => pathSelectorData.onSelect(path)}
+client/src/App.tsx:1727:            <button
+client/src/App.tsx:1728:              onClick={() => setPathSelectorData(null)}
+client/src/components/mcc/KeyDropdown.tsx:114:      <button
+client/src/components/mcc/KeyDropdown.tsx:115:        onClick={() => setOpen(v => !v)}
+client/src/components/mcc/KeyDropdown.tsx:130:        title="API key selector for dispatch"
+client/src/components/mcc/KeyDropdown.tsx:162:          <button
+client/src/components/mcc/KeyDropdown.tsx:163:            onClick={() => {
+client/src/components/mcc/KeyDropdown.tsx:196:              <button
+client/src/components/mcc/KeyDropdown.tsx:198:                onClick={() => {
+client/src/components/mcc/KeyDropdown.tsx:226:                  onClick={(e) => {
+client/src/components/mcc/KeyDropdown.tsx:239:                  title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+client/src/components/mcc/KeyDropdown.tsx:251:            <button
+client/src/components/mcc/KeyDropdown.tsx:252:              onClick={() => {
+client/src/WebShellStandalone.tsx:468:        <button onClick={goBack} style={btnStyle} title="Back">{'<'}</button>
+client/src/WebShellStandalone.tsx:469:        <button onClick={goForward} style={btnStyle} title="Forward">{'>'}</button>
+client/src/WebShellStandalone.tsx:532:            title="Type to search on page. Enter for next match."
+client/src/WebShellStandalone.tsx:535:        <button
+client/src/WebShellStandalone.tsx:536:          onClick={() => setPageMode((m) => (m === 'live' ? 'preview' : 'live'))}
+client/src/WebShellStandalone.tsx:538:          title={pageMode === 'live' ? 'Switch to preview mode (find works here)' : 'Switch to live mode'}
+client/src/WebShellStandalone.tsx:542:        <button
+client/src/WebShellStandalone.tsx:543:          onClick={openSaveFlow}
+client/src/WebShellStandalone.tsx:544:          title="save to vetka"
+client/src/WebShellStandalone.tsx:565:              title="VETKA Web Shell Live"
+client/src/WebShellStandalone.tsx:573:              title="VETKA Web Shell"
+client/src/WebShellStandalone.tsx:604:                  <button onClick={() => setSaveFormat('md')} style={{ ...modeBtn, ...(saveFormat === 'md' ? modeBtnOn : {}) }}>MD</button>
+client/src/WebShellStandalone.tsx:605:                  <button onClick={() => setSaveFormat('html')} style={{ ...modeBtn, ...(saveFormat === 'html' ? modeBtnOn : {}) }}>HTML</button>
+client/src/WebShellStandalone.tsx:608:                  <button onClick={() => { setShowSaveModal(false); setSaveRing(false); }} style={ghostBtn}>Cancel</button>
+client/src/WebShellStandalone.tsx:609:                  <button onClick={() => setSaveStep(2)} style={solidBtn}>Next</button>
+client/src/WebShellStandalone.tsx:640:                      <button
+client/src/WebShellStandalone.tsx:642:                        onClick={() => setSavePath(p)}
+client/src/WebShellStandalone.tsx:654:                        title={p}
+client/src/WebShellStandalone.tsx:665:                  <button onClick={() => setSaveStep(1)} style={ghostBtn}>Back</button>
+client/src/WebShellStandalone.tsx:666:                  <button onClick={saveToVetka} style={solidBtn} disabled={isSaving}>{isSaving ? 'Saving...' : 'Save'}</button>
+client/src/components/chat/MessageBubble.tsx:404:        onClick={() => {
+client/src/components/chat/MessageBubble.tsx:491:                <button
+client/src/components/chat/MessageBubble.tsx:492:                  onClick={toggleVoicePlayback}
+client/src/components/chat/MessageBubble.tsx:502:                  title={voicePlaying ? 'Pause voice message' : 'Play voice message'}
+client/src/components/chat/MessageBubble.tsx:612:            <button
+client/src/components/chat/MessageBubble.tsx:613:              onClick={toggleVoicePlayback}
+client/src/components/chat/MessageBubble.tsx:623:              title={voicePlaying ? 'Pause voice message' : 'Play voice message'}
+client/src/components/chat/MessageBubble.tsx:629:                <button
+client/src/components/chat/MessageBubble.tsx:631:                  onClick={() => setVoiceRate(rate as 1 | 1.5 | 2)}
+client/src/components/chat/MessageBubble.tsx:712:          <button
+client/src/components/chat/MessageBubble.tsx:713:            onClick={() => onOpenArtifact?.(message.id, message.content || '', modelName)}
+client/src/components/chat/MessageBubble.tsx:836:                    <button
+client/src/components/chat/MessageBubble.tsx:838:                      onClick={() => onQuickAction(action)}
+client/src/components/chat/MessageBubble.tsx:873:                    <button
+client/src/components/chat/MessageBubble.tsx:875:                      onClick={() => onQuickAction(action)}
+client/src/components/chat/MessageBubble.tsx:909:                    <button
+client/src/components/chat/MessageBubble.tsx:911:                      onClick={() => onQuickAction(action)}
+client/src/components/chat/MessageBubble.tsx:986:                  onClick={() => handleReaction(r)}
+client/src/components/chat/MessageBubble.tsx:987:                  title="Click to remove"
+client/src/components/chat/MessageBubble.tsx:999:              <button
+client/src/components/chat/MessageBubble.tsx:1000:                onClick={toggleVoicePlayback}
+client/src/components/chat/MessageBubble.tsx:1012:                title={voicePlaying ? 'Stop speaking' : 'Read aloud (Qwen TTS)'}
+client/src/components/chat/MessageBubble.tsx:1023:            <button
+client/src/components/chat/MessageBubble.tsx:1024:              onClick={() => setShowReactions(!showReactions)}
+client/src/components/chat/MessageBubble.tsx:1035:              title="Add reaction"
+client/src/components/chat/MessageBubble.tsx:1043:              <button
+client/src/components/chat/MessageBubble.tsx:1044:                onClick={() => onReply({
+client/src/components/chat/MessageBubble.tsx:1060:                title="Reply to this message"
+client/src/components/chat/MessageBubble.tsx:1083:                <button
+client/src/components/chat/MessageBubble.tsx:1085:                  onClick={() => handleReaction(emoji)}
+client/src/components/artifact/ArtifactPanel.tsx:894:                <button
+client/src/components/artifact/ArtifactPanel.tsx:895:                  onClick={() => setWebMode('live')}
+client/src/components/artifact/ArtifactPanel.tsx:905:                  title="Live web page mode"
+client/src/components/artifact/ArtifactPanel.tsx:909:                <button
+client/src/components/artifact/ArtifactPanel.tsx:910:                  onClick={() => setWebMode('md')}
+client/src/components/artifact/ArtifactPanel.tsx:920:                  title="Markdown fallback mode"
+client/src/components/artifact/ArtifactPanel.tsx:931:                  title={rawContent.sourceUrl}
+client/src/components/artifact/ArtifactPanel.tsx:937:                <button
+client/src/components/artifact/ArtifactPanel.tsx:938:                  onClick={async () => {
+client/src/components/artifact/ArtifactPanel.tsx:972:                  title="Open in native Tauri live window"
+client/src/components/artifact/ArtifactPanel.tsx:978:                <button
+client/src/components/artifact/ArtifactPanel.tsx:979:                  onClick={async () => {
+client/src/components/artifact/ArtifactPanel.tsx:1031:                  title="Save extracted web text as markdown artifact"
+client/src/components/artifact/ArtifactPanel.tsx:1040:                  title={rawContent.title || 'Web preview'}
+client/src/components/artifact/ArtifactPanel.tsx:1233:            title={filename}
+client/src/components/artifact/ArtifactPanel.tsx:1277:              title={filename}
+client/src/components/artifact/ArtifactPanel.tsx:1523:                    <span className="artifact-media-preview-badge degraded" title={mediaPreview.degraded_reason || 'degraded'}>
+client/src/components/artifact/ArtifactPanel.tsx:1532:                  <button
+client/src/components/artifact/ArtifactPanel.tsx:1535:                    onClick={() => setTimelineZoom(zoom)}
+client/src/components/artifact/ArtifactPanel.tsx:1598:                                  title={marker.kind}
+client/src/components/artifact/ArtifactPanel.tsx:1619:                                <button
+client/src/components/artifact/ArtifactPanel.tsx:1622:                                  onClick={() => { void handleSegmentClick(seg); }}
+client/src/components/artifact/ArtifactPanel.tsx:1623:                                  title={`${lane} • ${seg.start_sec.toFixed(2)}s — ${seg.end_sec.toFixed(2)}s`}
+client/src/components/artifact/ArtifactPanel.tsx:1671:                    <button
+client/src/components/artifact/ArtifactPanel.tsx:1675:                      onClick={() => {
+client/src/components/artifact/ArtifactPanel.tsx:1723:                          <button
+client/src/components/artifact/ArtifactPanel.tsx:1727:                            onClick={() => setActiveSeekSec(m.time_sec)}
+client/src/components/artifact/ArtifactPanel.tsx:1728:                            title={m.kind}
+client/src/components/mcc/CaptainBar.tsx:114:      <button
+client/src/components/mcc/CaptainBar.tsx:115:        onClick={onAccept}
+client/src/components/mcc/CaptainBar.tsx:133:      <button
+client/src/components/mcc/CaptainBar.tsx:134:        onClick={onReject}
+client/src/components/mcc/CaptainBar.tsx:152:      <button
+client/src/components/mcc/CaptainBar.tsx:153:        onClick={onDismiss}
+client/src/components/mcc/CaptainBar.tsx:165:        title="Dismiss"
+client/src/components/mcc/FooterActionBar.tsx:136:          <button
+client/src/components/mcc/FooterActionBar.tsx:138:            onClick={() => !isDisabled && handleAction(act.action)}
+client/src/components/mcc/FooterActionBar.tsx:180:            title={act.shortcut ? `${act.label} (${act.shortcut})` : act.label}
+client/src/components/mcc/FooterActionBar.tsx:205:          <button
+client/src/components/mcc/FooterActionBar.tsx:206:            onClick={() => setGearOpen(!gearOpen)}
+client/src/components/mcc/FooterActionBar.tsx:222:            title="More actions"
+client/src/components/mcc/FooterActionBar.tsx:244:                <button
+client/src/components/mcc/FooterActionBar.tsx:246:                  onClick={() => {
+client/src/components/chat/CompoundMessage.tsx:47:      <button
+client/src/components/chat/CompoundMessage.tsx:48:        onClick={() => setIsOpen(!isOpen)}
+client/src/components/chat/CompoundMessage.tsx:105:        title="PM Plan"
+client/src/components/chat/CompoundMessage.tsx:110:        title="Architecture"
+client/src/components/chat/CompoundMessage.tsx:115:        title="Implementation"
+client/src/components/chat/CompoundMessage.tsx:122:        title="Tests"
+client/src/components/canvas/FileCard.tsx:1298:        onClick={handleClick}
+client/src/components/canvas/FileCard.tsx:1349:          <button
+client/src/components/canvas/FileCard.tsx:1350:            onClick={toggleFavorite}
+client/src/components/canvas/FileCard.tsx:1351:            title={isFavorite ? 'Remove favorite' : 'Add favorite'}
+client/src/components/canvas/FileCard.tsx:1491:            title={artifactStatus === 'approved' ? 'Approved' : 'Rejected'}
+client/src/components/canvas/FileCard.tsx:1520:            <button
+client/src/components/canvas/FileCard.tsx:1521:              onClick={(e) => {
+client/src/components/canvas/FileCard.tsx:1551:              title="Approve artifact"
+client/src/components/canvas/FileCard.tsx:1557:            <button
+client/src/components/canvas/FileCard.tsx:1558:              onClick={(e) => {
+client/src/components/canvas/FileCard.tsx:1588:              title="Reject artifact"
+client/src/components/canvas/FileCard.tsx:1675:              onClick={(e) => {
+client/src/components/mcc/MyceliumCommandCenter.tsx:3446:      <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3447:        onClick={() => setDebugMode((v) => !v)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3448:        title={debugMode ? 'Disable debug UI' : 'Enable debug UI'}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3516:              <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3518:                onClick={async () => {
+client/src/components/mcc/MyceliumCommandCenter.tsx:3539:                title={`${name} · ${projectId}`}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3547:            <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3559:              title="Draft tab setup in progress"
+client/src/components/mcc/MyceliumCommandCenter.tsx:3565:          <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3566:            onClick={() => {
+client/src/components/mcc/MyceliumCommandCenter.tsx:3580:            title="Create and open a new project tab"
+client/src/components/mcc/MyceliumCommandCenter.tsx:3604:              <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3608:                onClick={() => activateMycoInChat()}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3611:                title={`Helper mode (${helperMode}). Click to open helper chat`}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3667:                title={mycoTopHint}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3756:              <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3757:                onClick={() => setActiveDagVersionId(null)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3767:                title="Use live baseline DAG"
+client/src/components/mcc/MyceliumCommandCenter.tsx:3773:                  <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3774:                    onClick={() => setActiveDagVersionId(v.version_id)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3784:                    title={`${v.name} · nodes=${v.node_count} edges=${v.edge_count} · decision=${v.decision || '-'}`}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3788:                  <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3789:                    onClick={() => setPrimaryDagVersion(v.version_id)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3798:                    title="Set as primary DAG version"
+client/src/components/mcc/MyceliumCommandCenter.tsx:3804:              <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3805:                onClick={runDagAutoCompare}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3817:                title="Run algorithmic DAG auto-compare (3 presets)"
+client/src/components/mcc/MyceliumCommandCenter.tsx:3822:              <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3823:                onClick={() => setShowDagCompareMatrix(v => !v)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3835:                title="Show compare matrix"
+client/src/components/mcc/MyceliumCommandCenter.tsx:3840:              <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3841:                onClick={createDagSnapshot}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3852:                title="Save current DAG as version"
+client/src/components/mcc/MyceliumCommandCenter.tsx:3864:                <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3865:                  onClick={() => setPrimaryDagVersion(dagCompareBest.version_id)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3876:                  title="Set best compare result as primary DAG version"
+client/src/components/mcc/MyceliumCommandCenter.tsx:3885:                  title={dagCompareRows
+client/src/components/mcc/MyceliumCommandCenter.tsx:3935:                    onClick={() => setSelectedDagCompareName(row.name)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3951:                    title={row.error || ''}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3962:                    <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3963:                      onClick={() => vid && setActiveDagVersionId(vid)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3978:                    <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:3979:                      onClick={() => vid && setPrimaryDagVersion(vid)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:3989:                      title="Set version as primary"
+client/src/components/mcc/MyceliumCommandCenter.tsx:4235:                    <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:4237:                      onClick={() => {
+client/src/components/mcc/MyceliumCommandCenter.tsx:4253:                      title={`Workflow source mode: ${mode}`}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4285:                title={workflowSourceError || `workflow source: ${workflowSourceBadge}`}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4353:                <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:4354:                  onClick={() => {
+client/src/components/mcc/MyceliumCommandCenter.tsx:4369:                  title="Toggle focus restore policy"
+client/src/components/mcc/MyceliumCommandCenter.tsx:4402:                title={verifierUi.hint}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4403:                onClick={() => {
+client/src/components/mcc/MyceliumCommandCenter.tsx:4436:                title={jepaRuntimeUi.hint}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4437:                onClick={() => addToast('info', `${jepaRuntimeUi.title} · ${jepaRuntimeUi.hint}`)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4469:                title={trmDiagnosticsUi.hint}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4470:                onClick={() => addToast('info', trmDiagnosticsUi.hint)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4606:                title={task.title}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4673:          onClick={() => setViewingArtifact(null)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4688:            onClick={e => e.stopPropagation()}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4704:              <button
+client/src/components/mcc/MyceliumCommandCenter.tsx:4705:                onClick={() => setViewingArtifact(null)}
+client/src/components/mcc/MiniStats.tsx:382:          <span style={{ fontSize: 8, color: '#8e98a4' }} title="OpenHands reinforcement from prefetch diagnostics">
+client/src/components/mcc/MiniStats.tsx:392:        <button
+client/src/components/mcc/MiniStats.tsx:393:          onClick={() => {
+client/src/components/mcc/MiniStats.tsx:406:          title="Open diagnostics"
+client/src/components/mcc/MiniStats.tsx:628:      <button
+client/src/components/mcc/MiniStats.tsx:629:        onClick={refresh}
+client/src/components/mcc/MiniStats.tsx:652:      title="Stats"
+client/src/components/mcc/DetailPanel.tsx:351:                  onClick={() => selectModel(m.id)}
+client/src/components/mcc/DetailPanel.tsx:485:              onClick={handleSavePrompt}
+client/src/components/mcc/DetailPanel.tsx:489:              onClick={() => {
+client/src/components/mcc/DetailPanel.tsx:515:            onClick={() => {
+client/src/components/mcc/DetailPanel.tsx:519:            title="Click to edit"
+client/src/components/mcc/DetailPanel.tsx:524:          <button
+client/src/components/mcc/DetailPanel.tsx:525:            onClick={() => {
+client/src/components/mcc/DetailPanel.tsx:638:              <ActionButton label="Approve" onClick={() => onAction('approve')} />
+client/src/components/mcc/DetailPanel.tsx:639:              <ActionButton label="Reject" onClick={() => onAction('reject')} variant="danger" />
+client/src/components/mcc/DetailPanel.tsx:644:            <ActionButton label="Retry" onClick={() => onAction('retry')} />
+client/src/components/mcc/DetailPanel.tsx:734:    <button
+client/src/components/mcc/DetailPanel.tsx:735:      onClick={onClick}
+client/src/components/devpanel/ArtifactViewer.tsx:340:          <button
+client/src/components/devpanel/ArtifactViewer.tsx:341:            onClick={handleReject}
+client/src/components/devpanel/ArtifactViewer.tsx:359:          <button
+client/src/components/devpanel/ArtifactViewer.tsx:360:            onClick={handleApprove}
+client/src/components/mcc/StepIndicator.tsx:94:              title={`${step.icon} ${step.label}: ${step.description}`}
+client/src/components/mcc/MiniBalance.tsx:166:            <button
+client/src/components/mcc/MiniBalance.tsx:168:              onClick={() => setSelectedKey({ provider: r.provider, key_masked: r.key_masked })}
+client/src/components/mcc/MiniBalance.tsx:181:              title={`${r.provider} ${r.key_masked}`}
+client/src/components/mcc/MiniBalance.tsx:187:                onClick={(e) => {
+client/src/components/mcc/MiniBalance.tsx:192:                title="Toggle favorite"
+client/src/components/mcc/MiniBalance.tsx:210:      title="Balance"
+client/src/components/mcc/LeagueSelector.tsx:135:          <button
+client/src/components/mcc/LeagueSelector.tsx:137:            onClick={() => onPresetChange(name)}
+client/src/components/mcc/LeagueSelector.tsx:138:            title={`${name}\n${preset?.description || ''}\n${roleCount} roles • ${preset?.provider || 'unknown'}`}
+client/src/components/mcc/LeagueSelector.tsx:186:          <button
+client/src/components/mcc/LeagueSelector.tsx:187:            onClick={handleCreate}
+client/src/components/mcc/LeagueSelector.tsx:200:          <button
+client/src/components/mcc/LeagueSelector.tsx:201:            onClick={() => { setCreating(false); setNewName(''); }}
+client/src/components/mcc/LeagueSelector.tsx:214:        <button
+client/src/components/mcc/LeagueSelector.tsx:215:          onClick={() => setCreating(true)}
+client/src/components/mcc/LeagueSelector.tsx:216:          title="Clone current preset as new"
+client/src/components/ModelDirectory.tsx:656:            <button
+client/src/components/ModelDirectory.tsx:657:              onClick={handleRefresh}
+client/src/components/ModelDirectory.tsx:659:              title="Refresh model list"
+client/src/components/ModelDirectory.tsx:678:            <button
+client/src/components/ModelDirectory.tsx:679:              onClick={onClose}
+client/src/components/ModelDirectory.tsx:742:                <button
+client/src/components/ModelDirectory.tsx:743:                  onClick={() => setExpandedGroups(prev => ({
+client/src/components/ModelDirectory.tsx:759:                  title={group.label}
+client/src/components/ModelDirectory.tsx:796:                        <button
+client/src/components/ModelDirectory.tsx:798:                          onClick={() => setFilter(f)}
+client/src/components/ModelDirectory.tsx:811:                          title={cfg.label}
+client/src/components/ModelDirectory.tsx:862:            onClick={() => {
+client/src/components/ModelDirectory.tsx:1066:            <button
+client/src/components/ModelDirectory.tsx:1067:              onClick={(e) => {
+client/src/components/ModelDirectory.tsx:1081:              title={favoriteModels.includes(model.id) ? 'Remove from favorites' : 'Star model (sort to top)'}
+client/src/components/ModelDirectory.tsx:1114:        <button
+client/src/components/ModelDirectory.tsx:1115:          onClick={() => setShowKeys(!showKeys)}
+client/src/components/ModelDirectory.tsx:1239:                  <button
+client/src/components/ModelDirectory.tsx:1240:                    onClick={handleSmartAddKey}
+client/src/components/ModelDirectory.tsx:1283:                  <button
+client/src/components/ModelDirectory.tsx:1284:                    onClick={() => {
+client/src/components/ModelDirectory.tsx:1367:                  <button
+client/src/components/ModelDirectory.tsx:1368:                    onClick={() => setSourceFilter(null)}
+client/src/components/ModelDirectory.tsx:1427:                    onClick={(e) => {
+client/src/components/ModelDirectory.tsx:1534:                    <button
+client/src/components/ModelDirectory.tsx:1535:                      onClick={(e) => {
+client/src/components/ModelDirectory.tsx:1549:                      title={isStarredKey ? 'Remove from favorites' : 'Add to favorites (auto-filter)'}
+client/src/components/ModelDirectory.tsx:1560:                    <button
+client/src/components/ModelDirectory.tsx:1561:                      onClick={(e) => {
+client/src/components/ModelDirectory.tsx:1583:                      title="Remove key"
+client/src/components/chat/GroupCreatorPanel.tsx:386:          <button
+client/src/components/chat/GroupCreatorPanel.tsx:387:            onClick={onExitEditMode}
+client/src/components/chat/GroupCreatorPanel.tsx:498:                    onClick={() => {
+client/src/components/chat/GroupCreatorPanel.tsx:568:                            <button
+client/src/components/chat/GroupCreatorPanel.tsx:569:                              onClick={(e) => {
+client/src/components/chat/GroupCreatorPanel.tsx:596:                            <button
+client/src/components/chat/GroupCreatorPanel.tsx:597:                              onClick={(e) => handleRemoveAgent(index, e)}
+client/src/components/chat/GroupCreatorPanel.tsx:639:          <button
+client/src/components/chat/GroupCreatorPanel.tsx:640:            onClick={handleAddCustomRole}
+client/src/components/chat/GroupCreatorPanel.tsx:693:          <button
+client/src/components/chat/GroupCreatorPanel.tsx:694:            onClick={onExitEditMode}
+client/src/components/chat/GroupCreatorPanel.tsx:718:          <button
+client/src/components/chat/GroupCreatorPanel.tsx:719:            onClick={handleCreate}
+client/src/components/chat/GroupCreatorPanel.tsx:757:            onClick={() => setShowCustomRoleModal(false)}
+client/src/components/chat/GroupCreatorPanel.tsx:824:              <button
+client/src/components/chat/GroupCreatorPanel.tsx:825:                onClick={handleConfirmCustomRole}
+client/src/components/chat/GroupCreatorPanel.tsx:841:              <button
+client/src/components/chat/GroupCreatorPanel.tsx:842:                onClick={() => {
+client/src/components/mcc/MiniWindow.tsx:557:                <button
+client/src/components/mcc/MiniWindow.tsx:558:                  onClick={minimize}
+client/src/components/mcc/MiniWindow.tsx:567:                  title="Minimize"
+client/src/components/mcc/MiniWindow.tsx:571:                <button
+client/src/components/mcc/MiniWindow.tsx:572:                  onClick={toggle}
+client/src/components/mcc/MiniWindow.tsx:581:                  title="Expand"
+client/src/components/mcc/MiniWindow.tsx:630:            onClick={handleOverlayClick}
+client/src/components/mcc/MiniWindow.tsx:687:                <button
+client/src/components/mcc/MiniWindow.tsx:688:                  onClick={minimize}
+client/src/components/mcc/MiniWindow.tsx:697:                  title="Minimize"
+client/src/components/mcc/MiniWindow.tsx:701:                <button
+client/src/components/mcc/MiniWindow.tsx:702:                  onClick={collapse}
+client/src/components/mcc/MiniWindow.tsx:711:                  title="Collapse"
+client/src/components/mcc/MiniWindow.tsx:715:                <button
+client/src/components/mcc/MiniWindow.tsx:716:                  onClick={collapse}
+client/src/components/mcc/MiniWindow.tsx:725:                  title="Close"
+client/src/components/mcc/MiniWindow.tsx:807:          title={entry.title}
+client/src/components/mcc/MiniWindow.tsx:820:          <button
+client/src/components/mcc/MiniWindow.tsx:822:            onClick={() => restoreEntry(entry, false)}
+client/src/components/mcc/MiniWindow.tsx:831:            title="Restore"
+client/src/components/mcc/MiniWindow.tsx:835:          <button
+client/src/components/mcc/MiniWindow.tsx:837:            onClick={() => restoreEntry(entry, true)}
+client/src/components/mcc/MiniWindow.tsx:846:            title="Expand"
+client/src/components/VoiceSettings.tsx:331:        <button
+client/src/components/VoiceSettings.tsx:332:          onClick={handleTest}
+client/src/components/mcc/PlaygroundBadge.tsx:77:        onClick={() => setShowDropdown(!showDropdown)}
+client/src/components/mcc/PlaygroundBadge.tsx:121:          onClick={e => e.stopPropagation()}
+client/src/components/mcc/PlaygroundBadge.tsx:174:                <button
+client/src/components/mcc/PlaygroundBadge.tsx:175:                  onClick={() => handleDestroy(pg.playground_id)}
+client/src/components/artifact/viewers/ImageViewer.tsx:45:      <button onClick={() => zoomIn()} style={btnStyle} title="Zoom In">
+client/src/components/artifact/viewers/ImageViewer.tsx:48:      <button onClick={() => zoomOut()} style={btnStyle} title="Zoom Out">
+client/src/components/artifact/viewers/ImageViewer.tsx:51:      <button onClick={() => resetTransform()} style={btnStyle} title="Reset">
+client/src/components/panels/DevPanel.tsx:97:            <button
+client/src/components/panels/DevPanel.tsx:99:              onClick={() => setActiveTab(tab.id)}
+client/src/components/panels/DevPanel.tsx:132:            title={myceliumConnected ? 'MYCELIUM connected' : 'MYCELIUM disconnected'}
+client/src/components/panels/DevPanel.tsx:196:              onClick={() => {
+client/src/components/panels/DevPanel.tsx:250:      title="Dev Panel"
+client/src/components/mcc/NodePicker.tsx:117:            <button
+client/src/components/mcc/NodePicker.tsx:120:              onClick={() => {
+client/src/components/mcc/MCCDetailPanel.tsx:85:            }} title={model}>
+client/src/components/mcc/MCCDetailPanel.tsx:119:      <button style={tabBtn('info', 'info')} onClick={() => onTabChange('info')}>
+client/src/components/mcc/MCCDetailPanel.tsx:122:      <button style={tabBtn('stream', 'stream')} onClick={() => onTabChange('stream')}>
+client/src/components/mcc/WizardContainer.tsx:51:          <button
+client/src/components/mcc/WizardContainer.tsx:53:            onClick={() => { setSelectedMethod(opt.id); setInputValue(''); }}
+client/src/components/mcc/WizardContainer.tsx:85:          <button
+client/src/components/mcc/WizardContainer.tsx:86:            onClick={handleSubmit}
+client/src/components/mcc/WizardContainer.tsx:113:          <button
+client/src/components/mcc/WizardContainer.tsx:115:            onClick={() => setSelectedAction(opt.id)}
+client/src/components/mcc/WizardContainer.tsx:132:          <button
+client/src/components/mcc/WizardContainer.tsx:133:            onClick={onBack}
+client/src/components/mcc/WizardContainer.tsx:143:        <button
+client/src/components/mcc/WizardContainer.tsx:144:          onClick={() => selectedAction && onComplete({ action: selectedAction })}
+client/src/components/mcc/WizardContainer.tsx:170:          <button
+client/src/components/mcc/WizardContainer.tsx:172:            onClick={() => setSelectedMethod(opt.id)}
+client/src/components/mcc/WizardContainer.tsx:189:          <button onClick={onBack} style={{ flex: 1, padding: 14, background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, color: '#888', fontFamily: 'monospace', fontSize: 13 }}>
+client/src/components/mcc/WizardContainer.tsx:193:        <button
+client/src/components/mcc/WizardContainer.tsx:194:          onClick={() => selectedMethod && onComplete({ method: selectedMethod })}
+client/src/components/mcc/WizardContainer.tsx:214:        {onBack && <button onClick={onBack} style={{ padding: '12px 24px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 6, color: '#888' }}>← Back</button>}
+client/src/components/mcc/WizardContainer.tsx:215:        <button onClick={() => onComplete({ action: 'ready' })} style={{ padding: '12px 24px', background: '#4a9eff', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600 }}>Continue →</button>
+client/src/components/artifact/FloatingWindow.tsx:113:            <button
+client/src/components/artifact/FloatingWindow.tsx:114:              onClick={toggleMaximize}
+client/src/components/artifact/FloatingWindow.tsx:123:              title="Maximize"
+client/src/components/artifact/FloatingWindow.tsx:127:            <button
+client/src/components/artifact/FloatingWindow.tsx:128:              onClick={onClose}
+client/src/components/artifact/FloatingWindow.tsx:137:              title="Close"
+client/src/components/mcc/RedoFeedbackInput.tsx:74:        <button
+client/src/components/mcc/RedoFeedbackInput.tsx:75:          onClick={onCancel}
+client/src/components/mcc/RedoFeedbackInput.tsx:116:        <button
+client/src/components/mcc/RedoFeedbackInput.tsx:117:          onClick={handleSubmit}
+client/src/components/artifact/ArtifactViewer.tsx:174:          <button
+client/src/components/artifact/ArtifactViewer.tsx:175:            onClick={handleReject}
+client/src/components/artifact/ArtifactViewer.tsx:193:          <button
+client/src/components/artifact/ArtifactViewer.tsx:194:            onClick={handleApprove}
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:779:        <button
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:781:          onClick={handleTogglePlay}
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:797:          title="Play"
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:838:        <button type="button" onClick={handleTogglePlay} style={{ background: "transparent", border: "1px solid #3a3a3a", color: "#e5e7eb", borderRadius: 4, width: 30, height: 26 }}>
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:851:        <button type="button" onClick={handleToggleMute} style={{ background: "transparent", border: "1px solid #3a3a3a", color: "#e5e7eb", borderRadius: 4, width: 30, height: 26 }}>
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:873:        <button
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:875:          onClick={() => setShowSettings((v) => !v)}
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:876:          title="Settings"
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:890:        <button
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:892:          title="Fullscreen"
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:894:          onClick={handleFullscreen}
+client/src/components/mcc/FilterBar.tsx:38:            onClick={() => onChange({ ...filters, status })}
+client/src/components/mcc/FilterBar.tsx:51:            onClick={() => onChange({ ...filters, timeRange: time })}
+client/src/components/mcc/FilterBar.tsx:64:            onClick={() => onChange({ ...filters, type })}
+client/src/components/mcc/FilterBar.tsx:103:    <button
+client/src/components/mcc/FilterBar.tsx:104:      onClick={onClick}
+client/src/components/mcc/OnboardingModal.tsx:231:                  <button
+client/src/components/mcc/OnboardingModal.tsx:233:                    onClick={() => {
+client/src/components/mcc/OnboardingModal.tsx:290:                <button
+client/src/components/mcc/OnboardingModal.tsx:291:                  onClick={onComplete}
+client/src/components/mcc/OnboardingModal.tsx:306:                <button
+client/src/components/mcc/OnboardingModal.tsx:307:                  onClick={handleSourceNext}
+client/src/components/mcc/OnboardingModal.tsx:363:                <button
+client/src/components/mcc/OnboardingModal.tsx:364:                  onClick={handleBrowseSandboxPath}
+client/src/components/mcc/OnboardingModal.tsx:405:                <button
+client/src/components/mcc/OnboardingModal.tsx:406:                  onClick={() => setStep('source')}
+client/src/components/mcc/OnboardingModal.tsx:421:                <button
+client/src/components/mcc/OnboardingModal.tsx:422:                  onClick={handleSubmit}
+client/src/components/mcc/OnboardingModal.tsx:472:              <button
+client/src/components/mcc/OnboardingModal.tsx:473:                onClick={onComplete}
+client/src/components/mcc/OnboardingModal.tsx:494:              <button
+client/src/components/mcc/OnboardingModal.tsx:495:                onClick={handleRetry}
+client/src/components/mcc/StreamPanel.tsx:70:              title={event.message}
+client/src/components/mcc/SandboxDropdown.tsx:129:      <button
+client/src/components/mcc/SandboxDropdown.tsx:130:        onClick={() => (exists ? setOpen(v => !v) : handleCreate())}
+client/src/components/mcc/SandboxDropdown.tsx:207:            <button
+client/src/components/mcc/SandboxDropdown.tsx:208:              onClick={handleRecreate}
+client/src/components/mcc/SandboxDropdown.tsx:225:            <button
+client/src/components/mcc/SandboxDropdown.tsx:226:              onClick={handleDelete}
+client/src/components/panels/StatsWorkspace.tsx:64:          <button
+client/src/components/panels/StatsWorkspace.tsx:65:            onClick={() => refresh(false)}
+client/src/components/panels/StatsWorkspace.tsx:78:          <button
+client/src/components/panels/StatsWorkspace.tsx:79:            onClick={() => refresh(true)}
+client/src/components/panels/StatsWorkspace.tsx:89:            title="Force runtime health probe (bypass short cache)"
+client/src/components/panels/StatsWorkspace.tsx:171:        <button
+client/src/components/panels/StatsWorkspace.tsx:172:          onClick={() => setStatsMode('ops')}
+client/src/components/panels/StatsWorkspace.tsx:186:        <button
+client/src/components/panels/StatsWorkspace.tsx:187:          onClick={() => setStatsMode('diagnostics')}
+client/src/components/mcc/MiniChat.tsx:361:          title={helperMode !== 'off' ? `MYCO context: ${contextName}` : scope.label}
+client/src/components/mcc/MiniChat.tsx:364:            <button
+client/src/components/mcc/MiniChat.tsx:368:              onClick={() => setHelperMode(nextMycoMode(helperMode))}
+client/src/components/mcc/MiniChat.tsx:382:              title="Disable helper and return MYCO to top bar"
+client/src/components/mcc/MiniChat.tsx:397:            <button
+client/src/components/mcc/MiniChat.tsx:399:              onClick={openContextModelChooser}
+client/src/components/mcc/MiniChat.tsx:414:              title={`Model: ${modelLabel}. Click to open Context model chooser.`}
+client/src/components/mcc/MiniChat.tsx:462:        <button
+client/src/components/mcc/MiniChat.tsx:463:          onClick={handleSend}
+client/src/components/mcc/MiniChat.tsx:635:              <button
+client/src/components/mcc/MiniChat.tsx:637:                onClick={() => setHelperMode(nextMycoMode(helperMode))}
+client/src/components/mcc/MiniChat.tsx:651:                title="Disable helper and return MYCO to top bar"
+client/src/components/mcc/MiniChat.tsx:664:              <button
+client/src/components/mcc/MiniChat.tsx:666:                onClick={openContextModelChooser}
+client/src/components/mcc/MiniChat.tsx:681:                title={`Model: ${modelLabel}. Click to open Context model chooser.`}
+client/src/components/mcc/MiniChat.tsx:800:        <button
+client/src/components/mcc/MiniChat.tsx:801:          onClick={handleSend}
+client/src/components/mcc/MiniChat.tsx:825:      title="Chat"
+client/src/components/mcc/TaskEditPopup.tsx:82:      onClick={handleOverlayClick}
+client/src/components/mcc/TaskEditPopup.tsx:111:          <button
+client/src/components/mcc/TaskEditPopup.tsx:112:            onClick={onClose}
+client/src/components/mcc/TaskEditPopup.tsx:160:            <button
+client/src/components/mcc/TaskEditPopup.tsx:162:              onClick={() => setPreset(p.value)}
+client/src/components/mcc/TaskEditPopup.tsx:163:              title={p.desc}
+client/src/components/mcc/TaskEditPopup.tsx:188:            <button
+client/src/components/mcc/TaskEditPopup.tsx:190:              onClick={() => setPhaseType(p.value)}
+client/src/components/mcc/TaskEditPopup.tsx:211:          <button
+client/src/components/mcc/TaskEditPopup.tsx:212:            onClick={handleSave}
+client/src/components/mcc/TaskEditPopup.tsx:227:          <button
+client/src/components/mcc/TaskEditPopup.tsx:228:            onClick={handleDispatch}
+client/src/components/artifact/Toolbar.tsx:144:    <button
+client/src/components/artifact/Toolbar.tsx:145:      onClick={() => {
+client/src/components/artifact/Toolbar.tsx:150:      title={title}
+client/src/components/artifact/Toolbar.tsx:177:        <Btn onClick={onEdit} active={isEditing} title={isEditing ? 'Editing' : 'Edit'} actionKey="edit">
+client/src/components/artifact/Toolbar.tsx:183:        <Btn onClick={onUndo} title="Undo (Ctrl+Z)" disabled={!canUndo} actionKey="undo">
+client/src/components/artifact/Toolbar.tsx:190:          onClick={onSave}
+client/src/components/artifact/Toolbar.tsx:191:          title={isSaving ? 'Saving...' : hasChanges ? 'Save changes' : 'No changes'}
+client/src/components/artifact/Toolbar.tsx:201:        <Btn onClick={onSaveAs} title="Save As / Duplicate" actionKey="save_as" successChildren={<Check size={16} />}>
+client/src/components/artifact/Toolbar.tsx:206:        <Btn onClick={onCopy} title="Copy to clipboard" actionKey="copy" successChildren={<Check size={16} />}>
+client/src/components/artifact/Toolbar.tsx:211:        <Btn onClick={onDownload} title="Download" actionKey="download" successChildren={<Check size={16} />}>
+client/src/components/artifact/Toolbar.tsx:217:        <Btn onClick={onOpenInFinder} title="Open in Finder" actionKey="finder" successChildren={<Check size={16} />}>
+client/src/components/artifact/Toolbar.tsx:222:        <Btn onClick={onRefresh} title="Refresh" actionKey="refresh" successChildren={<Check size={16} />}>
+client/src/components/artifact/Toolbar.tsx:227:        <Btn onClick={onInfo} active={Boolean(infoActive)} title="Media info" actionKey="info">
+client/src/components/artifact/Toolbar.tsx:232:        <Btn onClick={onDetach} title="Open detached media window" actionKey="detach" successChildren={<Check size={16} />}>
+client/src/components/artifact/Toolbar.tsx:238:          onClick={onPin}
+client/src/components/artifact/Toolbar.tsx:240:          title={pinTitle || (isPinned ? 'Unpin from chat context' : 'Pin to chat context')}
+client/src/components/artifact/Toolbar.tsx:267:          onClick={onDetachedFavoriteToggle}
+client/src/components/artifact/Toolbar.tsx:270:          title={detachedFavoriteActive ? 'Remove favorite' : 'Add favorite'}
+client/src/components/artifact/Toolbar.tsx:281:          onClick={onDetachedVetkaAdd}
+client/src/components/artifact/Toolbar.tsx:283:          title={detachedVetkaBusy ? 'Adding to VETKA...' : 'Add to VETKA'}
+client/src/components/artifact/Toolbar.tsx:300:        <Btn onClick={onMediaPlayPause} title="Play/Pause" actionKey="media-playpause">
+client/src/components/artifact/Toolbar.tsx:306:        <Btn onClick={onMediaMuteToggle} title="Mute/Unmute" actionKey="media-mute">
+client/src/components/artifact/Toolbar.tsx:312:        <Btn onClick={onMediaFullscreenToggle} title="Fullscreen" actionKey="media-fullscreen">
+client/src/components/artifact/Toolbar.tsx:318:        <Btn onClick={onClose} title="Close" actionKey="close">
+client/src/components/search/CommandPalette.tsx:216:      onClick={() => setIsOpen(false)}
+client/src/components/search/CommandPalette.tsx:230:        onClick={(e) => e.stopPropagation()}
+client/src/components/search/CommandPalette.tsx:290:              onClick={() => handleSelect(result)}
+client/src/components/mcc/PresetDropdown.tsx:89:      <button
+client/src/components/mcc/PresetDropdown.tsx:90:        onClick={() => setOpen(!open)}
+client/src/components/mcc/PresetDropdown.tsx:174:                      onClick={() => {
+client/src/components/voice/SmartVoiceInput.tsx:341:        <button
+client/src/components/voice/SmartVoiceInput.tsx:342:          onClick={handleButtonClick}
+client/src/components/voice/SmartVoiceInput.tsx:360:          title={
+client/src/components/panels/BalancesPanel.tsx:200:          <button
+client/src/components/panels/BalancesPanel.tsx:201:            onClick={handleReset}
+client/src/components/panels/BalancesPanel.tsx:216:          <button
+client/src/components/panels/BalancesPanel.tsx:217:            onClick={fetchData}
+client/src/components/panels/BalancesPanel.tsx:277:                onClick={() => handleKeyClick(r.provider, r.key_masked)}
+client/src/components/panels/BalancesPanel.tsx:293:                    onClick={(e) => {
+client/src/components/panels/BalancesPanel.tsx:298:                    title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+client/src/components/chat/MentionPopup.tsx:123:        <button
+client/src/components/chat/MentionPopup.tsx:125:          onClick={() => onSelect(`@${model}`)}
+client/src/components/chat/MentionPopup.tsx:162:            <button
+client/src/components/chat/MentionPopup.tsx:164:              onClick={() => onSelect(alias)}
+client/src/components/chat/MentionPopup.tsx:177:            <button
+client/src/components/chat/MentionPopup.tsx:179:              onClick={() => onSelect('@hostess')}
+client/src/components/chat/MentionPopup.tsx:221:            <button
+client/src/components/chat/MentionPopup.tsx:223:              onClick={() => onSelect(cmd.alias)}
+client/src/components/chat/ChatPanel.tsx:2595:          <button
+client/src/components/chat/ChatPanel.tsx:2596:            onClick={() => {
+client/src/components/chat/ChatPanel.tsx:2629:            title={activeGroupId ? 'Model Directory' : (activeTab === 'group' ? 'Exit Group Mode' : 'Create Team')}
+client/src/components/chat/ChatPanel.tsx:2657:            <button
+client/src/components/chat/ChatPanel.tsx:2658:              onClick={() => setLeftPanel(leftPanel === 'history' ? 'none' : 'history')}
+client/src/components/chat/ChatPanel.tsx:2680:              title="Chat History"
+client/src/components/chat/ChatPanel.tsx:2692:            <button
+client/src/components/chat/ChatPanel.tsx:2693:              onClick={() => setLeftPanel(leftPanel === 'models' ? 'none' : 'models')}
+client/src/components/chat/ChatPanel.tsx:2715:              title="Model Directory"
+client/src/components/chat/ChatPanel.tsx:2730:          <button
+client/src/components/chat/ChatPanel.tsx:2731:            onClick={() => {
+client/src/components/chat/ChatPanel.tsx:2767:            title={selectedNode ? 'View artifact' : 'Select a file first'}
+client/src/components/chat/ChatPanel.tsx:2775:          <button
+client/src/components/chat/ChatPanel.tsx:2776:            onClick={() => setActiveTab(activeTab === 'scanner' ? 'chat' : 'scanner')}
+client/src/components/chat/ChatPanel.tsx:2798:            title="Scanner"
+client/src/components/chat/ChatPanel.tsx:2806:          <button
+client/src/components/chat/ChatPanel.tsx:2807:            onClick={toggleChatPosition}
+client/src/components/chat/ChatPanel.tsx:2820:            title={chatPosition === 'left' ? 'Move to right' : 'Move to left'}
+client/src/components/chat/ChatPanel.tsx:2841:          <button
+client/src/components/chat/ChatPanel.tsx:2842:            onClick={onClose}
+client/src/components/chat/ChatPanel.tsx:2852:            title="Close"
+client/src/components/chat/ChatPanel.tsx:2891:              <button
+client/src/components/chat/ChatPanel.tsx:2892:                onClick={() => setSelectedModel(null)}
+client/src/components/chat/ChatPanel.tsx:2941:                  <button
+client/src/components/chat/ChatPanel.tsx:2943:                    onClick={() => setVoiceReplyMode(item.id)}
+client/src/components/chat/ChatPanel.tsx:2944:                    title={
+client/src/components/chat/ChatPanel.tsx:2967:              <button
+client/src/components/chat/ChatPanel.tsx:2968:                onClick={copyGroupId}
+client/src/components/chat/ChatPanel.tsx:2969:                title={groupIdCopied ? 'Copied!' : 'Copy Group ID'}
+client/src/components/chat/ChatPanel.tsx:3006:              <button
+client/src/components/chat/ChatPanel.tsx:3007:                onClick={() => {
+client/src/components/chat/ChatPanel.tsx:3160:                    onClick={startRename}
+client/src/components/chat/ChatPanel.tsx:3162:                    title="Click to rename"
+client/src/components/chat/ChatPanel.tsx:3178:                    onClick={startRename}
+client/src/components/chat/ChatPanel.tsx:3181:                    title="Rename chat"
+client/src/components/chat/ChatPanel.tsx:3190:                  <button
+client/src/components/chat/ChatPanel.tsx:3191:                    onClick={copyChatId}
+client/src/components/chat/ChatPanel.tsx:3192:                    title={chatIdCopied ? 'Copied!' : 'Copy Chat ID (for MCP)'}
+client/src/components/chat/ChatPanel.tsx:3239:              <button
+client/src/components/chat/ChatPanel.tsx:3240:                onClick={() => {
+client/src/components/chat/ChatPanel.tsx:3270:                title="Edit chat name"
+client/src/components/chat/ChatPanel.tsx:3279:              <button
+client/src/components/chat/ChatPanel.tsx:3280:                onClick={() => { void handleNewChat(); }}
+client/src/components/chat/ChatPanel.tsx:3304:                title="New Chat"
+client/src/components/chat/ChatPanel.tsx:3343:                <button
+client/src/components/chat/ChatPanel.tsx:3344:                  onClick={clearPinnedFiles}
+client/src/components/chat/ChatPanel.tsx:3345:                  title="Clear all pins"
+client/src/components/chat/ChatPanel.tsx:3385:                  onClick={() => handlePinnedFileClick(id)}
+client/src/components/chat/ChatPanel.tsx:3386:                  title={node.path}
+client/src/components/chat/ChatPanel.tsx:3435:                  <button
+client/src/components/chat/ChatPanel.tsx:3436:                    onClick={(e) => {
+client/src/components/chat/ChatPanel.tsx:3440:                    title="Open artifact"
+client/src/components/chat/ChatPanel.tsx:3467:                  <button
+client/src/components/chat/ChatPanel.tsx:3468:                    onClick={(e) => {
+client/src/components/chat/ChatPanel.tsx:3472:                    title="Unpin"
+client/src/components/chat/ChatPanel.tsx:3512:              title="Drag to resize pinned files list"
+client/src/components/chat/ChatPanel.tsx:3545:                onClick={() => handleSelectChat(chat.id, '', chat.display_name)}
+client/src/components/chat/ChatPanel.tsx:3554:                title={`${chat.message_count} messages`}
+client/src/components/chat/ChatPanel.tsx:3652:          {canScroll && <button
+client/src/components/chat/ChatPanel.tsx:3653:            onClick={() => {
+client/src/components/chat/ChatPanel.tsx:3688:            title={isAtBottom ? "Scroll to top" : "Scroll to bottom"}
+client/src/components/chat/ChatPanel.tsx:3727:            <button
+client/src/components/chat/ChatPanel.tsx:3728:              onClick={() => setReplyTo(null)}
+client/src/components/chat/ChatPanel.tsx:3768:        title={artifactData?.title || 'Response'}
+client/src/components/chat/ChatPanel.tsx:3777:                <button
+client/src/components/chat/ChatPanel.tsx:3778:                  onClick={toggleArtifactFavorite}
+client/src/components/chat/ChatPanel.tsx:3780:                  title={artifactFavorite ? 'Remove favorite' : 'Add favorite'}
+client/src/components/chat/ChatPanel.tsx:3799:                <button
+client/src/components/chat/ChatPanel.tsx:3800:                  onClick={addArtifactToVetka}
+client/src/components/chat/ChatPanel.tsx:3803:                  title={artifactIndexing ? 'Adding to VETKA...' : 'Add to VETKA'}
+client/src/components/panels/PipelineStats.tsx:159:          <button
+client/src/components/panels/PipelineStats.tsx:160:            onClick={() => setActiveTab('stats')}
+client/src/components/panels/PipelineStats.tsx:162:            title="Expand to Stats tab"
+client/src/components/panels/PipelineStats.tsx:183:        <button
+client/src/components/panels/PipelineStats.tsx:184:          onClick={() => setActiveTab('mcc')}
+client/src/components/panels/PipelineStats.tsx:186:          title="Collapse back to MCC"
+client/src/components/mcc/WatcherMicroStatus.tsx:63:        onClick={() => setExpanded(!expanded)}
+client/src/components/mcc/WatcherMicroStatus.tsx:76:        title={`Watcher: ${data.indexed_today} indexed, ${data.events_last_5min} events/5min, ${data.watched_dirs_count} dirs`}
+client/src/components/jarvis/JarvisWave.tsx:128:      onClick={onClick}
+client/src/components/mcc/FirstRunView.tsx:203:            <button
+client/src/components/mcc/FirstRunView.tsx:204:              onClick={() => { void pickLocalSource(); }}
+client/src/components/mcc/FirstRunView.tsx:210:            <button
+client/src/components/mcc/FirstRunView.tsx:211:              onClick={() => { setSourceMode('git'); setStep('source_input'); }}
+client/src/components/mcc/FirstRunView.tsx:217:            <button
+client/src/components/mcc/FirstRunView.tsx:218:              onClick={() => {
+client/src/components/mcc/FirstRunView.tsx:246:              <button onClick={() => setStep('choose')} style={{ flex: 1, borderRadius: 6, border: `1px solid ${NOLAN_PALETTE.border}`, background: NOLAN_PALETTE.bg, color: NOLAN_PALETTE.textMuted, padding: '9px 10px', cursor: 'pointer' }}>Back</button>
+client/src/components/mcc/FirstRunView.tsx:247:              <button onClick={() => setStep('workspace')} disabled={!sourcePath.trim()} style={{ flex: 2, borderRadius: 6, border: `1px solid ${sourcePath.trim() ? NOLAN_PALETTE.borderLight : NOLAN_PALETTE.border}`, background: sourcePath.trim() ? NOLAN_PALETTE.bgDim : NOLAN_PALETTE.bg, color: sourcePath.trim() ? NOLAN_PALETTE.text : NOLAN_PALETTE.textDim, padding: '9px 10px', cursor: sourcePath.trim() ? 'pointer' : 'not-allowed' }}>Next: Workspace</button>
+client/src/components/mcc/FirstRunView.tsx:262:              <button onClick={() => { void pickWorkspace(); }} style={{ flex: 1, borderRadius: 6, border: `1px solid ${NOLAN_PALETTE.border}`, background: NOLAN_PALETTE.bg, color: NOLAN_PALETTE.textMuted, padding: '9px 10px', cursor: 'pointer' }}>Choose Folder</button>
+client/src/components/mcc/FirstRunView.tsx:263:              <button onClick={() => setStep(sourceMode === 'empty' ? 'choose' : 'source_input')} style={{ flex: 1, borderRadius: 6, border: `1px solid ${NOLAN_PALETTE.border}`, background: NOLAN_PALETTE.bg, color: NOLAN_PALETTE.textMuted, padding: '9px 10px', cursor: 'pointer' }}>Back</button>
+client/src/components/mcc/FirstRunView.tsx:264:              <button onClick={() => { void submit(); }} disabled={!workspacePath.trim() || step === 'creating'} style={{ flex: 2, borderRadius: 6, border: `1px solid ${workspacePath.trim() ? NOLAN_PALETTE.borderLight : NOLAN_PALETTE.border}`, background: workspacePath.trim() ? NOLAN_PALETTE.bgDim : NOLAN_PALETTE.bg, color: workspacePath.trim() ? NOLAN_PALETTE.text : NOLAN_PALETTE.textDim, padding: '9px 10px', cursor: workspacePath.trim() ? 'pointer' : 'not-allowed' }}>{step === 'creating' ? 'Creating...' : 'Create Tab Project'}</button>
+client/src/components/chat/MessageInput.tsx:904:        <button
+client/src/components/chat/MessageInput.tsx:905:          onClick={handleButtonClick}
+client/src/components/chat/MessageInput.tsx:923:          title={
+client/src/components/panels/ArchitectChat.tsx:222:          <button
+client/src/components/panels/ArchitectChat.tsx:223:            onClick={() => setActiveTab(mode === 'compact' ? 'architect' : 'mcc')}
+client/src/components/panels/ArchitectChat.tsx:225:            title={mode === 'compact' ? 'Expand to Architect tab' : 'Collapse back to MCC'}
+client/src/components/panels/ArchitectChat.tsx:274:        <button
+client/src/components/panels/ArchitectChat.tsx:275:          onClick={handleSend}
+client/src/components/scanner/ScanPanel.tsx:1098:            <span className="connector-tree-name" title={node.path}>{node.name}</span>
+client/src/components/scanner/ScanPanel.tsx:1127:          <button className="carousel-btn-mini" onClick={prevSource}>
+client/src/components/scanner/ScanPanel.tsx:1134:          <button className="carousel-btn-mini" onClick={nextSource}>
+client/src/components/scanner/ScanPanel.tsx:1154:          <button
+client/src/components/scanner/ScanPanel.tsx:1156:            onClick={handleClearAll}
+client/src/components/scanner/ScanPanel.tsx:1158:            title={isClearing ? 'Clearing...' : 'Clear All Scans'}
+client/src/components/scanner/ScanPanel.tsx:1226:                  <button
+client/src/components/scanner/ScanPanel.tsx:1228:                    onClick={handleBrowseFolder}
+client/src/components/scanner/ScanPanel.tsx:1230:                    title="Select folder to scan"
+client/src/components/scanner/ScanPanel.tsx:1248:                    <button
+client/src/components/scanner/ScanPanel.tsx:1250:                      onClick={handleAddFolder}
+client/src/components/scanner/ScanPanel.tsx:1252:                      title="Add folder to scan"
+client/src/components/scanner/ScanPanel.tsx:1273:                          onClick={() => handleFileClick(file.path)}
+client/src/components/scanner/ScanPanel.tsx:1276:                          title={file.path}
+client/src/components/scanner/ScanPanel.tsx:1289:                            <button
+client/src/components/scanner/ScanPanel.tsx:1291:                              onClick={(e) => handleFilePin(e, file.path)}
+client/src/components/scanner/ScanPanel.tsx:1292:                              title={pinned ? 'Unpin from context' : 'Pin to context'}
+client/src/components/scanner/ScanPanel.tsx:1370:                            <button
+client/src/components/scanner/ScanPanel.tsx:1373:                              onClick={() => openConnectModal(provider)}
+client/src/components/scanner/ScanPanel.tsx:1374:                              title={`Authorize ${provider.display_name}`}
+client/src/components/scanner/ScanPanel.tsx:1381:                                <button
+client/src/components/scanner/ScanPanel.tsx:1384:                                  onClick={() => void openConnectorTree(provider)}
+client/src/components/scanner/ScanPanel.tsx:1385:                                  title="Browse Google Drive tree"
+client/src/components/scanner/ScanPanel.tsx:1390:                              <button
+client/src/components/scanner/ScanPanel.tsx:1393:                                onClick={() =>
+client/src/components/scanner/ScanPanel.tsx:1402:                                title={`Scan ${provider.display_name}`}
+client/src/components/scanner/ScanPanel.tsx:1406:                              <button
+client/src/components/scanner/ScanPanel.tsx:1409:                                onClick={() => void runConnectorAction(provider.id, 'disconnect')}
+client/src/components/scanner/ScanPanel.tsx:1410:                                title={`Disconnect ${provider.display_name}`}
+client/src/components/scanner/ScanPanel.tsx:1444:        <div className="connector-modal-overlay" onClick={() => !connectSubmitting && setConnectModalProvider(null)}>
+client/src/components/scanner/ScanPanel.tsx:1445:          <div className="connector-modal" onClick={(e) => e.stopPropagation()}>
+client/src/components/scanner/ScanPanel.tsx:1455:                <button
+client/src/components/scanner/ScanPanel.tsx:1457:                  onClick={() => setConnectAuthMethod('oauth')}
+client/src/components/scanner/ScanPanel.tsx:1464:                <button
+client/src/components/scanner/ScanPanel.tsx:1466:                  onClick={() => setConnectAuthMethod('api_key')}
+client/src/components/scanner/ScanPanel.tsx:1473:                <button
+client/src/components/scanner/ScanPanel.tsx:1475:                  onClick={() => setConnectAuthMethod('link')}
+client/src/components/scanner/ScanPanel.tsx:1516:              <button
+client/src/components/scanner/ScanPanel.tsx:1518:                onClick={() => setConnectModalProvider(null)}
+client/src/components/scanner/ScanPanel.tsx:1523:              <button
+client/src/components/scanner/ScanPanel.tsx:1525:                onClick={() => void submitConnectModal()}
+client/src/components/scanner/ScanPanel.tsx:1539:        <div className="connector-modal-overlay" onClick={() => setConnectorTreeModalProvider(null)}>
+client/src/components/scanner/ScanPanel.tsx:1540:          <div className="connector-modal connector-tree-modal" onClick={(e) => e.stopPropagation()}>
+client/src/components/scanner/ScanPanel.tsx:1550:              <button
+client/src/components/scanner/ScanPanel.tsx:1552:                onClick={() => setConnectorTreeModalProvider(null)}
+client/src/components/scanner/ScanPanel.tsx:1556:              <button
+client/src/components/scanner/ScanPanel.tsx:1558:                onClick={() => {
+client/src/components/panels/WatcherStats.tsx:174:          onClick={() => setShowPatterns(!showPatterns)}
+client/src/components/panels/WatcherStats.tsx:259:                onClick={() => {
+client/src/components/mcc/DAGContextMenu.tsx:141:              onClick={() => {
+client/src/components/mcc/DAGContextMenu.tsx:161:              onClick={() => {
+client/src/components/mcc/DAGContextMenu.tsx:175:              onClick={() => {
+client/src/components/mcc/DAGContextMenu.tsx:191:              onClick={() => {
+client/src/components/mcc/DAGContextMenu.tsx:208:                onClick={() => {
+client/src/components/mcc/DAGContextMenu.tsx:229:              onClick={() => {
+client/src/components/mcc/HeartbeatChip.tsx:90:      <button
+client/src/components/mcc/HeartbeatChip.tsx:91:        onClick={() => setOpen(v => !v)}
+client/src/components/mcc/HeartbeatChip.tsx:106:        title="Heartbeat settings"
+client/src/components/mcc/HeartbeatChip.tsx:130:          <button
+client/src/components/mcc/HeartbeatChip.tsx:131:            onClick={toggleHeartbeat}
+client/src/components/mcc/HeartbeatChip.tsx:152:                <button
+client/src/components/mcc/HeartbeatChip.tsx:154:                  onClick={() => selectPreset(preset.value)}
+client/src/components/mcc/HeartbeatChip.tsx:203:            <button
+client/src/components/mcc/HeartbeatChip.tsx:204:              onClick={applyCustom}
+client/src/components/mcc/WorkflowToolbar.tsx:284:      <button
+client/src/components/mcc/WorkflowToolbar.tsx:286:        onClick={onToggleEdit}
+client/src/components/mcc/WorkflowToolbar.tsx:287:        title={editMode ? 'Exit edit mode' : 'Enter edit mode'}
+client/src/components/mcc/WorkflowToolbar.tsx:306:            title={workflowName}
+client/src/components/mcc/WorkflowToolbar.tsx:315:          <button style={btnStyle} onClick={onNew} title="New workflow">
+client/src/components/mcc/WorkflowToolbar.tsx:320:          <button
+client/src/components/mcc/WorkflowToolbar.tsx:322:            onClick={handleSave}
+client/src/components/mcc/WorkflowToolbar.tsx:323:            title="Save workflow"
+client/src/components/mcc/WorkflowToolbar.tsx:352:              <button
+client/src/components/mcc/WorkflowToolbar.tsx:353:                onClick={() => nameValue.trim() && doSave(nameValue.trim())}
+client/src/components/mcc/WorkflowToolbar.tsx:372:            <button
+client/src/components/mcc/WorkflowToolbar.tsx:374:              onClick={() => setShowLoadMenu(!showLoadMenu)}
+client/src/components/mcc/WorkflowToolbar.tsx:375:              title="Load workflow"
+client/src/components/mcc/WorkflowToolbar.tsx:412:                      onClick={() => handleLoad(wf.id)}
+client/src/components/mcc/WorkflowToolbar.tsx:428:          <button
+client/src/components/mcc/WorkflowToolbar.tsx:430:            onClick={canUndo ? onUndo : undefined}
+client/src/components/mcc/WorkflowToolbar.tsx:431:            title="Undo (Ctrl+Z)"
+client/src/components/mcc/WorkflowToolbar.tsx:435:          <button
+client/src/components/mcc/WorkflowToolbar.tsx:437:            onClick={canRedo ? onRedo : undefined}
+client/src/components/mcc/WorkflowToolbar.tsx:438:            title="Redo (Ctrl+Shift+Z)"
+client/src/components/mcc/WorkflowToolbar.tsx:447:            <button style={btnStyle} onClick={handleValidate} title="Validate workflow">
+client/src/components/mcc/WorkflowToolbar.tsx:454:            <button
+client/src/components/mcc/WorkflowToolbar.tsx:459:              onClick={!generating ? () => setShowGenerateInput(true) : undefined}
+client/src/components/mcc/WorkflowToolbar.tsx:460:              title="AI: generate workflow from description"
+client/src/components/mcc/WorkflowToolbar.tsx:490:              <button
+client/src/components/mcc/WorkflowToolbar.tsx:491:                onClick={() => generateValue.trim() && doGenerate(generateValue.trim())}
+client/src/components/mcc/WorkflowToolbar.tsx:509:          <button
+client/src/components/mcc/WorkflowToolbar.tsx:511:            onClick={handleImport}
+client/src/components/mcc/WorkflowToolbar.tsx:512:            title="Import n8n or ComfyUI workflow JSON"
+client/src/components/mcc/WorkflowToolbar.tsx:519:            <button
+client/src/components/mcc/WorkflowToolbar.tsx:521:              onClick={workflowId ? () => setShowExportMenu(!showExportMenu) : undefined}
+client/src/components/mcc/WorkflowToolbar.tsx:522:              title={workflowId ? 'Export workflow to n8n or ComfyUI' : 'Save workflow first'}
+client/src/components/mcc/WorkflowToolbar.tsx:544:                  onClick={() => handleExport('n8n')}
+client/src/components/mcc/WorkflowToolbar.tsx:553:                  onClick={() => handleExport('comfyui')}
+client/src/components/mcc/MCCBreadcrumb.tsx:128:            onClick={seg.clickable ? () => handleSegmentClick(seg.level) : undefined}
+client/src/components/mcc/MCCBreadcrumb.tsx:145:            title={seg.clickable ? `Jump to ${seg.label}` : `Current: ${seg.label}`}
+client/src/components/mcc/MCCBreadcrumb.tsx:174:          onClick={goBack}
+client/src/components/mcc/MCCBreadcrumb.tsx:181:          title="Go back (Esc)"
+client/src/components/panels/StatsDashboard.tsx:212:          <button
+client/src/components/panels/StatsDashboard.tsx:213:            onClick={() => setPeriod('day')}
+client/src/components/panels/StatsDashboard.tsx:226:          <button
+client/src/components/panels/StatsDashboard.tsx:227:            onClick={() => setPeriod('week')}
+client/src/components/mcc/MCCTaskList.tsx:185:          <button
+client/src/components/mcc/MCCTaskList.tsx:186:            onClick={handleAdd}
+client/src/components/mcc/MCCTaskList.tsx:198:            title="Add to queue"
+client/src/components/mcc/MCCTaskList.tsx:250:                onClick={() => selectTask(isSelected ? null : task.id)}
+client/src/components/mcc/MCCTaskList.tsx:311:                  <button
+client/src/components/mcc/MCCTaskList.tsx:312:                    onClick={e => {
+client/src/components/mcc/MCCTaskList.tsx:326:                    title="Task drill-down"
+client/src/components/mcc/MCCTaskList.tsx:333:                  <button
+client/src/components/mcc/MCCTaskList.tsx:334:                    onClick={e => {
+client/src/components/mcc/MCCTaskList.tsx:348:                    title="Edit task"
+client/src/components/mcc/MCCTaskList.tsx:356:                  <button
+client/src/components/mcc/MCCTaskList.tsx:357:                    onClick={e => { e.stopPropagation(); dispatchTask(task.id, activePreset, selectedKey); }}
+client/src/components/mcc/MCCTaskList.tsx:365:                  <button
+client/src/components/mcc/MCCTaskList.tsx:366:                    onClick={e => { e.stopPropagation(); cancelTask(task.id); }}
+client/src/components/mcc/MCCTaskList.tsx:401:        <button
+client/src/components/mcc/MCCTaskList.tsx:402:          onClick={handleDispatchNext}
+client/src/components/panels/ActivityLog.tsx:494:          <button
+client/src/components/panels/ActivityLog.tsx:495:            onClick={() => setGroupByTaskEnabled(!groupByTaskEnabled)}
+client/src/components/panels/ActivityLog.tsx:512:          <button
+client/src/components/panels/ActivityLog.tsx:513:            onClick={() => setFollowTail(!followTail)}
+client/src/components/panels/ActivityLog.tsx:530:          <button
+client/src/components/panels/ActivityLog.tsx:531:            onClick={handleClear}
+client/src/components/panels/ActivityLog.tsx:567:                onClick={() => toggleGroupCollapse(group.task_id)}
+client/src/components/mcc/NodeStreamView.tsx:154:        <button style={tabStyle('stream')} onClick={() => setActiveTab('stream')}>
+client/src/components/mcc/NodeStreamView.tsx:157:        <button style={tabStyle('output')} onClick={() => setActiveTab('output')}>
+client/src/components/mcc/NodeStreamView.tsx:160:        <button style={tabStyle('artifacts')} onClick={() => setActiveTab('artifacts')}>
+client/src/components/mcc/NodeStreamView.tsx:233:          }} title={event.message}>
+client/src/components/mcc/NodeStreamView.tsx:327:          onClick={() => onViewArtifact(artifact)}
+client/src/components/panels/TaskEditor.tsx:100:          <span style={{ color: '#666', fontSize: 9 }} title="Source chat ID">
+client/src/components/panels/TaskEditor.tsx:105:          <span style={{ color: '#555', fontSize: 8 }} title="Source group ID">
+client/src/components/panels/TaskEditor.tsx:187:        <button
+client/src/components/panels/TaskEditor.tsx:188:          onClick={handleSave}
+client/src/components/panels/TaskEditor.tsx:203:        <button
+client/src/components/panels/TaskEditor.tsx:204:          onClick={onCancel}
+client/src/components/panels/TaskDrillDown.tsx:171:      onClick={onClose}
+client/src/components/panels/TaskDrillDown.tsx:184:        onClick={(e) => e.stopPropagation()}
+client/src/components/panels/TaskDrillDown.tsx:204:          <button
+client/src/components/panels/TaskDrillDown.tsx:205:            onClick={onClose}
+client/src/components/mcc/OnboardingOverlay.tsx:113:          <button
+client/src/components/mcc/OnboardingOverlay.tsx:114:            onClick={onDismiss}
+client/src/components/mcc/OnboardingOverlay.tsx:127:          <button
+client/src/components/mcc/OnboardingOverlay.tsx:128:            onClick={onAdvance}
+client/src/components/mcc/PipelineResultsViewer.tsx:173:            <button
+client/src/components/mcc/PipelineResultsViewer.tsx:174:              onClick={applyAllResults}
+client/src/components/mcc/PipelineResultsViewer.tsx:195:                onClick={() => setExpandedSubtask(expandedSubtask === idx ? null : idx)}
+client/src/components/mcc/PipelineResultsViewer.tsx:229:                    <button
+client/src/components/mcc/PipelineResultsViewer.tsx:230:                      onClick={() => setViewMode(p => ({ ...p, [idx]: 'code' }))}
+client/src/components/mcc/PipelineResultsViewer.tsx:238:                    <button
+client/src/components/mcc/PipelineResultsViewer.tsx:239:                      onClick={() => setViewMode(p => ({ ...p, [idx]: 'diff' }))}
+client/src/components/mcc/PipelineResultsViewer.tsx:249:                    <button
+client/src/components/mcc/PipelineResultsViewer.tsx:250:                      onClick={() => navigator.clipboard.writeText(st.result || '')}
+client/src/components/mcc/PipelineResultsViewer.tsx:256:                    <button
+client/src/components/mcc/PipelineResultsViewer.tsx:257:                      onClick={() => applySubtask(idx)}
+client/src/components/mcc/PipelineResultsViewer.tsx:308:            <button
+client/src/components/mcc/PipelineResultsViewer.tsx:310:              onClick={() => updateResultStatus(status)}
+client/src/components/ui/FilePreview.tsx:59:    <Panel title="File Preview" position="left" defaultWidth={400} defaultCollapsed={true}>
+client/src/components/ui/FilePreview.tsx:171:            <button
+client/src/components/ui/FilePreview.tsx:172:              onClick={handleCopyPath}
+client/src/components/ui/FilePreview.tsx:186:            <button
+client/src/components/mcc/nodes/RoadmapTaskNode.tsx:127:            title={data.preset}
+client/src/components/mcc/nodes/RoadmapTaskNode.tsx:136:            onClick={(e) => {
+client/src/components/mcc/nodes/RoadmapTaskNode.tsx:154:            title={`Open linked VETKA chat (${data.sourceChatId.slice(0, 8)})`}
+client/src/components/mcc/nodes/RoadmapTaskNode.tsx:171:          title={data.label}
+client/src/components/mcc/nodes/RoadmapTaskNode.tsx:188:            title="Suggested anchor. Approve to persist."
+client/src/components/mcc/nodes/RoadmapTaskNode.tsx:260:          title={data.description}
+client/src/components/chat/ChatSidebar.tsx:420:          <button className="chat-sidebar-close" onClick={onClose}>
+client/src/components/chat/ChatSidebar.tsx:456:            onClick={() => handleSelectChatClick(chat)}
+client/src/components/chat/ChatSidebar.tsx:484:                    onClick={(e) => e.stopPropagation()}
+client/src/components/chat/ChatSidebar.tsx:518:              <button
+client/src/components/chat/ChatSidebar.tsx:520:                onClick={(e) => handleToggleFavorite(e, chat)}
+client/src/components/chat/ChatSidebar.tsx:521:                title={chat.is_favorite ? 'Remove favorite' : 'Add favorite'}
+client/src/components/chat/ChatSidebar.tsx:528:              <button
+client/src/components/chat/ChatSidebar.tsx:530:                onClick={(e) => handleRenameChat(e, chat)}
+client/src/components/chat/ChatSidebar.tsx:531:                title="Rename chat"
+client/src/components/chat/ChatSidebar.tsx:538:              <button
+client/src/components/chat/ChatSidebar.tsx:540:                onClick={(e) => handleDeleteChat(e, chat.id)}
+client/src/components/chat/ChatSidebar.tsx:541:                title="Delete chat"
+client/src/components/chat/ChatSidebar.tsx:568:        <button
+client/src/components/chat/ChatSidebar.tsx:570:          onClick={() => loadChats(true)}
+client/src/components/chat/ChatSidebar.tsx:581:          <button
+client/src/components/chat/ChatSidebar.tsx:583:            onClick={loadMoreChats}
+client/src/components/mcc/RolesConfigPanel.tsx:121:              onClick={() => setExpandedRole(isExpanded ? null : role)}
+client/src/components/mcc/RolesConfigPanel.tsx:148:              }} title={model}>
+client/src/components/mcc/RolesConfigPanel.tsx:171:          onClick={() => setAddingRole(true)}
+client/src/components/mcc/RolesConfigPanel.tsx:233:            <button
+client/src/components/mcc/RolesConfigPanel.tsx:234:              onClick={handleAddRole}
+client/src/components/mcc/RolesConfigPanel.tsx:246:            <button
+client/src/components/mcc/RolesConfigPanel.tsx:247:              onClick={() => { setAddingRole(false); setAddMsg(''); }}
+client/src/components/mcc/MiniTasks.tsx:83:      <button
+client/src/components/mcc/MiniTasks.tsx:84:        onClick={() => updateHeartbeat({ enabled: !heartbeat.enabled })}
+client/src/components/mcc/MiniTasks.tsx:142:        <button
+client/src/components/mcc/MiniTasks.tsx:143:          onClick={() => dispatchTask(selectedTask.id, activePreset)}
+client/src/components/mcc/MiniTasks.tsx:158:        <button
+client/src/components/mcc/MiniTasks.tsx:159:          onClick={() => cancelTask(selectedTask.id)}
+client/src/components/mcc/MiniTasks.tsx:232:              onClick={() => selectTask(task.id)}
+client/src/components/mcc/MiniTasks.tsx:261:                title={task.title}
+client/src/components/mcc/MiniTasks.tsx:337:          <button
+client/src/components/mcc/MiniTasks.tsx:339:            onClick={() => setStatus(s)}
+client/src/components/mcc/MiniTasks.tsx:371:              onClick={() => selectTask(task.id)}
+client/src/components/mcc/MiniTasks.tsx:391:                  title={task.title}
+client/src/components/mcc/MiniTasks.tsx:416:      title="Tasks"
+client/src/components/panels/TaskCard.tsx:468:      onClick={() => setExpanded(!expanded)}
+client/src/components/panels/TaskCard.tsx:609:                onClick={(e) => e.stopPropagation()}
+client/src/components/panels/TaskCard.tsx:639:                  onClick={(e) => e.stopPropagation()}
+client/src/components/panels/TaskCard.tsx:656:                <button
+client/src/components/panels/TaskCard.tsx:657:                  onClick={(e) => {
+client/src/components/panels/TaskCard.tsx:681:              <button
+client/src/components/panels/TaskCard.tsx:682:                onClick={(e) => {
+client/src/components/panels/TaskCard.tsx:706:              <button
+client/src/components/panels/TaskCard.tsx:707:                onClick={(e) => {
+client/src/components/panels/TaskCard.tsx:731:              <button
+client/src/components/panels/TaskCard.tsx:732:                onClick={(e) => {
+client/src/components/panels/TaskCard.tsx:773:                    <button
+client/src/components/panels/TaskCard.tsx:774:                      onClick={(e) => {
+client/src/components/panels/TaskCard.tsx:800:                        onClick={(e) => {
+client/src/components/panels/TaskCard.tsx:896:                            <button
+client/src/components/panels/TaskCard.tsx:897:                              onClick={(e) => {
+client/src/components/panels/TaskCard.tsx:914:                            <button
+client/src/components/panels/TaskCard.tsx:915:                              onClick={(e) => {
+client/src/components/panels/TaskCard.tsx:930:                              title={!st.diff_patch ? 'No diff available' : 'View diff'}
+client/src/components/panels/TaskCard.tsx:936:                            <button
+client/src/components/panels/TaskCard.tsx:937:                              onClick={(e) => {
+client/src/components/panels/TaskCard.tsx:953:                            <button
+client/src/components/panels/TaskCard.tsx:954:                              onClick={(e) => {
+client/src/components/panels/TaskCard.tsx:1030:                <button
+client/src/components/panels/TaskCard.tsx:1031:                  onClick={(e) => { e.stopPropagation(); updateResultStatus('applied'); }}
+client/src/components/panels/TaskCard.tsx:1046:                <button
+client/src/components/panels/TaskCard.tsx:1047:                  onClick={(e) => { e.stopPropagation(); updateResultStatus('rejected'); }}
+client/src/components/panels/TaskCard.tsx:1062:                <button
+client/src/components/panels/TaskCard.tsx:1063:                  onClick={(e) => { e.stopPropagation(); updateResultStatus('rework'); }}
+client/src/components/mcc/RailsActionBar.tsx:159:          <button
+client/src/components/mcc/RailsActionBar.tsx:161:            onClick={() => !isDisabled && handleAction(act.action)}
+client/src/components/mcc/RailsActionBar.tsx:188:            title={act.shortcut ? `${act.label} (${act.shortcut})` : act.label}
+client/src/components/mcc/MiniContext.tsx:268:        <button
+client/src/components/mcc/MiniContext.tsx:271:          onClick={handleSave}
+client/src/components/mcc/MiniContext.tsx:290:            <button
+client/src/components/mcc/MiniContext.tsx:292:              onClick={() => setDraftModel(suggestScopedModel)}
+client/src/components/mcc/MiniContext.tsx:388:      <button
+client/src/components/mcc/MiniContext.tsx:390:        onClick={() => setEditing(true)}
+client/src/components/mcc/MiniContext.tsx:481:          <button
+client/src/components/mcc/MiniContext.tsx:483:            onClick={handleSave}
+client/src/components/mcc/MiniContext.tsx:498:          <button
+client/src/components/mcc/MiniContext.tsx:500:            onClick={() => {
+client/src/components/mcc/MiniContext.tsx:542:        <button
+client/src/components/mcc/MiniContext.tsx:544:          onClick={() => setEditing(true)}
+client/src/components/mcc/MiniContext.tsx:591:        title={value}
+client/src/components/mcc/MiniContext.tsx:766:          <Section title="Scope">
+client/src/components/mcc/MiniContext.tsx:772:          <Section title="Project Architect">
+client/src/components/mcc/MiniContext.tsx:778:          <Section title="Selection">
+client/src/components/mcc/MiniContext.tsx:784:          <Section title="Summary">
+client/src/components/mcc/MiniContext.tsx:802:            <Section title="Agent">
+client/src/components/mcc/MiniContext.tsx:817:            <Section title="Task">
+client/src/components/mcc/MiniContext.tsx:824:            <Section title="Directory">
+client/src/components/mcc/MiniContext.tsx:833:            <Section title="File Preview">
+client/src/components/mcc/MiniContext.tsx:839:            <Section title="Stream / Output / Artifacts">
+client/src/components/mcc/MiniContext.tsx:847:            <Section title="Details">
+client/src/components/mcc/MiniContext.tsx:862:      title="Context"
+client/src/components/mcc/ToastContainer.tsx:70:            <button
+client/src/components/mcc/ToastContainer.tsx:71:              onClick={() => onDismiss(toast.id)}
+client/src/components/mcc/ToastContainer.tsx:83:              title="Dismiss"
+client/src/components/panels/TaskFilterBar.tsx:71:            title="Sort tasks by"
+client/src/components/panels/TaskFilterBar.tsx:97:            title="Filter by task source"
+client/src/components/panels/TaskFilterBar.tsx:121:          title="Filter by team"
+client/src/components/panels/TaskFilterBar.tsx:136:            <button
+client/src/components/panels/TaskFilterBar.tsx:138:              onClick={() => {
+client/src/components/panels/TaskFilterBar.tsx:154:              title={`Filter status: ${status}`}
+client/src/components/panels/TaskFilterBar.tsx:186:          title="Created from date"
+client/src/components/panels/TaskFilterBar.tsx:201:          title="Created to date"
+client/src/App.tsx:229:          onClick={() => selectNode(node.id)}
+client/src/App.tsx:1126:            <button
+client/src/App.tsx:1127:              onClick={() => {
+client/src/App.tsx:1156:              title="Open chat"
+client/src/App.tsx:1162:            <button
+client/src/App.tsx:1163:              onClick={() => {
+client/src/App.tsx:1212:              title={selectedNode ? 'View artifact' : 'Select a file first'}
+client/src/App.tsx:1218:            <button
+client/src/App.tsx:1219:              onClick={() => invoke('open_mycelium').catch(console.error)}
+client/src/App.tsx:1243:              title="Mycelium Command Center"
+client/src/App.tsx:1268:          onClick={(e) => e.stopPropagation()}
+client/src/App.tsx:1278:          <button
+client/src/App.tsx:1280:            onClick={() => {
+client/src/App.tsx:1311:          <button
+client/src/App.tsx:1313:            onClick={() => {
+client/src/App.tsx:1344:          <button
+client/src/App.tsx:1346:            onClick={() => {
+client/src/App.tsx:1397:          <button
+client/src/App.tsx:1399:            onClick={() => {
+client/src/App.tsx:1426:            title="Remove this folder from VETKA index only (files stay on disk)"
+client/src/App.tsx:1445:          onClick={() => setFolderCleanupConfirmPath(null)}
+client/src/App.tsx:1458:            onClick={(e) => e.stopPropagation()}
+client/src/App.tsx:1468:              <button
+client/src/App.tsx:1470:                onClick={() => setFolderCleanupConfirmPath(null)}
+client/src/App.tsx:1482:              <button
+client/src/App.tsx:1484:                onClick={() => {
+client/src/App.tsx:1534:            title={folderCleanupPath}
+client/src/App.tsx:1604:                  <button
+client/src/App.tsx:1606:                    onClick={() => {
+client/src/App.tsx:1704:                <button
+client/src/App.tsx:1706:                  onClick={() => pathSelectorData.onSelect(path)}
+client/src/App.tsx:1727:            <button
+client/src/App.tsx:1728:              onClick={() => setPathSelectorData(null)}
+client/src/components/ui/Panel.tsx:110:          <button
+client/src/components/ui/Panel.tsx:111:            onClick={() => setIsCollapsed(!isCollapsed)}
+client/src/components/voice/VoiceButton.tsx:288:      <button
+client/src/components/voice/VoiceButton.tsx:289:        onClick={isListening ? stopListening : startListening}
+client/src/components/voice/VoiceButton.tsx:306:        title={isListening ? 'Stop recording' : 'Voice input'}
+client/src/components/voice/VoiceButton.tsx:342:      <button
+client/src/components/voice/VoiceButton.tsx:343:        onClick={isListening ? stopListening : startListening}
+client/src/components/voice/VoiceButton.tsx:360:        title={isListening ? 'Stop recording' : 'Start voice input'}
+client/src/components/panels/ArtifactViewer.tsx:292:        <button
+client/src/components/panels/ArtifactViewer.tsx:293:          onClick={() => setActiveTab('pending')}
+client/src/components/panels/ArtifactViewer.tsx:311:        <button
+client/src/components/panels/ArtifactViewer.tsx:312:          onClick={() => setActiveTab('completed')}
+client/src/components/panels/ArtifactViewer.tsx:330:        <button
+client/src/components/panels/ArtifactViewer.tsx:331:          onClick={() => { fetchPending(); fetchDiskArtifacts(); fetchPanelArtifacts(); fetchFeedbackReports(); }}
+client/src/components/panels/ArtifactViewer.tsx:435:                      onClick={() => setExpandedArtifact(isExpanded ? null : artifactKey)}
+client/src/components/panels/ArtifactViewer.tsx:489:                        <button
+client/src/components/panels/ArtifactViewer.tsx:490:                          onClick={() => navigator.clipboard.writeText(artifact.content || '')}
+client/src/components/panels/ArtifactViewer.tsx:513:              <button
+client/src/components/panels/ArtifactViewer.tsx:514:                onClick={() => handleApprove(request.id)}
+client/src/components/panels/ArtifactViewer.tsx:535:              <button
+client/src/components/panels/ArtifactViewer.tsx:536:                onClick={() => handleReject(request.id)}
+client/src/components/panels/ArtifactViewer.tsx:590:                        onClick={() => {
+client/src/components/panels/ArtifactViewer.tsx:637:                              <button
+client/src/components/panels/ArtifactViewer.tsx:638:                                onClick={() => navigator.clipboard.writeText(content)}
+client/src/components/panels/ArtifactViewer.tsx:683:                        onClick={() => {
+client/src/components/panels/ArtifactViewer.tsx:756:                        onClick={() => {
+client/src/components/panels/ArtifactViewer.tsx:814:                                <button
+client/src/components/panels/ArtifactViewer.tsx:815:                                  onClick={() => navigator.clipboard.writeText(content)}
+client/src/components/search/UnifiedSearchBar.tsx:875:              title={voiceState === 'speaking' ? 'VETKA speaking' : 'VETKA listening'}
+client/src/components/search/UnifiedSearchBar.tsx:896:            <button
+client/src/components/search/UnifiedSearchBar.tsx:897:              onClick={onVoiceTrigger}
+client/src/components/search/UnifiedSearchBar.tsx:901:              title="Voice input"
+client/src/components/search/UnifiedSearchBar.tsx:911:        <button
+client/src/components/search/UnifiedSearchBar.tsx:912:          onClick={() => setShowContextMenu(!showContextMenu)}
+client/src/components/search/UnifiedSearchBar.tsx:930:          title="Change search context"
+client/src/components/search/UnifiedSearchBar.tsx:966:          <button
+client/src/components/search/UnifiedSearchBar.tsx:967:            onClick={clearResults}
+client/src/components/search/UnifiedSearchBar.tsx:971:            title="Clear search"
+client/src/components/search/UnifiedSearchBar.tsx:986:            title="Voice response in progress"
+client/src/components/search/UnifiedSearchBar.tsx:1012:                  onClick={() => {
+client/src/components/search/UnifiedSearchBar.tsx:1079:          }} title={selectedFilePath}>
+client/src/components/search/UnifiedSearchBar.tsx:1082:          <button
+client/src/components/search/UnifiedSearchBar.tsx:1083:            onClick={() => setSelectedFilePath(null)}
+client/src/components/search/UnifiedSearchBar.tsx:1135:            }} title={`Active mode: ${SEARCH_MODE_LABELS[searchMode]}`}>
+client/src/components/search/UnifiedSearchBar.tsx:1151:              <button
+client/src/components/search/UnifiedSearchBar.tsx:1153:                onClick={() => setSearchMode(mode)}
+client/src/components/search/UnifiedSearchBar.tsx:1154:                title={`${SEARCH_MODE_LABELS[mode]}: ${SEARCH_MODE_DESCRIPTIONS[mode]}`}
+client/src/components/search/UnifiedSearchBar.tsx:1208:          <button
+client/src/components/search/UnifiedSearchBar.tsx:1209:            onClick={() => setSortAscending(!sortAscending)}
+client/src/components/search/UnifiedSearchBar.tsx:1210:            title={sortAscending ? 'Ascending (smallest/oldest first)' : 'Descending (largest/newest first)'}
+client/src/components/search/UnifiedSearchBar.tsx:1242:            <button
+client/src/components/search/UnifiedSearchBar.tsx:1257:              onClick={() => setShowSortMenu(!showSortMenu)}
+client/src/components/search/UnifiedSearchBar.tsx:1268:              title={`Sort by: ${sortMode}`}
+client/src/components/search/UnifiedSearchBar.tsx:1298:                    onClick={() => {
+client/src/components/search/UnifiedSearchBar.tsx:1342:                onClick={(e) => handleSelect(result, index, e)}
+client/src/components/search/UnifiedSearchBar.tsx:1436:                    <button
+client/src/components/search/UnifiedSearchBar.tsx:1437:                      onClick={(e) => handleArtifact(e, result)}
+client/src/components/search/UnifiedSearchBar.tsx:1441:                      title="View content"
+client/src/components/search/UnifiedSearchBar.tsx:1448:                  <button
+client/src/components/search/UnifiedSearchBar.tsx:1449:                    onClick={(e) => handlePin(e, result)}
+client/src/components/search/UnifiedSearchBar.tsx:1461:                    title={pinned ? 'Unpin from context' : 'Pin to context'}
+client/src/components/search/UnifiedSearchBar.tsx:1475:        <button
+client/src/components/search/UnifiedSearchBar.tsx:1476:          onClick={loadMore}
+client/src/components/mcc/nodes/TaskDAGNode.tsx:142:            <span title="Duration">{'\u23F1'} {fmtDuration(mini_stats.duration_s)}</span>
+client/src/components/mcc/nodes/TaskDAGNode.tsx:146:              title="Verifier confidence"
+client/src/components/mcc/nodes/TaskDAGNode.tsx:155:            <span title="Retries">{'\uD83D\uDD01'} {mini_stats.retries}</span>
+client/src/components/panels/LeagueTester.tsx:87:            <button
+client/src/components/panels/LeagueTester.tsx:89:              onClick={() => runTest(league.preset)}
+client/src/components/panels/LeagueTester.tsx:178:          <button
+client/src/components/panels/LeagueTester.tsx:179:            onClick={async () => {
+client/src/WebShellStandalone.tsx:468:        <button onClick={goBack} style={btnStyle} title="Back">{'<'}</button>
+client/src/WebShellStandalone.tsx:469:        <button onClick={goForward} style={btnStyle} title="Forward">{'>'}</button>
+client/src/WebShellStandalone.tsx:532:            title="Type to search on page. Enter for next match."
+client/src/WebShellStandalone.tsx:535:        <button
+client/src/WebShellStandalone.tsx:536:          onClick={() => setPageMode((m) => (m === 'live' ? 'preview' : 'live'))}
+client/src/WebShellStandalone.tsx:538:          title={pageMode === 'live' ? 'Switch to preview mode (find works here)' : 'Switch to live mode'}
+client/src/WebShellStandalone.tsx:542:        <button
+client/src/WebShellStandalone.tsx:543:          onClick={openSaveFlow}
+client/src/WebShellStandalone.tsx:544:          title="save to vetka"
+client/src/WebShellStandalone.tsx:565:              title="VETKA Web Shell Live"
+client/src/WebShellStandalone.tsx:573:              title="VETKA Web Shell"
+client/src/WebShellStandalone.tsx:604:                  <button onClick={() => setSaveFormat('md')} style={{ ...modeBtn, ...(saveFormat === 'md' ? modeBtnOn : {}) }}>MD</button>
+client/src/WebShellStandalone.tsx:605:                  <button onClick={() => setSaveFormat('html')} style={{ ...modeBtn, ...(saveFormat === 'html' ? modeBtnOn : {}) }}>HTML</button>
+client/src/WebShellStandalone.tsx:608:                  <button onClick={() => { setShowSaveModal(false); setSaveRing(false); }} style={ghostBtn}>Cancel</button>
+client/src/WebShellStandalone.tsx:609:                  <button onClick={() => setSaveStep(2)} style={solidBtn}>Next</button>
+client/src/WebShellStandalone.tsx:640:                      <button
+client/src/WebShellStandalone.tsx:642:                        onClick={() => setSavePath(p)}
+client/src/WebShellStandalone.tsx:654:                        title={p}
+client/src/WebShellStandalone.tsx:665:                  <button onClick={() => setSaveStep(1)} style={ghostBtn}>Back</button>
+client/src/WebShellStandalone.tsx:666:                  <button onClick={saveToVetka} style={solidBtn} disabled={isSaving}>{isSaving ? 'Saving...' : 'Save'}</button>
+client/src/components/panels/RoleEditor.tsx:101:            <button
+client/src/components/panels/RoleEditor.tsx:102:              onClick={onCancel}
+client/src/components/panels/RoleEditor.tsx:186:                  onClick={() => toggleCapability(cap)}
+client/src/components/panels/RoleEditor.tsx:204:              onClick={onCancel}
+client/src/components/panels/RoleEditor.tsx:212:              onClick={handleSave}

@@ -1,0 +1,472 @@
+client/src/components/WorkflowMonitor.tsx:171:// Compact version for sidebar
+client/src/components/ModelDirectory.tsx:2: * ModelDirectory - Phone book style model selector with Telegram-like sidebar.
+client/src/components/ModelDirectory.tsx:68:interface ModelDirectoryProps {
+client/src/components/ModelDirectory.tsx:85:// Phase 80.3: Category groups for sidebar
+client/src/components/ModelDirectory.tsx:136:export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
+client/src/components/ModelDirectory.tsx:259:        .catch(err => console.warn('[ModelDirectory] Status fetch error:', err));
+client/src/components/ModelDirectory.tsx:297:      console.error('[ModelDirectory] Refresh failed:', err);
+client/src/components/ModelDirectory.tsx:402:      console.error('[ModelDirectory] No active group for direct add');
+client/src/components/ModelDirectory.tsx:427:      console.error('[ModelDirectory] Direct add failed:', error);
+client/src/components/ModelDirectory.tsx:442:      console.error('[ModelDirectory] Failed to fetch keys:', err);
+client/src/components/ModelDirectory.tsx:480:      console.error('[ModelDirectory] Failed to fetch balances:', err);
+client/src/components/ModelDirectory.tsx:523:      console.error('[ModelDirectory] Detection failed:', err);
+client/src/components/ModelDirectory.tsx:554:      console.error('[ModelDirectory] Smart add failed:', err);
+client/src/components/ModelDirectory.tsx:571:      console.error('[ModelDirectory] Failed to remove key:', err);
+client/src/components/ModelDirectory.tsx:1684:export default ModelDirectory;
+client/src/components/mcc/MiniStats.tsx:2: * MARKER_154.14A: MiniStats — compact statistics overlay in DAG canvas.
+client/src/components/mcc/MiniStats.tsx:15:import { MiniWindow } from './MiniWindow';
+client/src/components/mcc/MiniStats.tsx:291:      const task = tasks.find((t) => t.id === context.taskId || `task_overlay_${t.id}` === context.nodeId);
+client/src/components/mcc/MiniStats.tsx:650:    <MiniWindow
+client/src/ArtifactMediaStandalone.tsx:78:        windowMode="detached"
+client/src/WebShellStandalone.tsx:9:type WebShellNavigatePayload = {
+client/src/WebShellStandalone.tsx:81:export default function WebShellStandalone() {
+client/src/WebShellStandalone.tsx:140:        unlisten = await listen<WebShellNavigatePayload>('vetka:web-shell:navigate', (event) => {
+client/src/WebShellStandalone.tsx:568:              sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation allow-downloads"
+client/src/WebShellStandalone.tsx:577:              sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-downloads"
+client/src/WebShellStandalone.tsx:592:        <div style={overlayStyle}>
+client/src/WebShellStandalone.tsx:593:          <div style={modalStyle}>
+client/src/WebShellStandalone.tsx:688:const overlayStyle: React.CSSProperties = {
+client/src/WebShellStandalone.tsx:698:const modalStyle: React.CSSProperties = {
+client/src/ArtifactStandalone.tsx:75:        windowMode="detached"
+client/src/components/DropZoneRouter.tsx:177:      // Only hide overlay when leaving the document entirely
+client/src/components/DropZoneRouter.tsx:291:      {/* Drop zone overlay */}
+client/src/components/mcc/MiniWindow.tsx:2: * MARKER_155.DRAGGABLE.002: MiniWindow — Draggable floating window framework.
+client/src/components/mcc/MiniWindow.tsx:6: * Compact: small card in corner (draggable). Expanded: overlay (centered, not draggable).
+client/src/components/mcc/MiniWindow.tsx:37:interface MiniWindowProps {
+client/src/components/mcc/MiniWindow.tsx:227:export function MiniWindow({
+client/src/components/mcc/MiniWindow.tsx:239:}: MiniWindowProps) {
+client/src/components/mcc/MiniWindow.tsx:270:  const overlayRef = useRef<HTMLDivElement>(null);
+client/src/components/mcc/MiniWindow.tsx:352:      if (e.target === overlayRef.current) collapse();
+client/src/components/mcc/MiniWindow.tsx:625:      {/* MARKER_155.DRAGGABLE.010: Expanded mode — centered overlay (not draggable) */}
+client/src/components/mcc/MiniWindow.tsx:629:            ref={overlayRef}
+client/src/components/mcc/MiniWindow.tsx:745:export function MiniWindowDock() {
+client/src/components/mcc/DetailPanel.tsx:2: * MARKER_135.3A: Detail Panel — right sidebar with node info.
+client/src/components/mcc/DetailPanel.tsx:115:    // Priority matches VETKA ModelDirectory pattern:
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:20:  windowMode?: "embedded" | "detached";
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:71:  windowMode,
+client/src/components/artifact/viewers/VideoArtifactPlayer.tsx:132:    windowMode || (windowLabel === "artifact-media" ? "detached" : "embedded");
+client/src/components/artifact/ArtifactWindow.tsx:2: * ArtifactWindow - Floating window wrapper for ArtifactPanel.
+client/src/components/artifact/ArtifactWindow.tsx:54:export function ArtifactWindow({ isOpen, onClose, isChatOpen = false, file: propFile, rawContent, approvalLevel, artifactId, onContentChange, initialSeekSec }: Props) {
+client/src/components/artifact/ArtifactWindow.tsx:156:      console.error('[ArtifactWindow] Add to VETKA failed:', err);
+client/src/components/artifact/ArtifactWindow.tsx:187:      console.error('[ArtifactWindow] Favorite toggle failed:', err);
+client/src/components/artifact/FloatingWindow.tsx:8: * @used_by ArtifactWindow, ChatPanel
+client/src/components/chat/GroupCreatorPanel.tsx:53:  onOpenModelDirectory?: () => void;
+client/src/components/chat/GroupCreatorPanel.tsx:125:  onOpenModelDirectory
+client/src/components/chat/GroupCreatorPanel.tsx:133:  // Phase 60.4: Custom role modal state
+client/src/components/chat/GroupCreatorPanel.tsx:264:  // When model is selected from left sidebar, fill the active slot
+client/src/components/chat/GroupCreatorPanel.tsx:305:  // Phase 60.4: Open artifact or modal for custom role creation
+client/src/components/chat/GroupCreatorPanel.tsx:318:      // Fallback to modal
+client/src/components/chat/GroupCreatorPanel.tsx:500:                      onOpenModelDirectory?.();
+client/src/components/chat/GroupCreatorPanel.tsx:572:                                onOpenModelDirectory?.();
+client/src/components/artifact/ArtifactPanel.tsx:8: * @used_by ArtifactWindow, ChatPanel
+client/src/components/artifact/ArtifactPanel.tsx:66:  modality: 'audio' | 'video';
+client/src/components/artifact/ArtifactPanel.tsx:115:  modality: 'audio' | 'video';
+client/src/components/artifact/ArtifactPanel.tsx:170:  windowMode?: 'embedded' | 'detached';
+client/src/components/artifact/ArtifactPanel.tsx:186:  windowMode = 'embedded',
+client/src/components/artifact/ArtifactPanel.tsx:268:    if (windowMode === 'detached' && typeof detachedInitialInVetka === 'boolean') {
+client/src/components/artifact/ArtifactPanel.tsx:276:  }, [windowMode, detachedInitialInVetka, nodes, detachedCurrentPath, normalizePath, locallyIndexedPath]);
+client/src/components/artifact/ArtifactPanel.tsx:279:    if (windowMode !== 'detached') return;
+client/src/components/artifact/ArtifactPanel.tsx:306:  }, [windowMode, artifactId, detachedCurrentPath, detachedBasename]);
+client/src/components/artifact/ArtifactPanel.tsx:309:    if (windowMode !== 'detached') return;
+client/src/components/artifact/ArtifactPanel.tsx:329:  }, [windowMode, detachedCurrentPath, isIndexingToVetka, isInVetka]);
+client/src/components/artifact/ArtifactPanel.tsx:332:    if (windowMode !== 'detached') return;
+client/src/components/artifact/ArtifactPanel.tsx:358:  }, [windowMode, isFavorite, artifactId, detachedCurrentPath, detachedBasename, file?.name]);
+client/src/components/artifact/ArtifactPanel.tsx:390:  }, [fileData?.path, windowMode]);
+client/src/components/artifact/ArtifactPanel.tsx:1043:                  sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation allow-downloads"
+client/src/components/artifact/ArtifactPanel.tsx:1210:          <div style={{ height: '100%', display: 'flex', alignItems: windowMode === 'detached' ? 'stretch' : 'center', justifyContent: windowMode === 'detached' ? 'flex-start' : 'center', padding: windowMode === 'detached' ? 0 : 16 }}>
+client/src/components/artifact/ArtifactPanel.tsx:1211:            <div style={{ width: '100%', maxWidth: windowMode === 'detached' ? 'none' : 1280, height: '100%' }}>
+client/src/components/artifact/ArtifactPanel.tsx:1221:                  windowMode={windowMode}
+client/src/components/artifact/ArtifactPanel.tsx:1222:                  windowLabel={windowMode === 'detached' ? detachedWindowLabel : 'main'}
+client/src/components/artifact/ArtifactPanel.tsx:1255:            <div style={{ height: '100%', display: 'flex', alignItems: windowMode === 'detached' ? 'stretch' : 'center', justifyContent: windowMode === 'detached' ? 'flex-start' : 'center', padding: windowMode === 'detached' ? 0 : 16 }}>
+client/src/components/artifact/ArtifactPanel.tsx:1265:                  windowMode={windowMode}
+client/src/components/artifact/ArtifactPanel.tsx:1266:                  windowLabel={windowMode === 'detached' ? detachedWindowLabel : 'main'}
+client/src/components/artifact/ArtifactPanel.tsx:1364:    if (windowMode === 'detached') return;
+client/src/components/artifact/ArtifactPanel.tsx:1383:  }, [activeSeekSec, artifactId, file?.extension, file?.name, fileData?.path, isInVetka, isMediaArtifact, onClose, windowMode]);
+client/src/components/artifact/ArtifactPanel.tsx:1386:    if (windowMode !== 'detached') {
+client/src/components/artifact/ArtifactPanel.tsx:1398:  }, [detachedWindowLabel, onClose, windowMode]);
+client/src/components/artifact/ArtifactPanel.tsx:1434:      {/* Loading overlay */}
+client/src/components/artifact/ArtifactPanel.tsx:1520:                  <span>{mediaPreview.modality.toUpperCase()} preview</span>
+client/src/components/artifact/ArtifactPanel.tsx:1581:                            <div className="artifact-rhythm-overlay-track" aria-hidden="true">
+client/src/components/artifact/ArtifactPanel.tsx:1585:                                  className="artifact-rhythm-overlay-bar"
+client/src/components/artifact/ArtifactPanel.tsx:1596:                                  className="artifact-rhythm-overlay-marker"
+client/src/components/artifact/ArtifactPanel.tsx:1641:              {mediaPreview.modality === 'video' && mediaPreview.preview_assets?.poster_url && (
+client/src/components/artifact/ArtifactPanel.tsx:1651:              {mediaPreview.modality === 'video' && mediaPreview.preview_assets?.animated_preview_url_300ms && (
+client/src/components/artifact/ArtifactPanel.tsx:1747:      {!isRawContentMode && fileData && !(isMediaArtifact && windowMode === 'detached' && isMediaFullscreen) && (
+client/src/components/artifact/ArtifactPanel.tsx:1766:          onDetach={isMediaArtifact && windowMode !== 'detached' ? () => { void handleOpenDetachedMediaWindow(); } : undefined}
+client/src/components/artifact/ArtifactPanel.tsx:1772:          detachedShowFavorite={windowMode === 'detached' && (isInVetka || !isFileMode)}
+client/src/components/artifact/ArtifactPanel.tsx:1776:          detachedShowVetka={windowMode === 'detached' && isFileMode && !isInVetka}
+client/src/components/artifact/ArtifactPanel.tsx:1779:          mediaControlsVisible={windowMode === 'detached' && isMediaArtifact && !isMediaFullscreen}
+client/src/components/artifact/ArtifactPanel.tsx:1780:          onMediaPlayPause={windowMode === 'detached' && isMediaArtifact ? () => {
+client/src/components/artifact/ArtifactPanel.tsx:1783:          onMediaMuteToggle={windowMode === 'detached' && isMediaArtifact ? () => {
+client/src/components/artifact/ArtifactPanel.tsx:1786:          onMediaFullscreenToggle={windowMode === 'detached' && isMediaArtifact ? () => {
+client/src/components/artifact/ArtifactPanel.tsx:1789:          onClose={windowMode === 'detached' ? () => { void handleCloseDetachedWindow(); } : onClose}
+client/src/components/artifact/ArtifactPanel.tsx:1790:          compact={windowMode === 'detached' && isMediaArtifact}
+client/src/components/mcc/FirstRunView.tsx:5: * - In-interface modal overlay (no route-level onboarding page)
+client/src/main.tsx:16:import WebShellStandalone from './WebShellStandalone';
+client/src/main.tsx:28:  if (pathname === '/mycelium') {
+client/src/main.tsx:31:  if (pathname === '/web-shell') {
+client/src/main.tsx:32:    return <WebShellStandalone />;
+client/src/main.tsx:34:  if (pathname === '/artifact-media') {
+client/src/main.tsx:37:  if (pathname === '/artifact-window') {
+client/src/App.tsx:9: * @depends ./components/chat, ./components/artifact, ./components/search/UnifiedSearchBar
+client/src/App.tsx:24:import { ArtifactWindow } from './components/artifact';
+client/src/App.tsx:25:import { UnifiedSearchBar } from './components/search/UnifiedSearchBar';
+client/src/App.tsx:35:import { isTauri, onWebArtifactSaved, openArtifactWindow, openLiveWebWindow } from './config/tauri';
+client/src/App.tsx:254:  const [leftPanel, setLeftPanel] = useState<'none' | 'history' | 'models'>('none');
+client/src/App.tsx:361:      const ok = await openArtifactWindow({
+client/src/App.tsx:445:  // Phase 68: Search handlers for standalone search bar
+client/src/App.tsx:1021:        leftPanel={leftPanel}
+client/src/App.tsx:1029:      <ArtifactWindow
+client/src/App.tsx:1063:            <UnifiedSearchBar
+client/src/MyceliumStandalone.tsx:19:      <DevPanel standalone={true} />
+client/src/components/mcc/MiniBalance.tsx:2: * MARKER_156.MINI_BALANCE.001: MiniBalance — compact balance overlay in DAG canvas.
+client/src/components/mcc/MiniBalance.tsx:6: * Position: top-right (stacked below stats via MiniWindow default placement rule).
+client/src/components/mcc/MiniBalance.tsx:10:import { MiniWindow } from './MiniWindow';
+client/src/components/mcc/MiniBalance.tsx:208:    <MiniWindow
+client/src/components/mcc/MyceliumCommandCenter.tsx:18:import { DAGContextMenu, type ContextMenuTarget } from './DAGContextMenu';
+client/src/components/mcc/MyceliumCommandCenter.tsx:19:import { NodePicker } from './NodePicker';
+client/src/components/mcc/MyceliumCommandCenter.tsx:20:import { OnboardingOverlay } from './OnboardingOverlay';
+client/src/components/mcc/MyceliumCommandCenter.tsx:24:import { TaskEditPopup } from './TaskEditPopup';
+client/src/components/mcc/MyceliumCommandCenter.tsx:32:import { MiniWindowDock } from './MiniWindow';
+client/src/components/mcc/MyceliumCommandCenter.tsx:38:import { ToastContainer } from './ToastContainer';
+client/src/components/mcc/MyceliumCommandCenter.tsx:91:    use_predictive_overlay?: boolean;
+client/src/components/mcc/MyceliumCommandCenter.tsx:617:function overlayTasksOnRoadmap(
+client/src/components/mcc/MyceliumCommandCenter.tsx:629:  const overlayTaskIds = new Set<string>();
+client/src/components/mcc/MyceliumCommandCenter.tsx:632:    const id = `task_overlay_${task.id}`;
+client/src/components/mcc/MyceliumCommandCenter.tsx:642:    overlayTaskIds.add(task.id);
+client/src/components/mcc/MyceliumCommandCenter.tsx:675:        id: `overlay-affects-primary-${primaryAnchor}-${task.id}`,
+client/src/components/mcc/MyceliumCommandCenter.tsx:687:          id: `overlay-affects-${anchor}-${task.id}`,
+client/src/components/mcc/MyceliumCommandCenter.tsx:700:    if (!overlayTaskIds.has(task.id)) continue;
+client/src/components/mcc/MyceliumCommandCenter.tsx:702:      if (!overlayTaskIds.has(depId)) continue;
+client/src/components/mcc/MyceliumCommandCenter.tsx:706:        id: `overlay-dep-${depId}-${task.id}`,
+client/src/components/mcc/MyceliumCommandCenter.tsx:707:        source: `task_overlay_${depId}`,
+client/src/components/mcc/MyceliumCommandCenter.tsx:708:        target: `task_overlay_${task.id}`,
+client/src/components/mcc/MyceliumCommandCenter.tsx:719:function overlayWorkflowOnSelectedTask(
+client/src/components/mcc/MyceliumCommandCenter.tsx:866:  const overlayTaskNodeId = `task_overlay_${selectedTaskId}`;
+client/src/components/mcc/MyceliumCommandCenter.tsx:870:        source: overlayTaskNodeId,
+client/src/components/mcc/MyceliumCommandCenter.tsx:889:function overlayRoadmapNodeChildren(
+client/src/components/mcc/MyceliumCommandCenter.tsx:905:    if (id.startsWith('task_overlay_') || id.startsWith('wf_') || id.startsWith('rd_')) return false;
+client/src/components/mcc/MyceliumCommandCenter.tsx:1317:  // MARKER_144.6: Edit mode + context menu
+client/src/components/mcc/MyceliumCommandCenter.tsx:1321:  const [nodePickerPos, setNodePickerPos] = useState<{ x: number; y: number } | null>(null);
+client/src/components/mcc/MyceliumCommandCenter.tsx:1613:      predictive_overlay: { stats: { enabled: false, predicted_edges: 0 } },
+client/src/components/mcc/MyceliumCommandCenter.tsx:1627:        overlay_stats: { enabled: false, predicted_edges: 0 },
+client/src/components/mcc/MyceliumCommandCenter.tsx:1673:          use_predictive_overlay: false,
+client/src/components/mcc/MyceliumCommandCenter.tsx:1679:          use_predictive_overlay: false,
+client/src/components/mcc/MyceliumCommandCenter.tsx:1683:          name: 'overlay_try',
+client/src/components/mcc/MyceliumCommandCenter.tsx:1685:          use_predictive_overlay: true,
+client/src/components/mcc/MyceliumCommandCenter.tsx:1907:  // Fetch predictive overlay edges for roadmap-level single-canvas view.
+client/src/components/mcc/MyceliumCommandCenter.tsx:2035:      console.warn('[MCC] Predictive overlay fetch failed:', err);
+client/src/components/mcc/MyceliumCommandCenter.tsx:2050:  // Project creation uses in-canvas first_run flow only (no onboarding modal overlay).
+client/src/components/mcc/MyceliumCommandCenter.tsx:2131:  // P0 drill contract: workflow overlay is controlled by explicit expand/collapse state.
+client/src/components/mcc/MyceliumCommandCenter.tsx:2244:    // Roadmap always renders architecture + full task overlay to keep topology stable.
+client/src/components/mcc/MyceliumCommandCenter.tsx:2251:      const overlaid = overlayTasksOnRoadmap(roadmapNodes, roadmapEdges, tasks, fallbackFocusNodeId, selectedTaskId);
+client/src/components/mcc/MyceliumCommandCenter.tsx:2308:    // Keep roadmap clean by default: task list auto-selection should not force dependency overlays.
+client/src/components/mcc/MyceliumCommandCenter.tsx:2311:      Array.from(rawFocusIds).every((id) => String(id).startsWith('task_overlay_'));
+client/src/components/mcc/MyceliumCommandCenter.tsx:2352:    const overlay = predictedEdges.filter(e =>
+client/src/components/mcc/MyceliumCommandCenter.tsx:2362:    if (overlay.length === 0 && crossOverlay.length === 0 && baseDependencyOverlay.length === 0) return topologyEdges;
+client/src/components/mcc/MyceliumCommandCenter.tsx:2363:    return [...topologyEdges, ...baseDependencyOverlay, ...crossOverlay, ...overlay];
+client/src/components/mcc/MyceliumCommandCenter.tsx:2367:  // Keep MiniTasks selection and roadmap task_overlay node selection synchronized.
+client/src/components/mcc/MyceliumCommandCenter.tsx:2371:    const overlayId = `task_overlay_${selectedTaskId}`;
+client/src/components/mcc/MyceliumCommandCenter.tsx:2372:    if (!effectiveNodes.some((n) => n.id === overlayId)) return;
+client/src/components/mcc/MyceliumCommandCenter.tsx:2373:    setSelectedNode((prev) => (prev === overlayId ? prev : overlayId));
+client/src/components/mcc/MyceliumCommandCenter.tsx:2374:    setSelectedNodeIds((prev) => (sameIds(prev, [overlayId]) ? prev : [overlayId]));
+client/src/components/mcc/MyceliumCommandCenter.tsx:2375:    setFocusedNodeId(overlayId);
+client/src/components/mcc/MyceliumCommandCenter.tsx:2396:      !String(roadmapDrillNodeId || '').startsWith('task_overlay_');
+client/src/components/mcc/MyceliumCommandCenter.tsx:2420:    const drillTarget = selectedNode?.startsWith('task_overlay_')
+client/src/components/mcc/MyceliumCommandCenter.tsx:2500:    !String(roadmapDrillNodeId || '').startsWith('task_overlay_');
+client/src/components/mcc/MyceliumCommandCenter.tsx:2621:      !roadmapDrillNodeId.startsWith('task_overlay_')
+client/src/components/mcc/MyceliumCommandCenter.tsx:2623:      roadmapNodeExpanded = overlayRoadmapNodeChildren(
+client/src/components/mcc/MyceliumCommandCenter.tsx:2645:      return overlayWorkflowOnSelectedTask(
+client/src/components/mcc/MyceliumCommandCenter.tsx:2712:      if (primaryNode.id.startsWith('task_overlay_') || primaryNode.type === 'task' || primaryNode.type === 'roadmap_task') return 'task';
+client/src/components/mcc/MyceliumCommandCenter.tsx:2738:        !String(roadmapDrillNodeId || '').startsWith('task_overlay_'),
+client/src/components/mcc/MyceliumCommandCenter.tsx:3066:    setNodePickerPos(null);
+client/src/components/mcc/MyceliumCommandCenter.tsx:3079:    setNodePickerPos(position);
+client/src/components/mcc/MyceliumCommandCenter.tsx:3094:    if (nodeId.startsWith('task_overlay_')) {
+client/src/components/mcc/MyceliumCommandCenter.tsx:3130:    if (!taskOverlayNodeId.startsWith('task_overlay_')) return;
+client/src/components/mcc/MyceliumCommandCenter.tsx:3131:    const taskId = taskOverlayNodeId.replace(/^task_overlay_/, '');
+client/src/components/mcc/MyceliumCommandCenter.tsx:3210:    if (nodeId.startsWith('task_overlay_')) {
+client/src/components/mcc/MyceliumCommandCenter.tsx:3211:      const taskId = nodeId.replace('task_overlay_', '');
+client/src/components/mcc/MyceliumCommandCenter.tsx:3218:      // Roadmap: workflow drill is explicit on double-click for task overlays.
+client/src/components/mcc/MyceliumCommandCenter.tsx:3219:      if (nodeId.startsWith('task_overlay_')) {
+client/src/components/mcc/MyceliumCommandCenter.tsx:3220:        const taskId = nodeId.replace('task_overlay_', '');
+client/src/components/mcc/MyceliumCommandCenter.tsx:4021:                    overlay={selectedDagCompareRow.variant_params?.use_predictive_overlay ? 'on' : 'off'}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4110:            {/* MARKER_154.11A: Mini-windows — floating overlays in DAG canvas */}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4120:                <MiniWindowDock />
+client/src/components/mcc/MyceliumCommandCenter.tsx:4211:                Drill hint moved from bottom overlay into top MYCO hint channel. */}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4509:                  // MARKER_154.8A: Open TaskEditPopup
+client/src/components/mcc/MyceliumCommandCenter.tsx:4598:          {/* MARKER_154.8A: TaskEditPopup — shown when user clicks Edit on task level */}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4604:              <TaskEditPopup
+client/src/components/mcc/MyceliumCommandCenter.tsx:4741:        <DAGContextMenu
+client/src/components/mcc/MyceliumCommandCenter.tsx:4749:              && contextMenuTarget.nodeId.startsWith('task_overlay_')
+client/src/components/mcc/MyceliumCommandCenter.tsx:4765:        <NodePicker
+client/src/components/mcc/MyceliumCommandCenter.tsx:4767:          onClose={() => setNodePickerPos(null)}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4770:            setNodePickerPos(null);
+client/src/components/mcc/MyceliumCommandCenter.tsx:4776:        <OnboardingOverlay
+client/src/components/mcc/MyceliumCommandCenter.tsx:4783:      {/* MARKER_153.6D: Toast notifications — top-right overlay */}
+client/src/components/mcc/MyceliumCommandCenter.tsx:4784:      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+client/src/components/mcc/MiniContext.tsx:12:import { MiniWindow } from './MiniWindow';
+client/src/components/mcc/MiniContext.tsx:860:    <MiniWindow
+client/src/ArtifactMediaStandalone.tsx:78:        windowMode="detached"
+client/src/components/canvas/FileCard.tsx:1081:      // Right mouse button = open node context menu
+client/src-tauri/src/commands.rs:366:struct WebShellNavigatePayload {
+client/src-tauri/src/commands.rs:430:        let payload = WebShellNavigatePayload {
+client/src-tauri/src/commands.rs:571:        /* MARKER_148.WEB_DIRECT_SAVE_MODAL_UI: in-webview modal instead of prompt/alert dialogs */
+client/src-tauri/src/commands.rs:572:        #__vetka_save_overlay__{
+client/src-tauri/src/commands.rs:578:        #__vetka_save_overlay__.show{ display:flex; }
+client/src-tauri/src/commands.rs:659:    let saveOverlay = document.getElementById('__vetka_save_overlay__');
+client/src-tauri/src/commands.rs:662:      saveOverlay.id = '__vetka_save_overlay__';
+client/src/components/chat/MessageInput.tsx:38:  // Phase 60.5: Selected model from ModelDirectory
+client/src/components/chat/MessageInput.tsx:241:  // Phase 60.5: Trigger 1 - Check if selected model from ModelDirectory is a voice model
+client/src/components/chat/MessageInput.tsx:293:  // Treat standalone selected model token as routing hint, not user payload text.
+client/src/components/chat/MessageInput.tsx:303:  // 3. Selected model from ModelDirectory is voice model (empty input)
+client/src/components/mcc/CaptainBar.tsx:5: * Compact inline bar, not a modal. Dismissible.
+client/src/components/mcc/MiniChat.tsx:2: * MARKER_154.12A: MiniChat — compact chat overlay in DAG canvas.
+client/src/components/mcc/MiniChat.tsx:14:import { MiniWindow } from './MiniWindow';
+client/src/components/mcc/MiniChat.tsx:823:    <MiniWindow
+client/src/components/panels/DevPanel.tsx:28:  standalone?: boolean;
+client/src/components/panels/DevPanel.tsx:46:export function DevPanel({ isOpen = true, onClose, standalone = false }: DevPanelProps) {
+client/src/components/panels/DevPanel.tsx:47:  const activeTab = useDevPanelStore(s => s.activeTab);
+client/src/components/panels/DevPanel.tsx:50:  const showTopTabs = !(standalone && activeTab === 'mcc');
+client/src/components/panels/DevPanel.tsx:105:                borderBottom: activeTab === tab.id ? '1px solid #e0e0e0' : '1px solid transparent',
+client/src/components/panels/DevPanel.tsx:106:                color: activeTab === tab.id ? '#e0e0e0' : '#444',
+client/src/components/panels/DevPanel.tsx:109:                fontWeight: activeTab === tab.id ? 600 : 400,
+client/src/components/panels/DevPanel.tsx:152:        {activeTab === 'mcc' && (
+client/src/components/panels/DevPanel.tsx:159:        {activeTab === 'stats' && (
+client/src/components/panels/DevPanel.tsx:166:        {activeTab === 'architect' && (
+client/src/components/panels/DevPanel.tsx:173:        {activeTab === 'balance' && (
+client/src/components/panels/DevPanel.tsx:234:  if (standalone) {
+client/src/components/panels/ArtifactViewer.tsx:106:  const [activeTab, setActiveTab] = useState<'pending' | 'completed'>('pending');
+client/src/components/panels/ArtifactViewer.tsx:299:            borderBottom: activeTab === 'pending' ? `1px solid ${COLORS.text}` : '1px solid transparent',
+client/src/components/panels/ArtifactViewer.tsx:300:            color: activeTab === 'pending' ? COLORS.text : COLORS.textDim,
+client/src/components/panels/ArtifactViewer.tsx:303:            fontWeight: activeTab === 'pending' ? 600 : 400,
+client/src/components/panels/ArtifactViewer.tsx:318:            borderBottom: activeTab === 'completed' ? `1px solid ${COLORS.text}` : '1px solid transparent',
+client/src/components/panels/ArtifactViewer.tsx:319:            color: activeTab === 'completed' ? COLORS.text : COLORS.textDim,
+client/src/components/panels/ArtifactViewer.tsx:322:            fontWeight: activeTab === 'completed' ? 600 : 400,
+client/src/components/panels/ArtifactViewer.tsx:368:        {activeTab === 'pending' && (
+client/src/components/panels/ArtifactViewer.tsx:564:        {activeTab === 'completed' && (
+client/src/components/mcc/NodeStreamView.tsx:41:  const [activeTab, setActiveTab] = useState<StreamTab>('stream');
+client/src/components/mcc/NodeStreamView.tsx:103:    background: activeTab === tab ? 'rgba(255,255,255,0.06)' : 'transparent',
+client/src/components/mcc/NodeStreamView.tsx:104:    border: `1px solid ${activeTab === tab ? NOLAN_PALETTE.border : NOLAN_PALETTE.borderDim}`,
+client/src/components/mcc/NodeStreamView.tsx:105:    borderBottom: activeTab === tab ? 'none' : `1px solid ${NOLAN_PALETTE.borderDim}`,
+client/src/components/mcc/NodeStreamView.tsx:108:    color: activeTab === tab ? NOLAN_PALETTE.text : NOLAN_PALETTE.textDim,
+client/src/components/mcc/NodeStreamView.tsx:167:        {activeTab === 'stream' && (
+client/src/components/mcc/NodeStreamView.tsx:170:        {activeTab === 'output' && (
+client/src/components/mcc/NodeStreamView.tsx:173:        {activeTab === 'artifacts' && (
+client/src/components/chat/ChatSidebar.tsx:39:  cam_activation?: 'hot' | 'warm' | 'cold';  // Show memory priority in sidebar
+client/src/components/chat/ChatSidebar.tsx:53:  <div className="chat-sidebar-skeleton">
+client/src/components/chat/ChatSidebar.tsx:103:  // Reload chats when sidebar opens (refresh on visibility)
+client/src/components/chat/ChatSidebar.tsx:111:  // MARKER_RENAME_DEBUG_FIX: Added debugging for sidebar event listener
+client/src/components/chat/ChatSidebar.tsx:135:  // Keep sidebar history fresh when a new draft chat is created from ChatPanel.
+client/src/components/chat/ChatSidebar.tsx:331:  // Phase 74: Inline rename in sidebar (prompt() is unreliable in Tauri)
+client/src/components/chat/ChatSidebar.tsx:410:    <div className="chat-sidebar">
+client/src/components/chat/ChatSidebar.tsx:412:      <div className="chat-sidebar-header">
+client/src/components/chat/ChatSidebar.tsx:413:        <h3 className="chat-sidebar-title">
+client/src/components/chat/ChatSidebar.tsx:420:          <button className="chat-sidebar-close" onClick={onClose}>
+client/src/components/chat/ChatSidebar.tsx:429:      <div className="chat-sidebar-search">
+client/src/components/chat/ChatSidebar.tsx:435:          className="chat-sidebar-search-input"
+client/src/components/chat/ChatSidebar.tsx:440:      <div className="chat-sidebar-list" ref={listRef}>
+client/src/components/chat/ChatSidebar.tsx:445:          <div className="chat-sidebar-empty">
+client/src/components/chat/ChatSidebar.tsx:453:            className={`chat-sidebar-item ${
+client/src/components/chat/ChatSidebar.tsx:458:            <div className="chat-sidebar-item-content">
+client/src/components/chat/ChatSidebar.tsx:459:              <div className="chat-sidebar-item-name">
+client/src/components/chat/ChatSidebar.tsx:483:                    className="chat-sidebar-rename-input"
+client/src/components/chat/ChatSidebar.tsx:501:              <div className="chat-sidebar-item-meta">
+client/src/components/chat/ChatSidebar.tsx:502:                <span className="chat-sidebar-item-time">
+client/src/components/chat/ChatSidebar.tsx:506:                  <span className="chat-sidebar-item-count">
+client/src/components/chat/ChatSidebar.tsx:514:            {/* MARKER_EDIT_NAME_SIDEBAR: Edit Name button in sidebar history */}
+client/src/components/chat/ChatSidebar.tsx:517:            <div className="chat-sidebar-item-actions-wrap">
+client/src/components/chat/ChatSidebar.tsx:519:                className={`chat-sidebar-item-favorite ${chat.is_favorite ? 'active' : ''}`}
+client/src/components/chat/ChatSidebar.tsx:523:                <svg className="chat-sidebar-favorite-star" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+client/src/components/chat/ChatSidebar.tsx:527:              <div className="chat-sidebar-item-actions">
+client/src/components/chat/ChatSidebar.tsx:529:                className="chat-sidebar-item-edit"
+client/src/components/chat/ChatSidebar.tsx:539:                className="chat-sidebar-item-delete"
+client/src/components/chat/ChatSidebar.tsx:555:          <div ref={loadMoreRef} className="chat-sidebar-load-trigger">
+client/src/components/chat/ChatSidebar.tsx:557:              <div className="chat-sidebar-loading-more">
+client/src/components/chat/ChatSidebar.tsx:567:      <div className="chat-sidebar-footer">
+client/src/components/chat/ChatSidebar.tsx:569:          className="chat-sidebar-refresh"
+client/src/components/chat/ChatSidebar.tsx:582:            className="chat-sidebar-load-more"
+client/src/components/chat/ChatSidebar.tsx:591:          <div className="chat-sidebar-footer-info">
+client/src/components/mcc/MiniTasks.tsx:2: * MARKER_154.13A: MiniTasks — compact task list overlay in DAG canvas.
+client/src/components/mcc/MiniTasks.tsx:11:import { MiniWindow } from './MiniWindow';
+client/src/components/mcc/MiniTasks.tsx:414:    <MiniWindow
+client/src/components/mcc/PipelineResultsViewer.tsx:2: * MARKER_143.P4: PipelineResultsViewer — standalone pipeline results display.
+client/src/App.tsx:9: * @depends ./components/chat, ./components/artifact, ./components/search/UnifiedSearchBar
+client/src/App.tsx:24:import { ArtifactWindow } from './components/artifact';
+client/src/App.tsx:25:import { UnifiedSearchBar } from './components/search/UnifiedSearchBar';
+client/src/App.tsx:35:import { isTauri, onWebArtifactSaved, openArtifactWindow, openLiveWebWindow } from './config/tauri';
+client/src/App.tsx:254:  const [leftPanel, setLeftPanel] = useState<'none' | 'history' | 'models'>('none');
+client/src/App.tsx:361:      const ok = await openArtifactWindow({
+client/src/App.tsx:445:  // Phase 68: Search handlers for standalone search bar
+client/src/App.tsx:1021:        leftPanel={leftPanel}
+client/src/App.tsx:1029:      <ArtifactWindow
+client/src/App.tsx:1063:            <UnifiedSearchBar
+client/src/components/mcc/DAGView.tsx:328:    // Never restore persisted pins for temporary inline overlays (wf_/rd_).
+client/src/components/mcc/DAGView.tsx:360:    // In architecture mode, avoid incremental reuse when inline overlays are active.
+client/src/components/mcc/DAGView.tsx:363:    // Keep architecture stable when no inline overlays are active.
+client/src/components/mcc/DAGView.tsx:401:    // Deterministic post-layout placement for roadmap task overlays:
+client/src/components/mcc/DAGView.tsx:405:        (n) => n.type === 'roadmap_task' && n.id.startsWith('task_overlay_')
+client/src/components/mcc/DAGView.tsx:409:        const baseNodes = updatedNodes.filter((n) => !(n.type === 'roadmap_task' && n.id.startsWith('task_overlay_')));
+client/src/components/mcc/DAGView.tsx:436:            .filter((n): n is Node => !!n && !(n.type === 'roadmap_task' && n.id.startsWith('task_overlay_')));
+client/src/components/mcc/DAGView.tsx:494:          const overlay = nodeById.get(`task_overlay_${taskId}`);
+client/src/components/mcc/DAGView.tsx:495:          if (!overlay) continue;
+client/src/components/mcc/DAGView.tsx:496:          const overlayCenterX = overlay.position.x + Number(overlay.width || 150) / 2;
+client/src/components/mcc/DAGView.tsx:497:          const overlayY = overlay.position.y;
+client/src/components/mcc/DAGView.tsx:545:          const anchorX = overlayCenterX - entryScaledX;
+client/src/components/mcc/DAGView.tsx:546:          const topYTry = overlayY - targetH - 22;
+client/src/components/mcc/DAGView.tsx:547:          const topY = topYTry < 24 ? (overlayY + Number(overlay.height || 60) + 18) : topYTry;
+client/src/components/mcc/DAGView.tsx:575:            !n.id.startsWith('task_overlay_')
+client/src/components/mcc/DAGView.tsx:675:      // Keep only non-inline architecture anchors in cache while inline overlays are active.
+client/src/components/mcc/DAGView.tsx:1024:  // Allow controlled context menu in read-only roadmap mode for task anchoring.
+client/src/components/mcc/DAGView.tsx:1223:           Inline wf/rd overlays use tiny handles to avoid visual clutter in reserved workflow frame. */
+client/src/components/mcc/OnboardingOverlay.tsx:3:interface OnboardingOverlayProps {
+client/src/components/mcc/OnboardingOverlay.tsx:22:export function OnboardingOverlay({ step, onAdvance, onDismiss }: OnboardingOverlayProps) {
+client/src/components/mcc/MCCDetailPanel.tsx:9: * Node details now shown in modals/popups.
+client/src/components/mcc/MCCDetailPanel.tsx:96:function DagNodeTabBar({ activeTab, onTabChange }: {
+client/src/components/mcc/MCCDetailPanel.tsx:97:  activeTab: 'info' | 'stream';
+client/src/components/mcc/MCCDetailPanel.tsx:101:    background: activeTab === tab ? 'rgba(255,255,255,0.06)' : 'transparent',
+client/src/components/mcc/MCCDetailPanel.tsx:103:    borderBottom: activeTab === tab ? `1px solid ${NOLAN_PALETTE.text}` : '1px solid transparent',
+client/src/components/mcc/MCCDetailPanel.tsx:105:    color: activeTab === tab ? NOLAN_PALETTE.text : NOLAN_PALETTE.textDim,
+client/src/components/mcc/MCCDetailPanel.tsx:284:        <DagNodeTabBar activeTab={dagNodeTab} onTabChange={setDagNodeTab} />
+client/src/components/mcc/ToastContainer.tsx:2: * MARKER_153.6D: ToastContainer — renders toast notifications.
+client/src/components/mcc/ToastContainer.tsx:22:interface ToastContainerProps {
+client/src/components/mcc/ToastContainer.tsx:27:export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
+client/src/components/chat/ChatPanel.tsx:2: * ChatPanel - Main chat interface with messages, input, and sidebars.
+client/src/components/chat/ChatPanel.tsx:7: * @depends react, lucide-react, useStore, useSocket, MessageList, MessageInput, GroupCreatorPanel, ChatSidebar, ScanPanel, UnifiedSearchBar, ArtifactPanel, FloatingWindow, ModelDirectory
+client/src/components/chat/ChatPanel.tsx:17:import { ModelDirectory } from '../ModelDirectory';
+client/src/components/chat/ChatPanel.tsx:23:import { ScanPanel, type ScannerEvent } from '../scanner/ScanPanel';
+client/src/components/chat/ChatPanel.tsx:24:import { UnifiedSearchBar } from '../search/UnifiedSearchBar';
+client/src/components/chat/ChatPanel.tsx:49:  leftPanel: 'none' | 'history' | 'models';
+client/src/components/chat/ChatPanel.tsx:61:  leftPanel,
+client/src/components/chat/ChatPanel.tsx:162:  const [activeTab, setActiveTab] = useState<'chat' | 'scanner' | 'group'>('chat');
+client/src/components/chat/ChatPanel.tsx:334:  // Phase 57.9: Listen for "Ask Hostess about key" event from ModelDirectory
+client/src/components/chat/ChatPanel.tsx:851:    // Phase 60.4: No need to switch activeTab - this callback is only used in solo chat mode
+client/src/components/chat/ChatPanel.tsx:1110:    const contextPath = selectedNode?.path || (activeTab === 'scanner' && lastScannedFolder ? lastScannedFolder : undefined);
+client/src/components/chat/ChatPanel.tsx:1188:  }, [input, isConnected, selectedNode, selectedModel, replyTo, addChatMessage, sendMessage, setIsTyping, activeTab, lastScannedFolder, activeGroupId, sendGroupMessage, currentChatInfo, pinnedFileIds, nodes, voiceOnlyMode, realtimeVoiceEnabled, voiceReplyMode]);
+client/src/components/chat/ChatPanel.tsx:1673:  // Keep header title in sync when chat is renamed from sidebar/history.
+client/src/components/chat/ChatPanel.tsx:2012:  // Phase 54.3 Fix: Auto-hide sidebars when SWITCHING to scanner (not continuously)
+client/src/components/chat/ChatPanel.tsx:2013:  // Phase 92.9 Fix: Removed leftPanel from deps - was causing panels to close immediately
+client/src/components/chat/ChatPanel.tsx:2015:    if (activeTab === 'scanner') {
+client/src/components/chat/ChatPanel.tsx:2019:  }, [activeTab]); // Only trigger on tab change, not on leftPanel change!
+client/src/components/chat/ChatPanel.tsx:2023:    if (activeTab === 'scanner') {
+client/src/components/chat/ChatPanel.tsx:2042:  }, [activeTab]); // Only trigger on tab change
+client/src/components/chat/ChatPanel.tsx:2053:        const leftOffset = leftPanel !== 'none' ? 380 : 0;
+client/src/components/chat/ChatPanel.tsx:2078:  }, [isResizing, leftPanel, chatWidth, chatPosition]);
+client/src/components/chat/ChatPanel.tsx:2397:      {/* Phase 50.1: Left sidebar (mutually exclusive) */}
+client/src/components/chat/ChatPanel.tsx:2398:      {leftPanel === 'history' && (
+client/src/components/chat/ChatPanel.tsx:2407:      {leftPanel === 'models' && (
+client/src/components/chat/ChatPanel.tsx:2408:        <ModelDirectory
+client/src/components/chat/ChatPanel.tsx:2417:          isGroupMode={(activeTab === 'group' && !activeGroupId) || (activeTab === 'group' && groupEditMode) || !!activeGroupId}
+client/src/components/chat/ChatPanel.tsx:2421:          hasActiveSlot={activeTab === 'group' && (groupEditMode || !activeGroupId)}
+client/src/components/chat/ChatPanel.tsx:2468:          ? { left: leftPanel !== 'none' ? 380 : 0, borderRight: '1px solid rgba(34, 34, 34, 0.8)' }
+client/src/components/chat/ChatPanel.tsx:2505:        {/* Phase I5: Drop overlay indicator */}
+client/src/components/chat/ChatPanel.tsx:2602:              } else if (activeTab === 'group') {
+client/src/components/chat/ChatPanel.tsx:2621:              opacity: (activeTab === 'group' && !activeGroupId) ? 0.5 : 1
+client/src/components/chat/ChatPanel.tsx:2629:            title={activeGroupId ? 'Model Directory' : (activeTab === 'group' ? 'Exit Group Mode' : 'Create Team')}
+client/src/components/chat/ChatPanel.tsx:2650:              {activeGroupId ? 'Team' : (activeTab === 'group' ? 'Team' : 'Chat')}
+client/src/components/chat/ChatPanel.tsx:2656:          {(activeTab === 'chat' || activeTab === 'group' || activeTab === 'scanner') && (
+client/src/components/chat/ChatPanel.tsx:2658:              onClick={() => setLeftPanel(leftPanel === 'history' ? 'none' : 'history')}
+client/src/components/chat/ChatPanel.tsx:2660:                background: leftPanel === 'history' ? '#1a1a1a' : 'transparent',
+client/src/components/chat/ChatPanel.tsx:2671:                if (leftPanel !== 'history') {
+client/src/components/chat/ChatPanel.tsx:2676:                if (leftPanel !== 'history') {
+client/src/components/chat/ChatPanel.tsx:2682:              <div style={{ color: leftPanel === 'history' ? '#fff' : '#555', transition: 'color 0.2s' }}>
+client/src/components/chat/ChatPanel.tsx:2691:          {(activeTab === 'chat' || activeTab === 'group' || activeTab === 'scanner' || activeGroupId) && (
+client/src/components/chat/ChatPanel.tsx:2693:              onClick={() => setLeftPanel(leftPanel === 'models' ? 'none' : 'models')}
+client/src/components/chat/ChatPanel.tsx:2695:                background: leftPanel === 'models' ? '#1a1a1a' : 'transparent',
+client/src/components/chat/ChatPanel.tsx:2706:                if (leftPanel !== 'models') {
+client/src/components/chat/ChatPanel.tsx:2711:                if (leftPanel !== 'models') {
+client/src/components/chat/ChatPanel.tsx:2717:              <div style={{ color: leftPanel === 'models' ? '#fff' : '#555', transition: 'color 0.2s' }}>
+client/src/components/chat/ChatPanel.tsx:2776:            onClick={() => setActiveTab(activeTab === 'scanner' ? 'chat' : 'scanner')}
+client/src/components/chat/ChatPanel.tsx:2778:              background: activeTab === 'scanner' ? '#1a1a1a' : 'transparent',
+client/src/components/chat/ChatPanel.tsx:2789:              if (activeTab !== 'scanner') {
+client/src/components/chat/ChatPanel.tsx:2794:              if (activeTab !== 'scanner') {
+client/src/components/chat/ChatPanel.tsx:2800:            <div style={{ color: activeTab === 'scanner' ? '#fff' : '#666', transition: 'color 0.2s' }}>
+client/src/components/chat/ChatPanel.tsx:2909:          {activeTab === 'chat' && currentWorkflow && <WorkflowProgress workflow={currentWorkflow} />}
+client/src/components/chat/ChatPanel.tsx:3037:        {/* Phase 68.2: UnifiedSearchBar - always visible in chat/group mode */}
+client/src/components/chat/ChatPanel.tsx:3038:        {/* MARKER_118.3C: UnifiedSearchBar в ChatPanel — альтернативное место для иконки артефакта */}
+client/src/components/chat/ChatPanel.tsx:3039:        {(activeTab === 'chat' || activeTab === 'group') && (
+client/src/components/chat/ChatPanel.tsx:3040:          <UnifiedSearchBar
+client/src/components/chat/ChatPanel.tsx:3088:        {(activeTab === 'chat' || activeTab === 'group') && (
+client/src/components/chat/ChatPanel.tsx:3317:        {(activeTab === 'chat' || activeTab === 'group') && pinnedEntries.length > 0 && (
+client/src/components/chat/ChatPanel.tsx:3566:        {activeTab === 'scanner' && (
+client/src/components/chat/ChatPanel.tsx:3567:          <ScanPanel
+client/src/components/chat/ChatPanel.tsx:3594:        {activeTab === 'group' && (
+client/src/components/chat/ChatPanel.tsx:3622:              onOpenModelDirectory={() => setLeftPanel('models')}
+client/src/components/ui/viewers/CodeViewer.tsx:7: * @used_by ../FilePreview, ../../artifact/ArtifactWindow
+client/src/components/mcc/NodePicker.tsx:15:interface NodePickerProps {
+client/src/components/mcc/NodePicker.tsx:21:function NodePickerComponent({ position, onClose, onSelect }: NodePickerProps) {
+client/src/components/mcc/NodePicker.tsx:152:export const NodePicker = memo(NodePickerComponent);
+client/src/components/mcc/OnboardingModal.tsx:7: * - Esc closes modal (no explicit Cancel button)
+client/src/main.tsx:16:import WebShellStandalone from './WebShellStandalone';
+client/src/main.tsx:28:  if (pathname === '/mycelium') {
+client/src/main.tsx:31:  if (pathname === '/web-shell') {
+client/src/main.tsx:32:    return <WebShellStandalone />;
+client/src/main.tsx:34:  if (pathname === '/artifact-media') {
+client/src/main.tsx:37:  if (pathname === '/artifact-window') {
+client/src/MyceliumStandalone.tsx:19:      <DevPanel standalone={true} />
+client/src-tauri/src/commands.rs:366:struct WebShellNavigatePayload {
+client/src-tauri/src/commands.rs:430:        let payload = WebShellNavigatePayload {
+client/src-tauri/src/commands.rs:571:        /* MARKER_148.WEB_DIRECT_SAVE_MODAL_UI: in-webview modal instead of prompt/alert dialogs */
+client/src-tauri/src/commands.rs:572:        #__vetka_save_overlay__{
+client/src-tauri/src/commands.rs:578:        #__vetka_save_overlay__.show{ display:flex; }
+client/src-tauri/src/commands.rs:659:    let saveOverlay = document.getElementById('__vetka_save_overlay__');
+client/src-tauri/src/commands.rs:662:      saveOverlay.id = '__vetka_save_overlay__';
+client/src/components/panels/RoleEditor.tsx:8: * @used_by App (via modal system)
+client/src/components/mcc/TaskEditPopup.tsx:2: * MARKER_154.8A: TaskEditPopup — inline task editor overlay.
+client/src/components/mcc/TaskEditPopup.tsx:28:interface TaskEditPopupProps {
+client/src/components/mcc/TaskEditPopup.tsx:39:export function TaskEditPopup({
+client/src/components/mcc/TaskEditPopup.tsx:48:}: TaskEditPopupProps) {
+client/src/components/mcc/TaskEditPopup.tsx:52:  const overlayRef = useRef<HTMLDivElement>(null);
+client/src/components/mcc/TaskEditPopup.tsx:65:    if (e.target === overlayRef.current) onClose();
+client/src/components/mcc/TaskEditPopup.tsx:81:      ref={overlayRef}
+client/src/ArtifactStandalone.tsx:75:        windowMode="detached"
+client/src/WebShellStandalone.tsx:9:type WebShellNavigatePayload = {
+client/src/WebShellStandalone.tsx:81:export default function WebShellStandalone() {
+client/src/WebShellStandalone.tsx:140:        unlisten = await listen<WebShellNavigatePayload>('vetka:web-shell:navigate', (event) => {
+client/src/WebShellStandalone.tsx:568:              sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation allow-downloads"
+client/src/WebShellStandalone.tsx:577:              sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-downloads"
+client/src/WebShellStandalone.tsx:592:        <div style={overlayStyle}>
+client/src/WebShellStandalone.tsx:593:          <div style={modalStyle}>
+client/src/WebShellStandalone.tsx:688:const overlayStyle: React.CSSProperties = {
+client/src/WebShellStandalone.tsx:698:const modalStyle: React.CSSProperties = {
+client/src/components/search/CommandPalette.tsx:3: * Floating modal for quick search across files, tasks, and actions.
+client/src/components/mcc/DAGContextMenu.tsx:30:interface DAGContextMenuProps {
+client/src/components/mcc/DAGContextMenu.tsx:78:function DAGContextMenuComponent({
+client/src/components/mcc/DAGContextMenu.tsx:87:}: DAGContextMenuProps) {
+client/src/components/mcc/DAGContextMenu.tsx:131:      {/* Canvas context menu — add new nodes */}
+client/src/components/mcc/DAGContextMenu.tsx:153:      {/* Node context menu */}
+client/src/components/mcc/DAGContextMenu.tsx:156:          {onCreateTaskHere && !target.nodeId.startsWith('task_overlay_') && (
+client/src/components/mcc/DAGContextMenu.tsx:170:          {onApproveSuggestedAnchor && target.nodeId.startsWith('task_overlay_') && (
+client/src/components/mcc/DAGContextMenu.tsx:221:      {/* Edge context menu */}
+client/src/components/mcc/DAGContextMenu.tsx:244:export const DAGContextMenu = memo(DAGContextMenuComponent);
+client/src/components/search/UnifiedSearchBar.tsx:2: * UnifiedSearchBar - Real-time search bar with hybrid search (Qdrant + Weaviate + RRF).
+client/src/components/search/UnifiedSearchBar.tsx:258:export function UnifiedSearchBar({
+client/src/components/search/UnifiedSearchBar.tsx:621:        console.error('[UnifiedSearchBar] Unified search error:', err);
+client/src/components/search/UnifiedSearchBar.tsx:941:            // Show context menu when input becomes empty
+client/src/components/search/UnifiedSearchBar.tsx:951:            // Show context menu when focused and empty
+client/src/components/search/UnifiedSearchBar.tsx:1562:export default UnifiedSearchBar;
+client/src/components/scanner/ScanPanel.tsx:5: * @file ScanPanel.tsx
+client/src/components/scanner/ScanPanel.tsx:23:import './ScanPanel.css';
+client/src/components/scanner/ScanPanel.tsx:93:interface ScanPanelProps {
+client/src/components/scanner/ScanPanel.tsx:265:export const ScanPanel: React.FC<ScanPanelProps> = ({
+client/src/components/scanner/ScanPanel.tsx:362:      console.error('[ScanPanel] Failed to load connectors:', err);
+client/src/components/scanner/ScanPanel.tsx:410:          console.error('[ScanPanel] OAuth deep-link completion failed:', err);
+client/src/components/scanner/ScanPanel.tsx:448:      console.error(`[ScanPanel] Connector ${action} failed:`, err);
+client/src/components/scanner/ScanPanel.tsx:542:        // Close modal immediately and poll backend status while user completes OAuth in browser.
+client/src/components/scanner/ScanPanel.tsx:596:      console.error('[ScanPanel] Connector auth failed:', err);
+client/src/components/scanner/ScanPanel.tsx:624:      console.log('[ScanPanel] Phase 100.2: Native files dropped:', paths);
+client/src/components/scanner/ScanPanel.tsx:645:              console.log('[ScanPanel] Added dropped directory:', dir.path, result);
+client/src/components/scanner/ScanPanel.tsx:653:            console.error('[ScanPanel] Error adding dropped directory:', err);
+client/src/components/scanner/ScanPanel.tsx:849:      console.error('[ScanPanel] Error adding folder:', err);
+client/src/components/scanner/ScanPanel.tsx:913:        console.error('[ScanPanel] Error adding folder from browse:', err);
+client/src/components/scanner/ScanPanel.tsx:960:      console.error('[ScanPanel] Error clearing scans:', err);
+client/src/components/scanner/ScanPanel.tsx:1023:    console.log('[ScanPanel] Phase 92.5: File clicked for fly-to:', path);
+client/src/components/scanner/ScanPanel.tsx:1032:    console.log('[ScanPanel] Phase 92.5: File pinned to context:', path);
+client/src/components/scanner/ScanPanel.tsx:1444:        <div className="connector-modal-overlay" onClick={() => !connectSubmitting && setConnectModalProvider(null)}>
+client/src/components/scanner/ScanPanel.tsx:1445:          <div className="connector-modal" onClick={(e) => e.stopPropagation()}>
+client/src/components/scanner/ScanPanel.tsx:1446:            <div className="connector-modal-title">
+client/src/components/scanner/ScanPanel.tsx:1515:            <div className="connector-modal-actions">
+client/src/components/scanner/ScanPanel.tsx:1539:        <div className="connector-modal-overlay" onClick={() => setConnectorTreeModalProvider(null)}>
+client/src/components/scanner/ScanPanel.tsx:1540:          <div className="connector-modal connector-tree-modal" onClick={(e) => e.stopPropagation()}>
+client/src/components/scanner/ScanPanel.tsx:1541:            <div className="connector-modal-title">
+client/src/components/scanner/ScanPanel.tsx:1549:            <div className="connector-modal-actions">
+client/src/components/scanner/ScanPanel.tsx:1601:export default ScanPanel;
