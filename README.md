@@ -33,6 +33,9 @@ source .venv/bin/activate
 
 Backend API default: `http://127.0.0.1:5001`
 
+Full stack guide (recommended for MYCELIUM users):
+- `docs/INSTALL_VETKA_STACK.md`
+
 ## Public Module Repositories (Umbrella)
 
 VETKA is being published as modular public repositories while keeping this

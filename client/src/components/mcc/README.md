@@ -54,6 +54,11 @@ source .venv/bin/activate
 
 Backend API default: `http://127.0.0.1:5001`
 
+If you arrived from `mycelium` first:
+- use the shared install guide: `docs/INSTALL_VETKA_STACK.md`
+- it includes required runtime modules (`memory`, `orchestration`, `elisya`, MCP/bridge/search/ingest)
+  and exact bootstrap commands.
+
 For this module itself:
 - source-of-truth in monorepo: `client/src/components/mcc`
 - public mirror repo: `danilagoleen/mycelium`

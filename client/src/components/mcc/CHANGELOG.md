@@ -2,6 +2,11 @@
 
 All notable changes to this module are documented here.
 
+## [0.1.2] - 2026-03-07
+### Changed
+- Added explicit onboarding path for users who discover `mycelium` first:
+  shared full-stack install guide link and dependency clarity.
+
 ## [0.1.1] - 2026-03-06
 ### Changed
 - Repositioned module documentation for OSS: DAG-native operator UI framing,
