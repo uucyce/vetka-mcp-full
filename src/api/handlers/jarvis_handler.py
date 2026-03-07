@@ -15,7 +15,12 @@ import wave
 import tempfile
 import asyncio
 import time
+import os
+import json
+import random
+import hashlib
 import numpy as np
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Dict, Optional, List, Tuple, Callable, Any
 from enum import Enum
@@ -39,6 +44,48 @@ T9_MIN_WORDS = 2                        # Minimum words before prediction
 # MARKER_105_JARVIS_TIMEOUT_FIX: Separate timeout for full LLM generation
 JARVIS_LLM_TIMEOUT_MS = 30000           # Full LLM response (30s, matches Ollama)
 
+# Phase 157.3.1: staged response orchestration
+JARVIS_STAGE_MACHINE_ENABLE = os.getenv("JARVIS_STAGE_MACHINE_ENABLE", "1").lower() in {"1", "true", "yes", "on"}
+JARVIS_STAGE2_MODEL = os.getenv("JARVIS_STAGE2_MODEL", "gemma3:1b")
+JARVIS_STAGE3_PRIMARY_MODEL = os.getenv("JARVIS_STAGE3_PRIMARY_MODEL", "deepseek-r1:8b")
+JARVIS_STAGE3_SECONDARY_MODEL = os.getenv("JARVIS_STAGE3_SECONDARY_MODEL", "llama3.2:3b")
+JARVIS_STAGE4_ENABLE = os.getenv("JARVIS_STAGE4_ENABLE", "1").lower() in {"1", "true", "yes", "on"}
+JARVIS_STAGE4_MODEL = os.getenv("JARVIS_STAGE4_MODEL", "")
+
+JARVIS_PLANB_FILLER_ENABLE = os.getenv("JARVIS_PLANB_FILLER_ENABLE", "1").lower() in {"1", "true", "yes", "on"}
+JARVIS_PLANB_FILLER_DELAY_SEC = float(os.getenv("JARVIS_PLANB_FILLER_DELAY_SEC", "0.15"))
+JARVIS_FILLER_BANK_PATH = Path(os.getenv("JARVIS_FILLER_BANK_PATH", "data/jarvis_filler_bank.json"))
+JARVIS_FILLER_BANK_USE_FILE = os.getenv("JARVIS_FILLER_BANK_USE_FILE", "0").lower() in {"1", "true", "yes", "on"}
+JARVIS_PLANB_LEARN_ENABLE = os.getenv("JARVIS_PLANB_LEARN_ENABLE", "0").lower() in {"1", "true", "yes", "on"}
+JARVIS_PLANB_LEARN_MIN_INTERVAL_SEC = float(os.getenv("JARVIS_PLANB_LEARN_MIN_INTERVAL_SEC", "1800"))
+JARVIS_TRACE_MAX = int(os.getenv("JARVIS_TRACE_MAX", "200"))
+JARVIS_FILLER_AUDIO_ENABLE = os.getenv("JARVIS_FILLER_AUDIO_ENABLE", "1").lower() in {"1", "true", "yes", "on"}
+JARVIS_FILLER_AUDIO_WARMUP = os.getenv("JARVIS_FILLER_AUDIO_WARMUP", "1").lower() in {"1", "true", "yes", "on"}
+JARVIS_FILLER_AUDIO_CACHE_DIR = Path(
+    os.getenv("JARVIS_FILLER_AUDIO_CACHE_DIR", "data/jarvis_filler_audio")
+)
+JARVIS_FILLER_AUDIO_VOICE = os.getenv("JARVIS_FILLER_AUDIO_VOICE", "ru-female").strip() or "ru-female"
+JARVIS_FAST_TTS_VOICE = os.getenv("JARVIS_FAST_TTS_VOICE", JARVIS_FILLER_AUDIO_VOICE).strip() or "ru-female"
+JARVIS_CONTEXT_MAX_PINNED = int(os.getenv("JARVIS_CONTEXT_MAX_PINNED", "8"))
+JARVIS_CONTEXT_MAX_VIEWPORT = int(os.getenv("JARVIS_CONTEXT_MAX_VIEWPORT", "24"))
+JARVIS_CONTEXT_MAX_CHAT_MESSAGES = int(os.getenv("JARVIS_CONTEXT_MAX_CHAT_MESSAGES", "6"))
+JARVIS_STAGE2_TIMEOUT_MS = int(os.getenv("JARVIS_STAGE2_TIMEOUT_MS", "4500"))
+JARVIS_STAGE3_TIMEOUT_MS = int(os.getenv("JARVIS_STAGE3_TIMEOUT_MS", "5000"))
+JARVIS_STAGE4_TIMEOUT_MS = int(os.getenv("JARVIS_STAGE4_TIMEOUT_MS", "6000"))
+
+# MARKER_157_6_VOICE_PROFILE_BACKEND:
+# Backend voice profiles. UI chooser can map to these IDs in future.
+VOICE_PROFILES: Dict[str, Dict[str, str]] = {
+    "vetka_ru_female": {"fast_tts_voice": "ru-female", "filler_voice": "ru-female"},
+    "vetka_ru_male": {"fast_tts_voice": "ru-male", "filler_voice": "ru-male"},
+    "vetka_en_female": {"fast_tts_voice": "en-female", "filler_voice": "en-female"},
+    "vetka_en_male": {"fast_tts_voice": "en-male", "filler_voice": "en-male"},
+}
+JARVIS_VOICE_PROFILE = os.getenv("JARVIS_VOICE_PROFILE", "vetka_ru_female").strip() or "vetka_ru_female"
+# MARKER_157_7_4_VOICE_LOCK_EDGE_RU_FEMALE.V1:
+# Runtime voice lock for VETKA-JARVIS: single stable timbre (edge ru-female) with no backend switching.
+JARVIS_VOICE_LOCK_EDGE_RU_FEMALE = os.getenv("JARVIS_VOICE_LOCK_EDGE_RU_FEMALE", "1").lower() in {"1", "true", "yes", "on"}
+
 
 class T9PredictionStatus(str, Enum):
     """Status codes for T9 prediction edge cases"""
@@ -57,6 +104,25 @@ TIMEOUT_FALLBACK_TEMPLATES = {
     "command": "I'll process that request.",
     "default": "I'm here to help. What would you like to do?"
 }
+
+_jarvis_turn_traces: deque = deque(maxlen=JARVIS_TRACE_MAX)
+_filler_audio_cache: Dict[str, Dict[str, Tuple[bytes, str]]] = {"ru": {}, "en": {}}
+_filler_audio_warmup_started = False
+
+
+def _append_jarvis_trace(trace: Dict[str, Any]) -> None:
+    try:
+        _jarvis_turn_traces.append(trace)
+    except Exception as e:
+        logger.debug(f"[JARVIS][TRACE] append failed: {e}")
+
+
+def get_jarvis_turn_traces(limit: int = 20) -> List[Dict[str, Any]]:
+    try:
+        cap = max(1, min(int(limit), JARVIS_TRACE_MAX))
+    except Exception:
+        cap = 20
+    return list(_jarvis_turn_traces)[-cap:]
 
 
 def _classify_input_type(partial_input: str) -> str:
@@ -373,6 +439,20 @@ def pcm_to_wav(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1, sam
     return wav_buffer.getvalue()
 
 
+def _detect_audio_format(audio_bytes: bytes) -> str:
+    if not audio_bytes:
+        return "unknown"
+    if len(audio_bytes) >= 12 and audio_bytes[:4] == b"RIFF" and audio_bytes[8:12] == b"WAVE":
+        return "wav"
+    if audio_bytes[:3] == b"ID3":
+        return "mp3"
+    if len(audio_bytes) >= 2 and audio_bytes[0] == 0xFF and (audio_bytes[1] & 0xE0) == 0xE0:
+        return "mp3"
+    if audio_bytes[:4] == b"OggS":
+        return "ogg"
+    return "pcm"
+
+
 # Import STT and TTS engines
 try:
     import mlx_whisper
@@ -383,18 +463,28 @@ except ImportError:
     logger.warning("[JARVIS] mlx_whisper not available, STT disabled")
 
 try:
-    from src.voice.tts_engine import Qwen3TTSClient, FastTTSClient
+    from src.voice.tts_engine import Qwen3TTSClient, FastTTSClient, ESpeakTTSClient
     HAS_TTS = True
     HAS_FAST_TTS = True
+    HAS_ESPEAK_TTS = True
     logger.info("[JARVIS] TTS clients available (Qwen3 + Fast)")
 except ImportError:
     HAS_TTS = False
     HAS_FAST_TTS = False
+    HAS_ESPEAK_TTS = False
     logger.warning("[JARVIS] TTS client not available")
 
-# TTS Mode: 'fast' (Edge-TTS, ~1s) or 'quality' (Qwen3-TTS, ~5-6s)
-# PHASE_104.7_FREEZE: Reverted to quality - Edge-TTS needs debugging
-TTS_MODE = "quality"  # Phase 104.7: Reverted to quality for stability
+# TTS Mode: 'fast' (Edge-TTS, lower latency) or 'quality' (Qwen3-TTS)
+# Default fast to prioritize live dialog latency/stability.
+TTS_MODE = os.getenv("JARVIS_TTS_MODE", "fast").strip().lower()
+JARVIS_TTS_PROVIDER = os.getenv("JARVIS_TTS_PROVIDER", "auto").strip().lower()  # edge|espeak|auto
+JARVIS_TTS_FALLBACK_PROVIDER = os.getenv("JARVIS_TTS_FALLBACK_PROVIDER", "espeak").strip().lower()
+JARVIS_ESPEAK_VOICE_RU = os.getenv("JARVIS_ESPEAK_VOICE_RU", "ru").strip() or "ru"
+JARVIS_ESPEAK_VOICE_EN = os.getenv("JARVIS_ESPEAK_VOICE_EN", "en").strip() or "en"
+JARVIS_ESPEAK_PRESET = os.getenv("JARVIS_ESPEAK_PRESET", "c3po").strip() or "c3po"
+JARVIS_ESPEAK_RATE = int(os.getenv("JARVIS_ESPEAK_RATE", "155"))
+JARVIS_ESPEAK_PITCH = int(os.getenv("JARVIS_ESPEAK_PITCH", "70"))
+JARVIS_ESPEAK_AMPLITUDE = int(os.getenv("JARVIS_ESPEAK_AMPLITUDE", "130"))
 
 # Phase 104.6: LLM Integration
 try:
@@ -453,6 +543,458 @@ def _is_hallucination(transcript: str) -> bool:
             return True
 
     return False
+
+
+def _default_filler_bank() -> Dict[str, List[str]]:
+    return {
+        "ru": [
+            "Секунду, собираю ответ.",
+            "Хм, интересный вопрос...",
+            "Занимательно, дайте подумать.",
+            "Ого, это заслуживает размышлений.",
+            "Хм, любопытная тема.",
+            "Интригующе, сейчас разберёмся.",
+            "Хм, хороший повод для раздумий.",
+            "Ух ты, это заставляет задуматься.",
+            "Хм, необычный запрос.",
+            "Занятно, давайте поразмыслим.",
+            "Хм, это стоит обдумать.",
+            "Ой, интересная мысль.",
+            "Хм, давайте подумаем вместе.",
+            "Вау, это круто, секунду.",
+            "Хм, заманчивая идея.",
+            "Любопытно, сейчас отвечу.",
+            "Хм, это требует внимания.",
+            "О, забавный вопрос.",
+            "Хм, давайте разберём по полочкам.",
+            "Интересно, что же вы имеете в виду?",
+            "Хм, это вдохновляет на ответ.",
+            "Ух, сложный, но интересный.",
+            "Хм, давайте я подумаю.",
+            "Занятно, сейчас соберу мысли.",
+            "Хм, это свежий взгляд.",
+            "Ого, давайте углубимся.",
+            "Хм, привлекательная тема.",
+            "Любопытно, подождите миг.",
+            "Хм, это стоит обсудить.",
+            "Вау, интересный поворот.",
+            "Хм, давайте я обдумаю.",
+            "Занимательно, секунду.",
+            "Хм, это вызывает интерес.",
+            "Ой, круто, сейчас отвечу.",
+            "Хм, необычная идея.",
+            "Интригующе, давайте разберём.",
+            "Хм, хороший вопросик.",
+            "Ух ты, это зацепило.",
+            "Хм, давайте подумаем глубже.",
+            "Занятно, сейчас подумаю.",
+            "Хм, это мотивирует.",
+            "Ого, интересная загадка.",
+            "Хм, давайте я проанализирую.",
+            "Любопытно, подождите.",
+            "Хм, это стоит внимания.",
+            "Вау, забавно, секунду.",
+            "Хм, заманчиво.",
+            "О, это вдохновляет.",
+            "Хм, давайте разберёмся.",
+            "Интересно, сейчас отвечу.",
+            "Хм, это крутой вопрос.",
+        ],
+        "en": [
+            "Hmm, interesting question...",
+            "That's intriguing, let me think.",
+            "Wow, that deserves some thought.",
+            "Hmm, curious topic.",
+            "Fascinating, let's figure this out.",
+            "Hmm, good point to ponder.",
+            "Whoa, that makes me think.",
+            "Hmm, unusual request.",
+            "Neat, let's mull it over.",
+            "Hmm, worth considering.",
+            "Oh, interesting idea.",
+            "Hmm, let's think together.",
+            "Wow, cool, just a sec.",
+            "Hmm, tempting thought.",
+            "Curious, I'll respond soon.",
+            "Hmm, this needs attention.",
+            "Oh, fun question.",
+            "Hmm, let's break it down.",
+            "Interesting, what do you mean?",
+            "Hmm, this inspires an answer.",
+            "Uh, tricky but interesting.",
+            "Hmm, let me ponder.",
+            "Neat, gathering thoughts.",
+            "Hmm, fresh perspective.",
+            "Whoa, let's dive in.",
+            "Hmm, appealing topic.",
+            "Curious, wait a moment.",
+            "Hmm, worth discussing.",
+            "Wow, interesting twist.",
+            "Hmm, let me reflect.",
+            "Neat, just a second.",
+            "Hmm, this sparks interest.",
+            "Oh, cool, responding now.",
+            "Hmm, unique idea.",
+            "Intriguing, let's unpack.",
+            "Hmm, nice question.",
+            "Whoa, that hooked me.",
+            "Hmm, let's think deeper.",
+            "Neat, thinking now.",
+            "Hmm, this motivates.",
+            "Whoa, interesting puzzle.",
+            "Hmm, let me analyze.",
+            "Curious, hold on.",
+            "Hmm, deserves focus.",
+            "Wow, fun, one sec.",
+            "Hmm, enticing.",
+            "Oh, this inspires.",
+            "Hmm, let's sort it out.",
+            "Interesting, answering now.",
+            "Hmm, that's a great question.",
+        ],
+    }
+
+
+def _load_filler_bank() -> Dict[str, List[str]]:
+    bank = _default_filler_bank()
+    if not JARVIS_FILLER_BANK_USE_FILE:
+        return bank
+    try:
+        if JARVIS_FILLER_BANK_PATH.exists():
+            payload = json.loads(JARVIS_FILLER_BANK_PATH.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                for lang in ("ru", "en"):
+                    items = payload.get(lang)
+                    if isinstance(items, list):
+                        bank[lang] = [str(x).strip() for x in items if str(x).strip()]
+    except Exception as e:
+        logger.warning(f"[JARVIS] Could not load filler bank: {e}")
+    return bank
+
+
+def _save_filler_bank(bank: Dict[str, List[str]]) -> None:
+    try:
+        JARVIS_FILLER_BANK_PATH.parent.mkdir(parents=True, exist_ok=True)
+        JARVIS_FILLER_BANK_PATH.write_text(
+            json.dumps(bank, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        logger.warning(f"[JARVIS] Could not save filler bank: {e}")
+
+
+def _filler_audio_file(lang: str, phrase: str) -> Path:
+    key = hashlib.md5(phrase.encode("utf-8")).hexdigest()[:12]
+    return JARVIS_FILLER_AUDIO_CACHE_DIR / lang / f"{key}.mp3"
+
+
+def _store_cached_filler_audio(lang: str, phrase: str, audio_bytes: bytes, audio_format: str = "mp3") -> None:
+    if not audio_bytes or len(audio_bytes) < 1024:
+        return
+    bucket = _filler_audio_cache.setdefault(lang, {})
+    bucket[phrase] = (audio_bytes, audio_format)
+
+
+def _load_cached_filler_audio_from_disk(lang: str, phrase: str) -> Tuple[bytes, str]:
+    path = _filler_audio_file(lang, phrase)
+    if not path.exists():
+        return b"", "mp3"
+    try:
+        audio = path.read_bytes()
+        if audio and len(audio) >= 1024:
+            return audio, "mp3"
+    except Exception as e:
+        logger.debug(f"[JARVIS] Could not read filler audio cache {path}: {e}")
+    return b"", "mp3"
+
+
+async def _warmup_filler_audio_cache_once() -> None:
+    global _filler_audio_warmup_started
+    if _filler_audio_warmup_started or not JARVIS_FILLER_AUDIO_ENABLE or not JARVIS_FILLER_AUDIO_WARMUP:
+        return
+    _filler_audio_warmup_started = True
+
+    bank = _load_filler_bank()
+    target = {
+        "ru": bank.get("ru", [])[:50],
+        "en": bank.get("en", [])[:50],
+    }
+    generated = 0
+    loaded = 0
+
+    for lang, phrases in target.items():
+        for phrase in phrases:
+            if phrase in _filler_audio_cache.get(lang, {}):
+                continue
+            cached_bytes, cached_fmt = _load_cached_filler_audio_from_disk(lang, phrase)
+            if cached_bytes:
+                _store_cached_filler_audio(lang, phrase, cached_bytes, cached_fmt)
+                loaded += 1
+                continue
+            if not HAS_FAST_TTS:
+                continue
+            try:
+                _, filler_voice = _resolve_voice_setup()
+                tts = FastTTSClient(voice=filler_voice)
+                audio = await tts.synthesize(phrase)
+                if audio and len(audio) >= 1024:
+                    out_path = _filler_audio_file(lang, phrase)
+                    out_path.parent.mkdir(parents=True, exist_ok=True)
+                    out_path.write_bytes(audio)
+                    _store_cached_filler_audio(lang, phrase, audio, "mp3")
+                    generated += 1
+            except Exception as e:
+                logger.debug(f"[JARVIS] filler warmup failed ({lang}): {e}")
+
+    logger.info(
+        f"[JARVIS] Filler audio warmup done: loaded={loaded}, generated={generated}, "
+        f"ru={len(_filler_audio_cache.get('ru', {}))}, en={len(_filler_audio_cache.get('en', {}))}"
+    )
+
+
+def _detect_language_hint(text: str) -> str:
+    t = (text or "").lower()
+    cyr = sum(1 for ch in t if "а" <= ch <= "я" or ch == "ё")
+    lat = sum(1 for ch in t if "a" <= ch <= "z")
+    return "ru" if cyr >= lat else "en"
+
+
+def _resolve_voice_setup() -> Tuple[str, str]:
+    if JARVIS_VOICE_LOCK_EDGE_RU_FEMALE:
+        return "ru-female", "ru-female"
+    profile = VOICE_PROFILES.get(JARVIS_VOICE_PROFILE, {})
+    fast_voice = profile.get("fast_tts_voice") or JARVIS_FAST_TTS_VOICE
+    filler_voice = profile.get("filler_voice") or JARVIS_FILLER_AUDIO_VOICE
+    return fast_voice, filler_voice
+
+
+def _language_stage_hint(transcript: str, context: Dict[str, Any]) -> str:
+    """
+    Memory-driven language guidance without hard lock.
+    Priority: Engram preference -> STT transcript language.
+    """
+    preferred_language = ""
+    if isinstance(context, dict):
+        preferred_language = str(context.get("preferred_language") or "").strip().lower()
+    if preferred_language == "ru":
+        return "Prefer Russian for this response unless user explicitly asks another language."
+    if preferred_language == "en":
+        return "Prefer English for this response unless user explicitly asks another language."
+    prefers_russian = context.get("prefers_russian") if isinstance(context, dict) else None
+    if prefers_russian is True:
+        return "Prefer Russian for this response unless user explicitly asks another language."
+    if prefers_russian is False:
+        return "Prefer English for this response unless user explicitly asks another language."
+    inferred = _detect_language_hint(transcript)
+    if inferred == "ru":
+        return "Prefer the same language as user speech (Russian)."
+    return "Prefer the same language as user speech (English)."
+
+
+def _normalize_text_for_espeak(text: str, lang_hint: str) -> str:
+    """
+    eSpeak RU pronunciation normalization for key product words.
+    """
+    out = str(text or "").strip()
+    if not out:
+        return out
+    if lang_hint == "ru":
+        out = out.replace("VETKA", "ВЕТКА")
+        out = out.replace("Vetka", "Ветка")
+        out = out.replace("vetka", "ветка")
+    return out
+
+
+def _select_filler_phrase(partial_input: str) -> str:
+    lang = _detect_language_hint(partial_input)
+    bank = _load_filler_bank()
+    pool = bank.get(lang) or bank.get("ru") or _default_filler_bank()["ru"]
+    return random.choice(pool)
+
+
+def _learn_filler_phrase(partial_input: str, response_text: str) -> None:
+    if not JARVIS_PLANB_LEARN_ENABLE:
+        return
+    now = time.monotonic()
+    last_saved = getattr(_learn_filler_phrase, "_last_saved_monotonic", 0.0)
+    if now - last_saved < JARVIS_PLANB_LEARN_MIN_INTERVAL_SEC:
+        return
+    text = (response_text or "").strip()
+    if not text:
+        return
+    first_sentence = text.split(".")[0].split("!")[0].split("?")[0].strip()
+    if len(first_sentence) < 8 or len(first_sentence) > 80:
+        return
+    lang = _detect_language_hint(partial_input)
+    bank = _load_filler_bank()
+    items = bank.get(lang, [])
+    if first_sentence not in items:
+        items.append(first_sentence)
+        bank[lang] = items[-20:]
+        _save_filler_bank(bank)
+        setattr(_learn_filler_phrase, "_last_saved_monotonic", now)
+
+
+def _should_run_stage3(transcript: str, stage2_text: str) -> bool:
+    """
+    Stage3 is expensive: run only for deep queries or weak stage2 output.
+    """
+    t = (transcript or "").lower()
+    context_sensitive_markers = (
+        "как меня зовут",
+        "моё имя",
+        "мое имя",
+        "кто я",
+        "что ты видишь",
+        "на что я смотрю",
+        "what is my name",
+        "do you know my name",
+        "what do you see",
+        "what am i looking at",
+    )
+    if any(marker in t for marker in context_sensitive_markers):
+        return True
+    if _is_deep_query(transcript):
+        return True
+    s2 = (stage2_text or "").strip()
+    if not s2:
+        return True
+    # If stage2 already concise and non-empty, keep low-latency path.
+    if len(s2) <= 220 and len(s2.split()) >= 4:
+        return False
+    return True
+
+
+def _remember_user_language_preference(user_id: str, lang_hint: str) -> None:
+    """
+    Persist language preference to Engram so Jarvis keeps RU/EN consistently.
+    """
+    try:
+        from src.memory.engram_user_memory import get_engram_user_memory
+        engram = get_engram_user_memory()
+        prefers_russian = (lang_hint == "ru")
+        engram.set_preference(
+            user_id=user_id,
+            category="communication_style",
+            key="prefers_russian",
+            value=prefers_russian,
+            confidence=0.9,
+        )
+    except Exception as e:
+        logger.debug(f"[JARVIS] Could not persist language preference: {e}")
+
+
+def _remember_last_assistant_language(user_id: str, response_text: str) -> None:
+    try:
+        from src.memory.engram_user_memory import get_engram_user_memory
+        engram = get_engram_user_memory()
+        lang = _detect_language_hint(response_text)
+        engram.set_preference(
+            user_id=user_id,
+            category="communication_style",
+            key="last_assistant_language",
+            value=lang,
+            confidence=0.9,
+        )
+    except Exception as e:
+        logger.debug(f"[JARVIS] Could not persist last assistant language: {e}")
+
+
+async def _emit_planb_filler_if_slow(
+    *,
+    sio,
+    sid: str,
+    user_id: str,
+    partial_input: str,
+    ready_event: asyncio.Event,
+) -> bool:
+    if not JARVIS_PLANB_FILLER_ENABLE:
+        return False
+    if ready_event.is_set():
+        return False
+    try:
+        await asyncio.wait_for(ready_event.wait(), timeout=max(0.05, JARVIS_PLANB_FILLER_DELAY_SEC))
+        return False
+    except asyncio.TimeoutError:
+        filler = _select_filler_phrase(partial_input)
+        lang = _detect_language_hint(partial_input)
+        await sio.emit(
+            "jarvis_response",
+            {
+                "text": filler,
+                "user_id": user_id,
+                "status": "filler",
+                "is_draft": True,
+            },
+            to=sid,
+        )
+        if JARVIS_FILLER_AUDIO_ENABLE:
+            audio_bytes, audio_format = _filler_audio_cache.get(lang, {}).get(filler, (b"", "mp3"))
+            if not audio_bytes:
+                audio_bytes, audio_format = _load_cached_filler_audio_from_disk(lang, filler)
+                if audio_bytes:
+                    _store_cached_filler_audio(lang, filler, audio_bytes, audio_format)
+            if audio_bytes:
+                await sio.emit(
+                    "jarvis_audio",
+                    {
+                        "audio": base64.b64encode(audio_bytes).decode("utf-8"),
+                        "format": audio_format,
+                        "user_id": user_id,
+                        "status": "filler",
+                    },
+                    to=sid,
+                )
+        logger.info(f"[JARVIS] PlanB filler emitted ({lang}): {filler}")
+        return True
+
+
+def _is_deep_query(transcript: str) -> bool:
+    t = (transcript or "").lower()
+    if len(t.split()) >= 24:
+        return True
+    keywords = (
+        "исслед",
+        "deep",
+        "подроб",
+        "прочитай",
+        "проанализ",
+        "compare",
+        "benchmark",
+        "пошагов",
+        "architecture",
+        "архитект",
+    )
+    return any(k in t for k in keywords)
+
+
+async def _generate_stage_response(
+    *,
+    llm,
+    transcript: str,
+    user_id: str,
+    context: Dict[str, Any],
+    model_id: str,
+    stage_hint: str,
+    timeout_ms: Optional[int] = None,
+) -> str:
+    local_context = dict(context or {})
+    local_context["llm_model"] = model_id
+    prompt = f"{stage_hint}\n\nUser input: {transcript}".strip()
+    try:
+        if timeout_ms and timeout_ms > 0:
+            result = await asyncio.wait_for(
+                llm.generate(prompt, user_id, local_context),
+                timeout=timeout_ms / 1000.0,
+            )
+            return str(result or "").strip()
+        return (await llm.generate(prompt, user_id, local_context)).strip()
+    except asyncio.TimeoutError:
+        logger.info(f"[JARVIS][Stage] {model_id} timeout after {timeout_ms}ms")
+        return ""
+    except Exception as e:
+        logger.warning(f"[JARVIS][Stage] {model_id} failed: {e}")
+        return ""
 
 
 class JarvisState(str, Enum):
@@ -527,6 +1069,15 @@ class JarvisSession:
         self.prediction_confidence = 1.0
         self.is_interrupted = False
 
+    def add_audio_chunk(self, chunk: bytes):
+        """Add PCM chunk and update duration."""
+        self.audio_buffer.append(chunk)
+        self.total_duration += len(chunk) / 2 / self.sample_rate
+
+    def get_full_audio(self) -> bytes:
+        """Get concatenated PCM from current session."""
+        return b"".join(self.audio_buffer)
+
 
 def _extract_client_context(data: Dict[str, Any]) -> Dict[str, Any]:
     """Extract bounded Jarvis context payload from socket event data."""
@@ -537,17 +1088,75 @@ def _extract_client_context(data: Dict[str, Any]) -> Dict[str, Any]:
 
     viewport_context = data.get("viewport_context")
     if isinstance(viewport_context, dict):
-        context["viewport_context"] = viewport_context
+        compact_viewport: Dict[str, Any] = {}
+        for key in ("zoom_level", "total_visible", "total_pinned", "camera_position", "camera_target"):
+            if key in viewport_context:
+                compact_viewport[key] = viewport_context.get(key)
+
+        def _compact_nodes(nodes: Any, limit: int) -> List[Dict[str, Any]]:
+            if not isinstance(nodes, list):
+                return []
+            compact: List[Dict[str, Any]] = []
+            for node in nodes[: max(1, limit)]:
+                if not isinstance(node, dict):
+                    continue
+                compact.append(
+                    {
+                        "id": node.get("id"),
+                        "name": node.get("name"),
+                        "path": node.get("path"),
+                        "type": node.get("type"),
+                        "lod_level": node.get("lod_level"),
+                        "distance_to_camera": node.get("distance_to_camera"),
+                        "is_center": node.get("is_center"),
+                        "is_pinned": node.get("is_pinned"),
+                    }
+                )
+            return compact
+
+        compact_viewport["pinned_nodes"] = _compact_nodes(
+            viewport_context.get("pinned_nodes"),
+            JARVIS_CONTEXT_MAX_PINNED,
+        )
+        compact_viewport["viewport_nodes"] = _compact_nodes(
+            viewport_context.get("viewport_nodes"),
+            JARVIS_CONTEXT_MAX_VIEWPORT,
+        )
+        context["viewport_context"] = compact_viewport
 
     pinned_files = data.get("pinned_files")
     if isinstance(pinned_files, list):
-        context["pinned_files"] = pinned_files[:12]
+        compact_pinned = []
+        for item in pinned_files[: max(1, JARVIS_CONTEXT_MAX_PINNED)]:
+            if isinstance(item, dict):
+                compact_pinned.append(
+                    {
+                        "id": item.get("id"),
+                        "name": item.get("name"),
+                        "path": item.get("path"),
+                        "type": item.get("type"),
+                    }
+                )
+            else:
+                compact_pinned.append({"path": str(item)})
+        context["pinned_files"] = compact_pinned
 
     open_chat_context = data.get("open_chat_context")
     if isinstance(open_chat_context, dict):
         messages = open_chat_context.get("messages")
         if isinstance(messages, list):
-            open_chat_context = {**open_chat_context, "messages": messages[-10:]}
+            compact_messages = []
+            for msg in messages[-max(1, JARVIS_CONTEXT_MAX_CHAT_MESSAGES):]:
+                if not isinstance(msg, dict):
+                    continue
+                compact_messages.append(
+                    {
+                        "role": msg.get("role"),
+                        "content": str(msg.get("content") or "")[:220],
+                        "timestamp": msg.get("timestamp"),
+                    }
+                )
+            open_chat_context = {**open_chat_context, "messages": compact_messages}
         context["open_chat_context"] = open_chat_context
 
     cam_context = data.get("cam_context")
@@ -558,17 +1167,33 @@ def _extract_client_context(data: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(llm_model, str) and llm_model.strip():
         context["llm_model"] = llm_model.strip()
 
+    # MARKER_157_7_2_VOICE_STATE_KEY_FIELDS.V1:
+    # Drill/state fields (MYCO-style) for state-key retrieval in voice path.
+    state_keys = (
+        "nav_level",
+        "navLevel",
+        "task_drill_state",
+        "taskDrillState",
+        "roadmap_node_drill_state",
+        "roadmapNodeDrillState",
+        "workflow_inline_expanded",
+        "workflowInlineExpanded",
+        "roadmap_node_inline_expanded",
+        "roadmapNodeInlineExpanded",
+        "node_kind",
+        "nodeKind",
+        "active_task_id",
+        "activeTaskId",
+        "role",
+        "label",
+        "node_id",
+        "nodeId",
+    )
+    for key in state_keys:
+        if key in data and data.get(key) is not None:
+            context[key] = data.get(key)
+
     return context
-
-    def add_audio_chunk(self, chunk: bytes):
-        """Add audio chunk to buffer"""
-        self.audio_buffer.append(chunk)
-        # Update duration (16-bit = 2 bytes per sample)
-        self.total_duration += len(chunk) / 2 / self.sample_rate
-
-    def get_full_audio(self) -> bytes:
-        """Get concatenated audio buffer"""
-        return b''.join(self.audio_buffer)
 
 
 # Active sessions: sid -> JarvisSession
@@ -582,6 +1207,12 @@ def register_jarvis_handlers(sio):
     Args:
         sio: SocketIO instance from main API setup
     """
+    if JARVIS_FILLER_AUDIO_ENABLE and JARVIS_FILLER_AUDIO_WARMUP:
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_warmup_filler_audio_cache_once())
+        except Exception as e:
+            logger.debug(f"[JARVIS] Filler warmup scheduling skipped: {e}")
 
     @sio.event
     async def jarvis_listen_start(sid, data):
@@ -712,6 +1343,15 @@ def register_jarvis_handlers(sio):
                 logger.warning(f"[JARVIS] No active session for sid={sid} in jarvis_listen_stop")
                 return
 
+            turn_start = time.perf_counter()
+            stage_hits: List[str] = []
+            stage_models: Dict[str, str] = {}
+            first_response_ms: Optional[float] = None
+            tts_provider = "none"
+            tts_audio_format = "none"
+            tts_duration_ms: Optional[float] = None
+            tts_ok = False
+
             user_id = data.get('user_id')
             transcript_hint = (data.get('transcript_hint') or '').strip()
             if user_id != session.user_id:
@@ -726,6 +1366,10 @@ def register_jarvis_handlers(sio):
             logger.info(
                 f"[JARVIS] Listen stopped for user {session.user_id}, "
                 f"buffer size: {len(session.get_full_audio())} bytes, sid={sid}"
+            )
+            logger.info(
+                f"[JARVIS] Stage machine enabled={JARVIS_STAGE_MACHINE_ENABLE}, "
+                f"context_keys={list(session.client_context.keys())}"
             )
 
             # Transition to THINKING state
@@ -766,7 +1410,7 @@ def register_jarvis_handlers(sio):
                     result = mlx_whisper.transcribe(
                         tmp_path,
                         path_or_hf_repo="mlx-community/whisper-base-mlx",
-                        language="en"  # Auto-detect or set based on user preference
+                        language=None  # auto-detect
                     )
                     transcript = result.get("text", "").strip()
 
@@ -828,7 +1472,16 @@ def register_jarvis_handlers(sio):
             session.transcript = transcript
             session.stt_confidence = stt_confidence
 
+            # If server-side STT is uncertain but browser hint exists, prefer hint.
+            if transcript_hint and stt_confidence < T9_STT_CONFIDENCE_THRESHOLD:
+                transcript = transcript_hint
+                stt_confidence = max(stt_confidence, 0.75)
+                session.transcript = transcript
+                session.stt_confidence = stt_confidence
+                logger.info("[JARVIS] Replaced low-confidence STT with transcript_hint")
+
             logger.info(f"[JARVIS] STT transcript: {transcript} (confidence: {stt_confidence:.2f})")
+            _remember_user_language_preference(session.user_id, _detect_language_hint(transcript))
 
             # MARKER_105_EDGE_CASES: Check STT edge cases before proceeding
             edge_response, edge_status = await handle_prediction_edge_cases(
@@ -852,6 +1505,7 @@ def register_jarvis_handlers(sio):
                     'user_id': session.user_id,
                     'status': edge_status.value
                 }, to=sid)
+                first_response_ms = round((time.perf_counter() - turn_start) * 1000, 1)
                 # Reset and return to idle
                 session.state = JarvisState.IDLE
                 session.reset_buffer()
@@ -859,6 +1513,21 @@ def register_jarvis_handlers(sio):
                     'state': JarvisState.IDLE,
                     'user_id': session.user_id
                 }, to=sid)
+                _append_jarvis_trace({
+                    "ts": time.time(),
+                    "sid": sid,
+                    "user_id": session.user_id,
+                    "stt_lang": _detect_language_hint(transcript),
+                    "stt_confidence": round(stt_confidence, 3),
+                    "status": edge_status.value,
+                    "stages": stage_hits,
+                    "stage_models": stage_models,
+                    "first_response_ms": first_response_ms,
+                    "tts_provider": tts_provider,
+                    "tts_audio_format": tts_audio_format,
+                    "tts_duration_ms": tts_duration_ms,
+                    "tts_ok": tts_ok,
+                })
                 return
 
             if edge_status == T9PredictionStatus.WAITING_FOR_INPUT:
@@ -877,6 +1546,21 @@ def register_jarvis_handlers(sio):
                     'state': JarvisState.IDLE,
                     'user_id': session.user_id
                 }, to=sid)
+                _append_jarvis_trace({
+                    "ts": time.time(),
+                    "sid": sid,
+                    "user_id": session.user_id,
+                    "stt_lang": _detect_language_hint(transcript),
+                    "stt_confidence": round(stt_confidence, 3),
+                    "status": edge_status.value,
+                    "stages": stage_hits,
+                    "stage_models": stage_models,
+                    "first_response_ms": first_response_ms,
+                    "tts_provider": tts_provider,
+                    "tts_audio_format": tts_audio_format,
+                    "tts_duration_ms": tts_duration_ms,
+                    "tts_ok": tts_ok,
+                })
                 return
 
             await sio.emit('jarvis_transcript', {
@@ -886,59 +1570,147 @@ def register_jarvis_handlers(sio):
                 'status': 'processing'
             }, to=sid)
 
-            # AI Response: Phase 104.7 - Streaming LLM → TTS pipeline
-            # MARKER_105_EDGE_CASES: Integrated timeout handling
-            response_status = T9PredictionStatus.CONFIDENT  # Default
+            # AI Response: Phase 157.3.1 stage-machine (Chunk1/2/3/4)
+            response_status = T9PredictionStatus.CONFIDENT
 
-            # Detect hallucination (repeated phrases) from STT
             if _is_hallucination(transcript):
-                logger.warning(f"[JARVIS] Detected STT hallucination, ignoring")
+                logger.warning("[JARVIS] Detected STT hallucination, ignoring")
                 response_text = "I couldn't understand that clearly. Could you try again?"
             elif not transcript or transcript.startswith("["):
                 response_text = "I didn't catch that. Could you please repeat?"
             elif HAS_LLM:
-                # Real LLM response with VETKA memory context
-                # MARKER_105_EDGE_CASES: Use timeout wrapper
                 try:
                     llm_start = time.perf_counter()
-
                     llm = get_jarvis_llm()
                     context = await get_jarvis_context(
                         session.user_id,
                         transcript,
                         extra_context=session.client_context,
+                        session_id=sid,
                     )
 
-                    # Define the prediction function for timeout wrapper
-                    async def _generate_llm_response(text: str) -> str:
-                        return await llm.generate(text, session.user_id, context)
-
-                    # MARKER_105_JARVIS_TIMEOUT_FIX: Use LLM timeout (30s), not T9 (2s)
-                    result = await timeout_wrapped_prediction(
-                        predict_func=_generate_llm_response,
-                        partial_input=transcript,
-                        timeout_ms=JARVIS_LLM_TIMEOUT_MS  # 30s for full LLM, not 2s T9
+                    stage_ready = asyncio.Event()
+                    filler_task = asyncio.create_task(
+                        _emit_planb_filler_if_slow(
+                            sio=sio,
+                            sid=sid,
+                            user_id=session.user_id,
+                            partial_input=transcript,
+                            ready_event=stage_ready,
+                        )
                     )
 
-                    if isinstance(result, tuple):
-                        response_text, response_status = result
+                    stage2_text = ""
+                    stage3_text = ""
+                    stage4_text = ""
+                    lang_hint = _language_stage_hint(transcript, context)
+
+                    if JARVIS_STAGE_MACHINE_ENABLE:
+                        stage_hits.append("chunk2_fast")
+                        await sio.emit("jarvis_stage", {"stage": "chunk2_fast", "user_id": session.user_id}, to=sid)
+                        stage_models["chunk2_fast"] = JARVIS_STAGE2_MODEL
+                        stage2_text = await _generate_stage_response(
+                            llm=llm,
+                            transcript=transcript,
+                            user_id=session.user_id,
+                            context=context,
+                            model_id=JARVIS_STAGE2_MODEL,
+                            stage_hint=f"{lang_hint} Give a quick, concise spoken response. 1-2 short sentences.",
+                            timeout_ms=JARVIS_STAGE2_TIMEOUT_MS,
+                        )
+                        if stage2_text:
+                            stage_ready.set()
+                            await sio.emit(
+                                "jarvis_response",
+                                {
+                                    "text": stage2_text,
+                                    "user_id": session.user_id,
+                                    "status": "stage2_draft",
+                                    "is_draft": True,
+                                },
+                                to=sid,
+                            )
+                            if first_response_ms is None:
+                                first_response_ms = round((time.perf_counter() - turn_start) * 1000, 1)
+
+                        if _should_run_stage3(transcript, stage2_text):
+                            stage_hits.append("chunk3_smart")
+                            await sio.emit("jarvis_stage", {"stage": "chunk3_smart", "user_id": session.user_id}, to=sid)
+                            stage3_candidates = [JARVIS_STAGE3_PRIMARY_MODEL, JARVIS_STAGE3_SECONDARY_MODEL]
+                            for candidate in stage3_candidates:
+                                if not candidate or candidate == JARVIS_STAGE2_MODEL:
+                                    continue
+                                stage_models["chunk3_smart"] = candidate
+                                stage3_prompt = (
+                                    f"Draft answer: {stage2_text}\n\n"
+                                    f"Refine this for correctness and relevance to VETKA context. "
+                                    f"Return a concise spoken response in user's language."
+                                )
+                                stage3_text = await _generate_stage_response(
+                                    llm=llm,
+                                    transcript=f"{transcript}\n\n{stage3_prompt}",
+                                    user_id=session.user_id,
+                                    context=context,
+                                    model_id=candidate,
+                                    stage_hint=f"{lang_hint} You are stage-3 smart refinement.",
+                                    timeout_ms=JARVIS_STAGE3_TIMEOUT_MS,
+                                )
+                                if stage3_text:
+                                    break
+
+                        if JARVIS_STAGE4_ENABLE and _is_deep_query(transcript):
+                            stage4_model = JARVIS_STAGE4_MODEL or str(context.get("llm_model") or "").strip()
+                            if stage4_model and stage4_model not in {JARVIS_STAGE2_MODEL, JARVIS_STAGE3_PRIMARY_MODEL, JARVIS_STAGE3_SECONDARY_MODEL}:
+                                stage_hits.append("chunk4_deep")
+                                await sio.emit("jarvis_stage", {"stage": "chunk4_deep", "user_id": session.user_id}, to=sid)
+                                stage_models["chunk4_deep"] = stage4_model
+                                stage4_text = await _generate_stage_response(
+                                    llm=llm,
+                                    transcript=f"{transcript}\n\nKeep it concise but include essential deep findings.",
+                                    user_id=session.user_id,
+                                    context=context,
+                                    model_id=stage4_model,
+                                    stage_hint=f"{lang_hint} You are stage-4 deep follow-up.",
+                                    timeout_ms=JARVIS_STAGE4_TIMEOUT_MS,
+                                )
+
+                        response_text = stage4_text or stage3_text or stage2_text
+                        if not response_text:
+                            response_text = "I heard you. Give me one more second and ask again."
+                            response_status = T9PredictionStatus.TIMEOUT_FALLBACK
                     else:
-                        response_text = result
-                        response_status = T9PredictionStatus.CONFIDENT
+                        async def _generate_llm_response(text: str) -> str:
+                            return await llm.generate(text, session.user_id, context)
+
+                        result = await timeout_wrapped_prediction(
+                            predict_func=_generate_llm_response,
+                            partial_input=transcript,
+                            timeout_ms=JARVIS_LLM_TIMEOUT_MS,
+                        )
+                        if isinstance(result, tuple):
+                            response_text, response_status = result
+                        else:
+                            response_text = result
+
+                    stage_ready.set()
+                    filler_emitted = False
+                    try:
+                        filler_emitted = await filler_task
+                    except Exception:
+                        filler_emitted = False
+                    if filler_emitted and first_response_ms is None:
+                        first_response_ms = round((time.perf_counter() - turn_start) * 1000, 1)
 
                     llm_duration = time.perf_counter() - llm_start
+                    logger.info(f"[JARVIS] Stage response in {llm_duration:.2f}s: {response_text[:120]}...")
+                    _learn_filler_phrase(transcript, response_text)
+                    _remember_last_assistant_language(session.user_id, response_text)
 
-                    if response_status == T9PredictionStatus.TIMEOUT_FALLBACK:
-                        logger.warning(f"[JARVIS] LLM timeout after {llm_duration:.2f}s, using fallback")
-                    else:
-                        logger.info(f"[JARVIS] LLM response in {llm_duration:.2f}s: {response_text[:100]}...")
-
-                    # Store in STM for conversation continuity
                     try:
                         from src.memory.stm_buffer import get_stm_buffer
                         stm = get_stm_buffer()
                         stm.add_message(f"User: {transcript}", source="user")
-                        stm.add_message(f"Jarvis: {response_text}", source="agent")
+                        stm.add_message(f"VETKA: {response_text}", source="agent")
                     except Exception as e:
                         logger.warning(f"[JARVIS] Could not store in STM: {e}")
 
@@ -947,7 +1719,6 @@ def register_jarvis_handlers(sio):
                     response_text = f"I heard you say: {transcript}. I'm having trouble with my language model."
                     response_status = T9PredictionStatus.TIMEOUT_FALLBACK
             else:
-                # Fallback to echo if no LLM
                 response_text = f"I heard you say: {transcript}"
 
             session.response_text = response_text
@@ -971,30 +1742,100 @@ def register_jarvis_handlers(sio):
             # Phase 104.7: Fast TTS (Edge-TTS ~1s) or Quality TTS (Qwen3 ~5-6s)
             if HAS_TTS and response_text:
                 try:
-                    import time
                     tts_start = time.perf_counter()
+                    emitted_audio_format = "unknown"
+                    emitted_audio_bytes = b""
+                    lang_hint = _detect_language_hint(f"{transcript}\n{response_text}")
+                    tts_language = "Russian" if lang_hint == "ru" else "English"
+                    use_fast_tts = HAS_FAST_TTS and (JARVIS_VOICE_LOCK_EDGE_RU_FEMALE or TTS_MODE == "fast" or lang_hint == "ru")
+                    logger.info(
+                        f"[JARVIS] TTS start mode={'fast' if use_fast_tts else 'quality'} "
+                        f"lang={tts_language} chars={len(response_text)}"
+                    )
 
-                    if TTS_MODE == "fast" and HAS_FAST_TTS:
-                        # Fast mode: Edge-TTS (~1s latency)
-                        fast_tts = FastTTSClient(voice="en-male")
-                        audio_bytes = await fast_tts.synthesize_auto(response_text)
+                    if use_fast_tts:
+                        preferred_provider = "edge" if JARVIS_VOICE_LOCK_EDGE_RU_FEMALE else (
+                            JARVIS_TTS_PROVIDER if JARVIS_TTS_PROVIDER in {"edge", "espeak"} else "auto"
+                        )
+                        fast_voice, _ = _resolve_voice_setup()
+                        espeak_voice = JARVIS_ESPEAK_VOICE_RU if lang_hint == "ru" else JARVIS_ESPEAK_VOICE_EN
+
+                        async def _edge_synth() -> bytes:
+                            if not HAS_FAST_TTS:
+                                return b""
+                            fast_tts = FastTTSClient(voice=fast_voice)
+                            return await fast_tts.synthesize_auto(response_text)
+
+                        async def _espeak_synth() -> bytes:
+                            if not HAS_ESPEAK_TTS:
+                                return b""
+                            normalized_text = _normalize_text_for_espeak(response_text, lang_hint)
+                            espeak = ESpeakTTSClient(
+                                voice=espeak_voice,
+                                rate=JARVIS_ESPEAK_RATE,
+                                pitch=JARVIS_ESPEAK_PITCH,
+                                amplitude=JARVIS_ESPEAK_AMPLITUDE,
+                                preset=JARVIS_ESPEAK_PRESET,
+                            )
+                            return await espeak.synthesize(normalized_text)
+
+                        audio_bytes = b""
+                        if preferred_provider == "edge":
+                            tts_provider = "fast_tts_edge"
+                            audio_bytes = await _edge_synth()
+                            if (
+                                not JARVIS_VOICE_LOCK_EDGE_RU_FEMALE
+                                and not audio_bytes
+                                and JARVIS_TTS_FALLBACK_PROVIDER == "espeak"
+                            ):
+                                tts_provider = "espeak_tts_fallback"
+                                audio_bytes = await _espeak_synth()
+                        elif preferred_provider == "espeak":
+                            tts_provider = "espeak_tts"
+                            audio_bytes = await _espeak_synth()
+                            if not audio_bytes and JARVIS_TTS_FALLBACK_PROVIDER == "edge":
+                                tts_provider = "fast_tts_edge_fallback"
+                                audio_bytes = await _edge_synth()
+                        else:
+                            # auto: edge first, then espeak fallback
+                            tts_provider = "fast_tts_edge_auto"
+                            audio_bytes = await _edge_synth()
+                            if not audio_bytes:
+                                tts_provider = "espeak_tts_auto_fallback"
+                                audio_bytes = await _espeak_synth()
 
                         tts_duration = time.perf_counter() - tts_start
 
                         if audio_bytes:
-                            # Edge-TTS returns MP3, encode directly
-                            audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-                            audio_format = 'mp3'
-                            logger.info(f"[JARVIS] FastTTS in {tts_duration:.2f}s, {len(audio_bytes)} bytes")
+                            detected = _detect_audio_format(audio_bytes)
+                            if detected in {"mp3", "wav"}:
+                                emitted_audio_bytes = audio_bytes
+                                emitted_audio_format = detected
+                            elif detected == "pcm":
+                                emitted_audio_bytes = pcm_to_wav(audio_bytes, sample_rate=24000)
+                                emitted_audio_format = "wav"
+                            if emitted_audio_bytes and len(emitted_audio_bytes) >= 2048:
+                                audio_base64 = base64.b64encode(emitted_audio_bytes).decode('utf-8')
+                                audio_format = emitted_audio_format
+                                tts_audio_format = emitted_audio_format
+                                logger.info(
+                                    f"[JARVIS] FastTTS in {tts_duration:.2f}s, raw_fmt={detected}, "
+                                    f"emit_fmt={audio_format}, bytes={len(emitted_audio_bytes)}"
+                                )
+                            else:
+                                logger.warning("[JARVIS] FastTTS produced invalid/too small audio, skipping emit")
+                                audio_base64 = ""
+                                audio_format = "mp3"
                         else:
                             audio_base64 = ""
                             audio_format = 'mp3'
                     else:
+                        tts_provider = "qwen3_tts"
                         # Quality mode: Qwen3-TTS (~5-6s latency, better voice)
                         tts_client = Qwen3TTSClient(server_url="http://127.0.0.1:5003")
                         audio_bytes = await tts_client.synthesize(
                             text=response_text,
-                            language="English",
+                            language=tts_language,
                             speaker="ryan"
                         )
                         await tts_client.close()
@@ -1002,11 +1843,29 @@ def register_jarvis_handlers(sio):
                         tts_duration = time.perf_counter() - tts_start
 
                         if audio_bytes:
-                            # Qwen3 returns PCM, convert to WAV
-                            wav_bytes = pcm_to_wav(audio_bytes, sample_rate=24000)
-                            audio_base64 = base64.b64encode(wav_bytes).decode('utf-8')
-                            audio_format = 'wav'
-                            logger.info(f"[JARVIS] Qwen3TTS in {tts_duration:.2f}s, {len(audio_bytes)} bytes")
+                            detected = _detect_audio_format(audio_bytes)
+                            if detected == "wav":
+                                emitted_audio_bytes = audio_bytes
+                                emitted_audio_format = "wav"
+                            elif detected == "mp3":
+                                emitted_audio_bytes = audio_bytes
+                                emitted_audio_format = "mp3"
+                            else:
+                                emitted_audio_bytes = pcm_to_wav(audio_bytes, sample_rate=24000)
+                                emitted_audio_format = "wav"
+
+                            if emitted_audio_bytes and len(emitted_audio_bytes) >= 2048:
+                                audio_base64 = base64.b64encode(emitted_audio_bytes).decode('utf-8')
+                                audio_format = emitted_audio_format
+                                tts_audio_format = emitted_audio_format
+                                logger.info(
+                                    f"[JARVIS] Qwen3TTS in {tts_duration:.2f}s, raw_fmt={detected}, "
+                                    f"emit_fmt={audio_format}, bytes={len(emitted_audio_bytes)}"
+                                )
+                            else:
+                                logger.warning("[JARVIS] Qwen3TTS produced invalid/too small audio, skipping emit")
+                                audio_base64 = ""
+                                audio_format = "wav"
                         else:
                             audio_base64 = ""
                             audio_format = 'wav'
@@ -1015,6 +1874,7 @@ def register_jarvis_handlers(sio):
                     logger.error(f"[JARVIS] TTS failed: {e}")
                     audio_base64 = ""
                     audio_format = 'mp3'
+                    tts_provider = "error"
             else:
                 logger.warning("[JARVIS] No TTS available or empty response")
                 audio_base64 = ""
@@ -1027,8 +1887,13 @@ def register_jarvis_handlers(sio):
                     'format': audio_format,  # 'mp3' for FastTTS, 'wav' for Qwen3
                     'user_id': session.user_id
                 }, to=sid)
+                logger.info(f"[JARVIS] Emitted jarvis_audio format={audio_format} len={len(audio_base64)}")
+                tts_ok = True
             else:
                 logger.info("[JARVIS] No audio to emit, skipping jarvis_audio event")
+                tts_ok = False
+
+            tts_duration_ms = round((time.perf_counter() - tts_start) * 1000, 1) if HAS_TTS and response_text else None
 
             # Transition back to IDLE state
             session.state = JarvisState.IDLE
@@ -1039,6 +1904,61 @@ def register_jarvis_handlers(sio):
                 'state': JarvisState.IDLE,
                 'user_id': session.user_id
             }, to=sid)
+
+            trace_payload = {
+                "ts": time.time(),
+                "sid": sid,
+                "user_id": session.user_id,
+                "stt_lang": _detect_language_hint(transcript),
+                "stt_confidence": round(stt_confidence, 3),
+                "response_lang": _detect_language_hint(response_text),
+                "response_status": response_status.value,
+                "stages": stage_hits,
+                "stage_models": stage_models,
+                "context_keys": list((context or {}).keys()) if isinstance(locals().get("context"), dict) else [],
+                "context_chars": len(json.dumps(context, ensure_ascii=False)) if isinstance(locals().get("context"), dict) else 0,
+                "context_packer": (
+                    dict((context or {}).get("context_packer_trace") or {})
+                    if isinstance(locals().get("context"), dict)
+                    else {}
+                ),
+                "packing_path": (
+                    str(((context or {}).get("context_packer_trace") or {}).get("packing_path") or "")
+                    if isinstance(locals().get("context"), dict)
+                    else ""
+                ),
+                "jepa_mode": (
+                    bool(((context or {}).get("context_packer_trace") or {}).get("jepa_mode", False))
+                    if isinstance(locals().get("context"), dict)
+                    else False
+                ),
+                "jepa_latency_ms": (
+                    float(((context or {}).get("context_packer_trace") or {}).get("jepa_latency_ms", 0.0))
+                    if isinstance(locals().get("context"), dict)
+                    else 0.0
+                ),
+                "hidden_retrieval_hits": (
+                    len(((context or {}).get("hidden_retrieval") or {}).get("items", []))
+                    if isinstance(locals().get("context"), dict)
+                    and isinstance((context or {}).get("hidden_retrieval"), dict)
+                    else 0
+                ),
+                "state_key_query": (
+                    str((context or {}).get("state_key_query") or "")
+                    if isinstance(locals().get("context"), dict)
+                    else ""
+                ),
+                "first_response_ms": first_response_ms,
+                "total_turn_ms": round((time.perf_counter() - turn_start) * 1000, 1),
+                "tts_provider": tts_provider,
+                "voice_profile": JARVIS_VOICE_PROFILE,
+                "tts_engine": "espeak" if "espeak" in str(tts_provider) else ("edge" if "fast_tts" in str(tts_provider) else "qwen3"),
+                "tts_audio_format": tts_audio_format,
+                "tts_duration_ms": tts_duration_ms,
+                "tts_ok": tts_ok,
+            }
+            _append_jarvis_trace(trace_payload)
+            logger.info(f"[JARVIS][TRACE] {json.dumps(trace_payload, ensure_ascii=False)}")
 
         except Exception as e:
             logger.error(f"[JARVIS] Error in jarvis_listen_stop: {e}", exc_info=True)

@@ -129,9 +129,39 @@ def _load_chat_history(chat_dir: Path, node_path: str) -> list:
     return []
 
 
-def _build_myco_quick_reply(message: str, payload: Dict[str, Any], context: Dict[str, Any]) -> str:
+def _resolve_workflow_family(team_profile: str, workflow_id: str, workflow_family_hint: str = "") -> str:
+    """
+    MARKER_162.P4.P4.MYCO.WORKFLOW_FAMILY_BACKEND_SOURCE_OF_TRUTH.V1
+    Backend source-of-truth for workflow family normalization.
+    """
+    wf = str(workflow_family_hint or "").strip().lower()
+    if wf:
+        return wf
+    joined = f"{team_profile} {workflow_id}".lower().strip()
+    if "g3" in joined:
+        return "g3"
+    if "ralph" in joined:
+        return "ralph_loop"
+    if "openhands" in joined:
+        return "openhands"
+    if str(team_profile).lower().startswith("titan"):
+        return "titans"
+    if str(team_profile).lower().startswith("dragon"):
+        return "dragons"
+    if joined:
+        return "custom"
+    return "bmad"
+
+
+def _build_myco_quick_reply(
+    message: str,
+    payload: Dict[str, Any],
+    context: Dict[str, Any],
+    retrieval: Optional[Dict[str, Any]] = None,
+) -> str:
     """
     MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1
+    MARKER_162.P3.P2.MYCO.ORCHESTRATION_SNAPSHOT.V1
     Lightweight MYCO response builder with hidden memory payload.
     """
     focus = dict(context or {})
@@ -154,24 +184,170 @@ def _build_myco_quick_reply(message: str, payload: Dict[str, Any], context: Dict
     fast_mode = str(fastpath.get("mode") or "local")
     hidden = payload.get("hidden_index") or {}
     indexed_sources = int(hidden.get("source_count") or 0)
+    orchestration = payload.get("orchestration") or {}
+    multitask = orchestration.get("multitask") if isinstance(orchestration, dict) else {}
+    multitask = multitask if isinstance(multitask, dict) else {}
+    digest = orchestration.get("digest") if isinstance(orchestration, dict) else {}
+    digest = digest if isinstance(digest, dict) else {}
+    mt_active = int(multitask.get("active") or 0)
+    mt_queued = int(multitask.get("queued") or 0)
+    mt_done = int(multitask.get("done") or 0)
+    mt_cap = int(multitask.get("max_concurrent") or 0)
+    mt_autodispatch = bool(multitask.get("auto_dispatch", False))
+    mt_phase = str(multitask.get("phase") or "").strip()
+    digest_phase = str(digest.get("phase") or "").strip()
+    digest_summary = str(digest.get("summary") or digest.get("status") or "").strip()
+
+    retrieval_obj = dict(retrieval or {})
+    refs = retrieval_obj.get("items") if isinstance(retrieval_obj.get("items"), list) else []
+    refs = refs[:2]
+    ref_line = ""
+    if refs:
+        ref_names = ", ".join(
+            str(r.get("source_path") or "").split("/")[-1]
+            for r in refs
+            if str(r.get("source_path") or "").strip()
+        )
+        if ref_names:
+            ref_line = f"- hidden refs: {ref_names}\n"
+
+    nav_level = str(focus.get("nav_level") or focus.get("navLevel") or "").strip().lower()
+    task_drill_state = str(focus.get("task_drill_state") or focus.get("taskDrillState") or "").strip().lower()
+    node_drill_state = str(focus.get("roadmap_node_drill_state") or focus.get("roadmapNodeDrillState") or "").strip().lower()
+    workflow_inline = bool(focus.get("workflow_inline_expanded") or focus.get("workflowInlineExpanded"))
+    node_inline = bool(focus.get("roadmap_node_inline_expanded") or focus.get("roadmapNodeInlineExpanded"))
+    node_kind = str(focus.get("node_kind") or focus.get("nodeKind") or "").strip().lower()
+    graph_kind = str(focus.get("graph_kind") or focus.get("graphKind") or "").strip().lower()
+    role = str(focus.get("role") or "").strip().lower()
+    workflow_family_raw = str(focus.get("workflow_family") or focus.get("workflowFamily") or "").strip().lower()
+    workflow_id = str(focus.get("workflow_id") or focus.get("workflowId") or "").strip()
+    team_profile = str(focus.get("team_profile") or focus.get("teamProfile") or "").strip()
+    workflow_family = _resolve_workflow_family(team_profile, workflow_id, workflow_family_raw)
+    workflow_family_hint = {
+        "dragons": "Dragons (faster/cheaper)",
+        "titans": "Titans (smarter/costlier)",
+        "g3": "G3 (critic+coder)",
+        "ralph_loop": "Ralph loop (single-agent)",
+        "openhands": "OpenHands-collab",
+        "bmad": "BMAD/default",
+        "custom": "custom workflow",
+    }.get(workflow_family, workflow_family)
+
+    # MARKER_162.P4.P3.MYCO.PROACTIVE_NEXT_ACTION_PACK.V1:
+    # MARKER_162.P4.P4.MYCO.NODE_ROLE_WORKFLOW_NEXT_ACTIONS.V1:
+    # State-aware next-action pack used for both quick-help and normal helper replies.
+    next_actions: list[str]
+    if (task_drill_state == "expanded" and nav_level == "roadmap") or workflow_inline:
+        if node_kind == "agent":
+            if role == "architect":
+                next_actions = [
+                    "define/adjust subtasks",
+                    f"pick team workflow ({workflow_family_hint})",
+                    "run/start from Tasks and watch stream",
+                ]
+            elif role == "coder":
+                next_actions = [
+                    "open Context and verify coder model/prompt",
+                    "run/retry coder from Tasks",
+                    "inspect artifacts then send to verifier",
+                ]
+            elif role in {"verifier", "eval"}:
+                next_actions = [
+                    "open Context and check quality criteria",
+                    "run verify/eval stage",
+                    "on fail send retry to coder from Tasks",
+                ]
+            else:
+                next_actions = [
+                    "open Context for this agent",
+                    "check model/prompt",
+                    "run/retry from Tasks panel",
+                ]
+        else:
+            next_actions = [
+                "select agent node in workflow",
+                f"choose team workflow ({workflow_family_hint})",
+                "run/start or retry from Tasks panel",
+            ]
+    elif (node_drill_state == "expanded" and nav_level == "roadmap") or node_inline:
+        next_actions = [
+            "double-click deeper",
+            "select task node in this module",
+            "create task here from Tasks panel",
+        ]
+    elif nav_level == "workflow":
+        next_actions = [
+            "select agent node",
+            "inspect stream/artifacts",
+            "adjust model in Context if needed",
+        ]
+    elif node_kind == "task" or graph_kind == "project_task":
+        next_actions = [
+            f"task scope detected ({workflow_family_hint})",
+            "press Enter to open workflow",
+            "run/start from Tasks or switch team profile",
+        ]
+    elif node_kind == "agent":
+        next_actions = [
+            f"agent scope detected ({role or 'agent'})",
+            "open Context and inspect model/prompt",
+            "run/retry from Tasks panel",
+        ]
+    elif nav_level in {"tasks", "roadmap"}:
+        next_actions = [
+            "select node or task",
+            "drill into workflow",
+            "ask for dependency map",
+        ]
+    else:
+        next_actions = [
+            "select focus node",
+            "ask MYCO for next action",
+            "open Context for details",
+        ]
 
     prompt = str(message or "").strip()
     if prompt.lower() in {"?", "/myco", "/help myco", "help"}:
+        digest_line = f"- digest phase: {digest_phase}" if digest_phase else "- digest phase: n/a"
         return (
             f"MYCO {user_name}, quick guide:\n"
             f"- focus: {label}\n"
+            f"- nav: {nav_level or 'n/a'}\n"
+            f"- node: {node_kind or 'n/a'}"
+            + (f" ({role})" if role else "")
+            + "\n"
+            f"- workflow family: {workflow_family_hint}\n"
             f"- mode: {fast_mode}\n"
+            f"- multitask: active {mt_active} · queued {mt_queued} · done {mt_done}\n"
+            f"- multitask cfg: cap {mt_cap or 'n/a'} · auto_dispatch {'on' if mt_autodispatch else 'off'} · board phase {mt_phase or 'n/a'}\n"
+            f"{digest_line}\n"
+            f"{ref_line}"
             f"- hidden memory sources: {indexed_sources}\n"
-            f"- next: double-click node to drill or ask for task dispatch"
+            f"- next: {next_actions[0]} -> {next_actions[1]} -> {next_actions[2]}"
         )
 
     task_line = f"- active task: {active_task_title}" if active_task_title else "- active task: not pinned"
+    digest_line = (
+        f"- digest: phase {digest_phase} ({digest_summary})"
+        if digest_phase and digest_summary
+        else (f"- digest: phase {digest_phase}" if digest_phase else "- digest: n/a")
+    )
     return (
         f"MYCO {user_name}, context loaded.\n"
         f"- focus: {label}\n"
+        f"- nav: {nav_level or 'n/a'}\n"
+        f"- node: {node_kind or 'n/a'}"
+        + (f" ({role})" if role else "")
+        + "\n"
+        f"- workflow family: {workflow_family_hint}\n"
         f"{task_line}\n"
+        f"- multitask: active {mt_active} · queued {mt_queued} · done {mt_done}\n"
+        f"- multitask cfg: cap {mt_cap or 'n/a'} · auto_dispatch {'on' if mt_autodispatch else 'off'} · board phase {mt_phase or 'n/a'}\n"
+        f"{digest_line}\n"
+        f"{ref_line}"
         f"- project: {active_project_id or 'n/a'}\n"
         f"- hidden memory index: {indexed_sources} sources\n"
+        f"- options: {next_actions[0]} | {next_actions[1]} | {next_actions[2]}\n"
         f"- tell me: explain node / plan next action / map dependencies"
     )
 
@@ -243,10 +419,20 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
     if is_myco:
         try:
             from src.services.project_config import ProjectConfig
-            from src.services.myco_memory_bridge import build_myco_memory_payload
+            from src.services.myco_memory_bridge import (
+                build_myco_memory_payload,
+                persist_myco_runtime_facts,
+                retrieve_myco_hidden_context,
+            )
             from src.orchestration.context_packer import get_context_packer
 
             cfg = ProjectConfig.load()
+            persist_myco_runtime_facts(
+                user_id=str(req.user_id or "danila"),
+                user_name=str((context or {}).get("user_name") or ""),
+                active_project_id=str(getattr(cfg, "project_id", "") or ""),
+                focus=context,
+            )
             payload = build_myco_memory_payload(
                 user_id=str(req.user_id or "danila"),
                 active_project_id=str(getattr(cfg, "project_id", "") or ""),
@@ -254,25 +440,46 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
             )
 
             # Optional JEPA summary signal from context packer when prompt/context is verbose.
-            packed: Dict[str, Any] = {}
+            retrieval = retrieve_myco_hidden_context(
+                # MARKER_162.P4.P3.MYCO.RAG_STATE_KEY_ENRICHMENT.V1:
+                # Enrich retrieval query with UI state key so guidance docs are retrieved by scenario.
+                query=" ".join(
+                    [
+                        msg,
+                        str(context.get("nav_level") or context.get("navLevel") or ""),
+                        str(context.get("task_drill_state") or context.get("taskDrillState") or ""),
+                        str(context.get("roadmap_node_drill_state") or context.get("roadmapNodeDrillState") or ""),
+                        str(context.get("node_kind") or context.get("nodeKind") or ""),
+                        str(context.get("graph_kind") or context.get("graphKind") or ""),
+                        str(context.get("workflow_family") or context.get("workflowFamily") or ""),
+                        str(context.get("workflow_id") or context.get("workflowId") or ""),
+                        str(context.get("role") or ""),
+                    ]
+                ).strip(),
+                focus=context,
+                top_k=3,
+                min_score=0.22,
+            )
+            packed_meta: Dict[str, Any] = {}
             try:
                 packer = get_context_packer()
-                packed = packer.pack_context(
-                    user_message=msg,
-                    context_data={
-                        "myco_focus": context,
-                        "myco_payload": {
-                            "user_name": payload.get("user_name"),
-                            "active_project_id": payload.get("active_project_id"),
-                            "recent_tasks_by_project": payload.get("recent_tasks_by_project"),
-                        },
-                    },
-                    max_context_chars=2200,
-                ) or {}
+                pinned_files = context.get("pinned_files") if isinstance(context.get("pinned_files"), list) else []
+                viewport_context = context.get("viewport_context") if isinstance(context.get("viewport_context"), dict) else {}
+                model_name = str(context.get("model") or context.get("llm_model") or "gemma3:1b")
+                packed = await packer.pack(
+                    user_query=msg,
+                    pinned_files=pinned_files,
+                    viewport_context=viewport_context,
+                    session_id=str(req.user_id or "danila"),
+                    model_name=model_name,
+                    user_id=str(req.user_id or "danila"),
+                    zoom_level=float(viewport_context.get("zoom_level", 1.0) or 1.0),
+                )
+                packed_meta = dict(packed.trace or {})
             except Exception:
-                packed = {}
+                packed_meta = {}
 
-            response = _build_myco_quick_reply(msg, payload, context)
+            response = _build_myco_quick_reply(msg, payload, context, retrieval)
             return {
                 "success": True,
                 "response": response,
@@ -280,7 +487,8 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
                 "mode": "local_fastpath",
                 "fastpath": payload.get("fastpath"),
                 "hidden_index": payload.get("hidden_index"),
-                "packed_meta": packed.get("meta", {}),
+                "retrieval": retrieval,
+                "packed_meta": packed_meta,
                 "marker": "MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1",
             }
         except Exception as e:

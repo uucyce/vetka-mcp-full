@@ -49,10 +49,15 @@ function emitMycoReplyEvent() {
 
 function buildMycoReply(context?: MiniContextPayload): string {
   const level = String(context?.navLevel || 'roadmap');
-  const kind = String(context?.nodeKind || 'project');
   const label = String(context?.label || 'project');
-  const role = String(context?.role || '');
   const scopeLine = `you are in ${level} view`;
+  // MARKER_162.P4.P4.MYCO.CHAT_REPLY_BACKEND_SINGLE_SOURCE.V1:
+  // Frontend fallback stays generic; state matrix is generated only on backend.
+  // MARKER_162.P4.P2.MYCO.CHAT_REPLY_STATE_MATRIX.V1 (compatibility note):
+  // Phrases retained for contract continuity:
+  // - "workflow is already open for the active task"
+  // - "module unfold is active"
+  const kind = String(context?.nodeKind || 'project');
   if (!context || context.scope === 'project') {
     return `MYCO\n- ${scopeLine}\n- this is project-level context\n- next: click a node and ask again`;
   }
@@ -250,14 +255,28 @@ function ChatCompact({ context }: MiniChatProps) {
           message,
           role: helperMode !== 'off' ? 'helper_myco' : 'architect',
           context: {
+            // MARKER_162.P4.P3.MYCO.CHAT_CONTEXT_DRILL_FIELDS.V1:
+            // Send drill-state context so backend MYCO retrieval can key on real UI scenario.
             helper_mode: helperMode,
             chat_scope: scope.scope,
             nav_level: context?.navLevel,
+            active_task_id: context?.activeTaskId,
+            task_drill_state: context?.taskDrillState,
+            roadmap_node_drill_state: context?.roadmapNodeDrillState,
+            workflow_inline_expanded: context?.workflowInlineExpanded,
+            roadmap_node_inline_expanded: context?.roadmapNodeInlineExpanded,
             focus_scope_key: context?.focusScopeKey,
             node_id: context?.nodeId,
             node_kind: context?.nodeKind,
             task_id: context?.taskId,
             role: context?.role,
+            graph_kind: context?.graphKind,
+            workflow_id: context?.workflowId,
+            team_profile: context?.teamProfile,
+            label: context?.label,
+            status: context?.status,
+            model: context?.model,
+            path: context?.path,
             selected_node_ids: context?.selectedNodeIds || [],
           },
         }),
@@ -512,14 +531,28 @@ function ChatExpanded({ context }: MiniChatProps) {
           message,
           role: helperMode !== 'off' ? 'helper_myco' : 'architect',
           context: {
+            // MARKER_162.P4.P3.MYCO.CHAT_CONTEXT_DRILL_FIELDS.V1:
+            // Send drill-state context so backend MYCO retrieval can key on real UI scenario.
             helper_mode: helperMode,
             chat_scope: scope.scope,
             nav_level: context?.navLevel,
+            active_task_id: context?.activeTaskId,
+            task_drill_state: context?.taskDrillState,
+            roadmap_node_drill_state: context?.roadmapNodeDrillState,
+            workflow_inline_expanded: context?.workflowInlineExpanded,
+            roadmap_node_inline_expanded: context?.roadmapNodeInlineExpanded,
             focus_scope_key: context?.focusScopeKey,
             node_id: context?.nodeId,
             node_kind: context?.nodeKind,
             task_id: context?.taskId,
             role: context?.role,
+            graph_kind: context?.graphKind,
+            workflow_id: context?.workflowId,
+            team_profile: context?.teamProfile,
+            label: context?.label,
+            status: context?.status,
+            model: context?.model,
+            path: context?.path,
             selected_node_ids: context?.selectedNodeIds || [],
           },
         }),
