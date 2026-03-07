@@ -22,6 +22,24 @@ Built for live orchestration, not generic chat dashboards:
 - If you want a visual, non-black-box operator surface for agent workflows, start here.
 - If you want one-click turnkey automation with no graph context, this is probably not your first stop.
 
+## Canonical System Names
+
+### 🌳 VETKA
+Visual Enhanced Tree Knowledge Architecture
+→ структура знаний (скелет / дерево)
+
+### 🍄 MYCELIUM
+Multi-agent Yielding Cognitive Execution Layer for Intelligent Unified Management
+→ распределённая сеть агентов (грибница / нервная сеть), literally "мозг под землёй"
+
+### 🧠 ELISYA
+Efficient Language-Independent Synchronization of Yielding Agents
+→ координация / сознание / синхронизация, нервная система
+
+### 🫧 ELISION
+Efficient Language-Independent Symbolic Inversion of Names
+→ сжатие / забывание / абстракция, память / гиппокамп / компрессор опыта
+
 ## Quick Start
 
 This repository is a module mirror (`client/src/components/mcc`), not a full standalone app distribution.

@@ -13,6 +13,24 @@ Agent orchestration needs a stable inference runtime layer that can:
 
 `vetka-elisya-runtime` is this execution kernel.
 
+## Canonical System Names
+
+### 🌳 VETKA
+Visual Enhanced Tree Knowledge Architecture
+→ структура знаний (скелет / дерево)
+
+### 🍄 MYCELIUM
+Multi-agent Yielding Cognitive Execution Layer for Intelligent Unified Management
+→ распределённая сеть агентов (грибница / нервная сеть), literally "мозг под землёй"
+
+### 🧠 ELISYA
+Efficient Language-Independent Synchronization of Yielding Agents
+→ координация / сознание / синхронизация, нервная система
+
+### 🫧 ELISION
+Efficient Language-Independent Symbolic Inversion of Names
+→ сжатие / забывание / абстракция, память / гиппокамп / компрессор опыта
+
 ## Core Capabilities
 
 - Multi-provider model runtime:

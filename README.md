@@ -5,6 +5,24 @@ VETKA is a local-first knowledge graph workspace with:
 - agent/runtime orchestration and memory layers (CAM/ARC/ELISION)
 - semantic + file search with intent-aware retrieval
 
+## Canonical System Names
+
+### 🌳 VETKA
+Visual Enhanced Tree Knowledge Architecture
+→ структура знаний (скелет / дерево)
+
+### 🍄 MYCELIUM
+Multi-agent Yielding Cognitive Execution Layer for Intelligent Unified Management
+→ распределённая сеть агентов (грибница / нервная сеть), literally "мозг под землёй"
+
+### 🧠 ELISYA
+Efficient Language-Independent Synchronization of Yielding Agents
+→ координация / сознание / синхронизация, нервная система
+
+### 🫧 ELISION
+Efficient Language-Independent Symbolic Inversion of Names
+→ сжатие / забывание / абстракция, память / гиппокамп / компрессор опыта
+
 ## Quick Start
 
 ```bash
