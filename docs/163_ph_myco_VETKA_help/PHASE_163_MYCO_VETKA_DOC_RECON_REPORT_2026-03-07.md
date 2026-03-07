@@ -69,10 +69,13 @@ VETKA already has strong core architecture and reusable helper backend. MCC prov
 `client/src/App.tsx:619`, `client/src/App.tsx:630`, `src/api/routes/watcher_routes.py:95`.
 
 ### Strict critic re-check (2026-03-07, second pass)
-- Long-tail coverage gap detected: 21 UI sub-surfaces were not contract-documented in phase-163 narrative docs.
-- Formalized in strict audit doc:
-`docs/163_ph_myco_VETKA_help/MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1.md`.
-- Conclusion: core onboarding and control questions are covered; full long-tail UI coverage remains PARTIAL.
+- 21 long-tail UI sub-surfaces documented with contract scenarios:
+`docs/163_ph_myco_VETKA_help/MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md`.
+- Full `<button>` hint layer generated (336 controls):
+`docs/163_ph_myco_VETKA_help/MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md`.
+- Cloud/social fallback contract added:
+`docs/163_ph_myco_VETKA_help/MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1.md`.
+- Remaining partial areas: non-button interactive controls and main VETKA MYCO runtime widget bind.
 
 ### Deliverables produced
 - `MYCO_VETKA_MASTER_INDEX_V1.md`
@@ -85,7 +88,10 @@ VETKA already has strong core architecture and reusable helper backend. MCC prov
 - `MYCO_VETKA_GAP_AND_REMINDERS_V1.md`
 - `MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1.md`
 - `MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1.md`
+- `MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md`
+- `MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md`
 - `MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1.md`
+- `MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1.md`
 - `MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1.md`
 - this final report
 - raw inventories:
@@ -105,14 +111,17 @@ See also:
 - [Gap Registry](./MYCO_VETKA_GAP_AND_REMINDERS_V1.md)
 - [Windows and Surfaces Atlas](./MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1.md)
 - [Controls and Buttons Atlas](./MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1.md)
+- [Button Hint Catalog](./MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md)
+- [Long-tail Surfaces Scenarios](./MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md)
 - [Search Phonebook Keys Guide](./MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1.md)
+- [Cloud Social Search Contract](./MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1.md)
 - [Strict Coverage Audit](./MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1.md)
 
 ## Status matrix
 | Workstream | Status |
 |---|---|
 | Fact recon by required sources | Implemented |
-| Doc corpus creation (12 files + 3 raw indices) | Implemented |
+| Doc corpus creation (15 files + 3 raw indices) | Implemented |
 | VETKA MYCO UI adaptation in code | Planned/Not Implemented |
 
 DAG poetry in word, TREE mind in the WORLD
@@ -128,6 +137,9 @@ DAG poetry in word, TREE mind in the WORLD
 - [MYCO_VETKA_GAP_AND_REMINDERS_V1](./MYCO_VETKA_GAP_AND_REMINDERS_V1.md)
 - [MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1](./MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1.md)
 - [MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1](./MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1.md)
+- [MYCO_VETKA_BUTTON_HINT_CATALOG_V1](./MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md)
+- [MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1](./MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md)
 - [MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1](./MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1.md)
+- [MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1](./MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1.md)
 - [MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1](./MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1.md)
 - [PHASE_163_MYCO_VETKA_DOC_RECON_REPORT_2026-03-07](./PHASE_163_MYCO_VETKA_DOC_RECON_REPORT_2026-03-07.md)

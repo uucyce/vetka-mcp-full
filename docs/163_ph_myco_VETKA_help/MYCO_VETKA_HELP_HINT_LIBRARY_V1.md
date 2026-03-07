@@ -93,6 +93,24 @@ MYCO does not wait for confusion. It describes current scene, available actions,
   - RU: "Хочешь включить этот путь в VETKA? Запущу add/index и переключу на scanner."
   - EN: "Want this path inside VETKA? I can run add/index and switch to scanner."
 
+### Long-tail surface hint pack (`TAG:MYCO.HELP.LONG_TAIL_SURFACE`)
+- Trigger: user opens mention popup.
+  - RU: "Выбери @mention адресно — это самый быстрый способ точного routing."
+  - EN: "Pick @mention precisely — this is the fastest path to targeted routing."
+- Trigger: user opens group creator panel.
+  - RU: "Проверь роли и модели группы до запуска, чтобы избежать хаотичного диалога."
+  - EN: "Verify group roles and models before run to avoid chaotic dialogue."
+- Trigger: user opens onboarding modal/overlay.
+  - RU: "Пройди шаги последовательно: source -> sandbox -> старт проекта."
+  - EN: "Follow steps in order: source -> sandbox -> project start."
+- Trigger: user opens media player/viewer toolbar.
+  - RU: "Сначала playback/fullscreen, затем действия над артефактом."
+  - EN: "Handle playback/fullscreen first, then artifact actions."
+
+### Button catalog integration
+- Full generated catalog: `docs/163_ph_myco_VETKA_help/MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md`.
+- Catalog scope: all `<button>` tags in `client/src` (336 items snapshot).
+
 ### Contract-backed anchors
 - MCC state-matrix hints source: `client/src/components/mcc/MiniChat.tsx:74`.
 - Top hint role/workflow matrix source: `client/src/components/mcc/MyceliumCommandCenter.tsx:2404`.
@@ -109,6 +127,9 @@ See also:
 - [Recon Report](./PHASE_163_MYCO_VETKA_DOC_RECON_REPORT_2026-03-07.md)
 - [Search Phonebook Keys Guide](./MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1.md)
 - [Controls and Buttons Atlas](./MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1.md)
+- [Long-tail Surfaces Scenarios](./MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md)
+- [Cloud Social Search Contract](./MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1.md)
+- [Button Hint Catalog](./MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md)
 
 ## Status matrix
 | Hint pack | Status | Evidence |
@@ -128,6 +149,9 @@ See also:
 - [MYCO_VETKA_GAP_AND_REMINDERS_V1](./MYCO_VETKA_GAP_AND_REMINDERS_V1.md)
 - [MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1](./MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1.md)
 - [MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1](./MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1.md)
+- [MYCO_VETKA_BUTTON_HINT_CATALOG_V1](./MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md)
+- [MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1](./MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md)
+- [MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1](./MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1.md)
 - [MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1](./MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1.md)
 - [MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1](./MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1.md)
 - [PHASE_163_MYCO_VETKA_DOC_RECON_REPORT_2026-03-07](./PHASE_163_MYCO_VETKA_DOC_RECON_REPORT_2026-03-07.md)

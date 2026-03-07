@@ -22,7 +22,7 @@ LAST_VERIFIED: 2026-03-07
 Критерий жесткий: если UI surface найден в коде, но не упомянут в phase-163 docs как contract/scenario/gap, считаем это недопокрытием.
 
 ## Short Narrative
-Базовая архитектура и ключевые пользовательские сценарии уже покрыты, но long-tail поверхностей (особенно MCC внутренних панелей, mention popup, viewer/toolbars) пока не имеют полного contract-описания для MYCO подсказок.
+Core path покрыт. Second-pass закрыл long-tail surfaces и button catalog. Остаются runtime gap-ы: main VETKA MYCO widget, cloud/social execution, non-button интерактивы.
 
 ## Full Spec
 ### Audit method
@@ -30,8 +30,8 @@ LAST_VERIFIED: 2026-03-07
 - Source B: phase-163 docs corpus mention scan.
 - Source C: status consistency checks (counts, cross-links, markers).
 
-### Findings: Uncovered UI modules (explicit list)
-Ниже поверхности, которые есть в `client/src`, но не имели явного contract-level описания в phase-163 narrative layers (до этого strict pass):
+### Findings: Previously uncovered UI modules (closed in this pass)
+Ниже поверхности были непокрыты и закрыты этим pass через long-tail scenario contracts:
 
 - `client/src/components/artifact/viewers/VideoArtifactPlayer.tsx`
 - `client/src/components/artifact/viewers/ArtifactViewer.tsx`
@@ -55,10 +55,16 @@ LAST_VERIFIED: 2026-03-07
 - `client/src/components/chat/MentionPopup.tsx`
 - `client/src/components/chat/GroupCreatorPanel.tsx`
 
-### Findings: Uncovered/partial modes
+Closure evidence:
+- `docs/163_ph_myco_VETKA_help/MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md`
+
+### Findings: Remaining uncovered/partial modes
 - Search contexts `cloud/` and `social/` are visible but unavailable (`client/src/components/search/UnifiedSearchBar.tsx:254`, `client/src/components/search/UnifiedSearchBar.tsx:255`).
 - Main VETKA MYCO proactive widget contract still absent (`client/src/App.tsx:246`).
-- Full per-control MYCO hint mapping for all 300+ button controls not generated from raw index.
+- Non-button clickable interactions still lack dedicated hint catalog (button catalog is now covered).
+
+Closure evidence for button layer:
+- `docs/163_ph_myco_VETKA_help/MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md` (336 rows).
 
 ### Logic consistency checks
 - Mandatory marker/date header block: present in all deliverable docs.
@@ -67,17 +73,18 @@ LAST_VERIFIED: 2026-03-07
 - UI matrix counts are internally consistent with row statuses (Implemented: 20, Planned: 2, Partial: 0).
 
 ### Required closure actions
-- P0: Add contract-level docs for uncovered interaction-critical surfaces:
-  - `MentionPopup`, `GroupCreatorPanel`, `ChatSidebar`, `WorkflowToolbar`, `MiniWindow`, `VideoArtifactPlayer`, `Artifact Toolbar`.
-- P1: Add `TAG` taxonomy expansion for viewer/toolbars/onboarding sub-surfaces.
-- P1: Build MYCO hint templates for long-tail controls (at least top-50 by usage).
-- P2: Auto-generate doc snippets from `UI_CONTROL_INDEX_RAW_2026-03-07.txt` to avoid manual drift.
+- P0: Bind main VETKA surface to MYCO quick payload/widget contract.
+- P1: Implement cloud/social execution branches or hide unavailable contexts.
+- P1: Add non-button interactive hint catalog (`onClick` div/span/custom controls).
+- P2: Auto-sync catalog generation in CI to prevent drift.
 
 ## Cross-links
 See also:
 - [Master Index](./MYCO_VETKA_MASTER_INDEX_V1.md)
 - [Windows and Surfaces Atlas](./MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1.md)
 - [Controls and Buttons Atlas](./MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1.md)
+- [Button Hint Catalog](./MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md)
+- [Long-tail Surfaces Scenarios](./MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md)
 - [UI Capability Matrix](./MYCO_VETKA_UI_CAPABILITY_IMPLEMENTATION_MATRIX_V1.md)
 - [Gap Registry](./MYCO_VETKA_GAP_AND_REMINDERS_V1.md)
 - [Recon Report](./PHASE_163_MYCO_VETKA_DOC_RECON_REPORT_2026-03-07.md)
@@ -87,8 +94,9 @@ See also:
 |---|---|---|
 | Core windows/routes | Implemented | `MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1.md` |
 | Core user journeys | Implemented | `MYCO_VETKA_USER_SCENARIOS_ROOT_V1.md` |
-| Long-tail sub-surfaces | Partially Implemented | uncovered list above |
-| Strict full-surface closure | Planned/Not Implemented | requires additional doc phase |
+| Long-tail sub-surfaces | Implemented | `MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md` |
+| Button-level hint layer | Implemented | `MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md` |
+| Strict full-surface closure | Partially Implemented | non-button + runtime gaps remain |
 
 ## Global cross-links
 - [MYCO_VETKA_MASTER_INDEX_V1](./MYCO_VETKA_MASTER_INDEX_V1.md)
@@ -101,6 +109,9 @@ See also:
 - [MYCO_VETKA_GAP_AND_REMINDERS_V1](./MYCO_VETKA_GAP_AND_REMINDERS_V1.md)
 - [MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1](./MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1.md)
 - [MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1](./MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1.md)
+- [MYCO_VETKA_BUTTON_HINT_CATALOG_V1](./MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md)
+- [MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1](./MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md)
 - [MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1](./MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1.md)
 - [MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1](./MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1.md)
+- [MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1](./MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1.md)
 - [PHASE_163_MYCO_VETKA_DOC_RECON_REPORT_2026-03-07](./PHASE_163_MYCO_VETKA_DOC_RECON_REPORT_2026-03-07.md)

@@ -32,8 +32,8 @@ The system core is ready, but user-facing adaptation in VETKA main workspace is 
 | GAP-163-004 | Unified hint channel (topbar/bubble) missing in VETKA main | Planned/Not Implemented | No persistent proactive visibility | `client/src/components/mcc/MyceliumCommandCenter.tsx:3667`; no analog in `client/src/App.tsx` | "Нужен постоянный канал подсказок в VETKA (top hint/badge)." | "A persistent hint channel is needed in VETKA (top hint/badge)." | P1 |
 | GAP-163-005 | Tests validate MCC contracts, not VETKA adaptation contracts | Planned/Not Implemented | Regressions likely during integration | `tests/test_phase162_p1_myco_helper_contract.py:14`; `tests/test_phase162_p4_p1_myco_proactive_chat_contract.py:13` | "Добавьте phase163-тесты для VETKA surface contracts до релиза адаптации." | "Add phase163 tests for VETKA surface contracts before adaptation release." | P0 |
 | GAP-163-006 | Unified search shows `cloud/` and `social/` contexts but they are disabled | Planned/Not Implemented | Users see future contexts without runnable backend in this surface | `client/src/components/search/UnifiedSearchBar.tsx:254`; `client/src/components/search/UnifiedSearchBar.tsx:255` | "Cloud/Social уже видны в едином поиске, но пока недоступны — выбирай vetka/web/file." | "Cloud/Social are visible in unified search but not active yet — use vetka/web/file." | P1 |
-| GAP-163-007 | No per-control MYCO hint coverage for all 300+ buttons | Planned/Not Implemented | Proactive guidance may miss long-tail actions | `docs/163_ph_myco_VETKA_help/UI_CONTROL_INDEX_RAW_2026-03-07.txt` | "Базовые подсказки есть, но полный слой по всем контролам еще не сгенерирован." | "Core hints exist, but full coverage for all controls is not generated yet." | P2 |
-| GAP-163-008 | 21 long-tail UI sub-surfaces are not yet contract-documented in phase-163 corpus | Partially Implemented | MYCO may miss precise hints in secondary windows/half-windows | `docs/163_ph_myco_VETKA_help/MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1.md:35` | "Часть вторичных панелей еще не описана контрактно; подсказки для них будут неполными." | "Some secondary panels are not contract-documented yet; hints there may stay incomplete." | P1 |
+| GAP-163-007 | Non-button clickable controls are not fully mapped to hint contracts | Partially Implemented | MYCO may miss hints on div/span/custom-click controls | `docs/163_ph_myco_VETKA_help/MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md:380`; `docs/163_ph_myco_VETKA_help/UI_CONTROL_INDEX_RAW_2026-03-07.txt` | "Кнопки покрыты, но часть некнопочных кликов еще без отдельного hint-контракта." | "Buttons are covered, but some non-button clicks still lack dedicated hint contracts." | P2 |
+| GAP-163-008 | Long-tail surfaces were previously uncovered and are now documented; runtime bind still pending | Partially Implemented | Contracts exist, but main VETKA runtime bind still limits proactive use | `docs/163_ph_myco_VETKA_help/MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md:1`; `client/src/App.tsx:246` | "Подсценарии уже описаны, следующий шаг — runtime интеграция MYCO в main VETKA." | "Sub-scenarios are documented; next step is runtime MYCO integration in main VETKA." | P1 |
 
 ### Reminder strategy
 - Productive tone: factual, short, non-blocking.
@@ -51,6 +51,8 @@ See also:
 - [Controls and Buttons Atlas](./MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1.md)
 - [Search Phonebook Keys Guide](./MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1.md)
 - [Strict Coverage Audit](./MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1.md)
+- [Long-tail Surfaces Scenarios](./MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md)
+- [Button Hint Catalog](./MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md)
 
 ## Status matrix
 | Priority bucket | Count |
@@ -70,6 +72,9 @@ See also:
 - [MYCO_VETKA_GAP_AND_REMINDERS_V1](./MYCO_VETKA_GAP_AND_REMINDERS_V1.md)
 - [MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1](./MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1.md)
 - [MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1](./MYCO_VETKA_CONTROLS_AND_BUTTONS_ATLAS_V1.md)
+- [MYCO_VETKA_BUTTON_HINT_CATALOG_V1](./MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md)
+- [MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1](./MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md)
 - [MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1](./MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1.md)
 - [MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1](./MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1.md)
+- [MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1](./MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1.md)
 - [PHASE_163_MYCO_VETKA_DOC_RECON_REPORT_2026-03-07](./PHASE_163_MYCO_VETKA_DOC_RECON_REPORT_2026-03-07.md)

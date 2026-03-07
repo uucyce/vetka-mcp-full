@@ -60,19 +60,24 @@ MYCO должен реагировать не на “экран вообще”
 - All controls index: `docs/163_ph_myco_VETKA_help/UI_CONTROL_INDEX_RAW_2026-03-07.txt`.
 - All surface index: `docs/163_ph_myco_VETKA_help/UI_SURFACE_INDEX_RAW_2026-03-07.txt`.
 - All API route index: `docs/163_ph_myco_VETKA_help/API_ROUTE_INDEX_RAW_2026-03-07.txt`.
+- Full button catalog: `docs/163_ph_myco_VETKA_help/MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md`.
 
 ## Cross-links
 See also:
 - [Master Index](./MYCO_VETKA_MASTER_INDEX_V1.md)
 - [Windows/Surfaces Atlas](./MYCO_VETKA_WINDOWS_AND_SURFACES_ATLAS_V1.md)
+- [Long-tail Surfaces Scenarios](./MYCO_VETKA_LONG_TAIL_SURFACES_SCENARIOS_V1.md)
 - [UI Capability Matrix](./MYCO_VETKA_UI_CAPABILITY_IMPLEMENTATION_MATRIX_V1.md)
 - [Search/Phonebook Guide](./MYCO_VETKA_SEARCH_PHONEBOOK_KEYS_OPERATING_GUIDE_V1.md)
+- [Cloud Social Search Contract](./MYCO_VETKA_CLOUD_SOCIAL_SEARCH_CONTRACT_V1.md)
 - [Hint Library](./MYCO_VETKA_HELP_HINT_LIBRARY_V1.md)
 - [Strict Coverage Audit](./MYCO_VETKA_STRICT_COVERAGE_AUDIT_V1.md)
+- [Button Hint Catalog](./MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md)
 
 ## Status matrix
 | Scope | Status | Evidence |
 |---|---|---|
 | High-impact control clusters | Implemented | this file |
 | Exhaustive raw control dump | Implemented | `UI_CONTROL_INDEX_RAW_2026-03-07.txt` |
-| Per-control bespoke MYCO hint text (all 300+) | Planned/Not Implemented | requires generation + UX placement |
+| Per-button MYCO hint catalog (300+) | Implemented | `MYCO_VETKA_BUTTON_HINT_CATALOG_V1.md` |
+| Non-button interactive hint catalog | Partially Implemented | `UI_CONTROL_INDEX_RAW_2026-03-07.txt` |
