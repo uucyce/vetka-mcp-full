@@ -24,6 +24,10 @@ def test_phase159_media_window_one_shot_size_contract():
 
     assert "MARKER_159.R9.ONE_SHOT_MEDIA_INITIAL_SIZE" in commands_rs
     assert "MARKER_159.R10.ONE_SHOT_REUSE_PIXEL_SIZE" in commands_rs
+    assert "MARKER_159.R12.MONITOR_LOGICAL_SIZE" in commands_rs
+    assert "monitor.scale_factor()" in commands_rs
+    assert "const TOOLBAR_H: f64 = 49.0;" in commands_rs
+    assert "MARKER_159.R12.DETACHED_MEDIA_SIZE_TRACE" in commands_rs
     assert "fetch_media_window_metadata(clean_path).await" in commands_rs
     assert "compute_detached_media_initial_inner_size(" in commands_rs
     assert ".inner_size(initial_width, initial_height)" in commands_rs

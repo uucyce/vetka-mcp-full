@@ -13,7 +13,7 @@
 import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getViewerType } from './utils/fileTypes';
 import { MarkdownViewer } from './viewers/MarkdownViewer';
-import { Toolbar } from './Toolbar';
+import { DETACHED_MEDIA_TOOLBAR_OUTER_PX, Toolbar } from './Toolbar';
 import { Loader2 } from 'lucide-react';
 import { closeArtifactMediaWindow, isTauri, openArtifactMediaWindow, openLiveWebWindow, saveTextFileNative } from '../../config/tauri';
 import { useStore } from '../../store/useStore';
@@ -1497,6 +1497,9 @@ export function ArtifactPanel({
     if (Number.isFinite(el.currentTime)) setActiveSeekSec(el.currentTime);
   }, []);
 
+  const detachedMediaToolbarVisible =
+    windowMode === 'detached' && isMediaArtifact && !isMediaFullscreen;
+
   return (
     <div style={{
       height: '100%',
@@ -1819,40 +1822,54 @@ export function ArtifactPanel({
 
       {/* File mode - Toolbar */}
       {!isRawContentMode && fileData && !(isMediaArtifact && windowMode === 'detached' && isMediaFullscreen) && (
-        <Toolbar
-          filename={file?.name || ''}
-          filePath={fileData.path}
-          fileSize={fileData.fileSize}
-          createdAt={fileData.createdAt}
-          modifiedAt={fileData.modifiedAt}
-          isEditing={isEditing}
-          hasChanges={fileData.hasChanges}
-          isSaving={isSaving}
-          onEdit={isMediaArtifact ? undefined : () => setIsEditing(!isEditing)}
-          onSave={isMediaArtifact ? undefined : saveFile}
-          onSaveAs={isMediaArtifact ? undefined : () => { void handleSaveAs(); }}
-          onCopy={isMediaArtifact ? undefined : handleCopy}
-          onInfo={isMediaArtifact ? () => setMediaInfoOpen((v) => !v) : undefined}
-          infoActive={isMediaArtifact ? mediaInfoOpen : undefined}
-          onDownload={() => { void handleDownload(); }}
-          onOpenInFinder={handleOpenInFinder}
-          onRefresh={() => file && loadFile(file.path)}
-          onDetach={isMediaArtifact && windowMode !== 'detached' ? () => { void handleOpenDetachedMediaWindow(); } : undefined}
-          onPin={handlePinToChat}
-          isPinned={effectiveIsPinnedInChat}
-          pinVisible={effectivePinVisible}
-          pinDisabled={effectivePinDisabled}
-          pinTitle={effectivePinTitle}
-          detachedShowFavorite={windowMode === 'detached' && (isInVetka || !isFileMode)}
-          detachedFavoriteActive={isFavorite}
-          detachedFavoriteBusy={false}
-          onDetachedFavoriteToggle={() => { void handleToggleFavoriteDetached(); }}
-          detachedShowVetka={windowMode === 'detached' && isFileMode && !isInVetka}
-          detachedVetkaBusy={isIndexingToVetka}
-          onDetachedVetkaAdd={() => { void handleAddToVetkaDetached(); }}
-          onClose={windowMode === 'detached' ? () => { void handleCloseDetachedWindow(); } : onClose}
-          compact={windowMode === 'detached' && isMediaArtifact}
-        />
+        <div
+          style={detachedMediaToolbarVisible
+            ? {
+                // MARKER_159.R12.DETACHED_MEDIA_FIXED_FOOTER:
+                // Reserve the exact detached compact toolbar outer height so the
+                // viewer flex remainder matches the Rust one-shot sizing contract.
+                height: DETACHED_MEDIA_TOOLBAR_OUTER_PX,
+                minHeight: DETACHED_MEDIA_TOOLBAR_OUTER_PX,
+                flexShrink: 0,
+                overflow: 'hidden',
+              }
+            : undefined}
+        >
+          <Toolbar
+            filename={file?.name || ''}
+            filePath={fileData.path}
+            fileSize={fileData.fileSize}
+            createdAt={fileData.createdAt}
+            modifiedAt={fileData.modifiedAt}
+            isEditing={isEditing}
+            hasChanges={fileData.hasChanges}
+            isSaving={isSaving}
+            onEdit={isMediaArtifact ? undefined : () => setIsEditing(!isEditing)}
+            onSave={isMediaArtifact ? undefined : saveFile}
+            onSaveAs={isMediaArtifact ? undefined : () => { void handleSaveAs(); }}
+            onCopy={isMediaArtifact ? undefined : handleCopy}
+            onInfo={isMediaArtifact ? () => setMediaInfoOpen((v) => !v) : undefined}
+            infoActive={isMediaArtifact ? mediaInfoOpen : undefined}
+            onDownload={() => { void handleDownload(); }}
+            onOpenInFinder={handleOpenInFinder}
+            onRefresh={() => file && loadFile(file.path)}
+            onDetach={isMediaArtifact && windowMode !== 'detached' ? () => { void handleOpenDetachedMediaWindow(); } : undefined}
+            onPin={handlePinToChat}
+            isPinned={effectiveIsPinnedInChat}
+            pinVisible={effectivePinVisible}
+            pinDisabled={effectivePinDisabled}
+            pinTitle={effectivePinTitle}
+            detachedShowFavorite={windowMode === 'detached' && (isInVetka || !isFileMode)}
+            detachedFavoriteActive={isFavorite}
+            detachedFavoriteBusy={false}
+            onDetachedFavoriteToggle={() => { void handleToggleFavoriteDetached(); }}
+            detachedShowVetka={windowMode === 'detached' && isFileMode && !isInVetka}
+            detachedVetkaBusy={isIndexingToVetka}
+            onDetachedVetkaAdd={() => { void handleAddToVetkaDetached(); }}
+            onClose={windowMode === 'detached' ? () => { void handleCloseDetachedWindow(); } : onClose}
+            compact={windowMode === 'detached' && isMediaArtifact}
+          />
+        </div>
       )}
     </div>
   );

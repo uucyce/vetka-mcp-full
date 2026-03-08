@@ -11,6 +11,10 @@
 import { Edit3, Save, Copy, Download, RefreshCw, X, Loader2, FolderOpen, Undo2, FilePlus2, Pin, Check, Info, ExternalLink } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+// MARKER_159.R12.DETACHED_MEDIA_TOOLBAR_OUTER:
+// compact detached media toolbar uses content 36px + vertical padding 12px + border 1px.
+export const DETACHED_MEDIA_TOOLBAR_OUTER_PX = 49;
+
 interface Props {
   filename: string;
   filePath?: string;  // Phase 60.4: For "Open in Finder"
@@ -154,14 +158,23 @@ export function Toolbar({
   );
 
   return (
-    <div style={{
+    <div
+      data-artifact-toolbar="1"
+      style={{
       display: 'flex',
       alignItems: 'center',
       gap: 4,
       padding: compact ? 6 : 8,
+      height: compact ? DETACHED_MEDIA_TOOLBAR_OUTER_PX : undefined,
+      minHeight: compact ? DETACHED_MEDIA_TOOLBAR_OUTER_PX : 44,
+      flexShrink: 0,
       background: 'rgba(15, 15, 15, 0.95)',
       borderTop: '1px solid #222',
-    }}>
+      position: 'relative',
+      zIndex: 5,
+      boxSizing: compact ? 'border-box' : undefined,
+      }}
+    >
       {onEdit && (
         <Btn onClick={onEdit} active={isEditing} title={isEditing ? 'Editing' : 'Edit'} actionKey="edit">
           <Edit3 size={16} />
@@ -241,7 +254,7 @@ export function Toolbar({
           {fileSize !== undefined && (
             <span style={{ fontSize: 11, color: '#444', marginLeft: 8 }}>({formatSize(fileSize)})</span>
           )}
-          {(createdAt || modifiedAt) && (
+          {!compact && (createdAt || modifiedAt) && (
             <div style={{ fontSize: 10, color: '#4f4f4f', marginTop: 2 }}>
               <span>Created: {formatDate(createdAt)}</span>
               <span style={{ marginLeft: 8 }}>Modified: {formatDate(modifiedAt)}</span>

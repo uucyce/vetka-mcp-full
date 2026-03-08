@@ -71,15 +71,26 @@ async fn fetch_media_window_metadata(path: &str) -> Option<MediaWindowMetadataRe
 }
 
 fn preferred_monitor_size(app: &AppHandle) -> (f64, f64) {
+    // MARKER_159.R12.MONITOR_LOGICAL_SIZE:
+    // Tauri window inner/set_size APIs use logical units. Convert monitor physical pixels
+    // to logical pixels via scale_factor before computing window bounds on Retina macOS.
+    let to_logical = |size: tauri::PhysicalSize<u32>, scale: f64| -> (f64, f64) {
+        let factor = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+        (
+            (size.width as f64 / factor).floor(),
+            (size.height as f64 / factor).floor(),
+        )
+    };
+
     if let Some(main) = app.get_webview_window("main") {
         if let Ok(Some(monitor)) = main.current_monitor() {
             let size = monitor.size();
-            return (size.width as f64, size.height as f64);
+            return to_logical(*size, monitor.scale_factor());
         }
     }
     if let Ok(Some(monitor)) = app.primary_monitor() {
         let size = monitor.size();
-        return (size.width as f64, size.height as f64);
+        return to_logical(*size, monitor.scale_factor());
     }
     (1440.0, 900.0)
 }
@@ -96,7 +107,9 @@ fn compute_detached_media_initial_inner_size(
     const DEFAULT_WINDOW_H: f64 = 540.0;
     const MIN_WINDOW_W: f64 = 360.0;
     const MIN_WINDOW_H: f64 = 240.0;
-    const TOOLBAR_H: f64 = 44.0;
+    // MARKER_159.R12.DETACHED_MEDIA_TOOLBAR_OUTER:
+    // compact detached media toolbar uses 36 content px + 12 vertical padding + 1 border.
+    const TOOLBAR_H: f64 = 49.0;
 
     if video_width == 0 || video_height == 0 {
         return (DEFAULT_WINDOW_W, DEFAULT_WINDOW_H);
@@ -364,11 +377,29 @@ pub async fn open_artifact_media_window(
         (960.0, 540.0)
     };
 
+    log::info!(
+        "MARKER_159.R12.DETACHED_MEDIA_SIZE_TRACE path={} screen_logical={}x{} metadata={}x{} requested_inner={}x{}",
+        clean_path,
+        screen_width,
+        screen_height,
+        metadata.as_ref().and_then(|m| m.width_px).unwrap_or(0),
+        metadata.as_ref().and_then(|m| m.height_px).unwrap_or(0),
+        initial_width,
+        initial_height,
+    );
+
     if let Some(existing) = app.get_webview_window(&label) {
         // MARKER_159.R7.UNIFIED_WINDOW_NAV_REUSE:
         // reuse the same detached artifact window label and navigate in-place to avoid
         // close/recreate races on repeated media opens while preserving a single authority window.
         let _ = apply_detached_media_inner_size(&existing, initial_width, initial_height);
+        if let Ok(inner) = existing.inner_size() {
+            log::info!(
+                "MARKER_159.R12.DETACHED_MEDIA_REUSE_INNER observed_inner_physical={}x{}",
+                inner.width,
+                inner.height,
+            );
+        }
         let route_json = serde_json::to_string(&route).map_err(|e| e.to_string())?;
         let nav_js = format!("window.location.replace({route_json});");
         existing.eval(&nav_js).map_err(|e| e.to_string())?;
@@ -388,6 +419,14 @@ pub async fn open_artifact_media_window(
         .focused(true)
         .build()
         .map_err(|e| e.to_string())?;
+
+    if let Ok(inner) = window.inner_size() {
+        log::info!(
+            "MARKER_159.R12.DETACHED_MEDIA_CREATE_INNER observed_inner_physical={}x{}",
+            inner.width,
+            inner.height,
+        );
+    }
 
     window.set_always_on_top(true).map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())?;

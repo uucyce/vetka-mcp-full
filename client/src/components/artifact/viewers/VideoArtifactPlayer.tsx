@@ -362,7 +362,6 @@ export function VideoArtifactPlayer({
     setShowSettings(false);
     setPlaybackFailed(false);
     setNaturalVideoSize(null);
-    detachedAutoSizedForSrcRef.current = "";
   }, [effectiveSrc]);
 
   // MARKER_159.R8.AUTO_FIT_DISABLED:
@@ -570,6 +569,39 @@ export function VideoArtifactPlayer({
 
     if (Number.isFinite(videoWidth) && Number.isFinite(videoHeight) && videoWidth > 0 && videoHeight > 0) {
       setNaturalVideoSize({ width: videoWidth, height: videoHeight });
+    }
+
+    if (currentWindowMode === "detached") {
+      window.setTimeout(() => {
+        const wrapperRect = wrapperRef.current?.getBoundingClientRect();
+        const toolbarRect = document
+          .querySelector('[data-artifact-toolbar="1"]')
+          ?.getBoundingClientRect();
+        console.info("MARKER_159.R12.DETACHED_MEDIA_DOM_GEOMETRY", {
+          src: mediaIdentity,
+          dpr: window.devicePixelRatio || 1,
+          windowInner: {
+            width: window.innerWidth,
+            height: window.innerHeight,
+          },
+          videoIntrinsic: {
+            width: videoWidth,
+            height: videoHeight,
+          },
+          wrapperRect: wrapperRect
+            ? {
+                width: Math.round(wrapperRect.width),
+                height: Math.round(wrapperRect.height),
+              }
+            : null,
+          toolbarRect: toolbarRect
+            ? {
+                width: Math.round(toolbarRect.width),
+                height: Math.round(toolbarRect.height),
+              }
+            : null,
+        });
+      }, 0);
     }
   }, []);
 
