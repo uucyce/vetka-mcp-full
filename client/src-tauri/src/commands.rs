@@ -2,7 +2,7 @@
 // Phase 100.1: Basic commands
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 use url::Url;
 use std::sync::{Mutex, OnceLock};
@@ -125,6 +125,19 @@ fn compute_detached_media_initial_inner_size(
     window_w = window_w.clamp(MIN_WINDOW_W, max_window_w);
     window_h = window_h.clamp(MIN_WINDOW_H, max_window_h);
     (window_w, window_h)
+}
+
+fn apply_detached_media_inner_size(
+    window: &WebviewWindow,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    // MARKER_159.R10.ONE_SHOT_REUSE_PIXEL_SIZE:
+    // apply the precomputed pixel size both on first create and when reusing
+    // the singleton detached media window so stale wide bounds do not survive.
+    window
+        .set_size(Size::Logical(LogicalSize::new(width, height)))
+        .map_err(|e| format!("set_size failed: {e}"))
 }
 
 /// Get backend URL configuration
@@ -334,20 +347,6 @@ pub async fn open_artifact_media_window(
         route.push_str(&format!("{seek:.3}"));
     }
 
-    if let Some(existing) = app.get_webview_window(&label) {
-        // MARKER_159.R7.UNIFIED_WINDOW_NAV_REUSE:
-        // reuse the same detached artifact window label and navigate in-place to avoid
-        // close/recreate races on repeated media opens while preserving a single authority window.
-        let route_json = serde_json::to_string(&route).map_err(|e| e.to_string())?;
-        let nav_js = format!("window.location.replace({route_json});");
-        existing.eval(&nav_js).map_err(|e| e.to_string())?;
-        let _ = existing.set_title(&window_title);
-        existing.show().map_err(|e| e.to_string())?;
-        existing.set_always_on_top(true).map_err(|e| e.to_string())?;
-        existing.set_focus().map_err(|e| e.to_string())?;
-        return Ok(true);
-    }
-
     let metadata = fetch_media_window_metadata(clean_path).await;
     let (screen_width, screen_height) = preferred_monitor_size(&app);
     let (initial_width, initial_height) = if let Some(meta) = metadata.as_ref() {
@@ -364,6 +363,21 @@ pub async fn open_artifact_media_window(
     } else {
         (960.0, 540.0)
     };
+
+    if let Some(existing) = app.get_webview_window(&label) {
+        // MARKER_159.R7.UNIFIED_WINDOW_NAV_REUSE:
+        // reuse the same detached artifact window label and navigate in-place to avoid
+        // close/recreate races on repeated media opens while preserving a single authority window.
+        let _ = apply_detached_media_inner_size(&existing, initial_width, initial_height);
+        let route_json = serde_json::to_string(&route).map_err(|e| e.to_string())?;
+        let nav_js = format!("window.location.replace({route_json});");
+        existing.eval(&nav_js).map_err(|e| e.to_string())?;
+        let _ = existing.set_title(&window_title);
+        existing.show().map_err(|e| e.to_string())?;
+        existing.set_always_on_top(true).map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Ok(true);
+    }
 
     let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::App(route.into()))
         .title(window_title)

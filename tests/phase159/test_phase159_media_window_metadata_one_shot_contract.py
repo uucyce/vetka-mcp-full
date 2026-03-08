@@ -23,6 +23,9 @@ def test_phase159_media_window_one_shot_size_contract():
     commands_rs = _read("client/src-tauri/src/commands.rs")
 
     assert "MARKER_159.R9.ONE_SHOT_MEDIA_INITIAL_SIZE" in commands_rs
+    assert "MARKER_159.R10.ONE_SHOT_REUSE_PIXEL_SIZE" in commands_rs
     assert "fetch_media_window_metadata(clean_path).await" in commands_rs
     assert "compute_detached_media_initial_inner_size(" in commands_rs
     assert ".inner_size(initial_width, initial_height)" in commands_rs
+    assert "apply_detached_media_inner_size(&existing, initial_width, initial_height)" in commands_rs
+    assert "set_size(Size::Logical(LogicalSize::new(width, height)))" in commands_rs
