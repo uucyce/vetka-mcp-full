@@ -11,6 +11,5 @@ def _read(path: str) -> str:
 def test_phase159_detached_video_fill_height_contract():
     player = _read("client/src/components/artifact/viewers/VideoArtifactPlayer.tsx")
 
-    assert "MARKER_159.C5.QUICKTIME_FIT_MIN_HEIGHT_RATIO" in player
-    assert "const minWindowW = 240;" in player
-    assert "const minWindowH = 224;" in player
+    assert "MARKER_159.R8.AUTO_FIT_DISABLED" in player
+    assert "overrode user-controlled window sizing" in player

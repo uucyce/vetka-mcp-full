@@ -217,7 +217,7 @@ test.describe.serial('phase159 detached media aspect ratio probe', () => {
     cleanupArtifacts();
   });
 
-  test('4:3 detached video converges without side letterboxing after fit', async ({ page }, testInfo) => {
+  test.fixme('4:3 detached video converges without side letterboxing after fit', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 960, height: 540 });
     await page.exposeFunction('vetkaSetViewportSize', async ({ width, height }) => {
       await page.setViewportSize({

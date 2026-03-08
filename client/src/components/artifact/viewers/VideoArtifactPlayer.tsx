@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getCurrentWindowFullscreen,
   isTauri,
-  setCurrentWindowLogicalSize,
   setCurrentWindowFullscreen,
   setWindowFullscreen,
 } from "../../../config/tauri";
@@ -92,11 +91,6 @@ export function VideoArtifactPlayer({
   const channelRef = useRef<BroadcastChannel | null>(null);
   const applyingRemoteRef = useRef(false);
   const fullscreenToggleLockRef = useRef(false);
-  const detachedAutoSizedForSrcRef = useRef<string>("");
-  const prevAnyFullscreenRef = useRef(false);
-  const exitFullscreenFitTimerRef = useRef<number | null>(null);
-  const detachedFitRetryTimerRef = useRef<number | null>(null);
-  const detachedFitRetryCountRef = useRef(0);
   const lastAppliedRemoteTsRef = useRef(0);
   const mediaIdentity = useMemo(() => String(mediaPath || src || ""), [mediaPath, src]);
   const speedOptions = [0.5, 1, 1.25, 1.5, 2, 4];
@@ -327,19 +321,6 @@ export function VideoArtifactPlayer({
   }, [clearHideTimer]);
 
   useEffect(() => {
-    return () => {
-      if (exitFullscreenFitTimerRef.current) {
-        window.clearTimeout(exitFullscreenFitTimerRef.current);
-        exitFullscreenFitTimerRef.current = null;
-      }
-      if (detachedFitRetryTimerRef.current) {
-        window.clearTimeout(detachedFitRetryTimerRef.current);
-        detachedFitRetryTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  useEffect(() => {
     const node = wrapperRef.current;
     if (!node || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {
@@ -384,167 +365,9 @@ export function VideoArtifactPlayer({
     detachedAutoSizedForSrcRef.current = "";
   }, [effectiveSrc]);
 
-  const applyDetachedWindowFit = useCallback(async () => {
-    if (!isTauri() || currentWindowMode !== "detached" || isAnyFullscreen) return false;
-    const videoWidth = Number(naturalVideoSize?.width || videoRef.current?.videoWidth || 0);
-    const videoHeight = Number(naturalVideoSize?.height || videoRef.current?.videoHeight || 0);
-    if (!Number.isFinite(videoWidth) || !Number.isFinite(videoHeight) || videoWidth <= 0 || videoHeight <= 0) return false;
-
-    // MARKER_159.C5.QUICKTIME_FIT_MIN_HEIGHT_RATIO:
-    // keep detached window height at current/min baseline and solve width by native video ratio.
-
-    const wrapper = wrapperRef.current;
-    const viewerArea = wrapper?.parentElement;
-    const viewerAreaW0 = Math.round(viewerArea?.clientWidth || 0);
-    const viewerAreaH0 = Math.round(viewerArea?.clientHeight || 0);
-    if (!viewerAreaW0 || !viewerAreaH0) return false;
-
-    const screenW = Math.max(1, Number(window.screen?.availWidth || window.innerWidth || 1280));
-    const screenH = Math.max(1, Number(window.screen?.availHeight || window.innerHeight || 800));
-    const maxWindowW = Math.floor(screenW * 0.98);
-    const maxWindowH = Math.floor(screenH * 0.98);
-    const minWindowW = 240;
-    const minWindowH = 224;
-    const ratio = videoWidth / videoHeight;
-    // Keep legacy baseline marker for phase159 contract compatibility.
-    const baseWindowH = Math.max(minWindowH, Math.min(maxWindowH, Math.round(window.innerHeight || minWindowH)));
-    // Legacy formula kept as marker for contract snapshots:
-    // let targetWindowW = Math.max(minWindowW, Math.min(maxWindowW, Math.round((Math.max(120, baseWindowH - measureToolbarHeight())) * ratio)));
-
-    const currentWindowW = Math.max(minWindowW, Math.round(window.innerWidth || minWindowW));
-    const currentWindowH = Math.max(minWindowH, Math.round(window.innerHeight || baseWindowH));
-    const chromeW = Math.max(0, currentWindowW - viewerAreaW0);
-    const chromeH = Math.max(0, currentWindowH - viewerAreaH0);
-    const minViewerW = Math.max(120, minWindowW - chromeW);
-    const minViewerH = Math.max(120, minWindowH - chromeH);
-    const maxViewerW = Math.max(minViewerW, maxWindowW - chromeW);
-    const maxViewerH = Math.max(minViewerH, maxWindowH - chromeH);
-
-    let targetViewerH = Math.max(minViewerH, Math.min(maxViewerH, viewerAreaH0));
-    let targetViewerW = Math.round(targetViewerH * ratio);
-    if (targetViewerW > maxViewerW) {
-      targetViewerW = maxViewerW;
-      targetViewerH = Math.round(targetViewerW / ratio);
-    } else if (targetViewerW < minViewerW) {
-      targetViewerW = minViewerW;
-      targetViewerH = Math.round(targetViewerW / ratio);
-    }
-    targetViewerH = Math.max(minViewerH, Math.min(maxViewerH, targetViewerH));
-
-    let targetWindowW = Math.max(minWindowW, Math.min(maxWindowW, Math.round(targetViewerW + chromeW)));
-    let targetWindowH = Math.max(minWindowH, Math.min(maxWindowH, Math.round(targetViewerH + chromeH)));
-
-    for (let attempt = 0; attempt < 7; attempt += 1) {
-      const ok = await setCurrentWindowLogicalSize(targetWindowW, targetWindowH);
-      await new Promise((resolve) => window.setTimeout(resolve, ok ? 56 : 100));
-      const viewerAreaW = Math.round(viewerArea?.clientWidth || 0);
-      const viewerAreaH = Math.round(viewerArea?.clientHeight || 0);
-      if (!viewerAreaW || !viewerAreaH) continue;
-
-      const idealViewerW = Math.round(viewerAreaH * ratio);
-      const widthDelta = idealViewerW - viewerAreaW;
-      const idealViewerH = Math.round(viewerAreaW / ratio);
-      const heightDelta = idealViewerH - viewerAreaH;
-      if (ok && Math.abs(widthDelta) <= 2 && Math.abs(heightDelta) <= 2) return true;
-      if (!ok) continue;
-
-      if (widthDelta > 2 && targetWindowW >= maxWindowW - 1) {
-        console.warn("[VideoArtifactPlayer] quicktime-fit blocked by max window width cap", {
-          widthDelta,
-          innerWidth: window.innerWidth,
-          maxWindowW,
-          viewerAreaW,
-          viewerAreaH,
-          idealViewerW,
-        });
-        // MARKER_159.C5.QUICKTIME_WIDTH_CAP_HEIGHT_FALLBACK:
-        // If we hit max window width and still see top/bottom bars,
-        // shrink height to keep native aspect ratio instead of giving up.
-        if (Math.abs(heightDelta) <= 2) return true;
-        const nextWindowH = Math.round((window.innerHeight || targetWindowH) + heightDelta);
-        targetWindowH = Math.max(minWindowH, Math.min(maxWindowH, nextWindowH));
-        continue;
-      }
-
-      const nextWindowW = Math.round((window.innerWidth || targetWindowW) + widthDelta);
-      targetWindowW = Math.max(minWindowW, Math.min(maxWindowW, nextWindowW));
-      const nextWindowH = Math.round((window.innerHeight || targetWindowH) + heightDelta);
-      targetWindowH = Math.max(minWindowH, Math.min(maxWindowH, nextWindowH));
-    }
-    return false;
-  }, [currentWindowMode, isAnyFullscreen, naturalVideoSize]);
-
-  useEffect(() => {
-    if (!isTauri() || currentWindowMode !== "detached" || isAnyFullscreen) return;
-    if (!naturalVideoSize || detachedAutoSizedForSrcRef.current === effectiveSrc) return;
-    if (detachedFitRetryTimerRef.current) {
-      window.clearTimeout(detachedFitRetryTimerRef.current);
-      detachedFitRetryTimerRef.current = null;
-    }
-    detachedFitRetryCountRef.current = 0;
-    void (async () => {
-      const ok = await applyDetachedWindowFit();
-      if (ok) {
-        detachedAutoSizedForSrcRef.current = effectiveSrc;
-        return;
-      }
-      // MARKER_159.C6.DETACHED_FIT_RETRY:
-      // WKWebView layout can report zero/unstable dimensions right after metadata;
-      // retry a few times to converge without requiring fullscreen roundtrip.
-      const scheduleRetry = () => {
-        if (detachedFitRetryCountRef.current >= 8) return;
-        detachedFitRetryCountRef.current += 1;
-        detachedFitRetryTimerRef.current = window.setTimeout(() => {
-          void (async () => {
-            const settled = await applyDetachedWindowFit();
-            if (settled) {
-              detachedAutoSizedForSrcRef.current = effectiveSrc;
-              detachedFitRetryCountRef.current = 8;
-            } else {
-              scheduleRetry();
-            }
-          })();
-        }, 120);
-      };
-      scheduleRetry();
-    })();
-  }, [applyDetachedWindowFit, currentWindowMode, effectiveSrc, isAnyFullscreen, naturalVideoSize]);
-
-  useEffect(() => {
-    if (!isTauri() || currentWindowMode !== "detached") return;
-    if (!naturalVideoSize || isAnyFullscreen) return;
-    let timer: number | null = null;
-    const onResize = () => {
-      if (timer) window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        void applyDetachedWindowFit();
-      }, 90);
-    };
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [applyDetachedWindowFit, currentWindowMode, isAnyFullscreen, naturalVideoSize]);
-
-  useEffect(() => {
-    const prev = prevAnyFullscreenRef.current;
-    prevAnyFullscreenRef.current = isAnyFullscreen;
-    if (!(prev && !isAnyFullscreen)) return;
-    if (currentWindowMode !== "detached") return;
-    detachedAutoSizedForSrcRef.current = "";
-    if (exitFullscreenFitTimerRef.current) {
-      window.clearTimeout(exitFullscreenFitTimerRef.current);
-      exitFullscreenFitTimerRef.current = null;
-    }
-    exitFullscreenFitTimerRef.current = window.setTimeout(() => {
-      void (async () => {
-        if (await getCurrentWindowFullscreen()) return;
-        const ok = await applyDetachedWindowFit();
-        if (ok) detachedAutoSizedForSrcRef.current = effectiveSrc;
-      })();
-    }, 260);
-  }, [applyDetachedWindowFit, currentWindowMode, effectiveSrc, isAnyFullscreen]);
+  // MARKER_159.R8.AUTO_FIT_DISABLED:
+  // automatic detached window resize-by-video-aspect was removed because repeated
+  // resize attempts created visible jank and overrode user-controlled window sizing.
 
   useEffect(() => {
     const video = videoRef.current;
