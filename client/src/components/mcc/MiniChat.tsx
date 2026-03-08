@@ -49,15 +49,71 @@ function emitMycoReplyEvent() {
 
 function buildMycoReply(context?: MiniContextPayload): string {
   const level = String(context?.navLevel || 'roadmap');
-  const label = String(context?.label || 'project');
-  const scopeLine = `you are in ${level} view`;
-  // MARKER_162.P4.P4.MYCO.CHAT_REPLY_BACKEND_SINGLE_SOURCE.V1:
-  // Frontend fallback stays generic; state matrix is generated only on backend.
-  // MARKER_162.P4.P2.MYCO.CHAT_REPLY_STATE_MATRIX.V1 (compatibility note):
-  // Phrases retained for contract continuity:
-  // - "workflow is already open for the active task"
-  // - "module unfold is active"
   const kind = String(context?.nodeKind || 'project');
+  const graphKind = String(context?.graphKind || '');
+  const label = String(context?.label || 'project');
+  const role = String(context?.role || '').toLowerCase().trim();
+  const workflowFamily = String(context?.workflowFamily || '').trim();
+  const familyHint =
+    workflowFamily === 'dragons'
+      ? 'Dragons: faster + cheaper'
+      : workflowFamily === 'titans'
+        ? 'Titans: smarter + costlier'
+        : workflowFamily === 'g3'
+          ? 'G3: critic + coder'
+          : workflowFamily === 'ralph_loop'
+            ? 'Ralph loop: single-agent'
+            : workflowFamily
+              ? `${workflowFamily} workflow`
+              : 'BMAD/default workflow';
+  const taskDrillExpanded = context?.taskDrillState === 'expanded' || Boolean(context?.workflowInlineExpanded);
+  const nodeUnfoldExpanded = context?.roadmapNodeDrillState === 'expanded' || Boolean(context?.roadmapNodeInlineExpanded);
+  const inWorkflow = level === 'workflow' || taskDrillExpanded;
+  const scopeLine = `you are in ${level} view`;
+  const windowFocus = String(context?.windowFocus || '').toLowerCase();
+  const windowFocusState = String(context?.windowFocusState || '').toLowerCase();
+  if (windowFocus === 'balance') {
+    return `MYCO\n- ${scopeLine}\n- Balance window ${windowFocusState || 'focused'}\n- next: choose active API key (★) -> verify provider/model -> check cost/in-out before run`;
+  }
+  if (windowFocus === 'stats') {
+    return `MYCO\n- ${scopeLine}\n- Stats window ${windowFocusState || 'focused'}\n- next: inspect scope/diagnostics -> verify success/cost -> then adjust task or model`;
+  }
+  if (windowFocus === 'tasks') {
+    return `MYCO\n- ${scopeLine}\n- Tasks window ${windowFocusState || 'focused'}\n- next: select active task -> start/stop/retry -> monitor status + heartbeat`;
+  }
+  if (windowFocus === 'context') {
+    return `MYCO\n- ${scopeLine}\n- Context window ${windowFocusState || 'focused'}\n- next: inspect role/model/prompt -> switch model if needed -> then run from Tasks`;
+  }
+  if (windowFocus === 'chat') {
+    return `MYCO\n- ${scopeLine}\n- Chat window ${windowFocusState || 'focused'}\n- next: ask for concrete next steps on current node/task -> execute from Tasks`;
+  }
+  if (taskDrillExpanded) {
+    // MARKER_162.P4.P2.MYCO.CHAT_REPLY_STATE_MATRIX.V1:
+    // MARKER_162.P4.P4.MYCO.CHAT_REPLY_NODE_ROLE_WORKFLOW_MATRIX.V1:
+    // Post-drill guidance matrix expanded by role + workflow family.
+    if (kind === 'agent') {
+      if (role === 'architect') {
+        return `MYCO\n- ${scopeLine}\n- workflow is open; architect selected (${familyHint})\n- next: define/adjust subtasks -> choose team preset (Dragons/Titans/G3/Ralph) -> run from Tasks`;
+      }
+      if (role === 'coder') {
+        return `MYCO\n- ${scopeLine}\n- coder selected (${familyHint})\n- next: open Context -> verify model/prompt -> run/retry from Tasks -> inspect artifacts/stream`;
+      }
+      if (role === 'verifier' || role === 'eval') {
+        return `MYCO\n- ${scopeLine}\n- verifier selected (${familyHint})\n- next: inspect criteria in Context -> run verify stage -> send retry to coder if gate fails`;
+      }
+      return `MYCO\n- ${scopeLine}\n- workflow is open and agent ${role || label} is selected (${familyHint})\n- next: open Context -> check model/prompt -> run/retry from Tasks`;
+    }
+    if (kind === 'task' || graphKind === 'project_task') {
+      return `MYCO\n- ${scopeLine}\n- task is active and workflow opened (${familyHint})\n- next: select agent node -> open Context -> run/start or retry from Tasks`;
+    }
+    return `MYCO\n- ${scopeLine}\n- workflow is already open for the active task (${familyHint})\n- next: select an agent node -> inspect Context/stream -> run or retry from Tasks`;
+  }
+  if (nodeUnfoldExpanded) {
+    return `MYCO\n- ${scopeLine}\n- module unfold is active\n- next: double-click deeper -> pick code node -> create task in Tasks for this scope`;
+  }
+  if (inWorkflow) {
+    return `MYCO\n- ${scopeLine}\n- you are inside workflow context (${familyHint})\n- next: select agent -> inspect Context -> adjust model -> run/retry from Tasks`;
+  }
   if (!context || context.scope === 'project') {
     return `MYCO\n- ${scopeLine}\n- this is project-level context\n- next: click a node and ask again`;
   }
@@ -265,6 +321,8 @@ function ChatCompact({ context }: MiniChatProps) {
             roadmap_node_drill_state: context?.roadmapNodeDrillState,
             workflow_inline_expanded: context?.workflowInlineExpanded,
             roadmap_node_inline_expanded: context?.roadmapNodeInlineExpanded,
+            window_focus: context?.windowFocus,
+            window_focus_state: context?.windowFocusState,
             focus_scope_key: context?.focusScopeKey,
             node_id: context?.nodeId,
             node_kind: context?.nodeKind,
@@ -273,6 +331,7 @@ function ChatCompact({ context }: MiniChatProps) {
             graph_kind: context?.graphKind,
             workflow_id: context?.workflowId,
             team_profile: context?.teamProfile,
+            workflow_family: context?.workflowFamily,
             label: context?.label,
             status: context?.status,
             model: context?.model,
@@ -541,6 +600,8 @@ function ChatExpanded({ context }: MiniChatProps) {
             roadmap_node_drill_state: context?.roadmapNodeDrillState,
             workflow_inline_expanded: context?.workflowInlineExpanded,
             roadmap_node_inline_expanded: context?.roadmapNodeInlineExpanded,
+            window_focus: context?.windowFocus,
+            window_focus_state: context?.windowFocusState,
             focus_scope_key: context?.focusScopeKey,
             node_id: context?.nodeId,
             node_kind: context?.nodeKind,
@@ -549,6 +610,7 @@ function ChatExpanded({ context }: MiniChatProps) {
             graph_kind: context?.graphKind,
             workflow_id: context?.workflowId,
             team_profile: context?.teamProfile,
+            workflow_family: context?.workflowFamily,
             label: context?.label,
             status: context?.status,
             model: context?.model,

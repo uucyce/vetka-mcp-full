@@ -132,6 +132,7 @@ type FocusRestoreSource = 'current' | 'memory' | 'default';
 type TaskDrillState = 'collapsed' | 'expanded';
 type RoadmapNodeDrillState = 'collapsed' | 'expanded';
 type MycoBadgeVisualState = 'idle' | 'speaking' | 'ready';
+type MiniWindowFocusState = 'compact' | 'expanded' | 'minimized';
 
 function uniqueIds(ids: Array<string | null | undefined>): string[] {
   return Array.from(new Set(ids.filter(Boolean) as string[]));
@@ -356,6 +357,20 @@ function resolveWorkflowGraphEndpoint(mode: WorkflowSourceMode): string {
   if (mode === 'runtime') return 'runtime-graph';
   if (mode === 'predict') return 'predict-graph';
   return 'design-graph';
+}
+
+function inferWorkflowFamily(teamProfile?: string, workflowId?: string): string {
+  const team = String(teamProfile || '').toLowerCase().trim();
+  const wf = String(workflowId || '').toLowerCase().trim();
+  const joined = `${team} ${wf}`;
+  if (!joined) return 'bmad';
+  if (joined.includes('g3')) return 'g3';
+  if (joined.includes('ralph')) return 'ralph_loop';
+  if (joined.includes('openhands')) return 'openhands';
+  if (team.startsWith('titan')) return 'titans';
+  if (team.startsWith('dragon')) return 'dragons';
+  if (joined.includes('bmad')) return 'bmad';
+  return 'custom';
 }
 
 // MARKER_155A.P1.ADAPTERS: Normalize backend graph payloads to MCC DAG types.
@@ -1326,6 +1341,18 @@ export function MyceliumCommandCenter() {
   const focusMemoryRef = useRef<Record<string, string[]>>({});
   const isRestoringFocusRef = useRef(false);
 
+  const selectedTaskMeta = useMemo(() => {
+    const selectedTask = tasks.find((t) => t.id === selectedTaskId);
+    if (!selectedTask) return null;
+    const teamProfile = String(selectedTask.team_profile || selectedTask.preset || '').trim();
+    const workflowId = String(selectedTask.workflow_id || selectedTask.pipeline_task_id || '').trim();
+    return {
+      teamProfile,
+      workflowId,
+      workflowFamily: inferWorkflowFamily(teamProfile, workflowId),
+    };
+  }, [selectedTaskId, tasks]);
+
   const handleViewArtifact = useCallback((artifact: { id: string; name: string; file_path: string; language: string }) => {
     setViewingArtifact(artifact);
     // Fetch artifact content
@@ -1430,6 +1457,10 @@ export function MyceliumCommandCenter() {
   const [mycoTopHint, setMycoTopHint] = useState<string>('ready');
   const mycoHintTimersRef = useRef<number[]>([]);
   const mycoTopHintKeyRef = useRef<string>('');
+  const [miniWindowFocus, setMiniWindowFocus] = useState<{
+    windowId: string | null;
+    state: MiniWindowFocusState | null;
+  }>({ windowId: null, state: null });
   const dagGraphIdentity = useMemo(
     () => `${navLevel}:${navRoadmapNodeId || 'none'}`,
     [navLevel, navRoadmapNodeId],
@@ -1494,6 +1525,31 @@ export function MyceliumCommandCenter() {
     return () => {
       window.removeEventListener('mcc-myco-reply', onMycoReply as EventListener);
       clearTimers();
+    };
+  }, []);
+
+  useEffect(() => {
+    // MARKER_164.P4.WINDOW_FOCUS_EVENT_BIND_FRONTEND.V1:
+    // Track the currently focused mini-window (compact/expanded) for MYCO guidance priority.
+    const onMiniWindowFocus = (event: Event) => {
+      const detail = ((event as CustomEvent).detail || {}) as {
+        windowId?: string;
+        state?: MiniWindowFocusState;
+      };
+      const windowId = String(detail.windowId || '').trim();
+      const state = detail.state;
+      if (!windowId || !state) return;
+      if (state === 'minimized') {
+        setMiniWindowFocus((prev) =>
+          prev.windowId === windowId ? { windowId: null, state: null } : prev,
+        );
+        return;
+      }
+      setMiniWindowFocus({ windowId, state });
+    };
+    window.addEventListener('mcc-miniwindow-focus', onMiniWindowFocus as EventListener);
+    return () => {
+      window.removeEventListener('mcc-miniwindow-focus', onMiniWindowFocus as EventListener);
     };
   }, []);
 
@@ -2359,17 +2415,98 @@ export function MyceliumCommandCenter() {
     const focusId = focusIds[0] || '';
     const node = focusId ? effectiveNodes.find((n) => n.id === focusId) : null;
     const nodeLabel = String(node?.label || focusId || '');
+    const isTaskWorkflowExpanded =
+      navLevel === 'roadmap' &&
+      taskDrillState === 'expanded' &&
+      Boolean(selectedTaskId);
+    const isNodeUnfoldExpanded =
+      navLevel === 'roadmap' &&
+      roadmapNodeDrillState === 'expanded' &&
+      Boolean(roadmapDrillNodeId) &&
+      !String(roadmapDrillNodeId || '').startsWith('task_overlay_');
+    const isWorkflowFocused =
+      navLevel === 'workflow' ||
+      isTaskWorkflowExpanded;
+    const workflowAgentFocused = Boolean(
+      String(node?.graphKind || '').startsWith('workflow_') ||
+      String(node?.type || '').toLowerCase() === 'agent',
+    );
+    // MARKER_162.P4.P4.MYCO.TOP_HINT_NODE_ROLE_WORKFLOW_MATRIX.V1:
+    // Include workflow family and role-specific next actions in top MYCO hint.
+    const roleKey = String(node?.role || '').toLowerCase().trim();
+    const workflowFamily = String(selectedTaskMeta?.workflowFamily || '').trim();
+    const workflowFamilyHint =
+      workflowFamily === 'dragons'
+        ? 'team: Dragons (faster/cheaper)'
+        : workflowFamily === 'titans'
+          ? 'team: Titans (smarter/costlier)'
+          : workflowFamily === 'g3'
+            ? 'team: G3 critic+coder'
+            : workflowFamily === 'ralph_loop'
+              ? 'team: Ralph loop (single-agent)'
+              : workflowFamily
+                ? `team: ${workflowFamily}`
+                : '';
+    const focusedWindowId = String(miniWindowFocus.windowId || '').toLowerCase();
+    const focusedWindowState = String(miniWindowFocus.state || '').toLowerCase();
+    const focusedWindowExpanded = focusedWindowState === 'expanded';
     const drillTarget = selectedNode?.startsWith('task_overlay_')
       ? 'workflow'
       : navLevel === 'roadmap'
         ? 'module'
         : 'task';
     let hint = 'select node • create task • run workflow';
-    if ((navLevel === 'roadmap' || navLevel === 'tasks') && selectedNode) {
+    // MARKER_164.P4.WINDOW_FOCUS_TOP_HINT_PRIORITY.V1:
+    // Focused mini-window guidance has priority over generic drill hints.
+    if (focusedWindowId === 'balance') {
+      hint = focusedWindowExpanded
+        ? 'Balance fullscreen: set active key ★ • verify provider/model • check cost/in-out'
+        : 'Balance focused: set active key ★ • verify provider/model • check cost/in-out';
+    } else if (focusedWindowId === 'stats') {
+      hint = focusedWindowExpanded
+        ? 'Stats fullscreen: inspect scope/diagnostics • check runs/success/cost • open related context'
+        : 'Stats focused: inspect scope/diagnostics • check runs/success/cost';
+    } else if (focusedWindowId === 'tasks') {
+      hint = focusedWindowExpanded
+        ? 'Tasks fullscreen: pick active task • start/stop/retry • use heartbeat cadence'
+        : 'Tasks focused: pick active task • start/stop/retry';
+    } else if (focusedWindowId === 'context') {
+      hint = focusedWindowExpanded
+        ? 'Context fullscreen: inspect node/task details • model/prompt • stream/artifacts'
+        : 'Context focused: inspect node/task details • model/prompt';
+    } else if (focusedWindowId === 'chat') {
+      hint = focusedWindowExpanded
+        ? 'Chat fullscreen: ask architect for plan • use current context • execute from Tasks'
+        : 'Chat focused: ask architect for next step from current context';
+    } else if (isTaskWorkflowExpanded) {
+      // MARKER_162.P4.P2.MYCO.TOP_HINT_POST_DRILL_PRIORITY.V1:
+      // After workflow drill expansion, never repeat pre-drill Enter prompt.
+      hint = workflowAgentFocused
+        ? roleKey
+          ? `workflow open: ${roleKey} selected • inspect Context/model • run/retry from Tasks`
+          : 'workflow open: inspect Context • tune model/prompt • run/retry from Tasks'
+        : workflowFamilyHint
+          ? `workflow opened: select agent node • ${workflowFamilyHint} • run/retry from Tasks`
+          : 'workflow opened: select agent node • open Context • run/retry from Tasks';
+    } else if (isNodeUnfoldExpanded) {
+      // MARKER_162.P4.P2.MYCO.TOP_HINT_NODE_UNFOLD_ACTIONS.V1:
+      // Unfolded roadmap module should get unfold/navigation actions.
+      hint = 'module unfolded: double-click deeper • select task • create task here';
+    } else if (isWorkflowFocused) {
+      // MARKER_162.P4.P2.MYCO.TOP_HINT_WORKFLOW_ACTIONS.V1:
+      // Workflow-level guidance should provide next actions instead of generic labels.
+      hint = workflowAgentFocused
+        ? roleKey
+          ? `agent selected: ${roleKey} • check stream/context • adjust model • continue pipeline`
+          : 'agent selected: check stream/context • adjust model • continue pipeline'
+        : workflowFamilyHint
+          ? `workflow context: select agent • ${workflowFamilyHint} • check stream/artifacts`
+          : 'workflow context: select agent • inspect Context • check stream/artifacts';
+    } else if ((navLevel === 'roadmap' || navLevel === 'tasks') && selectedNode) {
       // MARKER_162.P2.MYCO.TOP_SYSTEM_HINT_PRIORITY.V1:
       // Top helper hint has priority over generic context title while node is selected.
       hint = `Press Enter to drill into ${drillTarget}`;
-    } else if (nodeLabel) {
+    } else if (nodeLabel && navLevel !== 'roadmap') {
       hint = `${nodeLabel}`;
     } else if (selectedTaskId) {
       hint = `task ${selectedTaskId} linked`;
@@ -2391,7 +2528,7 @@ export function MyceliumCommandCenter() {
       mycoHintTimersRef.current = [readyTimer, idleTimer];
     }
     return () => clearTimers();
-  }, [effectiveNodes, helperMode, navLevel, selectedNode, selectedNodeIds, selectedTaskId]);
+  }, [effectiveNodes, helperMode, miniWindowFocus.state, miniWindowFocus.windowId, navLevel, roadmapDrillNodeId, roadmapNodeDrillState, selectedNode, selectedNodeIds, selectedTaskId, selectedTaskMeta, taskDrillState]);
 
   const focusIdsForView = useMemo(
     () => new Set<string>(
@@ -2632,11 +2769,32 @@ export function MyceliumCommandCenter() {
       return 'node';
     };
 
+    const nodeWorkflowId = String(primaryNode?.workflowId || '').trim();
+    const workflowId = nodeWorkflowId || selectedTaskMeta?.workflowId || undefined;
+    const teamProfile = selectedTaskMeta?.teamProfile || undefined;
+    const workflowFamily = inferWorkflowFamily(teamProfile, workflowId);
+
     return {
       scope: primaryNode ? 'node' : 'project',
       navLevel,
       focusScopeKey,
       workflowSourceMode: effectiveWorkflowSourceMode,
+      // MARKER_164.P4.WINDOW_FOCUS_CONTEXT_PAYLOAD_BIND.V1:
+      // Propagate focused window to MiniChat/backend quick-guidance packet.
+      windowFocus: miniWindowFocus.windowId || undefined,
+      windowFocusState: miniWindowFocus.state || undefined,
+      activeTaskId: selectedTaskId || null,
+      taskDrillState,
+      roadmapNodeDrillState,
+      workflowInlineExpanded:
+        navLevel === 'roadmap' &&
+        taskDrillState === 'expanded' &&
+        Boolean(selectedTaskId),
+      roadmapNodeInlineExpanded:
+        navLevel === 'roadmap' &&
+        roadmapNodeDrillState === 'expanded' &&
+        Boolean(roadmapDrillNodeId) &&
+        !String(roadmapDrillNodeId || '').startsWith('task_overlay_'),
       selectedNodeIds: focusIds,
       nodeId: primaryNode?.id || null,
       nodeKind: resolveKind(),
@@ -2645,6 +2803,9 @@ export function MyceliumCommandCenter() {
       role: primaryNode?.role,
       model: resolvedModel,
       taskId: primaryNode?.taskId,
+      workflowId,
+      teamProfile,
+      workflowFamily,
       graphKind: primaryNode?.graphKind,
       path: (() => {
         const rawPath = primaryNode?.projectNodeId
@@ -2653,7 +2814,7 @@ export function MyceliumCommandCenter() {
         return rawPath ? String(rawPath) : undefined;
       })(),
     };
-  }, [activePreset, effectiveWorkflowSourceMode, focusScopeKey, graphForView.nodes, navLevel, presetMap, selectedNode, selectedNodeIds]);
+  }, [activePreset, effectiveWorkflowSourceMode, focusScopeKey, graphForView.nodes, miniWindowFocus.state, miniWindowFocus.windowId, navLevel, presetMap, roadmapDrillNodeId, roadmapNodeDrillState, selectedNode, selectedNodeIds, selectedTaskId, selectedTaskMeta, taskDrillState]);
 
   const miniContextNodeData = useMemo(
     () => (miniContextPayload.nodeId
@@ -3111,6 +3272,59 @@ export function MyceliumCommandCenter() {
     }
   }, [focusScopeKey, selectTask, setFocusRestoreSource, setFocusedNodeId]);
 
+  const handleContextSearchSelect = useCallback((row: {
+    path: string;
+    title: string;
+    snippet: string;
+    score: number;
+  }) => {
+    // MARKER_165.MCC.CONTEXT_SEARCH.NODE_FOCUS_BRIDGE.V1
+    // Resolve search result (path/title) to live DAG node and focus it.
+    const pathKey = normalizePathKey(row.path);
+    const titleKey = normalizePathKey(row.title);
+    let best: { id: string; score: number } | null = null;
+
+    for (const node of graphForView.nodes) {
+      const meta: any = node.metadata || {};
+      const candidates = [
+        node.id,
+        node.label,
+        node.projectNodeId,
+        meta.path,
+        meta.file_path,
+        meta.source_path,
+        meta.relative_path,
+        meta.full_path,
+      ].map((v) => normalizePathKey(String(v || '')));
+
+      let score = 0;
+      if (pathKey) {
+        if (candidates.includes(pathKey)) score += 100;
+        if (candidates.some((c) => c && (c.endsWith(`/${pathKey}`) || pathKey.endsWith(`/${c}`)))) score += 50;
+      }
+      if (titleKey) {
+        if (candidates.includes(titleKey)) score += 20;
+        if (candidates.some((c) => c && c.includes(titleKey))) score += 10;
+      }
+      if (score > 0 && (!best || score > best.score)) {
+        best = { id: node.id, score };
+      }
+    }
+
+    if (!best?.id) {
+      addToast('info', 'Search result has no mapped DAG node in current view');
+      return;
+    }
+
+    handleLevelAwareNodeSelect(best.id, { additive: false });
+    const zoomLevel = navLevel === 'workflow' ? 2 : navLevel === 'tasks' ? 1 : 0;
+    try {
+      dagViewRef.current?.zoomToNode(best.id, zoomLevel);
+    } catch {
+      // no-op: selection highlight is still applied even if zoom bridge is unavailable
+    }
+  }, [addToast, graphForView.nodes, handleLevelAwareNodeSelect, navLevel]);
+
   const handleLevelAwareNodeDoubleClick = useCallback((nodeId: string) => {
     if (navLevel === 'roadmap') {
       // Roadmap: workflow drill is explicit on double-click for task overlays.
@@ -3404,8 +3618,11 @@ export function MyceliumCommandCenter() {
         >
           {projectTabs.map((p) => {
             const projectId = String(p?.project_id || '');
-            const path = String(p?.source_path || p?.sandbox_path || projectId);
-            const name = path.replace(/\\/g, '/').split('/').filter(Boolean).pop() || projectId || 'project';
+            // MARKER_161.9.MULTIPROJECT.NAMING.UI_TAB_LABEL.V1
+            const explicitName = String((p as any)?.display_name || '').trim();
+            const sandboxName = String(p?.sandbox_path || '').replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
+            const sourceName = String(p?.source_path || '').replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
+            const name = explicitName || sandboxName || sourceName || projectId || 'project';
             const isActive = projectId && projectId === activeProjectId;
             return (
               <button
@@ -4011,7 +4228,12 @@ export function MyceliumCommandCenter() {
                 <MiniTasks />
                 <MiniStats context={miniContextPayload} />
                 <MiniBalance />
-                <MiniContext context={miniContextPayload} nodeData={miniContextNodeData} onViewArtifact={handleViewArtifact} />
+                <MiniContext
+                  context={miniContextPayload}
+                  nodeData={miniContextNodeData}
+                  onSearchSelect={handleContextSearchSelect}
+                  onViewArtifact={handleViewArtifact}
+                />
                 <MiniWindowDock />
               </>
             ) : (

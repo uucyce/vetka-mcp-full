@@ -24,6 +24,13 @@ export interface MiniContextPayload {
   navLevel: string;
   focusScopeKey: string;
   workflowSourceMode: string;
+  windowFocus?: string;
+  windowFocusState?: 'compact' | 'expanded' | 'minimized';
+  activeTaskId?: string | null;
+  taskDrillState?: 'collapsed' | 'expanded';
+  roadmapNodeDrillState?: 'collapsed' | 'expanded';
+  workflowInlineExpanded?: boolean;
+  roadmapNodeInlineExpanded?: boolean;
   selectedNodeIds: string[];
   nodeId: string | null;
   nodeKind: MiniContextKind;
@@ -32,6 +39,9 @@ export interface MiniContextPayload {
   role?: string;
   model?: string;
   taskId?: string;
+  workflowId?: string;
+  teamProfile?: string;
+  workflowFamily?: string;
   graphKind?: string;
   path?: string;
 }
@@ -39,6 +49,12 @@ export interface MiniContextPayload {
 interface MiniContextProps {
   context: MiniContextPayload;
   nodeData?: DAGNode | null;
+  onSearchSelect?: (row: {
+    path: string;
+    title: string;
+    snippet: string;
+    score: number;
+  }) => void;
   onViewArtifact?: (artifact: {
     id: string;
     name: string;
@@ -48,6 +64,13 @@ interface MiniContextProps {
     file_path: string;
     size_bytes: number;
   }) => void;
+}
+
+interface ContextSearchRow {
+  path: string;
+  title: string;
+  snippet: string;
+  score: number;
 }
 
 interface ModelInfo {
@@ -611,10 +634,11 @@ function workflowRuntimeHint(context: MiniContextPayload): string | null {
   return null;
 }
 
-function ContextCompact({ context }: MiniContextProps) {
+function ContextCompact({ context, onSearchSelect }: MiniContextProps) {
   if (context.scope === 'project') {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 8 }}>
+        <ContextSearchPanel compact onSelect={onSearchSelect} />
         <span style={{ color: '#aab3bd', fontSize: 9 }}>Project context</span>
         <span style={{ color: '#78818c' }}>Select a node to inspect details.</span>
         {row('project model', 'expand ↗')}
@@ -626,6 +650,7 @@ function ContextCompact({ context }: MiniContextProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 8 }}>
+      <ContextSearchPanel compact onSelect={onSearchSelect} />
       <span style={{ color: '#aab3bd', fontSize: 9 }}>{context.label || 'Selected node'}</span>
       {row('kind', kindLabel(context.nodeKind))}
       {row('status', context.status)}
@@ -730,7 +755,205 @@ function FilePreview({ path }: { path: string }) {
   );
 }
 
-function ContextExpanded({ context, nodeData, onViewArtifact }: MiniContextProps) {
+function ContextSearchPanel({
+  compact = false,
+  onSelect,
+}: {
+  compact?: boolean;
+  onSelect?: (row: ContextSearchRow) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [mode, setMode] = useState<'keyword' | 'filename'>('keyword');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [rows, setRows] = useState<ContextSearchRow[]>([]);
+
+  const runSearch = async () => {
+    const q = String(query || '').trim();
+    if (q.length < 2) {
+      setRows([]);
+      setError('enter at least 2 characters');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/mcc/search/file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: q,
+          limit: 8,
+          mode,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        setRows([]);
+        setError(String(data?.detail || data?.error || `HTTP ${res.status}`));
+        return;
+      }
+      const items = Array.isArray(data?.results) ? data.results : [];
+      const nextRows: ContextSearchRow[] = items.map((item: any) => ({
+        path: String(item?.path || ''),
+        title: String(item?.title || item?.path || ''),
+        snippet: String(item?.snippet || ''),
+        score: Number(item?.score || 0),
+      }));
+      setRows(nextRows);
+      if (nextRows.length === 0) {
+        setError('no results');
+      }
+    } catch (err) {
+      setRows([]);
+      setError(err instanceof Error ? err.message : 'search failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div>
+      {/* MARKER_165.MCC.CONTEXT_SEARCH.UI_INPUT.V1 */}
+      {/* MARKER_165.MCC.CONTEXT_SEARCH.UI_COMPACT_INPUT.V1 */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void runSearch();
+            }
+          }}
+          placeholder="search in active project..."
+          style={{
+            flex: 1,
+            minWidth: 0,
+            background: 'rgba(255,255,255,0.02)',
+            color: '#c5cfda',
+            border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+            borderRadius: 6,
+            padding: '6px 8px',
+            fontSize: 10,
+            fontFamily: 'monospace',
+            boxSizing: 'border-box',
+          }}
+        />
+        {!compact ? (
+          <button
+            type="button"
+            onClick={() => setMode('keyword')}
+            style={{
+              border: `1px solid ${mode === 'keyword' ? NOLAN_PALETTE.border : NOLAN_PALETTE.borderDim}`,
+              background: mode === 'keyword' ? 'rgba(255,255,255,0.04)' : 'transparent',
+              color: '#c5cfda',
+              borderRadius: 6,
+              fontSize: 9,
+              padding: '4px 7px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+            }}
+          >
+            KEY
+          </button>
+        ) : null}
+        {!compact ? (
+          <button
+            type="button"
+            onClick={() => setMode('filename')}
+            style={{
+              border: `1px solid ${mode === 'filename' ? NOLAN_PALETTE.border : NOLAN_PALETTE.borderDim}`,
+              background: mode === 'filename' ? 'rgba(255,255,255,0.04)' : 'transparent',
+              color: '#c5cfda',
+              borderRadius: 6,
+              fontSize: 9,
+              padding: '4px 7px',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+            }}
+          >
+            FILE
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => { void runSearch(); }}
+          disabled={loading}
+          style={{
+            border: `1px solid ${NOLAN_PALETTE.border}`,
+            background: 'rgba(255,255,255,0.03)',
+            color: '#d3dbe5',
+            borderRadius: 6,
+            fontSize: 9,
+            padding: '4px 8px',
+            cursor: 'pointer',
+            fontFamily: 'monospace',
+          }}
+        >
+          {loading ? '...' : 'SEARCH'}
+        </button>
+      </div>
+
+      {/* MARKER_165.MCC.CONTEXT_SEARCH.UI_RESULTS.V1 */}
+      <div
+        style={{
+          border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+          borderRadius: 6,
+          background: 'rgba(255,255,255,0.01)',
+          maxHeight: compact ? 72 : 180,
+          overflowY: 'auto',
+          padding: '4px 6px',
+        }}
+      >
+        {rows.length === 0 ? (
+          <div style={{ color: '#8f99a5', fontSize: 9, padding: '6px 2px' }}>
+            {error || 'type query and press Enter'}
+          </div>
+        ) : (
+          rows.map((row, idx) => (
+            <button
+              key={`${row.path}_${idx}`}
+              type="button"
+              onClick={() => onSelect?.(row)}
+              title={row.path || row.title}
+              style={{
+                borderBottom: idx < rows.length - 1 ? `1px solid ${NOLAN_PALETTE.borderDim}` : 'none',
+                padding: '6px 2px',
+                width: '100%',
+                textAlign: 'left',
+                background: 'transparent',
+                border: 'none',
+                color: 'inherit',
+                cursor: onSelect ? 'pointer' : 'default',
+              }}
+            >
+              {/* MARKER_165.MCC.CONTEXT_SEARCH.UI_RESULT_SELECT.V1 */}
+              <div
+                style={{
+                  color: '#c5cfda',
+                  fontSize: 9,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+                title={row.path || row.title}
+              >
+                {row.title || row.path}
+              </div>
+              <div style={{ color: '#8f99a5', fontSize: 8, marginTop: 2 }}>
+                {row.snippet || row.path}
+              </div>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ContextExpanded({ context, nodeData, onSearchSelect, onViewArtifact }: MiniContextProps) {
   const header = useMemo(
     () => (context.scope === 'project' ? 'Project Context' : `${kindLabel(context.nodeKind)} Context`),
     [context.scope, context.nodeKind],
@@ -766,6 +989,9 @@ function ContextExpanded({ context, nodeData, onViewArtifact }: MiniContextProps
               default model for project-level chat
             </div>
             <AgentModelBinder role="architect" model={undefined} />
+          </Section>
+          <Section title="Search">
+            <ContextSearchPanel onSelect={onSearchSelect} />
           </Section>
           <Section title="Selection">
             focused ids: {context.selectedNodeIds.length}
@@ -841,13 +1067,17 @@ function ContextExpanded({ context, nodeData, onViewArtifact }: MiniContextProps
               <div style={{ marginTop: 6 }}>node id: {context.nodeId || '-'}</div>
             </Section>
           ) : null}
+
+          <Section title="Search">
+            <ContextSearchPanel onSelect={onSearchSelect} />
+          </Section>
         </>
       )}
     </div>
   );
 }
 
-export function MiniContext({ context, nodeData, onViewArtifact }: MiniContextProps) {
+export function MiniContext({ context, nodeData, onSearchSelect, onViewArtifact }: MiniContextProps) {
   return (
     <MiniWindow
       windowId="context"
@@ -855,9 +1085,16 @@ export function MiniContext({ context, nodeData, onViewArtifact }: MiniContextPr
       icon="👁"
       position="bottom-right"
       compactWidth={220}
-      compactHeight={132}
-      compactContent={<ContextCompact context={context} />}
-      expandedContent={<ContextExpanded context={context} nodeData={nodeData} onViewArtifact={onViewArtifact} />}
+      compactHeight={190}
+      compactContent={<ContextCompact context={context} onSearchSelect={onSearchSelect} />}
+      expandedContent={
+        <ContextExpanded
+          context={context}
+          nodeData={nodeData}
+          onSearchSelect={onSearchSelect}
+          onViewArtifact={onViewArtifact}
+        />
+      }
     />
   );
 }

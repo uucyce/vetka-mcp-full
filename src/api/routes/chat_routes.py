@@ -129,28 +129,248 @@ def _load_chat_history(chat_dir: Path, node_path: str) -> list:
     return []
 
 
-def _resolve_workflow_family(team_profile: str, workflow_id: str, workflow_family_hint: str = "") -> str:
+def _normalize_guidance_context(context: Dict[str, Any]) -> Dict[str, Any]:
+    focus = dict(context or {})
+    nav_level = str(focus.get("nav_level") or focus.get("navLevel") or "").strip().lower() or "roadmap"
+    node_kind = str(focus.get("node_kind") or focus.get("nodeKind") or "").strip().lower()
+    graph_kind = str(focus.get("graph_kind") or focus.get("graphKind") or "").strip().lower()
+    role = str(focus.get("role") or "").strip().lower()
+    task_id = str(focus.get("task_id") or focus.get("taskId") or "").strip()
+    label = str(
+        focus.get("label")
+        or task_id
+        or focus.get("node_id")
+        or focus.get("nodeId")
+        or "project"
+    ).strip()
+    task_drill_state = str(focus.get("task_drill_state") or focus.get("taskDrillState") or "").strip().lower()
+    node_drill_state = str(focus.get("roadmap_node_drill_state") or focus.get("roadmapNodeDrillState") or "").strip().lower()
+    workflow_inline = bool(focus.get("workflow_inline_expanded") or focus.get("workflowInlineExpanded"))
+    node_inline = bool(focus.get("roadmap_node_inline_expanded") or focus.get("roadmapNodeInlineExpanded"))
+    chat_scope = str(focus.get("chat_scope") or focus.get("chatScope") or "").strip().lower()
+    # MARKER_164.P4.WINDOW_FOCUS_BACKEND_NORMALIZATION.V1:
+    # Normalize focused mini-window to let guidance branch on UI window intent.
+    window_focus = str(focus.get("window_focus") or focus.get("windowFocus") or "").strip().lower()
+    window_focus_state = str(
+        focus.get("window_focus_state") or focus.get("windowFocusState") or ""
+    ).strip().lower()
+    workflow_id = str(focus.get("workflow_id") or focus.get("workflowId") or "").strip()
+    team_profile = str(focus.get("team_profile") or focus.get("teamProfile") or "").strip()
+    workflow_family = str(focus.get("workflow_family") or focus.get("workflowFamily") or "").strip().lower()
+    if not workflow_family:
+        joined = f"{team_profile} {workflow_id}".lower().strip()
+        if "g3" in joined:
+            workflow_family = "g3"
+        elif "ralph" in joined:
+            workflow_family = "ralph_loop"
+        elif "openhands" in joined:
+            workflow_family = "openhands"
+        elif team_profile.lower().startswith("titan"):
+            workflow_family = "titans"
+        elif team_profile.lower().startswith("dragon"):
+            workflow_family = "dragons"
+        elif joined:
+            workflow_family = "custom"
+        else:
+            workflow_family = "bmad"
+    workflow_family_hint = {
+        "dragons": "Dragons (faster/cheaper)",
+        "titans": "Titans (smarter/costlier)",
+        "g3": "G3 (critic+coder)",
+        "ralph_loop": "Ralph loop (single-agent)",
+        "openhands": "OpenHands-collab",
+        "bmad": "BMAD/default",
+        "custom": "custom workflow",
+    }.get(workflow_family, workflow_family)
+    return {
+        "focus": focus,
+        "nav_level": nav_level,
+        "node_kind": node_kind,
+        "graph_kind": graph_kind,
+        "role": role,
+        "task_id": task_id,
+        "label": label,
+        "task_drill_state": task_drill_state,
+        "node_drill_state": node_drill_state,
+        "workflow_inline": workflow_inline,
+        "node_inline": node_inline,
+        "chat_scope": chat_scope,
+        "window_focus": window_focus,
+        "window_focus_state": window_focus_state,
+        "workflow_family_hint": workflow_family_hint,
+    }
+
+
+def _resolve_architect_guidance_scope(normalized: Dict[str, Any]) -> str:
     """
-    MARKER_162.P4.P4.MYCO.WORKFLOW_FAMILY_BACKEND_SOURCE_OF_TRUTH.V1
-    Backend source-of-truth for workflow family normalization.
+    MARKER_164.P1.PROJECT_ARCH_GUIDANCE_BIND.V1
+    MARKER_164.P1.TASK_ARCH_GUIDANCE_BIND.V1
+    Resolve architect guidance scope (project vs task) from normalized UI context.
     """
-    wf = str(workflow_family_hint or "").strip().lower()
-    if wf:
-        return wf
-    joined = f"{team_profile} {workflow_id}".lower().strip()
-    if "g3" in joined:
-        return "g3"
-    if "ralph" in joined:
-        return "ralph_loop"
-    if "openhands" in joined:
-        return "openhands"
-    if str(team_profile).lower().startswith("titan"):
-        return "titans"
-    if str(team_profile).lower().startswith("dragon"):
-        return "dragons"
-    if joined:
-        return "custom"
-    return "bmad"
+    node_kind = str(normalized.get("node_kind") or "")
+    graph_kind = str(normalized.get("graph_kind") or "")
+    nav_level = str(normalized.get("nav_level") or "")
+    task_id = str(normalized.get("task_id") or "")
+    task_drill_state = str(normalized.get("task_drill_state") or "")
+    workflow_inline = bool(normalized.get("workflow_inline"))
+    chat_scope = str(normalized.get("chat_scope") or "")
+    if (
+        chat_scope == "task"
+        or node_kind == "task"
+        or graph_kind == "project_task"
+        or bool(task_id)
+        or task_drill_state == "expanded"
+        or workflow_inline
+        or nav_level == "workflow"
+    ):
+        return "task_architect"
+    return "project_architect"
+
+
+def _build_role_aware_instruction_packet(role: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    MARKER_164.P1.SHARED_ROLE_AWARE_INSTRUCTION_CORE.V1
+    Shared UI-state-driven instruction core for MYCO and architect quick chat.
+    """
+    normalized = _normalize_guidance_context(context)
+    nav_level = normalized["nav_level"]
+    node_kind = normalized["node_kind"]
+    graph_kind = normalized["graph_kind"]
+    role_key = normalized["role"]
+    task_drill_state = normalized["task_drill_state"]
+    node_drill_state = normalized["node_drill_state"]
+    workflow_inline = normalized["workflow_inline"]
+    node_inline = normalized["node_inline"]
+    window_focus = normalized["window_focus"]
+    window_focus_state = normalized["window_focus_state"]
+    workflow_family_hint = normalized["workflow_family_hint"]
+    # MARKER_164.P4.WINDOW_FOCUS_ROLE_PACKET_ACTIONS.V1:
+    # Window-focus actions override generic node/drill actions for MYCO+architect quick guidance.
+    if window_focus == "balance":
+        next_actions = [
+            f"balance window {window_focus_state or 'focused'}",
+            "choose active API key (★) and provider/model",
+            "confirm cost + in/out limits before run",
+        ]
+    elif window_focus == "stats":
+        next_actions = [
+            f"stats window {window_focus_state or 'focused'}",
+            "inspect diagnostics + success/cost",
+            "apply model/task correction then rerun",
+        ]
+    elif window_focus == "tasks":
+        next_actions = [
+            f"tasks window {window_focus_state or 'focused'}",
+            "select active task and start/stop/retry",
+            "monitor heartbeat and status transitions",
+        ]
+    elif window_focus == "context":
+        next_actions = [
+            f"context window {window_focus_state or 'focused'}",
+            "inspect role/model/prompt and node details",
+            "update model then run/retry from Tasks",
+        ]
+    elif window_focus == "chat":
+        next_actions = [
+            f"chat window {window_focus_state or 'focused'}",
+            "ask architect/MYCO for concrete next step",
+            "execute action from Tasks/Context",
+        ]
+    elif (task_drill_state == "expanded" and nav_level == "roadmap") or workflow_inline:
+        if node_kind == "agent":
+            if role_key == "architect":
+                next_actions = [
+                    "define/adjust subtasks",
+                    f"pick team workflow ({workflow_family_hint})",
+                    "run/start from Tasks and watch stream",
+                ]
+            elif role_key == "coder":
+                next_actions = [
+                    "open Context and verify coder model/prompt",
+                    "run/retry coder from Tasks",
+                    "inspect artifacts then send to verifier",
+                ]
+            elif role_key in {"verifier", "eval"}:
+                next_actions = [
+                    "open Context and check quality criteria",
+                    "run verify/eval stage",
+                    "on fail send retry to coder from Tasks",
+                ]
+            else:
+                next_actions = [
+                    "open Context for this agent",
+                    "check model/prompt",
+                    "run/retry from Tasks panel",
+                ]
+        else:
+            next_actions = [
+                "select agent node in workflow",
+                f"choose team workflow ({workflow_family_hint})",
+                "run/start or retry from Tasks panel",
+            ]
+    elif (node_drill_state == "expanded" and nav_level == "roadmap") or node_inline:
+        next_actions = [
+            "double-click deeper",
+            "select task node in this module",
+            "create task here from Tasks panel",
+        ]
+    elif nav_level == "workflow":
+        next_actions = [
+            "select agent node",
+            "inspect stream/artifacts",
+            "adjust model in Context if needed",
+        ]
+    elif node_kind == "task" or graph_kind == "project_task":
+        next_actions = [
+            f"task scope detected ({workflow_family_hint})",
+            "press Enter to open workflow",
+            "run/start from Tasks or switch team profile",
+        ]
+    elif node_kind == "agent":
+        next_actions = [
+            f"agent scope detected ({role_key or 'agent'})",
+            "open Context and inspect model/prompt",
+            "run/retry from Tasks panel",
+        ]
+    elif nav_level in {"tasks", "roadmap"}:
+        next_actions = [
+            "select node or task",
+            "drill into workflow",
+            "ask for dependency map",
+        ]
+    else:
+        next_actions = [
+            "select focus node",
+            "ask MYCO for next action",
+            "open Context for details",
+        ]
+    architect_scope = _resolve_architect_guidance_scope(normalized)
+    return {
+        "normalized": normalized,
+        "architect_scope": architect_scope,
+        "next_actions": next_actions,
+        "workflow_family_hint": workflow_family_hint,
+        "top_tools_hint": "Context model/prompt | Tasks run/retry | Stats diagnostics | Balance key/model",
+    }
+
+
+def _build_architect_quick_system_prompt(context: Dict[str, Any]) -> str:
+    packet = _build_role_aware_instruction_packet("architect", context)
+    normalized = packet["normalized"]
+    scope = packet["architect_scope"]
+    scope_label = "task architect" if scope == "task_architect" else "project architect"
+    next_actions = packet["next_actions"]
+    tools_hint = packet["top_tools_hint"]
+    # MARKER_164.P1.CONTEXT_TOOLS_HINT_INJECTION.V1
+    # Inject context-tool hints into architect quick-chat system prompt.
+    return (
+        f"You are {scope_label} in MYCELIUM.\n"
+        f"Current view: {normalized['nav_level']}; node: {normalized['node_kind'] or 'project'}; "
+        f"workflow family: {packet['workflow_family_hint']}.\n"
+        f"Prioritize next actions in this order: {next_actions[0]} -> {next_actions[1]} -> {next_actions[2]}.\n"
+        f"Always include concrete UI step hints using these tools: {tools_hint}.\n"
+        "Answer concise, operational, and context-aware."
+    )
 
 
 def _build_myco_quick_reply(
@@ -211,100 +431,14 @@ def _build_myco_quick_reply(
         if ref_names:
             ref_line = f"- hidden refs: {ref_names}\n"
 
-    nav_level = str(focus.get("nav_level") or focus.get("navLevel") or "").strip().lower()
-    task_drill_state = str(focus.get("task_drill_state") or focus.get("taskDrillState") or "").strip().lower()
-    node_drill_state = str(focus.get("roadmap_node_drill_state") or focus.get("roadmapNodeDrillState") or "").strip().lower()
-    workflow_inline = bool(focus.get("workflow_inline_expanded") or focus.get("workflowInlineExpanded"))
-    node_inline = bool(focus.get("roadmap_node_inline_expanded") or focus.get("roadmapNodeInlineExpanded"))
-    node_kind = str(focus.get("node_kind") or focus.get("nodeKind") or "").strip().lower()
-    graph_kind = str(focus.get("graph_kind") or focus.get("graphKind") or "").strip().lower()
-    role = str(focus.get("role") or "").strip().lower()
-    workflow_family_raw = str(focus.get("workflow_family") or focus.get("workflowFamily") or "").strip().lower()
-    workflow_id = str(focus.get("workflow_id") or focus.get("workflowId") or "").strip()
-    team_profile = str(focus.get("team_profile") or focus.get("teamProfile") or "").strip()
-    workflow_family = _resolve_workflow_family(team_profile, workflow_id, workflow_family_raw)
-    workflow_family_hint = {
-        "dragons": "Dragons (faster/cheaper)",
-        "titans": "Titans (smarter/costlier)",
-        "g3": "G3 (critic+coder)",
-        "ralph_loop": "Ralph loop (single-agent)",
-        "openhands": "OpenHands-collab",
-        "bmad": "BMAD/default",
-        "custom": "custom workflow",
-    }.get(workflow_family, workflow_family)
-
-    # MARKER_162.P4.P3.MYCO.PROACTIVE_NEXT_ACTION_PACK.V1:
-    # MARKER_162.P4.P4.MYCO.NODE_ROLE_WORKFLOW_NEXT_ACTIONS.V1:
-    # State-aware next-action pack used for both quick-help and normal helper replies.
-    next_actions: list[str]
-    if (task_drill_state == "expanded" and nav_level == "roadmap") or workflow_inline:
-        if node_kind == "agent":
-            if role == "architect":
-                next_actions = [
-                    "define/adjust subtasks",
-                    f"pick team workflow ({workflow_family_hint})",
-                    "run/start from Tasks and watch stream",
-                ]
-            elif role == "coder":
-                next_actions = [
-                    "open Context and verify coder model/prompt",
-                    "run/retry coder from Tasks",
-                    "inspect artifacts then send to verifier",
-                ]
-            elif role in {"verifier", "eval"}:
-                next_actions = [
-                    "open Context and check quality criteria",
-                    "run verify/eval stage",
-                    "on fail send retry to coder from Tasks",
-                ]
-            else:
-                next_actions = [
-                    "open Context for this agent",
-                    "check model/prompt",
-                    "run/retry from Tasks panel",
-                ]
-        else:
-            next_actions = [
-                "select agent node in workflow",
-                f"choose team workflow ({workflow_family_hint})",
-                "run/start or retry from Tasks panel",
-            ]
-    elif (node_drill_state == "expanded" and nav_level == "roadmap") or node_inline:
-        next_actions = [
-            "double-click deeper",
-            "select task node in this module",
-            "create task here from Tasks panel",
-        ]
-    elif nav_level == "workflow":
-        next_actions = [
-            "select agent node",
-            "inspect stream/artifacts",
-            "adjust model in Context if needed",
-        ]
-    elif node_kind == "task" or graph_kind == "project_task":
-        next_actions = [
-            f"task scope detected ({workflow_family_hint})",
-            "press Enter to open workflow",
-            "run/start from Tasks or switch team profile",
-        ]
-    elif node_kind == "agent":
-        next_actions = [
-            f"agent scope detected ({role or 'agent'})",
-            "open Context and inspect model/prompt",
-            "run/retry from Tasks panel",
-        ]
-    elif nav_level in {"tasks", "roadmap"}:
-        next_actions = [
-            "select node or task",
-            "drill into workflow",
-            "ask for dependency map",
-        ]
-    else:
-        next_actions = [
-            "select focus node",
-            "ask MYCO for next action",
-            "open Context for details",
-        ]
+    packet = _build_role_aware_instruction_packet("helper_myco", focus)
+    normalized = packet["normalized"]
+    nav_level = normalized["nav_level"]
+    node_kind = normalized["node_kind"]
+    role = normalized["role"]
+    workflow_family_hint = packet["workflow_family_hint"]
+    next_actions = packet["next_actions"]
+    tools_hint = packet["top_tools_hint"]
 
     prompt = str(message or "").strip()
     if prompt.lower() in {"?", "/myco", "/help myco", "help"}:
@@ -323,6 +457,7 @@ def _build_myco_quick_reply(
             f"{digest_line}\n"
             f"{ref_line}"
             f"- hidden memory sources: {indexed_sources}\n"
+            f"- tools: {tools_hint}\n"
             f"- next: {next_actions[0]} -> {next_actions[1]} -> {next_actions[2]}"
         )
 
@@ -347,6 +482,7 @@ def _build_myco_quick_reply(
         f"{ref_line}"
         f"- project: {active_project_id or 'n/a'}\n"
         f"- hidden memory index: {indexed_sources} sources\n"
+        f"- tools: {tools_hint}\n"
         f"- options: {next_actions[0]} | {next_actions[1]} | {next_actions[2]}\n"
         f"- tell me: explain node / plan next action / map dependencies"
     )
@@ -454,30 +590,33 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
                         str(context.get("workflow_family") or context.get("workflowFamily") or ""),
                         str(context.get("workflow_id") or context.get("workflowId") or ""),
                         str(context.get("role") or ""),
+                        str(context.get("window_focus") or context.get("windowFocus") or ""),
+                        str(context.get("window_focus_state") or context.get("windowFocusState") or ""),
                     ]
                 ).strip(),
                 focus=context,
                 top_k=3,
                 min_score=0.22,
             )
-            packed_meta: Dict[str, Any] = {}
+            packed: Dict[str, Any] = {}
             try:
                 packer = get_context_packer()
-                pinned_files = context.get("pinned_files") if isinstance(context.get("pinned_files"), list) else []
-                viewport_context = context.get("viewport_context") if isinstance(context.get("viewport_context"), dict) else {}
-                model_name = str(context.get("model") or context.get("llm_model") or "gemma3:1b")
-                packed = await packer.pack(
-                    user_query=msg,
-                    pinned_files=pinned_files,
-                    viewport_context=viewport_context,
-                    session_id=str(req.user_id or "danila"),
-                    model_name=model_name,
-                    user_id=str(req.user_id or "danila"),
-                    zoom_level=float(viewport_context.get("zoom_level", 1.0) or 1.0),
-                )
-                packed_meta = dict(packed.trace or {})
+                packed = packer.pack_context(
+                    user_message=msg,
+                    context_data={
+                        "myco_focus": context,
+                        "myco_payload": {
+                            "user_name": payload.get("user_name"),
+                            "active_project_id": payload.get("active_project_id"),
+                            "recent_tasks_by_project": payload.get("recent_tasks_by_project"),
+                            "orchestration": payload.get("orchestration"),
+                            "hidden_refs": retrieval.get("items"),
+                        },
+                    },
+                    max_context_chars=2200,
+                ) or {}
             except Exception:
-                packed_meta = {}
+                packed = {}
 
             response = _build_myco_quick_reply(msg, payload, context, retrieval)
             return {
@@ -488,7 +627,7 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
                 "fastpath": payload.get("fastpath"),
                 "hidden_index": payload.get("hidden_index"),
                 "retrieval": retrieval,
-                "packed_meta": packed_meta,
+                "packed_meta": packed.get("meta", {}),
                 "marker": "MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1",
             }
         except Exception as e:
@@ -506,6 +645,7 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
             node_id=str(context.get("node_id") or context.get("nodeId") or ""),
             node_path=str(context.get("focus_scope_key") or context.get("focusScopeKey") or ""),
             file_path=str(context.get("file_path") or ""),
+            system_prompt=_build_architect_quick_system_prompt(context),
         )
         result = await api_chat(chat_req, request)
         if isinstance(result, dict):

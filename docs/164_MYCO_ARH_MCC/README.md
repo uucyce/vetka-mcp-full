@@ -1,0 +1,24 @@
+# PHASE 164 — MYCO + Architect MCC
+
+## Current Doc
+- [PHASE_164_RECON_MARKERS_REPORT_2026-03-07.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_RECON_MARKERS_REPORT_2026-03-07.md)
+- [PHASE_164_P0_IMPL_REPORT_2026-03-07.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P0_IMPL_REPORT_2026-03-07.md)
+- [PHASE_164_P1_IMPL_REPORT_2026-03-08.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P1_IMPL_REPORT_2026-03-08.md)
+- [PHASE_164_P2_P3_RECON_FROM_163_CHECKLIST_2026-03-08.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P2_P3_RECON_FROM_163_CHECKLIST_2026-03-08.md)
+- [PHASE_164_P0_UI_SURFACE_FULL_MAP_2026-03-07.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P0_UI_SURFACE_FULL_MAP_2026-03-07.md)
+- [PHASE_164_P0_MYCO_UI_ACTION_CATALOG_2026-03-07.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P0_MYCO_UI_ACTION_CATALOG_2026-03-07.md)
+- [PHASE_164_P0_MYCO_UI_COVERAGE_MATRIX_2026-03-07.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P0_MYCO_UI_COVERAGE_MATRIX_2026-03-07.md)
+- [PHASE_164_P2_P3_IMPL_REPORT_2026-03-08.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P2_P3_IMPL_REPORT_2026-03-08.md)
+- [PHASE_164_P2_TRIGGER_MATRIX_2026-03-08.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P2_TRIGGER_MATRIX_2026-03-08.md)
+- [PHASE_164_P2_RECOVERY_BRANCHES_MATRIX_2026-03-08.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P2_RECOVERY_BRANCHES_MATRIX_2026-03-08.md)
+- [PHASE_164_P3_ANTI_NOISE_GATE_2026-03-08.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P3_ANTI_NOISE_GATE_2026-03-08.md)
+- [PHASE_164_P3_QUALITY_GATE_BIND_2026-03-08.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P3_QUALITY_GATE_BIND_2026-03-08.md)
+- [PHASE_164_P4_WINDOW_TRIGGER_MATRIX_RECON_2026-03-08.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P4_WINDOW_TRIGGER_MATRIX_RECON_2026-03-08.md)
+- [PHASE_164_P4_WINDOW_FOCUS_BIND_IMPL_REPORT_2026-03-08.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/164_MYCO_ARH_MCC/PHASE_164_P4_WINDOW_FOCUS_BIND_IMPL_REPORT_2026-03-08.md)
+## Previous Roadmap Links
+- [Phase 162 MYCO Helper Arch Plan](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/162_ph_MCC_MYCO_HELPER/PHASE_162_MYCO_HELPER_ARCH_PLAN_2026-03-05.md)
+- [Phase 162 P4.P5 Runtime Scenario Matrix Impl](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/162_ph_MCC_MYCO_HELPER/PHASE_162_P4_P5_RUNTIME_SCENARIO_MATRIX_IMPL_REPORT_2026-03-07.md)
+- [Phase 162 P4.P3 Capability RAG Impl](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/162_ph_MCC_MYCO_HELPER/PHASE_162_P4_P3_MYCELIUM_CAPABILITY_RAG_IMPL_REPORT_2026-03-07.md)
+- [Phase 161 MYCO Agent Instructions Guide](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/161_ph_MCC_TRM/MYCO_AGENT_INSTRUCTIONS_GUIDE_V1_2026-03-06.md)
+- [Phase 155 Unified DAG Master Plan](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/155_ph/CODEX_UNIFIED_DAG_MASTER_PLAN.md)
+- [Phase 154 MCC Architecture Redux](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/154_ph/MARKER_155_MCC_ARCHITECTURE_REDUX.md)
