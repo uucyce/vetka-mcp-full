@@ -388,6 +388,25 @@ async def list_tools() -> list[Tool]:
             }
         ),
         Tool(
+            name="vetka_get_media_window_debug",
+            description="Get the latest detached media window debug snapshot. "
+                       "Shows native Tauri geometry, DOM wrapper geometry, toolbar size, "
+                       "video intrinsic size, and measured letterboxing.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Optional exact media path filter"
+                    },
+                    "src": {
+                        "type": "string",
+                        "description": "Optional media source/name substring filter"
+                    }
+                }
+            }
+        ),
+        Tool(
             name="vetka_list_files",
             description="List files in a directory or matching a pattern. Returns file paths with metadata.",
             inputSchema={
@@ -1114,6 +1133,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "vetka_health":
             # Health check
             response = await http_client.get("/api/health")
+
+        elif name == "vetka_get_media_window_debug":
+            params = {}
+            if arguments.get("path"):
+                params["path"] = arguments["path"]
+            if arguments.get("src"):
+                params["src"] = arguments["src"]
+            response = await http_client.get("/api/debug/media-window-snapshot", params=params or None)
 
         elif name == "vetka_list_files":
             # List files - use tree endpoint with filtering
@@ -1964,6 +1991,30 @@ def format_result(tool_name: str, data: Any) -> str:
                 status_icon = "✅" if comp_status else "❌"
                 formatted += f"  {status_icon} {comp_name}\n"
 
+            return formatted
+
+    elif tool_name == "vetka_get_media_window_debug":
+        if isinstance(data, dict):
+            latest = data.get("latest")
+            if not latest:
+                return "No detached media window debug snapshot captured yet."
+
+            snapshot = latest.get("snapshot") or {}
+            formatted = "Detached Media Window Debug\n"
+            formatted += "===========================\n"
+            formatted += f"Source: {latest.get('src', 'unknown')}\n"
+            formatted += f"Path: {latest.get('path', '')}\n"
+            formatted += f"Captured: {snapshot.get('capturedAt', 'unknown')}\n"
+            formatted += f"Horizontal letterbox: {snapshot.get('horizontalLetterboxPx', 0)} px\n"
+            formatted += f"Vertical letterbox: {snapshot.get('verticalLetterboxPx', 0)} px\n"
+            formatted += f"Video intrinsic: {snapshot.get('videoIntrinsicWidth', 0)}x{snapshot.get('videoIntrinsicHeight', 0)}\n"
+            formatted += f"Wrapper: {snapshot.get('wrapperWidth', 0)}x{snapshot.get('wrapperHeight', 0)}\n"
+            formatted += f"Toolbar: {snapshot.get('toolbarWidth', 0)}x{snapshot.get('toolbarHeight', 0)}\n"
+            formatted += f"Window inner (DOM): {snapshot.get('windowInnerWidth', 0)}x{snapshot.get('windowInnerHeight', 0)}\n"
+            formatted += f"Window inner (native logical): {snapshot.get('nativeInnerLogicalWidth', 0)}x{snapshot.get('nativeInnerLogicalHeight', 0)}\n"
+            formatted += f"Window inner (native physical): {snapshot.get('nativeInnerPhysicalWidth', 0)}x{snapshot.get('nativeInnerPhysicalHeight', 0)}\n"
+            formatted += f"Window outer (native physical): {snapshot.get('nativeOuterPhysicalWidth', 0)}x{snapshot.get('nativeOuterPhysicalHeight', 0)}\n"
+            formatted += f"Scale factor: {snapshot.get('nativeScaleFactor', 0)}\n"
             return formatted
 
     # Default: pretty-print JSON

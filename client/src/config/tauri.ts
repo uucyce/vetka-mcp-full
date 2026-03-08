@@ -42,6 +42,17 @@ export interface DetachedMediaGeometryTrace {
   toolbar_height: number;
 }
 
+export interface DetachedMediaNativeGeometry {
+  src: string;
+  scale_factor: number;
+  inner_physical_width: number;
+  inner_physical_height: number;
+  inner_logical_width: number;
+  inner_logical_height: number;
+  outer_physical_width: number;
+  outer_physical_height: number;
+}
+
 export interface FileInfo {
   name: string;
   path: string;
@@ -539,18 +550,17 @@ export async function closeArtifactMediaWindow(windowLabel: string = 'artifact-m
 }
 
 /**
- * Send detached media geometry trace to native terminal logs.
+ * Send detached media geometry trace to native terminal logs and return native window geometry.
  */
-export async function traceDetachedMediaGeometry(trace: DetachedMediaGeometryTrace): Promise<boolean> {
+export async function traceDetachedMediaGeometry(trace: DetachedMediaGeometryTrace): Promise<DetachedMediaNativeGeometry | null> {
   const invoke = await getInvoke();
-  if (!invoke) return false;
+  if (!invoke) return null;
 
   try {
-    const ok = await invoke<boolean>('trace_detached_media_geometry', { trace });
-    return ok === true;
+    return await invoke<DetachedMediaNativeGeometry>('trace_detached_media_geometry', { trace });
   } catch (e) {
     console.warn('[Tauri] trace_detached_media_geometry failed:', e);
-    return false;
+    return null;
   }
 }
 

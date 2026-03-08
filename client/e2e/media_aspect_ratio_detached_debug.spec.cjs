@@ -217,6 +217,42 @@ test.describe.serial('phase159 detached media aspect ratio probe', () => {
     cleanupArtifacts();
   });
 
+  test('detached media route exposes geometry debug api snapshot', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 960, height: 540 });
+    await installApiMocks(page);
+
+    await page.goto(
+      `${DEV_ORIGIN}/artifact-media?path=${encodeURIComponent(clipPath)}&name=probe-4x3.mp4&extension=mp4`,
+      { waitUntil: 'domcontentloaded' }
+    );
+
+    await page.waitForFunction(() => {
+      return Boolean(
+        window.debugMedia &&
+        window.debugMedia.snapshot &&
+        document.querySelector('video') &&
+        document.querySelector('video').videoWidth > 0 &&
+        window.debugMedia.snapshot().ok
+      );
+    }, undefined, { timeout: 15000 });
+
+    const snapshot = await page.evaluate(() => window.debugMedia.snapshot());
+    const assertion = await page.evaluate(() => window.debugMedia.assertNoSideLetterbox(120));
+
+    await testInfo.attach('detached-media-debug-snapshot', {
+      body: Buffer.from(JSON.stringify({ snapshot, assertion }, null, 2)),
+      contentType: 'application/json',
+    });
+
+    expect(snapshot.ok).toBe(true);
+    expect(snapshot.videoIntrinsicWidth).toBe(640);
+    expect(snapshot.videoIntrinsicHeight).toBe(480);
+    expect(snapshot.wrapperWidth).toBeGreaterThan(0);
+    expect(snapshot.wrapperHeight).toBeGreaterThan(0);
+    expect(snapshot.toolbarHeight).toBeGreaterThan(0);
+    expect(assertion.thresholdPx).toBe(120);
+  });
+
   test.fixme('4:3 detached video converges without side letterboxing after fit', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 960, height: 540 });
     await page.exposeFunction('vetkaSetViewportSize', async ({ width, height }) => {

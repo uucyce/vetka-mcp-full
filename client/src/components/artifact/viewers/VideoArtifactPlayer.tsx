@@ -592,7 +592,21 @@ export function VideoArtifactPlayer({
         };
         console.info("MARKER_159.R12.DETACHED_MEDIA_DOM_GEOMETRY", payload);
         if (isTauri()) {
-          void traceDetachedMediaGeometry(payload);
+          void traceDetachedMediaGeometry(payload).then((nativeGeometry) => {
+            if (!nativeGeometry) return;
+            console.info("MARKER_159.R14.DETACHED_MEDIA_NATIVE_GEOMETRY", nativeGeometry);
+            try {
+              localStorage.setItem(
+                "vetka_detached_media_native_geometry_last",
+                JSON.stringify(nativeGeometry),
+              );
+            } catch {
+              // ignore storage errors
+            }
+            if (window.debugMedia?.publish) {
+              void window.debugMedia.publish();
+            }
+          });
         }
       }, 0);
     }
@@ -627,6 +641,7 @@ export function VideoArtifactPlayer({
   return (
     <div
       ref={wrapperRef}
+      data-vetka-media-wrapper="1"
       style={
         isAnyFullscreen
           ? {

@@ -128,6 +128,7 @@ SAFE_FUNCTION_CALLING_TOOLS = {
     "vetka_get_metrics",
     "vetka_get_knowledge_graph",
     "vetka_health",
+    "vetka_get_media_window_debug",
     "vetka_get_pinned_files",
     "vetka_get_context_dag",
     "vetka_get_memory_summary",

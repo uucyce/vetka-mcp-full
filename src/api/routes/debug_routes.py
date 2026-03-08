@@ -23,7 +23,7 @@ Endpoints (ACTIONS):
 - POST /api/debug/camera-focus - Control 3D camera position
 """
 
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, Request, Query, Body
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 import asyncio
@@ -49,6 +49,10 @@ _max_errors = 100
 # Debug log buffer
 _debug_logs: List[Dict[str, Any]] = []
 _max_logs = 200
+
+# Detached media debug snapshots (latest-first, small rolling buffer)
+_media_window_snapshots: List[Dict[str, Any]] = []
+_max_media_window_snapshots = 25
 
 # ============================================================
 # PHASE 80.2: AGENT-TO-AGENT TEAM CHAT
@@ -176,6 +180,15 @@ def _get_memory_manager(request: Request):
     return memory
 
 
+def _get_jarvis_traces(limit: int = 20) -> List[Dict[str, Any]]:
+    try:
+        from src.api.handlers.jarvis_handler import get_jarvis_turn_traces
+        return get_jarvis_turn_traces(limit=limit)
+    except Exception as e:
+        logger.debug(f"[debug_routes] Jarvis traces unavailable: {e}")
+        return []
+
+
 def _get_layout_constants() -> Dict[str, Any]:
     """Get current layout formula constants."""
     try:
@@ -294,6 +307,19 @@ async def debug_inspect(
             return {"filtered_by": keyword, "results": filtered, "full_keys": list(result.keys())}
 
     return result
+
+
+@router.get("/jarvis/traces")
+async def get_jarvis_traces(limit: int = Query(20, ge=1, le=200)) -> Dict[str, Any]:
+    """
+    Phase 157.5.1: return latest Jarvis per-turn traces.
+    """
+    traces = _get_jarvis_traces(limit=limit)
+    return {
+        "count": len(traces),
+        "limit": limit,
+        "items": traces,
+    }
 
 
 @router.get("/formulas")
@@ -438,6 +464,76 @@ async def debug_logs(
         "logs": logs,
         "filter_applied": category if category else None,
         "available_categories": list(set(l.get("category", "general") for l in _debug_logs))
+    }
+
+
+@router.post("/media-window-snapshot")
+async def debug_media_window_snapshot_ingest(
+    body: Dict[str, Any] = Body(...)
+) -> Dict[str, Any]:
+    """
+    Store latest detached media geometry snapshot from renderer debug tooling.
+
+    Intended for VETKA/MCC/MCP diagnostics so agents can inspect the latest
+    detached media native-vs-DOM geometry without attaching to the renderer console.
+    """
+    src = str(body.get("src") or "").strip()
+    path = str(body.get("path") or "").strip()
+
+    entry = {
+        "timestamp": time.time(),
+        "src": src or "media",
+        "path": path,
+        "snapshot": body,
+    }
+
+    _media_window_snapshots.append(entry)
+    if len(_media_window_snapshots) > _max_media_window_snapshots:
+        del _media_window_snapshots[:-_max_media_window_snapshots]
+
+    log_debug(
+        f"Detached media snapshot stored for {entry['src']}",
+        category="media_window",
+        data={
+            "path": path,
+            "horizontalLetterboxPx": body.get("horizontalLetterboxPx"),
+            "nativeInnerLogicalWidth": body.get("nativeInnerLogicalWidth"),
+            "nativeInnerLogicalHeight": body.get("nativeInnerLogicalHeight"),
+        },
+    )
+
+    return {
+        "success": True,
+        "stored": len(_media_window_snapshots),
+        "latest": entry,
+    }
+
+
+@router.get("/media-window-snapshot")
+async def debug_media_window_snapshot(
+    path: str = Query("", description="Optional exact media path filter"),
+    src: str = Query("", description="Optional source/name substring filter"),
+) -> Dict[str, Any]:
+    """
+    Get the latest detached media debug snapshot captured from renderer tooling.
+    """
+    snapshots = list(_media_window_snapshots)
+
+    if path:
+        snapshots = [s for s in snapshots if str(s.get("path") or "") == path]
+    if src:
+        snapshots = [s for s in snapshots if src.lower() in str(s.get("src") or "").lower()]
+
+    latest = snapshots[-1] if snapshots else None
+    return {
+        "total_snapshots": len(_media_window_snapshots),
+        "returned": len(snapshots),
+        "latest": latest,
+        "available_sources": sorted({str(s.get("src") or "") for s in _media_window_snapshots if s.get("src")}),
+        "filter_applied": {
+            "path": path or None,
+            "src": src or None,
+        },
     }
 
 
@@ -2132,7 +2228,8 @@ async def update_task_api(task_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
     # Filter allowed update fields
     allowed_fields = {
         "title", "description", "priority", "phase_type", "preset", "status", "tags",
-        "module", "primary_node_id", "affected_nodes", "workflow_id", "team_profile", "task_origin",
+        "module", "primary_node_id", "affected_nodes", "workflow_id", "workflow_bank",
+        "workflow_family", "workflow_selection_origin", "team_profile", "task_origin",
     }
     updates = {k: v for k, v in body.items() if k in allowed_fields}
 
