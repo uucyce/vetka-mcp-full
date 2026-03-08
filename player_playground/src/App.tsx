@@ -6,6 +6,7 @@ import {
   ShellVariant,
   suggestShellSize,
 } from "./lib/geometry";
+import { setCurrentWindowLogicalSize, toggleFullscreen } from "./lib/nativeWindow";
 
 declare global {
   interface Window {
@@ -16,6 +17,8 @@ declare global {
       setSyntheticSize: (width: number, height: number) => void;
       applySuggestedShell: () => GeometrySnapshot;
       resetShell: () => void;
+      toggleDebug: () => void;
+      toggleFullscreen: () => Promise<boolean | null>;
     };
   }
 }
@@ -28,28 +31,35 @@ function readQuery() {
     mockWidth: Number(params.get("mockWidth") || 0),
     mockHeight: Number(params.get("mockHeight") || 0),
     applySuggestedShell: params.get("applySuggestedShell") === "1",
+    debug: params.get("debug") === "1",
   };
+}
+
+function formatName(value: string) {
+  if (!value) return "VETKA Player";
+  const tail = value.split("/").pop() || value;
+  return tail.length > 52 ? `${tail.slice(0, 49)}...` : tail;
 }
 
 function App() {
   const initialQuery = useMemo(readQuery, []);
   const [variant, setVariant] = useState<ShellVariant>(initialQuery.variant);
   const [src, setSrc] = useState<string>(initialQuery.src);
-  const [fileName, setFileName] = useState<string>("");
+  const [fileName, setFileName] = useState<string>(formatName(initialQuery.src));
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
   const [syntheticSize, setSyntheticSize] = useState({
     width: initialQuery.mockWidth,
     height: initialQuery.mockHeight,
   });
-  const [shellSizeOverride, setShellSizeOverride] = useState<{
-    width: number;
-    height: number;
-  } | null>(null);
+  const [shellSizeOverride, setShellSizeOverride] = useState<{ width: number; height: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isDebugVisible, setIsDebugVisible] = useState(initialQuery.debug);
   const [geometryTick, setGeometryTick] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const autoSizedKeyRef = useRef("");
   const intrinsicSize = naturalSize.width > 0 && naturalSize.height > 0 ? naturalSize : syntheticSize;
   const sourceKind: GeometrySnapshot["sourceKind"] = naturalSize.width > 0 && naturalSize.height > 0
     ? "video"
@@ -126,13 +136,65 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (initialQuery.applySuggestedShell && snapshot.suggestedShellWidth > 0 && snapshot.suggestedShellHeight > 0) {
-      setShellSizeOverride({
-        width: snapshot.suggestedShellWidth,
-        height: snapshot.suggestedShellHeight,
-      });
+    try {
+      localStorage.setItem("vetka_player_lab_snapshot", JSON.stringify(snapshot));
+    } catch {
+      // ignore storage errors
     }
-  }, [initialQuery.applySuggestedShell, snapshot.suggestedShellHeight, snapshot.suggestedShellWidth]);
+  }, [snapshot]);
+
+  useEffect(() => {
+    const key = `${src}|${snapshot.videoIntrinsicWidth}x${snapshot.videoIntrinsicHeight}`;
+    if (!snapshot.ok) return;
+    if (!src && sourceKind !== "synthetic") return;
+    if (autoSizedKeyRef.current === key) return;
+
+    const next = {
+      width: snapshot.suggestedShellWidth,
+      height: snapshot.suggestedShellHeight,
+    };
+    autoSizedKeyRef.current = key;
+    setShellSizeOverride(next);
+    void setCurrentWindowLogicalSize(next.width, next.height);
+  }, [
+    snapshot.ok,
+    snapshot.suggestedShellHeight,
+    snapshot.suggestedShellWidth,
+    snapshot.videoIntrinsicHeight,
+    snapshot.videoIntrinsicWidth,
+    sourceKind,
+    src,
+  ]);
+
+  useEffect(() => {
+    if (!initialQuery.applySuggestedShell) return;
+    if (!snapshot.ok) return;
+    setShellSizeOverride({
+      width: snapshot.suggestedShellWidth,
+      height: snapshot.suggestedShellHeight,
+    });
+  }, [initialQuery.applySuggestedShell, snapshot.ok, snapshot.suggestedShellHeight, snapshot.suggestedShellWidth]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() === "i") {
+        setIsDebugVisible((value) => !value);
+      }
+      if (event.key.toLowerCase() === "f") {
+        void toggleFullscreen();
+      }
+      if (event.key === " " && videoRef.current) {
+        event.preventDefault();
+        if (videoRef.current.paused) {
+          void videoRef.current.play();
+        } else {
+          videoRef.current.pause();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     const api = {
@@ -148,6 +210,9 @@ function App() {
           height: Math.max(0, Math.floor(height)),
         });
         setNaturalSize({ width: 0, height: 0 });
+        setSrc("");
+        setFileName("Synthetic probe");
+        autoSizedKeyRef.current = "";
       },
       applySuggestedShell: () => {
         const next = {
@@ -155,24 +220,20 @@ function App() {
           height: snapshot.suggestedShellHeight,
         };
         setShellSizeOverride(next);
+        void setCurrentWindowLogicalSize(next.width, next.height);
         return { ...snapshot, shellWidth: next.width, shellHeight: next.height };
       },
-      resetShell: () => setShellSizeOverride(null),
+      resetShell: () => {
+        setShellSizeOverride(null);
+        autoSizedKeyRef.current = "";
+      },
+      toggleDebug: () => setIsDebugVisible((value) => !value),
+      toggleFullscreen: () => toggleFullscreen(),
     };
     window.vetkaPlayerLab = api;
     return () => {
-      if (window.vetkaPlayerLab === api) {
-        delete window.vetkaPlayerLab;
-      }
+      if (window.vetkaPlayerLab === api) delete window.vetkaPlayerLab;
     };
-  }, [snapshot]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("vetka_player_lab_snapshot", JSON.stringify(snapshot));
-    } catch {
-      // ignore storage errors
-    }
   }, [snapshot]);
 
   function attachFile(file: File) {
@@ -183,144 +244,97 @@ function App() {
     });
     setFileName(file.name);
     setNaturalSize({ width: 0, height: 0 });
-  }
-
-  function onDrop(event: React.DragEvent<HTMLDivElement>) {
-    event.preventDefault();
-    setIsDragging(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) attachFile(file);
+    autoSizedKeyRef.current = "";
   }
 
   return (
     <main
-      className="lab-shell"
+      className={`player-app ${isDebugVisible ? "debug-open" : ""}`}
       onDragOver={(event) => {
         event.preventDefault();
         setIsDragging(true);
       }}
       onDragLeave={() => setIsDragging(false)}
-      onDrop={onDrop}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDragging(false);
+        const file = event.dataTransfer.files?.[0];
+        if (file) attachFile(file);
+      }}
     >
-      <div className="lab-grid">
-        <section className="lab-panel player-stage">
-          <div className="player-header">
-            <div>
-              <h1 className="player-title">VETKA Video Player Lab</h1>
-              <p className="player-subtitle">
-                MARKER_168.VIDEOPLAYER.LAB.SHELL
-                {" · "}
-                web-first sandbox for geometry, shell contract, and editor-grade playback ergonomics
-              </p>
-            </div>
-            <div className="player-controls">
-              <label className="pill">
-                Open file
-                <input
-                  type="file"
-                  accept="video/*"
-                  style={{ display: "none" }}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) attachFile(file);
-                  }}
-                />
-              </label>
-              <select
-                className="pill"
-                value={variant}
-                onChange={(event) => setVariant(event.target.value as ShellVariant)}
-              >
-                <option value="fixed-footer">fixed footer shell</option>
-                <option value="flex-footer">flex remainder shell</option>
-              </select>
-              <button className="pill" type="button" onClick={() => window.vetkaPlayerLab?.print()}>
-                print snapshot
-              </button>
-              <button
-                className="pill"
-                type="button"
-                onClick={() => window.vetkaPlayerLab?.applySuggestedShell()}
-              >
-                apply suggested shell
-              </button>
-            </div>
+      <div className="chrome-strip" />
+      <section className="player-pane">
+        <header className="topbar">
+          <div className="title-block">
+            <span className="eyebrow">VETKA Player</span>
+            <strong className="media-title">{fileName || "Drop a video to begin"}</strong>
           </div>
-
-          <div className="player-controls" style={{ marginBottom: 14 }}>
-            <label className="metric-pill">
-              synthetic width
+          <div className="topbar-actions">
+            <label className="ghost-button">
+              Open
               <input
-                type="number"
-                min={1}
-                value={syntheticSize.width || ""}
-                onChange={(event) =>
-                  setSyntheticSize((prev) => ({
-                    ...prev,
-                    width: Number(event.target.value || 0),
-                  }))
-                }
+                type="file"
+                accept="video/*"
+                style={{ display: "none" }}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) attachFile(file);
+                }}
               />
             </label>
-            <label className="metric-pill">
-              synthetic height
-              <input
-                type="number"
-                min={1}
-                value={syntheticSize.height || ""}
-                onChange={(event) =>
-                  setSyntheticSize((prev) => ({
-                    ...prev,
-                    height: Number(event.target.value || 0),
-                  }))
-                }
-              />
-            </label>
-            <button
-              className="pill"
-              type="button"
-              onClick={() => {
-                setSrc("");
-                setFileName("");
-                setNaturalSize({ width: 0, height: 0 });
-              }}
-            >
-              synthetic mode
+            <button className="ghost-button" type="button" onClick={() => window.vetkaPlayerLab?.applySuggestedShell()}>
+              Fit
             </button>
-            <button className="pill" type="button" onClick={() => setShellSizeOverride(null)}>
-              reset shell size
+            <button className="ghost-button" type="button" onClick={() => void toggleFullscreen()}>
+              Fullscreen
+            </button>
+            <button className="ghost-button subtle" type="button" onClick={() => setIsDebugVisible((value) => !value)}>
+              {isDebugVisible ? "Hide Debug" : "Debug"}
             </button>
           </div>
+        </header>
 
+        <div className="stage-wrap">
           <div
             ref={shellRef}
-            className={`viewer-shell ${variant}`}
-            style={shellSizeOverride ? {
-              width: `${shellSizeOverride.width}px`,
-              height: `${shellSizeOverride.height}px`,
-            } : undefined}
+            className={`viewer-shell player-shell ${variant}`}
+            style={shellSizeOverride ? { width: `${shellSizeOverride.width}px`, height: `${shellSizeOverride.height}px` } : undefined}
           >
-            <div ref={viewerRef} className="viewer-area">
+            <div ref={viewerRef} className="viewer-area player-canvas">
               {src ? (
-                <video
-                  ref={videoRef}
-                  className="viewer-video"
-                  src={src}
-                  controls
-                  playsInline
-                  preload="metadata"
-                  onLoadedMetadata={(event) => {
-                    const video = event.currentTarget;
-                    setNaturalSize({
-                      width: Number(video.videoWidth || 0),
-                      height: Number(video.videoHeight || 0),
-                    });
-                    if (!fileName) {
-                      const tail = src.split("/").pop() || "video";
-                      setFileName(tail);
-                    }
-                  }}
-                />
+                <>
+                  <video
+                    ref={videoRef}
+                    className="viewer-video"
+                    src={src}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    onLoadedMetadata={(event) => {
+                      const video = event.currentTarget;
+                      setNaturalSize({
+                        width: Number(video.videoWidth || 0),
+                        height: Number(video.videoHeight || 0),
+                      });
+                      if (!fileName) setFileName(formatName(src));
+                    }}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
+                  />
+                  <div className={`hud ${isPlaying ? "hud-hidden" : ""}`}>
+                    <button className="hud-button" type="button" onClick={() => {
+                      const video = videoRef.current;
+                      if (!video) return;
+                      if (video.paused) {
+                        void video.play();
+                      } else {
+                        video.pause();
+                      }
+                    }}>
+                      {isPlaying ? "Pause" : "Play"}
+                    </button>
+                  </div>
+                </>
               ) : intrinsicSize.width > 0 && intrinsicSize.height > 0 ? (
                 <div className="synthetic-stage">
                   <div
@@ -336,29 +350,28 @@ function App() {
                   </div>
                 </div>
               ) : (
-                <div className="dropzone" style={{ outline: isDragging ? "2px solid #58beff" : "none" }}>
+                <div className={`dropzone player-dropzone ${isDragging ? "dragging" : ""}`}>
                   <div>
                     <strong>Drop a video here</strong>
-                    Drag a local file into the lab or use the file picker above.
-                    <div className="small" style={{ marginTop: 12 }}>
-                      This sandbox exists to prove shell geometry before we re-import it into VETKA.
-                    </div>
+                    Or click <span className="inline-token">Open</span>. This shell auto-fits to the media once metadata is known.
                   </div>
                 </div>
               )}
             </div>
-            <footer className="footer-bar">
-              <span>{fileName || (sourceKind === "synthetic" ? "Synthetic probe" : "No file loaded")}</span>
+            <footer className="footer-bar player-footer">
+              <span>{fileName || "No file loaded"}</span>
               <span className="small">
-                {variant}
-                {" · "}
                 {sourceKind}
+                {" · "}
+                {Math.round(snapshot.horizontalLetterboxPx * 100) / 100}px side bars
               </span>
             </footer>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <aside className="lab-panel metrics-panel">
+      {isDebugVisible ? (
+        <aside className="lab-panel metrics-panel debug-drawer">
           <h2>Geometry Inspector</h2>
           <dl className="metrics-table">
             <dt>Status</dt>
@@ -399,21 +412,67 @@ function App() {
               <dt>Suggested height</dt>
               <dd>{snapshot.suggestedShellHeight}</dd>
             </dl>
-            <p className="small">
-              This is the shell size the lab would request for a metadata-first detached window.
-            </p>
           </div>
 
           <div className="metrics-block">
-            <h2>Console API</h2>
-            <p className="small">
-              Use <code>window.vetkaPlayerLab.print()</code>,{" "}
-              <code>window.vetkaPlayerLab.snapshot()</code>,{" "}
-              <code>window.vetkaPlayerLab.setVariant("fixed-footer")</code>.
-            </p>
+            <h2>Lab Controls</h2>
+            <div className="player-controls">
+              <select className="pill" value={variant} onChange={(event) => setVariant(event.target.value as ShellVariant)}>
+                <option value="fixed-footer">fixed footer shell</option>
+                <option value="flex-footer">flex remainder shell</option>
+              </select>
+              <button className="pill" type="button" onClick={() => window.vetkaPlayerLab?.print()}>
+                print snapshot
+              </button>
+              <button className="pill" type="button" onClick={() => setShellSizeOverride(null)}>
+                reset shell
+              </button>
+            </div>
+            <div className="player-controls metrics-row">
+              <label className="metric-pill">
+                synthetic width
+                <input
+                  type="number"
+                  min={1}
+                  value={syntheticSize.width || ""}
+                  onChange={(event) =>
+                    setSyntheticSize((prev) => ({
+                      ...prev,
+                      width: Number(event.target.value || 0),
+                    }))
+                  }
+                />
+              </label>
+              <label className="metric-pill">
+                synthetic height
+                <input
+                  type="number"
+                  min={1}
+                  value={syntheticSize.height || ""}
+                  onChange={(event) =>
+                    setSyntheticSize((prev) => ({
+                      ...prev,
+                      height: Number(event.target.value || 0),
+                    }))
+                  }
+                />
+              </label>
+              <button
+                className="pill"
+                type="button"
+                onClick={() => {
+                  setSrc("");
+                  setFileName("Synthetic probe");
+                  setNaturalSize({ width: 0, height: 0 });
+                  autoSizedKeyRef.current = "";
+                }}
+              >
+                synthetic mode
+              </button>
+            </div>
           </div>
         </aside>
-      </div>
+      ) : null}
     </main>
   );
 }

@@ -38,6 +38,8 @@ Current winning shell contract inside the lab:
 - explicit footer reserve
 - metadata-first suggested shell size
 - geometry snapshot exposed via `window.vetkaPlayerLab`
+- player-first default UI with hidden debug drawer
+- native fullscreen available in the Tauri host
 
 ## Console API
 

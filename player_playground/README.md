@@ -4,6 +4,13 @@ MARKER_168.VIDEOPLAYER.LAB.SANDBOX
 
 Standalone sandbox for isolated video-player geometry work.
 
+Default mode is now player-first:
+
+- video-centered shell
+- hidden debug drawer by default
+- auto-fit shell after metadata load
+- native fullscreen toggle in Tauri host
+
 ## Goals
 
 - prove the viewer-shell contract outside MCC/VETKA noise
@@ -25,6 +32,12 @@ npm run tauri:build
 ```
 
 Open [http://127.0.0.1:1424](http://127.0.0.1:1424) and load a local video.
+
+## Shortcuts
+
+- `Space`: play / pause
+- `F`: fullscreen
+- `I`: toggle debug drawer
 
 ## Synthetic Probe Mode
 
@@ -59,4 +72,6 @@ window.vetkaPlayerLab.print()
 window.vetkaPlayerLab.setVariant("fixed-footer")
 window.vetkaPlayerLab.setSyntheticSize(640, 480)
 window.vetkaPlayerLab.applySuggestedShell()
+window.vetkaPlayerLab.toggleDebug()
+window.vetkaPlayerLab.toggleFullscreen()
 ```

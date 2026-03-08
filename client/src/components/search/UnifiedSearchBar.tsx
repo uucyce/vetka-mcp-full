@@ -122,8 +122,8 @@ const SortIcon = () => (
 
 // Phase 68.3: SVG icons for search contexts
 // VETKA symbol: Y-shaped tree branch in circle - curved branches for organic look
-const VetkaIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 512 512" fill="none" stroke="currentColor" strokeLinecap="round">
+const VetkaIcon = ({ size = 16 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 512 512" fill="none" stroke="currentColor" strokeLinecap="round">
     {/* Outer circle */}
     <circle cx="256" cy="256" r="180" strokeWidth="20" strokeOpacity="0.6" />
     {/* Central vertical stem */}
@@ -140,8 +140,8 @@ const MycoIcon = () => (
     src={mycoIdleQuestion}
     alt="MYCO"
     style={{
-      width: 16,
-      height: 16,
+      width: 19,
+      height: 19,
       objectFit: 'contain',
       objectPosition: 'center',
       display: 'block',
@@ -551,14 +551,6 @@ export function UnifiedSearchBar({
   }, [clearResultPreview]);
 
   useEffect(() => {
-    clearResultPreview();
-  }, [clearResultPreview, query, searchContext, showContextMenu, laneState.mode, activeIsSearching]);
-
-  useEffect(() => {
-    clearMycoPreview();
-  }, [clearMycoPreview, mycoStateKey, showContextMenu, query, searchContext, laneState.mode, showMycoTicker]);
-
-  useEffect(() => {
     const dismissPreviews = () => {
       clearResultPreview();
       clearMycoPreview();
@@ -796,6 +788,14 @@ export function UnifiedSearchBar({
   }, [mycoAvatarState]);
 
   useEffect(() => {
+    clearResultPreview();
+  }, [activeIsSearching, clearResultPreview, laneState.mode, query, searchContext, showContextMenu]);
+
+  useEffect(() => {
+    clearMycoPreview();
+  }, [clearMycoPreview, laneState.mode, mycoStateKey, query, searchContext, showContextMenu, showMycoTicker]);
+
+  useEffect(() => {
     if (!pendingInputFocusRef.current) return;
     if (laneState.mode !== 'input') return;
     pendingInputFocusRef.current = false;
@@ -965,21 +965,21 @@ export function UnifiedSearchBar({
         borderRadius: '999px',
         position: 'relative' as const,
       },
-      width: compact ? '18px' : '22px',
-      height: compact ? '18px' : '22px',
+      width: compact ? '20px' : '26px',
+      height: compact ? '20px' : '26px',
       color: '#8a8a8a',
     },
     mycoAvatarImage: {
-      width: compact ? '16px' : '18px',
-      height: compact ? '16px' : '18px',
+      width: compact ? '20px' : '23px',
+      height: compact ? '20px' : '23px',
       objectFit: 'contain' as const,
       objectPosition: 'center' as const,
       display: 'block',
       filter: 'grayscale(0.12)',
     },
     vetkaAvatarIcon: {
-      width: compact ? '18px' : '22px',
-      height: compact ? '18px' : '22px',
+      width: compact ? '20px' : '26px',
+      height: compact ? '20px' : '26px',
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -987,8 +987,8 @@ export function UnifiedSearchBar({
       opacity: mycoAvatarState === 'speaking' ? 1 : 0.9,
     },
     contextMenuIconSlot: {
-      width: '22px',
-      height: '22px',
+      width: '24px',
+      height: '24px',
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -1259,13 +1259,15 @@ export function UnifiedSearchBar({
               >
                 {laneRoleVisual === 'vetka' ? (
                   <span aria-label="vetka" style={styles.vetkaAvatarIcon}>
-                    <VetkaIcon />
+                    <VetkaIcon size={compact ? 18 : 20} />
                   </span>
                 ) : laneRoleVisual === 'myco' ? (
                   <img src={mycoAvatarSrc} alt="MYCO" style={styles.mycoAvatarImage} />
                 ) : (
                   <span aria-label={searchContext} style={styles.vetkaAvatarIcon}>
-                    {React.createElement(CONTEXT_ICONS[searchContext])}
+                    {searchContext === 'vetka'
+                      ? <VetkaIcon size={compact ? 18 : 20} />
+                      : React.createElement(CONTEXT_ICONS[searchContext])}
                   </span>
                 )}
                 {laneRoleVisual === 'myco' && mycoAvatarState === 'thinking' && (
@@ -1478,7 +1480,7 @@ export function UnifiedSearchBar({
                       color: ctx.available ? '#888' : '#555',
                     }}
                   >
-                    <IconComponent />
+                    {ctx.id === 'vetka' ? <VetkaIcon size={18} /> : <IconComponent />}
                   </span>
                   <div style={{ flex: 1 }}>
                     <div style={{ color: ctx.available ? '#fff' : '#666', fontSize: 12, fontWeight: 500 }}>
