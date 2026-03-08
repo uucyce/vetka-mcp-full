@@ -12,11 +12,16 @@
 // MARKER_137.S1_3: Added unified backend support for web/file contexts
 // MARKER_139.S1_2_UNIFIED_ARTIFACT_FIX: unified result mapping + artifact path normalization
 import React, { useCallback, useRef, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearch } from '../../hooks/useSearch';
 import { useStore } from '../../store/useStore';
 import { buildViewportContext } from '../../utils/viewport';
 import type { SearchResult } from '../../types/chat';
 import type { MycoModeAHint } from '../myco/mycoModeATypes';
+import { getLaneIdlePlaceholderText, resolveSearchLaneState } from './searchLaneMode';
+import mycoIdleQuestion from '../../assets/myco/myco_idle_question.png';
+import mycoReadySmile from '../../assets/myco/myco_ready_smile.png';
+import mycoSpeakingLoop from '../../assets/myco/myco_speaking_loop.apng';
 
 const API_BASE = 'http://localhost:5001/api';
 
@@ -41,6 +46,8 @@ interface Props {
   voiceLevel?: number;
   /** Optional scope tag for deterministic MYCO main-surface events */
   mycoSurfaceScope?: 'main';
+  /** Explicit lane ownership for mode-driven rendering */
+  laneSurface?: 'main' | 'chat';
   /** Deterministic MYCO hint payload for empty VETKA search lane */
   mycoHint?: MycoModeAHint | null;
   /** Stable key for resetting typed hint rendering */
@@ -52,15 +59,6 @@ const SearchIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <circle cx="11" cy="11" r="8" />
     <path d="m21 21-4.35-4.35" />
-  </svg>
-);
-
-const MicIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <rect x="9" y="2" width="6" height="12" rx="3" />
-    <path d="M5 10a7 7 0 0 0 14 0" />
-    <path d="M12 17v4" />
-    <path d="M8 21h8" />
   </svg>
 );
 
@@ -137,6 +135,22 @@ const VetkaIcon = () => (
   </svg>
 );
 
+const MycoIcon = () => (
+  <img
+    src={mycoIdleQuestion}
+    alt="MYCO"
+    style={{
+      width: 16,
+      height: 16,
+      objectFit: 'contain',
+      objectPosition: 'center',
+      display: 'block',
+      filter: 'grayscale(1) brightness(0.82) contrast(0.9)',
+      opacity: 0.52,
+    }}
+  />
+);
+
 const WebIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
     <circle cx="12" cy="12" r="10" />
@@ -183,6 +197,8 @@ function getTypeIcon(type: string) {
 
 type SortMode = 'relevance' | 'name' | 'type' | 'date' | 'size';
 type SearchModeType = 'hybrid' | 'semantic' | 'keyword' | 'filename';
+type LaneRoleVisual = 'myco' | 'vetka' | 'context';
+type MycoAvatarVisualState = 'idle' | 'speaking' | 'ready' | 'thinking';
 type ProviderHealth = Record<string, {
   key_present?: boolean;
   sdk_installed?: boolean;
@@ -228,10 +244,11 @@ const SEARCH_MODE_DESCRIPTIONS: Record<SearchModeType, string> = {
 };
 
 // Phase 68.3: Search context paths
-type SearchContext = 'vetka' | 'web' | 'file' | 'cloud' | 'social';
+type SearchContext = 'vetka' | 'myco' | 'web' | 'file' | 'cloud' | 'social';
 
 const CONTEXT_MODE_FALLBACK: Record<SearchContext, SearchModeType[]> = {
   vetka: ['hybrid', 'semantic', 'keyword', 'filename'],
+  myco: ['hybrid', 'semantic', 'keyword', 'filename'],
   web: ['hybrid', 'keyword'],
   file: ['keyword', 'filename'],
   cloud: ['keyword'],
@@ -241,6 +258,7 @@ const CONTEXT_MODE_FALLBACK: Record<SearchContext, SearchModeType[]> = {
 // SVG icon components for each context
 const CONTEXT_ICONS: Record<SearchContext, () => React.ReactElement> = {
   vetka: VetkaIcon,
+  myco: MycoIcon,
   web: WebIcon,
   file: FolderIcon,
   cloud: CloudIcon,
@@ -256,6 +274,7 @@ const SEARCH_CONTEXTS: Array<{
   available: boolean;
 }> = [
   { id: 'vetka', prefix: 'vetka/', label: 'VETKA', description: 'Search in indexed codebase', available: true },
+  { id: 'myco', prefix: 'myco/', label: 'MYCO', description: 'Fast help and UI guidance', available: true },
   { id: 'web', prefix: 'web/', label: 'Web', description: 'Search the internet via Tavily', available: true },
   { id: 'file', prefix: 'file/', label: 'Filesystem', description: 'Search local files', available: true },
   { id: 'cloud', prefix: 'cloud/', label: 'Cloud', description: 'Search cloud storage', available: false },
@@ -273,14 +292,16 @@ export function UnifiedSearchBar({
   voiceState = 'idle',
   voiceLevel = 0,
   mycoSurfaceScope,
+  laneSurface = 'main',
   mycoHint = null,
   mycoStateKey = '',
 }: Props) {
   // Phase 68.3: Search context state
-  const [searchContext, setSearchContext] = useState<SearchContext>('vetka');
+  const [searchContext, setSearchContext] = useState<SearchContext>('myco');
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextSupportedModes, setContextSupportedModes] = useState<SearchModeType[]>(CONTEXT_MODE_FALLBACK.vetka);
   const [providerHealth, setProviderHealth] = useState<ProviderHealth>({});
+  const effectiveSearchContext: Exclude<SearchContext, 'myco'> = searchContext === 'myco' ? 'vetka' : searchContext;
 
   const {
     query,
@@ -300,13 +321,14 @@ export function UnifiedSearchBar({
   } = useSearch({
     debounceMs: 300,
     defaultLimit: 100,
-    autoSearch: searchContext === 'vetka',
+    autoSearch: searchContext === 'vetka' || searchContext === 'myco',
   }); // Fetch up to 100, paginate in UI
 
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mycoPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingInputFocusRef = useRef(false);
 
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -317,6 +339,9 @@ export function UnifiedSearchBar({
   const [previewPosition, setPreviewPosition] = useState<{ x: number; y: number } | null>(null);
   const [showMycoPreview, setShowMycoPreview] = useState(false);
   const [mycoPreviewPosition, setMycoPreviewPosition] = useState<{ x: number; y: number } | null>(null);
+  const [mycoAvatarState, setMycoAvatarState] = useState<MycoAvatarVisualState>('idle');
+  const mycoAvatarTimersRef = useRef<number[]>([]);
+  const [mycoTickerPlaybackDone, setMycoTickerPlaybackDone] = useState(false);
 
   // Sort state
   const [sortMode, setSortMode] = useState<SortMode>('relevance');
@@ -348,17 +373,17 @@ export function UnifiedSearchBar({
 
   // MARKER_142.BUG_FALLBACK_LEAK: Never fallback to VETKA socket results outside vetka context
   const activeResults = React.useMemo(() => {
-    if (searchContext !== 'vetka') {
+    if (effectiveSearchContext !== 'vetka') {
       return unifiedResults;
     }
     return results;
-  }, [searchContext, unifiedResults, results]);
+  }, [effectiveSearchContext, unifiedResults, results]);
 
-  const activeIsSearching = searchContext === 'vetka' ? isSearching : unifiedLoading;
-  const activeError = searchContext === 'vetka' ? error : unifiedError;
-  const activeTotalResults = searchContext === 'vetka' ? totalResults : unifiedTotal;
-  const activeSearchTime = searchContext === 'vetka' ? searchTime : unifiedSearchTime;
-  const hasMoreActive = searchContext === 'vetka'
+  const activeIsSearching = effectiveSearchContext === 'vetka' ? isSearching : unifiedLoading;
+  const activeError = effectiveSearchContext === 'vetka' ? error : unifiedError;
+  const activeTotalResults = effectiveSearchContext === 'vetka' ? totalResults : unifiedTotal;
+  const activeSearchTime = effectiveSearchContext === 'vetka' ? searchTime : unifiedSearchTime;
+  const hasMoreActive = effectiveSearchContext === 'vetka'
     ? hasMore
     : activeResults.length > displayLimit;
   const webHasAnyProvider = Object.values(providerHealth).some((p) => p?.available);
@@ -368,14 +393,14 @@ export function UnifiedSearchBar({
     window.dispatchEvent(new CustomEvent('vetka-myco-search-state', {
       detail: {
         scope: mycoSurfaceScope,
-        context: searchContext,
+        context: effectiveSearchContext,
         mode: searchMode,
         queryEmpty: query.trim().length === 0,
         providerHealth,
         error: activeError,
       },
     }));
-  }, [activeError, mycoSurfaceScope, providerHealth, query, searchContext, searchMode]);
+  }, [activeError, effectiveSearchContext, mycoSurfaceScope, providerHealth, query, searchMode]);
 
   useEffect(() => {
     if (!mycoSurfaceScope) return;
@@ -515,13 +540,13 @@ export function UnifiedSearchBar({
   // MARKER_142.IMPL_STEP_2_CAPABILITIES: Load context capabilities from backend
   useEffect(() => {
     let cancelled = false;
-    const fallbackModes = CONTEXT_MODE_FALLBACK[searchContext] || CONTEXT_MODE_FALLBACK.vetka;
+    const fallbackModes = CONTEXT_MODE_FALLBACK[searchContext] || CONTEXT_MODE_FALLBACK.myco;
 
     const loadCapabilities = async () => {
       try {
-        const endpoint = searchContext === 'file'
+        const endpoint = effectiveSearchContext === 'file'
           ? `${API_BASE}/search/file/capabilities`
-          : `${API_BASE}/search/capabilities?context=${encodeURIComponent(searchContext)}`;
+          : `${API_BASE}/search/capabilities?context=${encodeURIComponent(effectiveSearchContext)}`;
         const res = await fetch(endpoint);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -546,7 +571,7 @@ export function UnifiedSearchBar({
 
     loadCapabilities();
     return () => { cancelled = true; };
-  }, [searchContext]);
+  }, [effectiveSearchContext, searchContext]);
 
   // Keep active mode valid for current context
   useEffect(() => {
@@ -558,7 +583,7 @@ export function UnifiedSearchBar({
 
   // MARKER_137.S1_3: Call unified backend for web/file contexts
   useEffect(() => {
-    if (searchContext === 'vetka' || !query.trim()) {
+    if (effectiveSearchContext === 'vetka' || !query.trim()) {
       setUnifiedResults([]);
       setUnifiedError(null);
       setUnifiedTotal(0);
@@ -580,7 +605,7 @@ export function UnifiedSearchBar({
           ? searchMode
           : (contextSupportedModes[0] || 'keyword');
         let data: any;
-        if (searchContext === 'file') {
+        if (effectiveSearchContext === 'file') {
           // MARKER_150.FILE_API_SURFACE: file/ context uses dedicated file search endpoint.
           const fileMode = 'filename';
           const fileRes = await fetch(`${API_BASE}/search/file`, {
@@ -604,14 +629,14 @@ export function UnifiedSearchBar({
         } else {
           const viewportContext = cameraRef ? buildViewportContext(nodes, pinnedFileIds, cameraRef) : undefined;
           // Map context to unified sources
-          const sourcesMap: Record<SearchContext, string[]> = {
+          const sourcesMap: Record<Exclude<SearchContext, 'myco'>, string[]> = {
             vetka: ['semantic', 'file'],
             web: ['web'],
             file: ['file'],
             cloud: [], // not implemented
             social: ['social'],
           };
-          const sources = sourcesMap[searchContext] || ['file', 'semantic'];
+          const sources = sourcesMap[effectiveSearchContext] || ['file', 'semantic'];
           const res = await fetch(`${API_BASE}/search/unified`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -677,7 +702,7 @@ export function UnifiedSearchBar({
         clearTimeout(unifiedDebounceRef.current);
       }
     };
-  }, [query, searchContext, searchMode, contextSupportedModes, cameraRef, nodes, pinnedFileIds]);
+  }, [cameraRef, contextSupportedModes, effectiveSearchContext, nodes, pinnedFileIds, query, searchContext, searchMode]);
 
   // Focus input on mount if not compact
   useEffect(() => {
@@ -694,33 +719,90 @@ export function UnifiedSearchBar({
 
   const [isFocused, setIsFocused] = useState(false);
   const [thinkingDots, setThinkingDots] = useState('.');
-  const showVoiceTrigger = Boolean(onVoiceTrigger && !query && !activeIsSearching);
-  const showVoiceActivity = voiceState === 'listening' || voiceState === 'speaking';
-  const showThinkingIndicator = voiceState === 'thinking';
-  const showMycoTicker = Boolean(
-    mycoHint
-    && searchContext === 'vetka'
-    && !query.trim()
-    && !activeIsSearching
-    && !showContextMenu
-    && !showThinkingIndicator
-    && voiceState === 'idle',
-  );
-
-  const mycoTickerText = React.useMemo(() => {
-    if (!mycoHint) return '';
-    const lines = [
-      mycoHint.title,
-      mycoHint.body,
-      ...mycoHint.nextActions.slice(0, 2),
-    ].filter(Boolean);
-    return lines.join('  •  ').trim();
-  }, [mycoHint]);
-
+  const laneState = React.useMemo(() => resolveSearchLaneState({
+    laneSurface,
+    query,
+    activeIsSearching,
+    showContextMenu,
+    isFocused,
+    voiceState,
+    onVoiceTrigger,
+    searchContext: effectiveSearchContext,
+    mycoHint,
+    mycoStateKey,
+    explicitAgentMode: searchContext === 'vetka' ? 'jarvis_vetka' : searchContext === 'myco' ? 'myco' : undefined,
+  }), [activeIsSearching, effectiveSearchContext, isFocused, laneSurface, mycoHint, mycoStateKey, onVoiceTrigger, query, searchContext, showContextMenu, voiceState]);
+  const showVoiceTrigger = laneState.showVoiceTrigger;
+  const showVoiceActivity = laneState.showVoiceActivity;
+  const showThinkingIndicator = laneState.showThinkingIndicator;
+  const showMycoTicker = laneState.showMycoTicker;
+  const mycoTickerText = laneState.payload.body;
+  const laneRoleVisual: LaneRoleVisual = searchContext === 'vetka' ? 'vetka' : searchContext === 'myco' ? 'myco' : 'context';
+  const showLaneAvatar = !activeIsSearching;
   const mycoTickerWords = React.useMemo(
     () => mycoTickerText.split(/\s+/).filter(Boolean),
     [mycoTickerText],
   );
+  const shouldAnimateMycoTicker = showMycoTicker && mycoTickerText.length > (compact ? 42 : 58);
+  const mycoTickerAnimationSeconds = React.useMemo(
+    () => (shouldAnimateMycoTicker ? Math.max(10, Number((mycoTickerWords.length * 0.7).toFixed(2))) : 0),
+    [mycoTickerWords.length, shouldAnimateMycoTicker],
+  );
+  const mycoTickerPlaybackActive = showMycoTicker && !mycoTickerPlaybackDone;
+
+  const mycoAvatarSrc = React.useMemo(() => {
+    if (mycoAvatarState === 'speaking') return mycoSpeakingLoop;
+    if (mycoAvatarState === 'ready') return mycoReadySmile;
+    if (mycoAvatarState === 'thinking') return mycoReadySmile;
+    return mycoIdleQuestion;
+  }, [mycoAvatarState]);
+
+  useEffect(() => {
+    if (!pendingInputFocusRef.current) return;
+    if (laneState.mode !== 'input') return;
+    pendingInputFocusRef.current = false;
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  }, [laneState.mode]);
+
+  useEffect(() => {
+    const clearTimers = () => {
+      mycoAvatarTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      mycoAvatarTimersRef.current = [];
+    };
+
+    if (!showLaneAvatar || laneRoleVisual === 'context') {
+      clearTimers();
+      setMycoAvatarState('idle');
+      return;
+    }
+
+    if (laneState.mode === 'voice_thinking') {
+      clearTimers();
+      setMycoAvatarState('thinking');
+      return;
+    }
+
+    if (laneState.mode === 'voice_listening' || laneState.mode === 'voice_speaking') {
+      clearTimers();
+      setMycoAvatarState('speaking');
+      return;
+    }
+
+    if (laneState.mode === 'myco_guidance') {
+      clearTimers();
+      setMycoAvatarState(mycoTickerPlaybackActive ? 'speaking' : 'idle');
+      return;
+    }
+
+    clearTimers();
+    setMycoAvatarState('idle');
+
+    return () => {
+      clearTimers();
+    };
+  }, [laneRoleVisual, laneState.mode, mycoTickerPlaybackActive, showLaneAvatar]);
 
   useEffect(() => {
     if (!showThinkingIndicator) {
@@ -734,7 +816,8 @@ export function UnifiedSearchBar({
   }, [showThinkingIndicator]);
 
   useEffect(() => {
-    if (!showMycoTicker || mycoTickerWords.length === 0) {
+    setMycoTickerPlaybackDone(false);
+    if (!showMycoTicker || mycoTickerWords.length === 0 || shouldAnimateMycoTicker) {
       setMycoVisibleWordCount(0);
       return;
     }
@@ -746,7 +829,25 @@ export function UnifiedSearchBar({
       });
     }, 420);
     return () => window.clearInterval(timer);
-  }, [showMycoTicker, mycoStateKey, mycoTickerWords]);
+  }, [showMycoTicker, mycoStateKey, mycoTickerWords, shouldAnimateMycoTicker]);
+
+  useEffect(() => {
+    if (!showMycoTicker || !shouldAnimateMycoTicker) return;
+    setMycoTickerPlaybackDone(false);
+    const timer = window.setTimeout(() => {
+      setMycoTickerPlaybackDone(true);
+    }, Math.round(mycoTickerAnimationSeconds * 1000));
+    return () => window.clearTimeout(timer);
+  }, [mycoStateKey, mycoTickerAnimationSeconds, showMycoTicker, shouldAnimateMycoTicker]);
+
+  useEffect(() => {
+    if (!showMycoTicker || shouldAnimateMycoTicker) return;
+    if (mycoTickerWords.length === 0) {
+      setMycoTickerPlaybackDone(true);
+      return;
+    }
+    setMycoTickerPlaybackDone(mycoVisibleWordCount >= mycoTickerWords.length);
+  }, [mycoTickerWords.length, mycoVisibleWordCount, showMycoTicker, shouldAnimateMycoTicker]);
 
   // Styles (Nolan dark minimal - grayscale only)
   const styles = {
@@ -761,8 +862,9 @@ export function UnifiedSearchBar({
     },
     inputWrapper: {
       display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
+      flexDirection: 'column' as const,
+      alignItems: 'stretch',
+      gap: '4px',
       background: '#1a1a1a',
       borderRadius: '6px',
       padding: compact ? '6px 10px' : '8px 12px',
@@ -771,8 +873,19 @@ export function UnifiedSearchBar({
       borderColor: '#333',
       transition: 'border-color 0.15s',
     },
+    inputWrapperWithMyco: {
+      minHeight: compact ? '42px' : '48px',
+    },
     inputWrapperFocused: {
       borderColor: '#555',
+    },
+    inputRow: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      minWidth: 0,
+      position: 'relative' as const,
+      zIndex: 1,
     },
     contextPrefix: {
       color: '#555',
@@ -786,7 +899,7 @@ export function UnifiedSearchBar({
       border: 'none',
       outline: 'none',
       color: '#fff',
-      fontSize: compact ? '13px' : '14px',
+      fontSize: compact ? '12px' : '13px',
       fontFamily: 'inherit',
       minWidth: 0,
     },
@@ -801,6 +914,66 @@ export function UnifiedSearchBar({
       justifyContent: 'center',
       borderRadius: '4px',
       transition: 'color 0.15s, background 0.15s',
+    },
+    mycoAvatarButton: {
+      ...{
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: 0,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: '999px',
+        position: 'relative' as const,
+      },
+      width: compact ? '18px' : '22px',
+      height: compact ? '18px' : '22px',
+      color: '#8a8a8a',
+    },
+    mycoAvatarImage: {
+      width: compact ? '16px' : '18px',
+      height: compact ? '16px' : '18px',
+      objectFit: 'contain' as const,
+      objectPosition: 'center' as const,
+      display: 'block',
+      filter: 'grayscale(0.12)',
+    },
+    vetkaAvatarIcon: {
+      width: compact ? '18px' : '22px',
+      height: compact ? '18px' : '22px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: '#d7d7d7',
+      opacity: mycoAvatarState === 'speaking' ? 1 : 0.9,
+    },
+    contextMenuIconSlot: {
+      width: '22px',
+      height: '22px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    mycoAvatarBadge: {
+      position: 'absolute' as const,
+      right: compact ? '-3px' : '-4px',
+      top: compact ? '-4px' : '-5px',
+      minWidth: compact ? '10px' : '12px',
+      height: compact ? '10px' : '12px',
+      padding: '0 2px',
+      borderRadius: '999px',
+      background: '#111',
+      border: '1px solid #343434',
+      color: '#c7c7c7',
+      fontSize: compact ? '7px' : '8px',
+      lineHeight: compact ? '8px' : '10px',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontFamily: 'monospace',
+      pointerEvents: 'none' as const,
     },
     resultsContainer: {
       marginTop: '8px',
@@ -940,171 +1113,277 @@ export function UnifiedSearchBar({
       background: '#252525',
       borderRadius: '3px',
     },
-    mycoTickerRow: {
-      marginTop: '6px',
-      minHeight: '20px',
+    lanePrimaryText: {
       display: 'flex',
       alignItems: 'center',
-      gap: '8px',
-      padding: compact ? '2px 8px 0' : '3px 10px 0',
-      color: '#8fa0ad',
-      fontSize: compact ? '11px' : '12px',
-      lineHeight: 1.35,
-      cursor: 'default',
-      userSelect: 'none' as const,
-    },
-    mycoTickerDot: {
-      width: '6px',
-      height: '6px',
-      borderRadius: '999px',
-      background: '#6ea58d',
-      boxShadow: '0 0 10px rgba(110,165,141,0.45)',
-      flexShrink: 0,
+      minWidth: 0,
+      flex: 1,
+      overflow: 'hidden',
     },
     mycoTickerText: {
-      color: '#97a7b3',
+      color: '#727272',
       overflow: 'hidden',
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap' as const,
       flex: 1,
+      fontFamily: 'monospace',
+      fontSize: compact ? '12px' : '13px',
+      lineHeight: 1.2,
+      cursor: 'text',
+    },
+    mycoTickerMarquee: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      whiteSpace: 'nowrap' as const,
+      minWidth: 'max-content',
+      gap: '24px',
+      animation: shouldAnimateMycoTicker ? `myco-marquee ${mycoTickerAnimationSeconds}s linear 1 both` : undefined,
+      willChange: 'transform',
+    },
+    laneModeVoiceText: {
+      color: '#8a8a8a',
+      fontSize: compact ? '11px' : '12px',
+      whiteSpace: 'nowrap' as const,
+      userSelect: 'none' as const,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
     },
   };
 
   // Phase 68.3: Get current context config
   const currentContext = SEARCH_CONTEXTS.find(c => c.id === searchContext) || SEARCH_CONTEXTS[0];
-  const mycoTickerPreviewBody = mycoHint
-    ? [mycoHint.body, ...mycoHint.nextActions, mycoHint.shortcuts.join('  | ')].filter(Boolean).join('\n\n')
-    : '';
+  const mycoTickerPreviewBody = laneState.payload.previewBody;
   const displayedMycoTickerText = showMycoTicker
-    ? mycoTickerWords.slice(0, mycoVisibleWordCount || 1).join(' ')
+    ? shouldAnimateMycoTicker
+      ? mycoTickerText
+      : mycoTickerWords.slice(0, mycoVisibleWordCount || 1).join(' ')
     : '';
+  const laneIdlePlaceholderText = searchContext === 'vetka'
+    ? getLaneIdlePlaceholderText('jarvis_vetka')
+    : searchContext === 'myco'
+      ? getLaneIdlePlaceholderText('myco')
+      : 'tap text to search';
+  const laneDisplayText = mycoTickerPlaybackDone
+    ? laneIdlePlaceholderText
+    : (displayedMycoTickerText || mycoTickerText);
 
   return (
     <div style={styles.container}>
       {/* Search Input */}
-      <div style={{ ...styles.inputWrapper, ...(isFocused ? styles.inputWrapperFocused : {}), position: 'relative' }}>
-        {/* MARKER_137.S1_3: Show loading for either WebSocket or unified search */}
-        <span style={{ color: activeIsSearching ? '#888' : '#555' }}>
-          {activeIsSearching ? (
-            <LoadingSpinner />
-          ) : showVoiceActivity ? (
-            <span
-              title={voiceState === 'speaking' ? 'VETKA speaking' : 'VETKA listening'}
-              style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 14 }}
-            >
-              {[0.5, 0.8, 0.6].map((k, i) => {
-                const h = Math.max(3, Math.min(12, Math.round(3 + (voiceLevel * 14 * k))));
-                return (
-                  <span
-                    key={`voice-bar-${i}`}
-                    style={{
-                      width: 2,
-                      height: `${h}px`,
-                      background: '#bcbcbc',
-                      borderRadius: 2,
-                      opacity: voiceState === 'speaking' ? 1 : 0.8,
-                      transition: 'height 80ms linear',
-                    }}
-                  />
-                );
-              })}
-            </span>
-          ) : showVoiceTrigger ? (
-            <button
-              onClick={onVoiceTrigger}
-              style={{ ...styles.iconButton, padding: 0, color: '#8a8a8a' }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#8a8a8a')}
-              title="Voice input"
-            >
-              <MicIcon />
-            </button>
-          ) : (
-            <SearchIcon />
-          )}
-        </span>
-
-        {/* Phase 68.3: Clickable context prefix */}
-        <button
-          onClick={() => setShowContextMenu(!showContextMenu)}
-          style={{
-            ...styles.contextPrefix,
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '2px 4px',
-            borderRadius: 3,
-            transition: 'all 0.15s',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = '#252525';
-            e.currentTarget.style.color = '#888';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = '#555';
-          }}
-          title="Change search context"
-        >
-          {currentContext.prefix}
-        </button>
-
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            // Show context menu when input becomes empty
-            if (e.target.value === '') {
-              setShowContextMenu(true);
-            } else {
-              setShowContextMenu(false);
-            }
-          }}
-          onKeyDown={handleKeyDown}
-          onFocus={() => {
-            setIsFocused(true);
-            // Show context menu when focused and empty
-            if (!query) {
-              setShowContextMenu(true);
-            }
-          }}
-          onBlur={() => {
-            setIsFocused(false);
-            // Delay hiding to allow click on menu
-            setTimeout(() => setShowContextMenu(false), 200);
-          }}
-          placeholder={showVoiceTrigger ? 'Tap mic to talk...' : placeholder}
-          style={styles.input}
-        />
-
-        {query && (
-          <button
-            onClick={clearResults}
-            style={{ ...styles.iconButton, color: '#888' }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = '#888')}
-            title="Clear search"
-          >
-            <CloseIcon />
-          </button>
-        )}
-
-        {showThinkingIndicator && (
-          <span
-            style={{
-              color: '#8a8a8a',
-              fontSize: compact ? '11px' : '12px',
-              marginLeft: 6,
-              whiteSpace: 'nowrap',
-              userSelect: 'none',
-            }}
-            title="Voice response in progress"
-          >
-            VETKA is thinking{thinkingDots}
+      <div
+        style={{
+          ...styles.inputWrapper,
+          ...(showMycoTicker ? styles.inputWrapperWithMyco : {}),
+          ...(isFocused ? styles.inputWrapperFocused : {}),
+          position: 'relative',
+        }}
+      >
+        <div style={styles.inputRow}>
+          {/* MARKER_137.S1_3: Show loading for either WebSocket or unified search */}
+          <span style={{ color: activeIsSearching ? '#888' : '#555' }}>
+            {activeIsSearching ? (
+              <LoadingSpinner />
+            ) : showLaneAvatar ? (
+              <button
+                onClick={() => {
+                  if (laneState.mode === 'myco_guidance') {
+                    pendingInputFocusRef.current = true;
+                    setIsFocused(true);
+                    window.requestAnimationFrame(() => inputRef.current?.focus());
+                    return;
+                  }
+                  if (laneRoleVisual !== 'context') {
+                    onVoiceTrigger?.();
+                  }
+                }}
+                style={styles.mycoAvatarButton}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = '1';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = '0.92';
+                }}
+                title={
+                  laneState.mode === 'myco_guidance'
+                    ? (laneRoleVisual === 'vetka' ? 'vetka guidance' : 'myco guidance')
+                    : laneState.mode === 'voice_thinking'
+                      ? (laneRoleVisual === 'vetka' ? 'vetka is thinking' : 'myco is thinking')
+                      : laneState.mode === 'voice_speaking'
+                        ? (laneRoleVisual === 'vetka' ? 'vetka is speaking' : 'myco is speaking')
+                        : laneState.mode === 'voice_listening'
+                          ? (laneRoleVisual === 'vetka' ? 'vetka is listening' : 'myco is listening')
+                          : laneRoleVisual === 'vetka'
+                            ? 'vetka voice input'
+                            : laneRoleVisual === 'myco'
+                              ? 'myco voice input'
+                              : `${searchContext} search`
+                }
+              >
+                {laneRoleVisual === 'vetka' ? (
+                  <span aria-label="vetka" style={styles.vetkaAvatarIcon}>
+                    <VetkaIcon />
+                  </span>
+                ) : laneRoleVisual === 'myco' ? (
+                  <img src={mycoAvatarSrc} alt="MYCO" style={styles.mycoAvatarImage} />
+                ) : (
+                  <span aria-label={searchContext} style={styles.vetkaAvatarIcon}>
+                    {React.createElement(CONTEXT_ICONS[searchContext])}
+                  </span>
+                )}
+                {laneRoleVisual === 'myco' && mycoAvatarState === 'thinking' && (
+                  <span style={styles.mycoAvatarBadge}>...</span>
+                )}
+              </button>
+            ) : showVoiceActivity ? (
+              <span
+                title={voiceState === 'speaking' ? 'VETKA speaking' : 'VETKA listening'}
+                style={{ display: 'inline-flex', alignItems: 'flex-end', gap: 2, height: 14 }}
+              >
+                {[0.5, 0.8, 0.6].map((k, i) => {
+                  const h = Math.max(3, Math.min(12, Math.round(3 + (voiceLevel * 14 * k))));
+                  return (
+                    <span
+                      key={`voice-bar-${i}`}
+                      style={{
+                        width: 2,
+                        height: `${h}px`,
+                        background: '#bcbcbc',
+                        borderRadius: 2,
+                        opacity: voiceState === 'speaking' ? 1 : 0.8,
+                        transition: 'height 80ms linear',
+                      }}
+                    />
+                  );
+                })}
+              </span>
+            ) : (
+              <SearchIcon />
+            )}
           </span>
-        )}
+
+          {/* Phase 68.3: Clickable context prefix */}
+          <button
+            onClick={() => setShowContextMenu(!showContextMenu)}
+            style={{
+              ...styles.contextPrefix,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '2px 4px',
+              borderRadius: 3,
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#252525';
+              e.currentTarget.style.color = '#888';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#555';
+            }}
+            title="Change search context"
+          >
+            {currentContext.prefix}
+          </button>
+
+          {laneState.mode === 'input' ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                if (e.target.value === '') {
+                  setShowContextMenu(true);
+                } else {
+                  setShowContextMenu(false);
+                }
+              }}
+              onKeyDown={handleKeyDown}
+              onFocus={() => {
+                setIsFocused(true);
+                if (!query) {
+                  setShowContextMenu(true);
+                }
+              }}
+              onBlur={() => {
+                setIsFocused(false);
+                setTimeout(() => setShowContextMenu(false), 200);
+              }}
+              placeholder={
+                showVoiceTrigger
+                  ? laneState.payload.previewBody || 'Tap mic to talk...'
+                  : placeholder
+              }
+              style={styles.input}
+            />
+          ) : laneState.mode === 'myco_guidance' ? (
+            <div
+              data-testid="myco-search-lane"
+              style={styles.lanePrimaryText}
+              onClick={() => {
+                pendingInputFocusRef.current = true;
+                setIsFocused(true);
+              }}
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                mycoPreviewTimerRef.current = window.setTimeout(() => {
+                  setMycoPreviewPosition({ x: rect.left, y: rect.bottom + 6 });
+                  setShowMycoPreview(true);
+                }, 300);
+              }}
+              onMouseLeave={() => {
+                if (mycoPreviewTimerRef.current) {
+                  window.clearTimeout(mycoPreviewTimerRef.current);
+                  mycoPreviewTimerRef.current = null;
+                }
+                setShowMycoPreview(false);
+                setMycoPreviewPosition(null);
+              }}
+              title={mycoHint?.title || 'Current guidance'}
+            >
+              {shouldAnimateMycoTicker ? (
+                <span style={styles.mycoTickerText}>
+                  {mycoTickerPlaybackDone ? (
+                    laneIdlePlaceholderText
+                  ) : (
+                    <span style={styles.mycoTickerMarquee}>
+                      <span>{mycoTickerText}</span>
+                      <span>{mycoTickerText}</span>
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span style={styles.mycoTickerText}>
+                  {laneDisplayText}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div style={styles.lanePrimaryText}>
+              <span style={styles.laneModeVoiceText}>
+                {laneState.mode === 'voice_listening'
+                  ? 'VETKA is listening'
+                  : laneState.mode === 'voice_speaking'
+                    ? 'VETKA is speaking'
+                    : `VETKA is thinking${thinkingDots}`}
+              </span>
+            </div>
+          )}
+
+          {query && (
+            <button
+              onClick={clearResults}
+              style={{ ...styles.iconButton, color: '#888' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#888')}
+              title="Clear search"
+            >
+              <CloseIcon />
+            </button>
+          )}
+
+        </div>
 
         {/* Phase 68.3: Context selector dropdown - vetka/ active, others need backend */}
         {showContextMenu && !query && (
@@ -1160,7 +1439,12 @@ export function UnifiedSearchBar({
                     if (ctx.available && searchContext !== ctx.id) e.currentTarget.style.background = 'transparent';
                   }}
                 >
-                  <span style={{ color: ctx.available ? '#888' : '#555', display: 'flex', alignItems: 'center' }}>
+                  <span
+                    style={{
+                      ...styles.contextMenuIconSlot,
+                      color: ctx.available ? '#888' : '#555',
+                    }}
+                  >
                     <IconComponent />
                   </span>
                   <div style={{ flex: 1 }}>
@@ -1181,34 +1465,6 @@ export function UnifiedSearchBar({
           </div>
         )}
       </div>
-
-      {showMycoTicker && (
-        <div
-          data-testid="myco-search-lane"
-          style={styles.mycoTickerRow}
-          onMouseEnter={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            mycoPreviewTimerRef.current = window.setTimeout(() => {
-              setMycoPreviewPosition({ x: rect.left, y: rect.bottom + 6 });
-              setShowMycoPreview(true);
-            }, 300);
-          }}
-          onMouseLeave={() => {
-            if (mycoPreviewTimerRef.current) {
-              window.clearTimeout(mycoPreviewTimerRef.current);
-              mycoPreviewTimerRef.current = null;
-            }
-            setShowMycoPreview(false);
-            setMycoPreviewPosition(null);
-          }}
-          title={mycoHint?.title || 'Current guidance'}
-        >
-          <span style={styles.mycoTickerDot} />
-          <span style={styles.mycoTickerText}>
-            {displayedMycoTickerText || mycoTickerText}
-          </span>
-        </div>
-      )}
 
       {/* Phase 68.3: Selected file path breadcrumb */}
       {selectedFilePath && (
@@ -1254,7 +1510,7 @@ export function UnifiedSearchBar({
       )}
 
       {/* Connection status */}
-      {!isConnected && searchContext === 'vetka' && (
+      {!isConnected && effectiveSearchContext === 'vetka' && (
         <div style={styles.disconnected}>Connecting to server...</div>
       )}
 
@@ -1482,7 +1738,7 @@ export function UnifiedSearchBar({
             const pinned = isPinned(result);
             const isWebRow = String(result.source || '').startsWith('web') || /^https?:\/\//i.test(result.path);
             const isFileRow = searchContext === 'file';
-            const isVetkaRow = searchContext === 'vetka';
+            const isVetkaRow = effectiveSearchContext === 'vetka';
             const useExpandedText = isWebRow || isFileRow || isVetkaRow;
             const showMetaColumns = !isWebRow && isFileRow;
 
@@ -1660,17 +1916,17 @@ export function UnifiedSearchBar({
       )}
 
       {/* Phase 68.3: Enhanced hover preview with metadata */}
-      {hoveredResult && previewPosition && (
+      {typeof document !== 'undefined' && hoveredResult && previewPosition && createPortal(
         <div
           style={{
             ...styles.preview,
             left: Math.min(previewPosition.x, window.innerWidth - 420),
             top: Math.min(previewPosition.y, window.innerHeight - 320),
+            zIndex: 10000,
           }}
         >
           <div style={styles.previewTitle}>{hoveredResult.name}</div>
 
-          {/* Metadata row */}
           <div style={{
             display: 'flex',
             gap: 12,
@@ -1688,32 +1944,33 @@ export function UnifiedSearchBar({
             ) : null}
           </div>
 
-          {/* Path */}
           <div style={{ fontSize: 10, color: '#555', marginBottom: 8, wordBreak: 'break-all' }}>
             {hoveredResult.path}
           </div>
 
-          {/* Preview content */}
           <div style={styles.previewContent}>
             {hoveredResult.preview || 'No preview available'}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
-      {showMycoPreview && mycoPreviewPosition && mycoHint && (
+      {typeof document !== 'undefined' && showMycoPreview && mycoPreviewPosition && mycoHint && createPortal(
         <div
           style={{
             ...styles.preview,
             left: Math.min(mycoPreviewPosition.x, window.innerWidth - 420),
             top: Math.min(mycoPreviewPosition.y, window.innerHeight - 320),
             maxWidth: '440px',
+            zIndex: 10000,
           }}
         >
           <div style={styles.previewTitle}>{mycoHint.title}</div>
           <div style={styles.previewContent}>
             {mycoTickerPreviewBody || mycoTickerText}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* CSS for spinner animation */}
@@ -1724,6 +1981,10 @@ export function UnifiedSearchBar({
         @keyframes search-spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        @keyframes myco-marquee {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
         }
       `}</style>
     </div>
