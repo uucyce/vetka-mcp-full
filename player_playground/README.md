@@ -20,6 +20,8 @@ npm install
 npm run dev
 npm test
 npm run test:e2e
+npm run tauri:dev
+npm run tauri:build
 ```
 
 Open [http://127.0.0.1:1424](http://127.0.0.1:1424) and load a local video.
@@ -33,6 +35,19 @@ http://127.0.0.1:1424/?variant=fixed-footer&mockWidth=640&mockHeight=480&applySu
 ```
 
 This is the fastest way to compare shell contracts and verify whether a suggested metadata-first shell removes side letterboxing.
+
+## Native App Output
+
+The lab now has a minimal Tauri host.
+
+Local macOS bundles are produced at:
+
+```text
+player_playground/src-tauri/target/release/bundle/macos/VETKA Player Lab.app
+player_playground/src-tauri/target/release/bundle/dmg/VETKA Player Lab_0.1.0_aarch64.dmg
+```
+
+Use `npm run tauri:dev` for a live native shell and `npm run tauri:build` for a distributable `.app` and `.dmg`.
 
 ## Debug API
 

@@ -21,7 +21,15 @@ cd /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/player_playground
 npm test
 npm run build
 npm run test:e2e
+npm run tauri:build
 ```
+
+## Native Bundle Output
+
+The minimal native host now builds successfully on macOS:
+
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/player_playground/src-tauri/target/release/bundle/macos/VETKA Player Lab.app`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/player_playground/src-tauri/target/release/bundle/dmg/VETKA Player Lab_0.1.0_aarch64.dmg`
 
 ## Winning Baseline
 
