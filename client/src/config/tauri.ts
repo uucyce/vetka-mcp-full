@@ -457,6 +457,35 @@ export async function openArtifactMediaWindow(params: {
   inVetka?: boolean;
   initialSeekSec?: number;
 }): Promise<boolean> {
+  let videoWidth: number | undefined;
+  let videoHeight: number | undefined;
+  let aspectRatio: string | undefined;
+
+  try {
+    // MARKER_159.R13.FRONTEND_MEDIA_METADATA_BRIDGE:
+    // fetch detached media sizing metadata in the browser process so backend access
+    // is visible in dev logs and exact dimensions are passed explicitly into Tauri.
+    const response = await fetch('/api/artifacts/media/window-metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: params.path }),
+    });
+    if (response.ok) {
+      const payload = await response.json();
+      videoWidth = Number(payload?.width_px || 0) || undefined;
+      videoHeight = Number(payload?.height_px || 0) || undefined;
+      aspectRatio = typeof payload?.aspect_ratio === 'string' ? payload.aspect_ratio : undefined;
+      console.info('[MARKER_159.R13.FRONTEND_MEDIA_METADATA_BRIDGE]', {
+        path: params.path,
+        width: videoWidth || 0,
+        height: videoHeight || 0,
+        aspectRatio: aspectRatio || null,
+      });
+    }
+  } catch (e) {
+    console.warn('[Tauri] media window metadata prefetch failed:', e);
+  }
+
   const invoke = await getInvoke();
   if (!invoke) return false;
 
@@ -468,6 +497,9 @@ export async function openArtifactMediaWindow(params: {
       artifactId: params.artifactId,
       inVetka: typeof params.inVetka === 'boolean' ? params.inVetka : undefined,
       initialSeekSec: params.initialSeekSec,
+      videoWidth,
+      videoHeight,
+      aspectRatio,
     });
     return ok === true;
   } catch (e) {

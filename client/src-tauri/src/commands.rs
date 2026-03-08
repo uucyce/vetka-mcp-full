@@ -324,6 +324,9 @@ pub async fn open_artifact_media_window(
     artifact_id: Option<String>,
     in_vetka: Option<bool>,
     initial_seek_sec: Option<f64>,
+    video_width: Option<u32>,
+    video_height: Option<u32>,
+    aspect_ratio: Option<String>,
 ) -> Result<bool, String> {
     let clean_path = path.trim();
     if clean_path.is_empty() {
@@ -360,30 +363,42 @@ pub async fn open_artifact_media_window(
         route.push_str(&format!("{seek:.3}"));
     }
 
-    let metadata = fetch_media_window_metadata(clean_path).await;
+    let explicit_video_width = video_width.filter(|v| *v > 0);
+    let explicit_video_height = video_height.filter(|v| *v > 0);
+    let metadata = if explicit_video_width.is_some() && explicit_video_height.is_some() {
+        None
+    } else {
+        fetch_media_window_metadata(clean_path).await
+    };
     let (screen_width, screen_height) = preferred_monitor_size(&app);
-    let (initial_width, initial_height) = if let Some(meta) = metadata.as_ref() {
-        if meta.modality.as_deref() == Some("video") {
-            compute_detached_media_initial_inner_size(
-                meta.width_px.unwrap_or(0),
-                meta.height_px.unwrap_or(0),
-                screen_width,
-                screen_height,
-            )
-        } else {
-            (960.0, 540.0)
-        }
+    let sizing_video_width = explicit_video_width
+        .or_else(|| metadata.as_ref().and_then(|m| m.width_px))
+        .unwrap_or(0);
+    let sizing_video_height = explicit_video_height
+        .or_else(|| metadata.as_ref().and_then(|m| m.height_px))
+        .unwrap_or(0);
+    let sizing_is_video = sizing_video_width > 0 && sizing_video_height > 0;
+    let (initial_width, initial_height) = if sizing_is_video {
+        compute_detached_media_initial_inner_size(
+            sizing_video_width,
+            sizing_video_height,
+            screen_width,
+            screen_height,
+        )
     } else {
         (960.0, 540.0)
     };
 
     log::info!(
-        "MARKER_159.R12.DETACHED_MEDIA_SIZE_TRACE path={} screen_logical={}x{} metadata={}x{} requested_inner={}x{}",
+        "MARKER_159.R12.DETACHED_MEDIA_SIZE_TRACE path={} screen_logical={}x{} metadata={}x{} explicit={}x{} aspect={} requested_inner={}x{}",
         clean_path,
         screen_width,
         screen_height,
         metadata.as_ref().and_then(|m| m.width_px).unwrap_or(0),
         metadata.as_ref().and_then(|m| m.height_px).unwrap_or(0),
+        explicit_video_width.unwrap_or(0),
+        explicit_video_height.unwrap_or(0),
+        aspect_ratio.as_deref().unwrap_or(""),
         initial_width,
         initial_height,
     );
