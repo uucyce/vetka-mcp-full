@@ -2,9 +2,10 @@
   "$schema": "https://schemas.tauri.app/config/2/capability",
   "identifier": "default",
   "description": "Default capabilities for VETKA desktop app - Phase 100.5",
-  "windows": ["main"],
+  "windows": ["main", "mycelium", "artifact-main", "artifact-media"],
   "permissions": [
     "core:default",
+    "core:window:allow-set-size",
     "shell:allow-open",
     "dialog:default",
     "notification:default",

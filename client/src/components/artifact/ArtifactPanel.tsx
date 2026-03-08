@@ -19,6 +19,13 @@ import { closeArtifactMediaWindow, isTauri, openArtifactMediaWindow, openLiveWeb
 import { useStore } from '../../store/useStore';
 import { buildViewportContext } from '../../utils/viewport';
 import { readFileViaApi } from '../../utils/fileReadClient';
+import {
+  readDetachedArtifactChatState,
+  normalizeDetachedArtifactPath,
+  DETACHED_ARTIFACT_CHAT_STATE_KEY,
+  writeDetachedArtifactPinRequest,
+  type DetachedArtifactChatStateV1,
+} from '../../utils/detachedArtifactBridge';
 import './ArtifactPanel.css';
 
 // Lazy load heavy viewers
@@ -234,6 +241,9 @@ export function ArtifactPanel({
 
   // MARKER_104_VISUAL - L2 approval state
   const [currentApprovalLevel, setCurrentApprovalLevel] = useState<ApprovalLevel | undefined>(approvalLevel);
+  const [detachedChatState, setDetachedChatState] = useState<DetachedArtifactChatStateV1 | null>(() => (
+    windowMode === 'detached' ? readDetachedArtifactChatState() : null
+  ));
 
   const normalizePath = useCallback((p: string) => {
     const raw = String(p || '').trim();
@@ -1207,7 +1217,7 @@ export function ArtifactPanel({
         );
       case 'video':
         return (
-          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: windowMode === 'detached' ? 0 : 16 }}>
+          <div style={{ height: '100%', display: 'flex', alignItems: windowMode === 'detached' ? 'stretch' : 'center', justifyContent: windowMode === 'detached' ? 'flex-start' : 'center', padding: windowMode === 'detached' ? 0 : 16 }}>
             <div style={{ width: '100%', maxWidth: windowMode === 'detached' ? 'none' : 1280, height: '100%' }}>
               <Suspense fallback={<ViewerLoading />}>
                 <VideoArtifactPlayer
@@ -1218,6 +1228,7 @@ export function ArtifactPanel({
                   mimeType={mimeType}
                   qualitySources={videoQualitySources}
                   qualityScaleSources={videoQualityScaleSources}
+                  windowMode={windowMode}
                   windowLabel={windowMode === 'detached' ? detachedWindowLabel : 'main'}
                   controlsOffsetBottom={0}
                   onFullscreenChange={setIsMediaFullscreen}
@@ -1251,7 +1262,7 @@ export function ArtifactPanel({
         }
         if (mimeType.startsWith('video/')) {
           return (
-            <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: windowMode === 'detached' ? 0 : 16 }}>
+            <div style={{ height: '100%', display: 'flex', alignItems: windowMode === 'detached' ? 'stretch' : 'center', justifyContent: windowMode === 'detached' ? 'flex-start' : 'center', padding: windowMode === 'detached' ? 0 : 16 }}>
               <Suspense fallback={<ViewerLoading />}>
                 <VideoArtifactPlayer
                   key={`${fileData.path}:${mediaSrc}`}
@@ -1261,6 +1272,7 @@ export function ArtifactPanel({
                   mimeType={mimeType}
                   qualitySources={videoQualitySources}
                   qualityScaleSources={videoQualityScaleSources}
+                  windowMode={windowMode}
                   windowLabel={windowMode === 'detached' ? detachedWindowLabel : 'main'}
                   controlsOffsetBottom={0}
                   onFullscreenChange={setIsMediaFullscreen}
@@ -1296,20 +1308,38 @@ export function ArtifactPanel({
   const handleCopyRaw = () => navigator.clipboard.writeText(isEditing ? editableContent : (rawContent?.content || ''));
 
   const normalizeFsPath = useCallback((p?: string | null): string => {
-    const src = String(p || '').trim();
-    if (!src) return '';
-    let decoded = src.replace(/^file:\/\//, '');
-    try {
-      decoded = decodeURIComponent(decoded);
-    } catch {
-      // Keep best-effort path.
-    }
-    return decoded.replace(/\\/g, '/').replace(/\/+$/, '');
+    return normalizeDetachedArtifactPath(String(p || ''));
   }, []);
 
   const currentArtifactPath = useMemo(() => (
     normalizeFsPath(fileData?.path || file?.path || '')
   ), [fileData?.path, file?.path, normalizeFsPath]);
+
+  useEffect(() => {
+    if (windowMode !== 'detached') {
+      setDetachedChatState(null);
+      return;
+    }
+
+    const syncDetachedChatState = () => {
+      setDetachedChatState(readDetachedArtifactChatState());
+    };
+
+    syncDetachedChatState();
+    window.addEventListener('focus', syncDetachedChatState);
+    document.addEventListener('visibilitychange', syncDetachedChatState);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === DETACHED_ARTIFACT_CHAT_STATE_KEY) {
+        syncDetachedChatState();
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('focus', syncDetachedChatState);
+      document.removeEventListener('visibilitychange', syncDetachedChatState);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [windowMode]);
 
   const pinTargetNodeId = useMemo(() => {
     if (!currentArtifactPath) return null;
@@ -1317,14 +1347,60 @@ export function ArtifactPanel({
     return matchId || null;
   }, [currentArtifactPath, nodes, normalizeFsPath]);
 
+  const detachedPinVisible = useMemo(() => (
+    windowMode === 'detached' && Boolean(currentArtifactPath && isInVetka)
+  ), [currentArtifactPath, isInVetka, windowMode]);
+
+  const detachedPinnedInChat = useMemo(() => {
+    if (windowMode !== 'detached' || !currentArtifactPath) return false;
+    const pinned = detachedChatState?.pinned_paths || [];
+    return pinned.includes(currentArtifactPath);
+  }, [currentArtifactPath, detachedChatState?.pinned_paths, windowMode]);
+
+  const detachedPinDisabled = useMemo(() => {
+    if (windowMode !== 'detached') return false;
+    if (!detachedPinVisible) return true;
+    return !detachedChatState?.chat_open;
+  }, [detachedChatState?.chat_open, detachedPinVisible, windowMode]);
+
   const isPinnedInChat = useMemo(() => (
     Boolean(pinTargetNodeId && pinnedFileIds.includes(pinTargetNodeId))
   ), [pinTargetNodeId, pinnedFileIds]);
 
+  const effectivePinVisible = windowMode === 'detached' ? detachedPinVisible : Boolean(pinTargetNodeId);
+  const effectiveIsPinnedInChat = windowMode === 'detached' ? detachedPinnedInChat : isPinnedInChat;
+  const effectivePinDisabled = windowMode === 'detached'
+    ? detachedPinDisabled
+    : (!isChatOpen || !pinTargetNodeId);
+  const effectivePinTitle = windowMode === 'detached'
+    ? (
+      !detachedPinVisible
+        ? 'File is not indexed in VETKA tree'
+        : (!detachedChatState?.chat_open
+            ? 'Open chat in VETKA to pin context'
+            : (detachedPinnedInChat ? 'Unpin from chat context' : 'Pin to chat context'))
+    )
+    : (
+      !pinTargetNodeId
+        ? 'File is not indexed in VETKA tree'
+        : (!isChatOpen ? 'Open chat to pin context' : (isPinnedInChat ? 'Unpin from chat context' : 'Pin to chat context'))
+    );
+
   const handlePinToChat = useCallback(() => {
+    if (windowMode === 'detached') {
+      if (!currentArtifactPath || !isInVetka) return;
+      writeDetachedArtifactPinRequest({
+        schema_version: 'detached_artifact_pin_request_v1',
+        action: 'toggle_pin',
+        path: currentArtifactPath,
+        requested_at_ms: Date.now(),
+        request_id: `detached-pin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      });
+      return;
+    }
     if (!isChatOpen || !pinTargetNodeId) return;
     togglePinFile(pinTargetNodeId);
-  }, [isChatOpen, pinTargetNodeId, togglePinFile]);
+  }, [currentArtifactPath, isChatOpen, isInVetka, pinTargetNodeId, togglePinFile, windowMode]);
 
   // Phase 60.4: Save edited raw content
   const handleSaveRaw = () => {
@@ -1473,10 +1549,10 @@ export function ArtifactPanel({
             }}
             onRefresh={undefined}
             onPin={handlePinToChat}
-            isPinned={isPinnedInChat}
-            pinVisible={Boolean(pinTargetNodeId)}
-            pinDisabled={!isChatOpen || !pinTargetNodeId}
-            pinTitle={!pinTargetNodeId ? 'File is not indexed in VETKA tree' : (!isChatOpen ? 'Open chat to pin context' : (isPinnedInChat ? 'Unpin from chat context' : 'Pin to chat context'))}
+            isPinned={effectiveIsPinnedInChat}
+            pinVisible={effectivePinVisible}
+            pinDisabled={effectivePinDisabled}
+            pinTitle={effectivePinTitle}
             onClose={onClose}
           />
         </>
@@ -1763,10 +1839,10 @@ export function ArtifactPanel({
           onRefresh={() => file && loadFile(file.path)}
           onDetach={isMediaArtifact && windowMode !== 'detached' ? () => { void handleOpenDetachedMediaWindow(); } : undefined}
           onPin={handlePinToChat}
-          isPinned={isPinnedInChat}
-          pinVisible={Boolean(pinTargetNodeId)}
-          pinDisabled={!isChatOpen || !pinTargetNodeId}
-          pinTitle={!pinTargetNodeId ? 'File is not indexed in VETKA tree' : (!isChatOpen ? 'Open chat to pin context' : (isPinnedInChat ? 'Unpin from chat context' : 'Pin to chat context'))}
+          isPinned={effectiveIsPinnedInChat}
+          pinVisible={effectivePinVisible}
+          pinDisabled={effectivePinDisabled}
+          pinTitle={effectivePinTitle}
           detachedShowFavorite={windowMode === 'detached' && (isInVetka || !isFileMode)}
           detachedFavoriteActive={isFavorite}
           detachedFavoriteBusy={false}

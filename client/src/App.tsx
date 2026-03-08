@@ -23,6 +23,7 @@ import { CameraController } from './components/canvas/CameraController';
 import { ChatPanel } from './components/chat';
 import { ArtifactWindow } from './components/artifact';
 import { UnifiedSearchBar } from './components/search/UnifiedSearchBar';
+import { useMycoModeA } from './components/myco/useMycoModeA';
 import { DevPanel } from './components/panels/DevPanel';
 import { CommandPalette } from './components/search/CommandPalette';  // MARKER_136.W2C
 import { DropZoneRouter, type DropZoneEvent } from './components/DropZoneRouter';
@@ -32,7 +33,14 @@ import { useTreeData } from './hooks/useTreeData';
 import { useSocket } from './hooks/useSocket';
 import type { SearchResult } from './types/chat';
 import { calculateAdaptiveLODWithFloor } from './utils/lod';
-import { isTauri, onWebArtifactSaved, openArtifactWindow, openLiveWebWindow } from './config/tauri';
+import { isTauri, onWebArtifactSaved, openArtifactMediaWindow, openArtifactWindow, openLiveWebWindow } from './config/tauri';
+import {
+  DETACHED_ARTIFACT_PIN_REQUEST_KEY,
+  normalizeDetachedArtifactPath,
+  parseDetachedArtifactPinRequest,
+  type DetachedArtifactChatStateV1,
+  writeDetachedArtifactChatState,
+} from './utils/detachedArtifactBridge';
 import {
   computeLabelScore,
   selectTopLabels,
@@ -72,6 +80,7 @@ interface ArtifactOpenPayload {
     name: string;
     extension?: string;
     artifactId?: string;
+    inVetka?: boolean;
   } | null;
   content?: {
     content: string;
@@ -265,6 +274,7 @@ export default function App() {
   } | null>(null);
   const [artifactSeekSec, setArtifactSeekSec] = useState<number | undefined>(undefined);
   const [treeViewMode, setTreeViewMode] = useState<'directed' | 'knowledge' | 'media_edit'>('directed');
+  const pendingTreeModeRef = useRef<{ mode: 'directed' | 'knowledge' | 'media_edit'; ts: number } | null>(null);
   const [nodeContextMenu, setNodeContextMenu] = useState<NodeContextMenuState>({
     visible: false,
     clientX: 0,
@@ -276,6 +286,7 @@ export default function App() {
   });
 
   const nodes = useStore((state) => Object.values(state.nodes));
+  const allNodes = useStore((state) => state.nodes);
   const selectedId = useStore((state) => state.selectedId);
   const selectNode = useStore((state) => state.selectNode);
   const selectedNode = useStore((state) =>
@@ -283,6 +294,9 @@ export default function App() {
   );
   const isDraggingAny = useStore((state) => state.isDraggingAny);
   const highlightedId = useStore((state) => state.highlightedId);
+  const togglePinFile = useStore((state) => state.togglePinFile);
+  const pinnedFileIds = useStore((state) => state.pinnedFileIds);
+  const currentChatId = useStore((state) => state.currentChatId);
 
   // Phase 65: Grab mode for Blender-style node movement
   const grabMode = useStore((state) => state.grabMode);
@@ -331,13 +345,66 @@ export default function App() {
     const file = payload.file ?? null;
     const path = String(file?.path || '').trim();
     const forceEmbedded = isEmbeddedArtifactFallbackForced();
+    const mediaExts = new Set(['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a']);
+    const normalizePath = (p: string) => {
+      const raw = String(p || '').trim();
+      if (!raw) return '';
+      const withoutScheme = raw.replace(/^file:\/\//, '');
+      let decoded = withoutScheme;
+      try {
+        decoded = decodeURIComponent(withoutScheme);
+      } catch {
+        // keep as-is
+      }
+      return decoded.replace(/\\/g, '/').replace(/\/+$/, '');
+    };
+    const normalizedTargetPath = normalizePath(path);
+    const computedInVetka = normalizedTargetPath
+      ? nodes.some((node: any) => {
+          const nodePath = normalizePath(String(node?.path || ''));
+          return (
+            nodePath === normalizedTargetPath
+            || nodePath.endsWith(`/${normalizedTargetPath}`)
+            || normalizedTargetPath.endsWith(`/${nodePath}`)
+          );
+        })
+      : false;
+    const inVetka = typeof file?.inVetka === 'boolean' ? file.inVetka : computedInVetka;
 
     if (!forceEmbedded && isTauri() && path) {
+      // MARKER_159.R7.UNIFIED_NATIVE_WINDOW_AUTHORITY:
+      // desktop file/media artifacts must stay in detached native windows, never the old embedded shell.
+      setIsArtifactOpen(false);
+      setArtifactFile(null);
+      setArtifactContent(null);
+      setArtifactSeekSec(undefined);
+
+      // MARKER_159.C6.MEDIA_OPEN_DETACHED_PRIORITY:
+      // media artifacts must open via dedicated detached media window route (/artifact-media),
+      // otherwise runtime falls back to embedded ArtifactWindow path with divergent fullscreen behavior.
+      const extRaw = String(file?.extension || file?.name?.split('.').pop() || path.split('.').pop() || '').replace(/^\./, '').toLowerCase();
+      const isMediaCandidate = mediaExts.has(extRaw);
+      if (isMediaCandidate) {
+        const okMedia = await openArtifactMediaWindow({
+          path,
+          name: file?.name,
+          extension: file?.extension,
+          artifactId: file?.artifactId,
+          inVetka,
+          initialSeekSec: payload.initialSeekSec,
+        });
+        if (okMedia) {
+          console.info('[MARKER_159.C1_OPEN_PATH] opened_via=detached_media_window');
+          return;
+        }
+      }
+
       const ok = await openArtifactWindow({
         path,
         name: file?.name,
         extension: file?.extension,
         artifactId: file?.artifactId,
+        inVetka,
         initialSeekSec: payload.initialSeekSec,
         contentMode: 'file',
         windowLabel: 'artifact-main',
@@ -346,10 +413,59 @@ export default function App() {
         console.info('[MARKER_159.C1_OPEN_PATH] opened_via=native_window');
         return;
       }
+
+      console.warn('[MARKER_159.R7.UNIFIED_NATIVE_WINDOW_AUTHORITY] native artifact open failed; embedded fallback suppressed', {
+        path,
+        isMediaCandidate,
+      });
+      return;
     }
 
     openArtifactEmbeddedFallback(payload);
-  }, [isEmbeddedArtifactFallbackForced, openArtifactEmbeddedFallback]);
+  }, [isEmbeddedArtifactFallbackForced, openArtifactEmbeddedFallback, nodes]);
+
+  useEffect(() => {
+    const pinnedPaths = (pinnedFileIds || [])
+      .map((nodeId) => normalizeDetachedArtifactPath(String(allNodes[nodeId]?.path || '')))
+      .filter(Boolean);
+    const nextState: DetachedArtifactChatStateV1 = {
+      schema_version: 'detached_artifact_chat_state_v1',
+      chat_open: isChatOpen,
+      current_chat_id: currentChatId || null,
+      pinned_paths: pinnedPaths,
+      updated_at_ms: Date.now(),
+    };
+    writeDetachedArtifactChatState(nextState);
+  }, [allNodes, currentChatId, isChatOpen, pinnedFileIds]);
+
+  useEffect(() => {
+    const handleDetachedPinRequest = (event: StorageEvent) => {
+      if (event.key !== DETACHED_ARTIFACT_PIN_REQUEST_KEY || !event.newValue) return;
+      const request = parseDetachedArtifactPinRequest(event.newValue);
+      if (!request || request.action !== 'toggle_pin') return;
+
+      const targetPath = normalizeDetachedArtifactPath(request.path);
+      if (!targetPath) return;
+
+      const nodeId = Object.keys(allNodes).find((id) => {
+        const nodePath = normalizeDetachedArtifactPath(String(allNodes[id]?.path || ''));
+        return (
+          nodePath === targetPath
+          || nodePath.endsWith(`/${targetPath}`)
+          || targetPath.endsWith(`/${nodePath}`)
+        );
+      });
+      if (!nodeId) return;
+
+      if (!isChatOpen) {
+        setIsChatOpen(true);
+      }
+      togglePinFile(nodeId);
+    };
+
+    window.addEventListener('storage', handleDetachedPinRequest);
+    return () => window.removeEventListener('storage', handleDetachedPinRequest);
+  }, [allNodes, isChatOpen, togglePinFile]);
 
   useEffect(() => {
     if (!isFolderCleanupBusy) return;
@@ -418,8 +534,6 @@ export default function App() {
 
   // Phase 68: Search handlers for standalone search bar
   const setCameraCommand = useStore((state) => state.setCameraCommand);
-  const togglePinFile = useStore((state) => state.togglePinFile);
-  const allNodes = useStore((state) => state.nodes);
 
   const handleSearchSelect = useCallback(async (result: SearchResult) => {
     const source = String((result as any).source || '');
@@ -461,6 +575,55 @@ export default function App() {
       togglePinFile(nodeId);
     }
   }, [allNodes, togglePinFile]);
+
+  const artifactPath = useMemo(() => String(artifactFile?.path || '').trim(), [artifactFile?.path]);
+  const artifactKind = useMemo<'none' | 'file' | 'web' | 'audio' | 'video'>(() => {
+    if (!isArtifactOpen) return 'none';
+    if (artifactContent?.type === 'web' || artifactContent?.sourceUrl) return 'web';
+    const ext = String(artifactFile?.extension || artifactFile?.name?.split('.').pop() || '').toLowerCase();
+    if (['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'].includes(ext)) return 'video';
+    if (['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'].includes(ext)) return 'audio';
+    return artifactPath ? 'file' : 'none';
+  }, [artifactContent?.sourceUrl, artifactContent?.type, artifactFile?.extension, artifactFile?.name, artifactPath, isArtifactOpen]);
+  const artifactLooksLikeCode = useMemo(() => {
+    if (!isArtifactOpen) return false;
+    if (artifactContent?.type === 'code') return true;
+    const ext = `.${String(artifactFile?.extension || artifactFile?.name?.split('.').pop() || '').toLowerCase()}`;
+    return new Set([
+      '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.cpp', '.c', '.h', '.hpp',
+      '.go', '.rs', '.rb', '.php', '.swift', '.kt', '.scala', '.sh', '.bash', '.zsh',
+      '.sql', '.r', '.m', '.lua', '.perl', '.pl', '.json', '.xml', '.yaml', '.yml',
+      '.toml', '.ini', '.env', '.cfg', '.css', '.scss', '.less', '.html', '.vue',
+      '.svelte', '.dockerfile', '.makefile', '.cmake',
+    ]).has(ext);
+  }, [artifactContent?.type, artifactFile?.extension, artifactFile?.name, isArtifactOpen]);
+  const artifactInVetka = useMemo(() => {
+    const normalizedTarget = artifactPath.replace(/^file:\/\//, '').replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!normalizedTarget) return false;
+    return nodes.some((node: any) => {
+      const nodePath = String(node?.path || '').replace(/^file:\/\//, '').replace(/\\/g, '/').replace(/\/+$/, '');
+      return nodePath === normalizedTarget || nodePath.endsWith(`/${normalizedTarget}`) || normalizedTarget.endsWith(`/${nodePath}`);
+    });
+  }, [artifactPath, nodes]);
+
+  const mycoModeA = useMycoModeA({
+    selectedNode: selectedNode ? {
+      id: selectedNode.id,
+      name: selectedNode.name,
+      path: selectedNode.path,
+      type: selectedNode.type,
+    } : null,
+    isChatOpen,
+    leftPanel,
+    isArtifactOpen,
+    artifactPath,
+    artifactInVetka,
+    artifactKind,
+    artifactLooksLikeCode,
+    isDevPanelOpen,
+    isContextMenuOpen: nodeContextMenu.visible,
+    treeViewMode,
+  });
 
   const startMediaModeStartup = useCallback(async (scopePath: string) => {
     setMediaStartup({
@@ -751,7 +914,7 @@ export default function App() {
       const { path, name, extension } = e.detail || {};
       if (!path || !name) return;
       void openArtifact({
-        file: { path, name, extension },
+        file: { path, name, extension, inVetka: true },
         content: null,
         initialSeekSec: undefined,
       });
@@ -789,7 +952,7 @@ export default function App() {
       const extension = fileName.includes('.') ? fileName.split('.').pop() : undefined;
 
       await openArtifact({
-        file: { path: filePath, name: fileName, extension, artifactId },
+        file: { path: filePath, name: fileName, extension, artifactId, inVetka: true },
         content: null,
         initialSeekSec: startSec,
       });
@@ -870,10 +1033,29 @@ export default function App() {
       });
     };
 
+    const handleTreeModeSwitchIntent = (evt: Event) => {
+      const e = evt as CustomEvent;
+      const requested = String(e.detail?.mode || '').toLowerCase();
+      if (requested === 'directed' || requested === 'knowledge' || requested === 'media_edit') {
+        pendingTreeModeRef.current = { mode: requested, ts: Date.now() };
+        setTreeViewMode(requested);
+      }
+    };
+
     const handleTreeModeChanged = (evt: Event) => {
       const e = evt as CustomEvent;
       const rawMode = String(e.detail?.mode || '').toLowerCase();
       const mode = rawMode === 'knowledge' ? 'knowledge' : rawMode === 'media_edit' ? 'media_edit' : 'directed';
+      const pending = pendingTreeModeRef.current;
+      if (pending) {
+        const isFresh = Date.now() - pending.ts < 2000;
+        if (isFresh && pending.mode !== mode) {
+          return;
+        }
+        if (!isFresh || pending.mode === mode) {
+          pendingTreeModeRef.current = null;
+        }
+      }
       setTreeViewMode(mode);
       const scopePath = String(e.detail?.scopePath || '');
       if (mode === 'media_edit') {
@@ -892,11 +1074,13 @@ export default function App() {
     };
 
     window.addEventListener('vetka-node-context-menu', handleNodeContextMenu);
+    window.addEventListener('vetka-switch-tree-mode', handleTreeModeSwitchIntent);
     window.addEventListener('vetka-tree-mode-changed', handleTreeModeChanged);
     window.addEventListener('click', closeContextMenu);
 
     return () => {
       window.removeEventListener('vetka-node-context-menu', handleNodeContextMenu);
+      window.removeEventListener('vetka-switch-tree-mode', handleTreeModeSwitchIntent);
       window.removeEventListener('vetka-tree-mode-changed', handleTreeModeChanged);
       window.removeEventListener('click', closeContextMenu);
     };
@@ -994,20 +1178,27 @@ export default function App() {
         onClose={() => setIsChatOpen(false)}
         leftPanel={leftPanel}
         setLeftPanel={setLeftPanel}
-      />
-      <ArtifactWindow
-        isOpen={isArtifactOpen}
-        onClose={() => {
-          setIsArtifactOpen(false);
-          setArtifactFile(null);
-          setArtifactContent(null);
-          setArtifactSeekSec(undefined);
+        onVoiceTrigger={() => {
+          void jarvis.toggle();
         }}
-        isChatOpen={isChatOpen}
-        file={artifactFile}
-        rawContent={artifactContent}
-        initialSeekSec={artifactSeekSec}
+        voiceState={jarvis.state}
+        voiceLevel={jarvis.audioLevel}
       />
+      {(isArtifactOpen && (!isTauri() || !artifactPath || isEmbeddedArtifactFallbackForced())) && (
+        <ArtifactWindow
+          isOpen={isArtifactOpen}
+          onClose={() => {
+            setIsArtifactOpen(false);
+            setArtifactFile(null);
+            setArtifactContent(null);
+            setArtifactSeekSec(undefined);
+          }}
+          isChatOpen={isChatOpen}
+          file={artifactFile}
+          rawContent={artifactContent}
+          initialSeekSec={artifactSeekSec}
+        />
+      )}
 
       {/* MARKER_109_DEVPANEL: Dev Panel */}
       <DevPanel
@@ -1032,6 +1223,7 @@ export default function App() {
             <UnifiedSearchBar
               onSelectResult={handleSearchSelect}
               onPinResult={handleSearchPin}
+              mycoSurfaceScope="main"
               onOpenArtifact={async (result) => {
                 // MARKER_139.S1_2_UNIFIED_ARTIFACT_FIX: Web/file unified results need different artifact open handling
                 const source = String((result as any).source || '');
@@ -1081,6 +1273,8 @@ export default function App() {
               }}
               voiceState={jarvis.state}
               voiceLevel={jarvis.audioLevel}
+              mycoHint={mycoModeA.hint}
+              mycoStateKey={mycoModeA.stateKey}
             />
           </div>
 
@@ -1145,6 +1339,7 @@ export default function App() {
                     name: selectedNode.name,
                     extension,
                     artifactId: String(selectedNode.metadata?.artifact_id || ''),
+                    inVetka: true,
                   },
                   content: null,
                   initialSeekSec: undefined,
@@ -1634,7 +1829,6 @@ export default function App() {
         whiteSpace: 'nowrap'
       }}>
         <span style={{ color: '#999' }}>Nodes: {nodes.length}</span>
-        <span style={{ color: '#666', fontSize: 12 }}>Click=Select • Shift+Click=Pin • Ctrl+Drag/G=Move • Drag=Pan • RightDrag=Rotate</span>
       </div>
 
       {/* Phase 54.6: Path Selector Modal */}

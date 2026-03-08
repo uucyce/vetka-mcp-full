@@ -16,6 +16,7 @@ import { useSearch } from '../../hooks/useSearch';
 import { useStore } from '../../store/useStore';
 import { buildViewportContext } from '../../utils/viewport';
 import type { SearchResult } from '../../types/chat';
+import type { MycoModeAHint } from '../myco/mycoModeATypes';
 
 const API_BASE = 'http://localhost:5001/api';
 
@@ -38,6 +39,12 @@ interface Props {
   voiceState?: 'idle' | 'listening' | 'thinking' | 'speaking';
   /** Normalized voice level (0..1) */
   voiceLevel?: number;
+  /** Optional scope tag for deterministic MYCO main-surface events */
+  mycoSurfaceScope?: 'main';
+  /** Deterministic MYCO hint payload for empty VETKA search lane */
+  mycoHint?: MycoModeAHint | null;
+  /** Stable key for resetting typed hint rendering */
+  mycoStateKey?: string;
 }
 
 // Inline SVG icons (no external dependencies - Nolan style)
@@ -264,7 +271,10 @@ export function UnifiedSearchBar({
   compact = false,
   onVoiceTrigger,
   voiceState = 'idle',
-  voiceLevel = 0
+  voiceLevel = 0,
+  mycoSurfaceScope,
+  mycoHint = null,
+  mycoStateKey = '',
 }: Props) {
   // Phase 68.3: Search context state
   const [searchContext, setSearchContext] = useState<SearchContext>('vetka');
@@ -296,6 +306,7 @@ export function UnifiedSearchBar({
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mycoPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -304,11 +315,14 @@ export function UnifiedSearchBar({
   // Hover preview state
   const [hoveredResult, setHoveredResult] = useState<SearchResult | null>(null);
   const [previewPosition, setPreviewPosition] = useState<{ x: number; y: number } | null>(null);
+  const [showMycoPreview, setShowMycoPreview] = useState(false);
+  const [mycoPreviewPosition, setMycoPreviewPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Sort state
   const [sortMode, setSortMode] = useState<SortMode>('relevance');
   const [sortAscending, setSortAscending] = useState(false); // false = descending (default)
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [mycoVisibleWordCount, setMycoVisibleWordCount] = useState(0);
 
   // MARKER_137.S1_3: Unified backend results for web/file contexts
   const [unifiedResults, setUnifiedResults] = useState<SearchResult[]>([]);
@@ -348,6 +362,36 @@ export function UnifiedSearchBar({
     ? hasMore
     : activeResults.length > displayLimit;
   const webHasAnyProvider = Object.values(providerHealth).some((p) => p?.available);
+
+  useEffect(() => {
+    if (!mycoSurfaceScope) return;
+    window.dispatchEvent(new CustomEvent('vetka-myco-search-state', {
+      detail: {
+        scope: mycoSurfaceScope,
+        context: searchContext,
+        mode: searchMode,
+        queryEmpty: query.trim().length === 0,
+        providerHealth,
+        error: activeError,
+      },
+    }));
+  }, [activeError, mycoSurfaceScope, providerHealth, query, searchContext, searchMode]);
+
+  useEffect(() => {
+    if (!mycoSurfaceScope) return;
+    return () => {
+      window.dispatchEvent(new CustomEvent('vetka-myco-search-state', {
+        detail: {
+          scope: mycoSurfaceScope,
+          context: 'vetka',
+          mode: 'hybrid',
+          queryEmpty: true,
+          providerHealth: {},
+          error: null,
+        },
+      }));
+    };
+  }, [mycoSurfaceScope]);
 
   // Sort results and apply display limit (pagination)
   const sortedResults = React.useMemo(() => {
@@ -653,6 +697,30 @@ export function UnifiedSearchBar({
   const showVoiceTrigger = Boolean(onVoiceTrigger && !query && !activeIsSearching);
   const showVoiceActivity = voiceState === 'listening' || voiceState === 'speaking';
   const showThinkingIndicator = voiceState === 'thinking';
+  const showMycoTicker = Boolean(
+    mycoHint
+    && searchContext === 'vetka'
+    && !query.trim()
+    && !activeIsSearching
+    && !showContextMenu
+    && !showThinkingIndicator
+    && voiceState === 'idle',
+  );
+
+  const mycoTickerText = React.useMemo(() => {
+    if (!mycoHint) return '';
+    const lines = [
+      mycoHint.title,
+      mycoHint.body,
+      ...mycoHint.nextActions.slice(0, 2),
+    ].filter(Boolean);
+    return lines.join('  •  ').trim();
+  }, [mycoHint]);
+
+  const mycoTickerWords = React.useMemo(
+    () => mycoTickerText.split(/\s+/).filter(Boolean),
+    [mycoTickerText],
+  );
 
   useEffect(() => {
     if (!showThinkingIndicator) {
@@ -664,6 +732,21 @@ export function UnifiedSearchBar({
     }, 320);
     return () => window.clearInterval(t);
   }, [showThinkingIndicator]);
+
+  useEffect(() => {
+    if (!showMycoTicker || mycoTickerWords.length === 0) {
+      setMycoVisibleWordCount(0);
+      return;
+    }
+    setMycoVisibleWordCount(0);
+    const timer = window.setInterval(() => {
+      setMycoVisibleWordCount((prev) => {
+        if (prev >= mycoTickerWords.length) return prev;
+        return prev + 1;
+      });
+    }, 420);
+    return () => window.clearInterval(timer);
+  }, [showMycoTicker, mycoStateKey, mycoTickerWords]);
 
   // Styles (Nolan dark minimal - grayscale only)
   const styles = {
@@ -773,7 +856,7 @@ export function UnifiedSearchBar({
     resultRight: {
       display: 'flex',
       alignItems: 'center',
-      gap: '4px',
+      gap: '2px',
       flexShrink: 0,
     },
     resultRelevance: {
@@ -857,10 +940,44 @@ export function UnifiedSearchBar({
       background: '#252525',
       borderRadius: '3px',
     },
+    mycoTickerRow: {
+      marginTop: '6px',
+      minHeight: '20px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      padding: compact ? '2px 8px 0' : '3px 10px 0',
+      color: '#8fa0ad',
+      fontSize: compact ? '11px' : '12px',
+      lineHeight: 1.35,
+      cursor: 'default',
+      userSelect: 'none' as const,
+    },
+    mycoTickerDot: {
+      width: '6px',
+      height: '6px',
+      borderRadius: '999px',
+      background: '#6ea58d',
+      boxShadow: '0 0 10px rgba(110,165,141,0.45)',
+      flexShrink: 0,
+    },
+    mycoTickerText: {
+      color: '#97a7b3',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap' as const,
+      flex: 1,
+    },
   };
 
   // Phase 68.3: Get current context config
   const currentContext = SEARCH_CONTEXTS.find(c => c.id === searchContext) || SEARCH_CONTEXTS[0];
+  const mycoTickerPreviewBody = mycoHint
+    ? [mycoHint.body, ...mycoHint.nextActions, mycoHint.shortcuts.join('  | ')].filter(Boolean).join('\n\n')
+    : '';
+  const displayedMycoTickerText = showMycoTicker
+    ? mycoTickerWords.slice(0, mycoVisibleWordCount || 1).join(' ')
+    : '';
 
   return (
     <div style={styles.container}>
@@ -985,7 +1102,7 @@ export function UnifiedSearchBar({
             }}
             title="Voice response in progress"
           >
-            ВЕТКА думает{thinkingDots}
+            VETKA is thinking{thinkingDots}
           </span>
         )}
 
@@ -1014,6 +1131,16 @@ export function UnifiedSearchBar({
                       setSearchContext(ctx.id);
                       setShowContextMenu(false);
                       inputRef.current?.focus();
+                    } else if (mycoSurfaceScope) {
+                      // MARKER_163A.MODE_A.SEARCH.DISABLED_CONTEXT_REDIRECT.V1:
+                      // Surface guide listens to disabled context attempts and redirects users to runnable modes.
+                      window.dispatchEvent(new CustomEvent('vetka-myco-search-context-attempt', {
+                        detail: {
+                          scope: mycoSurfaceScope,
+                          context: ctx.id,
+                          available: false,
+                        },
+                      }));
                     }
                   }}
                   style={{
@@ -1054,6 +1181,34 @@ export function UnifiedSearchBar({
           </div>
         )}
       </div>
+
+      {showMycoTicker && (
+        <div
+          data-testid="myco-search-lane"
+          style={styles.mycoTickerRow}
+          onMouseEnter={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            mycoPreviewTimerRef.current = window.setTimeout(() => {
+              setMycoPreviewPosition({ x: rect.left, y: rect.bottom + 6 });
+              setShowMycoPreview(true);
+            }, 300);
+          }}
+          onMouseLeave={() => {
+            if (mycoPreviewTimerRef.current) {
+              window.clearTimeout(mycoPreviewTimerRef.current);
+              mycoPreviewTimerRef.current = null;
+            }
+            setShowMycoPreview(false);
+            setMycoPreviewPosition(null);
+          }}
+          title={mycoHint?.title || 'Current guidance'}
+        >
+          <span style={styles.mycoTickerDot} />
+          <span style={styles.mycoTickerText}>
+            {displayedMycoTickerText || mycoTickerText}
+          </span>
+        </div>
+      )}
 
       {/* Phase 68.3: Selected file path breadcrumb */}
       {selectedFilePath && (
@@ -1329,6 +1484,7 @@ export function UnifiedSearchBar({
             const isFileRow = searchContext === 'file';
             const isVetkaRow = searchContext === 'vetka';
             const useExpandedText = isWebRow || isFileRow || isVetkaRow;
+            const showMetaColumns = !isWebRow && isFileRow;
 
             return (
               <div
@@ -1406,13 +1562,13 @@ export function UnifiedSearchBar({
                     </span>
                   )}
 
-                  {/* MARKER_144.IMPL_STEP_3_READABILITY_FIX: compact web rows, keep metadata on vetka/file */}
-                  {!isWebRow && (
+                  {/* MARKER_161.P2_DENSITY: keep size/date only in file/ mode to free width in vetka/web lists */}
+                  {showMetaColumns && (
                     <span style={{ color: '#666', fontSize: '10px', minWidth: '42px', textAlign: 'right' as const }}>
                       {formatBytes(result.size || 0)}
                     </span>
                   )}
-                  {!isWebRow && (
+                  {showMetaColumns && (
                     <span style={{ color: '#666', fontSize: '10px', minWidth: '48px', textAlign: 'right' as const }}>
                       {formatDate(result.modified_time || 0)}
                     </span>
@@ -1540,6 +1696,22 @@ export function UnifiedSearchBar({
           {/* Preview content */}
           <div style={styles.previewContent}>
             {hoveredResult.preview || 'No preview available'}
+          </div>
+        </div>
+      )}
+
+      {showMycoPreview && mycoPreviewPosition && mycoHint && (
+        <div
+          style={{
+            ...styles.preview,
+            left: Math.min(mycoPreviewPosition.x, window.innerWidth - 420),
+            top: Math.min(mycoPreviewPosition.y, window.innerHeight - 320),
+            maxWidth: '440px',
+          }}
+        >
+          <div style={styles.previewTitle}>{mycoHint.title}</div>
+          <div style={styles.previewContent}>
+            {mycoTickerPreviewBody || mycoTickerText}
           </div>
         </div>
       )}

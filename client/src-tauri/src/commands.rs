@@ -237,21 +237,32 @@ pub fn open_artifact_media_window(
     }
 
     if let Some(existing) = app.get_webview_window(&label) {
-        // MARKER_159.C4.WINDOW_RECREATE_ENFORCED:
-        // avoid stale titlebar/window-style state by recreating artifact windows on each open.
-        let _ = existing.close();
+        // MARKER_159.R7.UNIFIED_WINDOW_NAV_REUSE:
+        // reuse the same detached artifact window label and navigate in-place to avoid
+        // close/recreate races on repeated media opens while preserving a single authority window.
+        let route_json = serde_json::to_string(&route).map_err(|e| e.to_string())?;
+        let nav_js = format!("window.location.replace({route_json});");
+        existing.eval(&nav_js).map_err(|e| e.to_string())?;
+        let _ = existing.set_title(&window_title);
+        existing.show().map_err(|e| e.to_string())?;
+        existing.set_always_on_top(true).map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Ok(true);
     }
 
-    // MARKER_159.C2.WINDOW_SIZE_DEFAULT: smaller default detached artifact window.
+    // MARKER_159.C5.WINDOW_SIZE_DEFAULT:
+    // detached media window starts at 16:9 baseline and can shrink to small natural media sizes.
     let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::App(route.into()))
         .title(window_title)
-        .inner_size(960.0, 680.0)
-        .min_inner_size(760.0, 460.0)
+        .inner_size(960.0, 540.0)
+        .min_inner_size(240.0, 224.0)
+        .always_on_top(true)
         .resizable(true)
         .focused(true)
         .build()
         .map_err(|e| e.to_string())?;
 
+    window.set_always_on_top(true).map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())?;
     Ok(true)
 }
@@ -323,20 +334,29 @@ pub fn open_artifact_window(
     }
 
     if let Some(existing) = app.get_webview_window(&label) {
-        // MARKER_159.C4.WINDOW_RECREATE_ENFORCED:
-        // avoid stale titlebar/window-style state by recreating artifact windows on each open.
-        let _ = existing.close();
+        // MARKER_159.R7.UNIFIED_WINDOW_NAV_REUSE:
+        // reuse the detached artifact shell so repeated opens keep one authority window.
+        let route_json = serde_json::to_string(&route).map_err(|e| e.to_string())?;
+        let nav_js = format!("window.location.replace({route_json});");
+        existing.eval(&nav_js).map_err(|e| e.to_string())?;
+        let _ = existing.set_title(&window_title);
+        existing.show().map_err(|e| e.to_string())?;
+        existing.set_always_on_top(true).map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Ok(true);
     }
 
     let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::App(route.into()))
         .title(window_title)
         .inner_size(960.0, 680.0)
         .min_inner_size(760.0, 460.0)
+        .always_on_top(true)
         .resizable(true)
         .focused(true)
         .build()
         .map_err(|e| e.to_string())?;
 
+    window.set_always_on_top(true).map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())?;
     Ok(true)
 }
