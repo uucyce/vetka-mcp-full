@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeDisplayedBox, LAB_FOOTER_HEIGHT, suggestShellSize } from "./geometry";
+import { computeDisplayedBox, computeDreamScore, LAB_FOOTER_HEIGHT, suggestShellSize } from "./geometry";
 
 describe("player geometry math", () => {
   it("computes side letterboxing for a too-wide viewer", () => {
@@ -27,5 +27,29 @@ describe("player geometry math", () => {
     const viewerHeight = shell.shellHeight - LAB_FOOTER_HEIGHT;
     const result = computeDisplayedBox(shell.shellWidth, viewerHeight, 640, 480);
     expect(result.horizontalLetterboxPx).toBe(0);
+  });
+
+  it("rewards low chrome and low letterboxing in dream score", () => {
+    const strong = computeDreamScore({
+      windowInnerWidth: 1280,
+      windowInnerHeight: 760,
+      topbarHeight: 40,
+      footerHeight: 56,
+      displayedWidth: 1040,
+      displayedHeight: 585,
+      horizontalLetterboxPx: 0.2,
+      aspectError: 0.0002,
+    });
+    const weak = computeDreamScore({
+      windowInnerWidth: 1280,
+      windowInnerHeight: 760,
+      topbarHeight: 96,
+      footerHeight: 56,
+      displayedWidth: 760,
+      displayedHeight: 420,
+      horizontalLetterboxPx: 18,
+      aspectError: 0.02,
+    });
+    expect(strong.dreamScore).toBeGreaterThan(weak.dreamScore);
   });
 });

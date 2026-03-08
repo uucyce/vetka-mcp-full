@@ -10,6 +10,7 @@ export interface GeometrySnapshot {
   devicePixelRatio: number;
   windowInnerWidth: number;
   windowInnerHeight: number;
+  topbarHeight: number;
   shellWidth: number;
   shellHeight: number;
   viewerWidth: number;
@@ -28,6 +29,42 @@ export interface GeometrySnapshot {
   suggestedShellHeight: number;
   variant: ShellVariant;
   sourceKind: "video" | "synthetic";
+  dreamScore: number;
+  viewerDominanceRatio: number;
+  chromeRatio: number;
+}
+
+export function computeDreamScore(input: {
+  windowInnerWidth: number;
+  windowInnerHeight: number;
+  topbarHeight: number;
+  footerHeight: number;
+  displayedWidth: number;
+  displayedHeight: number;
+  horizontalLetterboxPx: number;
+  aspectError: number;
+}) {
+  const windowArea = Math.max(1, input.windowInnerWidth * input.windowInnerHeight);
+  const displayedArea = Math.max(0, input.displayedWidth * input.displayedHeight);
+  const viewerDominanceRatio = Number((displayedArea / windowArea).toFixed(4));
+  const chromeRatio = Number(
+    (
+      Math.max(0, input.topbarHeight + input.footerHeight) /
+      Math.max(1, input.windowInnerHeight)
+    ).toFixed(4),
+  );
+
+  const dominancePenalty = Math.max(0, 0.48 - viewerDominanceRatio) * 90;
+  const chromePenalty = Math.max(0, chromeRatio - 0.12) * 120;
+  const letterboxPenalty = Math.min(30, input.horizontalLetterboxPx * 10);
+  const aspectPenalty = Math.min(25, input.aspectError * 5000);
+  const rawScore = 100 - dominancePenalty - chromePenalty - letterboxPenalty - aspectPenalty;
+
+  return {
+    dreamScore: Math.max(0, Math.min(100, Math.round(rawScore))),
+    viewerDominanceRatio,
+    chromeRatio,
+  };
 }
 
 export function computeDisplayedBox(

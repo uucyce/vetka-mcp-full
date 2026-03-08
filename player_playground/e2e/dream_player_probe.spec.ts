@@ -27,9 +27,20 @@ test("capture player review screenshot and geometry snapshot", async ({ page }) 
 
   await page.waitForTimeout(700);
 
-  const snapshot = await page.evaluate(() => window.vetkaPlayerLab?.snapshot());
+  let snapshot = await page.evaluate(() => window.vetkaPlayerLab?.snapshot());
   expect(snapshot).toBeTruthy();
   expect(snapshot?.ok).toBe(true);
+
+  if (snapshot) {
+    const compactWidth = Math.max(980, Math.ceil(snapshot.shellWidth + 56));
+    const compactHeight = Math.max(
+      680,
+      Math.ceil(snapshot.shellHeight + snapshot.topbarHeight + 48),
+    );
+    await page.setViewportSize({ width: compactWidth, height: compactHeight });
+    await page.waitForTimeout(250);
+    snapshot = await page.evaluate(() => window.vetkaPlayerLab?.snapshot());
+  }
 
   if (snapshotPath) {
     fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });

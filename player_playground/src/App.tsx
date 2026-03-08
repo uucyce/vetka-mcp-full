@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  computeDreamScore,
   computeDisplayedBox,
   GeometrySnapshot,
   LAB_FOOTER_HEIGHT,
@@ -59,6 +60,7 @@ function App() {
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const topbarRef = useRef<HTMLElement | null>(null);
   const autoSizedKeyRef = useRef("");
   const intrinsicSize = naturalSize.width > 0 && naturalSize.height > 0 ? naturalSize : syntheticSize;
   const sourceKind: GeometrySnapshot["sourceKind"] = naturalSize.width > 0 && naturalSize.height > 0
@@ -79,13 +81,21 @@ function App() {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    const onResize = () => setGeometryTick((tick) => tick + 1);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const snapshot = useMemo<GeometrySnapshot>(() => {
     const viewerRect = viewerRef.current?.getBoundingClientRect();
     const shellRect = shellRef.current?.getBoundingClientRect();
+    const topbarRect = topbarRef.current?.getBoundingClientRect();
     const viewerWidth = Number(viewerRect?.width || 0);
     const viewerHeight = Number(viewerRect?.height || 0);
     const shellWidth = Number(shellRect?.width || 0);
     const shellHeight = Number(shellRect?.height || 0);
+    const topbarHeight = Number(topbarRect?.height || 0);
     const displayed = computeDisplayedBox(
       viewerWidth,
       viewerHeight,
@@ -99,6 +109,16 @@ function App() {
       Math.floor(window.innerWidth * 0.92),
       Math.floor(window.innerHeight * 0.92),
     );
+    const review = computeDreamScore({
+      windowInnerWidth: Number(window.innerWidth || 0),
+      windowInnerHeight: Number(window.innerHeight || 0),
+      topbarHeight,
+      footerHeight: LAB_FOOTER_HEIGHT,
+      displayedWidth: displayed.displayedWidth,
+      displayedHeight: displayed.displayedHeight,
+      horizontalLetterboxPx: displayed.horizontalLetterboxPx,
+      aspectError: displayed.aspectError,
+    });
 
     return {
       ok: Boolean(viewerWidth > 0 && viewerHeight > 0 && intrinsicSize.width > 0 && intrinsicSize.height > 0),
@@ -107,6 +127,7 @@ function App() {
       devicePixelRatio: Number(window.devicePixelRatio || 1),
       windowInnerWidth: Number(window.innerWidth || 0),
       windowInnerHeight: Number(window.innerHeight || 0),
+      topbarHeight: Number(topbarHeight.toFixed(2)),
       shellWidth: Number(shellWidth.toFixed(2)),
       shellHeight: Number(shellHeight.toFixed(2)),
       viewerWidth: Number(viewerWidth.toFixed(2)),
@@ -125,6 +146,9 @@ function App() {
       suggestedShellHeight: suggested.shellHeight,
       variant,
       sourceKind,
+      dreamScore: review.dreamScore,
+      viewerDominanceRatio: review.viewerDominanceRatio,
+      chromeRatio: review.chromeRatio,
     };
   }, [
     fileName,
@@ -264,7 +288,7 @@ function App() {
     >
       <div className="chrome-strip" />
       <section className="player-pane">
-        <header className="topbar">
+        <header ref={topbarRef} className="topbar">
           <div className="title-block">
             <span className="eyebrow">VETKA Player</span>
             <strong className="media-title">{fileName || "Drop a video to begin"}</strong>
@@ -288,9 +312,11 @@ function App() {
             <button className="ghost-button" type="button" onClick={() => void toggleFullscreen()}>
               Fullscreen
             </button>
-            <button className="ghost-button subtle" type="button" onClick={() => setIsDebugVisible((value) => !value)}>
-              {isDebugVisible ? "Hide Debug" : "Debug"}
-            </button>
+            {isDebugVisible ? (
+              <button className="ghost-button subtle" type="button" onClick={() => setIsDebugVisible(false)}>
+                Hide Debug
+              </button>
+            ) : null}
           </div>
         </header>
 
@@ -360,11 +386,15 @@ function App() {
             </div>
             <footer className="footer-bar player-footer">
               <span>{fileName || "No file loaded"}</span>
-              <span className="small">
-                {sourceKind}
-                {" · "}
-                {Math.round(snapshot.horizontalLetterboxPx * 100) / 100}px side bars
-              </span>
+              {isDebugVisible ? (
+                <span className="small">
+                  score {snapshot.dreamScore}
+                  {" · "}
+                  {sourceKind}
+                  {" · "}
+                  {Math.round(snapshot.horizontalLetterboxPx * 100) / 100}px side bars
+                </span>
+              ) : null}
             </footer>
           </div>
         </div>
@@ -380,6 +410,8 @@ function App() {
             <dd>{snapshot.sourceKind}</dd>
             <dt>Window</dt>
             <dd>{snapshot.windowInnerWidth} × {snapshot.windowInnerHeight}</dd>
+            <dt>Topbar</dt>
+            <dd>{snapshot.topbarHeight}px</dd>
             <dt>Shell</dt>
             <dd>{snapshot.shellWidth} × {snapshot.shellHeight}</dd>
             <dt>Viewer</dt>
@@ -402,6 +434,14 @@ function App() {
             <dd>{snapshot.aspectError}</dd>
             <dt>DPR</dt>
             <dd>{snapshot.devicePixelRatio}</dd>
+            <dt>Dream score</dt>
+            <dd className={snapshot.dreamScore >= 80 ? "good" : snapshot.dreamScore >= 60 ? "" : "danger"}>
+              {snapshot.dreamScore}/100
+            </dd>
+            <dt>Viewer dominance</dt>
+            <dd>{snapshot.viewerDominanceRatio}</dd>
+            <dt>Chrome ratio</dt>
+            <dd>{snapshot.chromeRatio}</dd>
           </dl>
 
           <div className="metrics-block">

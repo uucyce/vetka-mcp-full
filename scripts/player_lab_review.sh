@@ -29,6 +29,23 @@ echo "MARKER_168.VIDEOPLAYER.REVIEW.SNAPSHOT=$SNAPSHOT_PATH"
 echo "MARKER_168.VIDEOPLAYER.REVIEW.LATEST_SCREENSHOT=$LATEST_SCREENSHOT"
 echo "MARKER_168.VIDEOPLAYER.REVIEW.LATEST_SNAPSHOT=$LATEST_SNAPSHOT"
 
+python3 - "$SNAPSHOT_PATH" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+
+print(
+    "MARKER_168.VIDEOPLAYER.REVIEW.SUMMARY="
+    f"score:{data.get('dreamScore')} "
+    f"letterbox:{data.get('horizontalLetterboxPx')}px "
+    f"dominance:{data.get('viewerDominanceRatio')} "
+    f"chrome:{data.get('chromeRatio')}"
+)
+PY
+
 if [[ "${2:-}" != "--no-open" ]] && command -v open >/dev/null 2>&1; then
   open "$SCREENSHOT_PATH"
 fi
