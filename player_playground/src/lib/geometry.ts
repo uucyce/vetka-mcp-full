@@ -1,0 +1,121 @@
+export const LAB_FOOTER_HEIGHT = 56;
+export const LAB_MIN_VIEWPORT_HEIGHT = 180;
+
+export type ShellVariant = "fixed-footer" | "flex-footer";
+
+export interface GeometrySnapshot {
+  ok: boolean;
+  reason?: string;
+  fileName: string;
+  devicePixelRatio: number;
+  windowInnerWidth: number;
+  windowInnerHeight: number;
+  shellWidth: number;
+  shellHeight: number;
+  viewerWidth: number;
+  viewerHeight: number;
+  footerHeight: number;
+  videoIntrinsicWidth: number;
+  videoIntrinsicHeight: number;
+  displayedWidth: number;
+  displayedHeight: number;
+  horizontalLetterboxPx: number;
+  verticalLetterboxPx: number;
+  naturalAspectRatio: number;
+  viewerAspectRatio: number;
+  aspectError: number;
+  suggestedShellWidth: number;
+  suggestedShellHeight: number;
+  variant: ShellVariant;
+  sourceKind: "video" | "synthetic";
+}
+
+export function computeDisplayedBox(
+  viewerWidth: number,
+  viewerHeight: number,
+  intrinsicWidth: number,
+  intrinsicHeight: number,
+) {
+  const safeViewerWidth = Math.max(0, viewerWidth);
+  const safeViewerHeight = Math.max(0, viewerHeight);
+  const safeIntrinsicWidth = Math.max(0, intrinsicWidth);
+  const safeIntrinsicHeight = Math.max(0, intrinsicHeight);
+
+  if (
+    safeViewerWidth <= 0 ||
+    safeViewerHeight <= 0 ||
+    safeIntrinsicWidth <= 0 ||
+    safeIntrinsicHeight <= 0
+  ) {
+    return {
+      displayedWidth: 0,
+      displayedHeight: 0,
+      horizontalLetterboxPx: 0,
+      verticalLetterboxPx: 0,
+      viewerAspectRatio: 0,
+      naturalAspectRatio: 0,
+      aspectError: 0,
+    };
+  }
+
+  const naturalAspectRatio = safeIntrinsicWidth / safeIntrinsicHeight;
+  const viewerAspectRatio = safeViewerWidth / safeViewerHeight;
+  const scale = Math.min(
+    safeViewerWidth / safeIntrinsicWidth,
+    safeViewerHeight / safeIntrinsicHeight,
+  );
+  const displayedWidth = Number((safeIntrinsicWidth * scale).toFixed(2));
+  const displayedHeight = Number((safeIntrinsicHeight * scale).toFixed(2));
+
+  return {
+    displayedWidth,
+    displayedHeight,
+    horizontalLetterboxPx: Number(Math.max(0, (safeViewerWidth - displayedWidth) / 2).toFixed(2)),
+    verticalLetterboxPx: Number(Math.max(0, (safeViewerHeight - displayedHeight) / 2).toFixed(2)),
+    viewerAspectRatio: Number(viewerAspectRatio.toFixed(6)),
+    naturalAspectRatio: Number(naturalAspectRatio.toFixed(6)),
+    aspectError: Number(Math.abs(viewerAspectRatio - naturalAspectRatio).toFixed(6)),
+  };
+}
+
+export function suggestShellSize(
+  intrinsicWidth: number,
+  intrinsicHeight: number,
+  footerHeight: number,
+  maxShellWidth: number,
+  maxShellHeight: number,
+) {
+  const safeFooterHeight = Math.max(0, footerHeight);
+  const safeMaxWidth = Math.max(360, maxShellWidth);
+  const safeMaxHeight = Math.max(240, maxShellHeight);
+  const safeIntrinsicWidth = Math.max(0, intrinsicWidth);
+  const safeIntrinsicHeight = Math.max(0, intrinsicHeight);
+
+  if (safeIntrinsicWidth <= 0 || safeIntrinsicHeight <= 0) {
+    return { shellWidth: 960, shellHeight: 540 };
+  }
+
+  const ratio = safeIntrinsicWidth / safeIntrinsicHeight;
+  const maxViewerHeight = Math.max(LAB_MIN_VIEWPORT_HEIGHT, safeMaxHeight - safeFooterHeight);
+
+  let shellHeight = Math.min(540, safeMaxHeight);
+  let viewerHeight = Math.max(LAB_MIN_VIEWPORT_HEIGHT, shellHeight - safeFooterHeight);
+  let shellWidth = Math.round(viewerHeight * ratio);
+
+  if (shellWidth > safeMaxWidth) {
+    shellWidth = Math.round(safeMaxWidth);
+    viewerHeight = Math.round(shellWidth / ratio);
+    shellHeight = Math.round(viewerHeight + safeFooterHeight);
+  }
+
+  if (shellHeight > safeMaxHeight) {
+    viewerHeight = Math.round(maxViewerHeight);
+    shellWidth = Math.round(viewerHeight * ratio);
+    shellHeight = Math.round(viewerHeight + safeFooterHeight);
+  }
+
+  return {
+    shellWidth: Math.max(360, shellWidth),
+    shellHeight: Math.max(240, shellHeight),
+  };
+}
