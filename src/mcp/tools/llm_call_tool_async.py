@@ -23,6 +23,8 @@ from typing import Any, Dict, List, Optional
 import logging
 import asyncio
 import random
+import json
+from pathlib import Path
 
 from .base_async_tool import BaseAsyncMCPTool
 
@@ -266,6 +268,47 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
             'gemini': 'gemini-2.0-flash',
         }
         return aliases.get(model.lower(), model)
+
+    # MARKER_166.FAVKEY.001: Auto-apply favorite key as preferred one-shot before MYCELIUM model call.
+    def _apply_favorite_preferred_key(self, provider_name: str) -> None:
+        """Load persisted favorites and set one-shot preferred key for provider if available."""
+        try:
+            normalized = str(provider_name or "").strip().lower()
+            if not normalized:
+                return
+            if normalized == "google":
+                normalized = "gemini"
+
+            favorites_path = Path(__file__).resolve().parents[3] / "data" / "favorites.json"
+            if not favorites_path.exists():
+                return
+
+            data = json.loads(favorites_path.read_text(encoding="utf-8"))
+            keys = data.get("keys", [])
+            if not isinstance(keys, list) or not keys:
+                return
+
+            favorite_masked = None
+            for item in keys:
+                if not isinstance(item, str) or ":" not in item:
+                    continue
+                prov, masked = item.split(":", 1)
+                prov_norm = prov.strip().lower()
+                if prov_norm == "google":
+                    prov_norm = "gemini"
+                if prov_norm == normalized and masked.strip():
+                    favorite_masked = masked.strip()
+                    break
+
+            if not favorite_masked:
+                return
+
+            from src.utils.unified_key_manager import get_key_manager
+            km = get_key_manager()
+            km.set_preferred_key(normalized, favorite_masked)
+            logger.info(f"[MYCELIUM_FAVORITE_KEY] Preferred key applied for {normalized}/{favorite_masked[:12]}...")
+        except Exception as e:
+            logger.debug(f"[MYCELIUM_FAVORITE_KEY] Failed to apply favorite key: {e}")
 
     def _track_usage_for_balance(self, provider: str, model: str, usage: Optional[Dict] = None):
         """Record usage to BalanceTracker after successful LLM call."""
@@ -582,6 +625,9 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
             except ValueError:
                 logger.warning(f"Unknown provider '{provider_name}', using auto-detect")
                 provider_enum = None
+
+            # MARKER_166.FAVKEY.002: Auto-apply persisted favorite key before provider call.
+            self._apply_favorite_preferred_key(provider_name)
 
             source_info = f" (source: {model_source})" if model_source else ""
             logger.info(f"[MYCELIUM LLM] Calling {model} via {provider_name}{source_info}")

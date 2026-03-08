@@ -44,6 +44,7 @@ interface Totals {
 }
 
 const API_BASE = 'http://localhost:5001/api/debug';
+const API_CONFIG_BASE = '/api';
 
 // MARKER_126.6A: Nolan monochrome palette
 const COLORS = {
@@ -67,6 +68,9 @@ export function BalancesPanel() {
   const [totals, setTotals] = useState<Totals | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [newKey, setNewKey] = useState('');
+  const [addingKey, setAddingKey] = useState(false);
+  const [addMessage, setAddMessage] = useState<string | null>(null);
 
   // MARKER_126.9A: Selected API key for next pipeline dispatch
   const selectedKey = useStore((s) => s.selectedKey);
@@ -133,6 +137,34 @@ export function BalancesPanel() {
       console.error('Reset failed:', err);
     }
   };
+
+  // MARKER_166.UI.001: Add API key from existing Balance panel using core /api/keys/add-smart.
+  const handleAddKey = useCallback(async () => {
+    const key = newKey.trim();
+    if (!key || addingKey) return;
+    setAddingKey(true);
+    setAddMessage(null);
+    try {
+      const res = await fetch(`${API_CONFIG_BASE}/keys/add-smart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        setAddMessage(data?.error || data?.message || `HTTP ${res.status}`);
+        return;
+      }
+      const providerText = data.provider ? ` (${data.provider})` : '';
+      setAddMessage(`saved${providerText}`);
+      setNewKey('');
+      fetchData();
+    } catch (err) {
+      setAddMessage(err instanceof Error ? err.message : 'Add failed');
+    } finally {
+      setAddingKey(false);
+    }
+  }, [newKey, addingKey, fetchData]);
 
   // MARKER_126.6B: Format helpers
   const formatTokens = (n: number) => {
@@ -231,6 +263,59 @@ export function BalancesPanel() {
             {loading ? '...' : 'refresh'}
           </button>
         </div>
+      </div>
+
+      {/* MARKER_166.UI.002: Inline monochrome key-add form (reuses existing style system). */}
+      <div style={{
+        display: 'flex',
+        gap: 6,
+        alignItems: 'center',
+        marginBottom: 10,
+      }}>
+        <input
+          value={newKey}
+          onChange={(e) => setNewKey(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void handleAddKey();
+            }
+          }}
+          placeholder="paste api key"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: '4px 8px',
+            background: 'transparent',
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 2,
+            color: COLORS.text,
+            fontSize: 9,
+            fontFamily: 'monospace',
+            outline: 'none',
+          }}
+        />
+        <button
+          onClick={() => { void handleAddKey(); }}
+          disabled={addingKey || !newKey.trim()}
+          style={{
+            padding: '4px 8px',
+            background: 'transparent',
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 2,
+            color: addingKey ? COLORS.textDimmer : COLORS.textMuted,
+            fontSize: 9,
+            fontFamily: 'monospace',
+            cursor: addingKey ? 'wait' : 'pointer',
+          }}
+        >
+          {addingKey ? '...' : 'add key'}
+        </button>
+        {addMessage && (
+          <span style={{ color: COLORS.textDim, fontSize: 9, whiteSpace: 'nowrap' }}>
+            {addMessage}
+          </span>
+        )}
       </div>
 
       {error && (

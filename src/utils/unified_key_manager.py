@@ -459,6 +459,11 @@ class UnifiedKeyManager:
         Get first available key for provider (backwards compatibility).
         Skips rate-limited keys (24h cooldown).
         """
+        # MARKER_166.FAVKEY.003: Honor one-shot preferred key in legacy get_active_key path.
+        preferred = self.get_preferred_key(provider)
+        if preferred:
+            return preferred
+
         # For OpenRouter, use rotation logic
         if provider == ProviderType.OPENROUTER:
             return self.get_openrouter_key()
