@@ -133,6 +133,8 @@ type TaskDrillState = 'collapsed' | 'expanded';
 type RoadmapNodeDrillState = 'collapsed' | 'expanded';
 type MycoBadgeVisualState = 'idle' | 'speaking' | 'ready';
 type MiniWindowFocusState = 'compact' | 'expanded' | 'minimized';
+const MYCO_TOP_HINT_WORDS_PER_SECOND = 2;
+const MYCO_TOP_HINT_TICK_MS = Math.round(1000 / MYCO_TOP_HINT_WORDS_PER_SECOND);
 
 function uniqueIds(ids: Array<string | null | undefined>): string[] {
   return Array.from(new Set(ids.filter(Boolean) as string[]));
@@ -1455,6 +1457,7 @@ export function MyceliumCommandCenter() {
   const [mycoBadgeVisualState, setMycoBadgeVisualState] = useState<MycoBadgeVisualState>('idle');
   const mycoBadgeTimersRef = useRef<number[]>([]);
   const [mycoTopHint, setMycoTopHint] = useState<string>('ready');
+  const [mycoTopHintRendered, setMycoTopHintRendered] = useState<string>('ready');
   const mycoHintTimersRef = useRef<number[]>([]);
   const mycoTopHintKeyRef = useRef<string>('');
   const [miniWindowFocus, setMiniWindowFocus] = useState<{
@@ -2522,10 +2525,32 @@ export function MyceliumCommandCenter() {
     const hintKey = `${helperMode}:${navLevel}:${selectedTaskId || ''}:${focusId}:${hint}`;
     if (mycoTopHintKeyRef.current !== hintKey) {
       mycoTopHintKeyRef.current = hintKey;
+      // MARKER_164.P4.TOP_HINT_TICKER_2WPS.V1:
+      // Render top hint as running text at fixed 2 words per second.
+      const words = hint.split(/\s+/g).filter(Boolean);
+      if (words.length <= 1) {
+        setMycoTopHintRendered(hint);
+        setMycoBadgeVisualState('idle');
+        return () => clearTimers();
+      }
       setMycoBadgeVisualState('speaking');
-      const readyTimer = window.setTimeout(() => setMycoBadgeVisualState('ready'), 1500);
-      const idleTimer = window.setTimeout(() => setMycoBadgeVisualState('idle'), 3900);
-      mycoHintTimersRef.current = [readyTimer, idleTimer];
+      let cursor = Math.min(2, words.length);
+      setMycoTopHintRendered(words.slice(0, cursor).join(' '));
+      const ticker = window.setInterval(() => {
+        cursor += 1;
+        if (cursor >= words.length) {
+          setMycoTopHintRendered(words.join(' '));
+          // MARKER_164.P4.TOP_HINT_TICKER_STOPS_SPEAKING_AT_END.V1:
+          // Speaking state ends exactly when top hint reaches full text.
+          setMycoBadgeVisualState('idle');
+          window.clearInterval(ticker);
+          return;
+        }
+        setMycoTopHintRendered(words.slice(0, cursor).join(' '));
+      }, MYCO_TOP_HINT_TICK_MS);
+      mycoHintTimersRef.current = [ticker as unknown as number];
+    } else {
+      setMycoTopHintRendered(hint);
     }
     return () => clearTimers();
   }, [effectiveNodes, helperMode, miniWindowFocus.state, miniWindowFocus.windowId, navLevel, roadmapDrillNodeId, roadmapNodeDrillState, selectedNode, selectedNodeIds, selectedTaskId, selectedTaskMeta, taskDrillState]);
@@ -3817,7 +3842,7 @@ export function MyceliumCommandCenter() {
                     borderRight: '7px solid #0a0d12',
                   }}
                 />
-                {mycoTopHint}
+                {mycoTopHintRendered}
               </div>
             </div>
           )}
