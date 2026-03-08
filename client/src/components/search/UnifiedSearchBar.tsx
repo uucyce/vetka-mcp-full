@@ -520,6 +520,24 @@ export function UnifiedSearchBar({
   }, [sortedResults, onPinResult, clearResults, selectedIds]);
 
   // Hover preview handlers
+  const clearResultPreview = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setHoveredResult(null);
+    setPreviewPosition(null);
+  }, []);
+
+  const clearMycoPreview = useCallback(() => {
+    if (mycoPreviewTimerRef.current) {
+      window.clearTimeout(mycoPreviewTimerRef.current);
+      mycoPreviewTimerRef.current = null;
+    }
+    setShowMycoPreview(false);
+    setMycoPreviewPosition(null);
+  }, []);
+
   const handleMouseEnter = useCallback((result: SearchResult, e: React.MouseEvent) => {
     const rect = e.currentTarget.getBoundingClientRect();
     hoverTimerRef.current = setTimeout(() => {
@@ -529,13 +547,33 @@ export function UnifiedSearchBar({
   }, []);
 
   const handleMouseLeave = useCallback(() => {
-    if (hoverTimerRef.current) {
-      clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = null;
-    }
-    setHoveredResult(null);
-    setPreviewPosition(null);
-  }, []);
+    clearResultPreview();
+  }, [clearResultPreview]);
+
+  useEffect(() => {
+    clearResultPreview();
+  }, [clearResultPreview, query, searchContext, showContextMenu, laneState.mode, activeIsSearching]);
+
+  useEffect(() => {
+    clearMycoPreview();
+  }, [clearMycoPreview, mycoStateKey, showContextMenu, query, searchContext, laneState.mode, showMycoTicker]);
+
+  useEffect(() => {
+    const dismissPreviews = () => {
+      clearResultPreview();
+      clearMycoPreview();
+    };
+
+    window.addEventListener('scroll', dismissPreviews, true);
+    window.addEventListener('resize', dismissPreviews);
+    window.addEventListener('blur', dismissPreviews);
+
+    return () => {
+      window.removeEventListener('scroll', dismissPreviews, true);
+      window.removeEventListener('resize', dismissPreviews);
+      window.removeEventListener('blur', dismissPreviews);
+    };
+  }, [clearMycoPreview, clearResultPreview]);
 
   // MARKER_142.IMPL_STEP_2_CAPABILITIES: Load context capabilities from backend
   useEffect(() => {
@@ -1333,12 +1371,7 @@ export function UnifiedSearchBar({
                 }, 300);
               }}
               onMouseLeave={() => {
-                if (mycoPreviewTimerRef.current) {
-                  window.clearTimeout(mycoPreviewTimerRef.current);
-                  mycoPreviewTimerRef.current = null;
-                }
-                setShowMycoPreview(false);
-                setMycoPreviewPosition(null);
+                clearMycoPreview();
               }}
               title={mycoHint?.title || 'Current guidance'}
             >
