@@ -29,6 +29,7 @@ npm test
 npm run test:e2e
 npm run tauri:dev
 npm run tauri:build
+/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/player_lab_review.sh /absolute/path/to/video.mp4
 ```
 
 Open [http://127.0.0.1:1424](http://127.0.0.1:1424) and load a local video.
@@ -61,6 +62,23 @@ player_playground/src-tauri/target/release/bundle/dmg/VETKA Player Lab_0.1.0_aar
 ```
 
 Use `npm run tauri:dev` for a live native shell and `npm run tauri:build` for a distributable `.app` and `.dmg`.
+
+## Review Probe
+
+Before a commit, capture a stable screenshot and geometry snapshot:
+
+```bash
+/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/player_lab_review.sh /absolute/path/to/video.mp4
+```
+
+Artifacts are saved to:
+
+```text
+player_playground/output/review/latest-player-review.png
+player_playground/output/review/latest-player-review.json
+```
+
+If no video path is passed, the probe falls back to a synthetic `1280x720` review frame.
 
 ## Debug API
 
