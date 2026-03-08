@@ -1458,6 +1458,8 @@ export function MyceliumCommandCenter() {
   const mycoBadgeTimersRef = useRef<number[]>([]);
   const [mycoTopHint, setMycoTopHint] = useState<string>('ready');
   const [mycoTopHintRendered, setMycoTopHintRendered] = useState<string>('ready');
+  const [mycoTopHintShouldAnimate, setMycoTopHintShouldAnimate] = useState<boolean>(false);
+  const [mycoTopHintAnimationSeconds, setMycoTopHintAnimationSeconds] = useState<number>(0);
   const mycoHintTimersRef = useRef<number[]>([]);
   const mycoTopHintKeyRef = useRef<string>('');
   const [miniWindowFocus, setMiniWindowFocus] = useState<{
@@ -2453,11 +2455,6 @@ export function MyceliumCommandCenter() {
     const focusedWindowId = String(miniWindowFocus.windowId || '').toLowerCase();
     const focusedWindowState = String(miniWindowFocus.state || '').toLowerCase();
     const focusedWindowExpanded = focusedWindowState === 'expanded';
-    const drillTarget = selectedNode?.startsWith('task_overlay_')
-      ? 'workflow'
-      : navLevel === 'roadmap'
-        ? 'module'
-        : 'task';
     let hint = 'select node • create task • run workflow';
     // MARKER_164.P4.WINDOW_FOCUS_TOP_HINT_PRIORITY.V1:
     // Focused mini-window guidance has priority over generic drill hints.
@@ -2508,11 +2505,11 @@ export function MyceliumCommandCenter() {
     } else if ((navLevel === 'roadmap' || navLevel === 'tasks') && selectedNode) {
       // MARKER_162.P2.MYCO.TOP_SYSTEM_HINT_PRIORITY.V1:
       // Top helper hint has priority over generic context title while node is selected.
-      hint = `Press Enter to drill into ${drillTarget}`;
+      hint = 'Press Enter to drill into workflow';
     } else if (nodeLabel && navLevel !== 'roadmap') {
-      hint = `${nodeLabel}`;
+      hint = 'node selected: open Context for details and next actions';
     } else if (selectedTaskId) {
-      hint = `task ${selectedTaskId} linked`;
+      hint = 'task linked: open workflow or ask architect for next step';
     } else if (navLevel === 'workflow') {
       hint = 'workflow context: open node and inspect roles';
     } else if (navLevel === 'tasks') {
@@ -2528,28 +2525,27 @@ export function MyceliumCommandCenter() {
       // MARKER_164.P4.TOP_HINT_TICKER_2WPS.V1:
       // Render top hint as running text at fixed 2 words per second.
       const words = hint.split(/\s+/g).filter(Boolean);
+      const shouldAnimate = hint.length > 42;
+      setMycoTopHintShouldAnimate(shouldAnimate);
+      setMycoTopHintRendered(hint);
+      const playbackSeconds = shouldAnimate
+        ? Math.max(8, Number((words.length / MYCO_TOP_HINT_WORDS_PER_SECOND).toFixed(2)))
+        : Math.max(2, Number((words.length / MYCO_TOP_HINT_WORDS_PER_SECOND).toFixed(2)));
+      setMycoTopHintAnimationSeconds(playbackSeconds);
       if (words.length <= 1) {
-        setMycoTopHintRendered(hint);
         setMycoBadgeVisualState('idle');
         return () => clearTimers();
       }
       setMycoBadgeVisualState('speaking');
-      let cursor = Math.min(2, words.length);
-      setMycoTopHintRendered(words.slice(0, cursor).join(' '));
-      const ticker = window.setInterval(() => {
-        cursor += 1;
-        if (cursor >= words.length) {
-          setMycoTopHintRendered(words.join(' '));
-          // MARKER_164.P4.TOP_HINT_TICKER_STOPS_SPEAKING_AT_END.V1:
-          // Speaking state ends exactly when top hint reaches full text.
-          setMycoBadgeVisualState('idle');
-          window.clearInterval(ticker);
-          return;
-        }
-        setMycoTopHintRendered(words.slice(0, cursor).join(' '));
-      }, MYCO_TOP_HINT_TICK_MS);
-      mycoHintTimersRef.current = [ticker as unknown as number];
+      const stopSpeakingTimer = window.setTimeout(() => {
+        // MARKER_164.P4.TOP_HINT_TICKER_STOPS_SPEAKING_AT_END.V1:
+        // Speaking state ends exactly when top hint playback reaches full text.
+        setMycoBadgeVisualState('idle');
+      }, Math.round(playbackSeconds * 1000));
+      mycoHintTimersRef.current = [stopSpeakingTimer];
     } else {
+      setMycoTopHintShouldAnimate(false);
+      setMycoTopHintAnimationSeconds(0);
       setMycoTopHintRendered(hint);
     }
     return () => clearTimers();
@@ -3842,12 +3838,33 @@ export function MyceliumCommandCenter() {
                     borderRight: '7px solid #0a0d12',
                   }}
                 />
-                {mycoTopHintRendered}
+                {mycoTopHintShouldAnimate ? (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      whiteSpace: 'nowrap',
+                      minWidth: 'max-content',
+                      gap: 24,
+                      animation: `mcc-myco-marquee ${mycoTopHintAnimationSeconds}s linear 1 both`,
+                      willChange: 'transform',
+                    }}
+                  >
+                    <span>{mycoTopHintRendered}</span>
+                    <span aria-hidden>{mycoTopHintRendered}</span>
+                  </span>
+                ) : mycoTopHintRendered}
               </div>
             </div>
           )}
         </div>
       )}
+      <style>{`
+        @keyframes mcc-myco-marquee {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+      `}</style>
       {/* MARKER_155A.G21.PLAYGROUND_ENTRY: Always-available playground entry for existing projects. */}
       {debugMode && hasProject && navLevel !== 'first_run' && (
         <div style={{ position: 'absolute', top: 44, right: 14, zIndex: 20 }}>
