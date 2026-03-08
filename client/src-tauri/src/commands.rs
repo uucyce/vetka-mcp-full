@@ -29,6 +29,104 @@ pub struct HealthStatus {
     pub latency_ms: u64,
 }
 
+#[derive(Debug, Serialize)]
+struct MediaWindowMetadataRequest {
+    path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaWindowMetadataResponse {
+    success: bool,
+    modality: Option<String>,
+    width_px: Option<u32>,
+    height_px: Option<u32>,
+}
+
+fn backend_api_url() -> String {
+    std::env::var("VETKA_API_URL")
+        .unwrap_or_else(|_| "http://localhost:5001".to_string())
+}
+
+async fn fetch_media_window_metadata(path: &str) -> Option<MediaWindowMetadataResponse> {
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{}/api/artifacts/media/window-metadata", backend_api_url()))
+        .timeout(std::time::Duration::from_secs(4))
+        .json(&MediaWindowMetadataRequest {
+            path: path.to_string(),
+        })
+        .send()
+        .await
+        .ok()?;
+
+    if !response.status().is_success() {
+        return None;
+    }
+
+    let payload = response.json::<MediaWindowMetadataResponse>().await.ok()?;
+    if !payload.success {
+        return None;
+    }
+    Some(payload)
+}
+
+fn preferred_monitor_size(app: &AppHandle) -> (f64, f64) {
+    if let Some(main) = app.get_webview_window("main") {
+        if let Ok(Some(monitor)) = main.current_monitor() {
+            let size = monitor.size();
+            return (size.width as f64, size.height as f64);
+        }
+    }
+    if let Ok(Some(monitor)) = app.primary_monitor() {
+        let size = monitor.size();
+        return (size.width as f64, size.height as f64);
+    }
+    (1440.0, 900.0)
+}
+
+fn compute_detached_media_initial_inner_size(
+    video_width: u32,
+    video_height: u32,
+    screen_width: f64,
+    screen_height: f64,
+) -> (f64, f64) {
+    // MARKER_159.R9.ONE_SHOT_MEDIA_INITIAL_SIZE:
+    // compute detached media window size once, before creation, from real media metadata.
+    const DEFAULT_WINDOW_W: f64 = 960.0;
+    const DEFAULT_WINDOW_H: f64 = 540.0;
+    const MIN_WINDOW_W: f64 = 360.0;
+    const MIN_WINDOW_H: f64 = 240.0;
+    const TOOLBAR_H: f64 = 44.0;
+
+    if video_width == 0 || video_height == 0 {
+        return (DEFAULT_WINDOW_W, DEFAULT_WINDOW_H);
+    }
+
+    let max_window_w = (screen_width * 0.92).floor().max(MIN_WINDOW_W);
+    let max_window_h = (screen_height * 0.9).floor().max(MIN_WINDOW_H);
+    let ratio = (video_width as f64) / (video_height as f64);
+
+    let mut window_h = DEFAULT_WINDOW_H.min(max_window_h).max(MIN_WINDOW_H);
+    let mut viewer_h = (window_h - TOOLBAR_H).max(180.0);
+    let mut window_w = (viewer_h * ratio).round().max(MIN_WINDOW_W);
+
+    if window_w > max_window_w {
+        window_w = max_window_w;
+        viewer_h = (window_w / ratio).round();
+        window_h = (viewer_h + TOOLBAR_H).round();
+    }
+
+    if window_h > max_window_h {
+        window_h = max_window_h;
+        viewer_h = (window_h - TOOLBAR_H).max(180.0);
+        window_w = (viewer_h * ratio).round();
+    }
+
+    window_w = window_w.clamp(MIN_WINDOW_W, max_window_w);
+    window_h = window_h.clamp(MIN_WINDOW_H, max_window_h);
+    (window_w, window_h)
+}
+
 /// Get backend URL configuration
 /// Called by frontend to know where to connect
 #[tauri::command]
@@ -192,7 +290,7 @@ pub fn set_current_window_fullscreen(window: WebviewWindow, fullscreen: bool) ->
 
 /// MARKER_159.WINFS.R2_CMD: Open/reuse detached artifact media window.
 #[tauri::command]
-pub fn open_artifact_media_window(
+pub async fn open_artifact_media_window(
     app: AppHandle,
     path: String,
     name: Option<String>,
@@ -250,12 +348,27 @@ pub fn open_artifact_media_window(
         return Ok(true);
     }
 
-    // MARKER_159.C5.WINDOW_SIZE_DEFAULT:
-    // detached media window starts at 16:9 baseline and can shrink to small natural media sizes.
+    let metadata = fetch_media_window_metadata(clean_path).await;
+    let (screen_width, screen_height) = preferred_monitor_size(&app);
+    let (initial_width, initial_height) = if let Some(meta) = metadata.as_ref() {
+        if meta.modality.as_deref() == Some("video") {
+            compute_detached_media_initial_inner_size(
+                meta.width_px.unwrap_or(0),
+                meta.height_px.unwrap_or(0),
+                screen_width,
+                screen_height,
+            )
+        } else {
+            (960.0, 540.0)
+        }
+    } else {
+        (960.0, 540.0)
+    };
+
     let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::App(route.into()))
         .title(window_title)
-        .inner_size(960.0, 540.0)
-        .min_inner_size(240.0, 224.0)
+        .inner_size(initial_width, initial_height)
+        .min_inner_size(360.0, 240.0)
         .always_on_top(true)
         .resizable(true)
         .focused(true)

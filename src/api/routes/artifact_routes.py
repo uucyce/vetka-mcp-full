@@ -14,6 +14,7 @@ import wave
 import re
 import tempfile
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -150,6 +151,10 @@ class MediaPreviewRequest(BaseModel):
     path: str = Field(..., description="Absolute or workspace-relative path to media file")
     waveform_bins: int = Field(default=120, ge=16, le=1024)
     preview_segments_limit: int = Field(default=64, ge=1, le=256)
+
+
+class MediaWindowMetadataRequest(BaseModel):
+    path: str = Field(..., description="Absolute or workspace-relative path to media file")
 
 
 class MediaStartupRequest(BaseModel):
@@ -344,6 +349,256 @@ def _probe_media_duration(path: Path) -> float:
     except Exception:
         pass
     return 0.0
+
+
+def _encode_raw_url(path: Path) -> str:
+    return f"/api/files/raw?path={quote(str(path), safe='')}"
+
+
+def _compute_waveform_bins_via_ffmpeg(path: Path, bins: int) -> tuple[list[float], int]:
+    """Best-effort waveform extraction for non-WAV media."""
+    try:
+        cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(path),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-f",
+            "s16le",
+            "-",
+        ]
+        res = subprocess.run(cmd, capture_output=True, timeout=30)
+        if res.returncode != 0 or not res.stdout:
+            return [], 0
+        import struct
+
+        frame_count = len(res.stdout) // 2
+        if frame_count <= 0:
+            return [], 0
+        vals = struct.unpack("<" + "h" * frame_count, res.stdout[: frame_count * 2])
+        samples = [abs(v / 32767.0) for v in vals]
+        chunk_size = max(1, math.ceil(len(samples) / bins))
+        out: list[float] = []
+        for i in range(0, len(samples), chunk_size):
+            chunk = samples[i : i + chunk_size]
+            if chunk:
+                out.append(min(1.0, max(0.0, max(chunk))))
+        return out[:bins], 16000
+    except Exception:
+        return [], 0
+
+
+def _media_cache_root() -> Path:
+    return (Path(__file__).parent.parent.parent.parent / ".media_cache").resolve()
+
+
+def _ensure_video_preview_assets(target: Path, duration_sec: float) -> dict:
+    """
+    Generate poster + animated 300ms preview only (no playback transcode).
+    """
+    cache_root = _media_cache_root()
+    cache_root.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha1(f"{target}:{target.stat().st_mtime_ns}".encode("utf-8")).hexdigest()[:16]
+    out_dir = cache_root / key
+    out_dir.mkdir(parents=True, exist_ok=True)
+    poster = out_dir / "poster.jpg"
+    animated = out_dir / "preview_300ms.webp"
+
+    if not poster.exists():
+        # pick near-first frame but avoid pure black first frame
+        t = min(max(0.08, duration_sec * 0.03), max(0.08, duration_sec - 0.05)) if duration_sec > 0 else 0.08
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-ss",
+                f"{t:.3f}",
+                "-i",
+                str(target),
+                "-frames:v",
+                "1",
+                "-vf",
+                "scale=640:-1:flags=lanczos",
+                str(poster),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    if not animated.exists():
+        # 300ms animated preview
+        t = min(max(0.08, duration_sec * 0.03), max(0.08, duration_sec - 0.35)) if duration_sec > 0 else 0.08
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-ss",
+                f"{t:.3f}",
+                "-t",
+                "0.3",
+                "-i",
+                str(target),
+                "-vf",
+                "fps=12,scale=320:-1:flags=lanczos",
+                "-loop",
+                "0",
+                str(animated),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    return {
+        "poster_path": str(poster) if poster.exists() else "",
+        "animated_path": str(animated) if animated.exists() else "",
+    }
+
+
+def _probe_video_dimensions(path: Path) -> tuple[int, int]:
+    """Best-effort video width/height via ffprobe."""
+    try:
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "json",
+            str(path),
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=8)
+        if res.returncode != 0 or not res.stdout:
+            return 0, 0
+        payload = json.loads(res.stdout) or {}
+        streams = payload.get("streams") or []
+        if not streams:
+            return 0, 0
+        st = streams[0] or {}
+        return int(st.get("width") or 0), int(st.get("height") or 0)
+    except Exception:
+        return 0, 0
+
+
+def _format_aspect_ratio(width: int, height: int) -> str | None:
+    if width <= 0 or height <= 0:
+        return None
+    try:
+        divisor = math.gcd(int(width), int(height))
+        if divisor <= 0:
+            return None
+        return f"{int(width // divisor)}:{int(height // divisor)}"
+    except Exception:
+        return None
+
+
+def _ensure_video_playback_variants(target: Path) -> dict[str, str]:
+    """
+    Build cached playback variants for real decode/load reduction by scale.
+    Returns absolute file paths by scale key: full/half/quarter/eighth/sixteenth.
+    """
+    variants: dict[str, str] = {"full": str(target)}
+    src_w, src_h = _probe_video_dimensions(target)
+    if src_w <= 0 or src_h <= 0:
+        return variants
+
+    cache_root = _media_cache_root()
+    cache_root.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha1(f"{target}:{target.stat().st_mtime_ns}:playback".encode("utf-8")).hexdigest()[:16]
+    out_dir = cache_root / key
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    scale_profiles = [
+        ("half", 2, 2),
+        ("quarter", 4, 320),
+        ("eighth", 8, 320),
+        ("sixteenth", 16, 320),
+    ]
+    for name, divisor, min_width in scale_profiles:
+        scaled_w = max(2, (src_w // divisor // 2) * 2)
+        if scaled_w < min_width:
+            continue
+        out_file = out_dir / f"playback_{name}.mp4"
+        if not out_file.exists():
+            scale_filter = f"scale='trunc(iw/{divisor}/2)*2:trunc(ih/{divisor}/2)*2:flags=neighbor'"
+            cmd_h264 = [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(target),
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-vf",
+                scale_filter,
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "34",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "96k",
+                "-movflags",
+                "+faststart",
+                str(out_file),
+            ]
+            res = subprocess.run(cmd_h264, check=False, capture_output=True, text=True, timeout=90)
+            if res.returncode != 0 and not out_file.exists():
+                cmd_mpeg4 = [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    str(target),
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a?",
+                    "-vf",
+                    scale_filter,
+                    "-c:v",
+                    "mpeg4",
+                    "-q:v",
+                    "12",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "96k",
+                    "-movflags",
+                    "+faststart",
+                    str(out_file),
+                ]
+                subprocess.run(cmd_mpeg4, check=False, capture_output=True, text=True, timeout=90)
+        if out_file.exists():
+            variants[name] = str(out_file)
+    return variants
 
 
 def _compute_waveform_bins_for_wav(path: Path, bins: int) -> tuple[list[float], int]:
@@ -1037,6 +1292,8 @@ async def media_preview(body: MediaPreviewRequest, request: Request):
     if not (is_audio or is_video):
         raise HTTPException(status_code=400, detail=f"Unsupported media type: {mime_type}")
     modality = "video" if is_video else "audio"
+    width_px, height_px = _probe_video_dimensions(target) if is_video else (0, 0)
+    aspect_ratio = _format_aspect_ratio(width_px, height_px) if is_video else None
 
     duration_sec = _probe_media_duration(target)
     waveform_bins: list[float] = []
@@ -1044,10 +1301,11 @@ async def media_preview(body: MediaPreviewRequest, request: Request):
     degraded_reason = ""
     if target.suffix.lower() == ".wav":
         waveform_bins, sample_rate = _compute_waveform_bins_for_wav(target, body.waveform_bins)
-        if not waveform_bins:
-            degraded_reason = "wav_waveform_unavailable"
     else:
-        degraded_reason = "waveform_only_wav_v1"
+        waveform_bins, sample_rate = _compute_waveform_bins_via_ffmpeg(target, body.waveform_bins)
+    if not waveform_bins:
+        waveform_bins = _build_waveform_proxy_from_segments(float(duration_sec or 0.0), [], int(body.waveform_bins))
+        degraded_reason = "waveform_unavailable_fallback_proxy"
 
     # Try to retrieve stored media chunks for timeline.
     media_segments: list[dict] = []
@@ -1061,6 +1319,23 @@ async def media_preview(body: MediaPreviewRequest, request: Request):
         pass
 
     media_segments = _enrich_segments_with_lanes(media_segments, modality)
+    if not waveform_bins and media_segments:
+        waveform_bins = _build_waveform_proxy_from_segments(float(duration_sec or 0.0), media_segments, int(body.waveform_bins))
+
+    preview_assets = {"poster_url": "", "animated_preview_url_300ms": ""}
+    playback_sources_scale: dict[str, str] = {"full": _encode_raw_url(target)}
+    if is_video:
+        assets = _ensure_video_preview_assets(target, float(duration_sec or 0.0))
+        if assets.get("poster_path"):
+            preview_assets["poster_url"] = _encode_raw_url(Path(assets["poster_path"]))
+        if assets.get("animated_path"):
+            preview_assets["animated_preview_url_300ms"] = _encode_raw_url(Path(assets["animated_path"]))
+        variants = _ensure_video_playback_variants(target)
+        playback_sources_scale = {
+            key: _encode_raw_url(Path(path))
+            for key, path in variants.items()
+            if path and Path(path).exists()
+        }
 
     return {
         "success": True,
@@ -1073,9 +1348,18 @@ async def media_preview(body: MediaPreviewRequest, request: Request):
         "waveform_sample_rate": sample_rate,
         "timeline_segments": media_segments,
         "preview": {
-            "aspect_ratio": "16:9" if is_video else None,
+            "aspect_ratio": aspect_ratio,
             "recommended_zoom": 1.0,
+            "width_px": int(width_px or 0),
+            "height_px": int(height_px or 0),
         },
+        "playback": {
+            "source_url": _encode_raw_url(target),
+            "strategy": "direct",
+            "requires_proxy": False,
+            "sources_scale": playback_sources_scale,
+        },
+        "preview_assets": preview_assets,
         "playback_metadata": {
             "modality": modality,
             "duration_sec": float(duration_sec or 0.0),
@@ -1085,6 +1369,32 @@ async def media_preview(body: MediaPreviewRequest, request: Request):
         },
         "degraded_mode": bool(degraded_reason),
         "degraded_reason": degraded_reason,
+    }
+
+
+@router.post("/media/window-metadata")
+async def media_window_metadata(body: MediaWindowMetadataRequest):
+    """Lightweight real media metadata for detached window initial sizing."""
+    target = _resolve_media_path(body.path)
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail=f"Media file not found: {body.path}")
+
+    mime_type, _ = mimetypes.guess_type(str(target))
+    mime_type = mime_type or "application/octet-stream"
+    is_audio = mime_type.startswith("audio/")
+    is_video = mime_type.startswith("video/")
+    if not (is_audio or is_video):
+        raise HTTPException(status_code=400, detail=f"Unsupported media type: {mime_type}")
+
+    width_px, height_px = _probe_video_dimensions(target) if is_video else (0, 0)
+    return {
+        "success": True,
+        "path": str(target),
+        "mime_type": mime_type,
+        "modality": "video" if is_video else "audio",
+        "width_px": int(width_px or 0),
+        "height_px": int(height_px or 0),
+        "aspect_ratio": _format_aspect_ratio(width_px, height_px) if is_video else None,
     }
 
 
