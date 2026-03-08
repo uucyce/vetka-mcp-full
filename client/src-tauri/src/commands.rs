@@ -29,6 +29,20 @@ pub struct HealthStatus {
     pub latency_ms: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DetachedMediaGeometryTrace {
+    pub src: String,
+    pub dpr: f64,
+    pub window_inner_width: f64,
+    pub window_inner_height: f64,
+    pub video_intrinsic_width: f64,
+    pub video_intrinsic_height: f64,
+    pub wrapper_width: f64,
+    pub wrapper_height: f64,
+    pub toolbar_width: f64,
+    pub toolbar_height: f64,
+}
+
 #[derive(Debug, Serialize)]
 struct MediaWindowMetadataRequest {
     path: String,
@@ -207,6 +221,26 @@ pub fn get_system_info() -> SystemInfo {
         tauri_version: "2.0".to_string(),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
     }
+}
+
+/// MARKER_159.R14.DETACHED_MEDIA_TRACE_CMD:
+/// Emit detached media geometry from the frontend into the native terminal logs.
+#[tauri::command]
+pub fn trace_detached_media_geometry(trace: DetachedMediaGeometryTrace) -> Result<bool, String> {
+    log::info!(
+        "MARKER_159.R14.DETACHED_MEDIA_TRACE src={} dpr={} window_inner={}x{} video_intrinsic={}x{} wrapper={}x{} toolbar={}x{}",
+        trace.src,
+        trace.dpr,
+        trace.window_inner_width,
+        trace.window_inner_height,
+        trace.video_intrinsic_width,
+        trace.video_intrinsic_height,
+        trace.wrapper_width,
+        trace.wrapper_height,
+        trace.toolbar_width,
+        trace.toolbar_height,
+    );
+    Ok(true)
 }
 
 /// MARKER_161.7.MULTIPROJECT.TAURI.NATIVE_FOLDER_PICKER.V1

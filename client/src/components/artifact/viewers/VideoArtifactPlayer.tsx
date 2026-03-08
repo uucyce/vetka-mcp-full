@@ -4,6 +4,7 @@ import {
   isTauri,
   setCurrentWindowFullscreen,
   setWindowFullscreen,
+  traceDetachedMediaGeometry,
 } from "../../../config/tauri";
 
 interface Props {
@@ -577,30 +578,22 @@ export function VideoArtifactPlayer({
         const toolbarRect = document
           .querySelector('[data-artifact-toolbar="1"]')
           ?.getBoundingClientRect();
-        console.info("MARKER_159.R12.DETACHED_MEDIA_DOM_GEOMETRY", {
+        const payload = {
           src: mediaIdentity,
-          dpr: window.devicePixelRatio || 1,
-          windowInner: {
-            width: window.innerWidth,
-            height: window.innerHeight,
-          },
-          videoIntrinsic: {
-            width: videoWidth,
-            height: videoHeight,
-          },
-          wrapperRect: wrapperRect
-            ? {
-                width: Math.round(wrapperRect.width),
-                height: Math.round(wrapperRect.height),
-              }
-            : null,
-          toolbarRect: toolbarRect
-            ? {
-                width: Math.round(toolbarRect.width),
-                height: Math.round(toolbarRect.height),
-              }
-            : null,
-        });
+          dpr: Number(window.devicePixelRatio || 1),
+          window_inner_width: Number(window.innerWidth || 0),
+          window_inner_height: Number(window.innerHeight || 0),
+          video_intrinsic_width: Number(videoWidth || 0),
+          video_intrinsic_height: Number(videoHeight || 0),
+          wrapper_width: Number(wrapperRect?.width || 0),
+          wrapper_height: Number(wrapperRect?.height || 0),
+          toolbar_width: Number(toolbarRect?.width || 0),
+          toolbar_height: Number(toolbarRect?.height || 0),
+        };
+        console.info("MARKER_159.R12.DETACHED_MEDIA_DOM_GEOMETRY", payload);
+        if (isTauri()) {
+          void traceDetachedMediaGeometry(payload);
+        }
       }, 0);
     }
   }, []);

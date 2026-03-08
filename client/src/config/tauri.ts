@@ -29,6 +29,19 @@ export interface HealthStatus {
   latency_ms: number;
 }
 
+export interface DetachedMediaGeometryTrace {
+  src: string;
+  dpr: number;
+  window_inner_width: number;
+  window_inner_height: number;
+  video_intrinsic_width: number;
+  video_intrinsic_height: number;
+  wrapper_width: number;
+  wrapper_height: number;
+  toolbar_width: number;
+  toolbar_height: number;
+}
+
 export interface FileInfo {
   name: string;
   path: string;
@@ -521,6 +534,22 @@ export async function closeArtifactMediaWindow(windowLabel: string = 'artifact-m
     return ok === true;
   } catch (e) {
     console.warn('[Tauri] close_artifact_media_window failed:', e);
+    return false;
+  }
+}
+
+/**
+ * Send detached media geometry trace to native terminal logs.
+ */
+export async function traceDetachedMediaGeometry(trace: DetachedMediaGeometryTrace): Promise<boolean> {
+  const invoke = await getInvoke();
+  if (!invoke) return false;
+
+  try {
+    const ok = await invoke<boolean>('trace_detached_media_geometry', { trace });
+    return ok === true;
+  } catch (e) {
+    console.warn('[Tauri] trace_detached_media_geometry failed:', e);
     return false;
   }
 }
