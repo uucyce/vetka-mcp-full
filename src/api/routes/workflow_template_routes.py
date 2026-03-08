@@ -244,6 +244,11 @@ async def import_workflow(request: WorkflowImportRequest):
     store = get_store()
     validation = store.validate(workflow)
 
+    metadata = workflow.setdefault("metadata", {})
+    if isinstance(metadata, dict):
+        metadata["workflow_bank"] = fmt if fmt in {"n8n", "comfyui"} else "imported"
+        metadata["import_format"] = fmt or "imported"
+
     # Save if requested
     saved_id = None
     if request.save:

@@ -139,6 +139,204 @@ def _load_active_session_state(project_id: str) -> "SessionState":
         return SessionState.load()
 
 
+def _get_task_board_instance():
+    from src.orchestration.task_board import get_task_board
+
+    return get_task_board()
+
+
+def _list_core_workflow_templates() -> List[Dict[str, Any]]:
+    from src.services.architect_prefetch import WorkflowTemplateLibrary
+
+    return list(WorkflowTemplateLibrary.list_templates() or [])
+
+
+def _list_saved_workflow_templates() -> List[Dict[str, Any]]:
+    from src.services.workflow_store import WorkflowStore
+
+    return list(WorkflowStore().list_workflows() or [])
+
+
+def _detect_saved_workflow_bank(row: Dict[str, Any]) -> str:
+    """
+    MARKER_167.STATS_WORKFLOW.CATALOG_BANK_CLASSIFY.V1
+    Classify saved/imported workflows into explicit MCC banks.
+    """
+    meta = row.get("metadata", {})
+    if not isinstance(meta, dict):
+        meta = {}
+
+    explicit_bank = str(meta.get("workflow_bank") or "").strip().lower()
+    if explicit_bank in {"saved", "n8n", "comfyui", "imported"}:
+        return explicit_bank
+
+    imported_from = str(meta.get("imported_from") or meta.get("import_format") or "").strip().lower()
+    if imported_from == "n8n":
+        return "n8n"
+    if imported_from.startswith("comfyui"):
+        return "comfyui"
+    if imported_from:
+        return "imported"
+    return "saved"
+
+
+def _normalize_workflow_catalog_row(bank: str, row: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    MARKER_167.STATS_WORKFLOW.CATALOG_NORMALIZE.V1
+    Normalize workflow rows across MCC banks into one UI-facing contract.
+    """
+    if bank == "core":
+        family_meta = row.get("workflow_family", {})
+        family = ""
+        if isinstance(family_meta, dict):
+            family = str(family_meta.get("family") or "").strip()
+        tags = [str(t).strip() for t in list(row.get("task_types") or []) if str(t).strip()]
+        tags = sorted(dict.fromkeys(tags))
+        return {
+            "bank": "core",
+            "id": str(row.get("key") or row.get("id") or "").strip(),
+            "key": str(row.get("key") or row.get("id") or "").strip(),
+            "title": str(row.get("name") or row.get("id") or row.get("key") or "Untitled").strip(),
+            "family": family or "core_library",
+            "source": "core_library",
+            "description": str(row.get("description") or "").strip(),
+            "compatibility_tags": tags,
+            "metrics": {
+                "node_count": int(row.get("node_count") or 0),
+            },
+        }
+
+    meta = row.get("metadata", {})
+    normalized_bank = _detect_saved_workflow_bank(row)
+    family = ""
+    if isinstance(meta, dict):
+        family = str(
+            meta.get("workflow_family")
+            or meta.get("template_family")
+            or ""
+        ).strip()
+    return {
+        "bank": normalized_bank,
+        "id": str(row.get("id") or "").strip(),
+        "key": str(row.get("id") or "").strip(),
+        "title": str(row.get("name") or row.get("id") or "Untitled").strip(),
+        "family": family or f"{normalized_bank}_workflow",
+        "source": "saved_workflow_store",
+        "description": str(row.get("description") or "").strip(),
+        "compatibility_tags": [],
+        "metrics": {
+            "node_count": int(row.get("node_count") or 0),
+            "edge_count": int(row.get("edge_count") or 0),
+        },
+    }
+
+
+def _build_workflow_catalog_payload() -> Dict[str, Any]:
+    core_rows = [_normalize_workflow_catalog_row("core", row) for row in _list_core_workflow_templates()]
+    saved_rows = [_normalize_workflow_catalog_row("saved", row) for row in _list_saved_workflow_templates()]
+    workflows = core_rows + saved_rows
+    bank_order = ["core", "saved", "n8n", "comfyui", "imported"]
+    bank_labels = {
+        "core": "Core",
+        "saved": "Saved",
+        "n8n": "n8n",
+        "comfyui": "ComfyUI",
+        "imported": "Imported",
+    }
+    counts = {key: 0 for key in bank_order}
+    for row in workflows:
+        key = str(row.get("bank") or "")
+        if key in counts:
+            counts[key] += 1
+    return {
+        "success": True,
+        "banks": [
+            {
+                "key": key,
+                "label": bank_labels[key],
+                "count": counts[key],
+                "available": True,
+            }
+            for key in bank_order
+        ],
+        "workflows": workflows,
+        "total_count": len(workflows),
+    }
+
+
+def _complexity_to_int(raw: Any) -> int:
+    value = str(raw or "").strip().lower()
+    if value == "low":
+        return 3
+    if value == "high":
+        return 8
+    if value.isdigit():
+        return max(1, min(10, int(value)))
+    return 5
+
+
+def _select_heuristic_workflow_binding(task: Dict[str, Any]) -> Dict[str, Any]:
+    from src.services.architect_prefetch import WorkflowTemplateLibrary
+
+    selection = WorkflowTemplateLibrary.select_workflow_with_policy(
+        task_type=str(task.get("phase_type") or ""),
+        complexity=_complexity_to_int(task.get("complexity")),
+        task_description=" ".join(
+            [
+                str(task.get("title") or "").strip(),
+                str(task.get("description") or "").strip(),
+            ]
+        ).strip(),
+    )
+    workflow_id = str(selection.get("workflow_key") or "bmad_default").strip() or "bmad_default"
+    template = WorkflowTemplateLibrary.get_template(workflow_id) or {}
+    family_meta = ((template.get("metadata") or {}).get("workflow_family") or {})
+    family = str(family_meta.get("family") or workflow_id).strip() or workflow_id
+    return {
+        "workflow_bank": "core",
+        "workflow_id": workflow_id,
+        "workflow_family": family,
+        "team_profile": str(task.get("team_profile") or task.get("preset") or "dragon_silver").strip() or "dragon_silver",
+        "selection_origin": "heuristic",
+    }
+
+
+def _resolve_task_workflow_binding(task: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    MARKER_167.STATS_WORKFLOW.RESTORE_ORDER.V1
+    Resolve workflow binding with explicit task metadata priority.
+    """
+    explicit_workflow_id = str(task.get("workflow_id") or "").strip()
+    explicit_workflow_bank = str(task.get("workflow_bank") or "").strip()
+    explicit_workflow_family = str(task.get("workflow_family") or "").strip()
+    explicit_selection_origin = str(task.get("workflow_selection_origin") or "").strip()
+    explicit_team_profile = str(task.get("team_profile") or task.get("preset") or "").strip()
+
+    if explicit_workflow_id and (
+        explicit_workflow_bank
+        or explicit_workflow_family
+        or explicit_selection_origin in {"user-selected", "saved-task-binding", "restored"}
+    ):
+        return {
+            "workflow_bank": explicit_workflow_bank or "core",
+            "workflow_id": explicit_workflow_id,
+            "workflow_family": explicit_workflow_family or explicit_workflow_id,
+            "team_profile": explicit_team_profile or "dragon_silver",
+            "selection_origin": explicit_selection_origin or "saved-task-binding",
+        }
+
+    if explicit_workflow_id:
+        return {
+            "workflow_bank": "core",
+            "workflow_id": explicit_workflow_id,
+            "workflow_family": explicit_workflow_family or explicit_workflow_id,
+            "team_profile": explicit_team_profile or "dragon_silver",
+            "selection_origin": "legacy-task-field",
+        }
+
+    return _select_heuristic_workflow_binding(task)
+
+
 def _save_active_session_state(project_id: str, state: "SessionState") -> bool:
     try:
         from src.services.mcc_project_registry import save_session_for_project
@@ -745,6 +943,61 @@ async def list_workflows():
     return {"templates": WorkflowTemplateLibrary.list_templates()}
 
 
+@router.get("/workflow-catalog")
+async def get_workflow_catalog():
+    """
+    MARKER_167.STATS_WORKFLOW.CATALOG_API.V1
+    Unified MCC workflow catalog across banks.
+    """
+    return _build_workflow_catalog_payload()
+
+
+@router.get("/tasks/{task_id}/workflow-binding")
+async def get_task_workflow_binding(task_id: str):
+    board = _get_task_board_instance()
+    task = board.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+    return {
+        "success": True,
+        "task_id": task_id,
+        "binding": _resolve_task_workflow_binding(task),
+    }
+
+
+@router.put("/tasks/{task_id}/workflow-binding")
+async def update_task_workflow_binding(task_id: str, body: "WorkflowBindingRequest"):
+    """
+    MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
+    Persist explicit workflow binding on task metadata.
+    """
+    board = _get_task_board_instance()
+    task = board.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+
+    workflow_id = str(body.workflow_id or "").strip()
+    if not workflow_id:
+        raise HTTPException(status_code=400, detail="workflow_id is required")
+
+    updates = {
+        "workflow_id": workflow_id,
+        "workflow_bank": str(body.workflow_bank or "core").strip() or "core",
+        "workflow_family": str(body.workflow_family or workflow_id).strip() or workflow_id,
+        "workflow_selection_origin": str(body.selection_origin or "user-selected").strip() or "user-selected",
+        "team_profile": str(body.team_profile or task.get("team_profile") or task.get("preset") or "dragon_silver").strip() or "dragon_silver",
+    }
+    ok = board.update_task(task_id, **updates)
+    if not ok:
+        raise HTTPException(status_code=500, detail=f"Failed to update task '{task_id}' workflow binding")
+    next_task = board.get_task(task_id) or {**task, **updates}
+    return {
+        "success": True,
+        "task_id": task_id,
+        "binding": _resolve_task_workflow_binding(next_task),
+    }
+
+
 @router.get("/workflows/{workflow_key}")
 async def get_workflow(workflow_key: str):
     """Get a specific workflow template by key."""
@@ -759,6 +1012,14 @@ class PrefetchRequest(BaseModel):
     task_description: str
     task_type: str = ""
     complexity: int = 5
+
+
+class WorkflowBindingRequest(BaseModel):
+    workflow_bank: str = "core"
+    workflow_id: str
+    workflow_family: str = ""
+    team_profile: str = ""
+    selection_origin: str = "user-selected"
 
 
 class PredictGraphRequest(BaseModel):
@@ -816,6 +1077,13 @@ class BuildDesignFromArrayRequest(BaseModel):
     min_confidence: float = 0.55
     trm_profile: str = "off"
     trm_policy: Dict[str, Any] = {}
+
+
+class MCCScopedFileSearchRequest(BaseModel):
+    query: str
+    limit: int = 20
+    mode: str = "keyword"  # keyword|filename
+    scope_path: str = ""
 
 
 class LayoutPreferenceUpdateRequest(BaseModel):
@@ -948,6 +1216,80 @@ async def run_prefetch(req: PrefetchRequest):
         }
     }
     return payload
+
+
+@router.post("/search/file")
+async def mcc_scoped_file_search(req: MCCScopedFileSearchRequest):
+    """
+    MARKER_165.MCC.CONTEXT_SEARCH.API_SCOPED_FILE_ROUTE.V1
+    Scoped file search for MCC Context window.
+    """
+    from src.search.file_search_service import search_files
+
+    config = _load_active_project_config()
+    if config is None:
+        raise HTTPException(status_code=404, detail="No project configured")
+
+    sandbox_scope = _norm_abs(str(config.sandbox_path or "").strip()) if str(config.sandbox_path or "").strip() else ""
+    source_scope = _norm_abs(str(config.source_path or "").strip()) if str(config.source_path or "").strip() else ""
+    # MARKER_165.MCC.CONTEXT_SEARCH.ACTIVE_SCOPE_FALLBACK.V1
+    # Prefer sandbox, but gracefully fallback to source when sandbox was not materialized yet.
+    base_scope = ""
+    if sandbox_scope and os.path.isdir(sandbox_scope):
+        base_scope = sandbox_scope
+    elif source_scope and os.path.isdir(source_scope):
+        base_scope = source_scope
+    if not base_scope:
+        raise HTTPException(status_code=400, detail="No active project scope available")
+
+    resolved_scope = str(req.scope_path or "").strip()
+    resolved_scope = _norm_abs(resolved_scope) if resolved_scope else base_scope
+    if not os.path.isdir(resolved_scope):
+        raise HTTPException(status_code=400, detail=f"Invalid scope_path: {resolved_scope}")
+
+    # MARKER_165.MCC.CONTEXT_SEARCH.SCOPE_GUARD.V1
+    # Prevent scope escape outside active project boundary.
+    if os.path.commonpath([base_scope, resolved_scope]) != base_scope:
+        raise HTTPException(
+            status_code=400,
+            detail=f"scope_path must be inside active project scope: {base_scope}",
+        )
+
+    safe_limit = max(1, min(int(req.limit or 20), 100))
+    mode = "filename" if str(req.mode or "").strip().lower() == "filename" else "keyword"
+    payload = await asyncio.to_thread(
+        search_files,
+        query=str(req.query or ""),
+        limit=safe_limit,
+        mode=mode,
+        scope_roots=[resolved_scope],
+    )
+
+    rows = list((payload or {}).get("results") or [])
+    filtered: List[Dict[str, Any]] = []
+    for row in rows:
+        path = str(row.get("path") or "").strip()
+        if not path:
+            continue
+        try:
+            path_abs = _norm_abs(path)
+            if os.path.commonpath([resolved_scope, path_abs]) != resolved_scope:
+                continue
+        except Exception:
+            continue
+        filtered.append(row)
+        if len(filtered) >= safe_limit:
+            break
+
+    # MARKER_165.MCC.CONTEXT_SEARCH.PATH_FILTER.V1
+    out = dict(payload or {})
+    out["success"] = bool(out.get("success", True))
+    out["results"] = filtered
+    out["count"] = len(filtered)
+    out["scope_root"] = resolved_scope
+    out["mode"] = mode
+    out["marker"] = "MARKER_165.MCC.CONTEXT_SEARCH.API_SCOPED_FILE_ROUTE.V1"
+    return out
 
 
 @router.post("/graph/predict")
