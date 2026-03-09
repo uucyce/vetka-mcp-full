@@ -4,7 +4,7 @@ test("fixed-footer suggested shell eliminates side letterboxing for 4:3 syntheti
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
-  await page.goto("/?variant=fixed-footer&mockWidth=640&mockHeight=480&applySuggestedShell=1");
+  await page.goto("/?debug=1&variant=fixed-footer&mockWidth=640&mockHeight=480&applySuggestedShell=1");
 
   await page.waitForFunction(() => {
     const snapshot = window.vetkaPlayerLab?.snapshot();
@@ -22,7 +22,7 @@ test("default flex-footer shell still introduces measurable side drift for a 4:3
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
-  await page.goto("/?variant=flex-footer&mockWidth=640&mockHeight=480");
+  await page.goto("/?debug=1&variant=flex-footer&mockWidth=640&mockHeight=480");
 
   await page.waitForFunction(() => {
     const snapshot = window.vetkaPlayerLab?.snapshot();

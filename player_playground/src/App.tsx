@@ -153,6 +153,7 @@ function App() {
     ? "video"
     : "synthetic";
   const footerReserve = sourceKind === "video" && !isDebugVisible ? 0 : LAB_FOOTER_HEIGHT;
+  const isPureMode = !isDebugVisible;
 
   useEffect(() => {
     const shellNode = shellRef.current;
@@ -418,7 +419,7 @@ function App() {
 
   return (
     <main
-      className={`player-app ${isDebugVisible ? "debug-open" : ""}`}
+      className={`player-app ${isDebugVisible ? "debug-open" : ""} ${isPureMode ? "pure-mode" : ""}`}
       onDragOver={(event) => {
         event.preventDefault();
         setIsDragging(true);
@@ -431,34 +432,45 @@ function App() {
         if (file) attachFile(file);
       }}
     >
-      <div className="chrome-strip" />
+      {isDebugVisible ? <div className="chrome-strip" /> : null}
       <section className="player-pane">
-        <header ref={topbarRef} className="topbar">
-          <div className="title-block">
-            <span className="eyebrow">VETKA Player</span>
-            <strong className="media-title">{fileName || "Drop a video to begin"}</strong>
-          </div>
-          <div className="topbar-actions">
-            <label className="ghost-button icon-chip">
-              <IconOpen />
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="video/*"
-                style={{ display: "none" }}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) attachFile(file);
-                }}
-              />
-            </label>
-            {isDebugVisible ? (
+        {isDebugVisible ? (
+          <header ref={topbarRef} className="topbar">
+            <div className="title-block">
+              <span className="eyebrow">VETKA Player</span>
+              <strong className="media-title">{fileName || "Drop a video to begin"}</strong>
+            </div>
+            <div className="topbar-actions">
+              <label className="ghost-button icon-chip">
+                <IconOpen />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="video/*"
+                  style={{ display: "none" }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) attachFile(file);
+                  }}
+                />
+              </label>
               <button className="ghost-button subtle" type="button" onClick={() => setIsDebugVisible(false)}>
                 Hide Debug
               </button>
-            ) : null}
-          </div>
-        </header>
+            </div>
+          </header>
+        ) : (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="video/*"
+            style={{ display: "none" }}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) attachFile(file);
+            }}
+          />
+        )}
 
         <div className="stage-wrap">
           <div
@@ -498,6 +510,10 @@ function App() {
                       setIsMuted(Boolean(event.currentTarget.muted));
                     }}
                   />
+                  <div className={`media-label ${showTransport ? "media-label-visible" : "media-label-hidden"}`}>
+                    <span className="eyebrow">VETKA Player</span>
+                    <strong>{fileName}</strong>
+                  </div>
                   <div className={`viewer-toolbar ${showTransport ? "viewer-toolbar-visible" : "viewer-toolbar-hidden"}`}>
                     <button className="icon-button" type="button" onClick={() => fileInputRef.current?.click()} aria-label="Open file">
                       <IconOpen />
@@ -601,7 +617,12 @@ function App() {
                 <div className={`dropzone player-dropzone ${isDragging ? "dragging" : ""}`}>
                   <div>
                     <strong>Drop a video here</strong>
-                    Or click <span className="inline-token">Open</span>. This shell auto-fits to the media once metadata is known.
+                    <p className="dropzone-copy">
+                      This shell auto-fits to the media once metadata is known.
+                    </p>
+                    <button className="dropzone-open" type="button" onClick={() => fileInputRef.current?.click()}>
+                      Open video
+                    </button>
                   </div>
                 </div>
               )}
