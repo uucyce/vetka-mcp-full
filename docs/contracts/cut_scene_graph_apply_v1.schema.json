@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cut_scene_graph_apply_v1.schema.json",
+  "title": "VETKA CUT Scene Graph Apply V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "success",
+    "schema_version"
+  ],
+  "properties": {
+    "success": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "cut_scene_graph_apply_v1"
+    },
+    "scene_graph": {
+      "type": ["object", "null"]
+    },
+    "applied_ops": {
+      "type": ["array", "null"],
+      "items": {
+        "type": "object"
+      }
+    },
+    "edit_event": {
+      "type": ["object", "null"]
+    },
+    "error": {
+      "type": ["object", "null"]
+    }
+  }
+}

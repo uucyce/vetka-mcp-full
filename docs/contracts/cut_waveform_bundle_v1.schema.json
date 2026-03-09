@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cut_waveform_bundle_v1.schema.json",
+  "title": "VETKA CUT Waveform Bundle V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "revision",
+    "items",
+    "generated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "cut_waveform_bundle_v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item_id",
+          "source_path",
+          "waveform_bins",
+          "degraded_mode",
+          "degraded_reason"
+        ],
+        "properties": {
+          "item_id": { "type": "string", "minLength": 1 },
+          "source_path": { "type": "string", "minLength": 1 },
+          "waveform_bins": {
+            "type": "array",
+            "items": { "type": "number", "minimum": 0, "maximum": 1 }
+          },
+          "degraded_mode": { "type": "boolean" },
+          "degraded_reason": { "type": "string" }
+        }
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

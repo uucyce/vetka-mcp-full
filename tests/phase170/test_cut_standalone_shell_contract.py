@@ -25,6 +25,10 @@ def test_cut_standalone_shell_binds_to_cut_mcp_contracts():
     assert "Build Waveforms" in shell
     assert "Normalize Transcripts" in shell
     assert "Build Thumbnails" in shell
+    assert "Favorite Moment" in shell
+    assert "Comment Marker" in shell
+    assert "Cognitive Markers" in shell
+    assert "time_markers_ready:" in shell
     assert "Worker Queue" in shell
     assert "Storyboard Strip" in shell
     assert "active_jobs:" in shell
@@ -38,6 +42,7 @@ def test_cut_standalone_shell_binds_to_cut_mcp_contracts():
     assert "/cut/worker/waveform-build-async" in shell
     assert "/cut/worker/transcript-normalize-async" in shell
     assert "/cut/worker/thumbnail-build-async" in shell
+    assert "/cut/time-markers/apply" in shell
     assert "/cut/timeline/apply" in shell
     assert "/cut/scene-graph/apply" in shell
     assert "#2563eb" not in shell

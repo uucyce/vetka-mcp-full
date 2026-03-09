@@ -116,6 +116,14 @@ Markers:
 - [ ] Treat `favorite` in editorial surfaces as a time marker action only, never as a primary file-level state.
 - [ ] Keep preview quality selector in donor-player because CUT preview surfaces will need the same performance discipline for high-resolution footage.
 
+Architectural rule:
+- player donor, CUT shell, and future VETKA edit mode must share one editorial identity model:
+  `no primary file-level favorite`
+  `time marker is the canonical cognitive unit`
+  `star means favorite moment`
+  `CAM and chat attach to markers, not to a parallel file-favorite system`
+- keep player-lab docs aligned with this rule so donor patterns do not reintroduce file-favorite logic into CUT.
+
 Design timing note:
 - Do not start full design-system recon before CUT MCP read/write surfaces are stable enough to avoid UI-contract churn.
 - Start `MARKER_170.UI.DESIGN_UNIFICATION_RECON` after these are in place: `project-state`, worker outputs (`waveform`, `transcript`, `thumbnail`), worker queue visibility, and storyboard strip baseline.
@@ -147,6 +155,10 @@ Markers:
 - [ ] Use simple window-around-anchor slice first, then upgrade marker creation to pause-to-pause / silence-aware segmentation.
 - [ ] Allow marker payloads to carry `cam_payload`, `chat_thread_id`, and `comment_thread_id` without forcing full CUT runtime into the donor-player.
 - [ ] Keep media ranking derived from weighted marked moments, not from persistent file star state.
+
+Architectural rule:
+- `star time marker` is the same core primitive across player, CUT, and future edit-mode reintegration.
+- intelligence overlays may enrich marker creation and ranking, but they must not replace time markers with opaque CAM-only state.
 
 Markers:
 1. `MARKER_170.INTEL.SEMANTIC_LINKS`

@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "media_mcp_job_v1.schema.json",
+  "title": "VETKA Media MCP Job V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "job_id",
+    "idempotency_key",
+    "job_type",
+    "queue_lane",
+    "state",
+    "progress",
+    "retry_count",
+    "max_retries",
+    "input",
+    "timestamps"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "media_mcp_job_v1"
+    },
+    "job_id": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9-]{16,64}$"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8
+    },
+    "job_type": {
+      "type": "string",
+      "enum": [
+        "ingest",
+        "scan",
+        "preview",
+        "transcript",
+        "export",
+        "cam_overlay",
+        "rhythm_assist",
+        "semantic_links"
+      ]
+    },
+    "queue_lane": {
+      "type": "string",
+      "enum": [
+        "interactive",
+        "heavy"
+      ]
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "high",
+        "normal",
+        "low"
+      ],
+      "default": "normal"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "partial",
+        "done",
+        "error"
+      ]
+    },
+    "progress": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "retry_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "max_retries": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10,
+      "default": 3
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "media_path"
+      ],
+      "properties": {
+        "media_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "timestamps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queued_at_ms",
+        "updated_at_ms"
+      ],
+      "properties": {
+        "queued_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "started_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "updated_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "finished_at_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "artifact_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string"
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "code",
+        "msg",
+        "transient"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "msg": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transient": {
+          "type": "boolean"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "dlq": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "route": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "at_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "worker_id": {
+          "type": "string"
+        },
+        "latency_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "plugin_modes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "queued"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "progress": {
+            "maximum": 0.01
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "partial"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "progress": {
+            "exclusiveMinimum": 0.0,
+            "exclusiveMaximum": 1.0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "done"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "progress": {
+            "minimum": 0.99
+          }
+        },
+        "required": [
+          "result"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "state": {
+            "const": "error"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "error"
+        ]
+      }
+    }
+  ]
+}

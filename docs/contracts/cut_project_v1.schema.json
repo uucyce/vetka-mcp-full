@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cut_project_v1.schema.json",
+  "title": "VETKA CUT Project V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "display_name",
+    "source_path",
+    "sandbox_root",
+    "core_mirror_root",
+    "runtime_root",
+    "storage_root",
+    "qdrant_namespace",
+    "created_at",
+    "bootstrap_profile",
+    "state"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "cut_project_v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 8
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["local", "git", "archive"]
+    },
+    "source_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sandbox_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "core_mirror_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "storage_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "qdrant_namespace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bootstrap_profile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "edit_mode_target": {
+      "type": "string",
+      "enum": ["standalone", "future_vetka_embed"]
+    },
+    "state": {
+      "type": "string",
+      "enum": ["bootstrapping", "ready", "indexing", "degraded", "archived"]
+    },
+    "contracts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "media_chunks": {"type": "string"},
+        "montage_sheet": {"type": "string"},
+        "bootstrap": {"type": "string"}
+      }
+    },
+    "memory_policy": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "worker_topology": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "import_defaults": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_opened_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

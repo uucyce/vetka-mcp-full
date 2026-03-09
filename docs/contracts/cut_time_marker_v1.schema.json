@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cut_time_marker_v1.schema.json",
+  "title": "VETKA CUT Time Marker V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "marker_id",
+    "schema_version",
+    "project_id",
+    "timeline_id",
+    "media_path",
+    "kind",
+    "start_sec",
+    "end_sec",
+    "score",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "marker_id": {
+      "type": "string",
+      "minLength": 8
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "cut_time_marker_v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timeline_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "media_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["favorite", "comment", "cam", "insight", "chat"]
+    },
+    "start_sec": {
+      "type": "number",
+      "minimum": 0
+    },
+    "end_sec": {
+      "type": "number",
+      "minimum": 0
+    },
+    "anchor_sec": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "label": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "author": {
+      "type": "string"
+    },
+    "context_slice": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "cam_payload": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "chat_thread_id": {
+      "type": ["string", "null"]
+    },
+    "comment_thread_id": {
+      "type": ["string", "null"]
+    },
+    "source_engine": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "archived"]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
