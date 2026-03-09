@@ -50,6 +50,77 @@ function formatTime(seconds: number) {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
+function IconOpen() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 8.5A2.5 2.5 0 0 1 6.5 6H10l2 2h5.5A2.5 2.5 0 0 1 20 10.5v7A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5z" />
+      <path d="M12 6V3.5M12 3.5l-2 2M12 3.5l2 2" />
+    </svg>
+  );
+}
+
+function IconFullscreen() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 4H4v4M16 4h4v4M8 20H4v-4M20 20h-4v-4" />
+    </svg>
+  );
+}
+
+function IconFit() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="5" y="7" width="14" height="10" rx="2" />
+      <path d="M9 10h6M9 14h6" />
+    </svg>
+  );
+}
+
+function IconPlay() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 5.5v13l10-6.5z" />
+    </svg>
+  );
+}
+
+function IconPause() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 5h3v14H8zM13 5h3v14h-3z" />
+    </svg>
+  );
+}
+
+function IconRewind() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M11.5 7 5 12l6.5 5zM18.5 7 12 12l6.5 5z" />
+    </svg>
+  );
+}
+
+function IconForward() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m12.5 7 6.5 5-6.5 5zM5.5 7 12 12l-6.5 5z" />
+    </svg>
+  );
+}
+
+function IconVolume({ isMuted }: { isMuted: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 14h4l5 4V6L8 10H4z" />
+      {isMuted ? (
+        <path d="m17 9 4 6M21 9l-4 6" />
+      ) : (
+        <path d="M17 9a4 4 0 0 1 0 6M19.5 6.5a7.5 7.5 0 0 1 0 11" />
+      )}
+    </svg>
+  );
+}
+
 function App() {
   const initialQuery = useMemo(readQuery, []);
   const [variant, setVariant] = useState<ShellVariant>(initialQuery.variant);
@@ -74,12 +145,14 @@ function App() {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const topbarRef = useRef<HTMLElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const autoSizedKeyRef = useRef("");
   const transportTimerRef = useRef<number | null>(null);
   const intrinsicSize = naturalSize.width > 0 && naturalSize.height > 0 ? naturalSize : syntheticSize;
   const sourceKind: GeometrySnapshot["sourceKind"] = naturalSize.width > 0 && naturalSize.height > 0
     ? "video"
     : "synthetic";
+  const footerReserve = sourceKind === "video" && !isDebugVisible ? 0 : LAB_FOOTER_HEIGHT;
 
   useEffect(() => {
     const shellNode = shellRef.current;
@@ -119,7 +192,7 @@ function App() {
     const suggested = suggestShellSize(
       intrinsicSize.width,
       intrinsicSize.height,
-      LAB_FOOTER_HEIGHT,
+      footerReserve,
       Math.floor(window.innerWidth * 0.92),
       Math.floor(window.innerHeight * 0.92),
     );
@@ -127,7 +200,7 @@ function App() {
       windowInnerWidth: Number(window.innerWidth || 0),
       windowInnerHeight: Number(window.innerHeight || 0),
       topbarHeight,
-      footerHeight: LAB_FOOTER_HEIGHT,
+      footerHeight: footerReserve,
       displayedWidth: displayed.displayedWidth,
       displayedHeight: displayed.displayedHeight,
       horizontalLetterboxPx: displayed.horizontalLetterboxPx,
@@ -146,7 +219,7 @@ function App() {
       shellHeight: Number(shellHeight.toFixed(2)),
       viewerWidth: Number(viewerWidth.toFixed(2)),
       viewerHeight: Number(viewerHeight.toFixed(2)),
-      footerHeight: LAB_FOOTER_HEIGHT,
+      footerHeight: footerReserve,
       videoIntrinsicWidth: intrinsicSize.width,
       videoIntrinsicHeight: intrinsicSize.height,
       displayedWidth: displayed.displayedWidth,
@@ -169,6 +242,7 @@ function App() {
     geometryTick,
     intrinsicSize.height,
     intrinsicSize.width,
+    footerReserve,
     sourceKind,
     variant,
   ]);
@@ -365,9 +439,10 @@ function App() {
             <strong className="media-title">{fileName || "Drop a video to begin"}</strong>
           </div>
           <div className="topbar-actions">
-            <label className="ghost-button">
-              Open
+            <label className="ghost-button icon-chip">
+              <IconOpen />
               <input
+                ref={fileInputRef}
                 type="file"
                 accept="video/*"
                 style={{ display: "none" }}
@@ -377,12 +452,6 @@ function App() {
                 }}
               />
             </label>
-            <button className="ghost-button" type="button" onClick={() => window.vetkaPlayerLab?.applySuggestedShell()}>
-              Fit
-            </button>
-            <button className="ghost-button" type="button" onClick={() => void toggleFullscreen()}>
-              Fullscreen
-            </button>
             {isDebugVisible ? (
               <button className="ghost-button subtle" type="button" onClick={() => setIsDebugVisible(false)}>
                 Hide Debug
@@ -394,7 +463,7 @@ function App() {
         <div className="stage-wrap">
           <div
             ref={shellRef}
-            className={`viewer-shell player-shell ${variant}`}
+            className={`viewer-shell player-shell ${variant} ${footerReserve === 0 ? "footerless" : ""}`}
             style={shellSizeOverride ? { width: `${shellSizeOverride.width}px`, height: `${shellSizeOverride.height}px` } : undefined}
           >
             <div ref={viewerRef} className="viewer-area player-canvas">
@@ -429,6 +498,17 @@ function App() {
                       setIsMuted(Boolean(event.currentTarget.muted));
                     }}
                   />
+                  <div className={`viewer-toolbar ${showTransport ? "viewer-toolbar-visible" : "viewer-toolbar-hidden"}`}>
+                    <button className="icon-button" type="button" onClick={() => fileInputRef.current?.click()} aria-label="Open file">
+                      <IconOpen />
+                    </button>
+                    <button className="icon-button" type="button" onClick={() => window.vetkaPlayerLab?.applySuggestedShell()} aria-label="Fit shell">
+                      <IconFit />
+                    </button>
+                    <button className="icon-button" type="button" onClick={() => void toggleFullscreen()} aria-label="Fullscreen">
+                      <IconFullscreen />
+                    </button>
+                  </div>
                   <div
                     className={`transport-overlay ${showTransport ? "transport-visible" : "transport-hidden"}`}
                     onMouseMove={() => setShowTransport(true)}
@@ -442,18 +522,18 @@ function App() {
                         const video = videoRef.current;
                         if (!video) return;
                         video.currentTime = Math.max(0, video.currentTime - 5);
-                      }}>
-                        «5
+                      }} aria-label="Rewind 5 seconds">
+                        <IconRewind />
                       </button>
-                      <button className="transport-button transport-button-primary" type="button" onClick={() => togglePlayback()}>
-                        {isPlaying ? "Pause" : "Play"}
+                      <button className="transport-button transport-button-primary" type="button" onClick={() => togglePlayback()} aria-label={isPlaying ? "Pause" : "Play"}>
+                        {isPlaying ? <IconPause /> : <IconPlay />}
                       </button>
                       <button className="transport-button" type="button" onClick={() => {
                         const video = videoRef.current;
                         if (!video) return;
                         video.currentTime = Math.min(duration || video.duration || 0, video.currentTime + 5);
-                      }}>
-                        5»
+                      }} aria-label="Forward 5 seconds">
+                        <IconForward />
                       </button>
                       <span className="transport-time">{formatTime(currentTime)}</span>
                       <input
@@ -468,13 +548,14 @@ function App() {
                           setCurrentTime(nextTime);
                           if (videoRef.current) videoRef.current.currentTime = nextTime;
                         }}
+                        aria-label="Seek"
                       />
                       <span className="transport-time">{formatTime(duration)}</span>
                       <button className="transport-button" type="button" onClick={() => {
                         const nextMuted = !isMuted;
                         syncVolume(nextMuted ? volume : Math.max(volume, 0.6), nextMuted);
-                      }}>
-                        {isMuted || volume === 0 ? "Muted" : "Sound"}
+                      }} aria-label={isMuted || volume === 0 ? "Unmute" : "Mute"}>
+                        <IconVolume isMuted={isMuted || volume === 0} />
                       </button>
                       <input
                         className="transport-volume"
@@ -487,17 +568,18 @@ function App() {
                           const nextVolume = Number(event.target.value || 0);
                           syncVolume(nextVolume, nextVolume === 0);
                         }}
+                        aria-label="Volume"
                       />
-                      <button className="transport-button" type="button" onClick={() => void toggleFullscreen()}>
-                        Full
+                      <button className="transport-button" type="button" onClick={() => void toggleFullscreen()} aria-label="Fullscreen">
+                        <IconFullscreen />
                       </button>
                     </div>
                   </div>
                   <div className={`hud ${isPlaying ? "hud-hidden" : ""}`}>
                     <button className="hud-button" type="button" onClick={() => {
                       togglePlayback();
-                    }}>
-                      {isPlaying ? "Pause" : "Play"}
+                    }} aria-label={isPlaying ? "Pause" : "Play"}>
+                      {isPlaying ? <IconPause /> : <IconPlay />}
                     </button>
                   </div>
                 </>
@@ -524,18 +606,20 @@ function App() {
                 </div>
               )}
             </div>
-            <footer className="footer-bar player-footer">
-              <span>{fileName || "No file loaded"}</span>
-              {isDebugVisible ? (
-                <span className="small">
-                  score {snapshot.dreamScore}
-                  {" · "}
-                  {sourceKind}
-                  {" · "}
-                  {Math.round(snapshot.horizontalLetterboxPx * 100) / 100}px side bars
-                </span>
-              ) : null}
-            </footer>
+            {footerReserve > 0 ? (
+              <footer className="footer-bar player-footer">
+                <span>{fileName || "No file loaded"}</span>
+                {isDebugVisible ? (
+                  <span className="small">
+                    score {snapshot.dreamScore}
+                    {" · "}
+                    {sourceKind}
+                    {" · "}
+                    {Math.round(snapshot.horizontalLetterboxPx * 100) / 100}px side bars
+                  </span>
+                ) : null}
+              </footer>
+            ) : null}
           </div>
         </div>
       </section>

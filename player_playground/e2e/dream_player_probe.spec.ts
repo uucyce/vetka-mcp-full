@@ -38,6 +38,7 @@ test("capture player review screenshot and geometry snapshot", async ({ page }) 
       Math.ceil(snapshot.shellHeight + snapshot.topbarHeight + 48),
     );
     await page.setViewportSize({ width: compactWidth, height: compactHeight });
+    await page.evaluate(() => window.vetkaPlayerLab?.applySuggestedShell());
     await page.waitForTimeout(250);
     snapshot = await page.evaluate(() => window.vetkaPlayerLab?.snapshot());
   }
