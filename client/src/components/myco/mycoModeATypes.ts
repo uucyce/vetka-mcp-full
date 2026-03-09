@@ -47,6 +47,12 @@ export interface MycoModeAFocusSnapshot {
   webProviderAvailable: boolean | null;
   searchErrorCategory: 'none' | 'missing_key' | 'auth' | 'billing' | 'rate_limit' | 'timeout' | 'provider_down' | 'unknown';
   searchErrorMessage: string;
+  scannerSource: 'local' | 'cloud' | 'browser' | 'social';
+  scannerStateCategory: 'none' | 'browser_placeholder' | 'auth_modal_open' | 'missing_oauth_client' | 'provider_connected' | 'provider_expired' | 'provider_token_missing' | 'tree_preview_unavailable' | 'provider_pending';
+  scannerProviderLabel: string;
+  scannerStateMessage: string;
+  scannerAuthMethod: 'oauth' | 'api_key' | 'link' | '';
+  scannerRequiresVerification: boolean;
 }
 
 export interface MycoModeAHint {
@@ -85,4 +91,10 @@ export interface MycoModeAInputs {
   webProviderAvailable: boolean | null;
   searchErrorCategory: 'none' | 'missing_key' | 'auth' | 'billing' | 'rate_limit' | 'timeout' | 'provider_down' | 'unknown';
   searchErrorMessage: string;
+  scannerSource: 'local' | 'cloud' | 'browser' | 'social';
+  scannerStateCategory: 'none' | 'browser_placeholder' | 'auth_modal_open' | 'missing_oauth_client' | 'provider_connected' | 'provider_expired' | 'provider_token_missing' | 'tree_preview_unavailable' | 'provider_pending';
+  scannerProviderLabel: string;
+  scannerStateMessage: string;
+  scannerAuthMethod: 'oauth' | 'api_key' | 'link' | '';
+  scannerRequiresVerification: boolean;
 }

@@ -34,6 +34,15 @@ interface KeyInventoryRefreshDetail {
   providers?: string[];
 }
 
+interface ScannerStateDetail {
+  source?: 'local' | 'cloud' | 'browser' | 'social';
+  category?: 'none' | 'browser_placeholder' | 'auth_modal_open' | 'missing_oauth_client' | 'provider_connected' | 'provider_expired' | 'provider_token_missing' | 'tree_preview_unavailable' | 'provider_pending';
+  providerLabel?: string;
+  message?: string;
+  authMethod?: 'oauth' | 'api_key' | 'link' | '';
+  requiresVerification?: boolean;
+}
+
 const LLM_KEY_PROVIDERS = new Set([
   'openrouter',
   'openai',
@@ -119,6 +128,12 @@ export function useMycoModeA(
     | 'webProviderAvailable'
     | 'searchErrorCategory'
     | 'searchErrorMessage'
+    | 'scannerSource'
+    | 'scannerStateCategory'
+    | 'scannerProviderLabel'
+    | 'scannerStateMessage'
+    | 'scannerAuthMethod'
+    | 'scannerRequiresVerification'
   >,
 ) {
   const [searchContext, setSearchContext] = useState<SearchContext>('vetka');
@@ -133,6 +148,12 @@ export function useMycoModeA(
   const [configuredProviders, setConfiguredProviders] = useState<string[]>([]);
   const [webProviderAvailable, setWebProviderAvailable] = useState<boolean | null>(null);
   const [searchErrorMessage, setSearchErrorMessage] = useState('');
+  const [scannerSource, setScannerSource] = useState<'local' | 'cloud' | 'browser' | 'social'>('local');
+  const [scannerStateCategory, setScannerStateCategory] = useState<MycoModeAInputs['scannerStateCategory']>('none');
+  const [scannerProviderLabel, setScannerProviderLabel] = useState('');
+  const [scannerStateMessage, setScannerStateMessage] = useState('');
+  const [scannerAuthMethod, setScannerAuthMethod] = useState<MycoModeAInputs['scannerAuthMethod']>('');
+  const [scannerRequiresVerification, setScannerRequiresVerification] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -242,10 +263,32 @@ export function useMycoModeA(
   }, []);
 
   useEffect(() => {
+    const onScannerState = (event: Event) => {
+      const detail = ((event as CustomEvent).detail || {}) as ScannerStateDetail;
+      if (detail.source) setScannerSource(detail.source);
+      setScannerStateCategory(detail.category || 'none');
+      setScannerProviderLabel(detail.providerLabel || '');
+      setScannerStateMessage(detail.message || '');
+      setScannerAuthMethod(detail.authMethod || '');
+      setScannerRequiresVerification(Boolean(detail.requiresVerification));
+    };
+
+    window.addEventListener('vetka-myco-scanner-state', onScannerState as EventListener);
+    return () => {
+      window.removeEventListener('vetka-myco-scanner-state', onScannerState as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!inputs.isChatOpen) {
       setChatInputEmpty(true);
       setChatMode('chat');
       setHasActiveGroup(false);
+      setScannerStateCategory('none');
+      setScannerProviderLabel('');
+      setScannerStateMessage('');
+      setScannerAuthMethod('');
+      setScannerRequiresVerification(false);
     }
   }, [inputs.isChatOpen]);
 
@@ -275,6 +318,12 @@ export function useMycoModeA(
         webProviderAvailable,
         searchErrorCategory: classifySearchError(searchErrorMessage, webProviderAvailable),
         searchErrorMessage,
+        scannerSource,
+        scannerStateCategory,
+        scannerProviderLabel,
+        scannerStateMessage,
+        scannerAuthMethod,
+        scannerRequiresVerification,
       }),
     [
       chatInputEmpty,
@@ -290,6 +339,12 @@ export function useMycoModeA(
       searchQueryEmpty,
       totalConfiguredKeys,
       webProviderAvailable,
+      scannerProviderLabel,
+      scannerAuthMethod,
+      scannerRequiresVerification,
+      scannerSource,
+      scannerStateCategory,
+      scannerStateMessage,
     ],
   );
 

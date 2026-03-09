@@ -108,6 +108,17 @@ export interface ScannerEvent {
   fileTypes?: Record<string, number>;
 }
 
+type MycoScannerStateCategory =
+  | 'none'
+  | 'browser_placeholder'
+  | 'auth_modal_open'
+  | 'missing_oauth_client'
+  | 'provider_connected'
+  | 'provider_expired'
+  | 'provider_token_missing'
+  | 'tree_preview_unavailable'
+  | 'provider_pending';
+
 // Source definitions for carousel
 const sources = [
   { id: 'local', name: 'Local Files', available: true },
@@ -273,13 +284,38 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
   onSourceChange,
   preferredSource,
 }) => {
+  const emitMycoScannerState = useCallback((detail: {
+    source?: 'local' | 'cloud' | 'browser' | 'social';
+    category?: MycoScannerStateCategory;
+    providerLabel?: string;
+    message?: string;
+    authMethod?: 'oauth' | 'api_key' | 'link' | '';
+    requiresVerification?: boolean;
+  }) => {
+    window.dispatchEvent(new CustomEvent('vetka-myco-scanner-state', {
+      detail: {
+        source: detail.source,
+        category: detail.category || 'none',
+        providerLabel: detail.providerLabel || '',
+        message: detail.message || '',
+        authMethod: detail.authMethod || '',
+        requiresVerification: Boolean(detail.requiresVerification),
+      },
+    }));
+  }, []);
+
   // Source carousel state
   const [currentSourceIndex, setCurrentSourceIndex] = useState(0);
   const currentSource = sources[currentSourceIndex];
 
   useEffect(() => {
     onSourceChange?.(currentSource.id as 'local' | 'cloud' | 'browser' | 'social');
-  }, [currentSource.id, onSourceChange]);
+    emitMycoScannerState({
+      source: currentSource.id as 'local' | 'cloud' | 'browser' | 'social',
+      category: currentSource.id === 'browser' ? 'browser_placeholder' : 'none',
+      message: currentSource.id === 'browser' ? 'Browser import is not live in this runtime' : '',
+    });
+  }, [currentSource.id, emitMycoScannerState, onSourceChange]);
 
   useEffect(() => {
     if (!preferredSource) return;
@@ -367,20 +403,56 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       const response = await fetch(`${API_BASE}/connectors/status?source=${encodeURIComponent(source)}`);
       const result = await response.json();
       if (response.ok && result?.success && Array.isArray(result.providers)) {
-        setConnectorProviders(result.providers as ConnectorProvider[]);
+        const providers = result.providers as ConnectorProvider[];
+        setConnectorProviders(providers);
         setSecureStorageEnabled(Boolean(result?.secure_storage_enabled));
+        const expiredProvider = providers.find((provider) => provider.status === 'expired' || (provider.connected && !provider.token_present));
+        const connectedProvider = providers.find((provider) => provider.connected && provider.token_present);
+        if (expiredProvider) {
+          emitMycoScannerState({
+            source,
+            category: 'provider_expired',
+            providerLabel: expiredProvider.display_name,
+            message: `${expiredProvider.display_name} token expired or missing`,
+            authMethod: resolveAuthMethods(expiredProvider)[0],
+            requiresVerification: Boolean(expiredProvider.requires_verification),
+          });
+        } else if (connectedProvider) {
+          emitMycoScannerState({
+            source,
+            category: 'provider_connected',
+            providerLabel: connectedProvider.display_name,
+            message: `${connectedProvider.display_name} connected`,
+            authMethod: resolveAuthMethods(connectedProvider)[0],
+            requiresVerification: Boolean(connectedProvider.requires_verification),
+          });
+        } else if (source === 'social' && providers.length > 0) {
+          const pendingProvider = providers.find((provider) => (provider.status || 'pending') === 'pending') || providers[0];
+          emitMycoScannerState({
+            source,
+            category: 'provider_pending',
+            providerLabel: pendingProvider.display_name,
+            message: `${pendingProvider.display_name} pending connection`,
+            authMethod: resolveAuthMethods(pendingProvider)[0],
+            requiresVerification: Boolean(pendingProvider.requires_verification),
+          });
+        } else {
+          emitMycoScannerState({ source, category: 'none' });
+        }
       } else {
         setConnectorProviders([]);
         setSecureStorageEnabled(false);
+        emitMycoScannerState({ source, category: 'none' });
       }
     } catch (err) {
       console.error('[ScanPanel] Failed to load connectors:', err);
       setConnectorProviders([]);
       setSecureStorageEnabled(false);
+      emitMycoScannerState({ source, category: 'none', message: 'Connector load failed' });
     } finally {
       setConnectorsLoading(false);
     }
-  }, []);
+  }, [emitMycoScannerState]);
 
   useEffect(() => {
     if (currentSource.id === 'cloud' || currentSource.id === 'social') {
@@ -482,11 +554,17 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       setSelectedTreeIdsByProvider((prev) => ({ ...prev, [providerId]: prev[providerId] || [] }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load tree';
+      emitMycoScannerState({
+        source: currentSource.id as 'local' | 'cloud' | 'browser' | 'social',
+        category: 'tree_preview_unavailable',
+        providerLabel: provider.display_name,
+        message: msg,
+      });
       alert(`Tree load failed: ${msg}`);
     } finally {
       setConnectorTreeLoading((prev) => ({ ...prev, [providerId]: false }));
     }
-  }, []);
+  }, [currentSource.id, emitMycoScannerState]);
 
   const toggleTreeSelection = useCallback((providerId: string, nodeId: string) => {
     setSelectedTreeIdsByProvider((prev) => {
@@ -504,7 +582,15 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
     setConnectValue('');
     setOauthClientId('');
     setOauthClientSecret('');
-  }, []);
+    emitMycoScannerState({
+      source: currentSource.id as 'local' | 'cloud' | 'browser' | 'social',
+      category: 'auth_modal_open',
+      providerLabel: provider.display_name,
+      message: `Auth modal opened for ${provider.display_name}`,
+      authMethod: methods[0],
+      requiresVerification: Boolean(provider.requires_verification),
+    });
+  }, [currentSource.id, emitMycoScannerState]);
 
   const submitConnectModal = useCallback(async () => {
     if (!connectModalProvider || connectSubmitting) return;
@@ -607,9 +693,26 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       onEvent?.({ type: 'connector_connected' });
       setConnectModalProvider(null);
       setConnectValue('');
+      emitMycoScannerState({
+        source: currentSource.id as 'local' | 'cloud' | 'browser' | 'social',
+        category: 'provider_connected',
+        providerLabel: connectModalProvider.display_name,
+        message: `${connectModalProvider.display_name} connected`,
+        authMethod: connectAuthMethod,
+        requiresVerification: Boolean(connectModalProvider.requires_verification),
+      });
     } catch (err) {
       console.error('[ScanPanel] Connector auth failed:', err);
       const msg = err instanceof Error ? err.message : 'Unknown error';
+      const lower = msg.toLowerCase();
+      emitMycoScannerState({
+        source: currentSource.id as 'local' | 'cloud' | 'browser' | 'social',
+        category: lower.includes('oauth client credentials missing') ? 'missing_oauth_client' : 'provider_token_missing',
+        providerLabel: connectModalProvider.display_name,
+        message: msg,
+        authMethod: connectAuthMethod,
+        requiresVerification: Boolean(connectModalProvider.requires_verification),
+      });
       alert(`Connector auth failed: ${msg}`);
     } finally {
       setConnectSubmitting(false);
@@ -1350,7 +1453,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
                     const isBusy = Boolean(busyAction);
                     const isConnected = provider.connected && (provider.status || 'pending') === 'connected';
                     const needsAuth = !isConnected || !provider.token_present;
-                    const isGoogleDrive = provider.id === 'google_drive' || provider.provider_class === 'google';
+                    const isGoogleDrive = provider.id === 'google_drive';
                     const selectedIds = selectedTreeIdsByProvider[provider.id] || [];
                     return (
                       <div key={provider.id} className="connector-card">

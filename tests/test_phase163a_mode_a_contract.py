@@ -17,6 +17,8 @@ def test_mode_a_files_and_markers_exist():
     assert 'data-testid="myco-mode-a-guide"' in lane
     assert "useMycoModeA" in hook
     assert "vetka-myco-key-inventory-refresh" in hook
+    assert "renderTokenizedText" in lane
+    assert "InlineIcon" in lane
 
 
 def test_app_mounts_mode_a_lane_without_mcc_dependency():
@@ -37,6 +39,8 @@ def test_mode_a_chat_and_search_event_bridges_exist():
     assert "MARKER_163A.MODE_A.SEARCH.DISABLED_CONTEXT_REDIRECT.V1" in search
     assert 'data-testid="myco-search-lane"' in search
     assert "mycoHint?: MycoModeAHint | null;" in search
+    assert "renderMycoTokenizedText" in search
+    assert "InlineMycoTokenIcon" in search
     assert "vetka-myco-chat-input-state" in chat
     assert "MARKER_163A.MODE_A.SILENCE.ON_TYPING.V1" in chat
 
@@ -52,6 +56,7 @@ def test_mode_a_supports_scanner_and_group_surfaces():
     hook = _read("client/src/components/myco/useMycoModeA.ts")
     chat = _read("client/src/components/chat/ChatPanel.tsx")
     lane = _read("client/src/components/search/searchLaneMode.ts")
+    scanner = _read("client/src/components/scanner/ScanPanel.tsx")
     assert "return 'scanner';" in rules
     assert "return 'group_chat';" in rules
     assert "return 'group_setup';" in rules
@@ -66,6 +71,18 @@ def test_mode_a_supports_scanner_and_group_surfaces():
     assert "tap text to search files" in lane
     assert "tap text to search cloud" in lane
     assert "tap text to search social" in lane
+    assert "vetka-myco-scanner-state" in hook
+    assert "vetka-myco-scanner-state" in scanner
+    assert "currentSource.id === 'browser' ? 'browser_placeholder' : 'none'" in scanner
+    assert "provider.id === 'google_drive'" in scanner
+    assert "provider_pending" in scanner
+    assert "authMethod" in scanner
+    assert "requiresVerification" in scanner
+    assert "scannerAuthMethod" in hook
+    assert "scannerRequiresVerification" in hook
+    assert "Social scanner · GitHub first" in rules
+    assert "Social scanner · Telegram setup" in rules
+    assert "Social scanner · LinkedIn review" in rules
 
 
 def test_mode_a_supports_tree_modes_search_modes_and_media_artifacts():
@@ -89,6 +106,9 @@ def test_mode_a_supports_tree_modes_search_modes_and_media_artifacts():
     assert "First run · keys missing" in rules
     assert "web/ needs Tavily key" in rules
     assert "VETKA subscription" in rules
+    assert "[[pin]]" in rules
+    assert "[[web]]" in rules
+    assert "[[phone]]" in rules
 
 
 def test_mode_a_supports_key_onboarding_and_search_provider_remediation():
