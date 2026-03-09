@@ -318,7 +318,7 @@ select {
 }
 
 .icon-button-vetka {
-  color: #9fe6ff;
+  color: #f5f7fa;
 }
 
 .quality-trigger {
@@ -407,13 +407,107 @@ select {
   width: calc(100% - 36px);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 10px 14px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   background: rgba(12, 14, 16, 0.82);
   backdrop-filter: blur(24px);
   pointer-events: auto;
+}
+
+.transport-cluster {
+  position: relative;
+  flex: 0 0 auto;
+  width: 92px;
+  height: 54px;
+}
+
+.transport-cluster-ring {
+  position: absolute;
+  inset: 6px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transport-speed-node {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 38px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(18, 20, 23, 0.92);
+  color: #d9dfe7;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(20px);
+}
+
+.transport-rate-menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 120px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(10, 12, 14, 0.94);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.34);
+}
+
+.transport-orb,
+.transport-mini {
+  border: 0;
+  color: #f5f7fa;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transport-orb {
+  position: relative;
+  z-index: 1;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+}
+
+.transport-orb svg {
+  width: 20px;
+  height: 20px;
+}
+
+.transport-mini {
+  position: absolute;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  margin-top: -14px;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(245, 247, 250, 0.86);
+}
+
+.transport-mini svg {
+  width: 16px;
+  height: 16px;
+}
+
+.transport-mini-left {
+  left: 0;
+}
+
+.transport-mini-right {
+  right: 0;
 }
 
 .transport-button {
@@ -453,7 +547,7 @@ select {
 }
 
 .transport-volume {
-  width: 88px;
+  width: 76px;
 }
 
 .transport-progress::-webkit-slider-thumb,

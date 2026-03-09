@@ -10,6 +10,7 @@ import {
 import { setCurrentWindowLogicalSize, toggleFullscreen } from "./lib/nativeWindow";
 
 type PreviewQualityKey = "full" | "half" | "quarter" | "eighth" | "sixteenth" | "thirtysecond";
+type PlaybackRateKey = "0.5" | "1" | "1.25" | "1.5" | "2";
 
 const PREVIEW_QUALITY_OPTIONS: { key: PreviewQualityKey; label: string; scale: number }[] = [
   { key: "full", label: "1x", scale: 1 },
@@ -18,6 +19,14 @@ const PREVIEW_QUALITY_OPTIONS: { key: PreviewQualityKey; label: string; scale: n
   { key: "eighth", label: "1/8", scale: 0.125 },
   { key: "sixteenth", label: "1/16", scale: 0.0625 },
   { key: "thirtysecond", label: "1/32", scale: 0.03125 },
+];
+
+const PLAYBACK_RATE_OPTIONS: { key: PlaybackRateKey; label: string; value: number }[] = [
+  { key: "0.5", label: "0.5x", value: 0.5 },
+  { key: "1", label: "1x", value: 1 },
+  { key: "1.25", label: "1.25x", value: 1.25 },
+  { key: "1.5", label: "1.5x", value: 1.5 },
+  { key: "2", label: "2x", value: 2 },
 ];
 
 type PlayerMarkerKind = "favorite" | "comment";
@@ -58,6 +67,7 @@ declare global {
       setVariant: (variant: ShellVariant) => void;
       setSyntheticSize: (width: number, height: number) => void;
       setPreviewQuality: (quality: PreviewQualityKey) => void;
+      setPlaybackRate: (rate: PlaybackRateKey) => void;
       setInVetka: (next: boolean) => void;
       addMomentMarker: (kind?: PlayerMarkerKind, text?: string) => PlayerTimeMarker | null;
       applySuggestedShell: () => GeometrySnapshot;
@@ -214,11 +224,11 @@ function IconVetka() {
   );
 }
 
-function IconQuality() {
+function IconSettings() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="4" y="6" width="16" height="12" rx="2" />
-      <path d="M9 10h.01M12 10h.01M15 10h.01M9 14h.01M12 14h.01M15 14h.01" />
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M12 3.8v2.4M12 17.8v2.4M20.2 12h-2.4M6.2 12H3.8M17.8 6.2l-1.7 1.7M7.9 16.1l-1.7 1.7M17.8 17.8l-1.7-1.7M7.9 7.9 6.2 6.2" />
     </svg>
   );
 }
@@ -252,7 +262,9 @@ function App() {
   const [isMuted, setIsMuted] = useState(false);
   const [showTransport, setShowTransport] = useState(true);
   const [previewQuality, setPreviewQuality] = useState<PreviewQualityKey>("full");
-  const [showQualityMenu, setShowQualityMenu] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState<PlaybackRateKey>("1");
+  const [showUtilityMenu, setShowUtilityMenu] = useState(false);
+  const [showRateMenu, setShowRateMenu] = useState(false);
   const [vetkaStatusMap, setVetkaStatusMap] = useState<Record<string, boolean>>(readStoredVetkaStatusMap);
   const [markers, setMarkers] = useState<PlayerTimeMarker[]>(readStoredMarkers);
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -260,7 +272,8 @@ function App() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const topbarRef = useRef<HTMLElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const qualityMenuRef = useRef<HTMLDivElement | null>(null);
+  const utilityMenuRef = useRef<HTMLDivElement | null>(null);
+  const rateMenuRef = useRef<HTMLDivElement | null>(null);
   const autoSizedKeyRef = useRef("");
   const transportTimerRef = useRef<number | null>(null);
   const intrinsicSize = naturalSize.width > 0 && naturalSize.height > 0 ? naturalSize : syntheticSize;
@@ -270,6 +283,7 @@ function App() {
   const footerReserve = sourceKind === "video" && !isDebugVisible ? 0 : LAB_FOOTER_HEIGHT;
   const isPureMode = !isDebugVisible;
   const previewQualityOption = PREVIEW_QUALITY_OPTIONS.find((option) => option.key === previewQuality) || PREVIEW_QUALITY_OPTIONS[0];
+  const playbackRateOption = PLAYBACK_RATE_OPTIONS.find((option) => option.key === playbackRate) || PLAYBACK_RATE_OPTIONS[1];
   const effectivePreviewScale = sourceKind === "video" ? previewQualityOption.scale : 1;
   const currentMediaKey = src && !src.startsWith("blob:") ? src : fileName;
   const overlayTitle = formatOverlayTitle(fileName);
@@ -484,15 +498,26 @@ function App() {
   }, [duration, previewQuality]);
 
   useEffect(() => {
-    if (!showQualityMenu) return;
+    if (!showUtilityMenu) return;
     const handlePointerDown = (event: MouseEvent) => {
-      if (!qualityMenuRef.current?.contains(event.target as Node)) {
-        setShowQualityMenu(false);
+      if (!utilityMenuRef.current?.contains(event.target as Node)) {
+        setShowUtilityMenu(false);
       }
     };
     window.addEventListener("mousedown", handlePointerDown);
     return () => window.removeEventListener("mousedown", handlePointerDown);
-  }, [showQualityMenu]);
+  }, [showUtilityMenu]);
+
+  useEffect(() => {
+    if (!showRateMenu) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!rateMenuRef.current?.contains(event.target as Node)) {
+        setShowRateMenu(false);
+      }
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [showRateMenu]);
 
   useEffect(() => {
     if (!src) {
@@ -502,6 +527,12 @@ function App() {
       setShowTransport(true);
     }
   }, [src]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.playbackRate = playbackRateOption.value;
+  }, [playbackRateOption.value, src]);
 
   useEffect(() => {
     if (transportTimerRef.current) {
@@ -543,6 +574,7 @@ function App() {
         autoSizedKeyRef.current = "";
       },
       setPreviewQuality: (quality: PreviewQualityKey) => setPreviewQuality(quality),
+      setPlaybackRate: (rate: PlaybackRateKey) => setPlaybackRate(rate),
       setInVetka: (next: boolean) => {
         if (!currentMediaKey) return;
         setVetkaStatusMap((prev) => ({ ...prev, [currentMediaKey]: next }));
@@ -599,6 +631,15 @@ function App() {
     } else {
       video.pause();
     }
+  }
+
+  function seekBy(delta: number) {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = Math.min(
+      duration || video.duration || 0,
+      Math.max(0, video.currentTime + delta),
+    );
   }
 
   function buildMarker(kind: PlayerMarkerKind, text = ""): PlayerTimeMarker | null {
@@ -763,7 +804,7 @@ function App() {
                   </div>
                   <div className={`viewer-toolbar ${showTransport ? "viewer-toolbar-visible" : "viewer-toolbar-hidden"}`}>
                     <button
-                      className={`icon-button ${isInVetka ? "icon-button-active" : "icon-button-vetka"}`}
+                      className={`icon-button ${isInVetka ? "icon-button-active" : ""}`}
                       type="button"
                       onClick={() => handleContextAction()}
                       aria-label={isInVetka ? "Favorite this moment" : "Add to VETKA"}
@@ -785,20 +826,19 @@ function App() {
                     <button className="icon-button" type="button" onClick={() => fileInputRef.current?.click()} aria-label="Open file">
                       <IconOpen />
                     </button>
-                    <div ref={qualityMenuRef} className="quality-menu-wrap">
+                    <div ref={utilityMenuRef} className="quality-menu-wrap">
                       <button
-                        className={`icon-button quality-trigger ${showQualityMenu ? "icon-button-active" : ""}`}
+                        className={`icon-button ${showUtilityMenu ? "icon-button-active" : ""}`}
                         type="button"
-                        onClick={() => setShowQualityMenu((value) => !value)}
-                        aria-label={`Preview quality ${previewQualityOption.label}`}
-                        title={`Preview quality ${previewQualityOption.label}`}
+                        onClick={() => setShowUtilityMenu((value) => !value)}
+                        aria-label="Player settings"
+                        title="Player settings"
                       >
-                        <IconQuality />
-                        <span className="quality-badge">{previewQualityOption.label}</span>
+                        <IconSettings />
                       </button>
-                      {showQualityMenu ? (
+                      {showUtilityMenu ? (
                         <div className="quality-menu">
-                          <div className="quality-menu-title">Preview</div>
+                          <div className="quality-menu-title">Display</div>
                           {PREVIEW_QUALITY_OPTIONS.map((option) => (
                             <button
                               key={option.key}
@@ -806,13 +846,36 @@ function App() {
                               className={`quality-option ${option.key === previewQuality ? "quality-option-active" : ""}`}
                               onClick={() => {
                                 setPreviewQuality(option.key);
-                                setShowQualityMenu(false);
+                                setShowUtilityMenu(false);
                               }}
                             >
                               <span>{option.label}</span>
                               {option.scale < 1 ? <small>lighter render</small> : <small>full detail</small>}
                             </button>
                           ))}
+                          <div className="quality-menu-title">Window</div>
+                          <button
+                            type="button"
+                            className="quality-option"
+                            onClick={() => {
+                              window.vetkaPlayerLab?.applySuggestedShell();
+                              setShowUtilityMenu(false);
+                            }}
+                          >
+                            <span>Fit to media</span>
+                            <small>resize shell</small>
+                          </button>
+                          <button
+                            type="button"
+                            className="quality-option"
+                            onClick={() => {
+                              void toggleFullscreen();
+                              setShowUtilityMenu(false);
+                            }}
+                          >
+                            <span>Fullscreen</span>
+                            <small>native</small>
+                          </button>
                         </div>
                       ) : null}
                     </div>
@@ -826,23 +889,46 @@ function App() {
                   >
                     <div className="transport-scrim" />
                     <div className="transport-bar">
-                      <button className="transport-button" type="button" onClick={() => {
-                        const video = videoRef.current;
-                        if (!video) return;
-                        video.currentTime = Math.max(0, video.currentTime - 5);
-                      }} aria-label="Rewind 5 seconds">
-                        <IconRewind />
-                      </button>
-                      <button className="transport-button transport-button-primary" type="button" onClick={() => togglePlayback()} aria-label={isPlaying ? "Pause" : "Play"}>
-                        {isPlaying ? <IconPause /> : <IconPlay />}
-                      </button>
-                      <button className="transport-button" type="button" onClick={() => {
-                        const video = videoRef.current;
-                        if (!video) return;
-                        video.currentTime = Math.min(duration || video.duration || 0, video.currentTime + 5);
-                      }} aria-label="Forward 5 seconds">
-                        <IconForward />
-                      </button>
+                      <div ref={rateMenuRef} className="transport-cluster">
+                        <button
+                          className="transport-speed-node"
+                          type="button"
+                          onClick={() => setShowRateMenu((value) => !value)}
+                          aria-label={`Playback speed ${playbackRateOption.label}`}
+                          title={`Playback speed ${playbackRateOption.label}`}
+                        >
+                          {playbackRateOption.label}
+                        </button>
+                        {showRateMenu ? (
+                          <div className="transport-rate-menu">
+                            {PLAYBACK_RATE_OPTIONS.map((option) => (
+                              <button
+                                key={option.key}
+                                type="button"
+                                className={`quality-option ${option.key === playbackRate ? "quality-option-active" : ""}`}
+                                onClick={() => {
+                                  setPlaybackRate(option.key);
+                                  setShowRateMenu(false);
+                                }}
+                              >
+                                <span>{option.label}</span>
+                                <small>playback</small>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        <div className="transport-cluster-ring">
+                          <button className="transport-mini transport-mini-left" type="button" onClick={() => seekBy(-5)} aria-label="Rewind 5 seconds">
+                            <IconRewind />
+                          </button>
+                          <button className="transport-orb" type="button" onClick={() => togglePlayback()} aria-label={isPlaying ? "Pause" : "Play"}>
+                            {isPlaying ? <IconPause /> : <IconPlay />}
+                          </button>
+                          <button className="transport-mini transport-mini-right" type="button" onClick={() => seekBy(5)} aria-label="Forward 5 seconds">
+                            <IconForward />
+                          </button>
+                        </div>
+                      </div>
                       <span className="transport-time">{formatTime(currentTime)}</span>
                       <input
                         className="transport-progress"
