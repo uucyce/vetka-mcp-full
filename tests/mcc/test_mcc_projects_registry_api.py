@@ -36,12 +36,15 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     return TestClient(app)
 
 
-def _init_payload(source_path: str) -> dict:
-    return {
+def _init_payload(source_path: str, project_name: str = "") -> dict:
+    payload = {
         "source_type": "local",
         "source_path": source_path,
         "quota_gb": 5,
     }
+    if project_name:
+        payload["project_name"] = project_name
+    return payload
 
 
 def test_projects_registry_list_and_activate(client: TestClient, tmp_path: Path) -> None:
@@ -52,12 +55,12 @@ def test_projects_registry_list_and_activate(client: TestClient, tmp_path: Path)
     (p1 / "a.py").write_text("print('a')\n", encoding="utf-8")
     (p2 / "b.py").write_text("print('b')\n", encoding="utf-8")
 
-    r1 = client.post("/api/mcc/project/init", json=_init_payload(str(p1)))
+    r1 = client.post("/api/mcc/project/init", json=_init_payload(str(p1), project_name="Project One"))
     assert r1.status_code == 200
     assert r1.json()["success"] is True
     id1 = r1.json()["project_id"]
 
-    r2 = client.post("/api/mcc/project/init", json=_init_payload(str(p2)))
+    r2 = client.post("/api/mcc/project/init", json=_init_payload(str(p2), project_name="Project Two"))
     assert r2.status_code == 200
     assert r2.json()["success"] is True
     id2 = r2.json()["project_id"]
@@ -69,6 +72,9 @@ def test_projects_registry_list_and_activate(client: TestClient, tmp_path: Path)
     assert data["success"] is True
     assert data["count"] == 2
     assert data["active_project_id"] == id2
+    names_by_id = {str(p.get("project_id")): str(p.get("display_name")) for p in data.get("projects", [])}
+    assert names_by_id[id1] == "Project One"
+    assert names_by_id[id2] == "Project Two"
 
     act = client.post("/api/mcc/projects/activate", json={"project_id": id1})
     assert act.status_code == 200

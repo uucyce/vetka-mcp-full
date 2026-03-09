@@ -32,13 +32,24 @@ def tmp_dir():
 def api_client(tmp_dir):
     """FastAPI test client with patched config paths."""
     import src.services.project_config as pc_module
+    import src.services.mcc_project_registry as reg_module
     orig_config = pc_module.CONFIG_PATH
     orig_session = pc_module.SESSION_STATE_PATH
     orig_data = pc_module.DATA_DIR
+    orig_reg_path = reg_module.REGISTRY_PATH
+    orig_reg_sessions = reg_module.SESSIONS_DIR
+    orig_reg_config = reg_module.CONFIG_PATH
+    orig_reg_session = reg_module.SESSION_STATE_PATH
+    orig_reg_data = reg_module.DATA_DIR
 
     pc_module.CONFIG_PATH = os.path.join(tmp_dir, "project_config.json")
     pc_module.SESSION_STATE_PATH = os.path.join(tmp_dir, "session_state.json")
     pc_module.DATA_DIR = tmp_dir
+    reg_module.REGISTRY_PATH = os.path.join(tmp_dir, "mcc_projects_registry.json")
+    reg_module.SESSIONS_DIR = os.path.join(tmp_dir, "mcc_sessions")
+    reg_module.CONFIG_PATH = pc_module.CONFIG_PATH
+    reg_module.SESSION_STATE_PATH = pc_module.SESSION_STATE_PATH
+    reg_module.DATA_DIR = tmp_dir
 
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -52,6 +63,11 @@ def api_client(tmp_dir):
     pc_module.CONFIG_PATH = orig_config
     pc_module.SESSION_STATE_PATH = orig_session
     pc_module.DATA_DIR = orig_data
+    reg_module.REGISTRY_PATH = orig_reg_path
+    reg_module.SESSIONS_DIR = orig_reg_sessions
+    reg_module.CONFIG_PATH = orig_reg_config
+    reg_module.SESSION_STATE_PATH = orig_reg_session
+    reg_module.DATA_DIR = orig_reg_data
 
 
 class TestOnboardingFlow:
@@ -151,7 +167,8 @@ class TestOnboardingFlow:
         r = client.get("/api/mcc/sandbox/status")
         data = r.json()
         assert data["exists"] is True
-        assert data["file_count"] >= 2
+        # file_count is behind VETKA_SANDBOX_COUNT_FILES flag and may be 0 by contract
+        assert "file_count" in data
 
         # 4. Has project now
         r = client.get("/api/mcc/init")
@@ -173,8 +190,8 @@ class TestOnboardingFlow:
         data = r.json()
         assert data["level"] == "roadmap"
 
-    def test_onboarding_prevents_duplicate_project(self, api_client):
-        """Cannot init a second project without deleting first."""
+    def test_onboarding_allows_next_project_init(self, api_client):
+        """Second init is allowed in multi-project mode and rotates active project."""
         client, tmp_dir = api_client
         source = os.path.join(tmp_dir, "dup_proj")
         os.makedirs(source)
@@ -188,14 +205,14 @@ class TestOnboardingFlow:
         })
         assert r.json()["success"] is True
 
-        # Second init → fails
+        # Second init → success (new project entry)
         r = client.post("/api/mcc/project/init", json={
             "source_type": "local",
             "source_path": source,
         })
         data = r.json()
-        assert data["success"] is False
-        assert any("already" in e.lower() for e in data["errors"])
+        assert data["success"] is True
+        assert data["project_id"]
 
     def test_delete_then_reinit(self, api_client):
         """Delete project → reinit works."""

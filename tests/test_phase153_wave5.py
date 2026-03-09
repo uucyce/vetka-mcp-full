@@ -355,6 +355,8 @@ class TestNavigationAPI:
         assert "workflow_id" in data
         assert "preset" in data
         assert "summary" in data
+        assert "diagnostics" in data
+        assert "workflow_selection" in data["diagnostics"]
 
 
 # ══════════════════════════════════════════════════════════════

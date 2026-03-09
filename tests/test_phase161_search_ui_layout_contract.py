@@ -21,6 +21,6 @@ def test_phase161_top_left_search_icons_are_horizontal() -> None:
 def test_phase161_search_rows_use_compact_density_tokens() -> None:
     src = _read(SEARCH_FILE)
     assert "alignItems: 'flex-start'" in src
+    assert "const showMetaColumns = !isWebRow && isFileRow;" in src
     assert "minWidth: '42px'" in src
     assert "minWidth: '48px'" in src
-

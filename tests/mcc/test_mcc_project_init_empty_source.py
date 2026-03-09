@@ -44,6 +44,7 @@ def test_project_init_empty_source_creates_workspace(client: TestClient, tmp_pat
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
+    assert data["project_name"] == "empty_workspace"
     assert os.path.isdir(str(sandbox))
     # Empty bootstrap should still place a starter marker file.
     assert os.path.exists(os.path.join(str(sandbox), "README.md"))

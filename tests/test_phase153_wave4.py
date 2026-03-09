@@ -381,6 +381,13 @@ class TestMCCWave4API:
         assert data["workflow_id"] == "quick_fix"
         assert data["preset"] == "dragon_bronze"
         assert "summary" in data
+        assert "diagnostics" in data
+        assert "workflow_selection" in data["diagnostics"]
+        wf_diag = data["diagnostics"]["workflow_selection"]
+        assert wf_diag["workflow_id"] == data["workflow_id"]
+        assert isinstance(wf_diag["reinforcement"], list)
+        assert isinstance(wf_diag["reinforcement_policy"], dict)
+        assert wf_diag["reason"] in ("openhands_reinforcement_enabled", "base_family_only")
 
     def test_roadmap_no_project(self):
         """GET /roadmap with no project → 404."""

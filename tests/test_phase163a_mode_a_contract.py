@@ -51,6 +51,7 @@ def test_mode_a_supports_scanner_and_group_surfaces():
     rules = _read("client/src/components/myco/mycoModeARules.ts")
     hook = _read("client/src/components/myco/useMycoModeA.ts")
     chat = _read("client/src/components/chat/ChatPanel.tsx")
+    lane = _read("client/src/components/search/searchLaneMode.ts")
     assert "return 'scanner';" in rules
     assert "return 'group_chat';" in rules
     assert "return 'group_setup';" in rules
@@ -61,6 +62,10 @@ def test_mode_a_supports_scanner_and_group_surfaces():
     assert "contextPrefix={activeTab === 'scanner' ? `${scannerLaneContext}/` : 'vetka/'}" in chat
     assert "activeTab !== 'scanner' && (" in chat
     assert "scanner uses unified lane as canonical entry" in chat
+    assert "tap text to search the web" in lane
+    assert "tap text to search files" in lane
+    assert "tap text to search cloud" in lane
+    assert "tap text to search social" in lane
 
 
 def test_mode_a_supports_tree_modes_search_modes_and_media_artifacts():

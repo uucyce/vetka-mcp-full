@@ -20,5 +20,5 @@ def test_minichat_has_myco_role_injection_contract():
     code = _read("client/src/components/mcc/MiniChat.tsx")
     assert "helper_myco" in code
     assert "isMycoTrigger" in code
-    assert "myco:off" in code
+    assert "nextMycoMode" in code
     assert "buildMycoReply" in code
