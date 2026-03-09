@@ -1,0 +1,43 @@
+{
+  "id": "pulse_scheduler_stub_v1",
+  "name": "PULSE Multi-Objective Scheduling (Stub)",
+  "description": "Stub workflow for PULSE-inspired multi-objective scheduling contract across cloud-edge-IoT execution contexts.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-03-03T12:00:00Z",
+    "updated_at": "2026-03-03T12:00:00Z",
+    "author": "vetka-system",
+    "phase": "155E",
+    "task_types": ["pulse", "scheduler", "multi_objective", "cloud_edge_iot"],
+    "complexity_range": [4, 9],
+    "template_family": "pulse_family",
+    "workflow_family": {
+      "family": "pulse_family",
+      "version": "v1",
+      "roles": ["planner", "scheduler", "executor", "eval", "approval", "deploy"],
+      "policy": {
+        "edge_semantics": "strict",
+        "role_contract": "strict",
+        "supports_runtime_edge_edit": true,
+        "allows_structural_cycles": false,
+        "stub": true
+      }
+    }
+  },
+  "nodes": [
+    {"id": "planner", "type": "agent", "label": "Planner", "position": {"x": 340, "y": 520}, "data": {"role": "planner"}},
+    {"id": "scheduler", "type": "agent", "label": "Scheduler", "position": {"x": 340, "y": 400}, "data": {"role": "scheduler"}},
+    {"id": "executor", "type": "agent", "label": "Executor", "position": {"x": 340, "y": 280}, "data": {"role": "executor"}},
+    {"id": "objective_eval", "type": "agent", "label": "Objective Eval", "position": {"x": 340, "y": 160}, "data": {"role": "eval"}},
+    {"id": "approval_gate", "type": "gate", "label": "Approval Gate", "position": {"x": 340, "y": 80}, "data": {"role": "approval"}},
+    {"id": "deploy", "type": "task", "label": "Deploy", "position": {"x": 340, "y": 0}, "data": {"role": "deploy"}}
+  ],
+  "edges": [
+    {"id": "pulse_e1", "source": "planner", "target": "scheduler", "type": "structural", "label": "objectives"},
+    {"id": "pulse_e2", "source": "scheduler", "target": "executor", "type": "dataflow", "label": "allocation"},
+    {"id": "pulse_e3", "source": "executor", "target": "objective_eval", "type": "dataflow", "label": "telemetry"},
+    {"id": "pulse_e4", "source": "objective_eval", "target": "approval_gate", "type": "condition", "label": "thresholds"},
+    {"id": "pulse_e5", "source": "approval_gate", "target": "deploy", "type": "structural", "label": "approved"},
+    {"id": "pulse_e6", "source": "objective_eval", "target": "scheduler", "type": "retry", "label": "replan", "data": {"non_structural": true}}
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "id": "ralph_loop_v1",
+  "name": "Ralph Loop (Single Agent Core)",
+  "description": "Single-agent iterative loop over PRD stories with explicit pass/fail progress tracking.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-03-02T18:00:00Z",
+    "updated_at": "2026-03-02T18:00:00Z",
+    "author": "vetka-system",
+    "preset": "dragon_bronze",
+    "task_types": ["ralph", "solo", "single_agent", "single-agent", "microfix"],
+    "complexity_range": [1, 4],
+    "template_family": "core_library",
+    "pattern_source": "snarktank/ralph",
+    "execution_contract": {
+      "fresh_context_each_iteration": true,
+      "persistent_memory_artifacts": ["prd.json", "progress.txt", "git_history"],
+      "max_iterations_default": 10
+    }
+  },
+  "nodes": [
+    {
+      "id": "pick_story",
+      "type": "task",
+      "label": "Pick Next Story",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "description": "Select highest-priority story where passes=false from PRD backlog.",
+        "outputs": ["active_story"]
+      }
+    },
+    {
+      "id": "ralph_execute",
+      "type": "agent",
+      "label": "Ralph (Solo Executor)",
+      "position": { "x": 320, "y": 120 },
+      "data": {
+        "role": "coder",
+        "description": "Implement exactly one selected story in a fresh agent context.",
+        "outputs": ["patch", "notes"]
+      }
+    },
+    {
+      "id": "quality_check",
+      "type": "agent",
+      "label": "Quality Check",
+      "position": { "x": 520, "y": 120 },
+      "data": {
+        "role": "verifier",
+        "description": "Run typecheck/tests for active story and report pass/fail.",
+        "outputs": ["passed", "issues"]
+      }
+    },
+    {
+      "id": "update_progress",
+      "type": "task",
+      "label": "Update Progress Artifacts",
+      "position": { "x": 720, "y": 120 },
+      "data": {
+        "description": "Update PRD story passes field and append learnings to progress log."
+      }
+    },
+    {
+      "id": "all_done",
+      "type": "condition",
+      "label": "All Stories Passed?",
+      "position": { "x": 900, "y": 120 },
+      "data": {
+        "condition": "all user stories have passes=true",
+        "max_iterations": 10
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "pick_story", "target": "ralph_execute", "type": "structural", "label": "active_story" },
+    { "id": "e2", "source": "ralph_execute", "target": "quality_check", "type": "structural", "label": "candidate_result" },
+    { "id": "e3", "source": "quality_check", "target": "update_progress", "type": "dataflow", "label": "test_outcome" },
+    { "id": "e4", "source": "update_progress", "target": "all_done", "type": "structural", "label": "progress_state" },
+    { "id": "e5", "source": "all_done", "target": "pick_story", "type": "feedback", "label": "next_story_if_not_done" }
+  ]
+}
