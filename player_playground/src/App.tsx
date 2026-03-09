@@ -9,6 +9,17 @@ import {
 } from "./lib/geometry";
 import { setCurrentWindowLogicalSize, toggleFullscreen } from "./lib/nativeWindow";
 
+type PreviewQualityKey = "full" | "half" | "quarter" | "eighth" | "sixteenth" | "thirtysecond";
+
+const PREVIEW_QUALITY_OPTIONS: { key: PreviewQualityKey; label: string; scale: number }[] = [
+  { key: "full", label: "1x", scale: 1 },
+  { key: "half", label: "1/2", scale: 0.5 },
+  { key: "quarter", label: "1/4", scale: 0.25 },
+  { key: "eighth", label: "1/8", scale: 0.125 },
+  { key: "sixteenth", label: "1/16", scale: 0.0625 },
+  { key: "thirtysecond", label: "1/32", scale: 0.03125 },
+];
+
 declare global {
   interface Window {
     vetkaPlayerLab?: {
@@ -16,6 +27,7 @@ declare global {
       print: () => GeometrySnapshot;
       setVariant: (variant: ShellVariant) => void;
       setSyntheticSize: (width: number, height: number) => void;
+      setPreviewQuality: (quality: PreviewQualityKey) => void;
       applySuggestedShell: () => GeometrySnapshot;
       resetShell: () => void;
       toggleDebug: () => void;
@@ -121,6 +133,37 @@ function IconVolume({ isMuted }: { isMuted: boolean }) {
   );
 }
 
+function IconStar({ active }: { active: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12 3.7l2.6 5.2 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"
+        fill={active ? "currentColor" : "none"}
+      />
+    </svg>
+  );
+}
+
+function IconVetka() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="6" x2="12" y2="18" />
+      <path d="M12 12 L8 7" />
+      <path d="M12 12 L16 7" />
+    </svg>
+  );
+}
+
+function IconQuality() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4" y="6" width="16" height="12" rx="2" />
+      <path d="M9 10h.01M12 10h.01M15 10h.01M9 14h.01M12 14h.01M15 14h.01" />
+    </svg>
+  );
+}
+
 function App() {
   const initialQuery = useMemo(readQuery, []);
   const [variant, setVariant] = useState<ShellVariant>(initialQuery.variant);
@@ -141,11 +184,16 @@ function App() {
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [showTransport, setShowTransport] = useState(true);
+  const [previewQuality, setPreviewQuality] = useState<PreviewQualityKey>("full");
+  const [showQualityMenu, setShowQualityMenu] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [isInVetka, setIsInVetka] = useState(false);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const topbarRef = useRef<HTMLElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const qualityMenuRef = useRef<HTMLDivElement | null>(null);
   const autoSizedKeyRef = useRef("");
   const transportTimerRef = useRef<number | null>(null);
   const intrinsicSize = naturalSize.width > 0 && naturalSize.height > 0 ? naturalSize : syntheticSize;
@@ -154,6 +202,8 @@ function App() {
     : "synthetic";
   const footerReserve = sourceKind === "video" && !isDebugVisible ? 0 : LAB_FOOTER_HEIGHT;
   const isPureMode = !isDebugVisible;
+  const previewQualityOption = PREVIEW_QUALITY_OPTIONS.find((option) => option.key === previewQuality) || PREVIEW_QUALITY_OPTIONS[0];
+  const effectivePreviewScale = sourceKind === "video" ? previewQualityOption.scale : 1;
 
   useEffect(() => {
     const shellNode = shellRef.current;
@@ -237,13 +287,17 @@ function App() {
       dreamScore: review.dreamScore,
       viewerDominanceRatio: review.viewerDominanceRatio,
       chromeRatio: review.chromeRatio,
+      previewQualityLabel: previewQualityOption.label,
+      previewScale: effectivePreviewScale,
     };
   }, [
+    effectivePreviewScale,
     fileName,
     geometryTick,
     intrinsicSize.height,
     intrinsicSize.width,
     footerReserve,
+    previewQualityOption.label,
     sourceKind,
     variant,
   ]);
@@ -296,6 +350,11 @@ function App() {
       if (event.key.toLowerCase() === "f") {
         void toggleFullscreen();
       }
+      if (event.key.toLowerCase() === "q") {
+        const currentIndex = PREVIEW_QUALITY_OPTIONS.findIndex((option) => option.key === previewQuality);
+        const nextOption = PREVIEW_QUALITY_OPTIONS[(currentIndex + 1) % PREVIEW_QUALITY_OPTIONS.length];
+        setPreviewQuality(nextOption.key);
+      }
       if (event.key === " " && videoRef.current) {
         event.preventDefault();
         if (videoRef.current.paused) {
@@ -315,7 +374,18 @@ function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [duration]);
+  }, [duration, previewQuality]);
+
+  useEffect(() => {
+    if (!showQualityMenu) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!qualityMenuRef.current?.contains(event.target as Node)) {
+        setShowQualityMenu(false);
+      }
+    };
+    window.addEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handlePointerDown);
+  }, [showQualityMenu]);
 
   useEffect(() => {
     if (!src) {
@@ -364,6 +434,7 @@ function App() {
         setFileName("Synthetic probe");
         autoSizedKeyRef.current = "";
       },
+      setPreviewQuality: (quality: PreviewQualityKey) => setPreviewQuality(quality),
       applySuggestedShell: () => {
         const next = {
           width: snapshot.suggestedShellWidth,
@@ -481,46 +552,105 @@ function App() {
             <div ref={viewerRef} className="viewer-area player-canvas">
               {src ? (
                 <>
-                  <video
-                    ref={videoRef}
-                    className="viewer-video"
-                    src={src}
-                    controls={false}
-                    playsInline
-                    preload="metadata"
-                    onClick={() => togglePlayback()}
-                    onLoadedMetadata={(event) => {
-                      const video = event.currentTarget;
-                      setNaturalSize({
-                        width: Number(video.videoWidth || 0),
-                        height: Number(video.videoHeight || 0),
-                      });
-                      setDuration(Number(video.duration || 0));
-                      setCurrentTime(Number(video.currentTime || 0));
-                      setVolume(Number(video.volume || 1));
-                      setIsMuted(Boolean(video.muted));
-                      if (!fileName) setFileName(formatName(src));
-                    }}
-                    onPlay={() => setIsPlaying(true)}
-                    onPause={() => setIsPlaying(false)}
-                    onTimeUpdate={(event) => setCurrentTime(Number(event.currentTarget.currentTime || 0))}
-                    onDurationChange={(event) => setDuration(Number(event.currentTarget.duration || 0))}
-                    onVolumeChange={(event) => {
-                      setVolume(Number(event.currentTarget.volume || 0));
-                      setIsMuted(Boolean(event.currentTarget.muted));
-                    }}
-                  />
+                  <div className={`video-stage ${effectivePreviewScale < 1 ? "preview-scaled" : ""}`}>
+                    <div
+                      className="video-raster"
+                      style={{
+                        width: `${Math.max(1, snapshot.displayedWidth * effectivePreviewScale)}px`,
+                        height: `${Math.max(1, snapshot.displayedHeight * effectivePreviewScale)}px`,
+                        transform: `scale(${1 / effectivePreviewScale})`,
+                      }}
+                    >
+                      <video
+                        ref={videoRef}
+                        className="viewer-video"
+                        src={src}
+                        controls={false}
+                        playsInline
+                        preload="metadata"
+                        onClick={() => togglePlayback()}
+                        onLoadedMetadata={(event) => {
+                          const video = event.currentTarget;
+                          setNaturalSize({
+                            width: Number(video.videoWidth || 0),
+                            height: Number(video.videoHeight || 0),
+                          });
+                          setDuration(Number(video.duration || 0));
+                          setCurrentTime(Number(video.currentTime || 0));
+                          setVolume(Number(video.volume || 1));
+                          setIsMuted(Boolean(video.muted));
+                          if (!fileName) setFileName(formatName(src));
+                        }}
+                        onPlay={() => setIsPlaying(true)}
+                        onPause={() => setIsPlaying(false)}
+                        onTimeUpdate={(event) => setCurrentTime(Number(event.currentTarget.currentTime || 0))}
+                        onDurationChange={(event) => setDuration(Number(event.currentTarget.duration || 0))}
+                        onVolumeChange={(event) => {
+                          setVolume(Number(event.currentTarget.volume || 0));
+                          setIsMuted(Boolean(event.currentTarget.muted));
+                        }}
+                      />
+                    </div>
+                  </div>
                   <div className={`media-label ${showTransport ? "media-label-visible" : "media-label-hidden"}`}>
-                    <span className="eyebrow">VETKA Player</span>
                     <strong>{fileName}</strong>
                   </div>
                   <div className={`viewer-toolbar ${showTransport ? "viewer-toolbar-visible" : "viewer-toolbar-hidden"}`}>
+                    <button
+                      className={`icon-button ${isFavorite ? "icon-button-active" : ""}`}
+                      type="button"
+                      onClick={() => setIsFavorite((value) => !value)}
+                      aria-label={isFavorite ? "Remove favorite" : "Add favorite"}
+                      title={isFavorite ? "Remove favorite" : "Add favorite"}
+                    >
+                      <IconStar active={isFavorite} />
+                    </button>
+                    <button
+                      className={`icon-button ${isInVetka ? "icon-button-active icon-button-vetka" : ""}`}
+                      type="button"
+                      onClick={() => setIsInVetka((value) => !value)}
+                      aria-label={isInVetka ? "Saved in VETKA" : "Add to VETKA"}
+                      title={isInVetka ? "Saved in VETKA" : "Add to VETKA"}
+                    >
+                      <IconVetka />
+                    </button>
                     <button className="icon-button" type="button" onClick={() => fileInputRef.current?.click()} aria-label="Open file">
                       <IconOpen />
                     </button>
                     <button className="icon-button" type="button" onClick={() => window.vetkaPlayerLab?.applySuggestedShell()} aria-label="Fit shell">
                       <IconFit />
                     </button>
+                    <div ref={qualityMenuRef} className="quality-menu-wrap">
+                      <button
+                        className={`icon-button quality-trigger ${showQualityMenu ? "icon-button-active" : ""}`}
+                        type="button"
+                        onClick={() => setShowQualityMenu((value) => !value)}
+                        aria-label={`Preview quality ${previewQualityOption.label}`}
+                        title={`Preview quality ${previewQualityOption.label}`}
+                      >
+                        <IconQuality />
+                        <span className="quality-badge">{previewQualityOption.label}</span>
+                      </button>
+                      {showQualityMenu ? (
+                        <div className="quality-menu">
+                          <div className="quality-menu-title">Preview</div>
+                          {PREVIEW_QUALITY_OPTIONS.map((option) => (
+                            <button
+                              key={option.key}
+                              type="button"
+                              className={`quality-option ${option.key === previewQuality ? "quality-option-active" : ""}`}
+                              onClick={() => {
+                                setPreviewQuality(option.key);
+                                setShowQualityMenu(false);
+                              }}
+                            >
+                              <span>{option.label}</span>
+                              {option.scale < 1 ? <small>lighter render</small> : <small>full detail</small>}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                     <button className="icon-button" type="button" onClick={() => void toggleFullscreen()} aria-label="Fullscreen">
                       <IconFullscreen />
                     </button>
@@ -567,6 +697,9 @@ function App() {
                         aria-label="Seek"
                       />
                       <span className="transport-time">{formatTime(duration)}</span>
+                      <div className="transport-quality-chip" title="Preview quality">
+                        {previewQualityOption.label}
+                      </div>
                       <button className="transport-button" type="button" onClick={() => {
                         const nextMuted = !isMuted;
                         syncVolume(nextMuted ? volume : Math.max(volume, 0.6), nextMuted);
@@ -709,6 +842,17 @@ function App() {
               <button className="pill" type="button" onClick={() => window.vetkaPlayerLab?.print()}>
                 print snapshot
               </button>
+              <select
+                className="pill"
+                value={previewQuality}
+                onChange={(event) => setPreviewQuality(event.target.value as PreviewQualityKey)}
+              >
+                {PREVIEW_QUALITY_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label} preview
+                  </option>
+                ))}
+              </select>
               <button className="pill" type="button" onClick={() => setShellSizeOverride(null)}>
                 reset shell
               </button>

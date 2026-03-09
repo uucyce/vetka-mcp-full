@@ -16,6 +16,10 @@ mkdir -p "$OUT_DIR"
 
 cd "$LAB"
 
+if command -v lsof >/dev/null 2>&1; then
+  lsof -ti tcp:1424 | xargs -r kill >/dev/null 2>&1 || true
+fi
+
 PLAYER_LAB_VIDEO_PATH="$VIDEO_PATH" \
 PLAYER_LAB_SCREENSHOT_PATH="$SCREENSHOT_PATH" \
 PLAYER_LAB_SNAPSHOT_PATH="$SNAPSHOT_PATH" \

@@ -32,6 +32,8 @@ export interface GeometrySnapshot {
   dreamScore: number;
   viewerDominanceRatio: number;
   chromeRatio: number;
+  previewQualityLabel: string;
+  previewScale: number;
 }
 
 export function computeDreamScore(input: {
