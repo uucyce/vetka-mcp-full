@@ -55,6 +55,8 @@ interface Props {
   mycoStateKey?: string;
   /** Optional preferred context supplied by parent surface (for scanner/chat bridges) */
   preferredSearchContext?: SearchContext;
+  /** Called when user explicitly changes search context from the lane */
+  onSearchContextChange?: (context: SearchContext) => void;
 }
 
 // Inline SVG icons (no external dependencies - Nolan style)
@@ -247,7 +249,7 @@ const SEARCH_MODE_DESCRIPTIONS: Record<SearchModeType, string> = {
 };
 
 // Phase 68.3: Search context paths
-type SearchContext = 'vetka' | 'myco' | 'web' | 'file' | 'cloud' | 'social';
+export type SearchContext = 'vetka' | 'myco' | 'web' | 'file' | 'cloud' | 'social';
 
 const CONTEXT_MODE_FALLBACK: Record<SearchContext, SearchModeType[]> = {
   vetka: ['hybrid', 'semantic', 'keyword', 'filename'],
@@ -299,6 +301,7 @@ export function UnifiedSearchBar({
   mycoHint = null,
   mycoStateKey = '',
   preferredSearchContext,
+  onSearchContextChange,
 }: Props) {
   // Phase 68.3: Search context state
   const [searchContext, setSearchContext] = useState<SearchContext>(preferredSearchContext ?? 'myco');
@@ -394,7 +397,14 @@ export function UnifiedSearchBar({
 
   useEffect(() => {
     if (!preferredSearchContext) return;
-    setSearchContext((prev) => (prev === preferredSearchContext ? prev : preferredSearchContext));
+    setSearchContext((prev) => {
+      // In scanner surfaces, explicit agent choice in the top lane owns the lower scanner source.
+      // Lower source changes must not kick the lane out of myco/vetka modes.
+      if ((prev === 'myco' || prev === 'vetka') && preferredSearchContext !== prev) {
+        return prev;
+      }
+      return prev === preferredSearchContext ? prev : preferredSearchContext;
+    });
   }, [preferredSearchContext]);
 
   useEffect(() => {
@@ -1430,6 +1440,7 @@ export function UnifiedSearchBar({
                   onClick={() => {
                     if (ctx.available) {
                       setSearchContext(ctx.id);
+                      onSearchContextChange?.(ctx.id);
                       setShowContextMenu(false);
                       inputRef.current?.focus();
                     } else if (mycoSurfaceScope) {

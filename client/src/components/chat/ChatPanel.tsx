@@ -21,7 +21,7 @@ import { FloatingWindow } from '../artifact/FloatingWindow';
 import { ArtifactPanel } from '../artifact/ArtifactPanel';
 import { ChatSidebar } from './ChatSidebar';
 import { ScanPanel, type ScannerEvent } from '../scanner/ScanPanel';
-import { UnifiedSearchBar } from '../search/UnifiedSearchBar';
+import { UnifiedSearchBar, type SearchContext } from '../search/UnifiedSearchBar';
 import type { ChatMessage, SearchResult } from '../../types/chat';
 import type { MycoModeAHint } from '../myco/mycoModeATypes';
 import { savePinnedFiles, getChatsForFile } from '../../utils/chatApi';
@@ -185,6 +185,7 @@ export function ChatPanel({
   // Phase 80.12: Removed 'group-settings' - using GroupCreatorPanel edit mode instead
   const [activeTab, setActiveTab] = useState<'chat' | 'scanner' | 'group'>('chat');
   const [scannerSource, setScannerSource] = useState<'local' | 'cloud' | 'browser' | 'social'>('local');
+  const [scannerLaneContext, setScannerLaneContext] = useState<SearchContext>('myco');
 
   // Phase 56.6: Model selection for group creation
   const [modelForGroup, setModelForGroup] = useState<string | null>(null);
@@ -2166,7 +2167,7 @@ export function ChatPanel({
     }
   }, []);
 
-  const scannerLaneContext = useMemo<'file' | 'cloud' | 'web' | 'social'>(() => {
+  const scannerSourceContext = useMemo<'file' | 'cloud' | 'web' | 'social'>(() => {
     switch (scannerSource) {
       case 'local':
         return 'file';
@@ -2180,6 +2181,21 @@ export function ChatPanel({
         return 'file';
     }
   }, [scannerSource]);
+
+  const scannerPreferredSource = useMemo<'local' | 'cloud' | 'browser' | 'social' | undefined>(() => {
+    switch (scannerLaneContext) {
+      case 'file':
+        return 'local';
+      case 'web':
+        return 'browser';
+      case 'cloud':
+        return 'cloud';
+      case 'social':
+        return 'social';
+      default:
+        return undefined;
+    }
+  }, [scannerLaneContext]);
 
   // Phase I5: Handle file drop on chat panel - scan and pin file
   const handleFileDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
@@ -3026,6 +3042,7 @@ export function ChatPanel({
             mycoHint={mycoHint}
             mycoStateKey={mycoStateKey}
             preferredSearchContext={activeTab === 'scanner' ? scannerLaneContext : undefined}
+            onSearchContextChange={activeTab === 'scanner' ? setScannerLaneContext : undefined}
             onOpenArtifact={async (result) => {
               // MARKER_142.IMPL_STEP_6_CHAT_PARITY: Keep web artifact behavior aligned with App.tsx
               const source = String((result as any).source || '');
@@ -3606,6 +3623,7 @@ export function ChatPanel({
                 isVisible={true}
                 onEvent={handleScannerEvent}
                 onSourceChange={setScannerSource}
+                preferredSource={scannerPreferredSource}
               />
             </div>
           ) : (

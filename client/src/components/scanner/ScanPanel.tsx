@@ -97,6 +97,7 @@ interface ScanPanelProps {
   isVisible?: boolean;
   onEvent?: (event: ScannerEvent) => void;
   onSourceChange?: (source: 'local' | 'cloud' | 'browser' | 'social') => void;
+  preferredSource?: 'local' | 'cloud' | 'browser' | 'social';
 }
 
 export interface ScannerEvent {
@@ -270,6 +271,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
   isVisible = true,
   onEvent,
   onSourceChange,
+  preferredSource,
 }) => {
   // Source carousel state
   const [currentSourceIndex, setCurrentSourceIndex] = useState(0);
@@ -278,6 +280,13 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
   useEffect(() => {
     onSourceChange?.(currentSource.id as 'local' | 'cloud' | 'browser' | 'social');
   }, [currentSource.id, onSourceChange]);
+
+  useEffect(() => {
+    if (!preferredSource) return;
+    const nextIndex = sources.findIndex((source) => source.id === preferredSource);
+    if (nextIndex === -1) return;
+    setCurrentSourceIndex((prev) => (prev === nextIndex ? prev : nextIndex));
+  }, [preferredSource]);
 
   // Watched directories state (kept for API status tracking)
   const [, setWatchedDirs] = useState<WatchedDirectory[]>([]);
