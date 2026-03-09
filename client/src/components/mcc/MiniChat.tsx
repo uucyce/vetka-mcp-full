@@ -70,6 +70,15 @@ function buildMycoReply(context?: MiniContextPayload): string {
   const nodeUnfoldExpanded = context?.roadmapNodeDrillState === 'expanded' || Boolean(context?.roadmapNodeInlineExpanded);
   const inWorkflow = level === 'workflow' || taskDrillExpanded;
   const scopeLine = `you are in ${level} view`;
+  const taskStatus = String(context?.status || '').toLowerCase().trim();
+  const statusAction =
+    taskStatus === 'running'
+      ? 'monitor Stats/stream -> wait verify/eval gate -> retry only on fail'
+      : taskStatus === 'done'
+        ? 'inspect artifacts/result -> if accepted move to next task, else run targeted retry'
+        : taskStatus === 'failed'
+          ? 'open Context -> inspect failure cause -> retry from Tasks with corrected model/prompt'
+          : 'start from Tasks -> then inspect Context/stream and iterate';
   const windowFocus = String(context?.windowFocus || '').toLowerCase();
   const windowFocusState = String(context?.windowFocusState || '').toLowerCase();
   if (windowFocus === 'balance') {
@@ -93,20 +102,22 @@ function buildMycoReply(context?: MiniContextPayload): string {
     // Post-drill guidance matrix expanded by role + workflow family.
     if (kind === 'agent') {
       if (role === 'architect') {
-        return `MYCO\n- ${scopeLine}\n- workflow is open; architect selected (${familyHint})\n- next: define/adjust subtasks -> choose team preset (Dragons/Titans/G3/Ralph) -> run from Tasks`;
+        // MARKER_164.P5.P1.MYCO.CHAT_STATUS_AWARE_NEXT_ACTIONS.V1:
+        // Workflow-open architect guidance must adapt to current task status.
+        return `MYCO\n- ${scopeLine}\n- workflow is open; architect selected (${familyHint})\n- next: define/adjust subtasks -> choose team preset (Dragons/Titans/G3/Ralph) -> ${statusAction}`;
       }
       if (role === 'coder') {
-        return `MYCO\n- ${scopeLine}\n- coder selected (${familyHint})\n- next: open Context -> verify model/prompt -> run/retry from Tasks -> inspect artifacts/stream`;
+        return `MYCO\n- ${scopeLine}\n- coder selected (${familyHint})\n- next: open Context -> verify model/prompt -> ${statusAction}`;
       }
       if (role === 'verifier' || role === 'eval') {
-        return `MYCO\n- ${scopeLine}\n- verifier selected (${familyHint})\n- next: inspect criteria in Context -> run verify stage -> send retry to coder if gate fails`;
+        return `MYCO\n- ${scopeLine}\n- verifier selected (${familyHint})\n- next: inspect criteria in Context -> run verify stage -> ${statusAction}`;
       }
-      return `MYCO\n- ${scopeLine}\n- workflow is open and agent ${role || label} is selected (${familyHint})\n- next: open Context -> check model/prompt -> run/retry from Tasks`;
+      return `MYCO\n- ${scopeLine}\n- workflow is open and agent ${role || label} is selected (${familyHint})\n- next: open Context -> check model/prompt -> ${statusAction}`;
     }
     if (kind === 'task' || graphKind === 'project_task') {
-      return `MYCO\n- ${scopeLine}\n- task is active and workflow opened (${familyHint})\n- next: select agent node -> open Context -> run/start or retry from Tasks`;
+      return `MYCO\n- ${scopeLine}\n- task is active and workflow opened (${familyHint})\n- next: select agent node -> open Context -> ${statusAction}`;
     }
-    return `MYCO\n- ${scopeLine}\n- workflow is already open for the active task (${familyHint})\n- next: select an agent node -> inspect Context/stream -> run or retry from Tasks`;
+    return `MYCO\n- ${scopeLine}\n- workflow is already open for the active task (${familyHint})\n- next: select an agent node -> inspect Context/stream -> ${statusAction}`;
   }
   if (nodeUnfoldExpanded) {
     return `MYCO\n- ${scopeLine}\n- module unfold is active\n- next: double-click deeper -> pick code node -> create task in Tasks for this scope`;

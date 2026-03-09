@@ -11,6 +11,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import MyceliumStandalone from './MyceliumStandalone';
+import ArtifactMediaStandalone from './ArtifactMediaStandalone';
+import ArtifactStandalone from './ArtifactStandalone';
+import CutStandalone from './CutStandalone';
 import WebShellStandalone from './WebShellStandalone';
 import './styles/voice.css'; // Phase 60.5: Voice animations
 import './styles/tokens.css'; // Phase 151.17: Nolan design tokens
@@ -28,6 +31,15 @@ function Root() {
   }
   if (pathname === '/web-shell') {
     return <WebShellStandalone />;
+  }
+  if (pathname === '/artifact-media') {
+    return <ArtifactMediaStandalone />;
+  }
+  if (pathname === '/artifact-window') {
+    return <ArtifactStandalone />;
+  }
+  if (pathname === '/cut') {
+    return <CutStandalone />;
   }
   return <App />;
 }

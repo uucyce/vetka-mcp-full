@@ -255,6 +255,9 @@ class TaskBoard:
         primary_node_id: Optional[str] = None,   # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
         affected_nodes: Optional[List[str]] = None,  # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
         workflow_id: Optional[str] = None,       # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        workflow_bank: Optional[str] = None,     # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
+        workflow_family: Optional[str] = None,   # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
+        workflow_selection_origin: Optional[str] = None,  # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
         team_profile: Optional[str] = None,      # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
         task_origin: Optional[str] = None,       # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
     ) -> str:
@@ -318,6 +321,9 @@ class TaskBoard:
             "primary_node_id": primary_node_id,
             "affected_nodes": affected_nodes or [],
             "workflow_id": workflow_id,
+            "workflow_bank": workflow_bank,
+            "workflow_family": workflow_family,
+            "workflow_selection_origin": workflow_selection_origin,
             "team_profile": team_profile,
             "task_origin": task_origin,
         }
@@ -395,9 +401,11 @@ class TaskBoard:
         # MARKER_152.3: Added source_chat_id, source_group_id for task provenance
         # MARKER_155.2A: Added 'module' for roadmap module assignment
         # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1: Added anchor metadata fields
+        # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1: Added workflow binding metadata fields
         ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status",
                           "source_chat_id", "source_group_id", "module",
-                          "primary_node_id", "affected_nodes", "workflow_id", "team_profile", "task_origin"}
+                          "primary_node_id", "affected_nodes", "workflow_id", "workflow_bank",
+                          "workflow_family", "workflow_selection_origin", "team_profile", "task_origin"}
         for key, value in updates.items():
             if key in task or key in ADDABLE_FIELDS:
                 task[key] = value

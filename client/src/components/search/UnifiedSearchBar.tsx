@@ -22,6 +22,7 @@ import { getLaneIdlePlaceholderText, resolveSearchLaneState } from './searchLane
 import mycoIdleQuestion from '../../assets/myco/myco_idle_question.png';
 import mycoReadySmile from '../../assets/myco/myco_ready_smile.png';
 import mycoSpeakingLoop from '../../assets/myco/myco_speaking_loop.apng';
+import mycoThinkingLoop from '../../assets/myco/myco_thinking_loop.apng';
 
 const API_BASE = 'http://localhost:5001/api';
 
@@ -790,8 +791,8 @@ export function UnifiedSearchBar({
 
   const mycoAvatarSrc = React.useMemo(() => {
     if (mycoAvatarState === 'speaking') return mycoSpeakingLoop;
+    if (mycoAvatarState === 'thinking') return mycoThinkingLoop;
     if (mycoAvatarState === 'ready') return mycoReadySmile;
-    if (mycoAvatarState === 'thinking') return mycoReadySmile;
     return mycoIdleQuestion;
   }, [mycoAvatarState]);
 
@@ -1001,25 +1002,6 @@ export function UnifiedSearchBar({
       alignItems: 'center',
       justifyContent: 'center',
       flexShrink: 0,
-    },
-    mycoAvatarBadge: {
-      position: 'absolute' as const,
-      right: compact ? '-3px' : '-4px',
-      top: compact ? '-4px' : '-5px',
-      minWidth: compact ? '10px' : '12px',
-      height: compact ? '10px' : '12px',
-      padding: '0 2px',
-      borderRadius: '999px',
-      background: '#111',
-      border: '1px solid #343434',
-      color: '#c7c7c7',
-      fontSize: compact ? '7px' : '8px',
-      lineHeight: compact ? '8px' : '10px',
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: 'monospace',
-      pointerEvents: 'none' as const,
     },
     resultsContainer: {
       marginTop: '8px',
@@ -1277,9 +1259,6 @@ export function UnifiedSearchBar({
                       ? <VetkaIcon size={compact ? 18 : 20} />
                       : React.createElement(CONTEXT_ICONS[searchContext])}
                   </span>
-                )}
-                {laneRoleVisual === 'myco' && mycoAvatarState === 'thinking' && (
-                  <span style={styles.mycoAvatarBadge}>...</span>
                 )}
               </button>
             ) : showVoiceActivity ? (

@@ -52,6 +52,11 @@ JARVIS_STAGE3_SECONDARY_MODEL = os.getenv("JARVIS_STAGE3_SECONDARY_MODEL", "llam
 JARVIS_STAGE4_ENABLE = os.getenv("JARVIS_STAGE4_ENABLE", "1").lower() in {"1", "true", "yes", "on"}
 JARVIS_STAGE4_MODEL = os.getenv("JARVIS_STAGE4_MODEL", "")
 
+# MARKER_163.P1.MYCO_HELP_MODE.V1:
+# Narrow HELP profile for VETKA voice path (backend-only).
+JARVIS_MYCO_HELP_MODE = os.getenv("JARVIS_MYCO_HELP_MODE", "1").lower() in {"1", "true", "yes", "on"}
+JARVIS_MYCO_HELP_DISABLE_FILLER = os.getenv("JARVIS_MYCO_HELP_DISABLE_FILLER", "1").lower() in {"1", "true", "yes", "on"}
+
 JARVIS_PLANB_FILLER_ENABLE = os.getenv("JARVIS_PLANB_FILLER_ENABLE", "1").lower() in {"1", "true", "yes", "on"}
 JARVIS_PLANB_FILLER_DELAY_SEC = float(os.getenv("JARVIS_PLANB_FILLER_DELAY_SEC", "0.15"))
 JARVIS_FILLER_BANK_PATH = Path(os.getenv("JARVIS_FILLER_BANK_PATH", "data/jarvis_filler_bank.json"))
@@ -76,15 +81,16 @@ JARVIS_STAGE4_TIMEOUT_MS = int(os.getenv("JARVIS_STAGE4_TIMEOUT_MS", "6000"))
 # MARKER_157_6_VOICE_PROFILE_BACKEND:
 # Backend voice profiles. UI chooser can map to these IDs in future.
 VOICE_PROFILES: Dict[str, Dict[str, str]] = {
+    "myco_chip_ru": {"fast_tts_voice": "ru-female", "filler_voice": "ru-female"},
     "vetka_ru_female": {"fast_tts_voice": "ru-female", "filler_voice": "ru-female"},
     "vetka_ru_male": {"fast_tts_voice": "ru-male", "filler_voice": "ru-male"},
     "vetka_en_female": {"fast_tts_voice": "en-female", "filler_voice": "en-female"},
     "vetka_en_male": {"fast_tts_voice": "en-male", "filler_voice": "en-male"},
 }
-JARVIS_VOICE_PROFILE = os.getenv("JARVIS_VOICE_PROFILE", "vetka_ru_female").strip() or "vetka_ru_female"
+JARVIS_VOICE_PROFILE = os.getenv("JARVIS_VOICE_PROFILE", "myco_chip_ru").strip() or "myco_chip_ru"
 # MARKER_157_7_4_VOICE_LOCK_EDGE_RU_FEMALE.V1:
-# Runtime voice lock for VETKA-JARVIS: single stable timbre (edge ru-female) with no backend switching.
-JARVIS_VOICE_LOCK_EDGE_RU_FEMALE = os.getenv("JARVIS_VOICE_LOCK_EDGE_RU_FEMALE", "1").lower() in {"1", "true", "yes", "on"}
+# Runtime edge lock. Disabled by default for MYCO character voice experiments.
+JARVIS_VOICE_LOCK_EDGE_RU_FEMALE = os.getenv("JARVIS_VOICE_LOCK_EDGE_RU_FEMALE", "0").lower() in {"1", "true", "yes", "on"}
 
 
 class T9PredictionStatus(str, Enum):
@@ -768,6 +774,14 @@ def _resolve_voice_setup() -> Tuple[str, str]:
     return fast_voice, filler_voice
 
 
+def _is_planb_filler_effective() -> bool:
+    # MARKER_163.P1.FILLER_GUARD.V1:
+    # In MYCO_HELP mode Plan B filler is disabled to avoid noisy/mismatched speech.
+    if JARVIS_MYCO_HELP_MODE and JARVIS_MYCO_HELP_DISABLE_FILLER:
+        return False
+    return JARVIS_PLANB_FILLER_ENABLE
+
+
 def _language_stage_hint(transcript: str, context: Dict[str, Any]) -> str:
     """
     Memory-driven language guidance without hard lock.
@@ -908,7 +922,7 @@ async def _emit_planb_filler_if_slow(
     partial_input: str,
     ready_event: asyncio.Event,
 ) -> bool:
-    if not JARVIS_PLANB_FILLER_ENABLE:
+    if not _is_planb_filler_effective():
         return False
     if ready_event.is_set():
         return False
@@ -966,6 +980,253 @@ def _is_deep_query(transcript: str) -> bool:
         "архитект",
     )
     return any(k in t for k in keywords)
+
+
+def _is_myco_help_intent(transcript: str) -> bool:
+    t = (transcript or "").strip().lower()
+    if not t:
+        return False
+    hints = (
+        "что я вижу",
+        "что вижу",
+        "что можно",
+        "что делать",
+        "как сделать",
+        "как открыть",
+        "как закреп",
+        "как редакт",
+        "куда нажать",
+        "покажи шаги",
+        "help",
+        "what do i see",
+        "what can i do",
+        "how do i",
+        "next step",
+        "ответ невер",
+        "не услышал",
+        "повтори",
+    )
+    return any(h in t for h in hints)
+
+
+def _build_myco_help_stage_hint(context: Dict[str, Any], transcript: str, lang_hint: str) -> str:
+    facts = _build_myco_help_fact_bundle(context)
+    fact_lines: List[str] = [facts["see_now"]]
+    if facts["retrieval_snippets"]:
+        fact_lines.append("Instruction snippets: " + " | ".join(facts["retrieval_snippets"][:2]))
+    fact_lines.append("Allowed actions: " + " ".join(facts["actions"][:2]))
+    fact_lines.append("Next step template: " + facts["next_step"])
+    return (
+        f"{lang_hint} "
+        "MYCO_HELP mode: answer only as VETKA interface guide. "
+        "Response contract: "
+        "1) one short sentence what user currently sees; "
+        "2) one short sentence what user can do next (2-3 actions max); "
+        "3) one short sentence with exact next click/step. "
+        "Use only supplied facts. If a fact is absent, say you do not see it yet. "
+        "Do not invent files, tools, or actions not present in facts. "
+        "No generic talk, no role-playing, no mention of being Jarvis. "
+        f"Facts: {' '.join(fact_lines)} "
+        f"User request: {transcript}"
+    ).strip()
+
+
+def _build_myco_help_fallback_response(context: Dict[str, Any]) -> str:
+    """
+    Deterministic safe fallback for MYCO_HELP when retrieval grounding is weak.
+    Must remain fact-bound to visible/runtime context.
+    """
+    facts = _build_myco_help_fact_bundle(context)
+    see_now = facts["see_now"]
+    actions = facts["actions"][:3]
+    next_step = facts["next_step"]
+    actions_part = " ".join(actions).strip()
+    return f"{see_now} {actions_part} {next_step}".strip()
+
+
+def _build_myco_help_fact_bundle(context: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    MARKER_163B2.MYCO.FACT_BUNDLE.V1:
+    Extract only visible/runtime facts for MYCO_HELP.
+    """
+    ctx = context or {}
+    viewport_summary = str(ctx.get("viewport_summary") or "").strip()
+    label = str(ctx.get("label") or "").strip()
+    node_kind = str(ctx.get("node_kind") or ctx.get("nodeKind") or "").strip()
+
+    viewport_context = ctx.get("viewport_context") if isinstance(ctx.get("viewport_context"), dict) else {}
+    viewport_nodes = viewport_context.get("viewport_nodes") if isinstance(viewport_context.get("viewport_nodes"), list) else []
+    pinned_nodes = viewport_context.get("pinned_nodes") if isinstance(viewport_context.get("pinned_nodes"), list) else []
+    pinned_files = ctx.get("pinned_files") if isinstance(ctx.get("pinned_files"), list) else []
+    open_chat_context = ctx.get("open_chat_context") if isinstance(ctx.get("open_chat_context"), dict) else {}
+    hidden_retrieval = ctx.get("hidden_retrieval") if isinstance(ctx.get("hidden_retrieval"), dict) else {}
+
+    def _clean_name(value: Any) -> str:
+        text = str(value or "").strip()
+        return text[:80] if text else ""
+
+    visible_names: List[str] = []
+    for node in viewport_nodes[:5]:
+        if not isinstance(node, dict):
+            continue
+        name = _clean_name(node.get("name") or node.get("path") or node.get("id"))
+        if name and name not in visible_names:
+            visible_names.append(name)
+
+    pinned_names: List[str] = []
+    for item in pinned_files[:5]:
+        if isinstance(item, dict):
+            name = _clean_name(item.get("name") or item.get("path") or item.get("id"))
+        else:
+            name = _clean_name(item)
+        if name and name not in pinned_names:
+            pinned_names.append(name)
+
+    pinned_node_names: List[str] = []
+    for node in pinned_nodes[:5]:
+        if not isinstance(node, dict):
+            continue
+        name = _clean_name(node.get("name") or node.get("path") or node.get("id"))
+        if name and name not in pinned_node_names:
+            pinned_node_names.append(name)
+
+    retrieval_items = hidden_retrieval.get("items") if isinstance(hidden_retrieval.get("items"), list) else []
+    retrieval_snippets: List[str] = []
+    for item in retrieval_items[:3]:
+        if not isinstance(item, dict):
+            continue
+        snippet = _clean_name(item.get("snippet"))
+        if snippet:
+            retrieval_snippets.append(snippet)
+
+    messages = open_chat_context.get("messages") if isinstance(open_chat_context.get("messages"), list) else []
+    chat_active = bool(open_chat_context.get("chat_id") or messages)
+
+    anchors = [x for x in [label, node_kind, *visible_names, *pinned_names, *pinned_node_names] if x]
+
+    if label:
+        see_now = f"Сейчас в фокусе: {label}."
+    elif pinned_names:
+        see_now = f"Сейчас закреплены файлы: {', '.join(pinned_names[:3])}."
+    elif visible_names:
+        see_now = f"Сейчас вижу на экране: {', '.join(visible_names[:3])}."
+    elif viewport_summary:
+        see_now = f"Сейчас в фокусе: {viewport_summary[:160]}."
+    elif chat_active:
+        see_now = "Сейчас открыт чат ВЕТКА."
+    else:
+        see_now = "Сейчас вы в рабочем окне ВЕТКА."
+
+    actions: List[str] = []
+    if pinned_names or visible_names:
+        actions.extend(
+            [
+                "Можно открыть выбранный файл в Artifact и посмотреть его подробнее.",
+                "Можно закрепить несколько файлов через Shift и затем задать вопрос по ним.",
+                "Можно попросить меня объяснить, что это за файл или что с ним делать дальше.",
+            ]
+        )
+    elif chat_active:
+        actions.extend(
+            [
+                "Можно продолжить вопрос в чате и уточнить следующий шаг.",
+                "Можно закрепить файлы к чату и спросить про них по содержанию.",
+                "Можно выбрать режим поиска или вызвать нужного агента через чат.",
+            ]
+        )
+    else:
+        actions.extend(
+            [
+                "Можно выбрать узел или файл и спросить, что именно вы видите.",
+                "Можно открыть нужную поверхность и уточнить доступные действия.",
+                "Можно попросить меня подсказать следующий клик по текущему экрану.",
+            ]
+        )
+
+    next_step = "Следующий шаг: кликните по нужному элементу и скажите, что именно нужно сделать."
+    if pinned_names:
+        next_step = f"Следующий шаг: выберите один из закрепленных файлов, например {pinned_names[0]}, и скажите, открыть, объяснить или сравнить."
+    elif visible_names:
+        next_step = f"Следующий шаг: кликните по элементу {visible_names[0]} и скажите, что нужно сделать дальше."
+    elif chat_active:
+        next_step = "Следующий шаг: напишите или скажите короткий вопрос в текущем чате."
+
+    return {
+        "see_now": see_now,
+        "actions": actions,
+        "next_step": next_step,
+        "anchors": anchors,
+        "retrieval_snippets": retrieval_snippets,
+        "viewport_summary": viewport_summary,
+        "chat_active": chat_active,
+    }
+
+
+def _build_myco_help_clarify_response(context: Dict[str, Any]) -> str:
+    facts = _build_myco_help_fact_bundle(context)
+    base = facts["see_now"]
+    return (
+        f"{base} Я неуверенно расслышала вопрос. "
+        "Повтори коротко одним из форматов: что я вижу, что можно сделать, как закрепить файлы."
+    )
+
+
+def _response_mentions_myco_anchors(text: str, anchors: List[str]) -> bool:
+    low = str(text or "").lower()
+    for anchor in anchors:
+        a = str(anchor or "").strip().lower()
+        if not a:
+            continue
+        if len(a) >= 3 and a in low:
+            return True
+    return False
+
+
+def _should_replace_with_myco_fact_fallback(text: str, context: Dict[str, Any]) -> bool:
+    """
+    MARKER_163B2.MYCO.FACT_GUARD.V1:
+    Replace generic MYCO_HELP answers with deterministic fact-bound fallback.
+    """
+    raw = str(text or "").strip()
+    if not raw:
+        return True
+    facts = _build_myco_help_fact_bundle(context)
+    anchors = list(facts["anchors"])
+    if anchors and not _response_mentions_myco_anchors(raw, anchors):
+        return True
+    banned = (
+        "я готов помочь",
+        "чем могу помочь",
+        "давай разберем",
+        "вот что я могу сказать",
+        "i can help",
+        "let me help",
+    )
+    lowered = raw.lower()
+    return any(b in lowered for b in banned)
+
+
+def _normalize_myco_help_response(text: str) -> str:
+    """
+    Keep MYCO_HELP replies compact and TTS-safe:
+    - remove formatting noise
+    - keep at most 3 short sentences
+    - hard cap by chars to avoid 10-20s speech
+    """
+    raw = str(text or "").strip()
+    if not raw:
+        return "Сейчас вы в рабочем окне ВЕТКА. Выберите файл или узел, и я подскажу следующий шаг."
+    cleaned = " ".join(raw.replace("\n", " ").replace("•", " ").replace("*", " ").split())
+    parts = [p.strip() for p in cleaned.replace("?", ".").replace("!", ".").split(".") if p.strip()]
+    if not parts:
+        parts = [cleaned]
+    short = ". ".join(parts[:3]).strip()
+    if not short.endswith("."):
+        short += "."
+    max_chars = 260
+    if len(short) > max_chars:
+        short = short[:max_chars].rsplit(" ", 1)[0].strip() + "."
+    return short
 
 
 async def _generate_stage_response(
@@ -1588,36 +1849,81 @@ def register_jarvis_handlers(sio):
                         extra_context=session.client_context,
                         session_id=sid,
                     )
+                    context["myco_help_mode"] = bool(JARVIS_MYCO_HELP_MODE)
+
+                    # MARKER_163.P3.VETKA_HELP_RAG_GLUE.V1:
+                    # If MYCO hidden retrieval is empty, augment context with Phase-163 VETKA help corpus.
+                    try:
+                        from src.services.vetka_myco_help_retrieval import retrieve_vetka_myco_help_context
+
+                        existing_hits = (
+                            len(((context or {}).get("hidden_retrieval") or {}).get("items", []))
+                            if isinstance((context or {}).get("hidden_retrieval"), dict)
+                            else 0
+                        )
+                        if existing_hits == 0 and JARVIS_MYCO_HELP_MODE:
+                            help_query = str((context or {}).get("state_key_query") or transcript or "").strip()
+                            help_retrieval = retrieve_vetka_myco_help_context(
+                                query=help_query,
+                                focus=context,
+                                top_k=3,
+                            )
+                            if isinstance(help_retrieval, dict):
+                                items = help_retrieval.get("items")
+                                if isinstance(items, list) and items:
+                                    context["hidden_retrieval"] = help_retrieval
+                    except Exception as e:
+                        logger.debug(f"[JARVIS] VETKA help retrieval skipped: {e}")
 
                     stage_ready = asyncio.Event()
-                    filler_task = asyncio.create_task(
-                        _emit_planb_filler_if_slow(
-                            sio=sio,
-                            sid=sid,
-                            user_id=session.user_id,
-                            partial_input=transcript,
-                            ready_event=stage_ready,
+                    filler_task: Optional[asyncio.Task] = None
+                    if _is_planb_filler_effective():
+                        filler_task = asyncio.create_task(
+                            _emit_planb_filler_if_slow(
+                                sio=sio,
+                                sid=sid,
+                                user_id=session.user_id,
+                                partial_input=transcript,
+                                ready_event=stage_ready,
+                            )
                         )
-                    )
 
                     stage2_text = ""
                     stage3_text = ""
                     stage4_text = ""
                     lang_hint = _language_stage_hint(transcript, context)
+                    myco_help_turn = bool(JARVIS_MYCO_HELP_MODE and _is_myco_help_intent(transcript))
+                    correction_turn = any(
+                        k in (transcript or "").lower()
+                        for k in ("ответ невер", "повтори", "не услышал", "не понял")
+                    )
+                    myco_low_confidence = bool(myco_help_turn and stt_confidence < 0.82)
 
                     if JARVIS_STAGE_MACHINE_ENABLE:
                         stage_hits.append("chunk2_fast")
                         await sio.emit("jarvis_stage", {"stage": "chunk2_fast", "user_id": session.user_id}, to=sid)
                         stage_models["chunk2_fast"] = JARVIS_STAGE2_MODEL
-                        stage2_text = await _generate_stage_response(
-                            llm=llm,
-                            transcript=transcript,
-                            user_id=session.user_id,
-                            context=context,
-                            model_id=JARVIS_STAGE2_MODEL,
-                            stage_hint=f"{lang_hint} Give a quick, concise spoken response. 1-2 short sentences.",
-                            timeout_ms=JARVIS_STAGE2_TIMEOUT_MS,
-                        )
+                        if myco_low_confidence:
+                            stage2_text = _build_myco_help_clarify_response(context)
+                        elif myco_help_turn and correction_turn:
+                            stage2_text = (
+                                "Принято. Повторяю короче: "
+                                + _build_myco_help_fallback_response(context)
+                            )
+                        else:
+                            stage2_text = await _generate_stage_response(
+                                llm=llm,
+                                transcript=transcript,
+                                user_id=session.user_id,
+                                context=context,
+                                model_id=JARVIS_STAGE2_MODEL,
+                                stage_hint=(
+                                    _build_myco_help_stage_hint(context, transcript, lang_hint)
+                                    if myco_help_turn
+                                    else f"{lang_hint} Give a quick, concise spoken response. 1-2 short sentences."
+                                ),
+                                timeout_ms=JARVIS_STAGE2_TIMEOUT_MS,
+                            )
                         if stage2_text:
                             stage_ready.set()
                             await sio.emit(
@@ -1633,7 +1939,7 @@ def register_jarvis_handlers(sio):
                             if first_response_ms is None:
                                 first_response_ms = round((time.perf_counter() - turn_start) * 1000, 1)
 
-                        if _should_run_stage3(transcript, stage2_text):
+                        if (not myco_help_turn) and _should_run_stage3(transcript, stage2_text):
                             stage_hits.append("chunk3_smart")
                             await sio.emit("jarvis_stage", {"stage": "chunk3_smart", "user_id": session.user_id}, to=sid)
                             stage3_candidates = [JARVIS_STAGE3_PRIMARY_MODEL, JARVIS_STAGE3_SECONDARY_MODEL]
@@ -1658,7 +1964,7 @@ def register_jarvis_handlers(sio):
                                 if stage3_text:
                                     break
 
-                        if JARVIS_STAGE4_ENABLE and _is_deep_query(transcript):
+                        if (not myco_help_turn) and JARVIS_STAGE4_ENABLE and _is_deep_query(transcript):
                             stage4_model = JARVIS_STAGE4_MODEL or str(context.get("llm_model") or "").strip()
                             if stage4_model and stage4_model not in {JARVIS_STAGE2_MODEL, JARVIS_STAGE3_PRIMARY_MODEL, JARVIS_STAGE3_SECONDARY_MODEL}:
                                 stage_hits.append("chunk4_deep")
@@ -1694,16 +2000,18 @@ def register_jarvis_handlers(sio):
 
                     stage_ready.set()
                     filler_emitted = False
-                    try:
-                        filler_emitted = await filler_task
-                    except Exception:
-                        filler_emitted = False
+                    if filler_task is not None:
+                        try:
+                            filler_emitted = await filler_task
+                        except Exception:
+                            filler_emitted = False
                     if filler_emitted and first_response_ms is None:
                         first_response_ms = round((time.perf_counter() - turn_start) * 1000, 1)
 
                     llm_duration = time.perf_counter() - llm_start
                     logger.info(f"[JARVIS] Stage response in {llm_duration:.2f}s: {response_text[:120]}...")
-                    _learn_filler_phrase(transcript, response_text)
+                    if _is_planb_filler_effective():
+                        _learn_filler_phrase(transcript, response_text)
                     _remember_last_assistant_language(session.user_id, response_text)
 
                     try:
@@ -1713,6 +2021,55 @@ def register_jarvis_handlers(sio):
                         stm.add_message(f"VETKA: {response_text}", source="agent")
                     except Exception as e:
                         logger.warning(f"[JARVIS] Could not store in STM: {e}")
+
+                    # MARKER_163.P2.RU_LANGUAGE_GUARD.V1:
+                    # For MYCO_HELP turns, keep output language aligned with user speech preference.
+                    if myco_help_turn:
+                        hidden_hits = (
+                            len(((context or {}).get("hidden_retrieval") or {}).get("items", []))
+                            if isinstance((context or {}).get("hidden_retrieval"), dict)
+                            else 0
+                        )
+                        if myco_low_confidence:
+                            response_text = _build_myco_help_clarify_response(context)
+                        elif hidden_hits == 0 or _should_replace_with_myco_fact_fallback(response_text, context):
+                            response_text = _build_myco_help_fallback_response(context)
+                        response_text = _normalize_myco_help_response(response_text)
+
+                    stt_lang = _detect_language_hint(transcript)
+                    response_lang = _detect_language_hint(response_text)
+                    prefers_ru = (
+                        bool((context or {}).get("prefers_russian"))
+                        or str((context or {}).get("preferred_language") or "").strip().lower() == "ru"
+                        or stt_lang == "ru"
+                    )
+                    # MARKER_163.P2.RU_LANGUAGE_GUARD_GLOBAL.V1:
+                    # Keep RU continuity for RU-speaking sessions across all turns.
+                    if prefers_ru and response_lang != "ru":
+                        ru_fix = await _generate_stage_response(
+                            llm=llm,
+                            transcript=(
+                                "Перефразируй ответ строго на русском языке, без добавления новых фактов.\n\n"
+                                f"Исходный ответ:\n{response_text}"
+                            ),
+                            user_id=session.user_id,
+                            context=context,
+                            model_id=JARVIS_STAGE2_MODEL,
+                            stage_hint="Answer strictly in Russian. Keep same meaning. 1-3 short sentences.",
+                            timeout_ms=2200,
+                        )
+                        if ru_fix:
+                            response_text = ru_fix
+                        else:
+                            # MARKER_163.P3.RU_GUARD_FALLBACK_NO_EN_SWITCH.V1:
+                            # Keep RU-only output even if rewrite stage times out/fails.
+                            if myco_help_turn:
+                                response_text = _build_myco_help_fallback_response(context)
+                            else:
+                                response_text = (
+                                    "Извини, переключаюсь на русский. Сформулируй вопрос ещё раз, "
+                                    "и я отвечу короче и точнее."
+                                )
 
                 except Exception as e:
                     logger.error(f"[JARVIS] LLM failed: {e}", exc_info=True)
@@ -1764,7 +2121,9 @@ def register_jarvis_handlers(sio):
                             if not HAS_FAST_TTS:
                                 return b""
                             fast_tts = FastTTSClient(voice=fast_voice)
-                            return await fast_tts.synthesize_auto(response_text)
+                            # MARKER_163.P2.EDGE_FIXED_VOICE_CALL.V1:
+                            # Use fixed configured voice; avoid synthesize_auto() male override.
+                            return await fast_tts.synthesize(response_text)
 
                         async def _espeak_synth() -> bytes:
                             if not HAS_ESPEAK_TTS:
@@ -1830,45 +2189,55 @@ def register_jarvis_handlers(sio):
                             audio_base64 = ""
                             audio_format = 'mp3'
                     else:
-                        tts_provider = "qwen3_tts"
-                        # Quality mode: Qwen3-TTS (~5-6s latency, better voice)
-                        tts_client = Qwen3TTSClient(server_url="http://127.0.0.1:5003")
-                        audio_bytes = await tts_client.synthesize(
-                            text=response_text,
-                            language=tts_language,
-                            speaker="ryan"
-                        )
-                        await tts_client.close()
+                        # MARKER_163.P1.EDGE_LOCK_STRICT.V1:
+                        # Under strict edge lock do not fall back to quality TTS path (voice drift risk).
+                        if JARVIS_VOICE_LOCK_EDGE_RU_FEMALE:
+                            logger.warning("[JARVIS] Edge lock enabled but FastTTS unavailable; skipping quality fallback")
+                            tts_provider = "fast_tts_edge_unavailable"
+                            tts_duration = time.perf_counter() - tts_start
+                            audio_base64 = ""
+                            audio_format = "mp3"
+                            tts_audio_format = "none"
+                        else:
+                            tts_provider = "qwen3_tts"
+                            # Quality mode: Qwen3-TTS (~5-6s latency, better voice)
+                            tts_client = Qwen3TTSClient(server_url="http://127.0.0.1:5003")
+                            audio_bytes = await tts_client.synthesize(
+                                text=response_text,
+                                language=tts_language,
+                                speaker="ryan"
+                            )
+                            await tts_client.close()
 
-                        tts_duration = time.perf_counter() - tts_start
+                            tts_duration = time.perf_counter() - tts_start
 
-                        if audio_bytes:
-                            detected = _detect_audio_format(audio_bytes)
-                            if detected == "wav":
-                                emitted_audio_bytes = audio_bytes
-                                emitted_audio_format = "wav"
-                            elif detected == "mp3":
-                                emitted_audio_bytes = audio_bytes
-                                emitted_audio_format = "mp3"
+                            if audio_bytes:
+                                detected = _detect_audio_format(audio_bytes)
+                                if detected == "wav":
+                                    emitted_audio_bytes = audio_bytes
+                                    emitted_audio_format = "wav"
+                                elif detected == "mp3":
+                                    emitted_audio_bytes = audio_bytes
+                                    emitted_audio_format = "mp3"
+                                else:
+                                    emitted_audio_bytes = pcm_to_wav(audio_bytes, sample_rate=24000)
+                                    emitted_audio_format = "wav"
+
+                                if emitted_audio_bytes and len(emitted_audio_bytes) >= 2048:
+                                    audio_base64 = base64.b64encode(emitted_audio_bytes).decode('utf-8')
+                                    audio_format = emitted_audio_format
+                                    tts_audio_format = emitted_audio_format
+                                    logger.info(
+                                        f"[JARVIS] Qwen3TTS in {tts_duration:.2f}s, raw_fmt={detected}, "
+                                        f"emit_fmt={audio_format}, bytes={len(emitted_audio_bytes)}"
+                                    )
+                                else:
+                                    logger.warning("[JARVIS] Qwen3TTS produced invalid/too small audio, skipping emit")
+                                    audio_base64 = ""
+                                    audio_format = "wav"
                             else:
-                                emitted_audio_bytes = pcm_to_wav(audio_bytes, sample_rate=24000)
-                                emitted_audio_format = "wav"
-
-                            if emitted_audio_bytes and len(emitted_audio_bytes) >= 2048:
-                                audio_base64 = base64.b64encode(emitted_audio_bytes).decode('utf-8')
-                                audio_format = emitted_audio_format
-                                tts_audio_format = emitted_audio_format
-                                logger.info(
-                                    f"[JARVIS] Qwen3TTS in {tts_duration:.2f}s, raw_fmt={detected}, "
-                                    f"emit_fmt={audio_format}, bytes={len(emitted_audio_bytes)}"
-                                )
-                            else:
-                                logger.warning("[JARVIS] Qwen3TTS produced invalid/too small audio, skipping emit")
                                 audio_base64 = ""
                                 audio_format = "wav"
-                        else:
-                            audio_base64 = ""
-                            audio_format = 'wav'
 
                 except Exception as e:
                     logger.error(f"[JARVIS] TTS failed: {e}")
@@ -1952,6 +2321,9 @@ def register_jarvis_handlers(sio):
                 "total_turn_ms": round((time.perf_counter() - turn_start) * 1000, 1),
                 "tts_provider": tts_provider,
                 "voice_profile": JARVIS_VOICE_PROFILE,
+                "myco_help_mode": JARVIS_MYCO_HELP_MODE,
+                "planb_filler_effective": _is_planb_filler_effective(),
+                "voice_lock_edge_ru_female": JARVIS_VOICE_LOCK_EDGE_RU_FEMALE,
                 "tts_engine": "espeak" if "espeak" in str(tts_provider) else ("edge" if "fast_tts" in str(tts_provider) else "qwen3"),
                 "tts_audio_format": tts_audio_format,
                 "tts_duration_ms": tts_duration_ms,

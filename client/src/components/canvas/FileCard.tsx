@@ -38,6 +38,8 @@ import { readFileViaApi } from '../../utils/fileReadClient';
 
 // Global cache for preview content (persists across component instances)
 const previewCache = new Map<string, string>();
+const mediaPreviewAssetCache = new Map<string, { posterUrl: string; animatedUrl: string; durationSec: number }>();
+const mediaPosterImageCache = new Map<string, HTMLImageElement>();
 
 // Phase 112.4: Global texture cache to avoid regeneration when nodes re-enter viewport
 // Key: "id:lodLevel:isSelected:isHighlighted" - only regenerate on meaningful changes
@@ -86,14 +88,20 @@ if (typeof document !== 'undefined' && !document.getElementById('preview-fade-st
  * Determine file category for preview styling
  * @returns 'code' for programming files, 'doc' for documents
  */
-const getFileCategory = (name: string): 'code' | 'doc' => {
+const getFileCategory = (name: string): 'code' | 'doc' | 'media' => {
   const codeExtensions = [
     'py', 'js', 'ts', 'tsx', 'jsx', 'json', 'yaml', 'yml',
     'sh', 'bash', 'css', 'scss', 'less', 'html', 'xml',
     'sql', 'java', 'cpp', 'c', 'h', 'hpp', 'go', 'rs',
     'rb', 'php', 'swift', 'kt', 'scala', 'vue', 'svelte'
   ];
+  const mediaExtensions = [
+    'mp4', 'avi', 'mov', 'mkv', 'webm', 'flv',
+    'mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a',
+    'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff'
+  ];
   const ext = name.split('.').pop()?.toLowerCase() || '';
+  if (mediaExtensions.includes(ext)) return 'media';
   return codeExtensions.includes(ext) ? 'code' : 'doc';
 };
 
@@ -108,7 +116,7 @@ const isPreviewableFile = (name: string): boolean => {
     // Videos
     'mp4', 'avi', 'mov', 'mkv', 'webm', 'flv',
     // Audio
-    'mp3', 'wav', 'ogg', 'flac', 'aac',
+    'mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a',
     // Fonts
     'ttf', 'otf', 'woff', 'woff2', 'eot',
     // Archives
@@ -122,6 +130,11 @@ const isPreviewableFile = (name: string): boolean => {
   ];
   const ext = name.split('.').pop()?.toLowerCase() || '';
   return !binaryExtensions.includes(ext);
+};
+
+const isVideoFile = (name: string): boolean => {
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  return ['mp4', 'avi', 'mov', 'mkv', 'webm', 'flv'].includes(ext);
 };
 
 const toEpochMs = (value: unknown): number | null => {
@@ -178,6 +191,22 @@ const hoverPreviewStyles = {
     fontSize: '13px',
     lineHeight: '1.5',
     padding: '14px',
+  },
+  media: {
+    background: '#0f0f0f',
+    color: '#d4d4d4',
+    fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace",
+    borderRadius: '6px',
+    overflow: 'hidden',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+    border: '1px solid #333',
+    whiteSpace: 'pre-wrap' as const,
+    wordBreak: 'break-word' as const,
+    width: 400,
+    height: 225,
+    fontSize: '12px',
+    lineHeight: '1.4',
+    padding: '12px',
   },
 };
 
@@ -276,6 +305,17 @@ function FileCardComponent({
   const [isHoveredDebounced, setIsHoveredDebounced] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [mediaHoverPreview, setMediaHoverPreview] = useState<{
+    loading: boolean;
+    posterUrl: string;
+    animatedUrl: string;
+    durationSec: number;
+  }>({ loading: false, posterUrl: '', animatedUrl: '', durationSec: 0 });
+  const [mediaCardPreview, setMediaCardPreview] = useState<{
+    posterUrl: string;
+    animatedUrl: string;
+  }>({ posterUrl: '', animatedUrl: '' });
+  const [mediaPosterReadyToken, setMediaPosterReadyToken] = useState(0);
   const [isFavorite, setIsFavorite] = useState<boolean>(Boolean(metadata?.is_favorite));
 
   // Phase 62: LOD state
@@ -540,6 +580,80 @@ function FileCardComponent({
     loadContent();
   }, [shouldLoadContent, path, id, name, type, loadingPreview, previewContent]);
 
+  const shouldLoadMediaHoverPreview = useMemo(() => (
+    HOVER_PREVIEW_ENABLED &&
+    type === 'file' &&
+    isHovered &&
+    getFileCategory(name) === 'media'
+  ), [isHovered, name, type]);
+
+  const shouldLoadMediaCardPreview = useMemo(() => (
+    type === 'file' &&
+    getFileCategory(name) === 'media' &&
+    lodLevel >= 2
+  ), [lodLevel, name, type]);
+
+  useEffect(() => {
+    if (!shouldLoadMediaHoverPreview && !shouldLoadMediaCardPreview) return;
+    const cacheKey = `${path}:${name}`;
+    const cached = mediaPreviewAssetCache.get(cacheKey);
+    if (cached) {
+      const payload = {
+        loading: false,
+        posterUrl: cached.posterUrl,
+        animatedUrl: cached.animatedUrl,
+        durationSec: cached.durationSec,
+      };
+      setMediaHoverPreview(payload);
+      setMediaCardPreview({ posterUrl: cached.posterUrl, animatedUrl: cached.animatedUrl });
+      return;
+    }
+
+    let cancelled = false;
+    const loadMediaPreview = async () => {
+      setMediaHoverPreview((prev) => ({ ...prev, loading: true }));
+      try {
+        const resp = await fetch('/api/artifacts/media/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path, waveform_bins: 64, preview_segments_limit: 16 }),
+        });
+        if (!resp.ok) throw new Error(`preview_http_${resp.status}`);
+        const payload = await resp.json();
+        const posterUrl = String(payload?.preview_assets?.poster_url || '');
+        const animatedUrl = String(payload?.preview_assets?.animated_preview_url_300ms || '');
+        const durationSec = Number(payload?.duration_sec || 0);
+        const normalized = { posterUrl, animatedUrl, durationSec };
+        mediaPreviewAssetCache.set(cacheKey, normalized);
+        if (!cancelled) {
+          setMediaHoverPreview({ loading: false, ...normalized });
+          setMediaCardPreview({ posterUrl, animatedUrl });
+        }
+      } catch {
+        if (!cancelled) {
+          setMediaHoverPreview({ loading: false, posterUrl: '', animatedUrl: '', durationSec: 0 });
+          setMediaCardPreview({ posterUrl: '', animatedUrl: '' });
+        }
+      }
+    };
+    void loadMediaPreview();
+    return () => { cancelled = true; };
+  }, [name, path, shouldLoadMediaCardPreview, shouldLoadMediaHoverPreview]);
+
+  useEffect(() => {
+    if (!mediaCardPreview.posterUrl || typeof window === 'undefined') return;
+    if (mediaPosterImageCache.has(mediaCardPreview.posterUrl)) {
+      setMediaPosterReadyToken((v) => v + 1);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      mediaPosterImageCache.set(mediaCardPreview.posterUrl, img);
+      setMediaPosterReadyToken((v) => v + 1);
+    };
+    img.src = mediaCardPreview.posterUrl;
+  }, [mediaCardPreview.posterUrl]);
+
   // Phase 62: Determine file category for card styling
   // Phase 108.2: Chat nodes get 'chat' category, Artifact nodes get 'artifact' category
   const cardCategory = type === 'chat' ? 'chat' : type === 'artifact' ? 'artifact' : (type === 'file' ? getFileCategory(name) : 'folder');
@@ -551,7 +665,7 @@ function FileCardComponent({
     if (type === 'folder') return [10, 8];
     if (type === 'chat') return [14, 8];  // Phase 108.2: Chat cards horizontal like code
     if (type === 'artifact') return [10, 6];  // Phase 108.2: Artifact cards smaller
-    return cardCategory === 'code' ? [14, 8] : [8, 12];  // horizontal vs vertical
+    return cardCategory === 'code' ? [14, 8] : cardCategory === 'media' ? [16, 9] : [8, 12];
   };
   const cardSize = getCardSize();
 
@@ -833,7 +947,9 @@ function FileCardComponent({
     } else {
       // FILE rendering (unchanged)
       let bgColor: string;
-      if (cardCategory === 'code') {
+      if (cardCategory === 'media') {
+        bgColor = '#0f0f0f';
+      } else if (cardCategory === 'code') {
         bgColor = isSelected ? '#404050' : isHovered ? '#353545' : '#2a2a35';
       } else {
         bgColor = isSelected ? '#e8e8e8' : isHovered ? '#f5f5f5' : '#ffffff';
@@ -866,32 +982,62 @@ function FileCardComponent({
         ctx.fillText('\uD83D\uDCCC', w - 36, 30);
       }
 
-      // Phase 62: Show name on FILES at ALL LOD levels (always visible) - AT TOP
-      const textColor = cardCategory === 'doc' ? '#333333' : '#ffffff';
-      const fontSize = lodLevel >= 3 ? 16 : lodLevel >= 1 ? 14 : 12;
-      ctx.font = `bold ${fontSize}px Arial`;
-      ctx.fillStyle = textColor;
-      const maxLen = isVertical ? 10 : 18;
-      const displayName = name.length > maxLen ? name.slice(0, maxLen - 3) + '...' : name;
-      ctx.fillText(displayName, 8, fontSize + 6);
+      if (cardCategory === 'media') {
+        const posterImg = mediaCardPreview.posterUrl ? mediaPosterImageCache.get(mediaCardPreview.posterUrl) : undefined;
+        if (posterImg) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.roundRect(1, 1, w - 2, h - 2, 7);
+          ctx.clip();
+          ctx.drawImage(posterImg, 1, 1, w - 2, h - 2);
+          ctx.restore();
+        }
+        const playR = Math.max(18, Math.min(34, Math.round(Math.min(w, h) * 0.18)));
+        const cx = w / 2;
+        const cy = h / 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, playR, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0,0,0,0.42)";
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "rgba(255,255,255,0.95)";
+        ctx.stroke();
+        const triW = playR * 0.85;
+        const triH = playR * 1.0;
+        ctx.beginPath();
+        ctx.moveTo(cx - triW * 0.35, cy - triH * 0.55);
+        ctx.lineTo(cx + triW * 0.55, cy);
+        ctx.lineTo(cx - triW * 0.35, cy + triH * 0.55);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(255,255,255,0.99)";
+        ctx.fill();
+      } else {
+        // Phase 62: Show name on FILES at ALL LOD levels (always visible) - AT TOP
+        const textColor = cardCategory === 'doc' ? '#333333' : '#ffffff';
+        const fontSize = lodLevel >= 3 ? 16 : lodLevel >= 1 ? 14 : 12;
+        ctx.font = `bold ${fontSize}px Arial`;
+        ctx.fillStyle = textColor;
+        const maxLen = isVertical ? 10 : 18;
+        const displayName = name.length > maxLen ? name.slice(0, maxLen - 3) + '...' : name;
+        ctx.fillText(displayName, 8, fontSize + 6);
 
-      // Phase 62: Draw preview content INSIDE the card (small text)
-      if (previewContent && lodLevel >= 3) {
-        const previewColor = cardCategory === 'doc' ? '#555555' : '#888888';
-        const previewFontSize = isVertical ? 7 : 8;
-        ctx.font = `${previewFontSize}px monospace`;
-        ctx.fillStyle = previewColor;
+        // Phase 62: Draw preview content INSIDE the card (small text)
+        if (previewContent && lodLevel >= 3) {
+          const previewColor = cardCategory === 'doc' ? '#555555' : '#888888';
+          const previewFontSize = isVertical ? 7 : 8;
+          ctx.font = `${previewFontSize}px monospace`;
+          ctx.fillStyle = previewColor;
 
-        // Split content into lines and draw inside card
-        const lines = previewContent.split('\n').slice(0, isVertical ? 18 : 10);
-        const startY = fontSize + 20;
-        const lineHeight = previewFontSize + 2;
-        const maxChars = isVertical ? 14 : 28;
+          const lines = previewContent.split('\n').slice(0, isVertical ? 18 : 10);
+          const startY = fontSize + 20;
+          const lineHeight = previewFontSize + 2;
+          const maxChars = isVertical ? 14 : 28;
 
-        lines.forEach((line, i) => {
-          const trimmedLine = line.slice(0, maxChars);
-          ctx.fillText(trimmedLine, 6, startY + i * lineHeight);
-        });
+          lines.forEach((line, i) => {
+            const trimmedLine = line.slice(0, maxChars);
+            ctx.fillText(trimmedLine, 6, startY + i * lineHeight);
+          });
+        }
       }
     }
 
@@ -903,7 +1049,7 @@ function FileCardComponent({
 
     return tex;
   // Phase 112.4: Reduced dependencies - hover/drag handled via material, not texture
-  }, [id, name, path, type, isSelected, isHighlighted, isPinned, lodLevel, cardCategory, previewContent, metadata, visual_hints, artifactType, artifactStatus, artifactProgress]);
+  }, [id, name, path, type, isSelected, isHighlighted, isPinned, lodLevel, cardCategory, previewContent, metadata, visual_hints, artifactType, artifactStatus, artifactProgress, mediaCardPreview.posterUrl, mediaPosterReadyToken]);
 
   const handleContextMenu = useCallback(
     (e: any) => {
@@ -1279,6 +1425,39 @@ function FileCardComponent({
                 <div style={{ height: 'calc(100% - 72px)', overflow: 'hidden' }}>
                   {previewContent || '// Empty file'}
                 </div>
+              </div>
+            )}
+          </div>
+        </Html>
+      )}
+
+      {HOVER_PREVIEW_ENABLED && type === 'file' && isHovered && getFileCategory(name) === 'media' && (
+        <Html
+          position={[position[0], position[1] + cardSize[1] / 2 + 3, position[2]]}
+          center
+          style={{ pointerEvents: 'none', animation: 'previewFadeIn 0.2s ease forwards' }}
+          zIndexRange={[120, 0]}
+        >
+          <div style={hoverPreviewStyles.media}>
+            {mediaHoverPreview.loading ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#8a8a8a' }}>
+                Loading media preview...
+              </div>
+            ) : mediaHoverPreview.animatedUrl ? (
+              <img
+                src={mediaHoverPreview.animatedUrl}
+                alt="video preview 300ms"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }}
+              />
+            ) : mediaHoverPreview.posterUrl ? (
+              <img
+                src={mediaHoverPreview.posterUrl}
+                alt="video poster"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 4 }}
+              />
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#8a8a8a' }}>
+                Preview unavailable
               </div>
             )}
           </div>

@@ -144,6 +144,22 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
   hasActiveSlot = false,
   onModelAddedDirect
 }) => {
+  const emitMycoKeyInventory = useCallback((providerRows: ProviderKeys[]) => {
+    const providersList = providerRows
+      .filter((provider) => !provider.isLocal && Array.isArray(provider.keys) && provider.keys.length > 0)
+      .map((provider) => provider.provider.toLowerCase().trim());
+    const totalKeys = providerRows.reduce((sum, provider) => {
+      if (provider.isLocal || !Array.isArray(provider.keys)) return sum;
+      return sum + provider.keys.length;
+    }, 0);
+    window.dispatchEvent(new CustomEvent('vetka-myco-key-inventory-refresh', {
+      detail: {
+        providers: providersList,
+        totalKeys,
+      },
+    }));
+  }, []);
+
   const [models, setModels] = useState<Model[]>([]);
   const [localModels, setLocalModels] = useState<Model[]>([]);
   const [mcpAgents, setMcpAgents] = useState<Model[]>([]); // Phase 80.3: MCP Agents
@@ -437,11 +453,12 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
       const data = await res.json();
       if (data.providers) {
         setProviders(data.providers);
+        emitMycoKeyInventory(data.providers);
       }
     } catch (err) {
       console.error('[ModelDirectory] Failed to fetch keys:', err);
     }
-  }, []);
+  }, [emitMycoKeyInventory]);
 
   // Load keys when drawer opens
   useEffect(() => {

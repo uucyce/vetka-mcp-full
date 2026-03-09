@@ -1,0 +1,1689 @@
+from __future__ import annotations
+
+import asyncio
+import os
+import threading
+from copy import deepcopy
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from typing import Any, Literal
+from uuid import uuid4
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from src.api.routes.artifact_routes import (
+    MediaPreviewRequest,
+    MediaTranscriptNormalizeRequest,
+    media_preview,
+    media_transcript_normalized,
+)
+from src.services.cut_mcp_job_store import get_cut_mcp_job_store
+from src.services.cut_project_store import CutProjectStore, build_cut_fallback_questions, quick_scan_cut_source
+
+
+router = APIRouter(prefix="/api/cut", tags=["CUT"])
+_ACTIVE_JOB_STATES = {"queued", "running", "partial"}
+_SANDBOX_BACKGROUND_LIMIT = 2
+
+
+class CutBootstrapRequest(BaseModel):
+    source_path: str
+    sandbox_root: str
+    project_name: str = ""
+    mode: Literal["create_or_open", "open_existing", "create_new"] = "create_or_open"
+    quick_scan_limit: int = Field(default=5000, ge=1, le=200000)
+    bootstrap_profile: str = "default"
+    use_core_mirror: bool = True
+    create_project_if_missing: bool = True
+
+
+class CutSceneAssemblyRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    timeline_id: str = "main"
+    graph_id: str = "main"
+
+
+class CutTimelinePatchRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    timeline_id: str = "main"
+    author: str = "cut_mcp"
+    ops: list[dict[str, Any]] = Field(default_factory=list, min_length=1)
+
+
+class CutSceneGraphPatchRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    graph_id: str = "main"
+    author: str = "cut_mcp"
+    ops: list[dict[str, Any]] = Field(default_factory=list, min_length=1)
+
+
+class CutWaveformBuildRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    bins: int = Field(default=64, ge=16, le=256)
+    limit: int = Field(default=12, ge=1, le=64)
+
+
+class CutTranscriptNormalizeRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    limit: int = Field(default=6, ge=1, le=32)
+    segments_limit: int = Field(default=128, ge=1, le=1024)
+    max_transcribe_sec: int | None = Field(default=180, ge=5, le=1200)
+
+
+class CutThumbnailBuildRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    limit: int = Field(default=12, ge=1, le=32)
+    waveform_bins: int = Field(default=48, ge=16, le=256)
+    preview_segments_limit: int = Field(default=24, ge=1, le=128)
+
+
+def _cut_state_error(code: str, message: str, *, recoverable: bool = True) -> dict[str, Any]:
+    return {
+        "success": False,
+        "schema_version": "cut_project_state_v1",
+        "error": {
+            "code": code,
+            "message": message,
+            "recoverable": recoverable,
+        },
+    }
+
+
+def _timeline_error(code: str, message: str, *, recoverable: bool = True) -> dict[str, Any]:
+    return {
+        "success": False,
+        "schema_version": "cut_timeline_apply_v1",
+        "error": {
+            "code": code,
+            "message": message,
+            "recoverable": recoverable,
+        },
+    }
+
+
+def _scene_graph_error(code: str, message: str, *, recoverable: bool = True) -> dict[str, Any]:
+    return {
+        "success": False,
+        "schema_version": "cut_scene_graph_apply_v1",
+        "error": {
+            "code": code,
+            "message": message,
+            "recoverable": recoverable,
+        },
+    }
+
+
+def _bootstrap_error(code: str, message: str, *, degraded_reason: str, recoverable: bool = True) -> dict[str, Any]:
+    return {
+        "success": False,
+        "schema_version": "cut_bootstrap_v1",
+        "error": {
+            "code": code,
+            "message": message,
+            "recoverable": recoverable,
+        },
+        "degraded_mode": True,
+        "degraded_reason": degraded_reason,
+    }
+
+
+def _worker_job_error(code: str, message: str, *, existing_job: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "success": False,
+        "schema_version": "cut_mcp_job_v1",
+        "error": {
+            "code": code,
+            "message": message,
+            "recoverable": True,
+        },
+    }
+    if existing_job is not None:
+        payload["job"] = existing_job
+        payload["job_id"] = str(existing_job.get("job_id") or "")
+    return payload
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str) -> dict[str, Any]:
+    source_path = str(project.get("source_path") or "").strip()
+    scan = quick_scan_cut_source(source_path, limit=5000)
+    source_root = source_path
+    lanes: list[dict[str, Any]] = []
+
+    video_lane = {"lane_id": "video_main", "lane_type": "video_main", "clips": []}
+    audio_lane = {"lane_id": "audio_sync", "lane_type": "audio_sync", "clips": []}
+    video_ext = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
+    audio_ext = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
+    clip_counter = 0
+
+    if os.path.isdir(source_root):
+        for path in sorted(os.scandir(source_root), key=lambda e: e.name.lower()):
+            if not path.is_file():
+                continue
+            ext = os.path.splitext(path.name)[1].lower()
+            if ext not in video_ext and ext not in audio_ext:
+                continue
+            clip_counter += 1
+            clip = {
+                "clip_id": f"clip_{clip_counter:04d}",
+                "record_id": f"record_{clip_counter:04d}",
+                "scene_id": "scene_01",
+                "take_id": f"take_{clip_counter:04d}",
+                "start_sec": float(max(0, clip_counter - 1)) * 5.0,
+                "duration_sec": 5.0,
+                "source_path": path.path,
+            }
+            if ext in video_ext:
+                video_lane["clips"].append(clip)
+            else:
+                audio_lane["clips"].append(clip)
+
+    if video_lane["clips"]:
+        lanes.append(video_lane)
+    if audio_lane["clips"]:
+        lanes.append(audio_lane)
+
+    return {
+        "schema_version": "cut_timeline_state_v1",
+        "project_id": str(project.get("project_id") or ""),
+        "timeline_id": str(timeline_id or "main"),
+        "revision": 1,
+        "fps": 25,
+        "lanes": lanes,
+        "selection": {
+            "clip_ids": [video_lane["clips"][0]["clip_id"]] if video_lane["clips"] else [],
+            "scene_ids": ["scene_01"] if lanes else [],
+        },
+        "view": {
+            "zoom": 1.0,
+            "scroll_sec": 0.0,
+            "active_lane_id": lanes[0]["lane_id"] if lanes else "",
+        },
+        "updated_at": _utc_now_iso(),
+        "stats": scan["stats"],
+    }
+
+
+def _build_initial_scene_graph(
+    project: dict[str, Any], timeline_state: dict[str, Any], graph_id: str
+) -> dict[str, Any]:
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    scenes: dict[str, dict[str, Any]] = {}
+    scene_order: list[str] = []
+    take_node_ids: dict[tuple[str, str], str] = {}
+    asset_counter = 0
+    take_counter = 0
+
+    for lane in timeline_state.get("lanes", []):
+        lane_id = str(lane.get("lane_id") or "")
+        lane_type = str(lane.get("lane_type") or "")
+        for clip in lane.get("clips", []):
+            scene_id = str(clip.get("scene_id") or "").strip() or "scene_01"
+            take_id = str(clip.get("take_id") or "").strip() or "take_01"
+            record_id = str(clip.get("record_id") or "").strip() or take_id
+            source_path = str(clip.get("source_path") or "")
+            if scene_id not in scenes:
+                scene_order.append(scene_id)
+                scene_label = scene_id.replace("_", " ").title()
+                scene_node = {
+                    "node_id": scene_id,
+                    "node_type": "scene",
+                    "label": scene_label,
+                    "record_ref": None,
+                    "metadata": {
+                        "timeline_id": str(timeline_state.get("timeline_id") or "main"),
+                        "timeline_lane": lane_id,
+                    },
+                }
+                scenes[scene_id] = scene_node
+                nodes.append(scene_node)
+            take_key = (scene_id, take_id)
+            if take_key not in take_node_ids:
+                take_counter += 1
+                take_node_id = f"take_node_{take_counter:04d}"
+                take_node_ids[take_key] = take_node_id
+                nodes.append(
+                    {
+                        "node_id": take_node_id,
+                        "node_type": "take",
+                        "label": take_id.replace("_", " ").title(),
+                        "record_ref": record_id,
+                        "metadata": {
+                            "scene_id": scene_id,
+                            "take_id": take_id,
+                            "lane_id": lane_id,
+                            "lane_type": lane_type,
+                        },
+                    }
+                )
+                edges.append(
+                    {
+                        "edge_id": f"edge_contains_{scene_id}_{take_counter:04d}",
+                        "edge_type": "contains",
+                        "source": scene_id,
+                        "target": take_node_id,
+                        "weight": 1.0,
+                    }
+                )
+            asset_counter += 1
+            asset_node_id = f"asset_{asset_counter:04d}"
+            asset_label = os.path.basename(source_path) or asset_node_id
+            nodes.append(
+                {
+                    "node_id": asset_node_id,
+                    "node_type": "asset",
+                    "label": asset_label,
+                    "record_ref": record_id,
+                    "metadata": {
+                        "scene_id": scene_id,
+                        "take_id": take_id,
+                        "clip_id": str(clip.get("clip_id") or ""),
+                        "source_path": source_path,
+                        "start_sec": float(clip.get("start_sec") or 0.0),
+                        "duration_sec": float(clip.get("duration_sec") or 0.0),
+                    },
+                }
+            )
+            edges.append(
+                {
+                    "edge_id": f"edge_references_{asset_counter:04d}",
+                    "edge_type": "references",
+                    "source": take_node_ids[take_key],
+                    "target": asset_node_id,
+                    "weight": 1.0,
+                }
+            )
+
+    for index in range(len(scene_order) - 1):
+        edges.append(
+            {
+                "edge_id": f"edge_follows_{index + 1:04d}",
+                "edge_type": "follows",
+                "source": scene_order[index],
+                "target": scene_order[index + 1],
+                "weight": 1.0,
+            }
+        )
+
+    return {
+        "schema_version": "cut_scene_graph_v1",
+        "project_id": str(project.get("project_id") or ""),
+        "graph_id": str(graph_id or "main"),
+        "revision": 1,
+        "nodes": nodes,
+        "edges": edges,
+        "updated_at": _utc_now_iso(),
+    }
+
+
+def _find_lane(timeline_state: dict[str, Any], lane_id: str) -> dict[str, Any] | None:
+    for lane in timeline_state.get("lanes", []):
+        if str(lane.get("lane_id") or "") == str(lane_id):
+            return lane
+    return None
+
+
+def _find_clip(timeline_state: dict[str, Any], clip_id: str) -> tuple[dict[str, Any], dict[str, Any]] | tuple[None, None]:
+    for lane in timeline_state.get("lanes", []):
+        for clip in lane.get("clips", []):
+            if str(clip.get("clip_id") or "") == str(clip_id):
+                return lane, clip
+    return None, None
+
+
+def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    state = deepcopy(timeline_state)
+    applied_ops: list[dict[str, Any]] = []
+
+    for raw_op in ops:
+        op = dict(raw_op or {})
+        op_type = str(op.get("op") or "").strip()
+        if op_type == "set_selection":
+            selection = state.setdefault("selection", {})
+            clip_ids = [str(value) for value in op.get("clip_ids", [])]
+            scene_ids = [str(value) for value in op.get("scene_ids", [])]
+            selection["clip_ids"] = clip_ids
+            selection["scene_ids"] = scene_ids
+            applied_ops.append({"op": op_type, "clip_ids": clip_ids, "scene_ids": scene_ids})
+            continue
+
+        if op_type == "set_view":
+            view = state.setdefault("view", {})
+            applied: dict[str, Any] = {"op": op_type}
+            if "zoom" in op:
+                zoom = float(op["zoom"])
+                if zoom <= 0:
+                    raise ValueError("zoom must be > 0")
+                view["zoom"] = zoom
+                applied["zoom"] = zoom
+            if "scroll_sec" in op:
+                scroll_sec = float(op["scroll_sec"])
+                if scroll_sec < 0:
+                    raise ValueError("scroll_sec must be >= 0")
+                view["scroll_sec"] = scroll_sec
+                applied["scroll_sec"] = scroll_sec
+            if "active_lane_id" in op:
+                active_lane_id = str(op["active_lane_id"])
+                lane = _find_lane(state, active_lane_id)
+                if lane is None:
+                    raise ValueError(f"lane not found: {active_lane_id}")
+                view["active_lane_id"] = active_lane_id
+                applied["active_lane_id"] = active_lane_id
+            applied_ops.append(applied)
+            continue
+
+        if op_type == "move_clip":
+            clip_id = str(op.get("clip_id") or "")
+            target_lane_id = str(op.get("lane_id") or "")
+            start_sec = float(op.get("start_sec"))
+            if start_sec < 0:
+                raise ValueError("start_sec must be >= 0")
+            source_lane, clip = _find_clip(state, clip_id)
+            if source_lane is None or clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            target_lane = _find_lane(state, target_lane_id)
+            if target_lane is None:
+                raise ValueError(f"lane not found: {target_lane_id}")
+            source_lane["clips"] = [entry for entry in source_lane.get("clips", []) if str(entry.get("clip_id") or "") != clip_id]
+            clip["start_sec"] = start_sec
+            target_lane.setdefault("clips", []).append(clip)
+            target_lane["clips"] = sorted(target_lane["clips"], key=lambda item: float(item.get("start_sec") or 0.0))
+            applied_ops.append(
+                {"op": op_type, "clip_id": clip_id, "lane_id": target_lane_id, "start_sec": start_sec}
+            )
+            continue
+
+        if op_type == "trim_clip":
+            clip_id = str(op.get("clip_id") or "")
+            duration_sec = float(op.get("duration_sec"))
+            if duration_sec <= 0:
+                raise ValueError("duration_sec must be > 0")
+            _, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            clip["duration_sec"] = duration_sec
+            applied: dict[str, Any] = {"op": op_type, "clip_id": clip_id, "duration_sec": duration_sec}
+            if "start_sec" in op:
+                start_sec = float(op["start_sec"])
+                if start_sec < 0:
+                    raise ValueError("start_sec must be >= 0")
+                clip["start_sec"] = start_sec
+                applied["start_sec"] = start_sec
+            applied_ops.append(applied)
+            continue
+
+        raise ValueError(f"unsupported timeline op: {op_type or '<empty>'}")
+
+    state["revision"] = int(state.get("revision") or 0) + 1
+    state["updated_at"] = _utc_now_iso()
+    return state, applied_ops
+
+
+def _find_scene_graph_node(scene_graph: dict[str, Any], node_id: str) -> dict[str, Any] | None:
+    for node in scene_graph.get("nodes", []):
+        if str(node.get("node_id") or "") == str(node_id):
+            return node
+    return None
+
+
+def _apply_scene_graph_ops(scene_graph: dict[str, Any], ops: list[dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    graph = deepcopy(scene_graph)
+    applied_ops: list[dict[str, Any]] = []
+
+    for raw_op in ops:
+        op = dict(raw_op or {})
+        op_type = str(op.get("op") or "").strip()
+
+        if op_type == "add_note":
+            label = str(op.get("label") or "").strip()
+            if not label:
+                raise ValueError("label is required for add_note")
+            note_id = str(op.get("node_id") or f"note_{uuid4().hex[:8]}")
+            if _find_scene_graph_node(graph, note_id) is not None:
+                raise ValueError(f"node already exists: {note_id}")
+            metadata = dict(op.get("metadata") or {})
+            text = str(op.get("text") or "").strip()
+            if text:
+                metadata["text"] = text
+            target_node_id = str(op.get("target_node_id") or "").strip()
+            note_node = {
+                "node_id": note_id,
+                "node_type": "note",
+                "label": label,
+                "record_ref": None,
+                "metadata": metadata,
+            }
+            graph.setdefault("nodes", []).append(note_node)
+            applied: dict[str, Any] = {"op": op_type, "node_id": note_id, "label": label}
+            if target_node_id:
+                target_node = _find_scene_graph_node(graph, target_node_id)
+                if target_node is None:
+                    raise ValueError(f"target node not found: {target_node_id}")
+                edge = {
+                    "edge_id": f"edge_note_ref_{uuid4().hex[:8]}",
+                    "edge_type": "references",
+                    "source": note_id,
+                    "target": target_node_id,
+                    "weight": 1.0,
+                }
+                graph.setdefault("edges", []).append(edge)
+                applied["target_node_id"] = target_node_id
+                applied["edge_id"] = edge["edge_id"]
+            applied_ops.append(applied)
+            continue
+
+        if op_type == "add_edge":
+            edge_type = str(op.get("edge_type") or "").strip()
+            if edge_type not in {"contains", "follows", "semantic_match", "alt_take", "references"}:
+                raise ValueError(f"unsupported edge_type: {edge_type or '<empty>'}")
+            source = str(op.get("source") or "").strip()
+            target = str(op.get("target") or "").strip()
+            if not source or not target:
+                raise ValueError("source and target are required for add_edge")
+            if _find_scene_graph_node(graph, source) is None:
+                raise ValueError(f"source node not found: {source}")
+            if _find_scene_graph_node(graph, target) is None:
+                raise ValueError(f"target node not found: {target}")
+            weight = float(op.get("weight", 1.0))
+            if weight < 0 or weight > 1:
+                raise ValueError("weight must be between 0 and 1")
+            edge = {
+                "edge_id": str(op.get("edge_id") or f"edge_{uuid4().hex[:8]}"),
+                "edge_type": edge_type,
+                "source": source,
+                "target": target,
+                "weight": weight,
+            }
+            graph.setdefault("edges", []).append(edge)
+            applied_ops.append({"op": op_type, **edge})
+            continue
+
+        if op_type == "rename_node":
+            node_id = str(op.get("node_id") or "").strip()
+            label = str(op.get("label") or "").strip()
+            if not node_id or not label:
+                raise ValueError("node_id and label are required for rename_node")
+            node = _find_scene_graph_node(graph, node_id)
+            if node is None:
+                raise ValueError(f"node not found: {node_id}")
+            node["label"] = label
+            applied_ops.append({"op": op_type, "node_id": node_id, "label": label})
+            continue
+
+        raise ValueError(f"unsupported scene graph op: {op_type or '<empty>'}")
+
+    graph["revision"] = int(graph.get("revision") or 0) + 1
+    graph["updated_at"] = _utc_now_iso()
+    return graph, applied_ops
+
+
+def _discover_worker_media_files(source_root: str, limit: int) -> list[str]:
+    media_ext = {
+        ".mp4",
+        ".mov",
+        ".m4v",
+        ".avi",
+        ".mkv",
+        ".webm",
+        ".mp3",
+        ".wav",
+        ".m4a",
+        ".aac",
+        ".flac",
+        ".ogg",
+    }
+    if not os.path.isdir(source_root):
+        return []
+    paths: list[str] = []
+    for entry in sorted(os.scandir(source_root), key=lambda item: item.name.lower()):
+        if not entry.is_file():
+            continue
+        if os.path.splitext(entry.name)[1].lower() not in media_ext:
+            continue
+        paths.append(entry.path)
+        if len(paths) >= limit:
+            break
+    return paths
+
+
+def _build_waveform_proxy_from_bytes(path: str, bins: int) -> tuple[list[float], bool, str]:
+    try:
+        with open(path, "rb") as f:
+            data = f.read(8192)
+    except Exception as exc:
+        return ([0.0] * bins, True, f"read_failed:{str(exc)[:48]}")
+    if not data:
+        return ([0.0] * bins, True, "empty_file")
+    chunk_size = max(1, len(data) // bins)
+    values: list[float] = []
+    for index in range(bins):
+        chunk = data[index * chunk_size : (index + 1) * chunk_size]
+        if not chunk:
+            values.append(0.0)
+            continue
+        avg = sum(abs(byte - 128) for byte in chunk) / (len(chunk) * 128.0)
+        values.append(round(max(0.0, min(1.0, avg)), 4))
+    return (values, False, "")
+
+
+def _find_active_duplicate_job(
+    *,
+    job_type: str,
+    project_id: str,
+    sandbox_root: str,
+) -> dict[str, Any] | None:
+    store = get_cut_mcp_job_store()
+    for job in store.list_jobs():
+        if str(job.get("job_type") or "") != str(job_type):
+            continue
+        if str(job.get("state") or "") not in _ACTIVE_JOB_STATES:
+            continue
+        input_payload = job.get("input") or {}
+        if str(input_payload.get("project_id") or "") != str(project_id):
+            continue
+        if str(input_payload.get("sandbox_root") or "") != str(sandbox_root):
+            continue
+        return job
+    return None
+
+
+def _count_active_background_jobs_for_sandbox(sandbox_root: str) -> int:
+    store = get_cut_mcp_job_store()
+    count = 0
+    for job in store.list_jobs():
+        if str(job.get("state") or "") not in _ACTIVE_JOB_STATES:
+            continue
+        if str(job.get("route_mode") or "") != "background":
+            continue
+        input_payload = job.get("input") or {}
+        if str(input_payload.get("sandbox_root") or "") != str(sandbox_root):
+            continue
+        count += 1
+    return count
+
+
+def _collect_project_jobs(*, project_id: str, sandbox_root: str, limit: int = 8) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    jobs: list[dict[str, Any]] = []
+    for job in get_cut_mcp_job_store().list_jobs():
+        input_payload = job.get("input") or {}
+        if str(input_payload.get("project_id") or "") != str(project_id):
+            continue
+        if str(input_payload.get("sandbox_root") or "") != str(sandbox_root):
+            continue
+        jobs.append(job)
+    jobs = sorted(jobs, key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""), reverse=True)
+    active_jobs = [job for job in jobs if str(job.get("state") or "") in _ACTIVE_JOB_STATES]
+    return jobs[:limit], active_jobs
+
+
+def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
+    source_path = str(body.source_path or "").strip()
+    sandbox_root = str(body.sandbox_root or "").strip()
+    if not source_path or not os.path.isabs(source_path) or not os.path.exists(source_path):
+        return _bootstrap_error(
+            "source_path_invalid",
+            "Source path must be an existing absolute path.",
+            degraded_reason="source_path_invalid",
+        )
+    if not sandbox_root or not os.path.isabs(sandbox_root):
+        return _bootstrap_error(
+            "sandbox_root_invalid",
+            "Sandbox root must be an absolute path.",
+            degraded_reason="sandbox_root_invalid",
+        )
+
+    store = CutProjectStore(sandbox_root)
+    layout = store.sandbox_layout_status()
+    if not layout["sandbox_exists"]:
+        return _bootstrap_error(
+            "sandbox_missing",
+            "Sandbox root does not exist.",
+            degraded_reason="sandbox_missing",
+        )
+
+    if layout["missing_dirs"]:
+        return _bootstrap_error(
+            "sandbox_missing_layout",
+            "Sandbox layout is incomplete. Run CUT sandbox bootstrap first.",
+            degraded_reason="sandbox_missing_layout",
+        )
+
+    if body.use_core_mirror and not layout["manifest_exists"]:
+        return _bootstrap_error(
+            "core_mirror_manifest_missing",
+            "CUT core mirror manifest is missing from sandbox config.",
+            degraded_reason="core_mirror_manifest_missing",
+        )
+
+    mode, project = store.resolve_create_or_open(source_path)
+    if body.mode == "open_existing":
+        if project is None:
+            return _bootstrap_error(
+                "project_not_found",
+                "No existing CUT project found for this source and sandbox.",
+                degraded_reason="project_not_found",
+            )
+        bootstrap_mode = "open_existing"
+    elif body.mode == "create_new":
+        if not body.create_project_if_missing:
+            return _bootstrap_error(
+                "project_creation_disabled",
+                "Project creation is disabled for this bootstrap request.",
+                degraded_reason="project_creation_disabled",
+            )
+        project = None
+        bootstrap_mode = "create_new"
+    else:
+        bootstrap_mode = "open_existing" if mode == "open" else "create_new"
+
+    if project is None:
+        if not body.create_project_if_missing:
+            return _bootstrap_error(
+                "project_missing",
+                "CUT project is missing and creation is disabled.",
+                degraded_reason="project_missing",
+            )
+        project = store.create_project(
+            source_path=source_path,
+            display_name=body.project_name,
+            bootstrap_profile=body.bootstrap_profile,
+            use_core_mirror=body.use_core_mirror,
+        )
+
+    scan = quick_scan_cut_source(source_path, limit=body.quick_scan_limit)
+    stats = scan["stats"]
+    signals = scan["signals"]
+    fallback_questions = build_cut_fallback_questions(signals, stats)
+    media_count = int(stats.get("media_files", 0) or 0)
+    estimated_ready_sec = round(max(1.0, min(30.0, 1.2 + media_count * 0.08)), 1)
+
+    degraded_mode = False
+    degraded_reason = ""
+    if body.use_core_mirror and not layout["core_mirror_exists"]:
+        degraded_mode = True
+        degraded_reason = "core_mirror_missing"
+
+    project["state"] = "degraded" if degraded_mode else "ready"
+    project["bootstrap_profile"] = str(body.bootstrap_profile or project.get("bootstrap_profile") or "default")
+    store.save_project(project)
+    store.save_bootstrap_state(
+        {
+            "schema_version": "cut_bootstrap_state_v1",
+            "project_id": str(project.get("project_id") or ""),
+            "last_bootstrap_mode": bootstrap_mode,
+            "last_source_path": str(project.get("source_path") or source_path),
+            "last_stats": stats,
+            "last_degraded_reason": degraded_reason,
+            "last_job_id": "",
+            "updated_at": str(project.get("last_opened_at") or ""),
+        }
+    )
+
+    return {
+        "success": True,
+        "schema_version": "cut_bootstrap_v1",
+        "project": project,
+        "bootstrap": {
+            "mode": bootstrap_mode if body.mode != "create_or_open" else body.mode,
+            "state": "degraded" if degraded_mode else "ready",
+            "use_core_mirror": bool(body.use_core_mirror),
+            "core_mirror_root": store.paths.core_mirror_root,
+            "estimated_ready_sec": estimated_ready_sec,
+        },
+        "stats": stats,
+        "missing_inputs": {
+            "script_or_treatment": not bool(signals.get("has_script_or_treatment")),
+            "montage_sheet": not bool(signals.get("has_montage_sheet")),
+            "transcript_or_timecodes": not bool(signals.get("has_transcript_or_timecodes")),
+        },
+        "fallback_questions": fallback_questions,
+        "phases": [
+            {"id": "discover", "label": "Scope discovery", "status": "done", "progress": 0.33},
+            {"id": "project", "label": "Project bootstrap", "status": "done", "progress": 0.66},
+            {"id": "align", "label": "Timeline bootstrap", "status": "ready", "progress": 1.0},
+        ],
+        "next_actions": [
+            "open_cut_project",
+            "poll_bootstrap_job",
+            "start_scene_assembly",
+        ],
+        "degraded_mode": degraded_mode,
+        "degraded_reason": degraded_reason,
+    }
+
+
+def _run_cut_bootstrap_job(job_id: str, body: CutBootstrapRequest) -> None:
+    store = get_cut_mcp_job_store()
+    store.update_job(job_id, state="running", progress=0.15)
+    try:
+        result = _execute_cut_bootstrap(body)
+        terminal_state = "done" if bool(result.get("success")) else "error"
+        store.update_job(job_id, state=terminal_state, progress=1.0, result=result)
+    except Exception as exc:
+        store.update_job(
+            job_id,
+            state="error",
+            progress=1.0,
+            error={
+                "code": "bootstrap_exception",
+                "message": str(exc),
+                "recoverable": False,
+            },
+        )
+
+
+def _run_cut_scene_assembly_job(job_id: str, body: CutSceneAssemblyRequest) -> None:
+    job_store = get_cut_mcp_job_store()
+    job_store.update_job(job_id, state="running", progress=0.2)
+    try:
+        store = CutProjectStore(body.sandbox_root)
+        project = store.load_project()
+        if project is None or str(project.get("project_id") or "") != str(body.project_id):
+            job_store.update_job(
+                job_id,
+                state="error",
+                progress=1.0,
+                error={
+                    "code": "project_not_found",
+                    "message": "CUT project not found for scene assembly.",
+                    "recoverable": True,
+                },
+            )
+            return
+        timeline_state = _build_initial_timeline_state(project, body.timeline_id)
+        scene_graph = _build_initial_scene_graph(project, timeline_state, body.graph_id)
+        store.save_timeline_state(timeline_state)
+        store.save_scene_graph(scene_graph)
+        job_store.update_job(
+            job_id,
+            state="done",
+            progress=1.0,
+            result={
+                "success": True,
+                "project_id": str(project.get("project_id") or ""),
+                "timeline_state": timeline_state,
+                "scene_graph": scene_graph,
+            },
+        )
+    except Exception as exc:
+        job_store.update_job(
+            job_id,
+            state="error",
+            progress=1.0,
+            error={
+                "code": "scene_assembly_exception",
+                "message": str(exc),
+                "recoverable": False,
+            },
+        )
+
+
+def _run_cut_waveform_build_job(job_id: str, body: CutWaveformBuildRequest) -> None:
+    job_store = get_cut_mcp_job_store()
+    job_store.update_job(job_id, state="running", progress=0.1)
+    try:
+        store = CutProjectStore(body.sandbox_root)
+        project = store.load_project()
+        if project is None or str(project.get("project_id") or "") != str(body.project_id):
+            job_store.update_job(
+                job_id,
+                state="error",
+                progress=1.0,
+                error={
+                    "code": "project_not_found",
+                    "message": "CUT project not found for waveform build.",
+                    "recoverable": True,
+                },
+            )
+            return
+
+        source_root = str(project.get("source_path") or "")
+        media_paths = _discover_worker_media_files(source_root, int(body.limit))
+        bundle_prev = store.load_waveform_bundle()
+        revision = int((bundle_prev or {}).get("revision") or 0) + 1
+        items: list[dict[str, Any]] = []
+        degraded_count = 0
+
+        if not media_paths:
+            bundle = {
+                "schema_version": "cut_waveform_bundle_v1",
+                "project_id": str(project.get("project_id") or ""),
+                "revision": revision,
+                "items": [],
+                "generated_at": _utc_now_iso(),
+            }
+            store.save_waveform_bundle(bundle)
+            job_store.update_job(
+                job_id,
+                state="done",
+                progress=1.0,
+                degraded_mode=True,
+                degraded_reason="no_media_files",
+                result={
+                    "success": True,
+                    "worker_task": {
+                        "schema_version": "cut_worker_task_v1",
+                        "task_id": job_id,
+                        "project_id": str(project.get("project_id") or ""),
+                        "task_type": "waveform_build",
+                        "route_mode": "background",
+                        "priority": "normal",
+                        "status": "done",
+                        "input": {"bins": int(body.bins), "limit": int(body.limit)},
+                        "output_ref": store.paths.waveform_bundle_path,
+                        "degraded_mode": True,
+                        "degraded_reason": "no_media_files",
+                        "created_at": _utc_now_iso(),
+                        "updated_at": _utc_now_iso(),
+                    },
+                    "waveform_bundle": bundle,
+                },
+            )
+            return
+
+        total = len(media_paths)
+        for index, media_path in enumerate(media_paths, start=1):
+            current_job = job_store.get_job(job_id)
+            if current_job and bool(current_job.get("cancel_requested")):
+                job_store.update_job(job_id, state="cancelled", progress=1.0)
+                return
+            bins, degraded_mode, degraded_reason = _build_waveform_proxy_from_bytes(media_path, int(body.bins))
+            if degraded_mode:
+                degraded_count += 1
+            items.append(
+                {
+                    "item_id": f"waveform_{index:04d}",
+                    "source_path": media_path,
+                    "waveform_bins": bins,
+                    "degraded_mode": degraded_mode,
+                    "degraded_reason": degraded_reason,
+                }
+            )
+            progress = 0.1 + (0.8 * index / total)
+            job_store.update_job(job_id, progress=progress)
+
+        bundle = {
+            "schema_version": "cut_waveform_bundle_v1",
+            "project_id": str(project.get("project_id") or ""),
+            "revision": revision,
+            "items": items,
+            "generated_at": _utc_now_iso(),
+        }
+        store.save_waveform_bundle(bundle)
+        degraded_mode = degraded_count > 0
+        degraded_reason = "partial_waveform_proxy" if degraded_mode else ""
+        worker_task = {
+            "schema_version": "cut_worker_task_v1",
+            "task_id": job_id,
+            "project_id": str(project.get("project_id") or ""),
+            "task_type": "waveform_build",
+            "route_mode": "background",
+            "priority": "normal",
+            "status": "done",
+            "input": {"bins": int(body.bins), "limit": int(body.limit)},
+            "output_ref": store.paths.waveform_bundle_path,
+            "degraded_mode": degraded_mode,
+            "degraded_reason": degraded_reason,
+            "created_at": _utc_now_iso(),
+            "updated_at": _utc_now_iso(),
+        }
+        job_store.update_job(
+            job_id,
+            state="done",
+            progress=1.0,
+            degraded_mode=degraded_mode,
+            degraded_reason=degraded_reason,
+            result={
+                "success": True,
+                "worker_task": worker_task,
+                "waveform_bundle": bundle,
+            },
+        )
+    except Exception as exc:
+        job_store.update_job(
+            job_id,
+            state="error",
+            progress=1.0,
+            error={
+                "code": "waveform_build_exception",
+                "message": str(exc),
+                "recoverable": False,
+            },
+        )
+
+
+def _run_cut_transcript_normalize_job(job_id: str, body: CutTranscriptNormalizeRequest) -> None:
+    job_store = get_cut_mcp_job_store()
+    job_store.update_job(job_id, state="running", progress=0.1)
+    try:
+        store = CutProjectStore(body.sandbox_root)
+        project = store.load_project()
+        if project is None or str(project.get("project_id") or "") != str(body.project_id):
+            job_store.update_job(
+                job_id,
+                state="error",
+                progress=1.0,
+                error={
+                    "code": "project_not_found",
+                    "message": "CUT project not found for transcript normalize.",
+                    "recoverable": True,
+                },
+            )
+            return
+
+        source_root = str(project.get("source_path") or "")
+        media_paths = _discover_worker_media_files(source_root, int(body.limit))
+        bundle_prev = store.load_transcript_bundle()
+        revision = int((bundle_prev or {}).get("revision") or 0) + 1
+        items: list[dict[str, Any]] = []
+        degraded_count = 0
+
+        if not media_paths:
+            bundle = {
+                "schema_version": "cut_transcript_bundle_v1",
+                "project_id": str(project.get("project_id") or ""),
+                "revision": revision,
+                "items": [],
+                "generated_at": _utc_now_iso(),
+            }
+            store.save_transcript_bundle(bundle)
+            job_store.update_job(
+                job_id,
+                state="done",
+                progress=1.0,
+                degraded_mode=True,
+                degraded_reason="no_media_files",
+                result={
+                    "success": True,
+                    "worker_task": {
+                        "schema_version": "cut_worker_task_v1",
+                        "task_id": job_id,
+                        "project_id": str(project.get("project_id") or ""),
+                        "task_type": "transcript_normalize",
+                        "route_mode": "background",
+                        "priority": "normal",
+                        "status": "done",
+                        "input": {
+                            "limit": int(body.limit),
+                            "segments_limit": int(body.segments_limit),
+                            "max_transcribe_sec": body.max_transcribe_sec,
+                        },
+                        "output_ref": store.paths.transcript_bundle_path,
+                        "degraded_mode": True,
+                        "degraded_reason": "no_media_files",
+                        "created_at": _utc_now_iso(),
+                        "updated_at": _utc_now_iso(),
+                    },
+                    "transcript_bundle": bundle,
+                },
+            )
+            return
+
+        total = len(media_paths)
+        request_context = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(qdrant_manager=None)))
+        for index, media_path in enumerate(media_paths, start=1):
+            current_job = job_store.get_job(job_id)
+            if current_job and bool(current_job.get("cancel_requested")):
+                job_store.update_job(job_id, state="cancelled", progress=1.0)
+                return
+
+            try:
+                response = asyncio.run(
+                    media_transcript_normalized(
+                        MediaTranscriptNormalizeRequest(
+                            path=media_path,
+                            max_transcribe_sec=body.max_transcribe_sec,
+                            segments_limit=int(body.segments_limit),
+                        ),
+                        request_context,
+                    )
+                )
+                transcript_json = dict(response.get("transcript_normalized_json") or {})
+                degraded_mode = bool(response.get("degraded_mode"))
+                degraded_reason = str(response.get("degraded_reason") or "")
+            except Exception as exc:
+                transcript_json = {
+                    "schema_version": "vetka_transcript_v1",
+                    "path": media_path,
+                    "modality": "",
+                    "language": "",
+                    "duration_sec": 0.0,
+                    "source_engine": "none",
+                    "text": "",
+                    "segments": [],
+                }
+                degraded_mode = True
+                degraded_reason = f"transcript_normalize_failed:{str(exc)[:80]}"
+
+            if degraded_mode:
+                degraded_count += 1
+            items.append(
+                {
+                    "item_id": f"transcript_{index:04d}",
+                    "source_path": media_path,
+                    "transcript_normalized_json": transcript_json,
+                    "degraded_mode": degraded_mode,
+                    "degraded_reason": degraded_reason,
+                }
+            )
+            progress = 0.1 + (0.8 * index / total)
+            job_store.update_job(job_id, progress=progress)
+
+        bundle = {
+            "schema_version": "cut_transcript_bundle_v1",
+            "project_id": str(project.get("project_id") or ""),
+            "revision": revision,
+            "items": items,
+            "generated_at": _utc_now_iso(),
+        }
+        store.save_transcript_bundle(bundle)
+        degraded_mode = degraded_count > 0
+        degraded_reason = "partial_transcript_normalize" if degraded_mode else ""
+        worker_task = {
+            "schema_version": "cut_worker_task_v1",
+            "task_id": job_id,
+            "project_id": str(project.get("project_id") or ""),
+            "task_type": "transcript_normalize",
+            "route_mode": "background",
+            "priority": "normal",
+            "status": "done",
+            "input": {
+                "limit": int(body.limit),
+                "segments_limit": int(body.segments_limit),
+                "max_transcribe_sec": body.max_transcribe_sec,
+            },
+            "output_ref": store.paths.transcript_bundle_path,
+            "degraded_mode": degraded_mode,
+            "degraded_reason": degraded_reason,
+            "created_at": _utc_now_iso(),
+            "updated_at": _utc_now_iso(),
+        }
+        job_store.update_job(
+            job_id,
+            state="done",
+            progress=1.0,
+            degraded_mode=degraded_mode,
+            degraded_reason=degraded_reason,
+            result={
+                "success": True,
+                "worker_task": worker_task,
+                "transcript_bundle": bundle,
+            },
+        )
+    except Exception as exc:
+        job_store.update_job(
+            job_id,
+            state="error",
+            progress=1.0,
+            error={
+                "code": "transcript_normalize_exception",
+                "message": str(exc),
+                "recoverable": False,
+            },
+        )
+
+
+def _run_cut_thumbnail_build_job(job_id: str, body: CutThumbnailBuildRequest) -> None:
+    job_store = get_cut_mcp_job_store()
+    job_store.update_job(job_id, state="running", progress=0.1)
+    try:
+        store = CutProjectStore(body.sandbox_root)
+        project = store.load_project()
+        if project is None or str(project.get("project_id") or "") != str(body.project_id):
+            job_store.update_job(
+                job_id,
+                state="error",
+                progress=1.0,
+                error={
+                    "code": "project_not_found",
+                    "message": "CUT project not found for thumbnail build.",
+                    "recoverable": True,
+                },
+            )
+            return
+
+        source_root = str(project.get("source_path") or "")
+        media_paths = _discover_worker_media_files(source_root, int(body.limit))
+        bundle_prev = store.load_thumbnail_bundle()
+        revision = int((bundle_prev or {}).get("revision") or 0) + 1
+        items: list[dict[str, Any]] = []
+        degraded_count = 0
+
+        if not media_paths:
+            bundle = {
+                "schema_version": "cut_thumbnail_bundle_v1",
+                "project_id": str(project.get("project_id") or ""),
+                "revision": revision,
+                "items": [],
+                "generated_at": _utc_now_iso(),
+            }
+            store.save_thumbnail_bundle(bundle)
+            job_store.update_job(
+                job_id,
+                state="done",
+                progress=1.0,
+                degraded_mode=True,
+                degraded_reason="no_media_files",
+                result={
+                    "success": True,
+                    "worker_task": {
+                        "schema_version": "cut_worker_task_v1",
+                        "task_id": job_id,
+                        "project_id": str(project.get("project_id") or ""),
+                        "task_type": "thumbnail_build",
+                        "route_mode": "background",
+                        "priority": "normal",
+                        "status": "done",
+                        "input": {
+                            "limit": int(body.limit),
+                            "waveform_bins": int(body.waveform_bins),
+                            "preview_segments_limit": int(body.preview_segments_limit),
+                        },
+                        "output_ref": store.paths.thumbnail_bundle_path,
+                        "degraded_mode": True,
+                        "degraded_reason": "no_media_files",
+                        "created_at": _utc_now_iso(),
+                        "updated_at": _utc_now_iso(),
+                    },
+                    "thumbnail_bundle": bundle,
+                },
+            )
+            return
+
+        total = len(media_paths)
+        request_context = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(qdrant_manager=None)))
+        for index, media_path in enumerate(media_paths, start=1):
+            current_job = job_store.get_job(job_id)
+            if current_job and bool(current_job.get("cancel_requested")):
+                job_store.update_job(job_id, state="cancelled", progress=1.0)
+                return
+            try:
+                preview_payload = asyncio.run(
+                    media_preview(
+                        MediaPreviewRequest(
+                            path=media_path,
+                            waveform_bins=int(body.waveform_bins),
+                            preview_segments_limit=int(body.preview_segments_limit),
+                        ),
+                        request_context,
+                    )
+                )
+                preview_assets = preview_payload.get("preview_assets") or {}
+                playback = preview_payload.get("playback") or {}
+                degraded_mode = bool(preview_payload.get("degraded_mode"))
+                degraded_reason = str(preview_payload.get("degraded_reason") or "")
+                item = {
+                    "item_id": f"thumbnail_{index:04d}",
+                    "source_path": media_path,
+                    "modality": str(preview_payload.get("modality") or "video"),
+                    "duration_sec": float(preview_payload.get("duration_sec") or 0.0),
+                    "poster_url": str(preview_assets.get("poster_url") or ""),
+                    "animated_preview_url_300ms": str(preview_assets.get("animated_preview_url_300ms") or ""),
+                    "source_url": str(playback.get("source_url") or ""),
+                    "degraded_mode": degraded_mode,
+                    "degraded_reason": degraded_reason,
+                }
+            except Exception as exc:
+                degraded_mode = True
+                degraded_reason = f"thumbnail_build_failed:{str(exc)[:80]}"
+                item = {
+                    "item_id": f"thumbnail_{index:04d}",
+                    "source_path": media_path,
+                    "modality": "video" if os.path.splitext(media_path)[1].lower() in {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"} else "audio",
+                    "duration_sec": 0.0,
+                    "poster_url": "",
+                    "animated_preview_url_300ms": "",
+                    "source_url": "",
+                    "degraded_mode": True,
+                    "degraded_reason": degraded_reason,
+                }
+            if degraded_mode:
+                degraded_count += 1
+            items.append(item)
+            progress = 0.1 + (0.8 * index / total)
+            job_store.update_job(job_id, progress=progress)
+
+        bundle = {
+            "schema_version": "cut_thumbnail_bundle_v1",
+            "project_id": str(project.get("project_id") or ""),
+            "revision": revision,
+            "items": items,
+            "generated_at": _utc_now_iso(),
+        }
+        store.save_thumbnail_bundle(bundle)
+        degraded_mode = degraded_count > 0
+        degraded_reason = "partial_thumbnail_build" if degraded_mode else ""
+        worker_task = {
+            "schema_version": "cut_worker_task_v1",
+            "task_id": job_id,
+            "project_id": str(project.get("project_id") or ""),
+            "task_type": "thumbnail_build",
+            "route_mode": "background",
+            "priority": "normal",
+            "status": "done",
+            "input": {
+                "limit": int(body.limit),
+                "waveform_bins": int(body.waveform_bins),
+                "preview_segments_limit": int(body.preview_segments_limit),
+            },
+            "output_ref": store.paths.thumbnail_bundle_path,
+            "degraded_mode": degraded_mode,
+            "degraded_reason": degraded_reason,
+            "created_at": _utc_now_iso(),
+            "updated_at": _utc_now_iso(),
+        }
+        job_store.update_job(
+            job_id,
+            state="done",
+            progress=1.0,
+            degraded_mode=degraded_mode,
+            degraded_reason=degraded_reason,
+            result={
+                "success": True,
+                "worker_task": worker_task,
+                "thumbnail_bundle": bundle,
+            },
+        )
+    except Exception as exc:
+        job_store.update_job(
+            job_id,
+            state="error",
+            progress=1.0,
+            error={
+                "code": "thumbnail_build_exception",
+                "message": str(exc),
+                "recoverable": False,
+            },
+        )
+
+
+@router.post("/bootstrap")
+async def cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
+    """
+    MARKER_170.MCP.BOOTSTRAP.FLOW_V1
+    MARKER_170.MCP.BOOTSTRAP.CONTRACT_V1
+    """
+    return _execute_cut_bootstrap(body)
+
+
+@router.post("/bootstrap-async")
+async def cut_bootstrap_async(body: CutBootstrapRequest) -> dict[str, Any]:
+    """
+    MARKER_170.MCP.BOOTSTRAP_ASYNC_V1
+    """
+    store = get_cut_mcp_job_store()
+    job = store.create_job(
+        "bootstrap",
+        {
+            "source_path": str(body.source_path or ""),
+            "sandbox_root": str(body.sandbox_root or ""),
+            "mode": str(body.mode),
+            "bootstrap_profile": str(body.bootstrap_profile or "default"),
+        },
+    )
+    thread = threading.Thread(target=_run_cut_bootstrap_job, args=(str(job["job_id"]), body), daemon=True)
+    thread.start()
+    return {
+        "success": True,
+        "schema_version": "cut_mcp_job_v1",
+        "job_id": str(job["job_id"]),
+        "job": job,
+    }
+
+
+@router.post("/scene-assembly-async")
+async def cut_scene_assembly_async(body: CutSceneAssemblyRequest) -> dict[str, Any]:
+    """
+    MARKER_170.MCP.SCENE_ASSEMBLY_ASYNC_V1
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _bootstrap_error(
+            "project_not_found",
+            "No existing CUT project found for this source and sandbox.",
+            degraded_reason="project_not_found",
+        )
+    if _count_active_background_jobs_for_sandbox(str(body.sandbox_root)) >= _SANDBOX_BACKGROUND_LIMIT:
+        return _worker_job_error(
+            "worker_backpressure_limit",
+            "CUT worker queue is saturated for this sandbox. Wait for active jobs to finish.",
+        )
+    duplicate_job = _find_active_duplicate_job(
+        job_type="scene_assembly",
+        project_id=str(body.project_id),
+        sandbox_root=str(body.sandbox_root),
+    )
+    if duplicate_job is not None:
+        return _worker_job_error(
+            "duplicate_job_active",
+            "A scene assembly job is already active for this CUT project.",
+            existing_job=duplicate_job,
+        )
+    job_store = get_cut_mcp_job_store()
+    job = job_store.create_job(
+        "scene_assembly",
+        {
+            "project_id": str(body.project_id),
+            "sandbox_root": str(body.sandbox_root),
+            "timeline_id": str(body.timeline_id or "main"),
+        },
+    )
+    bootstrap_state = store.load_bootstrap_state()
+    if bootstrap_state is not None:
+        bootstrap_state["last_job_id"] = str(job["job_id"])
+        bootstrap_state["updated_at"] = _utc_now_iso()
+        store.save_bootstrap_state(bootstrap_state)
+    thread = threading.Thread(target=_run_cut_scene_assembly_job, args=(str(job["job_id"]), body), daemon=True)
+    thread.start()
+    return {
+        "success": True,
+        "schema_version": "cut_mcp_job_v1",
+        "job_id": str(job["job_id"]),
+        "job": job,
+    }
+
+
+@router.post("/worker/waveform-build-async")
+async def cut_waveform_build_async(body: CutWaveformBuildRequest) -> dict[str, Any]:
+    """
+    MARKER_170.WORKER.MEDIA_SUBMCP
+    MARKER_170.WORKER.DEGRADED_SAFE
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _worker_job_error("project_not_found", "CUT project not found for waveform worker task.")
+    if _count_active_background_jobs_for_sandbox(str(body.sandbox_root)) >= _SANDBOX_BACKGROUND_LIMIT:
+        return _worker_job_error(
+            "worker_backpressure_limit",
+            "CUT worker queue is saturated for this sandbox. Wait for active jobs to finish.",
+        )
+    duplicate_job = _find_active_duplicate_job(
+        job_type="waveform_build",
+        project_id=str(body.project_id),
+        sandbox_root=str(body.sandbox_root),
+    )
+    if duplicate_job is not None:
+        return _worker_job_error(
+            "duplicate_job_active",
+            "A waveform build job is already active for this CUT project.",
+            existing_job=duplicate_job,
+        )
+    job_store = get_cut_mcp_job_store()
+    job = job_store.create_job(
+        "waveform_build",
+        {
+            "project_id": str(body.project_id),
+            "sandbox_root": str(body.sandbox_root),
+            "bins": int(body.bins),
+            "limit": int(body.limit),
+            "task_type": "waveform_build",
+        },
+    )
+    thread = threading.Thread(target=_run_cut_waveform_build_job, args=(str(job["job_id"]), body), daemon=True)
+    thread.start()
+    return {
+        "success": True,
+        "schema_version": "cut_mcp_job_v1",
+        "job_id": str(job["job_id"]),
+        "job": job,
+    }
+
+
+@router.post("/worker/transcript-normalize-async")
+async def cut_transcript_normalize_async(body: CutTranscriptNormalizeRequest) -> dict[str, Any]:
+    """
+    MARKER_170.WORKER.MEDIA_SUBMCP
+    MARKER_170.WORKER.TRANSCRIPT_NORMALIZE_V1
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _worker_job_error("project_not_found", "CUT project not found for transcript worker task.")
+    if _count_active_background_jobs_for_sandbox(str(body.sandbox_root)) >= _SANDBOX_BACKGROUND_LIMIT:
+        return _worker_job_error(
+            "worker_backpressure_limit",
+            "CUT worker queue is saturated for this sandbox. Wait for active jobs to finish.",
+        )
+    duplicate_job = _find_active_duplicate_job(
+        job_type="transcript_normalize",
+        project_id=str(body.project_id),
+        sandbox_root=str(body.sandbox_root),
+    )
+    if duplicate_job is not None:
+        return _worker_job_error(
+            "duplicate_job_active",
+            "A transcript normalize job is already active for this CUT project.",
+            existing_job=duplicate_job,
+        )
+    job_store = get_cut_mcp_job_store()
+    job = job_store.create_job(
+        "transcript_normalize",
+        {
+            "project_id": str(body.project_id),
+            "sandbox_root": str(body.sandbox_root),
+            "limit": int(body.limit),
+            "segments_limit": int(body.segments_limit),
+            "max_transcribe_sec": body.max_transcribe_sec,
+            "task_type": "transcript_normalize",
+        },
+    )
+    thread = threading.Thread(target=_run_cut_transcript_normalize_job, args=(str(job["job_id"]), body), daemon=True)
+    thread.start()
+    return {
+        "success": True,
+        "schema_version": "cut_mcp_job_v1",
+        "job_id": str(job["job_id"]),
+        "job": job,
+    }
+
+
+@router.post("/worker/thumbnail-build-async")
+async def cut_thumbnail_build_async(body: CutThumbnailBuildRequest) -> dict[str, Any]:
+    """
+    MARKER_170.WORKER.MEDIA_SUBMCP
+    MARKER_170.UI.STORYBOARD_THUMBNAILS_V1
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _worker_job_error("project_not_found", "CUT project not found for thumbnail worker task.")
+    if _count_active_background_jobs_for_sandbox(str(body.sandbox_root)) >= _SANDBOX_BACKGROUND_LIMIT:
+        return _worker_job_error(
+            "worker_backpressure_limit",
+            "CUT worker queue is saturated for this sandbox. Wait for active jobs to finish.",
+        )
+    duplicate_job = _find_active_duplicate_job(
+        job_type="thumbnail_build",
+        project_id=str(body.project_id),
+        sandbox_root=str(body.sandbox_root),
+    )
+    if duplicate_job is not None:
+        return _worker_job_error(
+            "duplicate_job_active",
+            "A thumbnail build job is already active for this CUT project.",
+            existing_job=duplicate_job,
+        )
+    job_store = get_cut_mcp_job_store()
+    job = job_store.create_job(
+        "thumbnail_build",
+        {
+            "project_id": str(body.project_id),
+            "sandbox_root": str(body.sandbox_root),
+            "limit": int(body.limit),
+            "waveform_bins": int(body.waveform_bins),
+            "preview_segments_limit": int(body.preview_segments_limit),
+            "task_type": "thumbnail_build",
+        },
+    )
+    thread = threading.Thread(target=_run_cut_thumbnail_build_job, args=(str(job["job_id"]), body), daemon=True)
+    thread.start()
+    return {
+        "success": True,
+        "schema_version": "cut_mcp_job_v1",
+        "job_id": str(job["job_id"]),
+        "job": job,
+    }
+
+
+@router.get("/job/{job_id}")
+async def cut_job_status(job_id: str) -> dict[str, Any]:
+    """
+    MARKER_170.MCP.JOB_STATUS_V1
+    """
+    store = get_cut_mcp_job_store()
+    job = store.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"CUT job not found: {job_id}")
+    return {"success": True, "job": job}
+
+
+@router.post("/job/{job_id}/cancel")
+async def cut_job_cancel(job_id: str) -> dict[str, Any]:
+    """
+    MARKER_170.WORKER.RETRY_CANCEL
+    """
+    store = get_cut_mcp_job_store()
+    job = store.request_cancel(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"CUT job not found: {job_id}")
+    return {"success": True, "schema_version": "cut_mcp_job_v1", "job_id": job_id, "job": job}
+
+
+@router.get("/project-state")
+async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str, Any]:
+    """
+    MARKER_170.MCP.PROJECT_STATE_V1
+    """
+    store = CutProjectStore(sandbox_root)
+    project = store.load_project()
+    if project is None:
+        return _cut_state_error("project_not_found", "CUT project state is missing for this sandbox.")
+    if project_id and str(project.get("project_id") or "") != str(project_id):
+        return _cut_state_error("project_not_found", "Requested CUT project does not match sandbox state.")
+    bootstrap_state = store.load_bootstrap_state()
+    timeline_state = store.load_timeline_state()
+    scene_graph = store.load_scene_graph()
+    waveform_bundle = store.load_waveform_bundle()
+    transcript_bundle = store.load_transcript_bundle()
+    thumbnail_bundle = store.load_thumbnail_bundle()
+    recent_jobs, active_jobs = _collect_project_jobs(project_id=str(project.get("project_id") or ""), sandbox_root=str(sandbox_root))
+    return {
+        "success": True,
+        "schema_version": "cut_project_state_v1",
+        "project": project,
+        "bootstrap_state": bootstrap_state,
+        "timeline_state": timeline_state,
+        "scene_graph": scene_graph,
+        "waveform_bundle": waveform_bundle,
+        "transcript_bundle": transcript_bundle,
+        "thumbnail_bundle": thumbnail_bundle,
+        "recent_jobs": recent_jobs,
+        "active_jobs": active_jobs,
+        "layout": store.sandbox_layout_status(),
+        "runtime_ready": timeline_state is not None,
+        "graph_ready": scene_graph is not None,
+        "waveform_ready": waveform_bundle is not None,
+        "transcript_ready": transcript_bundle is not None,
+        "thumbnail_ready": thumbnail_bundle is not None,
+    }
+
+
+@router.post("/timeline/apply")
+async def cut_timeline_apply(body: CutTimelinePatchRequest) -> dict[str, Any]:
+    """
+    MARKER_170.MCP.TIMELINE_APPLY_V1
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _timeline_error("project_not_found", "CUT project not found for timeline apply.")
+    timeline_state = store.load_timeline_state()
+    if timeline_state is None:
+        return _timeline_error("timeline_not_ready", "CUT timeline state is missing. Run scene assembly first.")
+    if str(timeline_state.get("timeline_id") or "") != str(body.timeline_id):
+        return _timeline_error("timeline_not_found", "Requested CUT timeline does not match stored timeline state.")
+    try:
+        updated_state, applied_ops = _apply_timeline_ops(timeline_state, body.ops)
+    except ValueError as exc:
+        return _timeline_error("timeline_patch_invalid", str(exc))
+
+    store.save_timeline_state(updated_state)
+    edit_event = {
+        "event_id": f"timeline_edit_{uuid4().hex[:12]}",
+        "project_id": str(project.get("project_id") or ""),
+        "timeline_id": str(updated_state.get("timeline_id") or body.timeline_id),
+        "author": str(body.author or "cut_mcp"),
+        "revision": int(updated_state.get("revision") or 0),
+        "op_count": len(applied_ops),
+        "ops": applied_ops,
+        "created_at": _utc_now_iso(),
+    }
+    store.append_timeline_edit_event(edit_event)
+    return {
+        "success": True,
+        "schema_version": "cut_timeline_apply_v1",
+        "timeline_state": updated_state,
+        "applied_ops": applied_ops,
+        "edit_event": edit_event,
+    }
+
+
+@router.post("/scene-graph/apply")
+async def cut_scene_graph_apply(body: CutSceneGraphPatchRequest) -> dict[str, Any]:
+    """
+    MARKER_170.MCP.SCENE_GRAPH_APPLY_V1
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _scene_graph_error("project_not_found", "CUT project not found for scene graph apply.")
+    scene_graph = store.load_scene_graph()
+    if scene_graph is None:
+        return _scene_graph_error("scene_graph_not_ready", "CUT scene graph is missing. Run scene assembly first.")
+    if str(scene_graph.get("graph_id") or "") != str(body.graph_id):
+        return _scene_graph_error("graph_not_found", "Requested CUT scene graph does not match stored graph state.")
+    try:
+        updated_graph, applied_ops = _apply_scene_graph_ops(scene_graph, body.ops)
+    except ValueError as exc:
+        return _scene_graph_error("scene_graph_patch_invalid", str(exc))
+
+    store.save_scene_graph(updated_graph)
+    edit_event = {
+        "event_id": f"scene_graph_edit_{uuid4().hex[:12]}",
+        "project_id": str(project.get("project_id") or ""),
+        "graph_id": str(updated_graph.get("graph_id") or body.graph_id),
+        "author": str(body.author or "cut_mcp"),
+        "revision": int(updated_graph.get("revision") or 0),
+        "op_count": len(applied_ops),
+        "ops": applied_ops,
+        "created_at": _utc_now_iso(),
+    }
+    store.append_scene_graph_edit_event(edit_event)
+    return {
+        "success": True,
+        "schema_version": "cut_scene_graph_apply_v1",
+        "scene_graph": updated_graph,
+        "applied_ops": applied_ops,
+        "edit_event": edit_event,
+    }
+
+
+@router.get("/bootstrap-job/{job_id}")
+async def cut_bootstrap_job_status(job_id: str) -> dict[str, Any]:
+    """
+    MARKER_170.MCP.BOOTSTRAP_JOB_STATUS_V1
+    """
+    return await cut_job_status(job_id)

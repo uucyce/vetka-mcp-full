@@ -565,6 +565,7 @@ def search_files(
     query: str,
     limit: int = 20,
     mode: str = "keyword",
+    scope_roots: List[str] | None = None,
 ) -> Dict[str, Any]:
     started = time.time()
     q = (query or "").strip()
@@ -573,7 +574,24 @@ def search_files(
 
     safe_limit = max(1, min(int(limit or 20), 100))
     provider = _detect_provider()
-    roots = _allowed_search_roots(provider)
+    if scope_roots:
+        # MARKER_165.MCC.CONTEXT_SEARCH.SCOPE_GUARD.V1
+        # MCC scoped search passes explicit roots to avoid global filesystem scans.
+        roots = []
+        seen = set()
+        for raw in scope_roots:
+            try:
+                p = Path(str(raw)).expanduser().resolve()
+            except Exception:
+                continue
+            key = p.as_posix()
+            if key in seen:
+                continue
+            seen.add(key)
+            if p.exists() and p.is_dir():
+                roots.append(p)
+    else:
+        roots = _allowed_search_roots(provider)
     cwd = Path.cwd().resolve()
     walk_fallback_roots = {cwd.as_posix(), cwd.parent.as_posix()}
 

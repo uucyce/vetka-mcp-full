@@ -100,7 +100,7 @@ export interface ApiTreeResponse {
   error?: string;
 }
 
-export type TreeViewMode = 'directed' | 'knowledge';
+export type TreeViewMode = 'directed' | 'knowledge' | 'media_edit';
 
 export interface KnowledgeGraphResponse {
   status: 'ok' | 'error';

@@ -52,6 +52,8 @@ class PrefetchContext:
     # Selected workflow template
     workflow_id: str = ""                                    # e.g., "quick_fix"
     workflow_name: str = ""
+    workflow_reinforcement: list = field(default_factory=list)
+    workflow_reinforcement_policy: dict = field(default_factory=dict)
     # Selected team preset
     preset: str = "dragon_silver"
     # Summary for injection
@@ -68,6 +70,89 @@ class WorkflowTemplateLibrary:
 
     _templates: dict = {}
     _loaded: bool = False
+    _DEFAULT_FAMILY_POLICY = {
+        "edge_semantics": "strict",
+        "role_contract": "strict",
+        "supports_runtime_edge_edit": True,
+        "allows_structural_cycles": False,
+        "stub": False,
+    }
+
+    @classmethod
+    def _derive_roles(cls, template: dict) -> list:
+        roles: list[str] = []
+        for node in template.get("nodes", []):
+            data = node.get("data", {}) if isinstance(node, dict) else {}
+            role = data.get("role")
+            if isinstance(role, str) and role and role not in roles:
+                roles.append(role)
+        return roles
+
+    @classmethod
+    def _normalize_workflow_family(cls, template_key: str, template: dict) -> None:
+        meta = template.setdefault("metadata", {})
+        family = meta.get("workflow_family", {})
+        if not isinstance(family, dict):
+            family = {}
+
+        template_family = str(meta.get("template_family", "") or "").strip()
+        if not template_family:
+            template_family = "core_library"
+
+        family_name = str(family.get("family", "") or "").strip() or template_family
+        family_version = str(family.get("version", "") or "").strip() or "v1"
+        roles = family.get("roles")
+        if not isinstance(roles, list) or not roles:
+            roles = cls._derive_roles(template)
+            if not roles:
+                roles = ["architect", "coder", "verifier"]
+
+        raw_policy = family.get("policy", {})
+        policy = dict(cls._DEFAULT_FAMILY_POLICY)
+        if isinstance(raw_policy, dict):
+            policy.update(raw_policy)
+        policy["stub"] = bool(policy.get("stub", False))
+
+        family["family"] = family_name
+        family["version"] = family_version
+        family["roles"] = roles
+        family["policy"] = policy
+        family["template_key"] = template_key
+        meta["workflow_family"] = family
+        meta["template_family"] = family_name
+
+    @classmethod
+    def _infer_openhands_reinforcement(
+        cls,
+        task_type: str = "",
+        task_description: str = "",
+        complexity: int = 5,
+    ) -> dict:
+        """
+        MARKER_155F.OPENHANDS.REINFORCEMENT_POLICY.V1:
+        OpenHands is an additive policy overlay, not a default family replacement.
+        """
+        text = " ".join([task_type or "", task_description or ""]).lower()
+        flags: list[str] = []
+        if any(k in text for k in ("approval", "approve", "review", "pr", "pull request")):
+            flags.append("approval_loop")
+        if any(k in text for k in ("sandbox", "terminal", "shell", "command")):
+            flags.append("sandbox_terminal_discipline")
+        if any(k in text for k in ("recover", "rollback", "retry", "fix broken")):
+            flags.append("recovery_loop")
+        if any(k in text for k in ("diff", "patch", "unified diff")):
+            flags.append("diff_first_handoff")
+        if complexity >= 7 and "approval_loop" not in flags:
+            flags.append("approval_loop")
+
+        flags = list(dict.fromkeys(flags))
+        enabled = len(flags) > 0
+        return {
+            "mode": "reinforcement",
+            "enabled": enabled,
+            "source": "openhands_patterns_v1",
+            "flags": flags,
+        }
 
     @classmethod
     def load_all(cls, templates_dir: Optional[str] = None) -> dict:
@@ -82,6 +167,7 @@ class WorkflowTemplateLibrary:
                 with open(filepath, 'r') as f:
                     data = json.load(f)
                 template_key = os.path.splitext(os.path.basename(filepath))[0]
+                cls._normalize_workflow_family(template_key, data)
                 cls._templates[template_key] = data
             except (json.JSONDecodeError, OSError):
                 continue
@@ -111,11 +197,45 @@ class WorkflowTemplateLibrary:
                 "node_count": len(tpl.get("nodes", [])),
                 "task_types": tpl.get("metadata", {}).get("task_types", []),
                 "complexity_range": tpl.get("metadata", {}).get("complexity_range", [1, 10]),
+                "workflow_family": tpl.get("metadata", {}).get("workflow_family", {}),
             })
         return result
 
     @classmethod
-    def select_workflow(cls, task_type: str = "", complexity: int = 5) -> str:
+    def list_families(cls) -> list:
+        """Return normalized workflow families with attached templates."""
+        if not cls._loaded:
+            cls.load_all()
+
+        grouped: dict[str, dict] = {}
+        for key, tpl in cls._templates.items():
+            family = tpl.get("metadata", {}).get("workflow_family", {})
+            if not isinstance(family, dict):
+                continue
+            family_name = str(family.get("family", "") or "core_library")
+            row = grouped.setdefault(
+                family_name,
+                {
+                    "family": family_name,
+                    "version": family.get("version", "v1"),
+                    "roles": list(family.get("roles", [])),
+                    "policy": dict(family.get("policy", {})),
+                    "templates": [],
+                },
+            )
+            row["templates"].append(key)
+            for role in family.get("roles", []):
+                if role not in row["roles"]:
+                    row["roles"].append(role)
+        return sorted(grouped.values(), key=lambda x: str(x.get("family", "")))
+
+    @classmethod
+    def select_workflow(
+        cls,
+        task_type: str = "",
+        complexity: int = 5,
+        task_description: str = "",
+    ) -> str:
         """
         MARKER_153.4D: Workflow Selector — Grandmaster opening selection.
 
@@ -131,6 +251,7 @@ class WorkflowTemplateLibrary:
             cls.load_all()
 
         task_lower = task_type.lower() if task_type else ""
+        desc_lower = task_description.lower() if task_description else ""
 
         # Match by task type
         for key, tpl in cls._templates.items():
@@ -141,6 +262,16 @@ class WorkflowTemplateLibrary:
             if task_lower in tpl_types:
                 if comp_range[0] <= complexity <= comp_range[1]:
                     return key
+
+        # Description-level soft routing for known templates.
+        if "ralph" in desc_lower or "single agent" in desc_lower:
+            return "ralph_loop"
+        if "g3" in desc_lower or "critic + coder" in desc_lower or "critic and coder" in desc_lower:
+            return "g3_critic_coder"
+        if "openhands" in desc_lower or "all hands" in desc_lower:
+            return "openhands_collab_stub"
+        if "pulse" in desc_lower and "music" not in desc_lower:
+            return "pulse_scheduler_stub"
 
         # Fallback heuristics
         if task_lower in ("fix", "patch", "hotfix", "bug") and complexity <= 3:
@@ -156,6 +287,33 @@ class WorkflowTemplateLibrary:
 
         # Default: full BMAD
         return "bmad_default"
+
+    @classmethod
+    def select_workflow_with_policy(
+        cls,
+        task_type: str = "",
+        complexity: int = 5,
+        task_description: str = "",
+    ) -> dict:
+        """
+        MARKER_155F.OPENHANDS.ARCHITECT_SELECTOR_RULES.V1:
+        Select base workflow and attach optional OpenHands reinforcement policy.
+        """
+        base_key = cls.select_workflow(
+            task_type=task_type,
+            complexity=complexity,
+            task_description=task_description,
+        )
+        reinforcement = cls._infer_openhands_reinforcement(
+            task_type=task_type,
+            task_description=task_description,
+            complexity=complexity,
+        )
+        return {
+            "workflow_key": base_key,
+            "reinforcement": reinforcement.get("flags", []),
+            "reinforcement_policy": reinforcement,
+        }
 
 
 class ArchitectPrefetch:
@@ -286,10 +444,17 @@ class ArchitectPrefetch:
         ctx.similar_tasks = cls.prefetch_history(task_description)
 
         # 5. Select workflow
-        workflow_key = WorkflowTemplateLibrary.select_workflow(task_type, complexity)
+        selection = WorkflowTemplateLibrary.select_workflow_with_policy(
+            task_type=task_type,
+            complexity=complexity,
+            task_description=task_description,
+        )
+        workflow_key = selection["workflow_key"]
         ctx.workflow_id = workflow_key
         tpl = WorkflowTemplateLibrary.get_template(workflow_key)
         ctx.workflow_name = tpl.get("name", workflow_key) if tpl else workflow_key
+        ctx.workflow_reinforcement = list(selection.get("reinforcement", []))
+        ctx.workflow_reinforcement_policy = dict(selection.get("reinforcement_policy", {}))
 
         # 6. Select team (simple for now — complexity-based)
         if complexity <= 3:
@@ -305,7 +470,9 @@ class ArchitectPrefetch:
             f"Prefetch: {len(ctx.relevant_files)} files found ({file_list}), "
             f"{len(ctx.markers)} markers, "
             f"{len(ctx.similar_tasks)} similar past tasks. "
-            f"Workflow: {ctx.workflow_name}. Team: {ctx.preset}."
+            f"Workflow: {ctx.workflow_name}. Team: {ctx.preset}. "
+            f"OpenHands reinforcement: "
+            f"{', '.join(ctx.workflow_reinforcement) if ctx.workflow_reinforcement else 'off'}."
         )
 
         return ctx

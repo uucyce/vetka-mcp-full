@@ -2455,6 +2455,15 @@ export function MyceliumCommandCenter() {
     const focusedWindowId = String(miniWindowFocus.windowId || '').toLowerCase();
     const focusedWindowState = String(miniWindowFocus.state || '').toLowerCase();
     const focusedWindowExpanded = focusedWindowState === 'expanded';
+    const activeTaskStatus = String(selectedTaskMeta?.status || '').toLowerCase().trim();
+    const statusHintTail =
+      activeTaskStatus === 'running'
+        ? 'monitor stats/stream'
+        : activeTaskStatus === 'done'
+          ? 'review artifacts and proceed'
+          : activeTaskStatus === 'failed'
+            ? 'inspect failure and retry'
+            : 'start/retry from Tasks';
     let hint = 'select node • create task • run workflow';
     // MARKER_164.P4.WINDOW_FOCUS_TOP_HINT_PRIORITY.V1:
     // Focused mini-window guidance has priority over generic drill hints.
@@ -2481,13 +2490,15 @@ export function MyceliumCommandCenter() {
     } else if (isTaskWorkflowExpanded) {
       // MARKER_162.P4.P2.MYCO.TOP_HINT_POST_DRILL_PRIORITY.V1:
       // After workflow drill expansion, never repeat pre-drill Enter prompt.
+      // MARKER_164.P5.P1.MYCO.TOP_HINT_STATUS_AWARE_WORKFLOW_ACTIONS.V1:
+      // Workflow-open top hint branches by active task status for clearer next step.
       hint = workflowAgentFocused
         ? roleKey
-          ? `workflow open: ${roleKey} selected • inspect Context/model • run/retry from Tasks`
-          : 'workflow open: inspect Context • tune model/prompt • run/retry from Tasks'
+          ? `workflow open: ${roleKey} selected • inspect Context/model • ${statusHintTail}`
+          : `workflow open: inspect Context • tune model/prompt • ${statusHintTail}`
         : workflowFamilyHint
-          ? `workflow opened: select agent node • ${workflowFamilyHint} • run/retry from Tasks`
-          : 'workflow opened: select agent node • open Context • run/retry from Tasks';
+          ? `workflow opened: select agent node • ${workflowFamilyHint} • ${statusHintTail}`
+          : `workflow opened: select agent node • open Context • ${statusHintTail}`;
     } else if (isNodeUnfoldExpanded) {
       // MARKER_162.P4.P2.MYCO.TOP_HINT_NODE_UNFOLD_ACTIONS.V1:
       // Unfolded roadmap module should get unfold/navigation actions.
@@ -2507,6 +2518,8 @@ export function MyceliumCommandCenter() {
       // Top helper hint has priority over generic context title while node is selected.
       hint = 'Press Enter to drill into workflow';
     } else if (nodeLabel && navLevel !== 'roadmap') {
+      // MARKER_164.P4.P6.TOP_HINT_NO_LABEL_DUPLICATION.V1:
+      // Avoid noisy filename echo in top hint; actionable guidance only.
       hint = 'node selected: open Context for details and next actions';
     } else if (selectedTaskId) {
       hint = 'task linked: open workflow or ask architect for next step';
@@ -3841,6 +3854,8 @@ export function MyceliumCommandCenter() {
                 {mycoTopHintShouldAnimate ? (
                   <span
                     style={{
+                      // MARKER_164.P4.P6.TOP_HINT_REAL_MARQUEE_PORT.V1:
+                      // Port VETKA marquee behavior: duplicated text lane + translateX(-50%).
                       display: 'inline-flex',
                       alignItems: 'center',
                       whiteSpace: 'nowrap',

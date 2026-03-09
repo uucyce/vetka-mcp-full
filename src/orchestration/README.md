@@ -13,6 +13,13 @@ Complex agent systems need more than model calls. They need:
 
 `vetka-orchestration-core` is this control plane.
 
+## Canonical Terms
+
+- VETKA: Visual Enhanced Tree Knowledge Architecture.
+- MYCELIUM: Multi-agent Yielding Cognitive Execution Layer for Intelligent Unified Management.
+- ELISYA: Efficient Language-Independent Synchronization of Yielding Agents.
+- ELISION: Efficient Language-Independent Symbolic Inversion of Names.
+
 ## Core Capabilities
 
 - Workflow orchestration:

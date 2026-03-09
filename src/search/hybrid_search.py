@@ -97,6 +97,37 @@ def _is_lexical_filename_query(query: str) -> bool:
     return len(words) == 1
 
 
+def _query_lexical_variants(query: str) -> List[str]:
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+    variants = {q}
+    if q.endswith("s") and len(q) > 3:
+        variants.add(q[:-1])
+    else:
+        variants.add(f"{q}s")
+    return [v for v in variants if v]
+
+
+def _path_name_lexical_bonus(query: str, row: Dict[str, Any]) -> float:
+    variants = _query_lexical_variants(query)
+    if not variants:
+        return 0.0
+    path = str(row.get("path") or "").lower()
+    name = str(row.get("name") or os.path.basename(path)).lower()
+    best = 0.0
+    for token in variants:
+        if name == token:
+            best = max(best, 0.2)
+        elif name.startswith(token):
+            best = max(best, 0.12)
+        elif token in name:
+            best = max(best, 0.08)
+        elif token in path:
+            best = max(best, 0.04)
+    return best
+
+
 class HybridSearchService:
     """
     Unified hybrid search across all backends.
@@ -281,6 +312,20 @@ class HybridSearchService:
             # Phase 68.2: Handle filename mode separately (no fusion needed)
             if mode == "filename":
                 filename_results = await self._filename_search(query, limit, collection)
+                if not filename_results:
+                    # Keep vetka/FILE useful when dedicated filename list is temporarily sparse.
+                    keyword_fallback = await self._keyword_search(query, limit * 3, collection)
+                    if keyword_fallback:
+                        variants = _query_lexical_variants(query)
+                        filtered = []
+                        for row in keyword_fallback:
+                            hay = f"{row.get('name', '')} {row.get('path', '')}".lower()
+                            if any(v in hay for v in variants):
+                                nr = dict(row)
+                                nr["source"] = "filename_fallback"
+                                nr["score"] = max(float(nr.get("score", 0.0)), 0.55)
+                                filtered.append(nr)
+                        filename_results = filtered[:limit]
                 elapsed_ms = (time.time() - start_time) * 1000
 
                 # Normalize results
@@ -410,6 +455,25 @@ class HybridSearchService:
                     # FIX_95.1_MODE_NONE: Preserve requested mode instead of "none"
                     # This allows frontend to show correct mode even with 0 results
                     actual_mode = mode  # Was: "none" - bug caused confusion in UI
+
+            # For lexical queries, prioritize direct name/path hits in fused list.
+            if mode in ("hybrid", "keyword") and _is_lexical_filename_query(query) and fused:
+                boosted = []
+                for row in fused:
+                    nr = dict(row)
+                    base = float(nr.get("rrf_score") or nr.get("score") or 0.0)
+                    bonus = _path_name_lexical_bonus(query, nr)
+                    if bonus > 0:
+                        nr["lexical_bonus"] = round(bonus, 6)
+                        nr["score"] = base + bonus
+                        if "rrf_score" in nr:
+                            nr["rrf_score"] = round(float(nr.get("rrf_score", 0.0)) + bonus, 6)
+                    boosted.append(nr)
+                boosted.sort(
+                    key=lambda x: float(x.get("rrf_score") or x.get("score") or 0.0),
+                    reverse=True,
+                )
+                fused = boosted[:limit]
 
             # Optional JEPA reorder for descriptive queries.
             if query_intent == "descriptive":

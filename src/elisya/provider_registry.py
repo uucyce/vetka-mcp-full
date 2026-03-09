@@ -1797,8 +1797,8 @@ async def call_model_v2_stream(
         Token strings as they arrive
     """
     from collections import deque
+    from contextlib import suppress
     import time as time_module
-    import httpx
 
     registry = get_registry()
     # MARKER_152.CLEANUP: Removed stream_event_cb telemetry — was noise in chat
@@ -1836,6 +1836,7 @@ async def call_model_v2_stream(
 
     print(f"[STREAM_V2] Starting stream: model={model}, provider={provider.value}")
 
+    token_source = None
     try:
         # Select stream source based on provider
         if provider == Provider.OLLAMA:
@@ -1871,7 +1872,12 @@ async def call_model_v2_stream(
             return
 
         # Unified token loop with guards
+        first_token_seen = False
         async for token in token_source:
+            if not first_token_seen:
+                first_token_seen = True
+                ttft_ms = (time_module.time() - stream_start) * 1000.0
+                print(f"[STREAM_V2] first token in {ttft_ms:.1f}ms")
             token_history.append(token)
             stop_msg = _check_stream_guards()
             if stop_msg:
@@ -1883,6 +1889,10 @@ async def call_model_v2_stream(
         err_detail = str(e) or type(e).__name__
         print(f"[STREAM_V2 ERROR] {type(e).__name__}: {err_detail}")
         yield f"\n[STREAM ERROR]: {type(e).__name__}: {err_detail}"
+    finally:
+        if token_source is not None:
+            with suppress(Exception):
+                await token_source.aclose()
 
 
 def _detect_loop(token_history: deque, threshold: float) -> bool:
@@ -2027,8 +2037,8 @@ async def _stream_ollama(
     """
     Phase 93.2: Ollama streaming implementation.
     """
-    import ollama
-    import asyncio
+    import json
+    import httpx
 
     kwargs.pop("stream_event_cb", None)  # MARKER_152.CLEANUP
 
@@ -2057,29 +2067,43 @@ async def _stream_ollama(
         "model": clean_model,
         "messages": messages,
         "stream": True,
-        "options": {"temperature": kwargs.get("temperature", 0.7)},
+        "options": {
+            "temperature": kwargs.get("temperature", 0.7),
+            "num_predict": max(16, int(kwargs.get("max_tokens", 256) or 256)),
+        },
     }
-
-    loop = asyncio.get_event_loop()
+    if "think" in kwargs and kwargs.get("think") is not None:
+        params["think"] = bool(kwargs.get("think"))
 
     try:
-        # ollama.chat with stream=True returns generator
-        def stream_sync():
-            return ollama.chat(**params)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0), trust_env=False) as client:
+            async with client.stream(
+                "POST",
+                "http://127.0.0.1:11434/api/chat",
+                json=params,
+            ) as response:
+                if response.status_code != 200:
+                    body = await response.aread()
+                    detail = body.decode("utf-8", errors="ignore")[:400]
+                    raise RuntimeError(f"ollama /api/chat status {response.status_code}: {detail}")
 
-        response_gen = await loop.run_in_executor(None, stream_sync)
-
-        for chunk in response_gen:
-            if chunk and "message" in chunk:
-                content = chunk["message"].get("content", "")
-                if content:
-                    yield content
-            if chunk.get("done"):
-                print(f"[STREAM_OLLAMA] Complete")
-                break
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if chunk and "message" in chunk:
+                        content = (chunk.get("message") or {}).get("content", "")
+                        if content:
+                            yield content
+                    if chunk.get("done"):
+                        print("[STREAM_OLLAMA] Complete")
+                        break
 
     except Exception as e:
-        print(f"[STREAM_OLLAMA ERROR] {e}")
+        print(f"[STREAM_OLLAMA ERROR] {type(e).__name__}: {e!r}")
         yield f"\n[STREAM ERROR]: {str(e)}"
 
 

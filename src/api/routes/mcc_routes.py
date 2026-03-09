@@ -1022,6 +1022,16 @@ class WorkflowBindingRequest(BaseModel):
     selection_origin: str = "user-selected"
 
 
+class WorkflowMycoHintRequest(BaseModel):
+    workflow_bank: str = "core"
+    workflow_id: str = ""
+    workflow_family: str = ""
+    role: str = ""
+    task_label: str = ""
+    scope: str = "task"
+    focus: Dict[str, Any] = {}
+
+
 class PredictGraphRequest(BaseModel):
     scope_path: str = ""
     max_nodes: int = 600
@@ -1149,6 +1159,58 @@ class DagAutoCompareRequest(BaseModel):
     variants: List[DagCompareVariantRequest] = []
     persist_versions: bool = True
     set_primary_best: bool = False
+
+
+def _workflow_required_tools(workflow_family: str, workflow_bank: str) -> List[str]:
+    family = str(workflow_family or "").strip().lower()
+    bank = str(workflow_bank or "").strip().lower()
+    if bank == "n8n":
+        return ["workflow bank", "tasks", "context"]
+    if bank == "comfyui":
+        return ["workflow bank", "context", "artifacts"]
+    if family in {"mycelium_pipeline", "bmad_default"}:
+        return ["tasks", "context", "stats", "balance"]
+    if family == "ralph_loop":
+        return ["context", "tasks", "stats"]
+    if family == "g3_critic_coder":
+        return ["context", "tasks", "stats", "chat"]
+    return ["context", "tasks", "stats"]
+
+
+def _role_required_tools(role: str) -> List[str]:
+    r = str(role or "").strip().lower()
+    if r == "architect":
+        return ["context", "tasks", "stats"]
+    if r == "coder":
+        return ["context", "tasks", "artifacts"]
+    if r in {"verifier", "eval"}:
+        return ["context", "stats", "tasks"]
+    if r in {"researcher", "scout"}:
+        return ["context", "search", "tasks"]
+    return []
+
+
+def _project_context_tools(focus: Dict[str, Any]) -> List[str]:
+    graph_kind = str((focus or {}).get("graphKind") or "").strip().lower()
+    nav_level = str((focus or {}).get("navLevel") or "").strip().lower()
+    tools: List[str] = []
+    if nav_level == "workflow":
+        tools.append("chat")
+    if graph_kind in {"project_task", "task_workflow"}:
+        tools.append("stream")
+    return tools
+
+
+def _dedupe_keep_order(items: List[str]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for item in items:
+        value = str(item or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
 
 
 def _with_trm_contract_meta(result: Dict[str, Any], trm_profile: str, trm_policy: Dict[str, Any]) -> Dict[str, Any]:
@@ -1732,6 +1794,70 @@ async def myco_context(req: MycoContextRequest):
         return {"success": True, "payload": payload}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"MYCO context build failed: {e}")
+
+
+@router.post("/workflow/myco-hint")
+async def workflow_myco_hint(req: WorkflowMycoHintRequest):
+    """
+    MARKER_167.STATS_WORKFLOW.MYCO_HINTS.V1
+    MARKER_167.STATS_WORKFLOW.MYCO_TOOL_PRIORITY.V1
+    Workflow-aware MYCO hint contract for Stats panel.
+    """
+    from src.services.myco_memory_bridge import retrieve_myco_hidden_context
+
+    workflow_bank = str(req.workflow_bank or "core").strip() or "core"
+    workflow_family = str(req.workflow_family or req.workflow_id or "").strip()
+    role = str(req.role or "").strip().lower()
+    task_label = str(req.task_label or "active task").strip()
+    focus = dict(req.focus or {})
+
+    workflow_tools = _workflow_required_tools(workflow_family, workflow_bank)
+    role_tools = _role_required_tools(role)
+    project_tools = _project_context_tools(focus)
+    favorite_tools = ["tasks", "context"]
+
+    tool_priority = {
+        "workflow_required": _dedupe_keep_order(workflow_tools),
+        "role_required": _dedupe_keep_order(role_tools),
+        "project_context": _dedupe_keep_order(project_tools),
+        "favorites": _dedupe_keep_order(favorite_tools),
+    }
+    ordered_tools = _dedupe_keep_order(
+        tool_priority["workflow_required"]
+        + tool_priority["role_required"]
+        + tool_priority["project_context"]
+        + tool_priority["favorites"]
+    )
+
+    query_parts = [workflow_family or req.workflow_id, role, task_label]
+    retrieval = retrieve_myco_hidden_context(
+        query=" ".join([part for part in query_parts if str(part or "").strip()]),
+        focus=focus,
+        top_k=2,
+    )
+
+    lead_tools = " > ".join(ordered_tools[:3]) if ordered_tools else "context > tasks"
+    hint = (
+        f"MYCO: for {workflow_family or req.workflow_id or 'workflow'} on {task_label}, "
+        f"start with {lead_tools}"
+    )
+    if role:
+        hint += f" · role:{role}"
+
+    return {
+        "success": True,
+        "hint": hint,
+        "tool_priority": tool_priority,
+        "ordered_tools": ordered_tools,
+        "retrieval": retrieval,
+        "diagnostics": {
+            "workflow_family": workflow_family,
+            "workflow_bank": workflow_bank,
+            "role": role,
+            "retrieval_method": str(retrieval.get("method") or "none"),
+            "retrieval_count": len(list(retrieval.get("items") or [])),
+        },
+    }
 
 
 # ──────────────────────────────────────────────────────────────

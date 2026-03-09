@@ -14,7 +14,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useStore } from '../store/useStore';
 import { buildViewportContext } from '../utils/viewport';
-import { BACKEND_ORIGIN } from '../config/api.config';
+import { getSocketUrl } from '../config/api.config';
 
 // Jarvis state machine
 type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -37,6 +37,7 @@ interface UseJarvisReturn {
 const SAMPLE_RATE = 16000; // 16kHz for Whisper
 const CHUNK_SIZE = 4096;
 const SMOOTHING_FACTOR = 0.3; // For audio level smoothing
+const ENABLE_BROWSER_STT_FALLBACK = String(import.meta.env.VITE_JARVIS_BROWSER_STT_FALLBACK || '').toLowerCase() === 'true';
 
 type SpeechRecognitionLike = {
   lang: string;
@@ -70,6 +71,7 @@ export const useJarvis = (): UseJarvisReturn => {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const monitorGainRef = useRef<GainNode | null>(null);
   const smoothedLevelRef = useRef<number>(0);
   const playbackContextRef = useRef<AudioContext | null>(null);
   const conversationActiveRef = useRef<boolean>(false);  // Track if in conversation mode
@@ -116,13 +118,36 @@ export const useJarvis = (): UseJarvisReturn => {
         timestamp: m.timestamp,
       }));
 
+    const compactViewport = (() => {
+      if (!viewportContext) return undefined;
+      const compactNode = (n: any) => ({
+        id: n?.id,
+        name: n?.name,
+        path: n?.path,
+        type: n?.type,
+        lod_level: n?.lod_level,
+        distance_to_camera: n?.distance_to_camera,
+        is_center: n?.is_center,
+        is_pinned: n?.is_pinned,
+      });
+      return {
+        zoom_level: viewportContext.zoom_level,
+        total_visible: viewportContext.total_visible,
+        total_pinned: viewportContext.total_pinned,
+        camera_position: viewportContext.camera_position,
+        camera_target: viewportContext.camera_target,
+        pinned_nodes: (viewportContext.pinned_nodes || []).slice(0, 8).map(compactNode),
+        viewport_nodes: (viewportContext.viewport_nodes || []).slice(0, 24).map(compactNode),
+      };
+    })();
+
     return {
       pinned_files: pinnedFiles.length > 0 ? pinnedFiles : undefined,
-      viewport_context: viewportContext,
+      viewport_context: compactViewport,
       open_chat_context: state.currentChatId
         ? {
             chat_id: state.currentChatId,
-            messages: openChatMessages,
+            messages: openChatMessages.slice(-6),
           }
         : undefined,
       cam_context: {
@@ -134,7 +159,7 @@ export const useJarvis = (): UseJarvisReturn => {
 
   // Initialize socket connection
   useEffect(() => {
-    const socket = io(import.meta.env.VITE_API_URL || BACKEND_ORIGIN, {
+    const socket = io(getSocketUrl(), {
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 1000,
@@ -264,6 +289,9 @@ export const useJarvis = (): UseJarvisReturn => {
       // Create script processor for audio chunks
       const processor = audioContext.createScriptProcessor(CHUNK_SIZE, 1, 1);
       processorRef.current = processor;
+      const monitorGain = audioContext.createGain();
+      monitorGain.gain.value = 0; // hard-mute local mic monitoring to avoid feedback/noise
+      monitorGainRef.current = monitorGain;
 
       processor.onaudioprocess = (e: AudioProcessingEvent) => {
         const inputData = e.inputBuffer.getChannelData(0);
@@ -285,7 +313,8 @@ export const useJarvis = (): UseJarvisReturn => {
 
       // Connect audio nodes
       source.connect(processor);
-      processor.connect(audioContext.destination);
+      processor.connect(monitorGain);
+      monitorGain.connect(audioContext.destination);
 
       // Emit start event with user_id
       if (socketRef.current?.connected) {
@@ -296,9 +325,9 @@ export const useJarvis = (): UseJarvisReturn => {
         });
       }
 
-      // Browser STT fallback (used when backend STT model is unavailable)
+      // Browser STT fallback can hallucinate on noise, keep OFF by default.
       const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SR) {
+      if (ENABLE_BROWSER_STT_FALLBACK && SR) {
         const recognition: SpeechRecognitionLike = new SR();
         recognition.lang = 'ru-RU';
         recognition.interimResults = true;
@@ -442,6 +471,10 @@ export const useJarvis = (): UseJarvisReturn => {
       processorRef.current.disconnect();
       processorRef.current.onaudioprocess = null;
       processorRef.current = null;
+    }
+    if (monitorGainRef.current) {
+      monitorGainRef.current.disconnect();
+      monitorGainRef.current = null;
     }
 
     // Stop audio source

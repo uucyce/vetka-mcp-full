@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+import re
 
 from src.memory.engram_user_memory import get_engram_user_memory
 
@@ -36,6 +37,7 @@ HIDDEN_SOURCE_PATHS = (
     "docs/161_ph_MCC_TRM/MYCO_AGENT_INSTRUCTIONS_GUIDE_V1_2026-03-06.md",
     "docs/besedii_google_drive_docs/VETKA_MEMORY_DAG_ABBREVIATIONS_2026-02-22.md",
 )
+GLOSSARY_PATH = PROJECT_ROOT / "docs" / "besedii_google_drive_docs" / "VETKA_MEMORY_DAG_ABBREVIATIONS_2026-02-22.md"
 
 
 @dataclass
@@ -130,6 +132,238 @@ def _read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8", errors="ignore")
     except Exception:
         return ""
+
+
+def _extract_glossary_aliases() -> Dict[str, List[str]]:
+    """
+    MARKER_162.P3.P4.MYCO.GLOSSARY_ALIAS_EXPANSION.V1
+    Build bounded alias map from canonical memory glossary.
+    """
+    raw = _read_text(GLOSSARY_PATH)
+    aliases: Dict[str, List[str]] = {}
+    if not raw.strip():
+        return aliases
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line.startswith("- ") or ":" not in line:
+            continue
+        left, right = line[2:].split(":", 1)
+        key = left.strip()
+        val = right.strip()
+        if not key:
+            continue
+        norm_key = key.lower()
+        bucket = aliases.setdefault(norm_key, [])
+        long_name = val.split("(")[0].strip()
+        if long_name and long_name.lower() != norm_key:
+            bucket.append(long_name)
+        if val:
+            # Keep one short phrase variant for lexical fallback.
+            bucket.append(val[:96].strip())
+    for k, vals in list(aliases.items()):
+        dedup: List[str] = []
+        seen = set()
+        for v in vals:
+            t = str(v or "").strip()
+            if not t:
+                continue
+            lk = t.lower()
+            if lk in seen:
+                continue
+            seen.add(lk)
+            dedup.append(t)
+        aliases[k] = dedup[:4]
+    return aliases
+
+
+def expand_myco_query_aliases(query: str) -> Dict[str, Any]:
+    """
+    MARKER_162.P3.P4.MYCO.GLOSSARY_ALIAS_EXPANSION.V1
+    Expand query with glossary aliases for hidden retrieval.
+    """
+    base = str(query or "").strip()
+    if not base:
+        return {"query": "", "expanded_queries": [], "aliases_used": []}
+    aliases = _extract_glossary_aliases()
+    expanded = [base]
+    aliases_used: List[str] = []
+    lower = base.lower()
+    for key, variants in aliases.items():
+        trigger = re.compile(rf"\b{re.escape(key)}\b", re.IGNORECASE)
+        if trigger.search(lower):
+            aliases_used.append(key)
+            for variant in variants:
+                candidate = trigger.sub(variant, base)
+                candidate = candidate.strip()
+                if candidate and candidate not in expanded:
+                    expanded.append(candidate)
+    return {
+        "query": base,
+        "expanded_queries": expanded[:5],
+        "aliases_used": aliases_used[:8],
+    }
+
+
+def _lexical_hidden_fallback(
+    query_terms: List[str],
+    *,
+    top_k: int,
+    source_files: List[Path],
+) -> List[Dict[str, Any]]:
+    hits: List[Dict[str, Any]] = []
+    term_set = {t for t in query_terms if t}
+    if not term_set:
+        return []
+    for path in source_files[:220]:
+        raw = _read_text(path)
+        if not raw:
+            continue
+        lower = raw.lower()
+        matched = [t for t in term_set if t in lower]
+        if not matched:
+            continue
+        score = float(len(matched)) / float(max(1, len(term_set)))
+        first_term = matched[0]
+        idx = lower.find(first_term)
+        start = max(0, idx - 80)
+        end = min(len(raw), idx + 220)
+        snippet = " ".join(raw[start:end].split())
+        hits.append(
+            {
+                "source_path": str(path.relative_to(PROJECT_ROOT)),
+                "score": round(score, 3),
+                "snippet": snippet[:220],
+                "method": "lexical_fallback",
+            }
+        )
+    hits.sort(key=lambda h: float(h.get("score", 0.0)), reverse=True)
+    return hits[: max(1, int(top_k))]
+
+
+def retrieve_myco_hidden_context(
+    *,
+    query: str,
+    focus: Optional[Dict[str, Any]] = None,
+    top_k: int = 3,
+    min_score: float = 0.22,
+) -> Dict[str, Any]:
+    """
+    MARKER_162.P3.P4.MYCO.RETRIEVAL_BRIDGE.V1
+    MARKER_162.P3.P4.MYCO.RETRIEVAL_QUALITY_GATE.V1
+    Retrieve compact hidden instruction snippets for MYCO quick path.
+    """
+    alias_pack = expand_myco_query_aliases(query)
+    expanded_queries = list(alias_pack.get("expanded_queries") or [])
+    q = str(alias_pack.get("query") or "").strip()
+    if not q:
+        return {
+            "query": q,
+            "items": [],
+            "method": "none",
+            "aliases_used": [],
+            "marker": "MARKER_162.P3.P4.MYCO.RETRIEVAL_BRIDGE.V1",
+        }
+
+    # Add focused label as optional retrieval hint.
+    focus_obj = dict(focus or {})
+    focus_label = str(
+        focus_obj.get("label")
+        or focus_obj.get("task_id")
+        or focus_obj.get("taskId")
+        or focus_obj.get("node_id")
+        or focus_obj.get("nodeId")
+        or ""
+    ).strip()
+    if focus_label and focus_label not in expanded_queries:
+        expanded_queries.append(f"{q} {focus_label}")
+
+    collected: List[Dict[str, Any]] = []
+    try:
+        from src.orchestration.triple_write_manager import get_triple_write_manager
+        tw = get_triple_write_manager()
+        if tw and getattr(tw, "qdrant_client", None):
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+            query_filter = Filter(
+                must=[
+                    FieldCondition(key="hidden_index", match=MatchValue(value=True)),
+                    FieldCondition(key="index_scope", match=MatchValue(value="myco_instructions")),
+                ]
+            )
+            for eq in expanded_queries[:4]:
+                emb = tw.get_embedding(eq[:2000])
+                if not emb:
+                    continue
+                limit = max(4, int(top_k) * 2)
+                if hasattr(tw.qdrant_client, "query_points"):
+                    qp = tw.qdrant_client.query_points(
+                        collection_name="vetka_elisya",
+                        query=emb,
+                        query_filter=query_filter,
+                        limit=limit,
+                        with_payload=True,
+                        with_vectors=False,
+                    )
+                    rows = list(getattr(qp, "points", None) or [])
+                else:
+                    rows = tw.qdrant_client.search(
+                        collection_name="vetka_elisya",
+                        query_vector=emb,
+                        query_filter=query_filter,
+                        limit=limit,
+                        with_payload=True,
+                        with_vectors=False,
+                    )
+                for row in rows or []:
+                    payload = getattr(row, "payload", {}) or {}
+                    score = float(getattr(row, "score", 0.0) or 0.0)
+                    if score < float(min_score):
+                        continue
+                    source_path = str(payload.get("source_path") or payload.get("file_path") or "").strip()
+                    snippet = str(payload.get("content") or payload.get("text") or "").strip()
+                    if not snippet:
+                        snippet = str(payload.get("file_name") or source_path or "")
+                    collected.append(
+                        {
+                            "source_path": source_path,
+                            "score": round(score, 3),
+                            "snippet": " ".join(snippet.split())[:220],
+                            "method": "qdrant_semantic",
+                        }
+                    )
+    except Exception:
+        collected = []
+
+    if collected:
+        dedup: List[Dict[str, Any]] = []
+        seen = set()
+        for row in sorted(collected, key=lambda r: float(r.get("score", 0.0)), reverse=True):
+            key = (str(row.get("source_path") or ""), str(row.get("snippet") or "")[:80])
+            if key in seen:
+                continue
+            seen.add(key)
+            dedup.append(row)
+            if len(dedup) >= max(1, int(top_k)):
+                break
+        return {
+            "query": q,
+            "items": dedup,
+            "method": "qdrant_semantic",
+            "aliases_used": list(alias_pack.get("aliases_used") or []),
+            "marker": "MARKER_162.P3.P4.MYCO.RETRIEVAL_BRIDGE.V1",
+        }
+
+    # Deterministic lexical fallback (quality-gated via normalized overlap score).
+    source_files = list(_iter_source_files(PROJECT_ROOT))
+    query_terms = re.findall(r"[a-zA-Z0-9_]{3,}", " ".join(expanded_queries).lower())
+    lexical = _lexical_hidden_fallback(query_terms, top_k=max(1, int(top_k)), source_files=source_files)
+    return {
+        "query": q,
+        "items": lexical,
+        "method": "lexical_fallback" if lexical else "none",
+        "aliases_used": list(alias_pack.get("aliases_used") or []),
+        "marker": "MARKER_162.P3.P4.MYCO.RETRIEVAL_BRIDGE.V1",
+    }
 
 
 def reindex_hidden_instruction_memory(
@@ -228,6 +462,8 @@ def _extract_user_name(preferences: Dict[str, Any], fallback_user_id: str) -> st
         preferences.get("name"),
         ((preferences.get("communication_style") or {}).get("user_name") if isinstance(preferences.get("communication_style"), dict) else None),
         ((preferences.get("project_highlights") or {}).get("user_name") if isinstance(preferences.get("project_highlights"), dict) else None),
+        ((preferences.get("tool_usage_patterns") or {}).get("shortcuts", {}).get("user_name") if isinstance(preferences.get("tool_usage_patterns"), dict) else None),
+        ((preferences.get("tool_usage_patterns") or {}).get("patterns", {}).get("user_name") if isinstance(preferences.get("tool_usage_patterns"), dict) else None),
     )
     for c in candidates:
         s = str(c or "").strip()
@@ -238,6 +474,67 @@ def _extract_user_name(preferences: Dict[str, Any], fallback_user_id: str) -> st
 
 def _load_task_board() -> Dict[str, Any]:
     return _load_json(DATA_DIR / "task_board.json")
+
+
+def _load_project_digest() -> Dict[str, Any]:
+    return _load_json(DATA_DIR / "project_digest.json")
+
+
+def _digest_snapshot(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    data = dict(payload or _load_project_digest())
+    summary = str(
+        data.get("summary")
+        or ((data.get("system_status") or {}).get("summary") if isinstance(data.get("system_status"), dict) else "")
+        or ""
+    ).strip()
+    phase = str(
+        data.get("current_phase")
+        or data.get("phase")
+        or ((data.get("meta") or {}).get("phase") if isinstance(data.get("meta"), dict) else "")
+        or ""
+    ).strip()
+    status = str(
+        ((data.get("status") or {}).get("summary") if isinstance(data.get("status"), dict) else "")
+        or ((data.get("system_status") or {}).get("health") if isinstance(data.get("system_status"), dict) else "")
+        or ""
+    ).strip()
+    return {
+        "updated_at": str(data.get("last_updated") or data.get("updated_at") or ""),
+        "phase": phase,
+        "status": status,
+        "summary": summary,
+    }
+
+
+def _multitask_stats() -> Dict[str, Any]:
+    # MARKER_162.P3.P3.MYCO.MULTITASK_CFG_SNAPSHOT.V1
+    payload = _load_task_board()
+    tasks = payload.get("tasks") if isinstance(payload.get("tasks"), dict) else {}
+    settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
+    meta = payload.get("_meta") if isinstance(payload.get("_meta"), dict) else {}
+    total = len(tasks)
+    done = 0
+    active = 0
+    queued = 0
+    for task in tasks.values():
+        if not isinstance(task, dict):
+            continue
+        status = str(task.get("status") or "").strip().lower()
+        if status == "done":
+            done += 1
+        elif status in {"running", "active", "in_progress"}:
+            active += 1
+        else:
+            queued += 1
+    return {
+        "total": total,
+        "done": done,
+        "active": active,
+        "queued": queued,
+        "phase": str(meta.get("phase") or ""),
+        "max_concurrent": int(settings.get("max_concurrent") or 0),
+        "auto_dispatch": bool(settings.get("auto_dispatch", False)),
+    }
 
 
 def _task_sort_key(task: Dict[str, Any]) -> Tuple[str, str]:
@@ -311,6 +608,9 @@ def build_myco_memory_payload(
     prefs = engram.get_all_preferences(user_id) or {}
     manifest = _load_json(MANIFEST_PATH)
     recent = _recent_tasks_by_project(limit_per_project=3)
+    digest = _load_project_digest()
+    multitask = _multitask_stats()
+    digest_snapshot = _digest_snapshot(digest)
 
     jepa_enabled = os.getenv("VETKA_CONTEXT_PACKER_JEPA_ENABLE", "true").lower() == "true"
     fastpath = {
@@ -328,6 +628,11 @@ def build_myco_memory_payload(
         "focus": dict(focus or {}),
         "recent_tasks_by_project": recent,
         "engram_preferences": prefs,
+        "orchestration": {
+            "multitask": multitask,
+            "digest": digest_snapshot,
+            "marker": "MARKER_162.P3.P2.MYCO.ORCHESTRATION_SNAPSHOT.V1",
+        },
         "hidden_index": {
             "updated_at": str(manifest.get("updated_at") or ""),
             "source_count": int(manifest.get("source_count") or 0),
@@ -340,3 +645,129 @@ def build_myco_memory_payload(
         "marker": "MARKER_162.P3.MYCO.ENGRAM_USER_TASK_MEMORY.V1",
     }
 
+
+def persist_myco_runtime_facts(
+    *,
+    user_id: str = "danila",
+    user_name: str = "",
+    active_project_id: str = "",
+    focus: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    MARKER_162.P3.P2.MYCO.ENGRAM_PERSIST_RUNTIME_FACTS.V1
+    Persist lightweight MYCO runtime facts in ENGRAM-safe fields.
+    """
+    engram = get_engram_user_memory()
+    prefs = engram.get_all_preferences(user_id) or {}
+    focus_obj = dict(focus or {})
+    recent = _recent_tasks_by_project(limit_per_project=3)
+    multi = _multitask_stats()
+    digest = _digest_snapshot()
+
+    current_project = str(active_project_id or "")
+    focus_label = str(
+        focus_obj.get("label")
+        or focus_obj.get("task_id")
+        or focus_obj.get("taskId")
+        or focus_obj.get("node_id")
+        or focus_obj.get("nodeId")
+        or ""
+    ).strip()
+
+    proj = dict(prefs.get("project_highlights") or {})
+    tool = dict(prefs.get("tool_usage_patterns") or {})
+    temporal = dict(prefs.get("temporal_patterns") or {})
+
+    priorities = list(proj.get("priorities") or [])
+    if focus_label and focus_label not in priorities:
+        priorities = [focus_label, *priorities][:6]
+    if current_project and current_project not in priorities:
+        priorities = [current_project, *priorities][:6]
+    if not priorities:
+        priorities = ["myco", "context"]
+
+    highlights = dict(proj.get("highlights") or {})
+    project_tasks = recent.get(current_project) if current_project else []
+    project_tasks = project_tasks if isinstance(project_tasks, list) else []
+    task_titles = [str(t.get("title") or "").strip() for t in project_tasks if isinstance(t, dict)]
+    task_titles = [t for t in task_titles if t]
+    if current_project:
+        highlights[current_project] = task_titles[:8]
+
+    tool_shortcuts = dict(tool.get("shortcuts") or {})
+    tool_patterns = dict(tool.get("patterns") or {})
+    if user_name:
+        tool_shortcuts["user_name"] = str(user_name).strip()
+        tool_patterns["user_name"] = str(user_name).strip()
+    if current_project:
+        tool_patterns["myco_last_project"] = current_project
+    if focus_label:
+        tool_patterns["myco_last_focus"] = focus_label
+    if digest.get("phase"):
+        tool_patterns["myco_last_phase"] = str(digest.get("phase"))
+
+    time_of_day = dict(temporal.get("time_of_day") or {})
+    if current_project:
+        time_of_day["myco_last_project"] = current_project
+    if focus_label:
+        time_of_day["myco_last_focus"] = focus_label
+
+    if current_project:
+        engram.set_preference(
+            user_id,
+            "project_highlights",
+            "current_project",
+            current_project,
+            confidence=0.9,
+        )
+    engram.set_preference(
+        user_id,
+        "project_highlights",
+        "priorities",
+        priorities,
+        confidence=0.75,
+    )
+    engram.set_preference(
+        user_id,
+        "project_highlights",
+        "highlights",
+        highlights,
+        confidence=0.75,
+    )
+    engram.set_preference(
+        user_id,
+        "tool_usage_patterns",
+        "shortcuts",
+        tool_shortcuts,
+        confidence=0.7,
+    )
+    engram.set_preference(
+        user_id,
+        "tool_usage_patterns",
+        "patterns",
+        tool_patterns,
+        confidence=0.7,
+    )
+    engram.set_preference(
+        user_id,
+        "temporal_patterns",
+        "time_of_day",
+        time_of_day,
+        confidence=0.65,
+    )
+    if multi.get("active", 0) > 0:
+        tool_patterns["myco_multitask_active"] = str(int(multi.get("active", 0)))
+        engram.set_preference(
+            user_id,
+            "tool_usage_patterns",
+            "patterns",
+            tool_patterns,
+            confidence=0.72,
+        )
+    return {
+        "ok": True,
+        "user_id": str(user_id),
+        "project_id": current_project,
+        "focus": focus_label,
+        "marker": "MARKER_162.P3.P2.MYCO.ENGRAM_PERSIST_RUNTIME_FACTS.V1",
+    }

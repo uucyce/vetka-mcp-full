@@ -59,6 +59,7 @@ export interface PresetConfig {
 
 export interface MCCProjectTab {
   project_id: string;
+  display_name?: string;
   source_type: string;
   source_path: string;
   sandbox_path: string;

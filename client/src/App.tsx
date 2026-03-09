@@ -1183,6 +1183,8 @@ export default function App() {
         }}
         voiceState={jarvis.state}
         voiceLevel={jarvis.audioLevel}
+        mycoHint={mycoModeA.hint}
+        mycoStateKey={mycoModeA.stateKey}
       />
       {(isArtifactOpen && (!isTauri() || !artifactPath || isEmbeddedArtifactFallbackForced())) && (
         <ArtifactWindow
@@ -1223,6 +1225,7 @@ export default function App() {
             <UnifiedSearchBar
               onSelectResult={handleSearchSelect}
               onPinResult={handleSearchPin}
+              laneSurface="main"
               mycoSurfaceScope="main"
               onOpenArtifact={async (result) => {
                 // MARKER_139.S1_2_UNIFIED_ARTIFACT_FIX: Web/file unified results need different artifact open handling

@@ -13,6 +13,13 @@ Agent systems fail when memory is either too shallow or too noisy. VETKA needs:
 
 `vetka-memory-stack` provides this full memory path.
 
+## Canonical Terms
+
+- VETKA: Visual Enhanced Tree Knowledge Architecture.
+- MYCELIUM: Multi-agent Yielding Cognitive Execution Layer for Intelligent Unified Management.
+- ELISYA: Efficient Language-Independent Synchronization of Yielding Agents.
+- ELISION: Efficient Language-Independent Symbolic Inversion of Names.
+
 ## Core Capabilities
 
 - Short-term memory:

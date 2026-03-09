@@ -61,6 +61,21 @@ interface DockEntry {
   icon: string;
 }
 
+function emitWindowFocusState(windowId: string, state: 'compact' | 'expanded' | 'minimized') {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent('mcc-miniwindow-focus', {
+      detail: {
+        windowId,
+        state,
+        expanded: state === 'expanded',
+        minimized: state === 'minimized',
+        ts: Date.now(),
+      },
+    }),
+  );
+}
+
 const dockRegistry = new Map<string, DockEntry>();
 
 function getDockEntries(): DockEntry[] {
@@ -297,9 +312,18 @@ export function MiniWindow({
       removeDockEntry(windowId);
       setExpanded(expand);
       onToggle?.(expand);
+      emitWindowFocusState(windowId, expand ? 'expanded' : 'compact');
     },
     [onToggle, windowId],
   );
+
+  useEffect(() => {
+    if (minimized) {
+      emitWindowFocusState(windowId, 'minimized');
+      return;
+    }
+    emitWindowFocusState(windowId, expanded ? 'expanded' : 'compact');
+  }, [expanded, minimized, windowId]);
 
   // MARKER_155.DRAGGABLE.006: Handle drag stop - save position
   const handleDragStop = useCallback(
@@ -508,6 +532,7 @@ export function MiniWindow({
           <div
             ref={nodeRef}
             className="mini-window-grab"
+            onMouseDownCapture={() => emitWindowFocusState(windowId, 'compact')}
             style={{
               position: 'fixed',
               top: 0,
@@ -648,6 +673,7 @@ export function MiniWindow({
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               transition={{ duration: 0.25 }}
+              onMouseDownCapture={() => emitWindowFocusState(windowId, 'expanded')}
               style={{
                 width: '80%',
                 maxWidth: 700,

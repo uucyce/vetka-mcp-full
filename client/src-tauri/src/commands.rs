@@ -43,6 +43,18 @@ pub struct DetachedMediaGeometryTrace {
     pub toolbar_height: f64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DetachedMediaNativeGeometry {
+    pub src: String,
+    pub scale_factor: f64,
+    pub inner_physical_width: f64,
+    pub inner_physical_height: f64,
+    pub inner_logical_width: f64,
+    pub inner_logical_height: f64,
+    pub outer_physical_width: f64,
+    pub outer_physical_height: f64,
+}
+
 #[derive(Debug, Serialize)]
 struct MediaWindowMetadataRequest {
     path: String,
@@ -224,11 +236,30 @@ pub fn get_system_info() -> SystemInfo {
 }
 
 /// MARKER_159.R14.DETACHED_MEDIA_TRACE_CMD:
-/// Emit detached media geometry from the frontend into the native terminal logs.
+/// Emit detached media geometry from the frontend into the native terminal logs and
+/// return the observed native window geometry to the renderer for self-debug tooling.
 #[tauri::command]
-pub fn trace_detached_media_geometry(trace: DetachedMediaGeometryTrace) -> Result<bool, String> {
+pub fn trace_detached_media_geometry(
+    window: WebviewWindow,
+    trace: DetachedMediaGeometryTrace,
+) -> Result<DetachedMediaNativeGeometry, String> {
+    let scale_factor = window
+        .scale_factor()
+        .map_err(|e| format!("scale_factor failed: {e}"))?;
+    let inner = window
+        .inner_size()
+        .map_err(|e| format!("inner_size failed: {e}"))?;
+    let outer = window
+        .outer_size()
+        .map_err(|e| format!("outer_size failed: {e}"))?;
+    let factor = if scale_factor.is_finite() && scale_factor > 0.0 {
+        scale_factor
+    } else {
+        1.0
+    };
+
     log::info!(
-        "MARKER_159.R14.DETACHED_MEDIA_TRACE src={} dpr={} window_inner={}x{} video_intrinsic={}x{} wrapper={}x{} toolbar={}x{}",
+        "MARKER_159.R14.DETACHED_MEDIA_TRACE src={} dpr={} window_inner={}x{} video_intrinsic={}x{} wrapper={}x{} toolbar={}x{} native_scale={} native_inner_physical={}x{} native_outer_physical={}x{}",
         trace.src,
         trace.dpr,
         trace.window_inner_width,
@@ -239,8 +270,22 @@ pub fn trace_detached_media_geometry(trace: DetachedMediaGeometryTrace) -> Resul
         trace.wrapper_height,
         trace.toolbar_width,
         trace.toolbar_height,
+        factor,
+        inner.width,
+        inner.height,
+        outer.width,
+        outer.height,
     );
-    Ok(true)
+    Ok(DetachedMediaNativeGeometry {
+        src: trace.src,
+        scale_factor: factor,
+        inner_physical_width: inner.width as f64,
+        inner_physical_height: inner.height as f64,
+        inner_logical_width: inner.width as f64 / factor,
+        inner_logical_height: inner.height as f64 / factor,
+        outer_physical_width: outer.width as f64,
+        outer_physical_height: outer.height as f64,
+    })
 }
 
 /// MARKER_161.7.MULTIPROJECT.TAURI.NATIVE_FOLDER_PICKER.V1

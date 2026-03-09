@@ -798,7 +798,11 @@ export function useTreeData() {
     const handleSwitchMode = (evt: Event) => {
       const e = evt as CustomEvent;
       const requestedMode = String(e.detail?.mode || '').toLowerCase();
-      const nextMode: TreeViewMode = requestedMode === 'knowledge' ? 'knowledge' : 'directed';
+      const nextMode: TreeViewMode = requestedMode === 'knowledge'
+        ? 'knowledge'
+        : requestedMode === 'media_edit'
+          ? 'media_edit'
+          : 'directed';
       const scopePath = String(e.detail?.scopePath || '');
       setTreeViewMode(nextMode);
       setKnowledgeScopePath(scopePath);

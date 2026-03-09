@@ -91,6 +91,27 @@ interface PrefetchWorkflowSelectionDiagnostics {
   reason?: string;
 }
 
+interface TaskWorkflowBinding {
+  workflow_bank: string;
+  workflow_id: string;
+  workflow_family: string;
+  team_profile: string;
+  selection_origin: string;
+}
+
+interface WorkflowMycoHintData {
+  hint: string;
+  ordered_tools: string[];
+  tool_priority: Record<string, string[]>;
+  diagnostics: {
+    workflow_family: string;
+    workflow_bank: string;
+    role: string;
+    retrieval_method: string;
+    retrieval_count: number;
+  };
+}
+
 function resolveContextSubtitle(context?: MiniContextPayload): string {
   if (!context || context.scope === 'project') return 'scope: project';
   if (context.nodeKind === 'task') return `scope: task (${context.label})`;
@@ -159,6 +180,156 @@ function usePrefetchReinforcement(context?: MiniContextPayload) {
   }, [requestKey]);
 
   return { diag, loading };
+}
+
+function useTaskWorkflowBinding(context: MiniContextPayload | undefined, tasks: any[]) {
+  const [binding, setBinding] = useState<TaskWorkflowBinding | null>(null);
+  const [revision, setRevision] = useState(0);
+  const taskId = String(context?.taskId || '').trim();
+  const nodeId = String(context?.nodeId || '').trim();
+
+  const fallbackTask = useMemo(() => {
+    if (!context || !taskId) return null;
+    return tasks.find((t) => t.id === taskId || `task_overlay_${t.id}` === nodeId) || null;
+  }, [context, nodeId, taskId, tasks]);
+
+  useEffect(() => {
+    if (!taskId) {
+      setBinding(null);
+      return;
+    }
+    let cancelled = false;
+
+    const fallbackBinding = fallbackTask ? {
+      workflow_bank: String(fallbackTask.workflow_bank || 'core').trim() || 'core',
+      workflow_id: String(fallbackTask.workflow_id || fallbackTask.pipeline_task_id || '').trim(),
+      workflow_family: String(fallbackTask.workflow_family || fallbackTask.workflow_id || '').trim(),
+      team_profile: String(fallbackTask.team_profile || fallbackTask.preset || '').trim(),
+      selection_origin: String(fallbackTask.workflow_selection_origin || '').trim(),
+    } : null;
+
+    fetch(`${API_BASE}/mcc/tasks/${encodeURIComponent(taskId)}/workflow-binding`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const row = data?.binding;
+        if (!row || typeof row !== 'object') {
+          setBinding(fallbackBinding);
+          return;
+        }
+        setBinding({
+          workflow_bank: String(row.workflow_bank || 'core').trim() || 'core',
+          workflow_id: String(row.workflow_id || '').trim(),
+          workflow_family: String(row.workflow_family || row.workflow_id || '').trim(),
+          team_profile: String(row.team_profile || '').trim(),
+          selection_origin: String(row.selection_origin || '').trim(),
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBinding(fallbackBinding);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fallbackTask, revision, taskId]);
+
+  const refresh = useCallback(() => {
+    setRevision((n) => n + 1);
+  }, []);
+
+  return { binding, refresh };
+}
+
+function useWorkflowCatalog() {
+  const [catalog, setCatalog] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/mcc/workflow-catalog`);
+      if (!res.ok) return;
+      const json = await res.json();
+      setCatalog(json);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { catalog, loading, refresh };
+}
+
+function useWorkflowMycoHint(context: MiniContextPayload | undefined, binding: TaskWorkflowBinding | null) {
+  const [data, setData] = useState<WorkflowMycoHintData | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const requestKey = useMemo(() => {
+    return [
+      String(context?.taskId || ''),
+      String(context?.label || ''),
+      String(context?.role || ''),
+      String(binding?.workflow_bank || ''),
+      String(binding?.workflow_id || ''),
+      String(binding?.workflow_family || ''),
+    ].join('::');
+  }, [binding?.workflow_bank, binding?.workflow_family, binding?.workflow_id, context?.label, context?.role, context?.taskId]);
+
+  useEffect(() => {
+    if (!context?.taskId || !binding?.workflow_id) {
+      setData(null);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    fetch(`${API_BASE}/mcc/workflow/myco-hint`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workflow_bank: binding.workflow_bank,
+        workflow_id: binding.workflow_id,
+        workflow_family: binding.workflow_family,
+        role: context.role || '',
+        task_label: context.label || context.taskId || 'active task',
+        scope: context.scope || 'task',
+        focus: context || {},
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled || !json?.success) return;
+        setData({
+          hint: String(json.hint || '').trim(),
+          ordered_tools: Array.isArray(json.ordered_tools) ? json.ordered_tools.map((v: any) => String(v)) : [],
+          tool_priority: json.tool_priority || {},
+          diagnostics: {
+            workflow_family: String(json?.diagnostics?.workflow_family || ''),
+            workflow_bank: String(json?.diagnostics?.workflow_bank || ''),
+            role: String(json?.diagnostics?.role || ''),
+            retrieval_method: String(json?.diagnostics?.retrieval_method || 'none'),
+            retrieval_count: Number(json?.diagnostics?.retrieval_count || 0),
+          },
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setData(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [binding?.workflow_id, context, requestKey]);
+
+  return { data, loading };
 }
 
 function useSummaryData() {
@@ -282,6 +453,40 @@ function StatsCompact({ context }: MiniStatsProps) {
   const tasks = useMCCStore(s => s.tasks);
   const streamEvents = useMCCStore(s => s.streamEvents);
   const scopeSubtitle = useMemo(() => resolveContextSubtitle(context), [context]);
+  const { binding: taskWorkflowBinding } = useTaskWorkflowBinding(context, tasks);
+  const workflowMycoHint = useWorkflowMycoHint(context, taskWorkflowBinding);
+  const selectedTask = useMemo(() => {
+    if (!context?.taskId) return null;
+    return tasks.find((t) => t.id === context.taskId || `task_overlay_${t.id}` === context.nodeId) || null;
+  }, [context?.nodeId, context?.taskId, tasks]);
+
+  const taskWorkflowSummary = useMemo(() => {
+    if (!context?.taskId) return null;
+    const workflowId = String(taskWorkflowBinding?.workflow_id || selectedTask?.workflow_id || '').trim();
+    const workflowFamily = String(taskWorkflowBinding?.workflow_family || workflowId || '').trim();
+    const workflowBank = String(taskWorkflowBinding?.workflow_bank || 'core').trim() || 'core';
+    const selectionOrigin = String(taskWorkflowBinding?.selection_origin || '').trim() || 'heuristic';
+    const teamProfile = String(taskWorkflowBinding?.team_profile || selectedTask?.team_profile || selectedTask?.preset || '').trim();
+    const teamStats = teamProfile ? data?.by_preset?.[teamProfile] : null;
+    return {
+      workflowId,
+      workflowFamily,
+      workflowBank,
+      selectionOrigin,
+      teamProfile,
+      teamRuns: teamStats?.count ?? 0,
+      teamSuccess: teamStats?.success_rate ?? 0,
+      bindingState: workflowId ? 'bound' : 'pending',
+      overrideState: selectionOrigin === 'user-selected' ? 'user' : 'heuristic',
+    };
+  }, [context?.taskId, data?.by_preset, selectedTask, taskWorkflowBinding]);
+
+  const openWorkflowPanel = useCallback(() => {
+    setStatsMode('overview');
+    window.dispatchEvent(new CustomEvent('mcc-miniwindow-open', {
+      detail: { windowId: 'stats', expanded: true },
+    }));
+  }, [setStatsMode]);
 
   const contextualLine = useMemo(() => {
     if (!context || context.scope === 'project') {
@@ -332,22 +537,106 @@ function StatsCompact({ context }: MiniStatsProps) {
       <div style={{ color: '#7f8893', fontSize: 8, textTransform: 'uppercase', letterSpacing: 0.35 }}>
         {scopeSubtitle}
       </div>
-      <div style={{ display: 'flex', gap: 4 }}>
-        <StatBox label="Runs" value={data.total_pipelines ?? 0} />
-        <StatBox
-          label="Success"
-          value={
-            <span style={{ color: successColor }}>{Math.round(rate)}%</span> as any
-          }
-        />
-      </div>
-      <div style={{ display: 'flex', gap: 4 }}>
-        <StatBox label="Avg Time" value={formatDuration(data.avg_duration_s ?? 0)} />
-        <StatBox label="Cost" value={`$${cost.toFixed(2)}`} />
-      </div>
+      {taskWorkflowSummary ? (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 5,
+            padding: '6px 0',
+            borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`,
+            borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <button
+              onClick={openWorkflowPanel}
+              style={{
+                border: '1px solid #2e2e2e',
+                borderRadius: 4,
+                background: '#151515',
+                color: NOLAN_PALETTE.text,
+                fontSize: 9,
+                padding: '2px 8px',
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                letterSpacing: 0.35,
+              }}
+              title="Open workflow selection in Stats panel"
+            >
+              WORKFLOW
+            </button>
+            <span style={{ fontSize: 8, color: '#a2abb5', textTransform: 'uppercase' }}>
+              {taskWorkflowSummary.workflowBank}
+            </span>
+          </div>
+          <div style={{ color: NOLAN_PALETTE.text, fontSize: 8, lineHeight: 1.35 }}>
+            {/* MARKER_167.STATS_WORKFLOW.UI_COMPACT_CONTEXT.V1 */}
+            {taskWorkflowSummary.workflowFamily || taskWorkflowSummary.workflowId || 'choose workflow for task'}
+          </div>
+          <div style={{ color: '#8e98a4', fontSize: 8, lineHeight: 1.35 }}>
+            {/* MARKER_167.STATS_WORKFLOW.UI_COMPACT_TEAM_STATS.V1 */}
+            team:{taskWorkflowSummary.teamProfile || '-'} · runs:{taskWorkflowSummary.teamRuns} · ok:{Math.round(taskWorkflowSummary.teamSuccess)}% · via:{taskWorkflowSummary.selectionOrigin}
+          </div>
+          <div style={{ color: '#6f7883', fontSize: 8, lineHeight: 1.35 }}>
+            {/* MARKER_167.STATS_WORKFLOW.MYCO_HINTS.V1 */}
+            {workflowMycoHint.loading
+              ? 'MYCO: loading workflow hint...'
+              : (workflowMycoHint.data?.hint || 'MYCO: choose workflow, then review Context -> Tasks -> Stats')}
+          </div>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {[
+              `bind:${taskWorkflowSummary.bindingState}`,
+              `bank:${taskWorkflowSummary.workflowBank}`,
+              `via:${taskWorkflowSummary.overrideState}`,
+              `myco:${workflowMycoHint.data?.diagnostics?.retrieval_method || 'none'}`,
+            ].map((chip) => (
+              <span
+                key={chip}
+                style={{
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 999,
+                  padding: '1px 6px',
+                  color: '#95a0ad',
+                  fontSize: 7,
+                  lineHeight: 1.6,
+                }}
+              >
+                {/* MARKER_167.STATS_WORKFLOW.BADGES.V1 */}
+                {chip}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {!taskWorkflowSummary ? (
+        <>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <StatBox label="Runs" value={data.total_pipelines ?? 0} />
+            <StatBox
+              label="Success"
+              value={
+                <span style={{ color: successColor }}>{Math.round(rate)}%</span> as any
+              }
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <StatBox label="Avg Time" value={formatDuration(data.avg_duration_s ?? 0)} />
+            <StatBox label="Cost" value={`$${cost.toFixed(2)}`} />
+          </div>
+        </>
+      ) : null}
 
       {contextualLine ? (
-        <div style={{ color: '#8e98a4', fontSize: 8, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`, paddingTop: 4 }}>
+        <div style={{ color: '#8e98a4', fontSize: 8, paddingTop: 2 }}>
           {contextualLine}
         </div>
       ) : null}
@@ -388,6 +677,11 @@ function StatsCompact({ context }: MiniStatsProps) {
                   : 'off')
             }
           </span>
+          {workflowMycoHint.data ? (
+            <span style={{ fontSize: 8, color: '#8e98a4' }} title="MYCO workflow hint diagnostics">
+              myco:{workflowMycoHint.data.diagnostics.retrieval_method || 'none'}/{workflowMycoHint.data.diagnostics.retrieval_count}
+            </span>
+          ) : null}
         </div>
         <button
           onClick={() => {
@@ -414,11 +708,11 @@ function StatsCompact({ context }: MiniStatsProps) {
 
 // Agent icon mapping
 const AGENT_ICONS: Record<string, string> = {
-  scout: '🕵️',
-  researcher: '🔬',
-  architect: '👨‍💻',
-  coder: '💻',
-  verifier: '✅',
+  scout: '[S]',
+  researcher: '[R]',
+  architect: '[A]',
+  coder: '[C]',
+  verifier: '[V]',
 };
 
 // Agent Performance Section
@@ -540,7 +834,54 @@ function AgentPerformanceSection() {
 // Expanded: detailed stats
 function StatsExpanded({ context }: MiniStatsProps) {
   const { data, loading, refresh } = useSummaryData();
+  const diagnostics = useMCCDiagnostics();
   const scopeSubtitle = useMemo(() => resolveContextSubtitle(context), [context]);
+  const tasks = useMCCStore(s => s.tasks);
+  const { binding: taskWorkflowBinding, refresh: refreshBinding } = useTaskWorkflowBinding(context, tasks);
+  const { catalog, loading: catalogLoading, refresh: refreshCatalog } = useWorkflowCatalog();
+  const workflowMycoHint = useWorkflowMycoHint(context, taskWorkflowBinding);
+  const [selectedBank, setSelectedBank] = useState('core');
+  const [savingWorkflowId, setSavingWorkflowId] = useState('');
+
+  const selectedTask = useMemo(() => {
+    if (!context?.taskId) return null;
+    return tasks.find((t) => t.id === context.taskId || `task_overlay_${t.id}` === context.nodeId) || null;
+  }, [context?.nodeId, context?.taskId, tasks]);
+
+  useEffect(() => {
+    if (!taskWorkflowBinding?.workflow_bank) return;
+    setSelectedBank(taskWorkflowBinding.workflow_bank);
+  }, [taskWorkflowBinding?.workflow_bank]);
+
+  const workflowRows = useMemo(() => {
+    const rows = Array.isArray(catalog?.workflows) ? catalog.workflows : [];
+    return rows.filter((row: any) => String(row?.bank || '') === selectedBank);
+  }, [catalog?.workflows, selectedBank]);
+
+  const handleSelectWorkflow = useCallback(async (row: any) => {
+    if (!context?.taskId) return;
+    const workflowId = String(row?.id || '').trim();
+    if (!workflowId) return;
+    setSavingWorkflowId(workflowId);
+    try {
+      await fetch(`${API_BASE}/mcc/tasks/${encodeURIComponent(context.taskId)}/workflow-binding`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow_bank: String(row?.bank || 'core'),
+          workflow_id: workflowId,
+          workflow_family: String(row?.family || workflowId),
+          team_profile: String(taskWorkflowBinding?.team_profile || selectedTask?.team_profile || selectedTask?.preset || 'dragon_silver'),
+          selection_origin: 'user-selected',
+        }),
+      });
+      refreshBinding();
+    } catch {
+      // ignore
+    } finally {
+      setSavingWorkflowId('');
+    }
+  }, [context?.taskId, refreshBinding, selectedTask?.preset, selectedTask?.team_profile, taskWorkflowBinding?.team_profile]);
 
   if (loading || !data) {
     return (
@@ -559,6 +900,215 @@ function StatsExpanded({ context }: MiniStatsProps) {
       <div style={{ color: '#7f8893', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.35, marginBottom: 10 }}>
         {scopeSubtitle}
       </div>
+      {context?.taskId ? (
+        <>
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '10px 12px',
+              border: `1px solid ${NOLAN_PALETTE.border}`,
+              borderRadius: 6,
+              background: 'rgba(10,10,10,0.85)',
+            }}
+          >
+            <div style={{ color: NOLAN_PALETTE.textMuted, fontSize: 9, textTransform: 'uppercase', marginBottom: 8 }}>
+              Current Task
+            </div>
+            <div style={{ color: NOLAN_PALETTE.text, fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+              {selectedTask?.title || context.label}
+            </div>
+            <div style={{ color: '#9aa4af', fontSize: 9, lineHeight: 1.5 }}>
+              {/* MARKER_167.STATS_WORKFLOW.UI_EXPANDED_SELECTOR.V1 */}
+              active workflow: {taskWorkflowBinding?.workflow_family || taskWorkflowBinding?.workflow_id || '-'} · bank:{taskWorkflowBinding?.workflow_bank || '-'} · team:{taskWorkflowBinding?.team_profile || selectedTask?.preset || '-'} · via:{taskWorkflowBinding?.selection_origin || '-'}
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginBottom: 20,
+              padding: '10px 12px',
+              border: `1px solid ${NOLAN_PALETTE.border}`,
+              borderRadius: 6,
+              background: NOLAN_PALETTE.bg,
+            }}
+          >
+            <div style={{ color: NOLAN_PALETTE.textMuted, fontSize: 9, textTransform: 'uppercase', marginBottom: 10 }}>
+              Workflow Banks
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              {(Array.isArray(catalog?.banks) ? catalog.banks : []).map((bank: any) => {
+                const key = String(bank?.key || '');
+                const active = key === selectedBank;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setSelectedBank(key)}
+                    style={{
+                      border: `1px solid ${active ? NOLAN_PALETTE.textAccent : NOLAN_PALETTE.border}`,
+                      borderRadius: 4,
+                      background: active ? '#131313' : 'transparent',
+                      color: active ? NOLAN_PALETTE.text : NOLAN_PALETTE.textMuted,
+                      fontSize: 9,
+                      padding: '3px 8px',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {/* MARKER_167.STATS_WORKFLOW.UI_BANK_TABS.V1 */}
+                    {String(bank?.label || key)} {Number(bank?.count || 0)}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {catalogLoading ? (
+                <div style={{ color: '#666', fontSize: 10 }}>Loading workflow catalog...</div>
+              ) : workflowRows.length === 0 ? (
+                <div style={{ color: '#666', fontSize: 10 }}>No workflows in this bank yet.</div>
+              ) : workflowRows.map((row: any) => {
+                const workflowId = String(row?.id || '');
+                const selected = workflowId && workflowId === String(taskWorkflowBinding?.workflow_id || '');
+                return (
+                  <div
+                    key={`${row.bank}:${workflowId}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      padding: '8px 10px',
+                      border: `1px solid ${selected ? NOLAN_PALETTE.textAccent : NOLAN_PALETTE.borderDim}`,
+                      borderRadius: 6,
+                      background: selected ? 'rgba(255,255,255,0.03)' : 'transparent',
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ color: NOLAN_PALETTE.text, fontSize: 11, fontWeight: 700 }}>
+                        {String(row?.title || workflowId)}
+                      </div>
+                      <div style={{ color: '#8e98a4', fontSize: 9, marginTop: 2 }}>
+                        {String(row?.family || '-')} · {String(row?.source || '-')}
+                      </div>
+                      <div style={{ color: '#6f7883', fontSize: 9, marginTop: 2 }}>
+                        {String(row?.description || '').trim() || 'No description'}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleSelectWorkflow(row)}
+                      disabled={savingWorkflowId === workflowId}
+                      style={{
+                        border: '1px solid #2e2e2e',
+                        borderRadius: 4,
+                        background: '#151515',
+                        color: selected ? NOLAN_PALETTE.textAccent : NOLAN_PALETTE.text,
+                        fontSize: 9,
+                        padding: '4px 10px',
+                        cursor: 'pointer',
+                        fontFamily: 'monospace',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {/* MARKER_167.STATS_WORKFLOW.UI_SELECT_ACTION.V1 */}
+                      {selected ? 'Selected' : savingWorkflowId === workflowId ? 'Saving...' : 'Select for task'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => {
+                refreshCatalog();
+                refreshBinding();
+              }}
+              style={{
+                marginTop: 10,
+                padding: '4px 10px',
+                background: 'transparent',
+                border: `1px solid ${NOLAN_PALETTE.border}`,
+                borderRadius: 4,
+                color: NOLAN_PALETTE.textMuted,
+                fontSize: 9,
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+              }}
+            >
+              Refresh workflow banks
+            </button>
+          </div>
+
+          <div
+            style={{
+              marginBottom: 20,
+              padding: '10px 12px',
+              border: `1px solid ${NOLAN_PALETTE.border}`,
+              borderRadius: 6,
+              background: NOLAN_PALETTE.bg,
+            }}
+          >
+            <div style={{ color: NOLAN_PALETTE.textMuted, fontSize: 9, textTransform: 'uppercase', marginBottom: 8 }}>
+              MYCO Workflow Guidance
+            </div>
+            <div style={{ color: NOLAN_PALETTE.text, fontSize: 10, lineHeight: 1.5, marginBottom: 8 }}>
+              {workflowMycoHint.loading
+                ? 'Loading MYCO workflow hint...'
+                : (workflowMycoHint.data?.hint || 'No workflow hint available yet.')}
+            </div>
+            {workflowMycoHint.data ? (
+              <>
+                <div style={{ color: '#8e98a4', fontSize: 9, marginBottom: 6 }}>
+                  {/* MARKER_167.STATS_WORKFLOW.MYCO_TOOL_PRIORITY.V1 */}
+                  tools: {workflowMycoHint.data.ordered_tools.join(' > ') || '-'}
+                </div>
+                <div style={{ color: '#6f7883', fontSize: 9 }}>
+                  retrieval: {workflowMycoHint.data.diagnostics.retrieval_method} · hits:{workflowMycoHint.data.diagnostics.retrieval_count}
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          <div
+            style={{
+              marginBottom: 20,
+              padding: '10px 12px',
+              border: `1px solid ${NOLAN_PALETTE.border}`,
+              borderRadius: 6,
+              background: NOLAN_PALETTE.bg,
+            }}
+          >
+            <div style={{ color: NOLAN_PALETTE.textMuted, fontSize: 9, textTransform: 'uppercase', marginBottom: 8 }}>
+              Workflow Diagnostics
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+              {[
+                `workflow:${taskWorkflowBinding?.workflow_family || taskWorkflowBinding?.workflow_id || 'pending'}`,
+                `bank:${taskWorkflowBinding?.workflow_bank || 'core'}`,
+                `origin:${taskWorkflowBinding?.selection_origin || 'heuristic'}`,
+                `binding:${taskWorkflowBinding?.workflow_id ? 'explicit' : 'missing'}`,
+                `override:${(taskWorkflowBinding?.selection_origin || 'heuristic') === 'user-selected' ? 'user' : 'heuristic'}`,
+              ].map((chip) => (
+                <span
+                  key={chip}
+                  style={{
+                    border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                    borderRadius: 999,
+                    padding: '2px 8px',
+                    color: '#95a0ad',
+                    fontSize: 8,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {/* MARKER_167.STATS_WORKFLOW.DIAGNOSTICS.V1 */}
+                  {chip}
+                </span>
+              ))}
+            </div>
+            <div style={{ color: '#6f7883', fontSize: 9 }}>
+              graph:{String(diagnostics.buildDesign?.verifier?.decision || '-')} · runtime:{diagnostics.runtimeHealth?.ok ? 'ok' : 'down'}
+            </div>
+          </div>
+        </>
+      ) : null}
+
       {/* Summary row */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
         <StatBox label="Total Runs" value={data.total_pipelines ?? 0} />
@@ -650,10 +1200,10 @@ export function MiniStats({ context }: MiniStatsProps) {
     <MiniWindow
       windowId="stats" // MARKER_155.DRAGGABLE.012: Unique ID for position persistence
       title="Stats"
-      icon="📊"
+      icon="||"
       position="top-right"
       compactWidth={200}
-      compactHeight={120}
+      compactHeight={176}
       compactContent={<StatsCompact context={context} />}
       expandedContent={<StatsExpanded context={context} />}
     />
