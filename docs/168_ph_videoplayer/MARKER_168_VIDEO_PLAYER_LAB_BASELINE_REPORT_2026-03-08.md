@@ -40,6 +40,12 @@ Current winning shell contract inside the lab:
 - geometry snapshot exposed via `window.vetkaPlayerLab`
 - player-first default UI with hidden debug drawer
 - native fullscreen available in the Tauri host
+- donor-player remains standalone and CUT-compatible, not CUT-coupled
+- contextual action model must be status-gated:
+  - if media is not yet in VETKA, primary contextual action is `Add to VETKA`
+  - once media is in VETKA, ingest action disappears and moment-based marker actions become primary
+- editorial star is not a file-level favorite baseline; it is reserved for time markers / cognitive moments
+- preview quality stays inside the player shell because performance-aware playback is part of the player contract, not only CUT
 
 ## Console API
 
