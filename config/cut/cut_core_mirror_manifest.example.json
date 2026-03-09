@@ -1,0 +1,73 @@
+{
+  "schema_version": "cut_core_mirror_manifest_v1",
+  "description": "Example mirror manifest for VETKA CUT sandbox bootstrap.",
+  "groups": [
+    {
+      "name": "watcher_core",
+      "description": "Folder/file ingest entrypoints.",
+      "paths": [
+        "src/api/routes/watcher_routes.py",
+        "src/scanners/file_watcher.py",
+        "src/scanners/local_project_scanner.py"
+      ]
+    },
+    {
+      "name": "multimodal_ingest",
+      "description": "Shared extraction contracts and ingest pipeline pieces.",
+      "paths": [
+        "src/scanners/extractor_registry.py",
+        "src/scanners/multimodal_contracts.py",
+        "src/scanners/qdrant_updater.py",
+        "src/memory/qdrant_batch_manager.py"
+      ]
+    },
+    {
+      "name": "memory_core",
+      "description": "Context and memory primitives CUT may reuse.",
+      "paths": [
+        "src/memory/engram_user_memory.py",
+        "src/memory/stm_buffer.py",
+        "src/memory/mgc_cache.py",
+        "src/memory/spiral_context_generator.py",
+        "src/orchestration/cam_engine.py"
+      ]
+    },
+    {
+      "name": "core_boot_closure_tier1",
+      "description": "Transitive boot-closure modules required before CUT MCP reuses mirrored core runtime paths.",
+      "paths": [
+        "src/scanners/mime_policy.py",
+        "src/memory/qdrant_client.py",
+        "src/orchestration/triple_write_manager.py",
+        "src/utils/embedding_service.py",
+        "src/services/activity_hub.py",
+        "src/services/activity_emitter.py",
+        "src/memory/elision.py",
+        "src/memory/surprise_detector.py",
+        "src/memory/qdrant_auto_retry.py",
+        "src/ocr/ocr_processor.py",
+        "src/voice/stt_engine.py"
+      ]
+    },
+    {
+      "name": "media_contracts",
+      "description": "Shared docs/contracts kept compatible with upstream VETKA.",
+      "paths": [
+        "docs/contracts/media_mcp_job_v1.schema.json",
+        "docs/contracts/vetka_montage_sheet_v1.schema.json",
+        "docs/158_ph/VETKA_MEDIA_MODE_FOLDER_SPEC_V1.md",
+        "docs/158_ph/VETKA_UNIFIED_IO_MATRIX_V1.md",
+        "docs/158_ph/VETKA_MEDIA_PIPELINE_BUDGETS_V1.md"
+      ]
+    },
+    {
+      "name": "media_runtime",
+      "description": "Existing media runtime/server pieces to study or mirror selectively.",
+      "paths": [
+        "src/api/routes/artifact_routes.py",
+        "src/services/media_mcp_job_store.py",
+        "tests/phase159/test_media_mcp_async_startup.py"
+      ]
+    }
+  ]
+}

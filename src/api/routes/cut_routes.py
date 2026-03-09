@@ -61,6 +61,28 @@ class CutSceneGraphPatchRequest(BaseModel):
     ops: list[dict[str, Any]] = Field(default_factory=list, min_length=1)
 
 
+class CutTimeMarkerApplyRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    timeline_id: str = "main"
+    author: str = "cut_mcp"
+    op: Literal["create", "archive"] = "create"
+    marker_id: str | None = None
+    media_path: str = ""
+    kind: Literal["favorite", "comment", "cam", "insight", "chat"] = "favorite"
+    start_sec: float = Field(default=0.0, ge=0.0)
+    end_sec: float = Field(default=1.0, ge=0.0)
+    anchor_sec: float | None = Field(default=None, ge=0.0)
+    score: float = Field(default=1.0, ge=0.0, le=1.0)
+    label: str = ""
+    text: str = ""
+    context_slice: dict[str, Any] | None = None
+    cam_payload: dict[str, Any] | None = None
+    chat_thread_id: str | None = None
+    comment_thread_id: str | None = None
+    source_engine: str = "cut_mcp"
+
+
 class CutWaveformBuildRequest(BaseModel):
     sandbox_root: str
     project_id: str
@@ -112,6 +134,21 @@ def _scene_graph_error(code: str, message: str, *, recoverable: bool = True) -> 
     return {
         "success": False,
         "schema_version": "cut_scene_graph_apply_v1",
+        "error": {
+            "code": code,
+            "message": message,
+            "recoverable": recoverable,
+        },
+    }
+
+
+def _time_marker_error(code: str, message: str, *, recoverable: bool = True) -> dict[str, Any]:
+    return {
+        "success": False,
+        "schema_version": "cut_time_marker_apply_v1",
+        "marker": None,
+        "marker_bundle": None,
+        "edit_event": None,
         "error": {
             "code": code,
             "message": message,
@@ -625,6 +662,66 @@ def _collect_project_jobs(*, project_id: str, sandbox_root: str, limit: int = 8)
     jobs = sorted(jobs, key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""), reverse=True)
     active_jobs = [job for job in jobs if str(job.get("state") or "") in _ACTIVE_JOB_STATES]
     return jobs[:limit], active_jobs
+
+
+def _compute_time_marker_ranking_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
+    kind_counts = {kind: 0 for kind in ("favorite", "comment", "cam", "insight", "chat")}
+    media_scores: dict[str, float] = {}
+    active_count = 0
+    for item in items:
+        if str(item.get("status") or "active") != "active":
+            continue
+        active_count += 1
+        kind = str(item.get("kind") or "")
+        if kind in kind_counts:
+            kind_counts[kind] += 1
+        media_path = str(item.get("media_path") or "")
+        media_scores[media_path] = float(media_scores.get(media_path, 0.0)) + float(item.get("score") or 0.0)
+    top_media = [
+        {"media_path": media_path, "score": round(score, 4)}
+        for media_path, score in sorted(media_scores.items(), key=lambda item: (-item[1], item[0]))[:8]
+    ]
+    return {
+        "total_markers": len(items),
+        "active_markers": active_count,
+        "kind_counts": kind_counts,
+        "top_media": top_media,
+    }
+
+
+def _build_time_marker(body: CutTimeMarkerApplyRequest, project_id: str, timeline_id: str) -> dict[str, Any]:
+    if body.end_sec < body.start_sec:
+        raise ValueError("end_sec must be >= start_sec")
+    media_path = str(body.media_path or "").strip()
+    if not media_path:
+        raise ValueError("media_path is required for marker creation")
+    anchor_sec = body.anchor_sec
+    if anchor_sec is not None and (anchor_sec < body.start_sec or anchor_sec > body.end_sec):
+        raise ValueError("anchor_sec must be inside [start_sec, end_sec]")
+    now = _utc_now_iso()
+    return {
+        "marker_id": str(body.marker_id or f"marker_{uuid4().hex[:12]}"),
+        "schema_version": "cut_time_marker_v1",
+        "project_id": str(project_id),
+        "timeline_id": str(timeline_id),
+        "media_path": media_path,
+        "kind": str(body.kind),
+        "start_sec": float(body.start_sec),
+        "end_sec": float(body.end_sec),
+        "anchor_sec": anchor_sec,
+        "score": float(body.score),
+        "label": str(body.label or ""),
+        "text": str(body.text or ""),
+        "author": str(body.author or "cut_mcp"),
+        "context_slice": deepcopy(body.context_slice) if body.context_slice is not None else None,
+        "cam_payload": deepcopy(body.cam_payload) if body.cam_payload is not None else None,
+        "chat_thread_id": body.chat_thread_id,
+        "comment_thread_id": body.comment_thread_id,
+        "source_engine": str(body.source_engine or "cut_mcp"),
+        "status": "active",
+        "created_at": now,
+        "updated_at": now,
+    }
 
 
 def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
@@ -1579,6 +1676,7 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
     waveform_bundle = store.load_waveform_bundle()
     transcript_bundle = store.load_transcript_bundle()
     thumbnail_bundle = store.load_thumbnail_bundle()
+    time_marker_bundle = store.load_time_marker_bundle()
     recent_jobs, active_jobs = _collect_project_jobs(project_id=str(project.get("project_id") or ""), sandbox_root=str(sandbox_root))
     return {
         "success": True,
@@ -1590,6 +1688,7 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         "waveform_bundle": waveform_bundle,
         "transcript_bundle": transcript_bundle,
         "thumbnail_bundle": thumbnail_bundle,
+        "time_marker_bundle": time_marker_bundle,
         "recent_jobs": recent_jobs,
         "active_jobs": active_jobs,
         "layout": store.sandbox_layout_status(),
@@ -1598,6 +1697,121 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         "waveform_ready": waveform_bundle is not None,
         "transcript_ready": transcript_bundle is not None,
         "thumbnail_ready": thumbnail_bundle is not None,
+        "time_markers_ready": time_marker_bundle is not None,
+    }
+
+
+@router.get("/time-markers")
+async def cut_time_markers(sandbox_root: str, project_id: str = "", timeline_id: str = "") -> dict[str, Any]:
+    """
+    MARKER_170.MCP.TIME_MARKERS_V1
+    """
+    store = CutProjectStore(sandbox_root)
+    project = store.load_project()
+    if project is None:
+        return _time_marker_error("project_not_found", "CUT project not found for time marker read.")
+    if project_id and str(project.get("project_id") or "") != str(project_id):
+        return _time_marker_error("project_not_found", "Requested CUT project does not match sandbox state.")
+    marker_bundle = store.load_time_marker_bundle()
+    if marker_bundle is None:
+        timeline_state = store.load_timeline_state()
+        resolved_timeline_id = str(timeline_id or (timeline_state or {}).get("timeline_id") or "main")
+        marker_bundle = {
+            "schema_version": "cut_time_marker_bundle_v1",
+            "project_id": str(project.get("project_id") or ""),
+            "timeline_id": resolved_timeline_id,
+            "revision": 1,
+            "items": [],
+            "ranking_summary": _compute_time_marker_ranking_summary([]),
+            "generated_at": _utc_now_iso(),
+        }
+    elif timeline_id and str(marker_bundle.get("timeline_id") or "") != str(timeline_id):
+        return _time_marker_error("timeline_not_found", "Requested CUT timeline does not match stored time marker bundle.")
+    return {
+        "success": True,
+        "schema_version": "cut_time_marker_apply_v1",
+        "marker": None,
+        "marker_bundle": marker_bundle,
+        "edit_event": None,
+        "error": None,
+    }
+
+
+@router.post("/time-markers/apply")
+async def cut_time_marker_apply(body: CutTimeMarkerApplyRequest) -> dict[str, Any]:
+    """
+    MARKER_170.MCP.TIME_MARKERS_V1
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _time_marker_error("project_not_found", "CUT project not found for time marker apply.")
+    timeline_state = store.load_timeline_state()
+    resolved_timeline_id = str((timeline_state or {}).get("timeline_id") or body.timeline_id or "main")
+    if timeline_state is not None and str(body.timeline_id or resolved_timeline_id) != str(resolved_timeline_id):
+        return _time_marker_error("timeline_not_found", "Requested CUT timeline does not match stored timeline state.")
+
+    marker_bundle = store.load_time_marker_bundle()
+    if marker_bundle is None:
+        marker_bundle = {
+            "schema_version": "cut_time_marker_bundle_v1",
+            "project_id": str(project.get("project_id") or ""),
+            "timeline_id": resolved_timeline_id,
+            "revision": 0,
+            "items": [],
+            "ranking_summary": _compute_time_marker_ranking_summary([]),
+            "generated_at": _utc_now_iso(),
+        }
+
+    items = [deepcopy(item) for item in marker_bundle.get("items", [])]
+    marker: dict[str, Any] | None = None
+    op = str(body.op or "create")
+    if op == "create":
+        try:
+            marker = _build_time_marker(body, str(project.get("project_id") or ""), resolved_timeline_id)
+        except ValueError as exc:
+            return _time_marker_error("time_marker_invalid", str(exc))
+        items.append(marker)
+    else:
+        marker_id = str(body.marker_id or "").strip()
+        if not marker_id:
+            return _time_marker_error("time_marker_invalid", "marker_id is required for archive operation.")
+        target = next((item for item in items if str(item.get("marker_id") or "") == marker_id), None)
+        if target is None:
+            return _time_marker_error("marker_not_found", f"Time marker not found: {marker_id}")
+        target["status"] = "archived"
+        target["updated_at"] = _utc_now_iso()
+        marker = deepcopy(target)
+
+    updated_bundle = {
+        "schema_version": "cut_time_marker_bundle_v1",
+        "project_id": str(project.get("project_id") or ""),
+        "timeline_id": resolved_timeline_id,
+        "revision": int(marker_bundle.get("revision") or 0) + 1,
+        "items": items,
+        "ranking_summary": _compute_time_marker_ranking_summary(items),
+        "generated_at": _utc_now_iso(),
+    }
+    store.save_time_marker_bundle(updated_bundle)
+    edit_event = {
+        "event_id": f"time_marker_edit_{uuid4().hex[:12]}",
+        "project_id": str(project.get("project_id") or ""),
+        "timeline_id": resolved_timeline_id,
+        "author": str(body.author or "cut_mcp"),
+        "revision": int(updated_bundle.get("revision") or 0),
+        "op": op,
+        "marker_id": str((marker or {}).get("marker_id") or body.marker_id or ""),
+        "kind": str((marker or {}).get("kind") or body.kind or ""),
+        "created_at": _utc_now_iso(),
+    }
+    store.append_time_marker_edit_event(edit_event)
+    return {
+        "success": True,
+        "schema_version": "cut_time_marker_apply_v1",
+        "marker": marker,
+        "marker_bundle": updated_bundle,
+        "edit_event": edit_event,
+        "error": None,
     }
 
 

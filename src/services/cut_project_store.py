@@ -90,6 +90,14 @@ class CutProjectPaths:
     def thumbnail_bundle_path(self) -> str:
         return os.path.join(self.runtime_state_dir, "thumbnail_bundle.latest.json")
 
+    @property
+    def time_marker_bundle_path(self) -> str:
+        return os.path.join(self.runtime_state_dir, "time_marker_bundle.latest.json")
+
+    @property
+    def time_marker_edit_log_path(self) -> str:
+        return os.path.join(self.runtime_state_dir, "time_marker_edit_log.jsonl")
+
 
 class CutProjectStore:
     """
@@ -201,6 +209,25 @@ class CutProjectStore:
         if not self._validate_thumbnail_bundle_payload(payload):
             raise ValueError("Invalid cut_thumbnail_bundle_v1 payload")
         self._atomic_write_json(self.paths.thumbnail_bundle_path, payload)
+
+    def load_time_marker_bundle(self) -> dict[str, Any] | None:
+        payload = self._load_json(self.paths.time_marker_bundle_path, expected_schema="cut_time_marker_bundle_v1")
+        if payload is None or not self._validate_time_marker_bundle_payload(payload):
+            return None
+        return payload
+
+    def save_time_marker_bundle(self, bundle: dict[str, Any]) -> None:
+        payload = dict(bundle or {})
+        if not self._validate_time_marker_bundle_payload(payload):
+            raise ValueError("Invalid cut_time_marker_bundle_v1 payload")
+        self._atomic_write_json(self.paths.time_marker_bundle_path, payload)
+
+    def append_time_marker_edit_event(self, event: dict[str, Any]) -> None:
+        payload = dict(event or {})
+        os.makedirs(os.path.dirname(self.paths.time_marker_edit_log_path), exist_ok=True)
+        with open(self.paths.time_marker_edit_log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False))
+            f.write("\n")
 
     def resolve_create_or_open(self, source_path: str) -> tuple[str, dict[str, Any] | None]:
         project = self.load_project()
@@ -430,6 +457,64 @@ class CutProjectStore:
         if str(payload.get("schema_version")) != "cut_thumbnail_bundle_v1":
             return False
         if not isinstance(payload.get("items"), list):
+            return False
+        return True
+
+    def _validate_time_marker_bundle_payload(self, payload: dict[str, Any]) -> bool:
+        required = [
+            "schema_version",
+            "project_id",
+            "timeline_id",
+            "revision",
+            "items",
+            "generated_at",
+        ]
+        if any(key not in payload for key in required):
+            return False
+        if str(payload.get("schema_version")) != "cut_time_marker_bundle_v1":
+            return False
+        if not isinstance(payload.get("items"), list):
+            return False
+        for item in payload.get("items", []):
+            if not self._validate_time_marker_payload(item):
+                return False
+        return True
+
+    def _validate_time_marker_payload(self, payload: dict[str, Any]) -> bool:
+        required = [
+            "marker_id",
+            "schema_version",
+            "project_id",
+            "timeline_id",
+            "media_path",
+            "kind",
+            "start_sec",
+            "end_sec",
+            "score",
+            "created_at",
+            "updated_at",
+        ]
+        if any(key not in payload for key in required):
+            return False
+        if str(payload.get("schema_version")) != "cut_time_marker_v1":
+            return False
+        if str(payload.get("kind") or "") not in {"favorite", "comment", "cam", "insight", "chat"}:
+            return False
+        start_sec = float(payload.get("start_sec") or 0.0)
+        end_sec = float(payload.get("end_sec") or 0.0)
+        if start_sec < 0 or end_sec < 0 or end_sec < start_sec:
+            return False
+        score = float(payload.get("score") or 0.0)
+        if score < 0 or score > 1:
+            return False
+        status = str(payload.get("status") or "active")
+        if status not in {"active", "archived"}:
+            return False
+        if not str(payload.get("project_id") or "").strip():
+            return False
+        if not str(payload.get("timeline_id") or "").strip():
+            return False
+        if not str(payload.get("media_path") or "").strip():
             return False
         return True
 
