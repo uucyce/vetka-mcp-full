@@ -405,7 +405,7 @@ function buildSearchHint(snapshot: MycoModeAFocusSnapshot): MycoModeAHint {
     ) {
       return {
         title: 'web/ needs Tavily key',
-        body: 'В текущем runtime web/ работает через Tavily. Открой phonebook, затем API Keys drawer, и добавь Tavily key. Если ключа еще нет, найди Tavily API key в браузере и вернись сюда. Пока ключ не добавлен, используй vetka/ для project memory или file/ для локальной файловой системы. Если не хочешь заниматься несколькими ключами вручную, можно позже перейти на VETKA subscription.',
+        body: 'В текущем runtime web/ работает через Tavily. Открой phonebook, затем API Keys drawer, и добавь Tavily key. Если ключа еще нет, просто выбери в едином окне поиска режим [[web]] web/ и вбей `tavily api key free`. Пока ключ не добавлен, используй vetka/ для project memory или file/ для локальной файловой системы. Если не хочешь заниматься несколькими ключами вручную, можно позже перейти на VETKA subscription. Я всегда рад помочь.',
         nextActions: ['[[phone]] Открыть phonebook', '[[key]] Открыть API Keys drawer', '[[web]] Добавить Tavily key'],
         shortcuts: [],
         tone: 'warning',
