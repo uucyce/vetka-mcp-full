@@ -412,6 +412,7 @@ def _build_myco_quick_reply(
     mt_active = int(multitask.get("active") or 0)
     mt_queued = int(multitask.get("queued") or 0)
     mt_done = int(multitask.get("done") or 0)
+    mt_failed = int(multitask.get("failed") or 0)
     mt_cap = int(multitask.get("max_concurrent") or 0)
     mt_autodispatch = bool(multitask.get("auto_dispatch", False))
     mt_phase = str(multitask.get("phase") or "").strip()
@@ -453,6 +454,7 @@ def _build_myco_quick_reply(
             f"- workflow family: {workflow_family_hint}\n"
             f"- mode: {fast_mode}\n"
             f"- multitask: active {mt_active} · queued {mt_queued} · done {mt_done}\n"
+            f"- multitask errors: failed {mt_failed}\n"
             f"- multitask cfg: cap {mt_cap or 'n/a'} · auto_dispatch {'on' if mt_autodispatch else 'off'} · board phase {mt_phase or 'n/a'}\n"
             f"{digest_line}\n"
             f"{ref_line}"
@@ -476,7 +478,7 @@ def _build_myco_quick_reply(
         + "\n"
         f"- workflow family: {workflow_family_hint}\n"
         f"{task_line}\n"
-        f"- multitask: active {mt_active} · queued {mt_queued} · done {mt_done}\n"
+        f"- multitask: active {mt_active} · queued {mt_queued} · done {mt_done} · failed {mt_failed}\n"
         f"- multitask cfg: cap {mt_cap or 'n/a'} · auto_dispatch {'on' if mt_autodispatch else 'off'} · board phase {mt_phase or 'n/a'}\n"
         f"{digest_line}\n"
         f"{ref_line}"

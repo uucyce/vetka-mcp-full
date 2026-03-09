@@ -481,26 +481,50 @@ def _load_project_digest() -> Dict[str, Any]:
 
 
 def _digest_snapshot(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    # MARKER_171.P1.MYCO.DIGEST_NORMALIZE.V1
+    # Keep digest compact but structured so MYCO/MCC don't receive stringified dict blobs.
     data = dict(payload or _load_project_digest())
-    summary = str(
-        data.get("summary")
-        or ((data.get("system_status") or {}).get("summary") if isinstance(data.get("system_status"), dict) else "")
-        or ""
-    ).strip()
-    phase = str(
-        data.get("current_phase")
-        or data.get("phase")
-        or ((data.get("meta") or {}).get("phase") if isinstance(data.get("meta"), dict) else "")
-        or ""
-    ).strip()
-    status = str(
-        ((data.get("status") or {}).get("summary") if isinstance(data.get("status"), dict) else "")
-        or ((data.get("system_status") or {}).get("health") if isinstance(data.get("system_status"), dict) else "")
-        or ""
-    ).strip()
+    summary_raw = data.get("summary")
+    phase_raw = data.get("current_phase") or data.get("phase")
+    status_raw = data.get("status")
+    system_status = data.get("system_status") if isinstance(data.get("system_status"), dict) else {}
+
+    if isinstance(summary_raw, dict):
+        summary = str(
+            summary_raw.get("headline")
+            or ((summary_raw.get("key_achievements") or [""])[0])
+            or ""
+        ).strip()
+    else:
+        summary = str(summary_raw or system_status.get("summary") or "").strip()
+
+    phase_number = ""
+    phase_subphase = ""
+    phase_name = ""
+    phase_status = ""
+    if isinstance(phase_raw, dict):
+        phase_number = str(phase_raw.get("number") or "").strip()
+        phase_subphase = str(phase_raw.get("subphase") or "").strip()
+        phase_name = str(phase_raw.get("name") or "").strip()
+        phase_status = str(phase_raw.get("status") or "").strip()
+        phase = ".".join(x for x in (phase_number, phase_subphase) if x)
+        if phase_status:
+            phase = f"{phase} {phase_status}".strip() if phase else phase_status
+    else:
+        phase = str(phase_raw or ((data.get("meta") or {}).get("phase") if isinstance(data.get("meta"), dict) else "") or "").strip()
+
+    if isinstance(status_raw, dict):
+        status = str(status_raw.get("summary") or "").strip()
+    else:
+        status = str(status_raw or system_status.get("health") or "").strip()
+
     return {
         "updated_at": str(data.get("last_updated") or data.get("updated_at") or ""),
         "phase": phase,
+        "phase_number": phase_number,
+        "phase_subphase": phase_subphase,
+        "phase_name": phase_name,
+        "phase_status": phase_status,
         "status": status,
         "summary": summary,
     }
@@ -508,6 +532,8 @@ def _digest_snapshot(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]
 
 def _multitask_stats() -> Dict[str, Any]:
     # MARKER_162.P3.P3.MYCO.MULTITASK_CFG_SNAPSHOT.V1
+    # MARKER_171.P1.MYCO.MULTITASK_STATUS_SPLIT.V1
+    # Separate failed/cancelled from queued to keep orchestration signal clean.
     payload = _load_task_board()
     tasks = payload.get("tasks") if isinstance(payload.get("tasks"), dict) else {}
     settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
@@ -516,14 +542,17 @@ def _multitask_stats() -> Dict[str, Any]:
     done = 0
     active = 0
     queued = 0
+    failed = 0
     for task in tasks.values():
         if not isinstance(task, dict):
             continue
         status = str(task.get("status") or "").strip().lower()
         if status == "done":
             done += 1
-        elif status in {"running", "active", "in_progress"}:
+        elif status in {"running", "active", "in_progress", "claimed"}:
             active += 1
+        elif status in {"failed", "cancelled"}:
+            failed += 1
         else:
             queued += 1
     return {
@@ -531,6 +560,7 @@ def _multitask_stats() -> Dict[str, Any]:
         "done": done,
         "active": active,
         "queued": queued,
+        "failed": failed,
         "phase": str(meta.get("phase") or ""),
         "max_concurrent": int(settings.get("max_concurrent") or 0),
         "auto_dispatch": bool(settings.get("auto_dispatch", False)),
