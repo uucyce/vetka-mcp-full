@@ -436,7 +436,10 @@ export function UnifiedSearchBar({
   }); // Fetch up to 100, paginate in UI
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const laneRootRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const resultPreviewRef = useRef<HTMLDivElement>(null);
+  const mycoPreviewRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mycoPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingInputFocusRef = useRef(false);
@@ -688,14 +691,52 @@ export function UnifiedSearchBar({
       clearMycoPreview();
     };
 
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (laneRootRef.current?.contains(target)) return;
+      if (resultPreviewRef.current?.contains(target)) return;
+      if (mycoPreviewRef.current?.contains(target)) return;
+      dismissPreviews();
+    };
+
+    const handleFocusIn = (event: FocusEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (laneRootRef.current?.contains(target)) return;
+      if (resultPreviewRef.current?.contains(target)) return;
+      if (mycoPreviewRef.current?.contains(target)) return;
+      dismissPreviews();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') {
+        dismissPreviews();
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        dismissPreviews();
+      }
+    };
+
     window.addEventListener('scroll', dismissPreviews, true);
     window.addEventListener('resize', dismissPreviews);
     window.addEventListener('blur', dismissPreviews);
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('focusin', handleFocusIn, true);
+    window.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('scroll', dismissPreviews, true);
       window.removeEventListener('resize', dismissPreviews);
       window.removeEventListener('blur', dismissPreviews);
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('focusin', handleFocusIn, true);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [clearMycoPreview, clearResultPreview]);
 
@@ -1319,7 +1360,7 @@ export function UnifiedSearchBar({
     : (displayedMycoTickerText || mycoTickerText);
 
   return (
-    <div style={styles.container}>
+    <div ref={laneRootRef} style={styles.container}>
       {/* Search Input */}
       <div
         style={{
@@ -2064,6 +2105,7 @@ export function UnifiedSearchBar({
       {/* Phase 68.3: Enhanced hover preview with metadata */}
       {typeof document !== 'undefined' && hoveredResult && previewPosition && createPortal(
         <div
+          ref={resultPreviewRef}
           style={{
             ...styles.preview,
             left: Math.min(previewPosition.x, window.innerWidth - 420),
@@ -2103,6 +2145,7 @@ export function UnifiedSearchBar({
 
       {typeof document !== 'undefined' && showMycoPreview && mycoPreviewPosition && mycoHint && createPortal(
         <div
+          ref={mycoPreviewRef}
           style={{
             ...styles.preview,
             left: Math.min(mycoPreviewPosition.x, window.innerWidth - 420),
