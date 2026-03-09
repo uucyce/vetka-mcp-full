@@ -42,6 +42,14 @@ function formatName(value: string) {
   return tail.length > 52 ? `${tail.slice(0, 49)}...` : tail;
 }
 
+function formatTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const total = Math.floor(seconds);
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
 function App() {
   const initialQuery = useMemo(readQuery, []);
   const [variant, setVariant] = useState<ShellVariant>(initialQuery.variant);
@@ -57,11 +65,17 @@ function App() {
   const [isDebugVisible, setIsDebugVisible] = useState(initialQuery.debug);
   const [geometryTick, setGeometryTick] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const [showTransport, setShowTransport] = useState(true);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const topbarRef = useRef<HTMLElement | null>(null);
   const autoSizedKeyRef = useRef("");
+  const transportTimerRef = useRef<number | null>(null);
   const intrinsicSize = naturalSize.width > 0 && naturalSize.height > 0 ? naturalSize : syntheticSize;
   const sourceKind: GeometrySnapshot["sourceKind"] = naturalSize.width > 0 && naturalSize.height > 0
     ? "video"
@@ -215,10 +229,47 @@ function App() {
           videoRef.current.pause();
         }
       }
+      if (event.key === "ArrowLeft" && videoRef.current) {
+        event.preventDefault();
+        videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5);
+      }
+      if (event.key === "ArrowRight" && videoRef.current) {
+        event.preventDefault();
+        videoRef.current.currentTime = Math.min(duration || videoRef.current.duration || 0, videoRef.current.currentTime + 5);
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [duration]);
+
+  useEffect(() => {
+    if (!src) {
+      setCurrentTime(0);
+      setDuration(0);
+      setIsPlaying(false);
+      setShowTransport(true);
+    }
+  }, [src]);
+
+  useEffect(() => {
+    if (transportTimerRef.current) {
+      window.clearTimeout(transportTimerRef.current);
+      transportTimerRef.current = null;
+    }
+    if (!isPlaying || isDebugVisible) {
+      setShowTransport(true);
+      return;
+    }
+    transportTimerRef.current = window.setTimeout(() => {
+      setShowTransport(false);
+    }, 1800);
+    return () => {
+      if (transportTimerRef.current) {
+        window.clearTimeout(transportTimerRef.current);
+        transportTimerRef.current = null;
+      }
+    };
+  }, [isDebugVisible, isPlaying, currentTime]);
 
   useEffect(() => {
     const api = {
@@ -269,6 +320,26 @@ function App() {
     setFileName(file.name);
     setNaturalSize({ width: 0, height: 0 });
     autoSizedKeyRef.current = "";
+  }
+
+  function syncVolume(nextVolume: number, nextMuted = false) {
+    const video = videoRef.current;
+    const safeVolume = Math.max(0, Math.min(1, nextVolume));
+    setVolume(safeVolume);
+    setIsMuted(nextMuted);
+    if (!video) return;
+    video.volume = safeVolume;
+    video.muted = nextMuted;
+  }
+
+  function togglePlayback() {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      void video.play();
+    } else {
+      video.pause();
+    }
   }
 
   return (
@@ -333,29 +404,98 @@ function App() {
                     ref={videoRef}
                     className="viewer-video"
                     src={src}
-                    controls
+                    controls={false}
                     playsInline
                     preload="metadata"
+                    onClick={() => togglePlayback()}
                     onLoadedMetadata={(event) => {
                       const video = event.currentTarget;
                       setNaturalSize({
                         width: Number(video.videoWidth || 0),
                         height: Number(video.videoHeight || 0),
                       });
+                      setDuration(Number(video.duration || 0));
+                      setCurrentTime(Number(video.currentTime || 0));
+                      setVolume(Number(video.volume || 1));
+                      setIsMuted(Boolean(video.muted));
                       if (!fileName) setFileName(formatName(src));
                     }}
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
+                    onTimeUpdate={(event) => setCurrentTime(Number(event.currentTarget.currentTime || 0))}
+                    onDurationChange={(event) => setDuration(Number(event.currentTarget.duration || 0))}
+                    onVolumeChange={(event) => {
+                      setVolume(Number(event.currentTarget.volume || 0));
+                      setIsMuted(Boolean(event.currentTarget.muted));
+                    }}
                   />
+                  <div
+                    className={`transport-overlay ${showTransport ? "transport-visible" : "transport-hidden"}`}
+                    onMouseMove={() => setShowTransport(true)}
+                    onMouseLeave={() => {
+                      if (isPlaying && !isDebugVisible) setShowTransport(false);
+                    }}
+                  >
+                    <div className="transport-scrim" />
+                    <div className="transport-bar">
+                      <button className="transport-button" type="button" onClick={() => {
+                        const video = videoRef.current;
+                        if (!video) return;
+                        video.currentTime = Math.max(0, video.currentTime - 5);
+                      }}>
+                        «5
+                      </button>
+                      <button className="transport-button transport-button-primary" type="button" onClick={() => togglePlayback()}>
+                        {isPlaying ? "Pause" : "Play"}
+                      </button>
+                      <button className="transport-button" type="button" onClick={() => {
+                        const video = videoRef.current;
+                        if (!video) return;
+                        video.currentTime = Math.min(duration || video.duration || 0, video.currentTime + 5);
+                      }}>
+                        5»
+                      </button>
+                      <span className="transport-time">{formatTime(currentTime)}</span>
+                      <input
+                        className="transport-progress"
+                        type="range"
+                        min={0}
+                        max={Math.max(duration, 0.001)}
+                        step={0.01}
+                        value={Math.min(currentTime, duration || 0)}
+                        onChange={(event) => {
+                          const nextTime = Number(event.target.value || 0);
+                          setCurrentTime(nextTime);
+                          if (videoRef.current) videoRef.current.currentTime = nextTime;
+                        }}
+                      />
+                      <span className="transport-time">{formatTime(duration)}</span>
+                      <button className="transport-button" type="button" onClick={() => {
+                        const nextMuted = !isMuted;
+                        syncVolume(nextMuted ? volume : Math.max(volume, 0.6), nextMuted);
+                      }}>
+                        {isMuted || volume === 0 ? "Muted" : "Sound"}
+                      </button>
+                      <input
+                        className="transport-volume"
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={isMuted ? 0 : volume}
+                        onChange={(event) => {
+                          const nextVolume = Number(event.target.value || 0);
+                          syncVolume(nextVolume, nextVolume === 0);
+                        }}
+                      />
+                      <button className="transport-button" type="button" onClick={() => void toggleFullscreen()}>
+                        Full
+                      </button>
+                    </div>
+                  </div>
                   <div className={`hud ${isPlaying ? "hud-hidden" : ""}`}>
                     <button className="hud-button" type="button" onClick={() => {
-                      const video = videoRef.current;
-                      if (!video) return;
-                      if (video.paused) {
-                        void video.play();
-                      } else {
-                        video.pause();
-                      }
+                      togglePlayback();
                     }}>
                       {isPlaying ? "Pause" : "Play"}
                     </button>

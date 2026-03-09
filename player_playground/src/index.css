@@ -153,6 +153,7 @@ select {
   position: relative;
   background: #000;
   min-height: 180px;
+  overflow: hidden;
 }
 
 .viewer-shell.flex-footer .viewer-area {
@@ -170,6 +171,93 @@ select {
   display: block;
   object-fit: contain;
   background: #000;
+  cursor: pointer;
+}
+
+.transport-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+.transport-visible {
+  opacity: 1;
+}
+
+.transport-hidden {
+  opacity: 0;
+}
+
+.transport-scrim {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 120px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.68));
+}
+
+.transport-bar {
+  position: relative;
+  z-index: 1;
+  margin: 0 18px 18px;
+  width: calc(100% - 36px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(12, 14, 16, 0.82);
+  backdrop-filter: blur(24px);
+  pointer-events: auto;
+}
+
+.transport-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5f7fa;
+  line-height: 1;
+}
+
+.transport-button-primary {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.transport-time {
+  min-width: 42px;
+  color: #d4dae2;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.transport-progress,
+.transport-volume {
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.transport-progress {
+  flex: 1 1 auto;
+}
+
+.transport-volume {
+  width: 88px;
+}
+
+.transport-progress::-webkit-slider-thumb,
+.transport-volume::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f5f7fa;
+  border: 0;
 }
 
 .player-footer,
@@ -348,5 +436,21 @@ select {
   .debug-drawer {
     border-left: 0;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
+  }
+}
+
+@media (max-width: 900px) {
+  .transport-bar {
+    gap: 8px;
+    padding: 9px 12px;
+  }
+
+  .transport-button {
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+
+  .transport-volume {
+    width: 64px;
   }
 }
