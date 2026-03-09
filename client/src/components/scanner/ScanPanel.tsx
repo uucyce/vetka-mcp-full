@@ -96,6 +96,7 @@ interface ScanPanelProps {
   pinnedPaths?: string[];  // Phase 92.5: Currently pinned file paths
   isVisible?: boolean;
   onEvent?: (event: ScannerEvent) => void;
+  onSourceChange?: (source: 'local' | 'cloud' | 'browser' | 'social') => void;
 }
 
 export interface ScannerEvent {
@@ -267,11 +268,16 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
   onFilePin,
   pinnedPaths = [],
   isVisible = true,
-  onEvent
+  onEvent,
+  onSourceChange,
 }) => {
   // Source carousel state
   const [currentSourceIndex, setCurrentSourceIndex] = useState(0);
   const currentSource = sources[currentSourceIndex];
+
+  useEffect(() => {
+    onSourceChange?.(currentSource.id as 'local' | 'cloud' | 'browser' | 'social');
+  }, [currentSource.id, onSourceChange]);
 
   // Watched directories state (kept for API status tracking)
   const [, setWatchedDirs] = useState<WatchedDirectory[]>([]);

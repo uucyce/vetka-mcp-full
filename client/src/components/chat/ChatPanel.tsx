@@ -23,6 +23,7 @@ import { ChatSidebar } from './ChatSidebar';
 import { ScanPanel, type ScannerEvent } from '../scanner/ScanPanel';
 import { UnifiedSearchBar } from '../search/UnifiedSearchBar';
 import type { ChatMessage, SearchResult } from '../../types/chat';
+import type { MycoModeAHint } from '../myco/mycoModeATypes';
 import { savePinnedFiles, getChatsForFile } from '../../utils/chatApi';
 import { API_BASE } from '../../config/api.config';
 import { isTauri, openLiveWebWindow } from '../../config/tauri';
@@ -51,6 +52,8 @@ interface Props {
   onVoiceTrigger?: () => void;
   voiceState?: 'idle' | 'listening' | 'thinking' | 'speaking';
   voiceLevel?: number;
+  mycoHint?: MycoModeAHint | null;
+  mycoStateKey?: string;
 }
 
 type VoiceReplyMode = 'text_only' | 'voice_auto' | 'voice_forced';
@@ -63,6 +66,8 @@ export function ChatPanel({
   onVoiceTrigger,
   voiceState,
   voiceLevel,
+  mycoHint,
+  mycoStateKey,
 }: Props) {
   const chatMessages = useStore((s) => s.chatMessages);
   const currentWorkflow = useStore((s) => s.currentWorkflow);
@@ -121,6 +126,25 @@ export function ChatPanel({
     return (saved === 'right') ? 'right' : 'left';
   });
 
+  useEffect(() => {
+    // MARKER_163A.MODE_A.SILENCE.ON_TYPING.V1:
+    // Main-surface MYCO guide should stay silent while the user already has pending chat input.
+    window.dispatchEvent(new CustomEvent('vetka-myco-chat-input-state', {
+      detail: {
+        isOpen,
+        empty: input.trim().length === 0,
+      },
+    }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('vetka-myco-chat-input-state', {
+        detail: {
+          isOpen: false,
+          empty: true,
+        },
+      }));
+    };
+  }, [input, isOpen]);
+
   // Phase 50.3: Left panel state now comes from App.tsx as props
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   // Phase 111.9: Source for multi-provider routing (poe, polza, openrouter, etc.)
@@ -160,12 +184,30 @@ export function ChatPanel({
   // Phase 56.6: Added 'group' tab
   // Phase 80.12: Removed 'group-settings' - using GroupCreatorPanel edit mode instead
   const [activeTab, setActiveTab] = useState<'chat' | 'scanner' | 'group'>('chat');
+  const [scannerSource, setScannerSource] = useState<'local' | 'cloud' | 'browser' | 'social'>('local');
 
   // Phase 56.6: Model selection for group creation
   const [modelForGroup, setModelForGroup] = useState<string | null>(null);
 
   // Phase 57.3: Active group ID for group chat mode
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('vetka-myco-chat-surface-state', {
+      detail: {
+        activeTab,
+        hasActiveGroup: Boolean(activeGroupId),
+      },
+    }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('vetka-myco-chat-surface-state', {
+        detail: {
+          activeTab: 'chat',
+          hasActiveGroup: false,
+        },
+      }));
+    };
+  }, [activeGroupId, activeTab]);
 
   const normalizeFsPath = useCallback((value: string) => {
     const raw = String(value || '').trim();
@@ -2009,37 +2051,12 @@ export function ChatPanel({
     console.log('[ChatPanel] Scroll button visibility:', !isAtBottom ? 'VISIBLE' : 'HIDDEN', { isAtBottom });
   }, [isAtBottom]);
 
-  // Phase 54.3 Fix: Auto-hide sidebars when SWITCHING to scanner (not continuously)
-  // Phase 92.9 Fix: Removed leftPanel from deps - was causing panels to close immediately
+  // MARKER_163A.P1.SCANNER_UNIFIED_LANE_EXPANSION.V1:
+  // Scanner owns the main content rail while guidance lives in the unified search lane.
   useEffect(() => {
-    if (activeTab === 'scanner') {
-      setLeftPanel('none');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]); // Only trigger on tab change, not on leftPanel change!
-
-  // Phase 54.3 Fix: Hostess greeting when scanner tab opens
-  useEffect(() => {
-    if (activeTab === 'scanner') {
-      // Add Hostess greeting message
-      const greetings = [
-        'Hi! Select a folder to scan. I will add all files to your Vetka!',
-        'Welcome to Scanner! Start with your project root - I will find everything recursively',
-        'Ready to scan? Add a folder and watch your Vetka grow!',
-      ];
-      const greeting = greetings[Math.floor(Math.random() * greetings.length)];
-
-      // Add as Hostess message
-      addChatMessage({
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        agent: 'Hostess',
-        content: greeting,
-        type: 'text',
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }, [activeTab]); // Only trigger on tab change
+    if (activeTab !== 'scanner') return;
+    setLeftPanel('none');
+  }, [activeTab, setLeftPanel]);
 
   // Phase 81: Handle resize mouse events
   useEffect(() => {
@@ -2139,68 +2156,30 @@ export function ChatPanel({
 
   // Phase 54.4: Handle scanner events for Hostess with file type summary
   const handleScannerEvent = useCallback((event: ScannerEvent) => {
-    let hostessMessage = '';
-
     switch (event.type) {
       case 'directory_added':
         // Save last scanned folder for context
         if (event.path) {
           setLastScannedFolder(event.path);
         }
-
-        // Build file type summary if available
-        let typeSummary = '';
-        if (event.fileTypes) {
-          const topTypes = Object.entries(event.fileTypes)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3)
-            .map(([ext, count]) => `${count} .${ext}`)
-            .join(', ');
-          typeSummary = topTypes ? ` (${topTypes})` : '';
-        }
-
-        if (event.filesCount && event.filesCount > 1000) {
-          hostessMessage = `Wow! ${event.filesCount} files from "${event.path}"${typeSummary}! This is a serious project!`;
-        } else if (event.filesCount && event.filesCount > 100) {
-          hostessMessage = `Great! ${event.filesCount} files from "${event.path}"${typeSummary} added to your Vetka`;
-        } else if (event.filesCount && event.filesCount > 0) {
-          hostessMessage = `${event.filesCount} files from "${event.path}"${typeSummary}. Drop more folders to grow your tree!`;
-        } else {
-          hostessMessage = `"${event.path}" added! Files will be indexed.`;
-        }
-        break;
-
-      case 'directory_removed':
-        hostessMessage = 'Directory removed.';
-        break;
-
-      case 'scan_complete':
-        hostessMessage = 'Scan complete! Your tree is ready.';
-        break;
-
-      case 'scan_error':
-        hostessMessage = `${event.error || 'Something went wrong'}. Try dropping again?`;
-        break;
-
-      case 'files_dropped':
-        // Phase 54.4: Global drop event
-        if (event.filesCount && event.path) {
-          hostessMessage = `Dropped ${event.filesCount} files from "${event.path}"`;
-        }
         break;
     }
+  }, []);
 
-    if (hostessMessage) {
-      addChatMessage({
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        agent: 'Hostess',
-        content: hostessMessage,
-        type: 'text',
-        timestamp: new Date().toISOString(),
-      });
+  const scannerLaneContext = useMemo<'file' | 'cloud' | 'web' | 'social'>(() => {
+    switch (scannerSource) {
+      case 'local':
+        return 'file';
+      case 'browser':
+        return 'web';
+      case 'cloud':
+        return 'cloud';
+      case 'social':
+        return 'social';
+      default:
+        return 'file';
     }
-  }, [addChatMessage]);
+  }, [scannerSource]);
 
   // Phase I5: Handle file drop on chat panel - scan and pin file
   const handleFileDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
@@ -3036,13 +3015,17 @@ export function ChatPanel({
 
         {/* Phase 68.2: UnifiedSearchBar - always visible in chat/group mode */}
         {/* MARKER_118.3C: UnifiedSearchBar в ChatPanel — альтернативное место для иконки артефакта */}
-        {(activeTab === 'chat' || activeTab === 'group') && (
+        {(activeTab === 'chat' || activeTab === 'group' || activeTab === 'scanner') && (
           <UnifiedSearchBar
             onSelectResult={handleSearchSelect}
             onPinResult={handleSearchPin}
             onVoiceTrigger={onVoiceTrigger}
             voiceState={voiceState}
             voiceLevel={voiceLevel}
+            laneSurface="chat"
+            mycoHint={mycoHint}
+            mycoStateKey={mycoStateKey}
+            preferredSearchContext={activeTab === 'scanner' ? scannerLaneContext : undefined}
             onOpenArtifact={async (result) => {
               // MARKER_142.IMPL_STEP_6_CHAT_PARITY: Keep web artifact behavior aligned with App.tsx
               const source = String((result as any).source || '');
@@ -3074,7 +3057,7 @@ export function ChatPanel({
               });
             }}
             placeholder="Search code/docs..."
-            contextPrefix="vetka/"
+            contextPrefix={activeTab === 'scanner' ? `${scannerLaneContext}/` : 'vetka/'}
             compact={true}
           />
         )}
@@ -3562,33 +3545,6 @@ export function ChatPanel({
           </div>
         )}
 
-        {/* Phase 92.4: Unified Scan Panel (replaces ScannerPanel + ScanProgressPanel) */}
-        {activeTab === 'scanner' && (
-          <ScanPanel
-            onFileClick={(path) => {
-              console.log('[ChatPanel] Phase 92.5: onFileClick triggered, sending camera command to:', path);
-              const nodeId = resolveNodeIdByPath(path);
-              if (nodeId) {
-                selectNode(nodeId);
-              }
-              setCameraCommand({ target: path, zoom: 'close', highlight: true });
-            }}
-            // Phase 92.5: Pin file to chat context (same as search)
-            onFilePin={(path) => {
-              console.log('[ChatPanel] Phase 92.5: onFilePin triggered for:', path);
-              const nodeId = resolveNodeIdByPath(path);
-              if (nodeId) {
-                togglePinFile(nodeId);
-              } else {
-                console.warn('[ChatPanel] Could not find node for path:', path);
-              }
-            }}
-            pinnedPaths={pinnedFileIds.map(id => nodes[id]?.path).filter(Boolean) as string[]}
-            isVisible={true}
-            onEvent={handleScannerEvent}
-          />
-        )}
-
         {/* Phase 56.6: Group Creator panel when group tab active */}
         {/* Phase 80.12: Added edit mode support */}
         {activeTab === 'group' && (
@@ -3624,32 +3580,60 @@ export function ChatPanel({
           </div>
         )}
 
-        {/* Messages - always visible, takes remaining space */}
+        {/* Main content rail */}
         <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-          <div
-            ref={messagesContainerRef}
-            style={{
-              height: '100%',
-              overflow: 'auto',
-              padding: 16,
-            }}
-          >
-            <MessageList
-              messages={chatMessages}
-              isTyping={isTyping}
-              onReply={handleReply}
-              onOpenArtifact={handleOpenArtifact}
-              onQuickAction={handleQuickAction}  // MARKER_C23B: Doctor quick-action handler
-            />
-            <div ref={messagesEndRef} />
-          </div>
+          {activeTab === 'scanner' ? (
+            <div style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
+              <ScanPanel
+                onFileClick={(path) => {
+                  console.log('[ChatPanel] Phase 92.5: onFileClick triggered, sending camera command to:', path);
+                  const nodeId = resolveNodeIdByPath(path);
+                  if (nodeId) {
+                    selectNode(nodeId);
+                  }
+                  setCameraCommand({ target: path, zoom: 'close', highlight: true });
+                }}
+                onFilePin={(path) => {
+                  console.log('[ChatPanel] Phase 92.5: onFilePin triggered for:', path);
+                  const nodeId = resolveNodeIdByPath(path);
+                  if (nodeId) {
+                    togglePinFile(nodeId);
+                  } else {
+                    console.warn('[ChatPanel] Could not find node for path:', path);
+                  }
+                }}
+                pinnedPaths={pinnedFileIds.map(id => nodes[id]?.path).filter(Boolean) as string[]}
+                isVisible={true}
+                onEvent={handleScannerEvent}
+                onSourceChange={setScannerSource}
+              />
+            </div>
+          ) : (
+            <div
+              ref={messagesContainerRef}
+              style={{
+                height: '100%',
+                overflow: 'auto',
+                padding: 16,
+              }}
+            >
+              <MessageList
+                messages={chatMessages}
+                isTyping={isTyping}
+                onReply={handleReply}
+                onOpenArtifact={handleOpenArtifact}
+                onQuickAction={handleQuickAction}  // MARKER_C23B: Doctor quick-action handler
+              />
+              <div ref={messagesEndRef} />
+            </div>
+          )}
 
           {/* MARKER_SCROLL_BTN_LOCATION: Scroll-to-bottom/top button over message list */}
           {/* Phase 107.3: Scroll-to-bottom button */}
           {/* FIX_109.1b: Hide when content doesn't overflow (canScroll=false) */}
           {/* Shows when: canScroll=true AND (isAtBottom toggles direction) */}
           {/* MARKER_SCROLL_BTN_FIXED: Phase 107.3 - Toggles direction, hidden when no scroll */}
-          {canScroll && <button
+          {activeTab !== 'scanner' && canScroll && <button
             onClick={() => {
               // MARKER_SCROLL_FUNCTION: Toggle scroll direction based on position
               if (isAtBottom) {
@@ -3739,28 +3723,29 @@ export function ChatPanel({
           </div>
         )}
 
-        {/* Input - always visible */}
-        {/* Phase 80.22: Pass group participants for dynamic @mention dropdown */}
-        <MessageInput
-          value={input}
-          onChange={setInput}
-          onSend={handleSend}
-          isLoading={isTyping}
-          replyTo={replyTo?.model}
-          replyToModel={replyTo?.model}
-          isGroupMode={!!activeGroupId}
-          groupParticipants={currentGroupParticipants}
-          soloModels={soloModels}  // Phase 80.30: Models used in solo chat
-          voiceModels={voiceModels}
-          selectedModel={selectedModel}
-          voiceOnlyMode={voiceOnlyMode}
-          onVoiceOnlyModeChange={setVoiceOnlyMode}
-          autoContinueVoice={autoContinueVoice}
-          onAutoContinueVoiceChange={setAutoContinueVoice}
-          realtimeVoiceEnabled={realtimeVoiceEnabled}
-          onRealtimeVoiceChange={setRealtimeStore}
-          onVoiceRecorded={handleVoiceRecorded}
-        />
+        {/* Input - chat/group only; scanner uses unified lane as canonical entry */}
+        {activeTab !== 'scanner' && (
+          <MessageInput
+            value={input}
+            onChange={setInput}
+            onSend={handleSend}
+            isLoading={isTyping}
+            replyTo={replyTo?.model}
+            replyToModel={replyTo?.model}
+            isGroupMode={!!activeGroupId}
+            groupParticipants={currentGroupParticipants}
+            soloModels={soloModels}  // Phase 80.30: Models used in solo chat
+            voiceModels={voiceModels}
+            selectedModel={selectedModel}
+            voiceOnlyMode={voiceOnlyMode}
+            onVoiceOnlyModeChange={setVoiceOnlyMode}
+            autoContinueVoice={autoContinueVoice}
+            onAutoContinueVoiceChange={setAutoContinueVoice}
+            realtimeVoiceEnabled={realtimeVoiceEnabled}
+            onRealtimeVoiceChange={setRealtimeStore}
+            onVoiceRecorded={handleVoiceRecorded}
+          />
+        )}
       </div>
 
       {/* Phase 48.5.1: Artifact Panel via FloatingWindow */}

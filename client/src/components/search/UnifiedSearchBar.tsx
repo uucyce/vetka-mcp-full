@@ -52,6 +52,8 @@ interface Props {
   mycoHint?: MycoModeAHint | null;
   /** Stable key for resetting typed hint rendering */
   mycoStateKey?: string;
+  /** Optional preferred context supplied by parent surface (for scanner/chat bridges) */
+  preferredSearchContext?: SearchContext;
 }
 
 // Inline SVG icons (no external dependencies - Nolan style)
@@ -295,9 +297,10 @@ export function UnifiedSearchBar({
   laneSurface = 'main',
   mycoHint = null,
   mycoStateKey = '',
+  preferredSearchContext,
 }: Props) {
   // Phase 68.3: Search context state
-  const [searchContext, setSearchContext] = useState<SearchContext>('myco');
+  const [searchContext, setSearchContext] = useState<SearchContext>(preferredSearchContext ?? 'myco');
   const [showContextMenu, setShowContextMenu] = useState(false);
   const [contextSupportedModes, setContextSupportedModes] = useState<SearchModeType[]>(CONTEXT_MODE_FALLBACK.vetka);
   const [providerHealth, setProviderHealth] = useState<ProviderHealth>({});
@@ -387,6 +390,11 @@ export function UnifiedSearchBar({
     ? hasMore
     : activeResults.length > displayLimit;
   const webHasAnyProvider = Object.values(providerHealth).some((p) => p?.available);
+
+  useEffect(() => {
+    if (!preferredSearchContext) return;
+    setSearchContext((prev) => (prev === preferredSearchContext ? prev : preferredSearchContext));
+  }, [preferredSearchContext]);
 
   useEffect(() => {
     if (!mycoSurfaceScope) return;
