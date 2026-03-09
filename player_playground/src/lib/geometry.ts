@@ -34,6 +34,11 @@ export interface GeometrySnapshot {
   chromeRatio: number;
   previewQualityLabel: string;
   previewScale: number;
+  inVetka: boolean;
+  markerCount: number;
+  favoriteMomentCount: number;
+  commentMomentCount: number;
+  activeContextAction: "vetka" | "favorite";
 }
 
 export function computeDreamScore(input: {

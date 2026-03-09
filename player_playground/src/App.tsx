@@ -20,14 +20,46 @@ const PREVIEW_QUALITY_OPTIONS: { key: PreviewQualityKey; label: string; scale: n
   { key: "thirtysecond", label: "1/32", scale: 0.03125 },
 ];
 
+type PlayerMarkerKind = "favorite" | "comment";
+
+interface PlayerTimeMarker {
+  marker_id: string;
+  schema_version: "cut_time_marker_v1";
+  project_id: string;
+  timeline_id: string;
+  media_path: string;
+  kind: PlayerMarkerKind;
+  start_sec: number;
+  end_sec: number;
+  anchor_sec: number;
+  score: number;
+  label: string;
+  text: string;
+  author: string;
+  context_slice: null;
+  cam_payload: null;
+  chat_thread_id: null;
+  comment_thread_id: null;
+  source_engine: string;
+  status: "active";
+  created_at: string;
+  updated_at: string;
+}
+
+const MARKERS_STORAGE_KEY = "vetka_player_lab_markers_v1";
+const VETKA_STATUS_STORAGE_KEY = "vetka_player_lab_in_vetka_v1";
+
 declare global {
   interface Window {
     vetkaPlayerLab?: {
       snapshot: () => GeometrySnapshot;
       print: () => GeometrySnapshot;
+      markers: () => PlayerTimeMarker[];
       setVariant: (variant: ShellVariant) => void;
       setSyntheticSize: (width: number, height: number) => void;
       setPreviewQuality: (quality: PreviewQualityKey) => void;
+      setInVetka: (next: boolean) => void;
+      addMomentMarker: (kind?: PlayerMarkerKind, text?: string) => PlayerTimeMarker | null;
       applySuggestedShell: () => GeometrySnapshot;
       resetShell: () => void;
       toggleDebug: () => void;
@@ -54,12 +86,48 @@ function formatName(value: string) {
   return tail.length > 52 ? `${tail.slice(0, 49)}...` : tail;
 }
 
+function formatOverlayTitle(value: string) {
+  if (!value) return "VETKA Player";
+  if (value.length <= 34) return value;
+  const dotIndex = value.lastIndexOf(".");
+  const extension = dotIndex > 0 ? value.slice(dotIndex) : "";
+  const head = value.slice(0, 12);
+  const tail = extension ? value.slice(Math.max(dotIndex - 8, 12)) : value.slice(-12);
+  return `${head}…${tail}`;
+}
+
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
   const total = Math.floor(seconds);
   const mins = Math.floor(total / 60);
   const secs = total % 60;
   return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function createMarkerId() {
+  return `marker_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function readStoredMarkers(): PlayerTimeMarker[] {
+  try {
+    const raw = localStorage.getItem(MARKERS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredVetkaStatusMap(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(VETKA_STATUS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function IconOpen() {
@@ -75,15 +143,6 @@ function IconFullscreen() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M8 4H4v4M16 4h4v4M8 20H4v-4M20 20h-4v-4" />
-    </svg>
-  );
-}
-
-function IconFit() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="5" y="7" width="14" height="10" rx="2" />
-      <path d="M9 10h6M9 14h6" />
     </svg>
   );
 }
@@ -164,6 +223,14 @@ function IconQuality() {
   );
 }
 
+function IconComment() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 7.5A2.5 2.5 0 0 1 8.5 5h7A2.5 2.5 0 0 1 18 7.5v5A2.5 2.5 0 0 1 15.5 15H11l-4 4v-4H8.5A2.5 2.5 0 0 1 6 12.5z" />
+    </svg>
+  );
+}
+
 function App() {
   const initialQuery = useMemo(readQuery, []);
   const [variant, setVariant] = useState<ShellVariant>(initialQuery.variant);
@@ -186,8 +253,8 @@ function App() {
   const [showTransport, setShowTransport] = useState(true);
   const [previewQuality, setPreviewQuality] = useState<PreviewQualityKey>("full");
   const [showQualityMenu, setShowQualityMenu] = useState(false);
-  const [isFavorite, setIsFavorite] = useState(false);
-  const [isInVetka, setIsInVetka] = useState(false);
+  const [vetkaStatusMap, setVetkaStatusMap] = useState<Record<string, boolean>>(readStoredVetkaStatusMap);
+  const [markers, setMarkers] = useState<PlayerTimeMarker[]>(readStoredMarkers);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -204,6 +271,21 @@ function App() {
   const isPureMode = !isDebugVisible;
   const previewQualityOption = PREVIEW_QUALITY_OPTIONS.find((option) => option.key === previewQuality) || PREVIEW_QUALITY_OPTIONS[0];
   const effectivePreviewScale = sourceKind === "video" ? previewQualityOption.scale : 1;
+  const currentMediaKey = src && !src.startsWith("blob:") ? src : fileName;
+  const overlayTitle = formatOverlayTitle(fileName);
+  const isInVetka = Boolean(currentMediaKey && vetkaStatusMap[currentMediaKey]);
+  const mediaMarkers = useMemo(
+    () => markers.filter((marker) => marker.media_path === currentMediaKey),
+    [currentMediaKey, markers],
+  );
+  const favoriteMomentCount = useMemo(
+    () => mediaMarkers.filter((marker) => marker.kind === "favorite").length,
+    [mediaMarkers],
+  );
+  const commentMomentCount = useMemo(
+    () => mediaMarkers.filter((marker) => marker.kind === "comment").length,
+    [mediaMarkers],
+  );
 
   useEffect(() => {
     const shellNode = shellRef.current;
@@ -289,14 +371,23 @@ function App() {
       chromeRatio: review.chromeRatio,
       previewQualityLabel: previewQualityOption.label,
       previewScale: effectivePreviewScale,
+      inVetka: isInVetka,
+      markerCount: mediaMarkers.length,
+      favoriteMomentCount,
+      commentMomentCount,
+      activeContextAction: isInVetka ? "favorite" : "vetka",
     };
   }, [
+    commentMomentCount,
     effectivePreviewScale,
     fileName,
+    favoriteMomentCount,
     geometryTick,
+    isInVetka,
     intrinsicSize.height,
     intrinsicSize.width,
     footerReserve,
+    mediaMarkers.length,
     previewQualityOption.label,
     sourceKind,
     variant,
@@ -309,6 +400,22 @@ function App() {
       // ignore storage errors
     }
   }, [snapshot]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(MARKERS_STORAGE_KEY, JSON.stringify(markers));
+    } catch {
+      // ignore storage errors
+    }
+  }, [markers]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(VETKA_STATUS_STORAGE_KEY, JSON.stringify(vetkaStatusMap));
+    } catch {
+      // ignore storage errors
+    }
+  }, [vetkaStatusMap]);
 
   useEffect(() => {
     const key = `${src}|${snapshot.videoIntrinsicWidth}x${snapshot.videoIntrinsicHeight}`;
@@ -423,6 +530,7 @@ function App() {
         console.info("MARKER_168.VIDEOPLAYER.LAB.SNAPSHOT", snapshot);
         return snapshot;
       },
+      markers: () => markers,
       setVariant: (next: ShellVariant) => setVariant(next),
       setSyntheticSize: (width: number, height: number) => {
         setSyntheticSize({
@@ -435,6 +543,11 @@ function App() {
         autoSizedKeyRef.current = "";
       },
       setPreviewQuality: (quality: PreviewQualityKey) => setPreviewQuality(quality),
+      setInVetka: (next: boolean) => {
+        if (!currentMediaKey) return;
+        setVetkaStatusMap((prev) => ({ ...prev, [currentMediaKey]: next }));
+      },
+      addMomentMarker: (kind: PlayerMarkerKind = "favorite", text = "") => addMomentMarker(kind, text),
       applySuggestedShell: () => {
         const next = {
           width: snapshot.suggestedShellWidth,
@@ -455,7 +568,7 @@ function App() {
     return () => {
       if (window.vetkaPlayerLab === api) delete window.vetkaPlayerLab;
     };
-  }, [snapshot]);
+  }, [currentMediaKey, markers, snapshot]);
 
   function attachFile(file: File) {
     const nextUrl = URL.createObjectURL(file);
@@ -486,6 +599,59 @@ function App() {
     } else {
       video.pause();
     }
+  }
+
+  function buildMarker(kind: PlayerMarkerKind, text = ""): PlayerTimeMarker | null {
+    if (!currentMediaKey) return null;
+    const anchor = Math.max(0, Number(videoRef.current?.currentTime ?? currentTime ?? 0));
+    const start = Math.max(0, Number((anchor - 0.5).toFixed(2)));
+    const end = Number((anchor + 0.5).toFixed(2));
+    const now = new Date().toISOString();
+    return {
+      marker_id: createMarkerId(),
+      schema_version: "cut_time_marker_v1",
+      project_id: "cut_demo",
+      timeline_id: "main",
+      media_path: currentMediaKey,
+      kind,
+      start_sec: start,
+      end_sec: end,
+      anchor_sec: Number(anchor.toFixed(2)),
+      score: kind === "favorite" ? 0.85 : 0.6,
+      label: kind === "favorite" ? "Starred moment" : "Comment moment",
+      text,
+      author: "player_lab",
+      context_slice: null,
+      cam_payload: null,
+      chat_thread_id: null,
+      comment_thread_id: null,
+      source_engine: "player_lab",
+      status: "active",
+      created_at: now,
+      updated_at: now,
+    };
+  }
+
+  function addMomentMarker(kind: PlayerMarkerKind, text = "") {
+    const marker = buildMarker(kind, text);
+    if (!marker) return null;
+    setMarkers((prev) => [...prev, marker]);
+    return marker;
+  }
+
+  function handleContextAction() {
+    if (!isInVetka) {
+      if (!currentMediaKey) return;
+      setVetkaStatusMap((prev) => ({ ...prev, [currentMediaKey]: true }));
+      return;
+    }
+    addMomentMarker("favorite");
+  }
+
+  function handleCommentMarker() {
+    if (!isInVetka) return;
+    const seed = formatTime(videoRef.current?.currentTime ?? currentTime);
+    addMomentMarker("comment", `Comment @ ${seed}`);
   }
 
   return (
@@ -593,32 +759,31 @@ function App() {
                     </div>
                   </div>
                   <div className={`media-label ${showTransport ? "media-label-visible" : "media-label-hidden"}`}>
-                    <strong>{fileName}</strong>
+                    <strong title={fileName}>{overlayTitle}</strong>
                   </div>
                   <div className={`viewer-toolbar ${showTransport ? "viewer-toolbar-visible" : "viewer-toolbar-hidden"}`}>
                     <button
-                      className={`icon-button ${isFavorite ? "icon-button-active" : ""}`}
+                      className={`icon-button ${isInVetka ? "icon-button-active" : "icon-button-vetka"}`}
                       type="button"
-                      onClick={() => setIsFavorite((value) => !value)}
-                      aria-label={isFavorite ? "Remove favorite" : "Add favorite"}
-                      title={isFavorite ? "Remove favorite" : "Add favorite"}
+                      onClick={() => handleContextAction()}
+                      aria-label={isInVetka ? "Favorite this moment" : "Add to VETKA"}
+                      title={isInVetka ? `Favorite this moment (${favoriteMomentCount})` : "Add to VETKA"}
                     >
-                      <IconStar active={isFavorite} />
+                      {isInVetka ? <IconStar active={true} /> : <IconVetka />}
                     </button>
-                    <button
-                      className={`icon-button ${isInVetka ? "icon-button-active icon-button-vetka" : ""}`}
-                      type="button"
-                      onClick={() => setIsInVetka((value) => !value)}
-                      aria-label={isInVetka ? "Saved in VETKA" : "Add to VETKA"}
-                      title={isInVetka ? "Saved in VETKA" : "Add to VETKA"}
-                    >
-                      <IconVetka />
-                    </button>
+                    {isInVetka ? (
+                      <button
+                        className={`icon-button ${commentMomentCount > 0 ? "icon-button-active" : ""}`}
+                        type="button"
+                        onClick={() => handleCommentMarker()}
+                        aria-label="Comment this moment"
+                        title={`Comment this moment (${commentMomentCount})`}
+                      >
+                        <IconComment />
+                      </button>
+                    ) : null}
                     <button className="icon-button" type="button" onClick={() => fileInputRef.current?.click()} aria-label="Open file">
                       <IconOpen />
-                    </button>
-                    <button className="icon-button" type="button" onClick={() => window.vetkaPlayerLab?.applySuggestedShell()} aria-label="Fit shell">
-                      <IconFit />
                     </button>
                     <div ref={qualityMenuRef} className="quality-menu-wrap">
                       <button
@@ -651,9 +816,6 @@ function App() {
                         </div>
                       ) : null}
                     </div>
-                    <button className="icon-button" type="button" onClick={() => void toggleFullscreen()} aria-label="Fullscreen">
-                      <IconFullscreen />
-                    </button>
                   </div>
                   <div
                     className={`transport-overlay ${showTransport ? "transport-visible" : "transport-hidden"}`}
@@ -697,9 +859,6 @@ function App() {
                         aria-label="Seek"
                       />
                       <span className="transport-time">{formatTime(duration)}</span>
-                      <div className="transport-quality-chip" title="Preview quality">
-                        {previewQualityOption.label}
-                      </div>
                       <button className="transport-button" type="button" onClick={() => {
                         const nextMuted = !isMuted;
                         syncVolume(nextMuted ? volume : Math.max(volume, 0.6), nextMuted);
@@ -820,6 +979,16 @@ function App() {
             <dd>{snapshot.viewerDominanceRatio}</dd>
             <dt>Chrome ratio</dt>
             <dd>{snapshot.chromeRatio}</dd>
+            <dt>In VETKA</dt>
+            <dd>{snapshot.inVetka ? "yes" : "no"}</dd>
+            <dt>Context action</dt>
+            <dd>{snapshot.activeContextAction}</dd>
+            <dt>Markers</dt>
+            <dd>{snapshot.markerCount}</dd>
+            <dt>Favorite moments</dt>
+            <dd>{snapshot.favoriteMomentCount}</dd>
+            <dt>Comment moments</dt>
+            <dd>{snapshot.commentMomentCount}</dd>
           </dl>
 
           <div className="metrics-block">
