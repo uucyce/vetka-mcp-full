@@ -42,7 +42,10 @@ def get_qdrant_stats() -> dict:
 
     try:
         import requests
+    except ModuleNotFoundError:
+        return stats
 
+    try:
         # Check vetka_elisya
         resp = requests.get("http://127.0.0.1:6333/collections/vetka_elisya", timeout=5)
         if resp.ok:
@@ -78,6 +81,12 @@ def get_mcp_status() -> dict:
 
     try:
         import requests
+    except ModuleNotFoundError:
+        status["status"] = "degraded"
+        status["error"] = "python dependency 'requests' is missing"
+        return status
+
+    try:
         resp = requests.get("http://127.0.0.1:5001/api/health", timeout=5)
         if resp.ok:
             status["status"] = "running"
