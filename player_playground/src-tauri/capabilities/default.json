@@ -4,6 +4,9 @@
   "description": "Default capabilities for VETKA Player Lab",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-set-size"
   ]
 }
