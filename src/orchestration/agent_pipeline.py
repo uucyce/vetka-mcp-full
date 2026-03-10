@@ -215,7 +215,7 @@ class AgentPipeline:
         self._timeline_events: List[Dict] = []  # [{ts, role, event, detail, duration_s}]
         # MARKER_172.P4.FC_EXECS: Last FC tool executions for REFLEX feedback
         self._last_fc_tool_executions: List[Dict] = []
-        # MARKER_172.P5.OBSERVE: REFLEX observability counters
+        # MARKER_172.P5.OBSERVE + MARKER_173.P1: REFLEX observability counters
         self._reflex_stats: Dict[str, Any] = {
             "enabled": False,
             "recommendations_given": 0,
@@ -223,6 +223,9 @@ class AgentPipeline:
             "tools_used": [],             # flat list of all tool_ids actually used
             "feedback_recorded": 0,
             "verifier_feedbacks": 0,
+            "schemas_filtered": 0,        # MARKER_173.P1: times IP-7 reduced schemas
+            "schemas_original_count": 0,  # MARKER_173.P1: total schemas before filtering
+            "schemas_filtered_count": 0,  # MARKER_173.P1: total schemas after filtering
         }
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
@@ -1629,6 +1632,20 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         tasks[task.task_id] = asdict(task)
         self._save_tasks(tasks)
 
+    # MARKER_173.P1.TIER: Derive model tier from preset name
+    def _get_model_tier(self) -> str:
+        """Map preset_name to bronze/silver/gold for REFLEX filtering."""
+        tier_map = {
+            "dragon_bronze": "bronze",
+            "dragon_silver": "silver",
+            "dragon_gold": "gold",
+            "dragon_gold_gpt": "gold",
+            "titan_lite": "bronze",
+            "titan_core": "silver",
+            "titan_prime": "gold",
+        }
+        return tier_map.get(self.preset_name or "", "silver")
+
     # MARKER_135.DAG_BRIDGE: Build structured result for DAG visualization
     def _build_reflex_stats(self) -> Dict[str, Any]:
         """MARKER_172.P5.3 — Build REFLEX observability section for pipeline_stats.
@@ -1646,7 +1663,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         matched = recommended_set & used_set
         match_rate = len(matched) / len(recommended_set) if recommended_set else 0.0
 
-        return {
+        result = {
             "enabled": True,
             "recommendations_given": rs["recommendations_given"],
             "tools_recommended_unique": list(recommended_set),
@@ -1656,6 +1673,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             "feedback_recorded": rs["feedback_recorded"],
             "verifier_feedbacks": rs["verifier_feedbacks"],
         }
+
+        # MARKER_173.P1: Include schema filtering stats if active
+        if rs.get("schemas_filtered", 0) > 0:
+            result["schemas_filtered"] = rs["schemas_filtered"]
+            result["schemas_original_count"] = rs["schemas_original_count"]
+            result["schemas_filtered_count"] = rs["schemas_filtered_count"]
+
+        return result
 
     def _build_dag_result(self, pipeline_task: PipelineTask, stats: dict) -> dict:
         """Build structured result for DAG visualization.
@@ -3705,6 +3730,25 @@ Execute this subtask. Provide clear, actionable output."""}
         if phase_type in ("fix", "build") and FC_LOOP_AVAILABLE:
             try:
                 coder_tool_schemas = get_coder_tool_schemas()
+                # MARKER_173.P1.IP7: Active REFLEX tool schema filtering
+                try:
+                    from src.services.reflex_integration import reflex_filter_schemas
+                    _orig_count = len(coder_tool_schemas)
+                    coder_tool_schemas = reflex_filter_schemas(
+                        coder_tool_schemas,
+                        subtask=subtask,
+                        phase_type=phase_type,
+                        agent_role="coder",
+                        model_tier=self._get_model_tier(),
+                    )
+                    _filtered_count = len(coder_tool_schemas)
+                    if _filtered_count < _orig_count:
+                        self._reflex_stats["schemas_filtered"] += 1
+                        self._reflex_stats["schemas_original_count"] += _orig_count
+                        self._reflex_stats["schemas_filtered_count"] += _filtered_count
+                        await self._emit_progress("@reflex", f"🔧 Filtered schemas: {_orig_count}→{_filtered_count}", i+1, total_subtasks)
+                except Exception:
+                    pass  # REFLEX errors never block pipeline
                 if coder_tool_schemas:
                     # MARKER_150.2_PLAYGROUND: Pass playground_root for scoped file reads
                     fc_result = await execute_fc_loop(

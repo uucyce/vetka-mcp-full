@@ -248,3 +248,151 @@ async def reflex_health() -> Dict[str, Any]:
         health["components"]["feedback"] = {"status": "error", "error": str(e)}
 
     return health
+
+
+# ─── P2 Preferences API ──────────────────────────────────────────
+
+@router.get("/preferences")
+async def reflex_preferences() -> Dict[str, Any]:
+    """MARKER_173.P2.API — Get current user preferences (pins/bans/weights)."""
+    if not _is_reflex_enabled():
+        return {"enabled": False, "message": "REFLEX is disabled."}
+
+    try:
+        from src.services.reflex_preferences import get_reflex_preferences
+        store = get_reflex_preferences()
+        prefs = store.get()
+        return {
+            "enabled": True,
+            "preferences": prefs.to_dict(),
+            "timestamp": time.time(),
+        }
+    except Exception as e:
+        logger.error("[REFLEX API] Preferences error: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/pin")
+async def reflex_pin(
+    tool_id: str = Query(..., description="Tool ID to pin"),
+) -> Dict[str, Any]:
+    """MARKER_173.P2.PIN — Pin a tool (always include in recommendations)."""
+    if not _is_reflex_enabled():
+        return {"enabled": False, "message": "REFLEX is disabled."}
+
+    try:
+        from src.services.reflex_preferences import get_reflex_preferences
+        store = get_reflex_preferences()
+        store.pin_tool(tool_id)
+        return {
+            "enabled": True,
+            "action": "pin",
+            "tool_id": tool_id,
+            "preferences": store.get().to_dict(),
+        }
+    except Exception as e:
+        logger.error("[REFLEX API] Pin error: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/ban")
+async def reflex_ban(
+    tool_id: str = Query(..., description="Tool ID to ban"),
+) -> Dict[str, Any]:
+    """MARKER_173.P2.BAN — Ban a tool (always exclude from recommendations)."""
+    if not _is_reflex_enabled():
+        return {"enabled": False, "message": "REFLEX is disabled."}
+
+    try:
+        from src.services.reflex_preferences import get_reflex_preferences
+        store = get_reflex_preferences()
+        store.ban_tool(tool_id)
+        return {
+            "enabled": True,
+            "action": "ban",
+            "tool_id": tool_id,
+            "preferences": store.get().to_dict(),
+        }
+    except Exception as e:
+        logger.error("[REFLEX API] Ban error: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.delete("/preferences/{tool_id}")
+async def reflex_remove_preference(tool_id: str) -> Dict[str, Any]:
+    """MARKER_173.P2.DELETE — Remove all preferences for a specific tool."""
+    if not _is_reflex_enabled():
+        return {"enabled": False, "message": "REFLEX is disabled."}
+
+    try:
+        from src.services.reflex_preferences import get_reflex_preferences
+        store = get_reflex_preferences()
+        store.remove_preference(tool_id)
+        return {
+            "enabled": True,
+            "action": "remove",
+            "tool_id": tool_id,
+            "preferences": store.get().to_dict(),
+        }
+    except Exception as e:
+        logger.error("[REFLEX API] Remove preference error: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ─── P1 Filter Debug Endpoint ────────────────────────────────────
+
+@router.get("/filter")
+async def reflex_filter_debug(
+    task: str = Query(..., description="Task description to test filtering"),
+    phase_type: str = Query("research", description="Pipeline phase"),
+    role: str = Query("coder", description="Agent role"),
+    model_tier: str = Query("silver", description="Model tier: bronze, silver, gold"),
+) -> Dict[str, Any]:
+    """MARKER_173.P1.DEBUG — Debug: see what filter_tools would produce."""
+    if not _is_reflex_enabled():
+        return {"enabled": False, "message": "REFLEX is disabled."}
+
+    try:
+        from src.services.reflex_filter import filter_tools, REFLEX_ACTIVE
+        from src.services.reflex_scorer import ReflexContext, get_reflex_scorer
+        from src.services.reflex_registry import get_reflex_registry
+
+        t0 = time.time()
+
+        ctx = ReflexContext(
+            task_text=task,
+            phase_type=phase_type,
+            agent_role=role,
+        )
+
+        # Load feedback scores
+        try:
+            from src.services.reflex_feedback import get_reflex_feedback
+            ctx.feedback_scores = get_reflex_feedback().get_scores_bulk(phase_type)
+        except Exception:
+            pass
+
+        registry = get_reflex_registry()
+        all_tools = registry.get_tools_for_role(role)
+        filtered = filter_tools(all_tools, context=ctx, model_tier=model_tier)
+
+        duration_ms = round((time.time() - t0) * 1000, 1)
+
+        return {
+            "enabled": True,
+            "active": REFLEX_ACTIVE,
+            "task": task,
+            "model_tier": model_tier,
+            "total_tools": len(all_tools),
+            "filtered_tools": len(filtered),
+            "tools": [
+                {"tool_id": getattr(t, "tool_id", str(t)),
+                 "kind": getattr(t, "kind", "unknown")}
+                for t in filtered
+            ],
+            "duration_ms": duration_ms,
+        }
+
+    except Exception as e:
+        logger.error("[REFLEX API] Filter debug error: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})

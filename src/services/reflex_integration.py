@@ -1,26 +1,27 @@
 """
 REFLEX Integration — Thin hooks for injection into pipeline & session.
 
-MARKER_172.P4.INTEGRATION
+MARKER_172.P4.INTEGRATION + MARKER_173.P1.IP7
 
 Provides safe, feature-flag-guarded entry points that pipeline code calls.
 Each function: check flag → build context → call scorer/feedback → return.
 On ANY error: log warning, return empty/None. Never break the pipeline.
 
 Injection Points:
-  IP-1: reflex_pre_fc()    — before FC loop, log tool recommendations
-  IP-3: reflex_post_fc()   — after FC loop, record feedback for used tools
-  IP-4: reflex_for_role()  — before role execution, get recommendations
-  IP-5: reflex_verifier()  — after verifier, close feedback loop
-  IP-6: reflex_session()   — for session_init, broad recommendations
+  IP-1: reflex_pre_fc()          — before FC loop, log tool recommendations
+  IP-3: reflex_post_fc()         — after FC loop, record feedback for used tools
+  IP-4: reflex_for_role()        — before role execution, get recommendations
+  IP-5: reflex_verifier()        — after verifier, close feedback loop
+  IP-6: reflex_session()         — for session_init, broad recommendations
+  IP-7: reflex_filter_schemas()  — active schema filtering before FC loop
 
 Part of VETKA OS:
   VETKA > REFLEX > Integration (this file)
 
 @status: active
-@phase: 172.P4
-@depends: reflex_scorer, reflex_feedback, reflex_registry
-@used_by: fc_loop.py (IP-1,3), agent_pipeline.py (IP-4,5), session_tools.py (IP-6)
+@phase: 173.P1+P2
+@depends: reflex_scorer, reflex_feedback, reflex_registry, reflex_filter, reflex_preferences
+@used_by: fc_loop.py (IP-1,3), agent_pipeline.py (IP-4,5,7), session_tools.py (IP-6)
 """
 
 import logging
@@ -37,6 +38,49 @@ def _is_enabled() -> bool:
         return REFLEX_ENABLED
     except ImportError:
         return False
+
+
+def _is_active() -> bool:
+    """MARKER_173.P1.FLAG — Check if REFLEX active filtering is enabled.
+
+    Requires BOTH REFLEX_ENABLED and REFLEX_ACTIVE to be True.
+    """
+    if not _is_enabled():
+        return False
+    try:
+        from src.services.reflex_filter import REFLEX_ACTIVE
+        return REFLEX_ACTIVE
+    except ImportError:
+        return False
+
+
+def _apply_preferences(scored: list) -> list:
+    """MARKER_173.P2.HELPER — Apply user preferences to scored recommendations.
+
+    Pinned tools get score=1.0, banned tools are excluded.
+    Returns modified scored list, re-sorted by score.
+    """
+    try:
+        from src.services.reflex_preferences import get_reflex_preferences
+        prefs = get_reflex_preferences().get()
+        if not prefs.pinned_tools and not prefs.banned_tools:
+            return scored
+
+        # Exclude banned tools
+        scored = [s for s in scored if s.tool_id not in prefs.banned_tools]
+
+        # Boost pinned tools
+        for s in scored:
+            if s.tool_id in prefs.pinned_tools:
+                s.score = 1.0
+                s.reason = f"pinned, {s.reason}"
+
+        # Re-sort
+        scored.sort(key=lambda x: x.score, reverse=True)
+        return scored
+
+    except Exception:
+        return scored  # Preferences errors never block
 
 
 # ─── IP-1: Pre-FC Loop (recommendations before coder runs) ──────
@@ -84,6 +128,10 @@ def reflex_pre_fc(
         tools = registry.get_tools_for_role(agent_role)
 
         scored = scorer.recommend(ctx, tools, top_n=5)
+
+        # MARKER_173.P2.IP1_UPDATE: Apply user preferences (pin/ban)
+        scored = _apply_preferences(scored)
+
         result = [
             {"tool_id": s.tool_id, "score": s.score, "reason": s.reason}
             for s in scored
@@ -266,6 +314,10 @@ def reflex_session(session_data: Dict[str, Any], phase_type: str = "research") -
         from src.services.reflex_scorer import get_reflex_scorer
         scorer = get_reflex_scorer()
         scored = scorer.recommend_for_session(session_data, phase_type=phase_type, top_n=10)
+
+        # MARKER_173.P2.IP6_UPDATE: Apply user preferences (pin/ban)
+        scored = _apply_preferences(scored)
+
         return [
             {"tool_id": s.tool_id, "score": s.score, "reason": s.reason}
             for s in scored
@@ -274,3 +326,66 @@ def reflex_session(session_data: Dict[str, Any], phase_type: str = "research") -
     except Exception as e:
         logger.debug("[REFLEX IP-6] Error (non-fatal): %s", e)
         return []
+
+
+# ─── IP-7: Active Tool Schema Filtering ──────────────────────────
+
+def reflex_filter_schemas(
+    tool_schemas: List[Dict],
+    subtask: Any = None,
+    phase_type: str = "research",
+    agent_role: str = "coder",
+    model_tier: str = "silver",
+) -> List[Dict]:
+    """MARKER_173.P1.IP7 — Filter tool_schemas before FC loop.
+
+    Only active when BOTH REFLEX_ENABLED=1 AND REFLEX_ACTIVE=1.
+    On error: returns original schemas unchanged (safe fallback).
+
+    Args:
+        tool_schemas: OpenAI-format tool schemas for FC loop
+        subtask: Current pipeline subtask (for context building)
+        phase_type: Current pipeline phase
+        agent_role: Agent role executing
+        model_tier: bronze/silver/gold (from preset)
+
+    Returns:
+        Filtered list of tool schemas. Same as input if filtering disabled.
+    """
+    if not _is_active():
+        return tool_schemas
+
+    try:
+        from src.services.reflex_filter import filter_tool_schemas
+        from src.services.reflex_scorer import ReflexContext
+
+        # Build context for scoring
+        if subtask is not None:
+            ctx = ReflexContext.from_subtask(subtask)
+        else:
+            ctx = ReflexContext(
+                task_text="",
+                phase_type=phase_type,
+                agent_role=agent_role,
+            )
+        ctx.phase_type = phase_type
+        ctx.agent_role = agent_role
+
+        # Load feedback scores for better filtering
+        try:
+            from src.services.reflex_feedback import get_reflex_feedback
+            ctx.feedback_scores = get_reflex_feedback().get_scores_bulk(phase_type)
+        except Exception:
+            pass
+
+        filtered = filter_tool_schemas(tool_schemas, context=ctx, model_tier=model_tier)
+
+        if len(filtered) < len(tool_schemas):
+            logger.info("[REFLEX IP-7] Filtered schemas: %d → %d (tier=%s)",
+                        len(tool_schemas), len(filtered), model_tier)
+
+        return filtered
+
+    except Exception as e:
+        logger.debug("[REFLEX IP-7] Error (non-fatal): %s", e)
+        return tool_schemas  # Safety: return original on error
