@@ -155,8 +155,11 @@ def auto_sync_from_git(digest: dict) -> dict:
     """Auto-sync phase, headline, and achievements from last git commit.
 
     Called during pre-commit hook to keep digest in sync with git history.
-    Extracts phase number from commit message, updates current_phase,
-    generates headline, adds achievement, and cleans completed pending_items.
+    Supports two commit formats:
+      1. Phase commits: "Phase 119.5: ..." or "MARKER_144.7: ..."
+         → updates phase number, subphase, headline, achievements
+      2. Conventional commits: "feat(cut-mode): ...", "fix(search): ..."
+         → logs achievement with scope tag, updates headline (no phase change)
     """
     try:
         # Get last commit message
@@ -178,71 +181,100 @@ def auto_sync_from_git(digest: dict) -> dict:
         # "MARKER_144.7: ..."  →  (144, "7")
         phase_match = re.search(r'Phase\s+(\d+)\.(\d+)', message, re.IGNORECASE)
         if not phase_match:
-            # Try "Phase X COMPLETE" or "Phase X:" without subphase
             phase_match = re.search(r'Phase\s+(\d+)\b', message, re.IGNORECASE)
         if not phase_match:
-            # Try "MARKER_X.Y" format (e.g., "MARKER_144.7:")
             phase_match = re.search(r'MARKER[_\s]+(\d+)\.(\d+)', message, re.IGNORECASE)
-        if not phase_match:
-            return digest
 
-        phase_num = int(phase_match.group(1))
-        try:
-            subphase = phase_match.group(2) or "0"
-        except IndexError:
-            subphase = "0"
-
-        # Update current_phase
-        digest.setdefault("current_phase", {})
-        digest["current_phase"]["number"] = phase_num
-        digest["current_phase"]["subphase"] = subphase
-
-        # Detect status from message content
-        if "complete" in message.lower():
-            digest["current_phase"]["status"] = "COMPLETED"
-        else:
-            digest["current_phase"]["status"] = "IN_PROGRESS"
-
-        # Extract title — supports Phase, MARKER_, and COMPLETE variants
-        title_match = re.search(
-            r'(?:Phase|MARKER[_\s])\s*\d+[\.\d]*\s*(?:COMPLETE)?[:\s\u2014\u2014—-]+(.+?)(?:\n|$)',
+        # MARKER_RECON.FIX1: Handle conventional commits (feat/fix/refactor/docs/test)
+        # Even without Phase number, log the achievement and update headline
+        conv_match = re.match(
+            r'(feat|fix|refactor|docs|test|chore|perf|ci|style)\(([^)]+)\):\s*(.+)',
             message, re.IGNORECASE
         )
-        if title_match:
-            digest["current_phase"]["name"] = title_match.group(1).strip()[:80]
 
-        # Auto-generate headline
-        name = digest["current_phase"].get("name", "")
+        if not phase_match and not conv_match:
+            # Neither phase nor conventional — skip (e.g., merge commits)
+            return digest
+
+        digest.setdefault("current_phase", {})
         digest.setdefault("summary", {})
-        digest["summary"]["headline"] = f"Phase {phase_num}.{subphase} DONE! {name}"
-
-        # Add achievement if not already present (breaking news pattern)
-        achievement = f"[{commit_hash}] Phase {phase_num}.{subphase}: {message[:60]}"
         achievements = digest.get("summary", {}).get("key_achievements", [])
-        if not any(commit_hash in a for a in achievements):
-            achievements.insert(0, achievement)
-            digest["summary"]["key_achievements"] = achievements[:10]
 
-        # Clean completed items from pending_items
-        pending = digest.get("summary", {}).get("pending_items", [])
-        cleaned = []
-        for item in pending:
-            item_match = re.search(r'Phase\s+(\d+)\.(\d+)', item)
-            if item_match:
-                item_phase = int(item_match.group(1))
-                item_sub = int(item_match.group(2))
-                if item_phase < phase_num or (item_phase == phase_num and item_sub <= int(subphase)):
-                    continue  # Skip — this phase is done
-            cleaned.append(item)
-        digest["summary"]["pending_items"] = cleaned
+        if phase_match:
+            # --- Phase commit path (original logic) ---
+            phase_num = int(phase_match.group(1))
+            try:
+                subphase = phase_match.group(2) or "0"
+            except IndexError:
+                subphase = "0"
 
-        print(f"  Auto-sync: Phase {phase_num}.{subphase} from git ({commit_hash})")
+            digest["current_phase"]["number"] = phase_num
+            digest["current_phase"]["subphase"] = subphase
+
+            if "complete" in message.lower():
+                digest["current_phase"]["status"] = "COMPLETED"
+            else:
+                digest["current_phase"]["status"] = "IN_PROGRESS"
+
+            title_match = re.search(
+                r'(?:Phase|MARKER[_\s])\s*\d+[\.\d]*\s*(?:COMPLETE)?[:\s\u2014\u2014—-]+(.+?)(?:\n|$)',
+                message, re.IGNORECASE
+            )
+            if title_match:
+                digest["current_phase"]["name"] = title_match.group(1).strip()[:80]
+
+            name = digest["current_phase"].get("name", "")
+            digest["summary"]["headline"] = f"Phase {phase_num}.{subphase} — {name}"
+
+            achievement = f"[{commit_hash}] Phase {phase_num}.{subphase}: {message[:60]}"
+            if not any(commit_hash in a for a in achievements):
+                achievements.insert(0, achievement)
+
+            # Clean completed pending_items
+            pending = digest.get("summary", {}).get("pending_items", [])
+            cleaned = []
+            for item in pending:
+                item_match = re.search(r'Phase\s+(\d+)\.(\d+)', item)
+                if item_match:
+                    item_phase = int(item_match.group(1))
+                    item_sub = int(item_match.group(2))
+                    if item_phase < phase_num or (item_phase == phase_num and item_sub <= int(subphase)):
+                        continue
+                cleaned.append(item)
+            digest["summary"]["pending_items"] = cleaned
+
+            print(f"  Auto-sync: Phase {phase_num}.{subphase} from git ({commit_hash})")
+
+        elif conv_match:
+            # --- Conventional commit path (NEW) ---
+            commit_type = conv_match.group(1).lower()  # feat, fix, etc.
+            scope = conv_match.group(2)                 # cut-mode, search, etc.
+            description = conv_match.group(3).strip()   # the message
+
+            # Log achievement with conventional format
+            achievement = f"[{commit_hash}] {commit_type}({scope}): {description[:55]}"
+            if not any(commit_hash in a for a in achievements):
+                achievements.insert(0, achievement)
+
+            # Update headline to reflect latest activity (keep phase number)
+            phase_num = digest["current_phase"].get("number", "?")
+            digest["summary"]["headline"] = (
+                f"Phase {phase_num} active — {commit_type}({scope}): {description[:50]}"
+            )
+
+            # Keep status as IN_PROGRESS for active work
+            digest["current_phase"]["status"] = "IN_PROGRESS"
+
+            print(f"  Auto-sync: {commit_type}({scope}) from git ({commit_hash})")
+
+        # Cap achievements at 10
+        digest["summary"]["key_achievements"] = achievements[:10]
 
     except Exception as e:
         print(f"  Warning: auto_sync_from_git failed: {e}")
 
     return digest
-# MARKER_119.6_END
+# MARKER_119.6_END / MARKER_RECON.FIX1
 
 
 def load_digest() -> dict:
