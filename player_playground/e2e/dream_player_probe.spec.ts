@@ -2,8 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 
+const DEFAULT_VIDEO_FIXTURE = "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tools/back_to_ussr_app/docs/media/demo.mp4";
+
 test("capture player review screenshot and geometry snapshot", async ({ page }) => {
-  const videoPath = process.env.PLAYER_LAB_VIDEO_PATH || "";
+  const videoPath = process.env.PLAYER_LAB_VIDEO_PATH || DEFAULT_VIDEO_FIXTURE;
   const screenshotPath = process.env.PLAYER_LAB_SCREENSHOT_PATH || "";
   const snapshotPath = process.env.PLAYER_LAB_SNAPSHOT_PATH || "";
   const useSynthetic = !videoPath;
@@ -14,6 +16,9 @@ test("capture player review screenshot and geometry snapshot", async ({ page }) 
   if (useSynthetic) {
     await page.evaluate(() => {
       window.vetkaPlayerLab?.setSyntheticSize(1280, 720);
+    });
+    await page.waitForFunction(() => Boolean(window.vetkaPlayerLab?.snapshot()?.ok));
+    await page.evaluate(() => {
       window.vetkaPlayerLab?.applySuggestedShell();
     });
   } else {

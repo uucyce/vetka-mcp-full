@@ -176,6 +176,8 @@ select {
 }
 
 .player-app.pure-mode .viewer-shell {
+  width: 100vw;
+  height: 100vh;
   border-radius: 0;
   border: 0;
   box-shadow: none;
@@ -298,6 +300,22 @@ select {
   pointer-events: none;
 }
 
+.context-toast {
+  position: absolute;
+  top: 64px;
+  right: 14px;
+  z-index: 2;
+  max-width: min(36vw, 320px);
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(12, 14, 16, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f5f7fa;
+  font-size: 12px;
+  line-height: 1.35;
+  backdrop-filter: blur(20px);
+}
+
 .icon-button {
   min-width: 36px;
   height: 36px;
@@ -414,6 +432,25 @@ select {
   background: rgba(12, 14, 16, 0.82);
   backdrop-filter: blur(24px);
   pointer-events: auto;
+}
+
+.seek-zone {
+  position: absolute;
+  top: 0;
+  bottom: 96px;
+  width: 50%;
+  border: 0;
+  background: transparent;
+  z-index: 0;
+  color: transparent;
+}
+
+.seek-zone-left {
+  left: 0;
+}
+
+.seek-zone-right {
+  right: 0;
 }
 
 .transport-button {

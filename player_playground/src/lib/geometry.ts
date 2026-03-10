@@ -36,6 +36,7 @@ export interface GeometrySnapshot {
   previewScale: number;
   inVetka: boolean;
   markerCount: number;
+  provisionalEventCount: number;
   favoriteMomentCount: number;
   commentMomentCount: number;
   activeContextAction: "vetka" | "favorite";

@@ -1,9 +1,23 @@
-export async function isTauriRuntime() {
+export function isTauriRuntimeSync() {
   try {
     return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
   } catch {
     return false;
   }
+}
+
+export async function isTauriRuntime() {
+  try {
+    return isTauriRuntimeSync();
+  } catch {
+    return false;
+  }
+}
+
+async function getInvoke() {
+  if (!(await isTauriRuntime())) return null;
+  const core = await import("@tauri-apps/api/core");
+  return core.invoke;
 }
 
 export async function setCurrentWindowLogicalSize(width: number, height: number): Promise<boolean> {
@@ -22,8 +36,45 @@ export async function setCurrentWindowLogicalSize(width: number, height: number)
   }
 }
 
+export async function configurePlayerWindow(
+  width: number,
+  height: number,
+  aspectWidth: number,
+  aspectHeight: number,
+): Promise<boolean> {
+  const safeWidth = Math.max(240, Math.round(width));
+  const safeHeight = Math.max(220, Math.round(height));
+  if (!(await isTauriRuntime())) return false;
+
+  try {
+    const invoke = await getInvoke();
+    if (invoke) {
+      await invoke("configure_player_window", {
+        width: safeWidth,
+        height: safeHeight,
+        aspectWidth: Math.max(1, Math.round(aspectWidth || 1)),
+        aspectHeight: Math.max(1, Math.round(aspectHeight || 1)),
+      });
+      return true;
+    }
+  } catch (error) {
+    console.warn("[VETKA Player Lab] configure_player_window failed:", error);
+  }
+
+  return setCurrentWindowLogicalSize(safeWidth, safeHeight);
+}
+
 export async function toggleFullscreen(): Promise<boolean | null> {
   if (await isTauriRuntime()) {
+    try {
+      const invoke = await getInvoke();
+      if (invoke) {
+        return await invoke<boolean>("toggle_player_fullscreen");
+      }
+    } catch (error) {
+      console.warn("[VETKA Player Lab] native fullscreen command failed:", error);
+    }
+
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const win = getCurrentWindow();
@@ -31,8 +82,7 @@ export async function toggleFullscreen(): Promise<boolean | null> {
       await win.setFullscreen(!current);
       return !current;
     } catch (error) {
-      console.warn("[VETKA Player Lab] native fullscreen failed:", error);
-      return null;
+      console.warn("[VETKA Player Lab] native fullscreen api failed:", error);
     }
   }
 

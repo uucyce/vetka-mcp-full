@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:player": "playwright test e2e/contextual_markers.spec.ts e2e/lab_geometry.spec.ts e2e/dream_player_probe.spec.ts e2e/player_stability.spec.ts",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

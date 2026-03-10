@@ -7,7 +7,8 @@ import {
   ShellVariant,
   suggestShellSize,
 } from "./lib/geometry";
-import { setCurrentWindowLogicalSize, toggleFullscreen } from "./lib/nativeWindow";
+import { configurePlayerWindow, isTauriRuntimeSync, toggleFullscreen } from "./lib/nativeWindow";
+import MycoProbeApp from "./MycoProbeApp";
 
 type PreviewQualityKey = "full" | "half" | "quarter" | "eighth" | "sixteenth" | "thirtysecond";
 
@@ -21,6 +22,21 @@ const PREVIEW_QUALITY_OPTIONS: { key: PreviewQualityKey; label: string; scale: n
 ];
 
 type PlayerMarkerKind = "favorite" | "comment";
+
+type ProvisionalEventType = "vetka_logo_capture";
+
+interface ProvisionalCaptureEvent {
+  provisional_event_id: string;
+  event_type: ProvisionalEventType;
+  media_path: string;
+  start_sec: number;
+  end_sec: number;
+  text: string;
+  created_at: string;
+  export_mode: "srt_comment";
+  migration_status: "local_only" | "migrated";
+  migrated_to_marker_id: string | null;
+}
 
 interface PlayerTimeMarker {
   marker_id: string;
@@ -47,6 +63,7 @@ interface PlayerTimeMarker {
 }
 
 const MARKERS_STORAGE_KEY = "vetka_player_lab_markers_v1";
+const PROVISIONAL_EVENTS_STORAGE_KEY = "vetka_player_lab_provisional_events_v1";
 const VETKA_STATUS_STORAGE_KEY = "vetka_player_lab_in_vetka_v1";
 
 declare global {
@@ -55,6 +72,7 @@ declare global {
       snapshot: () => GeometrySnapshot;
       print: () => GeometrySnapshot;
       markers: () => PlayerTimeMarker[];
+      provisionalEvents: () => ProvisionalCaptureEvent[];
       setVariant: (variant: ShellVariant) => void;
       setSyntheticSize: (width: number, height: number) => void;
       setPreviewQuality: (quality: PreviewQualityKey) => void;
@@ -71,6 +89,7 @@ declare global {
 function readQuery() {
   const params = new URLSearchParams(window.location.search);
   return {
+    mode: params.get("mode") || "player",
     src: params.get("src") || "",
     variant: (params.get("variant") as ShellVariant | null) || "fixed-footer",
     mockWidth: Number(params.get("mockWidth") || 0),
@@ -111,6 +130,17 @@ function createMarkerId() {
 function readStoredMarkers(): PlayerTimeMarker[] {
   try {
     const raw = localStorage.getItem(MARKERS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredProvisionalEvents(): ProvisionalCaptureEvent[] {
+  try {
+    const raw = localStorage.getItem(PROVISIONAL_EVENTS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -163,22 +193,6 @@ function IconPause() {
   );
 }
 
-function IconRewind() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M11.5 7 5 12l6.5 5zM18.5 7 12 12l6.5 5z" />
-    </svg>
-  );
-}
-
-function IconForward() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="m12.5 7 6.5 5-6.5 5zM5.5 7 12 12l-6.5 5z" />
-    </svg>
-  );
-}
-
 function IconVolume({ isMuted }: { isMuted: boolean }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -216,6 +230,9 @@ function IconVetka() {
 
 function App() {
   const initialQuery = useMemo(readQuery, []);
+  if (initialQuery.mode === "myco") {
+    return <MycoProbeApp />;
+  }
   const [variant, setVariant] = useState<ShellVariant>(initialQuery.variant);
   const [src, setSrc] = useState<string>(initialQuery.src);
   const [fileName, setFileName] = useState<string>(formatName(initialQuery.src));
@@ -237,6 +254,8 @@ function App() {
   const [previewQuality, setPreviewQuality] = useState<PreviewQualityKey>("full");
   const [vetkaStatusMap, setVetkaStatusMap] = useState<Record<string, boolean>>(readStoredVetkaStatusMap);
   const [markers, setMarkers] = useState<PlayerTimeMarker[]>(readStoredMarkers);
+  const [provisionalEvents, setProvisionalEvents] = useState<ProvisionalCaptureEvent[]>(readStoredProvisionalEvents);
+  const [contextToast, setContextToast] = useState("");
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -254,10 +273,15 @@ function App() {
   const effectivePreviewScale = sourceKind === "video" ? previewQualityOption.scale : 1;
   const currentMediaKey = src && !src.startsWith("blob:") ? src : fileName;
   const overlayTitle = formatOverlayTitle(fileName);
+  const isNativeTauri = isTauriRuntimeSync();
   const isInVetka = Boolean(currentMediaKey && vetkaStatusMap[currentMediaKey]);
   const mediaMarkers = useMemo(
     () => markers.filter((marker) => marker.media_path === currentMediaKey),
     [currentMediaKey, markers],
+  );
+  const mediaProvisionalEvents = useMemo(
+    () => provisionalEvents.filter((event) => event.media_path === currentMediaKey),
+    [currentMediaKey, provisionalEvents],
   );
   const favoriteMomentCount = useMemo(
     () => mediaMarkers.filter((marker) => marker.kind === "favorite").length,
@@ -354,6 +378,7 @@ function App() {
       previewScale: effectivePreviewScale,
       inVetka: isInVetka,
       markerCount: mediaMarkers.length,
+      provisionalEventCount: mediaProvisionalEvents.length,
       favoriteMomentCount,
       commentMomentCount,
       activeContextAction: isInVetka ? "favorite" : "vetka",
@@ -369,6 +394,7 @@ function App() {
     intrinsicSize.width,
     footerReserve,
     mediaMarkers.length,
+    mediaProvisionalEvents.length,
     previewQualityOption.label,
     sourceKind,
     variant,
@@ -392,6 +418,14 @@ function App() {
 
   useEffect(() => {
     try {
+      localStorage.setItem(PROVISIONAL_EVENTS_STORAGE_KEY, JSON.stringify(provisionalEvents));
+    } catch {
+      // ignore storage errors
+    }
+  }, [provisionalEvents]);
+
+  useEffect(() => {
+    try {
       localStorage.setItem(VETKA_STATUS_STORAGE_KEY, JSON.stringify(vetkaStatusMap));
     } catch {
       // ignore storage errors
@@ -410,7 +444,7 @@ function App() {
     };
     autoSizedKeyRef.current = key;
     setShellSizeOverride(next);
-    void setCurrentWindowLogicalSize(next.width, next.height);
+    void configurePlayerWindow(next.width, next.height, snapshot.videoIntrinsicWidth, snapshot.videoIntrinsicHeight);
   }, [
     snapshot.ok,
     snapshot.suggestedShellHeight,
@@ -435,7 +469,8 @@ function App() {
       if (event.key.toLowerCase() === "i") {
         setIsDebugVisible((value) => !value);
       }
-      if (event.key.toLowerCase() === "f") {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
         void toggleFullscreen();
       }
       if (event.key.toLowerCase() === "q") {
@@ -494,6 +529,12 @@ function App() {
   }, [isDebugVisible, isPlaying, currentTime]);
 
   useEffect(() => {
+    if (!contextToast) return;
+    const timer = window.setTimeout(() => setContextToast(""), 2200);
+    return () => window.clearTimeout(timer);
+  }, [contextToast]);
+
+  useEffect(() => {
     const api = {
       snapshot: () => snapshot,
       print: () => {
@@ -501,6 +542,7 @@ function App() {
         return snapshot;
       },
       markers: () => markers,
+      provisionalEvents: () => provisionalEvents,
       setVariant: (next: ShellVariant) => setVariant(next),
       setSyntheticSize: (width: number, height: number) => {
         setSyntheticSize({
@@ -524,7 +566,7 @@ function App() {
           height: snapshot.suggestedShellHeight,
         };
         setShellSizeOverride(next);
-        void setCurrentWindowLogicalSize(next.width, next.height);
+        void configurePlayerWindow(next.width, next.height, snapshot.videoIntrinsicWidth, snapshot.videoIntrinsicHeight);
         return { ...snapshot, shellWidth: next.width, shellHeight: next.height };
       },
       resetShell: () => {
@@ -538,7 +580,7 @@ function App() {
     return () => {
       if (window.vetkaPlayerLab === api) delete window.vetkaPlayerLab;
     };
-  }, [currentMediaKey, markers, snapshot]);
+  }, [currentMediaKey, markers, provisionalEvents, snapshot]);
 
   function attachFile(file: File) {
     const nextUrl = URL.createObjectURL(file);
@@ -609,13 +651,37 @@ function App() {
     return marker;
   }
 
+  function addProvisionalVetkaCapture() {
+    if (!currentMediaKey) return null;
+    const anchor = Math.max(0, Number(videoRef.current?.currentTime ?? currentTime ?? 0));
+    const start = Math.max(0, Number((anchor - 0.5).toFixed(2)));
+    const end = Number((anchor + 0.5).toFixed(2));
+    const event: ProvisionalCaptureEvent = {
+      provisional_event_id: createMarkerId(),
+      event_type: "vetka_logo_capture",
+      media_path: currentMediaKey,
+      start_sec: start,
+      end_sec: end,
+      text: "Moment registered locally. Connect VETKA Core/CUT for full workflow.",
+      created_at: new Date().toISOString(),
+      export_mode: "srt_comment",
+      migration_status: "local_only",
+      migrated_to_marker_id: null,
+    };
+    setProvisionalEvents((prev) => [...prev, event]);
+    return event;
+  }
+
   function handleContextAction() {
     if (!isInVetka) {
-      if (!currentMediaKey) return;
-      setVetkaStatusMap((prev) => ({ ...prev, [currentMediaKey]: true }));
+      const event = addProvisionalVetkaCapture();
+      if (event) {
+        setContextToast("Moment registered locally. VETKA Core/CUT is needed for full workflow.");
+      }
       return;
     }
     addMomentMarker("favorite");
+    setContextToast("Moment saved as a favorite marker.");
   }
 
   return (
@@ -677,7 +743,7 @@ function App() {
           <div
             ref={shellRef}
             className={`viewer-shell player-shell ${variant} ${footerReserve === 0 ? "footerless" : ""}`}
-            style={shellSizeOverride ? { width: `${shellSizeOverride.width}px`, height: `${shellSizeOverride.height}px` } : undefined}
+            style={shellSizeOverride && (!isPureMode || isNativeTauri) ? { width: `${shellSizeOverride.width}px`, height: `${shellSizeOverride.height}px` } : undefined}
           >
             <div ref={viewerRef} className="viewer-area player-canvas">
               {src ? (
@@ -730,12 +796,14 @@ function App() {
                       className={`icon-button ${isInVetka ? "icon-button-active" : "icon-button-vetka"}`}
                       type="button"
                       onClick={() => handleContextAction()}
+                      data-testid="context-action"
                       aria-label={isInVetka ? "Favorite this moment" : "Add to VETKA"}
                       title={isInVetka ? `Favorite this moment (${favoriteMomentCount})` : "Add to VETKA"}
                     >
                       {isInVetka ? <IconStar active={true} /> : <IconVetka />}
                     </button>
                   </div>
+                  {contextToast ? <div className="context-toast">{contextToast}</div> : null}
                   <div
                     className={`transport-overlay ${showTransport ? "transport-visible" : "transport-hidden"}`}
                     onMouseMove={() => setShowTransport(true)}
@@ -745,22 +813,8 @@ function App() {
                   >
                     <div className="transport-scrim" />
                     <div className="transport-bar">
-                      <button className="transport-button" type="button" onClick={() => {
-                        const video = videoRef.current;
-                        if (!video) return;
-                        video.currentTime = Math.max(0, video.currentTime - 5);
-                      }} aria-label="Rewind 5 seconds">
-                        <IconRewind />
-                      </button>
                       <button className="transport-button transport-button-primary" type="button" onClick={() => togglePlayback()} aria-label={isPlaying ? "Pause" : "Play"}>
                         {isPlaying ? <IconPause /> : <IconPlay />}
-                      </button>
-                      <button className="transport-button" type="button" onClick={() => {
-                        const video = videoRef.current;
-                        if (!video) return;
-                        video.currentTime = Math.min(duration || video.duration || 0, video.currentTime + 5);
-                      }} aria-label="Forward 5 seconds">
-                        <IconForward />
                       </button>
                       <span className="transport-time">{formatTime(currentTime)}</span>
                       <input
@@ -797,7 +851,7 @@ function App() {
                         }}
                         aria-label="Volume"
                       />
-                      <button className="transport-button" type="button" onClick={() => void toggleFullscreen()} aria-label="Fullscreen">
+                      <button className="transport-button" type="button" onClick={() => void toggleFullscreen()} aria-label="Fullscreen" data-testid="fullscreen-button">
                         <IconFullscreen />
                       </button>
                     </div>
@@ -809,6 +863,28 @@ function App() {
                       {isPlaying ? <IconPause /> : <IconPlay />}
                     </button>
                   </div>
+                  <button
+                    className="seek-zone seek-zone-left"
+                    type="button"
+                    aria-label="Seek backward 5 seconds"
+                    onClick={() => {
+                      const video = videoRef.current;
+                      if (!video) return;
+                      video.currentTime = Math.max(0, video.currentTime - 5);
+                      setShowTransport(true);
+                    }}
+                  />
+                  <button
+                    className="seek-zone seek-zone-right"
+                    type="button"
+                    aria-label="Seek forward 5 seconds"
+                    onClick={() => {
+                      const video = videoRef.current;
+                      if (!video) return;
+                      video.currentTime = Math.min(duration || video.duration || 0, video.currentTime + 5);
+                      setShowTransport(true);
+                    }}
+                  />
                 </>
               ) : intrinsicSize.width > 0 && intrinsicSize.height > 0 ? (
                 <div className="synthetic-stage">
