@@ -62,6 +62,13 @@ Catalog covers 100% of tools. Registry loads in <10ms. All T1.x tests pass.
 - [ ] 172.P2.4 Add `ReflexContext.from_session()` factory — from vetka_session_init payload
 - [ ] 172.P2.5 Configurable weights via env vars: `REFLEX_SEMANTIC_WEIGHT=0.30`, etc.
 - [ ] 172.P2.6 Feature flag: `REFLEX_ENABLED=false` (off by default, opt-in)
+- [ ] 172.P2.7 Integrate with `LLMModelRegistry` (`src/elisya/llm_model_registry.py`):
+  - Import `get_llm_registry()` — DO NOT duplicate context budget logic
+  - Use `ModelProfile.context_length` to adapt tool selection for model capability
+  - Use `ModelProfile.output_tokens_per_second` for cost-aware scoring
+  - Small context models (≤8k) → prefer lightweight tools, fewer results
+  - Large context models (≥128k) → full tool palette available
+  - Existing `_resolve_adaptive_max_tokens()` in `provider_registry.py` handles token math — REFLEX only reads profiles
 
 ### Tests (`tests/test_reflex_scorer.py`)
 - [ ] T2.1 `test_score_returns_float_0_to_1` — bounds check
@@ -76,13 +83,15 @@ Catalog covers 100% of tools. Registry loads in <10ms. All T1.x tests pass.
 - [ ] T2.10 `test_scorer_performance_under_5ms` — timing benchmark, no LLM calls
 - [ ] T2.11 `test_from_subtask_factory` — ReflexContext created correctly from subtask
 - [ ] T2.12 `test_feature_flag_disabled` — REFLEX_ENABLED=false → passthrough, no scoring
+- [ ] T2.13 `test_model_capability_adapts_scoring` — small model (8k) → fewer/lighter tools recommended
+- [ ] T2.14 `test_reads_llm_registry_not_duplicates` — uses get_llm_registry(), no own API calls
 
 ### Markers
 - `MARKER_172.P2.SCORER` in `reflex_scorer.py`
 - `MARKER_172.P2.CONTEXT` in ReflexContext definition
 
 ### Exit Criteria
-Scorer runs in <5ms. All 12 tests pass. Feature flag works. No LLM calls in scoring path.
+Scorer runs in <5ms. All 14 tests pass. Feature flag works. No LLM calls in scoring path. Model capability from LLMModelRegistry (not duplicated).
 
 ---
 
@@ -205,11 +214,11 @@ P1 и P3 можно запускать параллельно. P2 зависит
 | Phase | Tests | File |
 |-------|-------|------|
 | P1 | 7 tests | `tests/test_reflex_registry.py` |
-| P2 | 12 tests | `tests/test_reflex_scorer.py` |
+| P2 | 14 tests | `tests/test_reflex_scorer.py` |
 | P3 | 7 tests | `tests/test_reflex_feedback.py` |
 | P4 | 7 tests | `tests/test_reflex_integration.py` |
 | P5 | 3 tests | in `test_reflex_integration.py` |
-| **Total** | **36 tests** | |
+| **Total** | **38 tests** | |
 
 ---
 
