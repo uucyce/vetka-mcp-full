@@ -129,6 +129,8 @@ data/**
 !data/trufflehog_patterns.json
 !data/config.example.json
 !data/connectors_tokens.example.json
+!data/reflex/
+!data/reflex/**
 
 # Tauri build artifacts
 client/src-tauri/target/
