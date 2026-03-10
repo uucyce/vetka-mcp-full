@@ -86,6 +86,9 @@ from .mcc_routes import router as mcc_router
 from .voice_storage_routes import router as voice_storage_router
 from .cut_routes import router as cut_router
 
+# MARKER_172.P5: REFLEX telemetry — tool selection observability
+from .reflex_routes import router as reflex_router
+
 
 def get_all_routers() -> List[APIRouter]:
     """
@@ -130,6 +133,7 @@ def get_all_routers() -> List[APIRouter]:
         mcc_router,  # /api/mcc/* (Phase 153 - MCC init, state, project setup)
         voice_storage_router,  # /api/voice/storage/* (solo voice persistence + replay)
         cut_router,  # /api/cut/* (Phase 170 - standalone CUT bootstrap)
+        reflex_router,  # /api/reflex/* (Phase 172 - REFLEX tool selection telemetry)
     ]
 
 
@@ -212,4 +216,5 @@ __all__ = [
     "mcc_router",
     "voice_storage_router",
     "cut_router",
+    "reflex_router",
 ]

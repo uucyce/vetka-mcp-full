@@ -215,6 +215,15 @@ class AgentPipeline:
         self._timeline_events: List[Dict] = []  # [{ts, role, event, detail, duration_s}]
         # MARKER_172.P4.FC_EXECS: Last FC tool executions for REFLEX feedback
         self._last_fc_tool_executions: List[Dict] = []
+        # MARKER_172.P5.OBSERVE: REFLEX observability counters
+        self._reflex_stats: Dict[str, Any] = {
+            "enabled": False,
+            "recommendations_given": 0,
+            "tools_recommended": [],      # flat list of all tool_ids recommended
+            "tools_used": [],             # flat list of all tool_ids actually used
+            "feedback_recorded": 0,
+            "verifier_feedbacks": 0,
+        }
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
         self.stm_limit = PIPELINE_STM_LIMIT
@@ -1621,6 +1630,33 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         self._save_tasks(tasks)
 
     # MARKER_135.DAG_BRIDGE: Build structured result for DAG visualization
+    def _build_reflex_stats(self) -> Dict[str, Any]:
+        """MARKER_172.P5.3 — Build REFLEX observability section for pipeline_stats.
+
+        Returns:
+            Dict with enabled, recommendation counts, match rate, etc.
+        """
+        rs = self._reflex_stats
+        if not rs.get("enabled"):
+            return {"enabled": False}
+
+        # Compute match rate: how many recommended tools were actually used
+        recommended_set = set(rs["tools_recommended"])
+        used_set = set(rs["tools_used"])
+        matched = recommended_set & used_set
+        match_rate = len(matched) / len(recommended_set) if recommended_set else 0.0
+
+        return {
+            "enabled": True,
+            "recommendations_given": rs["recommendations_given"],
+            "tools_recommended_unique": list(recommended_set),
+            "tools_used_unique": list(used_set),
+            "match_rate": round(match_rate, 3),
+            "matched_tools": list(matched),
+            "feedback_recorded": rs["feedback_recorded"],
+            "verifier_feedbacks": rs["verifier_feedbacks"],
+        }
+
     def _build_dag_result(self, pipeline_task: PipelineTask, stats: dict) -> dict:
         """Build structured result for DAG visualization.
 
@@ -2451,6 +2487,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     "agent_stats": dict(self._agent_stats),
                     # MARKER_152.4: Timeline events for drill-down visualization
                     "timeline": list(self._timeline_events),
+                    # MARKER_172.P5.3: REFLEX observability in pipeline stats
+                    "reflex": self._build_reflex_stats(),
                 }
                 # Save to TaskBoard if task has a board ID
                 if hasattr(self, '_board_task_id') and self._board_task_id:
@@ -2712,10 +2750,18 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if subtask.visible:
                 await self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks, model=coder_model)
 
-            # MARKER_172.P4.IP1: REFLEX pre-FC recommendations (logging only)
+            # MARKER_172.P4.IP1: REFLEX pre-FC recommendations
             try:
                 from src.services.reflex_integration import reflex_pre_fc
-                reflex_pre_fc(subtask, phase_type=phase_type, agent_role="coder")
+                _recs = reflex_pre_fc(subtask, phase_type=phase_type, agent_role="coder")
+                # MARKER_172.P5.OBSERVE: Track recommendations
+                if _recs:
+                    self._reflex_stats["enabled"] = True
+                    self._reflex_stats["recommendations_given"] += 1
+                    self._reflex_stats["tools_recommended"].extend(r["tool_id"] for r in _recs)
+                    # MARKER_172.P5.4: Stream to DevPanel
+                    _rec_ids = ", ".join(r["tool_id"] for r in _recs[:3])
+                    await self._emit_progress("@reflex", f"🎯 Recommends: {_rec_ids}", i+1, total_subtasks)
             except Exception:
                 pass  # REFLEX errors never block pipeline
 
@@ -2736,7 +2782,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 from src.services.reflex_integration import reflex_post_fc
                 _fc_execs = self._last_fc_tool_executions
                 if _fc_execs:
-                    reflex_post_fc(_fc_execs, phase_type=phase_type, subtask_id=subtask.marker or f"step_{i+1}")
+                    _fb_count = reflex_post_fc(_fc_execs, phase_type=phase_type, subtask_id=subtask.marker or f"step_{i+1}")
+                    # MARKER_172.P5.OBSERVE: Track used tools + feedback
+                    _used_names = [e.get("name", "") for e in _fc_execs]
+                    self._reflex_stats["tools_used"].extend(_used_names)
+                    self._reflex_stats["feedback_recorded"] += _fb_count
+                    # MARKER_172.P5.4: Stream to DevPanel
+                    if _fb_count > 0:
+                        _used_ids = ", ".join(_used_names[:3])
+                        await self._emit_progress("@reflex", f"📊 Used: {_used_ids} ({_fb_count} feedback)", i+1, total_subtasks)
             except Exception:
                 pass  # REFLEX errors never block pipeline
 
@@ -2816,12 +2870,18 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 try:
                     from src.services.reflex_integration import reflex_verifier
                     _fc_tool_names = [e.get("name", "") for e in self._last_fc_tool_executions]
-                    reflex_verifier(
+                    _vf_count = reflex_verifier(
                         subtask_id=subtask.marker or f"step_{i+1}",
                         tools_used=_fc_tool_names,
                         verifier_passed=verification.get("passed", False),
                         phase_type=phase_type,
                     )
+                    # MARKER_172.P5.OBSERVE: Track verifier feedback count
+                    self._reflex_stats["verifier_feedbacks"] += _vf_count
+                    # MARKER_172.P5.4: Stream verifier outcome to DevPanel
+                    if _vf_count > 0:
+                        _v_status = "✅ PASS" if verification.get("passed", False) else "⚠️ FAIL"
+                        await self._emit_progress("@reflex", f"{_v_status} → {_vf_count} tools feedback", i+1, total_subtasks)
                 except Exception:
                     pass  # REFLEX errors never block pipeline
 
