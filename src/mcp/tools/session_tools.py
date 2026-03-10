@@ -320,6 +320,15 @@ class SessionInitTool(BaseMCPTool):
         # except Exception:
         #     pass
 
+        # MARKER_172.P4.IP6: REFLEX session recommendations
+        try:
+            from src.services.reflex_integration import reflex_session
+            reflex_recs = reflex_session(context)
+            if reflex_recs:
+                context["reflex_recommendations"] = reflex_recs
+        except Exception:
+            pass  # REFLEX errors never block session init
+
         return {
             "success": True,
             "result": context

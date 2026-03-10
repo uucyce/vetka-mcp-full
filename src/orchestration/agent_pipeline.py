@@ -213,6 +213,8 @@ class AgentPipeline:
         self._agent_stats: Dict[str, Dict] = {}  # role → {calls, tokens_in, tokens_out, duration_s, retries, success_count, fail_count}
         # MARKER_152.4: Timeline events for pipeline drill-down visualization
         self._timeline_events: List[Dict] = []  # [{ts, role, event, detail, duration_s}]
+        # MARKER_172.P4.FC_EXECS: Last FC tool executions for REFLEX feedback
+        self._last_fc_tool_executions: List[Dict] = []
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
         self.stm_limit = PIPELINE_STM_LIMIT
@@ -2710,6 +2712,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if subtask.visible:
                 await self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks, model=coder_model)
 
+            # MARKER_172.P4.IP1: REFLEX pre-FC recommendations (logging only)
+            try:
+                from src.services.reflex_integration import reflex_pre_fc
+                reflex_pre_fc(subtask, phase_type=phase_type, agent_role="coder")
+            except Exception:
+                pass  # REFLEX errors never block pipeline
+
             # MARKER_133.C33B: Coder phase with timeout
             # MARKER_145.ADAPTIVE_TIMEOUT: Coder gets fc_turns=4 for FC loop, model from prompts
             _coder_fc = MAX_FC_TURNS_CODER if FC_LOOP_AVAILABLE else 1
@@ -2721,6 +2730,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 subtask.result = "Coder phase timed out"
                 self._update_task(pipeline_task)
                 continue
+
+            # MARKER_172.P4.IP3: REFLEX post-FC feedback (record tool usage)
+            try:
+                from src.services.reflex_integration import reflex_post_fc
+                _fc_execs = self._last_fc_tool_executions
+                if _fc_execs:
+                    reflex_post_fc(_fc_execs, phase_type=phase_type, subtask_id=subtask.marker or f"step_{i+1}")
+            except Exception:
+                pass  # REFLEX errors never block pipeline
 
             # MARKER_122.3: Verify-Retry loop (only for fix/build phases)
             if phase_type in ("fix", "build") and "verifier" in self.prompts:
@@ -2793,6 +2811,19 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     except Exception as fb_err:
                         logger.debug(f"[Feedback] Verifier save failed: {fb_err}")
                 # MARKER_134.FEEDBACK_A_END
+
+                # MARKER_172.P4.IP5: REFLEX verifier feedback
+                try:
+                    from src.services.reflex_integration import reflex_verifier
+                    _fc_tool_names = [e.get("name", "") for e in self._last_fc_tool_executions]
+                    reflex_verifier(
+                        subtask_id=subtask.marker or f"step_{i+1}",
+                        tools_used=_fc_tool_names,
+                        verifier_passed=verification.get("passed", False),
+                        phase_type=phase_type,
+                    )
+                except Exception:
+                    pass  # REFLEX errors never block pipeline
 
                 if subtask.visible:
                     v_icon = "✅" if verification.get("passed", True) else "⚠️"
@@ -3632,6 +3663,8 @@ Execute this subtask. Provide clear, actionable output."""}
                     self._last_used_model = fc_result.get("model", model)
                     # Log tool usage
                     tool_execs = fc_result.get("tool_executions", [])
+                    # MARKER_172.P4.FC_EXECS: Store for REFLEX IP-3/IP-5 hooks
+                    self._last_fc_tool_executions = tool_execs
                     if tool_execs:
                         files_read = [
                             e["args"].get("file_path", "")
