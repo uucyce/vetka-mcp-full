@@ -229,6 +229,8 @@ class AgentPipeline:
         }
         # MARKER_173.P3: REFLEX structured event emitter (lazy init)
         self._reflex_emitter = None
+        # MARKER_173.P4: REFLEX A/B experiment arm (lazy assigned)
+        self._reflex_experiment_arm: Optional[str] = None
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
         self.stm_limit = PIPELINE_STM_LIMIT
@@ -1648,6 +1650,46 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         }
         return tier_map.get(self.preset_name or "", "silver")
 
+    def _get_reflex_experiment_arm(self) -> str:
+        """MARKER_173.P4.ARM — Get A/B experiment arm for this pipeline run."""
+        if self._reflex_experiment_arm is None:
+            try:
+                from src.services.reflex_experiment import is_experiment_active, assign_arm
+                if is_experiment_active():
+                    pipeline_id = getattr(self, '_board_task_id', '') or ''
+                    self._reflex_experiment_arm = assign_arm(pipeline_id)
+                else:
+                    self._reflex_experiment_arm = ""  # Not in experiment
+            except ImportError:
+                self._reflex_experiment_arm = ""
+        return self._reflex_experiment_arm
+
+    def _record_reflex_experiment(self, pipeline_stats: Dict[str, Any]):
+        """MARKER_173.P4.RECORD — Record experiment metrics after pipeline completes."""
+        try:
+            arm = self._get_reflex_experiment_arm()
+            if not arm:
+                return
+            from src.services.reflex_experiment import get_reflex_experiment, ExperimentMetrics
+            rs = self._reflex_stats
+            metrics = ExperimentMetrics(
+                pipeline_id=getattr(self, '_board_task_id', '') or '',
+                arm=arm,
+                experiment_id="reflex_active_v1",
+                success_rate=pipeline_stats.get("success_rate", 0.0),
+                match_rate=rs.get("_match_rate", 0.0),
+                duration_ms=pipeline_stats.get("duration_ms", 0.0),
+                tokens_used=pipeline_stats.get("total_tokens", 0),
+                schemas_filtered=rs.get("schemas_filtered", 0),
+                tokens_saved_estimate=rs.get("schemas_original_count", 0) - rs.get("schemas_filtered_count", 0),
+                fallback_count=0,
+                subtask_count=pipeline_stats.get("subtasks_total", 0),
+            )
+            get_reflex_experiment().record_metrics(metrics)
+            logger.info("[REFLEX P4] Experiment recorded: arm=%s, success=%.2f", arm, metrics.success_rate)
+        except Exception as e:
+            logger.debug("[REFLEX P4] Experiment record error (non-fatal): %s", e)
+
     def _get_reflex_emitter(self):
         """MARKER_173.P3.LAZY — Lazy-init REFLEX event emitter."""
         if self._reflex_emitter is None:
@@ -2529,6 +2571,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     # MARKER_172.P5.3: REFLEX observability in pipeline stats
                     "reflex": self._build_reflex_stats(),
                 }
+                # MARKER_173.P4: Record A/B experiment metrics
+                self._record_reflex_experiment(pipeline_stats)
                 # Save to TaskBoard if task has a board ID
                 if hasattr(self, '_board_task_id') and self._board_task_id:
                     from src.orchestration.task_board import get_task_board

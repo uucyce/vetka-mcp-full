@@ -461,3 +461,60 @@ async def reflex_event_stats() -> Dict[str, Any]:
     except Exception as e:
         logger.error("[REFLEX API] Event stats error: %s", e)
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ─── P4 Experiment API ─────────────────────────────────────────────
+
+@router.get("/experiment")
+async def reflex_experiment() -> Dict[str, Any]:
+    """MARKER_173.P4.API — Get A/B experiment comparison results."""
+    if not _is_reflex_enabled():
+        return {"enabled": False, "message": "REFLEX is disabled."}
+
+    try:
+        from src.services.reflex_experiment import get_reflex_experiment, REFLEX_EXPERIMENT
+
+        store = get_reflex_experiment()
+        comparison = store.get_comparison()
+
+        return {
+            "enabled": True,
+            "experiment_active": REFLEX_EXPERIMENT,
+            "config": store.get_config().to_dict(),
+            "comparison": comparison,
+            "timestamp": time.time(),
+        }
+
+    except Exception as e:
+        logger.error("[REFLEX API] Experiment error: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.get("/experiment/metrics")
+async def reflex_experiment_metrics(
+    arm: str = Query("", description="Filter by arm: control or treatment"),
+) -> Dict[str, Any]:
+    """MARKER_173.P4.METRICS — Get raw experiment metrics."""
+    if not _is_reflex_enabled():
+        return {"enabled": False, "message": "REFLEX is disabled."}
+
+    try:
+        from src.services.reflex_experiment import get_reflex_experiment
+
+        store = get_reflex_experiment()
+        if arm:
+            metrics = store.get_arm_metrics(arm)
+        else:
+            metrics = store.get_all_metrics()
+
+        return {
+            "enabled": True,
+            "arm_filter": arm or "all",
+            "metrics": metrics,
+            "count": len(metrics),
+            "timestamp": time.time(),
+        }
+
+    except Exception as e:
+        logger.error("[REFLEX API] Experiment metrics error: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
