@@ -518,3 +518,90 @@ async def reflex_experiment_metrics(
     except Exception as e:
         logger.error("[REFLEX API] Experiment metrics error: %s", e)
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ─── P5 Decay & Model Profiles API ───────────────────────────────
+
+@router.get("/decay")
+async def reflex_decay_info(
+    phase_type: str = Query("*", description="Phase type for decay preview"),
+    success_rate: float = Query(-1.0, description="Tool success rate (-1 = none)"),
+    age_days: float = Query(0.0, description="Age in days for weight preview"),
+) -> Dict[str, Any]:
+    """MARKER_173.P5.API — Decay configuration and weight preview.
+
+    Shows phase-specific half-lives, success-weighted adjustments,
+    and optional weight calculation for a specific age/phase/success combo.
+    """
+    if not _is_reflex_enabled():
+        return {"enabled": False, "message": "REFLEX is disabled."}
+
+    try:
+        from src.services.reflex_decay import (
+            ReflexDecayEngine, get_decay_summary, get_all_model_profiles,
+        )
+
+        summary = get_decay_summary()
+
+        # Optional: compute specific weight
+        preview = None
+        if age_days > 0:
+            engine = ReflexDecayEngine()
+            sr = success_rate if success_rate >= 0 else None
+            weight = engine.compute_weight(age_days, phase_type, sr)
+            half_life = engine.get_half_life(phase_type, sr)
+            preview = {
+                "age_days": age_days,
+                "phase_type": phase_type,
+                "success_rate": sr,
+                "half_life_days": half_life,
+                "weight": round(weight, 6),
+            }
+
+        return {
+            "enabled": True,
+            "decay": summary,
+            "preview": preview,
+            "timestamp": time.time(),
+        }
+
+    except Exception as e:
+        logger.error("[REFLEX API] Decay error: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.get("/models")
+async def reflex_model_profiles(
+    model: str = Query("", description="Specific model name (empty = all)"),
+) -> Dict[str, Any]:
+    """MARKER_173.P5.MODELS — Model-specific scoring profiles.
+
+    Returns FC reliability, max tools, and preference settings per model.
+    """
+    if not _is_reflex_enabled():
+        return {"enabled": False, "message": "REFLEX is disabled."}
+
+    try:
+        from src.services.reflex_decay import (
+            get_model_profile, get_all_model_profiles,
+        )
+
+        if model:
+            profile = get_model_profile(model)
+            return {
+                "enabled": True,
+                "model": model,
+                "profile": profile.to_dict(),
+                "timestamp": time.time(),
+            }
+        else:
+            return {
+                "enabled": True,
+                "profiles": get_all_model_profiles(),
+                "count": len(get_all_model_profiles()),
+                "timestamp": time.time(),
+            }
+
+    except Exception as e:
+        logger.error("[REFLEX API] Model profiles error: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})

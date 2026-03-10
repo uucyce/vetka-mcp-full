@@ -380,7 +380,8 @@ class ReflexFeedback:
         """Aggregate a list of entries into a single score.
 
         Formula: score = success_rate * 0.40 + usefulness * 0.35 + verifier_pass * 0.25
-        Decay: each entry weighted by exp(-DECAY_LAMBDA * days_old)
+        Decay: MARKER_173.P5.INTEGRATE — phase-specific half-life via ReflexDecayEngine.
+        Falls back to fixed DECAY_LAMBDA if engine import fails.
         """
         if not entries:
             return AggregatedScore(
@@ -393,12 +394,26 @@ class ReflexFeedback:
                 verifier_rate=0.0,
             )
 
+        # MARKER_173.P5.INTEGRATE: Use adaptive decay engine
+        decay_engine = None
+        try:
+            from src.services.reflex_decay import ReflexDecayEngine
+            decay_engine = ReflexDecayEngine()
+        except ImportError:
+            pass  # Fall back to fixed DECAY_LAMBDA
+
         now = datetime.now(timezone.utc)
 
         weighted_success = 0.0
         weighted_useful = 0.0
         weighted_verifier = 0.0
         total_weight = 0.0
+
+        # Pre-compute tool success rate for success-weighted decay
+        tool_success_rate = None
+        if decay_engine and entries:
+            successes = sum(1 for e in entries if e.success)
+            tool_success_rate = successes / len(entries) if entries else None
 
         for entry in entries:
             # Compute age in days
@@ -410,8 +425,15 @@ class ReflexFeedback:
             except (ValueError, TypeError):
                 age_days = 0.0
 
-            # Decay weight
-            weight = math.exp(-DECAY_LAMBDA * age_days)
+            # Decay weight — use adaptive engine or fixed lambda
+            if decay_engine:
+                weight = decay_engine.compute_weight(
+                    age_days=age_days,
+                    phase_type=entry.phase_type,
+                    success_rate=tool_success_rate,
+                )
+            else:
+                weight = math.exp(-DECAY_LAMBDA * age_days)
             total_weight += weight
 
             weighted_success += weight * (1.0 if entry.success else 0.0)

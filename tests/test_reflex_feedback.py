@@ -267,11 +267,12 @@ class TestDecay:
         feedback._append_entry(fresh_entry)
 
         score = feedback.get_score("decay_test")
-        # Fresh failure has much higher weight than old success
-        # exp(-0.1 * 30) ≈ 0.05 for old entry
-        # exp(-0.1 * 0) = 1.0 for fresh entry
-        # So score should be dominated by the fresh failure → low
-        assert score < 0.3
+        # Fresh failure has higher weight than old success.
+        # With phase-aware decay (MARKER_173.P5), research half-life=45d:
+        #   old entry (30d): weight ≈ exp(-ln(2)/45 * 30) ≈ 0.63
+        #   fresh entry (0d): weight = 1.0
+        # Score is a blend but fresh failure dominates → below 0.5
+        assert score < 0.5
 
     def test_decay_formula_values(self):
         """Verify decay math: exp(-0.1 * days)."""
