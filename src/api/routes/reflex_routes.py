@@ -396,3 +396,68 @@ async def reflex_filter_debug(
     except Exception as e:
         logger.error("[REFLEX API] Filter debug error: %s", e)
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ─── P3 Streaming API ──────────────────────────────────────────────
+
+@router.get("/events")
+async def reflex_events(
+    n: int = Query(20, description="Number of recent events", ge=1, le=100),
+    since: float = Query(0, description="Events after this Unix timestamp"),
+    pipeline_id: str = Query("", description="Filter by pipeline/task ID"),
+) -> Dict[str, Any]:
+    """MARKER_173.P3.EVENTS — Get recent REFLEX streaming events.
+
+    Supports three query modes:
+    - Default: last N events
+    - since=<ts>: events newer than timestamp (for polling)
+    - pipeline_id=<id>: events for specific pipeline run
+    """
+    if not _is_reflex_enabled():
+        return {"enabled": False, "message": "REFLEX is disabled."}
+
+    try:
+        from src.services.reflex_streaming import get_reflex_event_buffer
+
+        buf = get_reflex_event_buffer()
+
+        if pipeline_id:
+            events = buf.get_by_pipeline(pipeline_id)
+        elif since > 0:
+            events = buf.get_since(since)
+        else:
+            events = buf.get_recent(n)
+
+        return {
+            "enabled": True,
+            "events": events,
+            "count": len(events),
+            "timestamp": time.time(),
+        }
+
+    except Exception as e:
+        logger.error("[REFLEX API] Events error: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.get("/events/stats")
+async def reflex_event_stats() -> Dict[str, Any]:
+    """MARKER_173.P3.STATS — Get REFLEX event buffer statistics."""
+    if not _is_reflex_enabled():
+        return {"enabled": False, "message": "REFLEX is disabled."}
+
+    try:
+        from src.services.reflex_streaming import get_reflex_event_buffer
+
+        buf = get_reflex_event_buffer()
+        stats = buf.get_stats()
+
+        return {
+            "enabled": True,
+            "buffer": stats,
+            "timestamp": time.time(),
+        }
+
+    except Exception as e:
+        logger.error("[REFLEX API] Event stats error: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e)})

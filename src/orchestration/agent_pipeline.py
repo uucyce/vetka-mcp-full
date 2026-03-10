@@ -227,6 +227,8 @@ class AgentPipeline:
             "schemas_original_count": 0,  # MARKER_173.P1: total schemas before filtering
             "schemas_filtered_count": 0,  # MARKER_173.P1: total schemas after filtering
         }
+        # MARKER_173.P3: REFLEX structured event emitter (lazy init)
+        self._reflex_emitter = None
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
         self.stm_limit = PIPELINE_STM_LIMIT
@@ -1646,6 +1648,18 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         }
         return tier_map.get(self.preset_name or "", "silver")
 
+    def _get_reflex_emitter(self):
+        """MARKER_173.P3.LAZY — Lazy-init REFLEX event emitter."""
+        if self._reflex_emitter is None:
+            try:
+                from src.services.reflex_streaming import ReflexEventEmitter
+                self._reflex_emitter = ReflexEventEmitter(
+                    ws_broadcaster=getattr(self, '_ws_broadcaster', None),
+                )
+            except ImportError:
+                pass
+        return self._reflex_emitter
+
     # MARKER_135.DAG_BRIDGE: Build structured result for DAG visualization
     def _build_reflex_stats(self) -> Dict[str, Any]:
         """MARKER_172.P5.3 — Build REFLEX observability section for pipeline_stats.
@@ -2787,6 +2801,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     # MARKER_172.P5.4: Stream to DevPanel
                     _rec_ids = ", ".join(r["tool_id"] for r in _recs[:3])
                     await self._emit_progress("@reflex", f"🎯 Recommends: {_rec_ids}", i+1, total_subtasks)
+                    # MARKER_173.P3.IP1: Structured recommendation event
+                    _emitter = self._get_reflex_emitter()
+                    if _emitter:
+                        await _emitter.emit_recommendation(
+                            pipeline_id=getattr(self, '_board_task_id', '') or '',
+                            subtask_idx=i+1,
+                            subtask_marker=subtask.marker or f"step_{i+1}",
+                            phase_type=phase_type,
+                            model_tier=self._get_model_tier(),
+                            recommendations=_recs,
+                        )
             except Exception:
                 pass  # REFLEX errors never block pipeline
 
@@ -2816,6 +2841,19 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     if _fb_count > 0:
                         _used_ids = ", ".join(_used_names[:3])
                         await self._emit_progress("@reflex", f"📊 Used: {_used_ids} ({_fb_count} feedback)", i+1, total_subtasks)
+                    # MARKER_173.P3.IP3: Structured outcome event
+                    _emitter = self._get_reflex_emitter()
+                    if _emitter:
+                        await _emitter.emit_outcome(
+                            pipeline_id=getattr(self, '_board_task_id', '') or '',
+                            subtask_idx=i+1,
+                            subtask_marker=subtask.marker or f"step_{i+1}",
+                            phase_type=phase_type,
+                            model_tier=self._get_model_tier(),
+                            recommended_ids=list(self._reflex_stats.get("tools_recommended", [])),
+                            used_ids=_used_names,
+                            feedback_count=_fb_count,
+                        )
             except Exception:
                 pass  # REFLEX errors never block pipeline
 
@@ -2907,6 +2945,18 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     if _vf_count > 0:
                         _v_status = "✅ PASS" if verification.get("passed", False) else "⚠️ FAIL"
                         await self._emit_progress("@reflex", f"{_v_status} → {_vf_count} tools feedback", i+1, total_subtasks)
+                    # MARKER_173.P3.IP5: Structured verifier event
+                    _emitter = self._get_reflex_emitter()
+                    if _emitter:
+                        await _emitter.emit_verifier(
+                            pipeline_id=getattr(self, '_board_task_id', '') or '',
+                            subtask_idx=i+1,
+                            subtask_marker=subtask.marker or f"step_{i+1}",
+                            phase_type=phase_type,
+                            tools_used=_fc_tool_names,
+                            verifier_passed=verification.get("passed", False),
+                            feedback_count=_vf_count,
+                        )
                 except Exception:
                     pass  # REFLEX errors never block pipeline
 
@@ -3747,6 +3797,18 @@ Execute this subtask. Provide clear, actionable output."""}
                         self._reflex_stats["schemas_original_count"] += _orig_count
                         self._reflex_stats["schemas_filtered_count"] += _filtered_count
                         await self._emit_progress("@reflex", f"🔧 Filtered schemas: {_orig_count}→{_filtered_count}", i+1, total_subtasks)
+                        # MARKER_173.P3.IP7: Structured filter event
+                        _emitter = self._get_reflex_emitter()
+                        if _emitter:
+                            await _emitter.emit_filter(
+                                pipeline_id=getattr(self, '_board_task_id', '') or '',
+                                subtask_idx=i+1,
+                                subtask_marker=subtask.marker or f"step_{i+1}",
+                                phase_type=phase_type,
+                                model_tier=self._get_model_tier(),
+                                original_count=_orig_count,
+                                filtered_count=_filtered_count,
+                            )
                 except Exception:
                     pass  # REFLEX errors never block pipeline
                 if coder_tool_schemas:
