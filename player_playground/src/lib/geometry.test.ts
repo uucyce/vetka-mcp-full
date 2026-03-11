@@ -29,6 +29,11 @@ describe("player geometry math", () => {
     expect(result.horizontalLetterboxPx).toBe(0);
   });
 
+  it("suggests a portrait shell for portrait media", () => {
+    const shell = suggestShellSize(288, 620, 0, 1400, 900);
+    expect(shell.shellHeight).toBeGreaterThan(shell.shellWidth);
+  });
+
   it("rewards low chrome and low letterboxing in dream score", () => {
     const strong = computeDreamScore({
       windowInnerWidth: 1280,

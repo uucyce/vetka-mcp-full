@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 const VIDEO_FIXTURE = "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tools/back_to_ussr_app/docs/media/demo.mp4";
 const IMAGE_FIXTURE = "/Users/danilagulin/work/teletape_temp/berlin/style_lor/66187f5e-acf9-43bc-b3f6-49e697380b06.png";
+const PORTRAIT_IMAGE_FIXTURE = "/Users/danilagulin/work/teletape_temp/berlin/style_lor/319692_photo.jpg";
 
 test("pure player shell expands with viewport resize without changing action mode", async ({ page }) => {
   await page.setViewportSize({ width: 980, height: 680 });
@@ -125,4 +126,22 @@ test("image files load as media and keep geometry stable under suggested shell",
   expect(afterFit?.sourceKind).toBe("image");
   expect(afterFit?.horizontalLetterboxPx ?? 99).toBeLessThanOrEqual(0.5);
   expect(afterFit?.verticalLetterboxPx ?? 99).toBeLessThanOrEqual(0.5);
+});
+
+test("portrait images request a portrait-oriented shell", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 860 });
+  await page.goto("/?debug=1");
+  await page.locator('input[type="file"]').setInputFiles(PORTRAIT_IMAGE_FIXTURE);
+
+  await page.waitForFunction(() => {
+    const snapshot = window.vetkaPlayerLab?.snapshot();
+    return Boolean(snapshot?.ok && snapshot.sourceKind === "image");
+  });
+
+  await page.evaluate(() => window.vetkaPlayerLab?.applySuggestedShell());
+  await page.waitForTimeout(100);
+
+  const snapshot = await page.evaluate(() => window.vetkaPlayerLab?.snapshot());
+  expect(snapshot?.sourceKind).toBe("image");
+  expect((snapshot?.suggestedShellHeight ?? 0) > (snapshot?.suggestedShellWidth ?? Number.MAX_SAFE_INTEGER)).toBe(true);
 });

@@ -7,7 +7,7 @@ import {
   ShellVariant,
   suggestShellSize,
 } from "./lib/geometry";
-import { configurePlayerWindow, toggleFullscreen } from "./lib/nativeWindow";
+import { configurePlayerWindow, isTauriRuntimeSync, toggleFullscreen } from "./lib/nativeWindow";
 import MycoProbeApp from "./MycoProbeApp";
 
 type PreviewQualityKey = "full" | "half" | "quarter" | "eighth" | "sixteenth" | "thirtysecond";
@@ -138,6 +138,29 @@ function inferMediaKind(fileName: string, mimeType = ""): PlayerMediaKind {
   if (/\.(png|jpe?g|webp|gif|bmp|tiff?|avif|heic|heif)$/.test(lowerName)) return "image";
   if (/\.(mp4|mov|m4v|webm|avi|mkv|mpeg|mpg|wmv)$/.test(lowerName)) return "video";
   return null;
+}
+
+function getAvailableScreenBounds() {
+  const availWidth = Math.max(
+    360,
+    Math.floor(
+      window.screen?.availWidth ||
+        window.screen?.width ||
+        window.innerWidth ||
+        360,
+    ),
+  );
+  const availHeight = Math.max(
+    240,
+    Math.floor(
+      window.screen?.availHeight ||
+        window.screen?.height ||
+        window.innerHeight ||
+        240,
+    ),
+  );
+
+  return { availWidth, availHeight };
 }
 
 function createMarkerId() {
@@ -351,12 +374,18 @@ function App() {
       intrinsicSize.width,
       intrinsicSize.height,
     );
+    const availableScreen = isTauriRuntimeSync()
+      ? getAvailableScreenBounds()
+      : {
+          availWidth: Math.max(360, Math.floor(window.innerWidth || 360)),
+          availHeight: Math.max(240, Math.floor(window.innerHeight || 240)),
+        };
     const suggested = suggestShellSize(
       intrinsicSize.width,
       intrinsicSize.height,
       footerReserve,
-      Math.floor(window.innerWidth * 0.92),
-      Math.floor(window.innerHeight * 0.92),
+      Math.floor(availableScreen.availWidth * 0.92),
+      Math.floor(availableScreen.availHeight * 0.92),
       isPureMode ? 0 : 2,
       isPureMode ? 0 : 2,
     );
