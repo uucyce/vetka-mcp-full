@@ -623,6 +623,8 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
             response = _build_myco_quick_reply(msg, payload, context, retrieval)
             return {
                 "success": True,
+                "status": "ok",
+                "reply": response,
                 "response": response,
                 "role": "helper_myco",
                 "mode": "local_fastpath",
@@ -635,29 +637,57 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
         except Exception as e:
             return {
                 "success": True,
+                "status": "fallback",
+                "reply": f"MYCO helper fallback: {str(e)[:160]}",
                 "response": f"MYCO helper fallback: {str(e)[:160]}",
                 "role": "helper_myco",
                 "mode": "fallback",
             }
 
-    # Architect quick path fallback: route to regular /chat pipeline.
+    # Architect quick path: lightweight single-turn model for MiniChat.
     try:
-        chat_req = ChatRequest(
-            message=msg,
-            node_id=str(context.get("node_id") or context.get("nodeId") or ""),
-            node_path=str(context.get("focus_scope_key") or context.get("focusScopeKey") or ""),
-            file_path=str(context.get("file_path") or ""),
-            system_prompt=_build_architect_quick_system_prompt(context),
+        from src.elisya.provider_registry import call_model_v2
+
+        result = await call_model_v2(
+            messages=[
+                {"role": "system", "content": _build_architect_quick_system_prompt(context)},
+                {"role": "user", "content": msg},
+            ],
+            model="grok-fast-4.1",
+            source="polza",
+            max_tokens=500,
+            temperature=0.4,
         )
-        result = await api_chat(chat_req, request)
+
+        reply = ""
         if isinstance(result, dict):
-            result.setdefault("success", True)
-            return result
-        return {"success": True, "response": str(result)}
-    except Exception as e:
+            message = result.get("message", {})
+            if isinstance(message, dict):
+                reply = str(message.get("content") or "").strip()
+            elif isinstance(message, str):
+                reply = message.strip()
+        elif isinstance(result, str):
+            reply = result.strip()
+
+        if not reply:
+            raise RuntimeError("empty quick chat reply")
+
         return {
             "success": True,
-            "response": f"⚠ quick architect fallback: {str(e)[:160]}",
+            "status": "ok",
+            "reply": reply,
+            "response": reply,
+            "role": "assistant",
+            "model": "grok-fast-4.1",
+            "provider": "polza",
+            "mode": "single_turn",
+        }
+    except Exception:
+        return {
+            "success": True,
+            "status": "fallback",
+            "reply": "Backend model unavailable",
+            "response": "Backend model unavailable",
             "role": "assistant",
             "mode": "fallback",
         }

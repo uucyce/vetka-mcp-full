@@ -385,6 +385,20 @@ class StateRequest(BaseModel):
     history: list[str] = []
 
 
+class MCCTaskUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    preset: Optional[str] = None
+    phase_type: Optional[str] = None
+    priority: Optional[int] = None
+    tags: Optional[List[str]] = None
+
+
+class MCCTaskFeedbackRequest(BaseModel):
+    feedback: str = ""
+    action: str = "redo"
+
+
 # ──────────────────────────────────────────────────────────────
 # GET /api/mcc/init — Load project config + session state
 # ──────────────────────────────────────────────────────────────
@@ -950,6 +964,68 @@ async def get_workflow_catalog():
     Unified MCC workflow catalog across banks.
     """
     return _build_workflow_catalog_payload()
+
+
+@router.patch("/tasks/{task_id}")
+async def update_mcc_task(task_id: str, body: MCCTaskUpdateRequest):
+    """
+    MARKER_175.0A.MCC.TASK_PATCH.V1
+    Update MCC task metadata from TaskEditPopup.
+    """
+    board = _get_task_board_instance()
+    task = board.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+
+    updates = body.model_dump(exclude_none=True)
+    allowed_fields = {"title", "description", "preset", "phase_type", "priority", "tags"}
+    updates = {key: value for key, value in updates.items() if key in allowed_fields}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+
+    ok = board.update_task(task_id, **updates)
+    if not ok:
+        raise HTTPException(status_code=500, detail=f"Failed to update task '{task_id}'")
+
+    return {
+        "success": True,
+        "task_id": task_id,
+        "task": board.get_task(task_id) or {**task, **updates},
+    }
+
+
+@router.post("/tasks/{task_id}/feedback")
+async def submit_mcc_task_feedback(task_id: str, body: MCCTaskFeedbackRequest):
+    """
+    MARKER_175.0B.MCC.TASK_FEEDBACK.V1
+    Store user feedback for MCC redo/approve/reject flow.
+    """
+    board = _get_task_board_instance()
+    task = board.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+
+    action = str(body.action or "redo").strip().lower()
+    if action not in {"redo", "approve", "reject"}:
+        raise HTTPException(status_code=400, detail="action must be redo, approve, or reject")
+
+    updates: Dict[str, Any] = {
+        "feedback": str(body.feedback or "").strip(),
+        "result_status": {"redo": 0.5, "approve": 1.0, "reject": 0.0}[action],
+    }
+    if action == "redo":
+        updates["status"] = "pending"
+
+    ok = board.update_task(task_id, **updates)
+    if not ok:
+        raise HTTPException(status_code=500, detail=f"Failed to update feedback for task '{task_id}'")
+
+    return {
+        "success": True,
+        "task_id": task_id,
+        "action": action,
+        "task": board.get_task(task_id) or {**task, **updates},
+    }
 
 
 @router.get("/tasks/{task_id}/workflow-binding")

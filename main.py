@@ -990,6 +990,11 @@ from src.api.routes import register_all_routers
 
 register_all_routers(app)
 
+# MARKER_175.7.TASKBOARD.REST_API.V1
+from src.api.routes.taskboard_routes import router as taskboard_router
+
+app.include_router(taskboard_router)
+
 # === PHASE 55: APPROVAL ROUTES ===
 from src.api.routes.approval_routes import router as approval_router
 

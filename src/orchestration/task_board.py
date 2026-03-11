@@ -402,7 +402,7 @@ class TaskBoard:
         # MARKER_155.2A: Added 'module' for roadmap module assignment
         # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1: Added anchor metadata fields
         # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1: Added workflow binding metadata fields
-        ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status",
+        ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status", "feedback",
                           "source_chat_id", "source_group_id", "module",
                           "primary_node_id", "affected_nodes", "workflow_id", "workflow_bank",
                           "workflow_family", "workflow_selection_origin", "team_profile", "task_origin"}
