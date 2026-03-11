@@ -15,6 +15,7 @@ import {
   Cell,
 } from 'recharts';
 import { API_BASE } from '../../config/api.config';
+import { resolveRolePreviewAsset, type MycoRolePreviewRole } from '../mcc/mycoRolePreview';
 
 interface StatsDashboardProps {
   mode?: 'compact' | 'expanded';
@@ -433,10 +434,25 @@ export function StatsDashboard({ mode = 'expanded' }: StatsDashboardProps) {
             </ResponsiveContainer>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginTop: 10 }}>
-            {agentRows.map((row) => (
+            {agentRows.map((row) => {
+              const avatarSrc = resolveRolePreviewAsset(
+                row.role.toLowerCase() as MycoRolePreviewRole,
+                row.role,
+              );
+              return (
               <div key={`${row.role}_meta`} style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <span style={{ color: TEXT, fontSize: 11, textTransform: 'uppercase' }}>{row.role}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                  {/* MARKER_175.AVATAR: Role avatar in analytics */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {avatarSrc && (
+                      <img
+                        src={avatarSrc}
+                        alt={row.role}
+                        style={{ width: 20, height: 20, borderRadius: 3, objectFit: 'cover', opacity: 0.85 }}
+                      />
+                    )}
+                    <span style={{ color: TEXT, fontSize: 11, textTransform: 'uppercase' }}>{row.role}</span>
+                  </div>
                   <span style={{ color: row.weak ? RED : GREEN, fontSize: 10 }}>{row.weak ? 'weak link' : 'stable'}</span>
                 </div>
                 <div style={{ color: MUTED, fontSize: 10, lineHeight: 1.7, marginTop: 6 }}>
@@ -446,7 +462,8 @@ export function StatsDashboard({ mode = 'expanded' }: StatsDashboardProps) {
                   <div>retries: {row.retries}</div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
 

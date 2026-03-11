@@ -6,6 +6,7 @@
 import { useMemo } from 'react';
 import { TaskData } from './TaskCard';
 import { useDevPanelStore } from '../../store/useDevPanelStore';
+import { resolveRolePreviewAsset, type MycoRolePreviewRole } from '../mcc/mycoRolePreview';
 
 interface PipelineStatsProps {
   tasks: TaskData[];
@@ -210,10 +211,31 @@ export function PipelineStats({ tasks, mode = 'expanded' }: PipelineStatsProps) 
           const rateRounded = Math.round(row.rate);
           const barColor = successColor(rateRounded);
           const weakTint = rateRounded < 60 ? 'rgba(255,68,68,0.08)' : 'rgba(255,255,255,0.01)';
+          const roleAvatarSrc = resolveRolePreviewAsset(
+            normalizeRole(row.role) as MycoRolePreviewRole,
+            row.role,
+          );
           return (
             <div key={row.role} style={{ border: '1px solid #222', borderRadius: 4, padding: 8, background: weakTint }}>
-              <div style={{ fontSize: 9, color: '#ddd', fontWeight: 700, marginBottom: 6 }}>
-                {roleLabel(row.role)}
+              {/* MARKER_175.AVATAR: Role avatar + label */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                {roleAvatarSrc && (
+                  <img
+                    src={roleAvatarSrc}
+                    alt={row.role}
+                    style={{
+                      width: 22,
+                      height: 22,
+                      borderRadius: 3,
+                      objectFit: 'cover',
+                      flexShrink: 0,
+                      opacity: rateRounded < 60 ? 0.6 : 0.85,
+                    }}
+                  />
+                )}
+                <span style={{ fontSize: 9, color: '#ddd', fontWeight: 700 }}>
+                  {roleLabel(row.role)}
+                </span>
               </div>
               <div style={{ height: 8, background: '#1a1a1a', borderRadius: 999, overflow: 'hidden', marginBottom: 6 }}>
                 <div style={{ width: `${Math.max(4, rateRounded)}%`, height: '100%', background: barColor }} />

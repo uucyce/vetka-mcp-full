@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { API_BASE } from '../../config/api.config';
+import { resolveRolePreviewAsset, type MycoRolePreviewRole } from '../mcc/mycoRolePreview';
 
 interface TaskDrillDownProps {
   isOpen: boolean;
@@ -382,15 +383,29 @@ export function TaskDrillDown({ isOpen, taskId, onClose }: TaskDrillDownProps) {
                             <td colSpan={5} style={{ padding: '12px 0 0', color: MUTED }}>No per-agent stats.</td>
                           </tr>
                         ) : null}
-                        {agentRows.map((row) => (
+                        {agentRows.map((row) => {
+                          const drillAvatar = resolveRolePreviewAsset(
+                            row.role.toLowerCase() as MycoRolePreviewRole,
+                            row.role,
+                          );
+                          return (
                           <tr key={row.role}>
-                            <td style={{ padding: '12px 0', borderBottom: `1px solid ${BORDER}`, color: TEXT, textTransform: 'uppercase' }}>{row.role}</td>
+                            <td style={{ padding: '12px 0', borderBottom: `1px solid ${BORDER}`, color: TEXT, textTransform: 'uppercase' }}>
+                              {/* MARKER_175.AVATAR: Role avatar in drill-down */}
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                {drillAvatar && (
+                                  <img src={drillAvatar} alt={row.role} style={{ width: 18, height: 18, borderRadius: 3, objectFit: 'cover', opacity: 0.85 }} />
+                                )}
+                                {row.role}
+                              </span>
+                            </td>
                             <td style={{ padding: '12px 0', borderBottom: `1px solid ${BORDER}`, color: TEXT, fontFamily: "'JetBrains Mono', 'SFMono-Regular', monospace" }}>{formatCompactNumber(row.tokens)}</td>
                             <td style={{ padding: '12px 0', borderBottom: `1px solid ${BORDER}`, color: TEXT }}>{formatDuration(row.duration)}</td>
                             <td style={{ padding: '12px 0', borderBottom: `1px solid ${BORDER}`, color: TEXT }}>{row.calls}</td>
                             <td style={{ padding: '12px 0', borderBottom: `1px solid ${BORDER}`, color: row.status === 'done' ? GREEN : RED }}>{row.status}</td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

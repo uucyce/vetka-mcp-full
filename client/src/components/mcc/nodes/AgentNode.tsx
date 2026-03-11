@@ -6,11 +6,12 @@
  * @status active
  */
 
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { NOLAN_PALETTE, getStatusBorderColor } from '../../../utils/dagLayout';
 import type { NodeStatus, AgentRole } from '../../../types/dag';
 import { resolveMiniScale, scalePx } from './miniScale';
+import { resolveRolePreviewAsset, type MycoRolePreviewRole } from '../mycoRolePreview';
 
 interface AgentNodeProps {
   data: {
@@ -33,6 +34,13 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
   const compactScale = resolveMiniScale(isWorkflowCompact, data.miniScale);
   const isRoadmapDrillMini = isWorkflowCompact && Boolean((data as any).rd_parent);
   const isWorkflowInlineMini = isWorkflowCompact && !isRoadmapDrillMini;
+
+  // MARKER_175.AVATAR: Role avatar badge in DAG nodes
+  const roleAvatar = useMemo(() => {
+    const role = data.role as MycoRolePreviewRole | undefined;
+    if (!role) return null;
+    return resolveRolePreviewAsset(role, data.label || role);
+  }, [data.role, data.label]);
 
   return (
     <div
@@ -71,22 +79,38 @@ function AgentNodeComponent({ data, selected }: AgentNodeProps) {
         style={{ opacity: 0, width: 2, height: 2, background: 'transparent', border: 'none' }}
       />
 
-      {/* Role badge */}
+      {/* Role badge — MARKER_175.AVATAR */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
+          gap: isWorkflowCompact ? scalePx(3, compactScale, 2) : 5,
         }}
       >
-        <span
-          style={{
-            width: isWorkflowCompact ? scalePx(4, compactScale, 3) : 8,
-            height: isWorkflowCompact ? scalePx(4, compactScale, 3) : 8,
-            borderRadius: 2,
-            background: isRunning ? NOLAN_PALETTE.text : NOLAN_PALETTE.borderLight,
-          }}
-        />
+        {roleAvatar && !isWorkflowInlineMini ? (
+          <img
+            src={roleAvatar}
+            alt={data.role || 'agent'}
+            style={{
+              width: isWorkflowCompact ? scalePx(14, compactScale, 10) : 20,
+              height: isWorkflowCompact ? scalePx(14, compactScale, 10) : 20,
+              borderRadius: isWorkflowCompact ? 2 : 3,
+              objectFit: 'cover',
+              opacity: isRunning ? 1 : 0.75,
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <span
+            style={{
+              width: isWorkflowCompact ? scalePx(4, compactScale, 3) : 8,
+              height: isWorkflowCompact ? scalePx(4, compactScale, 3) : 8,
+              borderRadius: 2,
+              background: isRunning ? NOLAN_PALETTE.text : NOLAN_PALETTE.borderLight,
+              flexShrink: 0,
+            }}
+          />
+        )}
         <span
           style={{
             color: NOLAN_PALETTE.text,
