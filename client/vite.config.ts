@@ -1,10 +1,33 @@
-import { defineConfig } from 'vite';
+import { defineConfig, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
+
+// MARKER_175.2: Multi-target build — VETKA (full 3D) vs MCC (standalone)
+const isMCC = process.env.VITE_MODE === 'mcc';
+
+// MARKER_175.3: Dev server redirect — serve mycelium.html as default in MCC mode
+// rollupOptions.input only affects build, this plugin handles dev server
+function mccDevRedirect(): Plugin {
+  return {
+    name: 'mcc-dev-redirect',
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        if (req.url === '/' || req.url === '/index.html') {
+          req.url = '/mycelium.html';
+        }
+        next();
+      });
+    }
+  };
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    ...(isMCC ? [mccDevRedirect()] : []),
+  ],
   server: {
-    port: 3001,
+    port: isMCC ? 3002 : 3001,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:5001',
@@ -17,10 +40,14 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: '../dist',
+    outDir: isMCC ? '../dist-mcc' : '../dist',
     emptyOutDir: true,
-    // Phase 100.2: Rollup options for Tauri compatibility
+    // Phase 100.2 + MARKER_175.2: Rollup options for build splitting
     rollupOptions: {
+      // MARKER_175.2: MCC build uses mycelium.html entry, VETKA uses index.html
+      input: isMCC
+        ? { mycelium: resolve(__dirname, 'mycelium.html') }
+        : { vetka: resolve(__dirname, 'index.html') },
       // External Tauri packages - resolved at runtime, not bundled
       external: process.env.TAURI_PLATFORM ? [] : [
         '@tauri-apps/api',
