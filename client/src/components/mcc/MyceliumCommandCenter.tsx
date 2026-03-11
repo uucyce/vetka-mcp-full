@@ -136,6 +136,59 @@ type MiniWindowFocusState = 'compact' | 'expanded' | 'minimized';
 const MYCO_TOP_HINT_WORDS_PER_SECOND = 2;
 const MYCO_TOP_HINT_TICK_MS = Math.round(1000 / MYCO_TOP_HINT_WORDS_PER_SECOND);
 
+function buildTopHintWorkflowStatusAction(taskStatus: string): string {
+  return taskStatus === 'running'
+    ? 'monitor Stats/stream'
+    : taskStatus === 'done'
+      ? 'review artifacts -> pick next queued/pending task in Tasks or targeted retry'
+      : taskStatus === 'failed'
+        ? 'inspect failure in Context -> retry with corrected model/prompt'
+        : 'start/retry from Tasks';
+}
+
+function buildTopHintWorkflowRoleGuidance(params: {
+  role: string;
+  label: string;
+  kind: string;
+  familyHint: string;
+  statusAction: string;
+}): string {
+  const { role, label, kind, familyHint, statusAction } = params;
+  const labelLow = label.toLowerCase();
+  const familyPrefix = familyHint ? `${familyHint} • ` : '';
+  if (role === 'architect') {
+    return `architect: refine subtasks/team preset • ${familyPrefix}${statusAction}`;
+  }
+  if (role === 'scout') {
+    return `scout: inspect impacted files/deps • hand findings to coder/architect • ${statusAction}`;
+  }
+  if (role === 'researcher') {
+    return `researcher: inspect docs/constraints • hand findings to coder/architect • ${statusAction}`;
+  }
+  if (role === 'coder') {
+    return `coder: open Context model/prompt • ${statusAction}`;
+  }
+  if (role === 'verifier') {
+    return `verifier: inspect acceptance criteria • ${statusAction}`;
+  }
+  if (role === 'eval') {
+    return `eval: inspect score/quality signals • ${statusAction}`;
+  }
+  if (kind === 'condition' || labelLow.includes('quality')) {
+    return `quality gate: decide retry vs approval • ${statusAction}`;
+  }
+  if (labelLow.includes('approval')) {
+    return `approval gate: approve deploy or send back • ${statusAction}`;
+  }
+  if (labelLow.includes('deploy')) {
+    return `deploy: verify approval/release target • ${statusAction}`;
+  }
+  if (labelLow.includes('measure')) {
+    return `measure: inspect telemetry/test output • ${statusAction}`;
+  }
+  return `workflow open: inspect Context/model • ${familyPrefix}${statusAction}`;
+}
+
 function uniqueIds(ids: Array<string | null | undefined>): string[] {
   return Array.from(new Set(ids.filter(Boolean) as string[]));
 }
@@ -1348,10 +1401,14 @@ export function MyceliumCommandCenter() {
     if (!selectedTask) return null;
     const teamProfile = String(selectedTask.team_profile || selectedTask.preset || '').trim();
     const workflowId = String(selectedTask.workflow_id || selectedTask.pipeline_task_id || '').trim();
+    const status = String(selectedTask.status || '').toLowerCase().trim();
     return {
       teamProfile,
       workflowId,
       workflowFamily: inferWorkflowFamily(teamProfile, workflowId),
+      // MARKER_164.P5.P2.MYCO.TASK_STATUS_PROPAGATION_FROM_ACTIVE_TASK.V1:
+      // Top-hint status-aware guidance must read canonical status from active task entry.
+      status,
     };
   }, [selectedTaskId, tasks]);
 
@@ -2227,7 +2284,13 @@ export function MyceliumCommandCenter() {
       const role = detail.role || detail.agent || 'pipeline';
       const message = detail.message || detail.event || detail.status || 'activity';
       const taskId = detail.task_id || detail.taskId;
-      pushStreamEvent({ role: String(role), message: String(message), taskId });
+      // MARKER_174.B: Pass structured metadata through to StreamEvent
+      pushStreamEvent({
+        role: String(role),
+        message: String(message),
+        taskId,
+        metadata: detail.metadata || undefined,
+      });
       triggerFetch();
     };
 
@@ -2429,13 +2492,14 @@ export function MyceliumCommandCenter() {
       roadmapNodeDrillState === 'expanded' &&
       Boolean(roadmapDrillNodeId) &&
       !String(roadmapDrillNodeId || '').startsWith('task_overlay_');
-    const isWorkflowFocused =
-      navLevel === 'workflow' ||
-      isTaskWorkflowExpanded;
     const workflowAgentFocused = Boolean(
       String(node?.graphKind || '').startsWith('workflow_') ||
       String(node?.type || '').toLowerCase() === 'agent',
     );
+    const isWorkflowFocused =
+      navLevel === 'workflow' ||
+      isTaskWorkflowExpanded ||
+      workflowAgentFocused;
     // MARKER_162.P4.P4.MYCO.TOP_HINT_NODE_ROLE_WORKFLOW_MATRIX.V1:
     // Include workflow family and role-specific next actions in top MYCO hint.
     const roleKey = String(node?.role || '').toLowerCase().trim();
@@ -2456,14 +2520,7 @@ export function MyceliumCommandCenter() {
     const focusedWindowState = String(miniWindowFocus.state || '').toLowerCase();
     const focusedWindowExpanded = focusedWindowState === 'expanded';
     const activeTaskStatus = String(selectedTaskMeta?.status || '').toLowerCase().trim();
-    const statusHintTail =
-      activeTaskStatus === 'running'
-        ? 'monitor stats/stream'
-        : activeTaskStatus === 'done'
-          ? 'review artifacts and proceed'
-          : activeTaskStatus === 'failed'
-            ? 'inspect failure and retry'
-            : 'start/retry from Tasks';
+    const statusHintTail = buildTopHintWorkflowStatusAction(activeTaskStatus);
     let hint = 'select node • create task • run workflow';
     // MARKER_164.P4.WINDOW_FOCUS_TOP_HINT_PRIORITY.V1:
     // Focused mini-window guidance has priority over generic drill hints.
@@ -2492,27 +2549,39 @@ export function MyceliumCommandCenter() {
       // After workflow drill expansion, never repeat pre-drill Enter prompt.
       // MARKER_164.P5.P1.MYCO.TOP_HINT_STATUS_AWARE_WORKFLOW_ACTIONS.V1:
       // Workflow-open top hint branches by active task status for clearer next step.
+      // MARKER_164.P5.P4.MYCO.TOP_HINT_ROLE_STATUS_DEPTH_MATRIX.V1:
+      // Top hint must branch by workflow role/gate, not collapse into generic workflow-open guidance.
       hint = workflowAgentFocused
-        ? roleKey
-          ? `workflow open: ${roleKey} selected • inspect Context/model • ${statusHintTail}`
-          : `workflow open: inspect Context • tune model/prompt • ${statusHintTail}`
+        ? buildTopHintWorkflowRoleGuidance({
+            role: roleKey,
+            label: nodeLabel,
+            kind: String(node?.type || ''),
+            familyHint: workflowFamilyHint,
+            statusAction: statusHintTail,
+          })
         : workflowFamilyHint
           ? `workflow opened: select agent node • ${workflowFamilyHint} • ${statusHintTail}`
           : `workflow opened: select agent node • open Context • ${statusHintTail}`;
+    } else if (isWorkflowFocused) {
+      // MARKER_164.P5.P3.MYCO.TOP_HINT_WORKFLOW_NODE_PRIORITY_OVER_UNFOLD.V1:
+      // Selected workflow node/agent must keep workflow actions even if roadmap module remains unfolded.
+      // MARKER_162.P4.P2.MYCO.TOP_HINT_WORKFLOW_ACTIONS.V1:
+      // Workflow-level guidance should provide next actions instead of generic labels.
+      hint = workflowAgentFocused
+        ? buildTopHintWorkflowRoleGuidance({
+            role: roleKey,
+            label: nodeLabel,
+            kind: String(node?.type || ''),
+            familyHint: workflowFamilyHint,
+            statusAction: statusHintTail,
+          })
+        : workflowFamilyHint
+          ? `workflow context: select agent • ${workflowFamilyHint} • check stream/artifacts`
+          : 'workflow context: select agent • inspect Context • check stream/artifacts';
     } else if (isNodeUnfoldExpanded) {
       // MARKER_162.P4.P2.MYCO.TOP_HINT_NODE_UNFOLD_ACTIONS.V1:
       // Unfolded roadmap module should get unfold/navigation actions.
       hint = 'module unfolded: double-click deeper • select task • create task here';
-    } else if (isWorkflowFocused) {
-      // MARKER_162.P4.P2.MYCO.TOP_HINT_WORKFLOW_ACTIONS.V1:
-      // Workflow-level guidance should provide next actions instead of generic labels.
-      hint = workflowAgentFocused
-        ? roleKey
-          ? `agent selected: ${roleKey} • check stream/context • adjust model • continue pipeline`
-          : 'agent selected: check stream/context • adjust model • continue pipeline'
-        : workflowFamilyHint
-          ? `workflow context: select agent • ${workflowFamilyHint} • check stream/artifacts`
-          : 'workflow context: select agent • inspect Context • check stream/artifacts';
     } else if ((navLevel === 'roadmap' || navLevel === 'tasks') && selectedNode) {
       // MARKER_162.P2.MYCO.TOP_SYSTEM_HINT_PRIORITY.V1:
       // Top helper hint has priority over generic context title while node is selected.

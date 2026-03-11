@@ -61,33 +61,41 @@ class MyceliumHTTPClient:
 
     async def emit_chat_message(
         self, chat_id: str, message: str,
-        sender: str = "pipeline", msg_type: str = "system"
+        sender: str = "pipeline", msg_type: str = "system",
+        metadata: dict = None
     ):
         """Send message to VETKA group chat (shows in ChatPanel).
 
         Uses the existing MCP group send endpoint.
+        MARKER_174.REFLEX_LIVE: Optional metadata for structured rendering.
         """
         if not self._client:
             return
         try:
+            json_body = {
+                "agent_id": sender,
+                "content": message,
+                "message_type": msg_type,
+            }
+            # MARKER_174.REFLEX_LIVE: Include metadata for rich rendering
+            if metadata:
+                json_body["metadata"] = metadata
             await self._client.post(
                 f"/api/debug/mcp/groups/{chat_id}/send",
-                json={
-                    "agent_id": sender,
-                    "content": message,
-                    "message_type": msg_type,
-                }
+                json=json_body
             )
         except Exception as e:
             logger.debug(f"[MYCELIUM HTTP] Chat emit failed: {e}")
 
     async def emit_pipeline_progress(
         self, chat_id: str, role: str, message: str,
-        model: str = "system", subtask_idx: int = 0, total: int = 0
+        model: str = "system", subtask_idx: int = 0, total: int = 0,
+        metadata: dict = None
     ):
         """Send pipeline progress to VETKA chat.
 
         Formats message with role prefix and delegates to emit_chat_message.
+        MARKER_174.REFLEX_LIVE: Passes metadata for structured rendering.
         """
         if not chat_id:
             return
@@ -96,7 +104,9 @@ class MyceliumHTTPClient:
             full_message = f"{role} ({model_short}): {message}"
         else:
             full_message = f"{role}: {message}"
-        await self.emit_chat_message(chat_id, full_message, sender="pipeline")
+        msg_type = "reflex" if metadata and metadata.get("type") == "reflex" else "system"
+        await self.emit_chat_message(chat_id, full_message, sender="pipeline",
+                                      msg_type=msg_type, metadata=metadata)
 
     # --- Task Board Notifications ---
 

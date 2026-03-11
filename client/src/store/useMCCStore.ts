@@ -22,6 +22,21 @@ export interface StreamEvent {
   role: string;
   message: string;
   taskId?: string;
+  // MARKER_174.B: Structured metadata for rich rendering (REFLEX pills, agent chat)
+  metadata?: {
+    type?: string;
+    event?: string;
+    tools?: Array<{ id: string; score?: number }>;
+    tools_used?: string[];
+    feedback_count?: number;
+    passed?: boolean;
+    original_count?: number;
+    filtered_count?: number;
+    phase?: string;
+    tier?: string;
+    subtask?: string;
+    [key: string]: any;
+  };
 }
 
 export interface HeartbeatSettings {
@@ -535,6 +550,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
       role: event.role || 'pipeline',
       message: event.message || '',
       taskId: event.taskId,
+      metadata: event.metadata,  // MARKER_174.B: Preserve structured metadata
     };
     set(state => ({
       streamEvents: [next, ...state.streamEvents].slice(0, MAX_STREAM_EVENTS),

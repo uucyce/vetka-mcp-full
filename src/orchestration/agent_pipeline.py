@@ -1316,7 +1316,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
     # MARKER_102.27_START: Progress emission to VETKA chat
     # MARKER_117.8B: Async emit — SocketIO direct for solo, AsyncClient for groups
     # Replaces sync httpx.Client that was BLOCKING the event loop for 5s per emit
-    async def _emit_progress(self, role: str, message: str, subtask_idx: int = 0, total: int = 0, model: str = None):
+    async def _emit_progress(self, role: str, message: str, subtask_idx: int = 0, total: int = 0, model: str = None, metadata: dict = None):
         """
         Emit progress update to VETKA chat.
 
@@ -1325,12 +1325,16 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
           1. SocketIO direct (solo chat) — via self.sio.emit("chat_response") → instant
           2. HTTP AsyncClient (group chat) — via POST to group endpoint → async
 
+        MARKER_174.REFLEX_LIVE: Optional metadata dict for structured message rendering.
+        When metadata contains {"type": "reflex"}, frontend renders as ReflexInsight pills.
+
         Args:
             role: @architect, @researcher, @coder, or @pipeline
             message: Status message
             subtask_idx: Current subtask index (1-based for display)
             total: Total subtasks count
             model: Optional model name for attribution (e.g. "moonshotai/kimi-k2.5")
+            metadata: Optional structured metadata for rich rendering (e.g. REFLEX events)
         """
         try:
             # MARKER_117.6C: Show which model is executing
@@ -1346,7 +1350,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_129.4A: Broadcast to DevPanel via MYCELIUM WebSocket (direct, no relay)
             if getattr(self, '_ws_broadcaster', None):
                 try:
-                    await self._ws_broadcaster.broadcast({
+                    ws_payload = {
                         "type": "pipeline_activity",
                         "role": role,
                         "message": message,
@@ -1356,7 +1360,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         "task_id": getattr(self, '_board_task_id', None),
                         "preset": self.preset_name,
                         "timestamp": time.time(),
-                    })
+                    }
+                    # MARKER_174.REFLEX_LIVE: Include structured metadata for rich rendering
+                    if metadata:
+                        ws_payload["metadata"] = metadata
+                    await self._ws_broadcaster.broadcast(ws_payload)
                 except Exception:
                     pass  # Never fail pipeline on WS broadcast
 
@@ -1365,7 +1373,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 try:
                     await self._http_client.emit_pipeline_progress(
                         self.chat_id, role, full_message, model=model or "system",
-                        subtask_idx=subtask_idx, total=total
+                        subtask_idx=subtask_idx, total=total, metadata=metadata
                     )
                 except Exception:
                     pass
@@ -1375,7 +1383,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # This runs BEFORE chat routing so early returns don't skip it
             try:
                 if self.sio:
-                    await self.sio.emit("pipeline_activity", {
+                    sio_activity = {
                         "role": role,
                         "message": message,
                         "model": model or "system",
@@ -1384,32 +1392,45 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         "task_id": getattr(self, '_board_task_id', None),
                         "preset": self.preset,
                         "timestamp": time.time(),
-                    })
+                    }
+                    # MARKER_174.REFLEX_LIVE: Include metadata for MYCELIUM stream
+                    if metadata:
+                        sio_activity["metadata"] = metadata
+                    await self.sio.emit("pipeline_activity", sio_activity)
             except Exception:
                 pass  # Never fail pipeline on broadcast
 
             # MARKER_118.6: Route 1 — emit "chat_response" so ChatPanel sees it
             # (Was "agent_message" → wrote to legacy messages[], invisible in ChatPanel)
             if self.sio and self.sid:
-                await self.sio.emit("chat_response", {
+                sio_payload = {
                     "message": full_message,
                     "agent": "pipeline",
                     "model": model or "system",
-                }, to=self.sid)
+                }
+                # MARKER_174.REFLEX_LIVE: Include structured metadata for ReflexInsight rendering
+                if metadata:
+                    sio_payload["type"] = metadata.get("type", "text")
+                    sio_payload["metadata"] = metadata
+                await self.sio.emit("chat_response", sio_payload, to=self.sid)
                 logger.debug(f"[Pipeline] SIO emit: {full_message[:80]}...")
                 return
 
             # MARKER_117.8B Route 2: HTTP async (group chat — non-blocking)
             if self.chat_id:
                 import httpx
+                http_json = {
+                    "agent_id": "pipeline",
+                    "content": full_message,
+                    "message_type": "reflex" if metadata and metadata.get("type") == "reflex" else "system",
+                }
+                # MARKER_174.REFLEX_LIVE: Include structured metadata
+                if metadata:
+                    http_json["metadata"] = metadata
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     response = await client.post(
                         f"http://localhost:5001/api/debug/mcp/groups/{self.chat_id}/send",
-                        json={
-                            "agent_id": "pipeline",
-                            "content": full_message,
-                            "message_type": "system"
-                        }
+                        json=http_json
                     )
                     if response.status_code != 200:
                         logger.warning(f"[Pipeline] Emit got status {response.status_code}")
@@ -2843,8 +2864,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     self._reflex_stats["recommendations_given"] += 1
                     self._reflex_stats["tools_recommended"].extend(r["tool_id"] for r in _recs)
                     # MARKER_172.P5.4: Stream to DevPanel
+                    # MARKER_174.REFLEX_LIVE: Structured metadata for chat rendering
                     _rec_ids = ", ".join(r["tool_id"] for r in _recs[:3])
-                    await self._emit_progress("@reflex", f"🎯 Recommends: {_rec_ids}", i+1, total_subtasks)
+                    await self._emit_progress("@reflex", f"🎯 Recommends: {_rec_ids}", i+1, total_subtasks,
+                        metadata={
+                            "type": "reflex",
+                            "event": "recommendation",
+                            "tools": [{"id": r["tool_id"], "score": round(r.get("score", 0), 2)} for r in _recs[:5]],
+                            "phase": phase_type,
+                            "tier": self._get_model_tier(),
+                            "subtask": subtask.marker or f"step_{i+1}",
+                        })
                     # MARKER_173.P3.IP1: Structured recommendation event
                     _emitter = self._get_reflex_emitter()
                     if _emitter:
@@ -2882,9 +2912,18 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     self._reflex_stats["tools_used"].extend(_used_names)
                     self._reflex_stats["feedback_recorded"] += _fb_count
                     # MARKER_172.P5.4: Stream to DevPanel
+                    # MARKER_174.REFLEX_LIVE: Structured metadata for chat rendering
                     if _fb_count > 0:
                         _used_ids = ", ".join(_used_names[:3])
-                        await self._emit_progress("@reflex", f"📊 Used: {_used_ids} ({_fb_count} feedback)", i+1, total_subtasks)
+                        await self._emit_progress("@reflex", f"📊 Used: {_used_ids} ({_fb_count} feedback)", i+1, total_subtasks,
+                            metadata={
+                                "type": "reflex",
+                                "event": "outcome",
+                                "tools_used": _used_names[:5],
+                                "feedback_count": _fb_count,
+                                "phase": phase_type,
+                                "subtask": subtask.marker or f"step_{i+1}",
+                            })
                     # MARKER_173.P3.IP3: Structured outcome event
                     _emitter = self._get_reflex_emitter()
                     if _emitter:
@@ -2986,9 +3025,19 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     # MARKER_172.P5.OBSERVE: Track verifier feedback count
                     self._reflex_stats["verifier_feedbacks"] += _vf_count
                     # MARKER_172.P5.4: Stream verifier outcome to DevPanel
+                    # MARKER_174.REFLEX_LIVE: Structured metadata for chat rendering
                     if _vf_count > 0:
                         _v_status = "✅ PASS" if verification.get("passed", False) else "⚠️ FAIL"
-                        await self._emit_progress("@reflex", f"{_v_status} → {_vf_count} tools feedback", i+1, total_subtasks)
+                        await self._emit_progress("@reflex", f"{_v_status} → {_vf_count} tools feedback", i+1, total_subtasks,
+                            metadata={
+                                "type": "reflex",
+                                "event": "verifier",
+                                "passed": verification.get("passed", False),
+                                "tools": _fc_tool_names[:5],
+                                "feedback_count": _vf_count,
+                                "phase": phase_type,
+                                "subtask": subtask.marker or f"step_{i+1}",
+                            })
                     # MARKER_173.P3.IP5: Structured verifier event
                     _emitter = self._get_reflex_emitter()
                     if _emitter:
@@ -3840,7 +3889,17 @@ Execute this subtask. Provide clear, actionable output."""}
                         self._reflex_stats["schemas_filtered"] += 1
                         self._reflex_stats["schemas_original_count"] += _orig_count
                         self._reflex_stats["schemas_filtered_count"] += _filtered_count
-                        await self._emit_progress("@reflex", f"🔧 Filtered schemas: {_orig_count}→{_filtered_count}", i+1, total_subtasks)
+                        # MARKER_174.REFLEX_LIVE: Structured metadata for chat rendering
+                        await self._emit_progress("@reflex", f"🔧 Filtered schemas: {_orig_count}→{_filtered_count}", i+1, total_subtasks,
+                            metadata={
+                                "type": "reflex",
+                                "event": "filter",
+                                "original_count": _orig_count,
+                                "filtered_count": _filtered_count,
+                                "tier": self._get_model_tier(),
+                                "phase": phase_type,
+                                "subtask": subtask.marker or f"step_{i+1}",
+                            })
                         # MARKER_173.P3.IP7: Structured filter event
                         _emitter = self._get_reflex_emitter()
                         if _emitter:

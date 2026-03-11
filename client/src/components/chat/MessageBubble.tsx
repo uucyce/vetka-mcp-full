@@ -12,6 +12,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { User, Bot, ClipboardList, Code, TestTube, Building, Sparkles, Reply, FileText, SmilePlus, Volume2, VolumeX, Play, Pause } from 'lucide-react';
 import type { ChatMessage } from '../../types/chat';
 import { CompoundMessage } from './CompoundMessage';
+import { ReflexInsight } from './ReflexInsight';
 
 // Phase 48.3: Max chars before showing "read more"
 const MAX_PREVIEW_LENGTH = 500;
@@ -80,6 +81,8 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const isCompound = message.type === 'compound';
+  // MARKER_174.REFLEX_LIVE: Tool selection visibility
+  const isReflex = message.type === 'reflex';
 
   // Phase 48.4: Emoji reactions state
   const [showReactions, setShowReactions] = useState(false);
@@ -546,6 +549,11 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
         </div>
       </div>
     );
+  }
+
+  // MARKER_174.REFLEX_LIVE: REFLEX tool selection insight
+  if (isReflex && message.metadata?.reflex) {
+    return <ReflexInsight message={message} />;
   }
 
   // Compound message (workflow result)
