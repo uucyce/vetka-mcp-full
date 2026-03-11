@@ -5,14 +5,14 @@ from src.services import myco_memory_bridge as bridge
 def test_phase171_multitask_stats_splits_failed_and_queued(monkeypatch):
     payload = {
         "tasks": {
-            "t1": {"status": "done"},
-            "t2": {"status": "running"},
-            "t3": {"status": "claimed"},
+            "t1": {"status": "done", "closed_by": "codex", "completed_at": "2026-03-11T10:00:00", "status_history": [{"event": "done"}]},
+            "t2": {"status": "running", "project_lane": "lane_a", "status_history": [{"event": "running"}]},
+            "t3": {"status": "claimed", "project_id": "lane_a"},
             "t4": {"status": "failed"},
             "t5": {"status": "cancelled"},
             "t6": {"status": "pending"},
-            "t7": {"status": "queued"},
-            "t8": {"status": "hold"},
+            "t7": {"status": "queued", "require_closure_proof": True},
+            "t8": {"status": "hold", "project_lane": "lane_b"},
         },
         "settings": {"max_concurrent": 3, "auto_dispatch": True},
         "_meta": {"phase": "171"},
@@ -29,6 +29,11 @@ def test_phase171_multitask_stats_splits_failed_and_queued(monkeypatch):
     assert stats["phase"] == "171"
     assert stats["max_concurrent"] == 3
     assert stats["auto_dispatch"] is True
+    assert stats["protocol_required"] == 1
+    assert stats["history_entries"] == 2
+    assert stats["last_closed_by"] == "codex"
+    assert stats["last_closed_lane"] == ""
+    assert stats["lanes"]["lane_a"] == 2
 
 
 def test_phase171_digest_snapshot_normalizes_dict_fields():

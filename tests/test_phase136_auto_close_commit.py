@@ -33,3 +33,23 @@ def test_auto_close_commit_closes_queued_task_by_id(tmp_path):
     updated = board.get_task(task_id)
     assert updated["status"] == "done"
     assert updated["commit_hash"] == "def67890"
+
+
+def test_auto_close_commit_skips_protocol_pending_task(tmp_path):
+    board = TaskBoard(board_file=tmp_path / "task_board.json")
+    task_id = board.add_task(
+        title="Protocol task for auto-close skip",
+        require_closure_proof=True,
+        closure_tests=["pytest tests/test_phase136_auto_close_commit.py"],
+        closure_files=["src/orchestration/task_board.py"],
+    )
+
+    completed = board.auto_complete_by_commit(
+        commit_hash="fedcba98",
+        commit_message=f"fix: complete {task_id}",
+    )
+
+    assert task_id not in completed
+    updated = board.get_task(task_id)
+    assert updated["status"] == "pending"
+    assert updated["commit_hash"] is None

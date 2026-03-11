@@ -13,12 +13,14 @@ Replaces /api/debug/task-board/* with cleaner /api/tasks/* paths.
 Endpoints:
 - GET /api/tasks - List all tasks (with optional status filter)
 - GET /api/tasks/{task_id} - Get single task details
+- GET /api/tasks/{task_id}/history - Get task lifecycle history
 - POST /api/tasks - Create new task
 - PATCH /api/tasks/{task_id} - Update task
 - DELETE /api/tasks/{task_id} - Remove task
 - POST /api/tasks/dispatch - Dispatch next pending task (or specific task_id)
 - POST /api/tasks/{task_id}/claim - Claim task for an agent
 - POST /api/tasks/{task_id}/complete - Mark task as completed
+- POST /api/tasks/{task_id}/close-protocol - Run tests -> commit -> digest -> close handshake
 - POST /api/tasks/{task_id}/cancel - Cancel a running/pending task
 - GET /api/tasks/{task_id}/results - Get pipeline results for task
 """
@@ -79,6 +81,22 @@ async def get_task(task_id: str) -> Dict[str, Any]:
     return {"success": True, "task": task}
 
 
+@router.get("/{task_id}/history")
+async def get_task_history(task_id: str) -> Dict[str, Any]:
+    """Get lifecycle history for a single task."""
+    from src.orchestration.task_board import get_task_board
+
+    board = get_task_board()
+    task = board.tasks.get(task_id)
+    if not task:
+        return {"success": False, "error": f"Task {task_id} not found"}
+    return {
+        "success": True,
+        "task_id": task_id,
+        "history": board.get_task_history(task_id),
+    }
+
+
 # ============================================================
 # CREATE / UPDATE / DELETE TASKS
 # ============================================================
@@ -117,6 +135,15 @@ async def create_task(body: Dict[str, Any], request: Request) -> Dict[str, Any]:
         tags=body.get("tags", []),
         source=body.get("source", "api"),
         created_by=created_by,  # MARKER_133.C33D
+        project_id=body.get("project_id"),
+        project_lane=body.get("project_lane"),
+        parent_task_id=body.get("parent_task_id"),
+        architecture_docs=body.get("architecture_docs", []),
+        recon_docs=body.get("recon_docs", []),
+        protocol_version=body.get("protocol_version"),
+        require_closure_proof=body.get("require_closure_proof", False),
+        closure_tests=body.get("closure_tests", []),
+        closure_files=body.get("closure_files", []),
     )
 
     logger.info(f"[TaskAPI] Created task {task_id}: {title[:50]} (by {created_by})")
@@ -131,7 +158,11 @@ async def update_task(task_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
     board = get_task_board()
 
     # Filter allowed update fields
-    allowed_fields = {"title", "description", "priority", "phase_type", "preset", "status", "tags"}
+    allowed_fields = {
+        "title", "description", "priority", "phase_type", "preset", "status", "tags",
+        "project_id", "project_lane", "parent_task_id", "architecture_docs", "recon_docs",
+        "protocol_version", "require_closure_proof", "closure_tests", "closure_files",
+    }
     updates = {k: v for k, v in body.items() if k in allowed_fields}
 
     if not updates:
@@ -215,10 +246,40 @@ async def complete_task(task_id: str, body: Dict[str, Any] = None) -> Dict[str, 
     body = body or {}
     commit_hash = body.get("commit_hash")
     commit_message = body.get("commit_message")
+    closure_proof = body.get("closure_proof")
+    closed_by = body.get("closed_by")
+    manual_override = bool(body.get("manual_override", False))
+    override_reason = body.get("override_reason")
 
     board = get_task_board()
-    result = board.complete_task(task_id, commit_hash, commit_message)
+    result = board.complete_task(
+        task_id,
+        commit_hash,
+        commit_message,
+        closure_proof=closure_proof,
+        closed_by=closed_by,
+        manual_override=manual_override,
+        override_reason=override_reason,
+    )
     return result
+
+
+@router.post("/{task_id}/close-protocol")
+async def close_task_protocol(task_id: str, body: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Run the protocol close handshake for a task."""
+    from src.orchestration.task_board import get_task_board
+
+    body = body or {}
+    board = get_task_board()
+    return await board.run_closure_protocol(
+        task_id,
+        activating_agent=body.get("activating_agent", "unknown"),
+        agent_type=body.get("agent_type", "unknown"),
+        commit_message=body.get("commit_message"),
+        auto_push=bool(body.get("auto_push", False)),
+        manual_override=bool(body.get("manual_override", False)),
+        override_reason=body.get("override_reason"),
+    )
 
 
 @router.post("/{task_id}/cancel")

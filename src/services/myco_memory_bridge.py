@@ -543,12 +543,32 @@ def _multitask_stats() -> Dict[str, Any]:
     active = 0
     queued = 0
     failed = 0
+    protocol_required = 0
+    history_entries = 0
+    lanes: Dict[str, int] = {}
+    latest_closed: Dict[str, str] = {}
     for task in tasks.values():
         if not isinstance(task, dict):
             continue
         status = str(task.get("status") or "").strip().lower()
+        if task.get("require_closure_proof"):
+            protocol_required += 1
+        history = task.get("status_history")
+        if isinstance(history, list):
+            history_entries += len(history)
+        lane = str(task.get("project_lane") or task.get("project_id") or "").strip()
+        if lane:
+            lanes[lane] = lanes.get(lane, 0) + 1
         if status == "done":
             done += 1
+            completed_at = str(task.get("completed_at") or "")
+            if completed_at and completed_at >= str(latest_closed.get("completed_at") or ""):
+                latest_closed = {
+                    "task_id": str(task.get("id") or ""),
+                    "closed_by": str(task.get("closed_by") or task.get("assigned_to") or ""),
+                    "project_lane": lane,
+                    "completed_at": completed_at,
+                }
         elif status in {"running", "active", "in_progress", "claimed"}:
             active += 1
         elif status in {"failed", "cancelled"}:
@@ -564,6 +584,12 @@ def _multitask_stats() -> Dict[str, Any]:
         "phase": str(meta.get("phase") or ""),
         "max_concurrent": int(settings.get("max_concurrent") or 0),
         "auto_dispatch": bool(settings.get("auto_dispatch", False)),
+        "protocol_required": protocol_required,
+        "history_entries": history_entries,
+        "last_closed_by": str(latest_closed.get("closed_by") or ""),
+        "last_closed_task_id": str(latest_closed.get("task_id") or ""),
+        "last_closed_lane": str(latest_closed.get("project_lane") or ""),
+        "lanes": lanes,
     }
 
 
@@ -607,6 +633,21 @@ def _recent_tasks_by_project(limit_per_project: int = 3) -> Dict[str, List[Dict[
                 )
         except Exception:
             pass
+
+        for t in global_pool:
+            if len(picked) >= max(1, int(limit_per_project)):
+                break
+            tid = str(t.get("id") or "").strip()
+            lane = str(t.get("project_id") or t.get("project_lane") or "").strip()
+            if not tid or lane != project_id or any(str(x.get("task_id")) == tid for x in picked):
+                continue
+            picked.append(
+                {
+                    "task_id": tid,
+                    "title": str(t.get("title") or ""),
+                    "status": str(t.get("status") or ""),
+                }
+            )
 
         for t in global_pool:
             if len(picked) >= max(1, int(limit_per_project)):

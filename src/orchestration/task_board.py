@@ -32,6 +32,7 @@ logger = logging.getLogger("VETKA_TASK_BOARD")
 # MARKER_121.1: Task Board storage
 TASK_BOARD_FILE = Path(__file__).parent.parent.parent / "data" / "task_board.json"
 _TASK_BOARD_FALLBACK = Path(os.environ.get('TMPDIR', '/tmp')) / "vetka_task_board.json"
+PROJECT_ROOT = TASK_BOARD_FILE.parent.parent
 
 # Priority levels
 PRIORITY_CRITICAL = 1
@@ -50,6 +51,8 @@ AGENT_TYPES = {"claude_code", "cursor", "mycelium", "grok", "human", "unknown"}
 
 # Counter for generating IDs
 _task_counter = 0
+DEFAULT_PROTOCOL_VERSION = "multitask_mcp_v1"
+DEFAULT_VERIFIER_PASS_THRESHOLD = float(os.getenv("VETKA_VERIFIER_PASS_THRESHOLD", "0.75"))
 
 
 def _generate_task_id() -> str:
@@ -179,6 +182,172 @@ class TaskBoard:
 
         logger.error("[TaskBoard] Failed to save task board to any location")
 
+    @staticmethod
+    def _history_entry(
+        *,
+        event: str,
+        status: str,
+        agent_name: str = "",
+        agent_type: str = "",
+        source: str = "task_board",
+        reason: str = "",
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        entry = {
+            "ts": datetime.now().isoformat(),
+            "event": str(event or status or "update"),
+            "status": str(status or ""),
+            "agent_name": str(agent_name or ""),
+            "agent_type": str(agent_type or ""),
+            "source": str(source or "task_board"),
+            "reason": str(reason or "")[:300],
+        }
+        if isinstance(extra, dict) and extra:
+            entry["extra"] = extra
+        return entry
+
+    def _append_history(
+        self,
+        task: Dict[str, Any],
+        *,
+        event: str,
+        status: str,
+        agent_name: str = "",
+        agent_type: str = "",
+        source: str = "task_board",
+        reason: str = "",
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        history = task.setdefault("status_history", [])
+        if not isinstance(history, list):
+            history = []
+            task["status_history"] = history
+        history.append(
+            self._history_entry(
+                event=event,
+                status=status,
+                agent_name=agent_name,
+                agent_type=agent_type,
+                source=source,
+                reason=reason,
+                extra=extra,
+            )
+        )
+        task["status_history"] = history[-50:]
+
+    def get_task_history(self, task_id: str) -> List[Dict[str, Any]]:
+        task = self.get_task(task_id)
+        if not task:
+            return []
+        history = task.get("status_history")
+        return list(history) if isinstance(history, list) else []
+
+    @staticmethod
+    def _normalize_test_commands(commands: Any) -> List[str]:
+        if isinstance(commands, str):
+            return [commands.strip()] if commands.strip() else []
+        if not isinstance(commands, list):
+            return []
+        out = []
+        for item in commands:
+            text = str(item or "").strip()
+            if text:
+                out.append(text)
+        return out
+
+    async def _run_closure_tests(self, commands: List[str]) -> List[Dict[str, Any]]:
+        results: List[Dict[str, Any]] = []
+        for command in commands:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            results.append(
+                {
+                    "command": command,
+                    "passed": proc.returncode == 0,
+                    "exit_code": int(proc.returncode or 0),
+                    "stdout": stdout.decode("utf-8", errors="replace")[-2000:],
+                    "stderr": stderr.decode("utf-8", errors="replace")[-2000:],
+                }
+            )
+            if proc.returncode != 0:
+                break
+        return results
+
+    def _closure_threshold(self, task: Dict[str, Any]) -> float:
+        try:
+            return float(task.get("verifier_threshold") or DEFAULT_VERIFIER_PASS_THRESHOLD)
+        except (TypeError, ValueError):
+            return DEFAULT_VERIFIER_PASS_THRESHOLD
+
+    def _validate_closure_proof(
+        self,
+        task: Dict[str, Any],
+        closure_proof: Optional[Dict[str, Any]],
+        *,
+        manual_override: bool = False,
+    ) -> Optional[str]:
+        if manual_override:
+            return None
+        if not task.get("require_closure_proof"):
+            return None
+        if not isinstance(closure_proof, dict):
+            return "closure_proof is required for protocol tasks"
+
+        stats = task.get("stats") if isinstance(task.get("stats"), dict) else {}
+        if not bool(closure_proof.get("pipeline_success", stats.get("success"))):
+            return "pipeline_success must be true before closing the task"
+
+        verifier_confidence = closure_proof.get("verifier_confidence", stats.get("verifier_avg_confidence", 0))
+        try:
+            verifier_confidence = float(verifier_confidence or 0)
+        except (TypeError, ValueError):
+            verifier_confidence = 0.0
+        if verifier_confidence < self._closure_threshold(task):
+            return f"verifier_confidence {verifier_confidence:.2f} is below threshold"
+
+        tests = closure_proof.get("tests")
+        if not isinstance(tests, list) or not tests:
+            return "closure_proof.tests must contain at least one passing test"
+        if any(not isinstance(row, dict) or not row.get("passed") for row in tests):
+            return "all closure_proof tests must pass before closing the task"
+
+        if not str(closure_proof.get("commit_hash") or "").strip():
+            return "closure_proof.commit_hash is required for protocol task closure"
+        return None
+
+    def _mark_closure_failed(
+        self,
+        task_id: str,
+        *,
+        reason: str,
+        activating_agent: str = "",
+        agent_type: str = "",
+        closure_results: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        self.update_task(
+            task_id,
+            status="failed",
+            completed_at=datetime.now().isoformat(),
+            result_summary=str(reason)[:500],
+            closure_subtask={
+                "status": "failed",
+                "finished_at": datetime.now().isoformat(),
+                "tests": closure_results or [],
+                "reason": reason[:500],
+            },
+            _history_event="closure_failed",
+            _history_source="closure_protocol",
+            _history_reason=reason[:300],
+            _history_agent_name=activating_agent,
+            _history_agent_type=agent_type,
+        )
+        return {"success": False, "error": reason, "task_id": task_id, "tests": closure_results or []}
+
     def _notify_board_update(self, action: str = "update", event_data: Optional[Dict[str, Any]] = None):
         """MARKER_124.3D: Emit SocketIO event for live Task Board UI updates.
         MARKER_130.C18C: Enhanced with event_data for claim/complete actions.
@@ -260,6 +429,15 @@ class TaskBoard:
         workflow_selection_origin: Optional[str] = None,  # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
         team_profile: Optional[str] = None,      # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
         task_origin: Optional[str] = None,       # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        project_id: Optional[str] = None,
+        project_lane: Optional[str] = None,
+        parent_task_id: Optional[str] = None,
+        architecture_docs: Optional[List[str]] = None,
+        recon_docs: Optional[List[str]] = None,
+        protocol_version: Optional[str] = None,
+        require_closure_proof: bool = False,
+        closure_tests: Optional[List[str]] = None,
+        closure_files: Optional[List[str]] = None,
     ) -> str:
         """Add a new task to the board.
 
@@ -283,7 +461,7 @@ class TaskBoard:
         task_id = _generate_task_id()
         priority = max(1, min(5, priority))  # Clamp 1-5
 
-        self.tasks[task_id] = {
+        task_payload = {
             "id": task_id,
             "title": title,
             "description": description or title,
@@ -326,7 +504,40 @@ class TaskBoard:
             "workflow_selection_origin": workflow_selection_origin,
             "team_profile": team_profile,
             "task_origin": task_origin,
+            "project_id": project_id,
+            "project_lane": project_lane or project_id,
+            "parent_task_id": parent_task_id,
+            "architecture_docs": architecture_docs or [],
+            "recon_docs": recon_docs or [],
+            "protocol_version": protocol_version or (DEFAULT_PROTOCOL_VERSION if require_closure_proof else None),
+            "require_closure_proof": bool(require_closure_proof),
+            "closure_tests": self._normalize_test_commands(closure_tests),
+            "closure_files": [str(f) for f in (closure_files or []) if str(f).strip()],
+            "closure_subtask": {
+                "status": "pending" if require_closure_proof else "not_required",
+                "tests": [],
+                "finished_at": None,
+            },
+            "closed_by": None,
+            "closed_at": None,
+            "closure_proof": None,
+            "status_history": [],
         }
+        self._append_history(
+            task_payload,
+            event="created",
+            status="pending",
+            agent_name=created_by,
+            agent_type=agent_type or "unknown",
+            source=source,
+            reason="task created",
+            extra={
+                "project_lane": project_lane or project_id or "",
+                "parent_task_id": parent_task_id or "",
+                "protocol_version": task_payload.get("protocol_version") or "",
+            },
+        )
+        self.tasks[task_id] = task_payload
 
         self._save(action="added")
         logger.info(f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})")
@@ -390,6 +601,16 @@ class TaskBoard:
             logger.warning(f"[TaskBoard] Task {task_id} not found for update")
             return False
 
+        history_event = updates.pop("_history_event", None)
+        history_source = updates.pop("_history_source", "task_board")
+        history_reason = updates.pop("_history_reason", "")
+        history_agent_name = updates.pop("_history_agent_name", "")
+        history_agent_type = updates.pop("_history_agent_type", "")
+        history_extra = updates.pop("_history_extra", None)
+
+        old_status = str(task.get("status") or "")
+        new_status = str(updates.get("status") or old_status)
+
         # Validate status if being updated
         if "status" in updates:
             if updates["status"] not in VALID_STATUSES:
@@ -405,10 +626,26 @@ class TaskBoard:
         ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status", "feedback",
                           "source_chat_id", "source_group_id", "module",
                           "primary_node_id", "affected_nodes", "workflow_id", "workflow_bank",
-                          "workflow_family", "workflow_selection_origin", "team_profile", "task_origin"}
+                          "workflow_family", "workflow_selection_origin", "team_profile", "task_origin",
+                          "project_id", "project_lane", "parent_task_id", "architecture_docs",
+                          "recon_docs", "protocol_version", "require_closure_proof", "closure_tests",
+                          "closure_files", "closure_subtask", "closed_by", "closed_at",
+                          "closure_proof", "status_history"}
         for key, value in updates.items():
             if key in task or key in ADDABLE_FIELDS:
                 task[key] = value
+
+        if history_event or ("status" in updates and new_status != old_status):
+            self._append_history(
+                task,
+                event=str(history_event or f"status_{new_status}"),
+                status=new_status,
+                agent_name=history_agent_name or str(task.get("assigned_to") or ""),
+                agent_type=history_agent_type or str(task.get("agent_type") or ""),
+                source=str(history_source or "task_board"),
+                reason=str(history_reason or ""),
+                extra=history_extra if isinstance(history_extra, dict) else None,
+            )
 
         self._save(action="updated")
         logger.debug(f"[TaskBoard] Updated {task_id}: {list(updates.keys())}")
@@ -462,6 +699,15 @@ class TaskBoard:
                         if (now - started).total_seconds() > running_timeout_min * 60:
                             task["status"] = "failed"
                             task["result_summary"] = f"Timeout: running > {running_timeout_min}min"
+                            self._append_history(
+                                task,
+                                event="stale_running_timeout",
+                                status="failed",
+                                agent_name=str(task.get("assigned_to") or ""),
+                                agent_type=str(task.get("agent_type") or ""),
+                                source="cleanup",
+                                reason=f"running > {running_timeout_min}min",
+                            )
                             cleaned += 1
                             logger.info(f"[TaskBoard] Cleaned stale running task {task.get('id')}")
                     except Exception:
@@ -476,6 +722,13 @@ class TaskBoard:
                             task["status"] = "pending"
                             task["assigned_to"] = None
                             task["assigned_at"] = None
+                            self._append_history(
+                                task,
+                                event="stale_claim_released",
+                                status="pending",
+                                source="cleanup",
+                                reason=f"claimed > {claimed_timeout_min}min",
+                            )
                             cleaned += 1
                             logger.info(f"[TaskBoard] Released stale claimed task {task.get('id')}")
                     except Exception:
@@ -514,6 +767,11 @@ class TaskBoard:
             assigned_to=agent_name,
             agent_type=agent_type,
             assigned_at=datetime.now().isoformat(),
+            _history_event="claimed",
+            _history_source="task_board",
+            _history_reason="task claimed by agent",
+            _history_agent_name=agent_name,
+            _history_agent_type=agent_type,
         )
 
         # MARKER_130.C18C: Emit enhanced event for claim
@@ -527,8 +785,17 @@ class TaskBoard:
         logger.info(f"[TaskBoard] Task {task_id} claimed by {agent_name} ({agent_type})")
         return {"success": True, "task_id": task_id, "assigned_to": agent_name}
 
-    def complete_task(self, task_id: str, commit_hash: Optional[str] = None,
-                      commit_message: Optional[str] = None) -> Dict[str, Any]:
+    def complete_task(
+        self,
+        task_id: str,
+        commit_hash: Optional[str] = None,
+        commit_message: Optional[str] = None,
+        *,
+        closure_proof: Optional[Dict[str, Any]] = None,
+        closed_by: Optional[str] = None,
+        manual_override: bool = False,
+        override_reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Mark a task as complete with optional commit info.
 
         Args:
@@ -543,16 +810,48 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
+        proof = dict(closure_proof or {})
+        if commit_hash and not proof.get("commit_hash"):
+            proof["commit_hash"] = commit_hash
+        if commit_message and not proof.get("commit_message"):
+            proof["commit_message"] = commit_message[:200]
+        if closed_by and not proof.get("activating_agent"):
+            proof["activating_agent"] = closed_by
+        if override_reason and not proof.get("override_reason"):
+            proof["override_reason"] = override_reason[:300]
+
+        proof_error = self._validate_closure_proof(task, proof if proof else closure_proof, manual_override=manual_override)
+        if proof_error:
+            return {"success": False, "error": proof_error, "task_id": task_id}
+
         update = {
             "status": "done",
             "completed_at": datetime.now().isoformat(),
+            "closed_at": datetime.now().isoformat(),
+            "closed_by": closed_by or task.get("assigned_to"),
+            "closure_proof": proof or None,
         }
         if commit_hash:
             update["commit_hash"] = commit_hash
         if commit_message:
             update["commit_message"] = commit_message[:200]  # Truncate
+        if task.get("require_closure_proof"):
+            update["closure_subtask"] = {
+                "status": "done" if not manual_override else "manual_override",
+                "tests": (proof or {}).get("tests", []),
+                "finished_at": datetime.now().isoformat(),
+                "commit_hash": (proof or {}).get("commit_hash"),
+            }
 
-        self.update_task(task_id, **update)
+        self.update_task(
+            task_id,
+            **update,
+            _history_event="closed_manual" if manual_override else "closed",
+            _history_source="task_board",
+            _history_reason=override_reason or ("task closed by closure protocol" if task.get("require_closure_proof") else "task completed"),
+            _history_agent_name=closed_by or str(task.get("assigned_to") or ""),
+            _history_agent_type=str(task.get("agent_type") or ""),
+        )
 
         # MARKER_130.C18C: Emit enhanced event for completion
         self._notify_board_update("task_completed", {
@@ -566,6 +865,151 @@ class TaskBoard:
         logger.info(f"[TaskBoard] Task {task_id} completed" +
                     (f" (commit: {commit_hash[:8]})" if commit_hash else ""))
         return {"success": True, "task_id": task_id, "commit_hash": commit_hash}
+
+    async def run_closure_protocol(
+        self,
+        task_id: str,
+        *,
+        activating_agent: str = "unknown",
+        agent_type: str = "unknown",
+        commit_message: Optional[str] = None,
+        auto_push: bool = False,
+        manual_override: bool = False,
+        override_reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        task = self.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+
+        stats = task.get("stats") if isinstance(task.get("stats"), dict) else {}
+        verifier_confidence = float(stats.get("verifier_avg_confidence") or 0.0)
+        proof: Dict[str, Any] = {
+            "protocol_version": task.get("protocol_version") or DEFAULT_PROTOCOL_VERSION,
+            "pipeline_success": bool(stats.get("success")),
+            "verifier_confidence": verifier_confidence,
+            "activating_agent": activating_agent,
+            "agent_type": agent_type,
+            "manual_override": bool(manual_override),
+            "override_reason": str(override_reason or "")[:300],
+            "pipeline_task_id": task.get("pipeline_task_id"),
+        }
+
+        if manual_override:
+            return self.complete_task(
+                task_id,
+                closure_proof=proof,
+                closed_by=activating_agent,
+                manual_override=True,
+                override_reason=override_reason,
+            )
+
+        if not stats.get("success"):
+            return self._mark_closure_failed(
+                task_id,
+                reason="pipeline did not finish successfully",
+                activating_agent=activating_agent,
+                agent_type=agent_type,
+            )
+
+        if verifier_confidence < self._closure_threshold(task):
+            return self._mark_closure_failed(
+                task_id,
+                reason=f"verifier confidence {verifier_confidence:.2f} is below threshold",
+                activating_agent=activating_agent,
+                agent_type=agent_type,
+            )
+
+        test_commands = self._normalize_test_commands(task.get("closure_tests"))
+        if not test_commands:
+            return self._mark_closure_failed(
+                task_id,
+                reason="protocol task requires closure_tests before it can be closed",
+                activating_agent=activating_agent,
+                agent_type=agent_type,
+            )
+
+        closure_results = await self._run_closure_tests(test_commands)
+        proof["tests"] = closure_results
+        if any(not row.get("passed") for row in closure_results):
+            return self._mark_closure_failed(
+                task_id,
+                reason="closure tests failed",
+                activating_agent=activating_agent,
+                agent_type=agent_type,
+                closure_results=closure_results,
+            )
+
+        closure_files = [str(path) for path in (task.get("closure_files") or []) if str(path).strip()]
+        if not closure_files:
+            return self._mark_closure_failed(
+                task_id,
+                reason="protocol task requires explicit closure_files for scoped auto-commit",
+                activating_agent=activating_agent,
+                agent_type=agent_type,
+                closure_results=closure_results,
+            )
+
+        commit_title = commit_message or f"[Task {task_id}] {task.get('title', '')[:72]}".strip()
+        from src.mcp.tools.git_tool import GitCommitTool
+
+        commit_tool = GitCommitTool()
+        commit_result = commit_tool.execute(
+            {
+                "message": commit_title,
+                "files": closure_files,
+                "dry_run": False,
+                "auto_push": auto_push,
+            }
+        )
+        if not commit_result.get("success"):
+            return self._mark_closure_failed(
+                task_id,
+                reason=f"auto-commit failed: {commit_result.get('error') or 'unknown error'}",
+                activating_agent=activating_agent,
+                agent_type=agent_type,
+                closure_results=closure_results,
+            )
+
+        commit_payload = commit_result.get("result") or {}
+        commit_hash = str(commit_payload.get("hash") or "").strip()
+        proof["commit_hash"] = commit_hash
+        proof["commit_message"] = commit_title
+        proof["digest_updated"] = bool(commit_payload.get("digest_updated"))
+
+        completed = self.complete_task(
+            task_id,
+            commit_hash=commit_hash,
+            commit_message=commit_title,
+            closure_proof=proof,
+            closed_by=activating_agent,
+        )
+        if not completed.get("success"):
+            return completed
+
+        try:
+            from src.services.task_tracker import on_task_completed
+
+            tracker_stats = dict(stats)
+            tracker_stats["closure_tests"] = closure_results
+            tracker_stats["commit_hash"] = commit_hash
+            await on_task_completed(
+                task_id=task_id,
+                task_title=str(task.get("title") or task_id),
+                status="done",
+                stats=tracker_stats,
+                source=f"{activating_agent}:{agent_type}" if agent_type else activating_agent,
+            )
+        except Exception as track_err:
+            logger.debug(f"[TaskBoard] Tracker update skipped for {task_id}: {track_err}")
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "commit_hash": commit_hash,
+            "tests": closure_results,
+            "commit": commit_payload,
+            "closed_by": activating_agent,
+        }
 
     def get_active_agents(self) -> List[Dict[str, Any]]:
         """Get list of agents with active (claimed/running) tasks.
@@ -627,14 +1071,28 @@ class TaskBoard:
         # This enables infra flow: vetka_git_commit("... tb_123_4 ...") -> board.complete_task(...)
         eligible = [
             t for t in self.tasks.values()
-            if t["status"] in ("pending", "queued", "claimed", "running")
+            if not t.get("require_closure_proof") and t["status"] in ("pending", "queued", "claimed", "running")
         ]
 
         for task in eligible:
             if self._commit_matches_task(task, commit_message, msg_lower):
-                self.complete_task(task["id"], commit_hash, commit_message.split('\n')[0])
-                completed.append(task["id"])
-                logger.info(f"[TaskBoard] Auto-completed {task['id']} from commit {commit_hash[:8]}")
+                result = self.complete_task(
+                    task["id"],
+                    commit_hash,
+                    commit_message.split('\n')[0],
+                    closure_proof={
+                        "commit_hash": commit_hash,
+                        "commit_message": commit_message.split('\n')[0],
+                        "pipeline_success": bool((task.get("stats") or {}).get("success")),
+                        "verifier_confidence": float((task.get("stats") or {}).get("verifier_avg_confidence") or 0),
+                        "tests": [{"command": "git auto-close", "passed": True, "exit_code": 0}],
+                        "activating_agent": str(task.get("assigned_to") or "git"),
+                    },
+                    closed_by=str(task.get("assigned_to") or "git"),
+                )
+                if result.get("success"):
+                    completed.append(task["id"])
+                    logger.info(f"[TaskBoard] Auto-completed {task['id']} from commit {commit_hash[:8]}")
 
         return completed
 
@@ -886,6 +1344,15 @@ class TaskBoard:
 
         # For pending/queued/hold — just set status directly
         task["status"] = "cancelled"
+        self._append_history(
+            task,
+            event="cancelled",
+            status="cancelled",
+            agent_name=str(task.get("assigned_to") or ""),
+            agent_type=str(task.get("agent_type") or ""),
+            source="task_board",
+            reason=reason,
+        )
         self._save(action="cancelled")
         logger.info(f"[TaskBoard] Task {task_id} cancelled (was {old_status})")
         return True
@@ -950,14 +1417,29 @@ class TaskBoard:
         if sem.locked():
             running_count = len([t for t in self.tasks.values() if t.get("status") == "running"])
             logger.warning(f"[TaskBoard] Max concurrent ({max_concurrent}) reached, queuing {task_id}. Running: {running_count}")
-            self.update_task(task_id, status="queued")
+            self.update_task(
+                task_id,
+                status="queued",
+                _history_event="queued",
+                _history_source="dispatch",
+                _history_reason=f"max_concurrent={max_concurrent} reached",
+            )
             return {"success": False, "error": f"max_concurrent ({max_concurrent}) reached", "queued": True, "task_id": task_id}
 
         # Acquire semaphore and dispatch
         # MARKER_133.C33C: Pipeline execution inside semaphore context
         async with sem:
             # Mark as running (inside semaphore to ensure accurate count)
-            self.update_task(task_id, status="running", started_at=datetime.now().isoformat())
+            self.update_task(
+                task_id,
+                status="running",
+                started_at=datetime.now().isoformat(),
+                _history_event="running",
+                _history_source="dispatch",
+                _history_reason="pipeline dispatch started",
+                _history_agent_name=str(task.get("assigned_to") or ""),
+                _history_agent_type=str(task.get("agent_type") or ""),
+            )
 
             try:
                 from src.orchestration.agent_pipeline import AgentPipeline
@@ -1010,11 +1492,39 @@ class TaskBoard:
 
                 self.update_task(
                     task_id,
-                    status="done" if completed else "failed",
-                    completed_at=datetime.now().isoformat(),
                     pipeline_task_id=result.get("task_id"),
                     assigned_tier=pipeline.preset_name,
-                    result_summary=result_summary
+                    result_summary=result_summary,
+                )
+
+                if completed and task.get("require_closure_proof"):
+                    closure_result = await self.run_closure_protocol(
+                        task_id,
+                        activating_agent=str(task.get("assigned_to") or "pipeline"),
+                        agent_type=str(task.get("agent_type") or "mycelium"),
+                    )
+                    final_status = "done" if closure_result.get("success") else "failed"
+                    logger.info(f"[TaskBoard] Task {task_id} closure protocol → {final_status}")
+                    return {
+                        "success": bool(closure_result.get("success")),
+                        "task_id": task_id,
+                        "pipeline_task_id": result.get("task_id"),
+                        "status": final_status,
+                        "tier_used": pipeline.preset_name,
+                        "subtasks_completed": result.get("results", {}).get("subtasks_completed", 0),
+                        "subtasks_total": result.get("results", {}).get("subtasks_total", 0),
+                        "closure": closure_result,
+                    }
+
+                self.update_task(
+                    task_id,
+                    status="done" if completed else "failed",
+                    completed_at=datetime.now().isoformat(),
+                    _history_event="pipeline_done" if completed else "pipeline_failed",
+                    _history_source="dispatch",
+                    _history_reason="pipeline finished" if completed else "pipeline returned failed status",
+                    _history_agent_name=str(task.get("assigned_to") or ""),
+                    _history_agent_type=str(task.get("agent_type") or ""),
                 )
 
                 logger.info(f"[TaskBoard] Task {task_id} dispatched → {'done' if completed else 'failed'}")
@@ -1035,7 +1545,12 @@ class TaskBoard:
                     task_id,
                     status="failed",
                     completed_at=datetime.now().isoformat(),
-                    result_summary=f"Dispatch error: {str(e)[:200]}"
+                    result_summary=f"Dispatch error: {str(e)[:200]}",
+                    _history_event="dispatch_error",
+                    _history_source="dispatch",
+                    _history_reason=str(e)[:300],
+                    _history_agent_name=str(task.get("assigned_to") or ""),
+                    _history_agent_type=str(task.get("agent_type") or ""),
                 )
                 return {"success": False, "task_id": task_id, "error": str(e)}
 

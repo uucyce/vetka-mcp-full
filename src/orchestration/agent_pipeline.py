@@ -2396,6 +2396,30 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 logger.debug(f"[Pipeline] Feedback load skipped: {fb_err}")
             # MARKER_135.FB_LOOP_A_END
 
+            # MARKER_176.2: Wire ArchitectPrefetch into dispatch chain
+            # Enrich architect context with prefetched files, markers, and workflow selection
+            self._prefetch_context = None
+            try:
+                from src.services.architect_prefetch import ArchitectPrefetch, PrefetchContext
+                prefetch_ctx = ArchitectPrefetch.prepare(
+                    task_description=task,
+                    task_type=phase_type,
+                    complexity=5,  # default; architect will refine later
+                    workflow_family="",
+                )
+                self._prefetch_context = prefetch_ctx
+                _pf_files = [f["path"] for f in prefetch_ctx.relevant_files[:10]] if prefetch_ctx.relevant_files else []
+                _pf_markers = [m.get("content", "")[:60] for m in prefetch_ctx.markers[:5]] if prefetch_ctx.markers else []
+                await self._emit_progress(
+                    "@mycelium",
+                    f"\U0001f52e Prefetch: {len(_pf_files)} files, {len(_pf_markers)} markers, "
+                    f"workflow={prefetch_ctx.workflow_name}"
+                )
+                logger.info(f"[Pipeline] MARKER_176.2: Prefetch ready \u2014 {prefetch_ctx.summary}")
+            except Exception as prefetch_err:
+                logger.warning(f"MARKER_176.2: Prefetch skipped: {prefetch_err}")
+            # MARKER_176.2_END
+
             # MARKER_117.6C: Model attribution in progress messages
             architect_model = self.prompts.get("architect", {}).get("model", "")
             self._emit_timeline_event("architect", "start", "planning subtasks")
@@ -2529,17 +2553,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if hasattr(self, '_board_task_id') and self._board_task_id:
                 try:
                     from src.orchestration.task_board import get_task_board
-                    from datetime import datetime as _dt
                     board = get_task_board()
                     board.update_task(
                         self._board_task_id,
-                        status="done" if pipeline_task.status == "done" else "failed",
-                        completed_at=_dt.now().isoformat(),
                         pipeline_task_id=task_id,
                         assigned_tier=self.preset_name,
-                        result_summary=str(pipeline_task.results)[:500]
+                        result_summary=str(pipeline_task.results)[:500],
                     )
-                    logger.info(f"[Pipeline] Task board updated: {self._board_task_id} → {pipeline_task.status}")
+                    logger.info(f"[Pipeline] Task board checkpoint saved: {self._board_task_id}")
                 except Exception as e:
                     logger.debug(f"[Pipeline] Task board update skipped: {e}")
             # MARKER_121.3_END
@@ -2639,14 +2660,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # MARKER_133.TRACKER: Auto-track task completion in digest
             try:
-                from src.services.task_tracker import on_task_completed
-                await on_task_completed(
-                    task_id=task_id,
-                    task_title=task[:200],
-                    status="done" if pipeline_stats.get("success") else "failed",
-                    stats=pipeline_stats,
-                    source=f"dragon_{self.preset_name}" if self.preset_name else "dragon",
-                )
+                if hasattr(self, '_board_task_id') and self._board_task_id:
+                    logger.debug(f"[Pipeline Tracker] Board-backed task {self._board_task_id} defers tracker update to closure protocol")
+                else:
+                    from src.services.task_tracker import on_task_completed
+                    await on_task_completed(
+                        task_id=task_id,
+                        task_title=task[:200],
+                        status="done" if pipeline_stats.get("success") else "failed",
+                        stats=pipeline_stats,
+                        source=f"dragon_{self.preset_name}" if self.preset_name else "dragon",
+                    )
             except Exception as track_err:
                 logger.debug(f"[Pipeline Tracker] Failed: {track_err}")
 
@@ -3405,6 +3429,26 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if pinned_ctx:
             user_content += f"\n\n{pinned_ctx}"
         # MARKER_152.12B_END
+        # MARKER_176.2B: Inject prefetch context into architect user message
+        if hasattr(self, '_prefetch_context') and self._prefetch_context:
+            _pctx = self._prefetch_context
+            _pfiles = [f["path"] for f in _pctx.relevant_files[:10]] if _pctx.relevant_files else []
+            _pmarkers = [m.get("content", "")[:60] for m in _pctx.markers[:5]] if _pctx.markers else []
+            _prefetch_block = (
+                f"\n\n[Prefetch Context (MARKER_176.2)]\n"
+                f"Workflow: {_pctx.workflow_name} ({_pctx.workflow_id})\n"
+                f"Team suggestion: {_pctx.preset}\n"
+                f"Relevant files: {', '.join(_pfiles) if _pfiles else 'none'}\n"
+                f"Related markers: {', '.join(_pmarkers) if _pmarkers else 'none'}"
+            )
+            if _pctx.workflow_reinforcement:
+                _prefetch_block += "\nReinforcement: " + ", ".join(_pctx.workflow_reinforcement[:3])
+            if _pctx.similar_tasks:
+                _prefetch_block += "\nSimilar past tasks: " + "; ".join(
+                    t.get("description", "")[:50] for t in _pctx.similar_tasks[:3]
+                )
+            user_content += _prefetch_block
+        # MARKER_176.2B_END
         # MARKER_151.14B: Inject team performance summary for Architect awareness
         team_perf = await self._get_team_performance_summary()
         if team_perf:
