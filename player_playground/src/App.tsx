@@ -11,6 +11,7 @@ import { configurePlayerWindow, toggleFullscreen } from "./lib/nativeWindow";
 import MycoProbeApp from "./MycoProbeApp";
 
 type PreviewQualityKey = "full" | "half" | "quarter" | "eighth" | "sixteenth" | "thirtysecond";
+type PlayerMediaKind = "video" | "image" | null;
 
 const PREVIEW_QUALITY_OPTIONS: { key: PreviewQualityKey; label: string; scale: number }[] = [
   { key: "full", label: "1x", scale: 1 },
@@ -128,6 +129,17 @@ function getSeekStep(seconds: number) {
   return Math.max(0.1, Number((seconds / 100).toFixed(2)));
 }
 
+function inferMediaKind(fileName: string, mimeType = ""): PlayerMediaKind {
+  const lowerMime = mimeType.toLowerCase();
+  if (lowerMime.startsWith("video/")) return "video";
+  if (lowerMime.startsWith("image/")) return "image";
+
+  const lowerName = fileName.toLowerCase();
+  if (/\.(png|jpe?g|webp|gif|bmp|tiff?|avif|heic|heif)$/.test(lowerName)) return "image";
+  if (/\.(mp4|mov|m4v|webm|avi|mkv|mpeg|mpg|wmv)$/.test(lowerName)) return "video";
+  return null;
+}
+
 function createMarkerId() {
   return `marker_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -241,6 +253,9 @@ function App() {
   const [variant, setVariant] = useState<ShellVariant>(initialQuery.variant);
   const [src, setSrc] = useState<string>(initialQuery.src);
   const [fileName, setFileName] = useState<string>(formatName(initialQuery.src));
+  const [mediaKind, setMediaKind] = useState<PlayerMediaKind>(
+    initialQuery.src ? inferMediaKind(initialQuery.src) : null,
+  );
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
   const [syntheticSize, setSyntheticSize] = useState({
     width: initialQuery.mockWidth,
@@ -264,15 +279,20 @@ function App() {
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   const topbarRef = useRef<HTMLElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const autoSizedKeyRef = useRef("");
   const transportTimerRef = useRef<number | null>(null);
+  const firstFramePrimedRef = useRef(false);
   const intrinsicSize = naturalSize.width > 0 && naturalSize.height > 0 ? naturalSize : syntheticSize;
-  const sourceKind: GeometrySnapshot["sourceKind"] = naturalSize.width > 0 && naturalSize.height > 0
-    ? "video"
-    : "synthetic";
-  const footerReserve = sourceKind === "video" && !isDebugVisible ? 0 : LAB_FOOTER_HEIGHT;
+  const sourceKind: GeometrySnapshot["sourceKind"] =
+    naturalSize.width > 0 && naturalSize.height > 0
+      ? mediaKind === "image"
+        ? "image"
+        : "video"
+      : "synthetic";
+  const footerReserve = sourceKind !== "synthetic" && !isDebugVisible ? 0 : LAB_FOOTER_HEIGHT;
   const isPureMode = !isDebugVisible;
   const previewQualityOption = PREVIEW_QUALITY_OPTIONS.find((option) => option.key === previewQuality) || PREVIEW_QUALITY_OPTIONS[0];
   const effectivePreviewScale = sourceKind === "video" ? previewQualityOption.scale : 1;
@@ -337,6 +357,8 @@ function App() {
       footerReserve,
       Math.floor(window.innerWidth * 0.92),
       Math.floor(window.innerHeight * 0.92),
+      isPureMode ? 0 : 2,
+      isPureMode ? 0 : 2,
     );
     const review = computeDreamScore({
       windowInnerWidth: Number(window.innerWidth || 0),
@@ -556,6 +578,7 @@ function App() {
           height: Math.max(0, Math.floor(height)),
         });
         setNaturalSize({ width: 0, height: 0 });
+        setMediaKind(null);
         setSrc("");
         setFileName("Synthetic probe");
         autoSizedKeyRef.current = "";
@@ -594,8 +617,13 @@ function App() {
       if (prev.startsWith("blob:")) URL.revokeObjectURL(prev);
       return nextUrl;
     });
+    setMediaKind(inferMediaKind(file.name, file.type));
     setFileName(file.name);
     setNaturalSize({ width: 0, height: 0 });
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
+    firstFramePrimedRef.current = false;
     autoSizedKeyRef.current = "";
   }
 
@@ -613,6 +641,9 @@ function App() {
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
+      if (video.currentTime > 0 && video.currentTime < 0.05) {
+        video.currentTime = 0;
+      }
       void video.play();
     } else {
       video.pause();
@@ -728,7 +759,7 @@ function App() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="video/*"
+                  accept="video/*,image/*"
                   style={{ display: "none" }}
                   onChange={(event) => {
                     const file = event.target.files?.[0];
@@ -745,7 +776,7 @@ function App() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="video/*"
+            accept="video/*,image/*"
             style={{ display: "none" }}
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -772,35 +803,69 @@ function App() {
                         transform: `scale(${1 / effectivePreviewScale})`,
                       }}
                     >
-                      <video
-                        ref={videoRef}
-                        className="viewer-video"
-                        src={src}
-                        controls={false}
-                        playsInline
-                        preload="metadata"
-                        onClick={() => togglePlayback()}
-                        onLoadedMetadata={(event) => {
-                          const video = event.currentTarget;
-                          setNaturalSize({
-                            width: Number(video.videoWidth || 0),
-                            height: Number(video.videoHeight || 0),
-                          });
-                          setDuration(Number(video.duration || 0));
-                          setCurrentTime(Number(video.currentTime || 0));
-                          setVolume(Number(video.volume || 1));
-                          setIsMuted(Boolean(video.muted));
-                          if (!fileName) setFileName(formatName(src));
-                        }}
-                        onPlay={() => setIsPlaying(true)}
-                        onPause={() => setIsPlaying(false)}
-                        onTimeUpdate={(event) => setCurrentTime(Number(event.currentTarget.currentTime || 0))}
-                        onDurationChange={(event) => setDuration(Number(event.currentTarget.duration || 0))}
-                        onVolumeChange={(event) => {
-                          setVolume(Number(event.currentTarget.volume || 0));
-                          setIsMuted(Boolean(event.currentTarget.muted));
-                        }}
-                      />
+                      {mediaKind === "image" ? (
+                        <img
+                          ref={imageRef}
+                          className="viewer-video viewer-image"
+                          src={src}
+                          alt={fileName || "Image preview"}
+                          draggable={false}
+                          onLoad={(event) => {
+                            const image = event.currentTarget;
+                            setNaturalSize({
+                              width: Number(image.naturalWidth || 0),
+                              height: Number(image.naturalHeight || 0),
+                            });
+                            setCurrentTime(0);
+                            setDuration(0);
+                            setIsPlaying(false);
+                            if (!fileName) setFileName(formatName(src));
+                          }}
+                        />
+                      ) : (
+                        <video
+                          ref={videoRef}
+                          className="viewer-video"
+                          src={src}
+                          controls={false}
+                          playsInline
+                          preload="auto"
+                          onClick={() => togglePlayback()}
+                          onLoadedMetadata={(event) => {
+                            const video = event.currentTarget;
+                            setNaturalSize({
+                              width: Number(video.videoWidth || 0),
+                              height: Number(video.videoHeight || 0),
+                            });
+                            setDuration(Number(video.duration || 0));
+                            setCurrentTime(Number(video.currentTime || 0));
+                            setVolume(Number(video.volume || 1));
+                            setIsMuted(Boolean(video.muted));
+                            if (!fileName) setFileName(formatName(src));
+                          }}
+                          onLoadedData={(event) => {
+                            const video = event.currentTarget;
+                            if (firstFramePrimedRef.current) return;
+                            firstFramePrimedRef.current = true;
+                            if (video.paused && Number(video.currentTime || 0) === 0 && Number(video.duration || 0) > 0) {
+                              const epsilon = Math.min(0.033, Math.max(0.001, Number(video.duration || 0) / 1000));
+                              try {
+                                video.currentTime = epsilon;
+                              } catch {
+                                // ignore seek priming failures
+                              }
+                            }
+                          }}
+                          onPlay={() => setIsPlaying(true)}
+                          onPause={() => setIsPlaying(false)}
+                          onTimeUpdate={(event) => setCurrentTime(Number(event.currentTarget.currentTime || 0))}
+                          onDurationChange={(event) => setDuration(Number(event.currentTarget.duration || 0))}
+                          onVolumeChange={(event) => {
+                            setVolume(Number(event.currentTarget.volume || 0));
+                            setIsMuted(Boolean(event.currentTarget.muted));
+                          }}
+                        />
+                      )}
                     </div>
                   </div>
                   <div className={`media-label ${showTransport ? "media-label-visible" : "media-label-hidden"}`}>
@@ -819,77 +884,81 @@ function App() {
                     </button>
                   </div>
                   {contextToast ? <div className="context-toast">{contextToast}</div> : null}
-                  <div
-                    className={`transport-overlay ${showTransport ? "transport-visible" : "transport-hidden"}`}
-                    onMouseMove={() => setShowTransport(true)}
-                    onMouseLeave={() => {
-                      if (isPlaying && !isDebugVisible) setShowTransport(false);
-                    }}
-                  >
-                    <div className="transport-scrim" />
-                    <div className="transport-bar">
-                      <button className="transport-button transport-button-primary" type="button" onClick={() => togglePlayback()} aria-label={isPlaying ? "Pause" : "Play"}>
-                        {isPlaying ? <IconPause /> : <IconPlay />}
-                      </button>
-                      <span className="transport-time">{formatTime(currentTime)}</span>
-                      <input
-                        className="transport-progress"
-                        type="range"
-                        min={0}
-                        max={Math.max(duration, 0.001)}
-                        step={0.01}
-                        value={Math.min(currentTime, duration || 0)}
-                        onChange={(event) => {
-                          const nextTime = Number(event.target.value || 0);
-                          setCurrentTime(nextTime);
-                          if (videoRef.current) videoRef.current.currentTime = nextTime;
+                  {mediaKind === "video" ? (
+                    <>
+                      <div
+                        className={`transport-overlay ${showTransport ? "transport-visible" : "transport-hidden"}`}
+                        onMouseMove={() => setShowTransport(true)}
+                        onMouseLeave={() => {
+                          if (isPlaying && !isDebugVisible) setShowTransport(false);
                         }}
-                        aria-label="Seek"
+                      >
+                        <div className="transport-scrim" />
+                        <div className="transport-bar">
+                          <button className="transport-button transport-button-primary" type="button" onClick={() => togglePlayback()} aria-label={isPlaying ? "Pause" : "Play"}>
+                            {isPlaying ? <IconPause /> : <IconPlay />}
+                          </button>
+                          <span className="transport-time">{formatTime(currentTime)}</span>
+                          <input
+                            className="transport-progress"
+                            type="range"
+                            min={0}
+                            max={Math.max(duration, 0.001)}
+                            step={0.01}
+                            value={Math.min(currentTime, duration || 0)}
+                            onChange={(event) => {
+                              const nextTime = Number(event.target.value || 0);
+                              setCurrentTime(nextTime);
+                              if (videoRef.current) videoRef.current.currentTime = nextTime;
+                            }}
+                            aria-label="Seek"
+                          />
+                          <span className="transport-time">{formatTime(duration)}</span>
+                          <button className="transport-button" type="button" onClick={() => {
+                            const nextMuted = !isMuted;
+                            syncVolume(nextMuted ? volume : Math.max(volume, 0.6), nextMuted);
+                          }} aria-label={isMuted || volume === 0 ? "Unmute" : "Mute"}>
+                            <IconVolume isMuted={isMuted || volume === 0} />
+                          </button>
+                          <input
+                            className="transport-volume"
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={isMuted ? 0 : volume}
+                            onChange={(event) => {
+                              const nextVolume = Number(event.target.value || 0);
+                              syncVolume(nextVolume, nextVolume === 0);
+                            }}
+                            aria-label="Volume"
+                          />
+                          <button className="transport-button" type="button" onClick={() => void toggleFullscreen()} aria-label="Fullscreen" data-testid="fullscreen-button">
+                            <IconFullscreen />
+                          </button>
+                        </div>
+                      </div>
+                      <div className={`hud ${isPlaying ? "hud-hidden" : ""}`}>
+                        <button className="hud-button" type="button" onClick={() => {
+                          togglePlayback();
+                        }} aria-label={isPlaying ? "Pause" : "Play"}>
+                          {isPlaying ? <IconPause /> : <IconPlay />}
+                        </button>
+                      </div>
+                      <button
+                        className="seek-zone seek-zone-left"
+                        type="button"
+                        aria-label="Seek backward"
+                        onClick={() => seekBy(-1)}
                       />
-                      <span className="transport-time">{formatTime(duration)}</span>
-                      <button className="transport-button" type="button" onClick={() => {
-                        const nextMuted = !isMuted;
-                        syncVolume(nextMuted ? volume : Math.max(volume, 0.6), nextMuted);
-                      }} aria-label={isMuted || volume === 0 ? "Unmute" : "Mute"}>
-                        <IconVolume isMuted={isMuted || volume === 0} />
-                      </button>
-                      <input
-                        className="transport-volume"
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={isMuted ? 0 : volume}
-                        onChange={(event) => {
-                          const nextVolume = Number(event.target.value || 0);
-                          syncVolume(nextVolume, nextVolume === 0);
-                        }}
-                        aria-label="Volume"
+                      <button
+                        className="seek-zone seek-zone-right"
+                        type="button"
+                        aria-label="Seek forward"
+                        onClick={() => seekBy(1)}
                       />
-                      <button className="transport-button" type="button" onClick={() => void toggleFullscreen()} aria-label="Fullscreen" data-testid="fullscreen-button">
-                        <IconFullscreen />
-                      </button>
-                    </div>
-                  </div>
-                  <div className={`hud ${isPlaying ? "hud-hidden" : ""}`}>
-                    <button className="hud-button" type="button" onClick={() => {
-                      togglePlayback();
-                    }} aria-label={isPlaying ? "Pause" : "Play"}>
-                      {isPlaying ? <IconPause /> : <IconPlay />}
-                    </button>
-                  </div>
-                  <button
-                    className="seek-zone seek-zone-left"
-                    type="button"
-                    aria-label="Seek backward"
-                    onClick={() => seekBy(-1)}
-                  />
-                  <button
-                    className="seek-zone seek-zone-right"
-                    type="button"
-                    aria-label="Seek forward"
-                    onClick={() => seekBy(1)}
-                  />
+                    </>
+                  ) : null}
                 </>
               ) : intrinsicSize.width > 0 && intrinsicSize.height > 0 ? (
                 <div className="synthetic-stage">
@@ -908,12 +977,12 @@ function App() {
               ) : (
                 <div className={`dropzone player-dropzone ${isDragging ? "dragging" : ""}`}>
                   <div>
-                    <strong>Drop a video here</strong>
+                    <strong>Drop media here</strong>
                     <p className="dropzone-copy">
-                      This shell auto-fits to the media once metadata is known.
+                      This shell auto-fits to video and images once dimensions are known.
                     </p>
                     <button className="dropzone-open" type="button" onClick={() => fileInputRef.current?.click()}>
-                      Open video
+                      Open media
                     </button>
                   </div>
                 </div>

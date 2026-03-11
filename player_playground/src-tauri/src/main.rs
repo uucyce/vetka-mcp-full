@@ -31,7 +31,6 @@ fn set_content_aspect_ratio(
             let ns_window: &NSWindow = &*((ns_window as *mut AnyObject).cast::<NSWindow>());
             let aspect = NSSize::new(aspect_width, aspect_height);
             ns_window.setContentAspectRatio(aspect);
-            ns_window.setAspectRatio(aspect);
         })
         .map_err(|e| format!("run_on_main_thread failed: {e}"))
 }

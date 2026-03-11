@@ -28,7 +28,7 @@ export interface GeometrySnapshot {
   suggestedShellWidth: number;
   suggestedShellHeight: number;
   variant: ShellVariant;
-  sourceKind: "video" | "synthetic";
+  sourceKind: "video" | "image" | "synthetic";
   dreamScore: number;
   viewerDominanceRatio: number;
   chromeRatio: number;
@@ -129,15 +129,22 @@ export function suggestShellSize(
   footerHeight: number,
   maxShellWidth: number,
   maxShellHeight: number,
+  shellChromeWidth = 0,
+  shellChromeHeight = 0,
 ) {
   const safeFooterHeight = Math.max(0, footerHeight);
-  const safeMaxWidth = Math.max(360, maxShellWidth);
-  const safeMaxHeight = Math.max(240, maxShellHeight);
+  const safeChromeWidth = Math.max(0, shellChromeWidth);
+  const safeChromeHeight = Math.max(0, shellChromeHeight);
+  const safeMaxWidth = Math.max(360, maxShellWidth - safeChromeWidth);
+  const safeMaxHeight = Math.max(240, maxShellHeight - safeChromeHeight);
   const safeIntrinsicWidth = Math.max(0, intrinsicWidth);
   const safeIntrinsicHeight = Math.max(0, intrinsicHeight);
 
   if (safeIntrinsicWidth <= 0 || safeIntrinsicHeight <= 0) {
-    return { shellWidth: 960, shellHeight: 540 };
+    return {
+      shellWidth: 960 + safeChromeWidth,
+      shellHeight: 540 + safeChromeHeight,
+    };
   }
 
   const ratio = safeIntrinsicWidth / safeIntrinsicHeight;
@@ -160,7 +167,7 @@ export function suggestShellSize(
   }
 
   return {
-    shellWidth: Math.max(360, shellWidth),
-    shellHeight: Math.max(240, shellHeight),
+    shellWidth: Math.max(360, shellWidth + safeChromeWidth),
+    shellHeight: Math.max(240, shellHeight + safeChromeHeight),
   };
 }

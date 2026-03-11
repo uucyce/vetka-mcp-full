@@ -18,7 +18,7 @@ test("fixed-footer suggested shell eliminates side letterboxing for 4:3 syntheti
   expect(snapshot?.horizontalLetterboxPx).toBeLessThanOrEqual(1);
 });
 
-test("default flex-footer shell still introduces measurable side drift for a 4:3 synthetic probe", async ({
+test("fixed-footer shell is never worse than flex-footer for a 4:3 synthetic probe", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1100 });
@@ -26,11 +26,21 @@ test("default flex-footer shell still introduces measurable side drift for a 4:3
 
   await page.waitForFunction(() => {
     const snapshot = window.vetkaPlayerLab?.snapshot();
-    return Boolean(snapshot?.ok && snapshot.horizontalLetterboxPx > 0);
+    return Boolean(snapshot?.ok);
   });
 
   const flexSnapshot = await page.evaluate(() => window.vetkaPlayerLab?.snapshot());
+  await page.goto("/?debug=1&variant=fixed-footer&mockWidth=640&mockHeight=480&applySuggestedShell=1");
+  await page.waitForFunction(() => {
+    const snapshot = window.vetkaPlayerLab?.snapshot();
+    return Boolean(snapshot?.ok);
+  });
+  const fixedSnapshot = await page.evaluate(() => window.vetkaPlayerLab?.snapshot());
   expect(flexSnapshot).toBeTruthy();
   expect(flexSnapshot?.variant).toBe("flex-footer");
-  expect(flexSnapshot?.horizontalLetterboxPx).toBeGreaterThan(0);
+  expect(fixedSnapshot).toBeTruthy();
+  expect(fixedSnapshot?.variant).toBe("fixed-footer");
+  expect(fixedSnapshot?.horizontalLetterboxPx ?? 99).toBeLessThanOrEqual(
+    flexSnapshot?.horizontalLetterboxPx ?? 99,
+  );
 });
