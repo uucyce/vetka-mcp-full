@@ -437,8 +437,8 @@ select {
 .seek-zone {
   position: absolute;
   top: 0;
-  bottom: 96px;
-  width: 50%;
+  bottom: 104px;
+  width: 34%;
   border: 0;
   background: transparent;
   z-index: 0;

@@ -7,7 +7,7 @@ import {
   ShellVariant,
   suggestShellSize,
 } from "./lib/geometry";
-import { configurePlayerWindow, isTauriRuntimeSync, toggleFullscreen } from "./lib/nativeWindow";
+import { configurePlayerWindow, toggleFullscreen } from "./lib/nativeWindow";
 import MycoProbeApp from "./MycoProbeApp";
 
 type PreviewQualityKey = "full" | "half" | "quarter" | "eighth" | "sixteenth" | "thirtysecond";
@@ -121,6 +121,11 @@ function formatTime(seconds: number) {
   const mins = Math.floor(total / 60);
   const secs = total % 60;
   return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+function getSeekStep(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0.1;
+  return Math.max(0.1, Number((seconds / 100).toFixed(2)));
 }
 
 function createMarkerId() {
@@ -273,7 +278,6 @@ function App() {
   const effectivePreviewScale = sourceKind === "video" ? previewQualityOption.scale : 1;
   const currentMediaKey = src && !src.startsWith("blob:") ? src : fileName;
   const overlayTitle = formatOverlayTitle(fileName);
-  const isNativeTauri = isTauriRuntimeSync();
   const isInVetka = Boolean(currentMediaKey && vetkaStatusMap[currentMediaKey]);
   const mediaMarkers = useMemo(
     () => markers.filter((marker) => marker.media_path === currentMediaKey),
@@ -488,11 +492,13 @@ function App() {
       }
       if (event.key === "ArrowLeft" && videoRef.current) {
         event.preventDefault();
-        videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 5);
+        const step = getSeekStep(duration || videoRef.current.duration || 0);
+        videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - step);
       }
       if (event.key === "ArrowRight" && videoRef.current) {
         event.preventDefault();
-        videoRef.current.currentTime = Math.min(duration || videoRef.current.duration || 0, videoRef.current.currentTime + 5);
+        const step = getSeekStep(duration || videoRef.current.duration || 0);
+        videoRef.current.currentTime = Math.min(duration || videoRef.current.duration || 0, videoRef.current.currentTime + step);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -611,6 +617,15 @@ function App() {
     } else {
       video.pause();
     }
+  }
+
+  function seekBy(direction: -1 | 1) {
+    const video = videoRef.current;
+    if (!video) return;
+    const limit = duration || video.duration || 0;
+    const step = getSeekStep(limit);
+    video.currentTime = Math.min(limit, Math.max(0, video.currentTime + direction * step));
+    setShowTransport(true);
   }
 
   function buildMarker(kind: PlayerMarkerKind, text = ""): PlayerTimeMarker | null {
@@ -743,7 +758,7 @@ function App() {
           <div
             ref={shellRef}
             className={`viewer-shell player-shell ${variant} ${footerReserve === 0 ? "footerless" : ""}`}
-            style={shellSizeOverride && (!isPureMode || isNativeTauri) ? { width: `${shellSizeOverride.width}px`, height: `${shellSizeOverride.height}px` } : undefined}
+            style={shellSizeOverride && !isPureMode ? { width: `${shellSizeOverride.width}px`, height: `${shellSizeOverride.height}px` } : undefined}
           >
             <div ref={viewerRef} className="viewer-area player-canvas">
               {src ? (
@@ -866,24 +881,14 @@ function App() {
                   <button
                     className="seek-zone seek-zone-left"
                     type="button"
-                    aria-label="Seek backward 5 seconds"
-                    onClick={() => {
-                      const video = videoRef.current;
-                      if (!video) return;
-                      video.currentTime = Math.max(0, video.currentTime - 5);
-                      setShowTransport(true);
-                    }}
+                    aria-label="Seek backward"
+                    onClick={() => seekBy(-1)}
                   />
                   <button
                     className="seek-zone seek-zone-right"
                     type="button"
-                    aria-label="Seek forward 5 seconds"
-                    onClick={() => {
-                      const video = videoRef.current;
-                      if (!video) return;
-                      video.currentTime = Math.min(duration || video.duration || 0, video.currentTime + 5);
-                      setShowTransport(true);
-                    }}
+                    aria-label="Seek forward"
+                    onClick={() => seekBy(1)}
                   />
                 </>
               ) : intrinsicSize.width > 0 && intrinsicSize.height > 0 ? (

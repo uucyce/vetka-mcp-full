@@ -43,3 +43,29 @@ test("fullscreen button requests fullscreen in web sandbox", async ({ page }) =>
   const isFullscreen = await page.evaluate(() => Boolean(document.fullscreenElement));
   expect(isFullscreen).toBe(true);
 });
+
+test("center play button toggles playback without seek jump", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 840 });
+  await page.goto("/");
+  await page.locator('input[type="file"]').setInputFiles(VIDEO_FIXTURE);
+
+  await page.waitForFunction(() => {
+    const snapshot = window.vetkaPlayerLab?.snapshot();
+    return Boolean(snapshot?.ok && snapshot?.sourceKind === "video");
+  });
+
+  const before = await page.evaluate(() => {
+    const video = document.querySelector("video") as HTMLVideoElement | null;
+    return Number(video?.currentTime || 0);
+  });
+
+  await page.locator(".hud-button").click();
+  await page.waitForTimeout(150);
+
+  const after = await page.evaluate(() => {
+    const video = document.querySelector("video") as HTMLVideoElement | null;
+    return Number(video?.currentTime || 0);
+  });
+
+  expect(Math.abs(after - before)).toBeLessThan(0.25);
+});
