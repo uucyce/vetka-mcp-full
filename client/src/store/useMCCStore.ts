@@ -92,10 +92,30 @@ export interface NodePinPosition {
 export type LayoutPinsMap = Record<string, Record<string, NodePinPosition>>;
 export type FocusRestorePolicy = 'scope_first' | 'selection_first';
 export type FocusRestoreSource = 'current' | 'memory' | 'default' | null;
+export interface MCCSelectedKey {
+  provider: string;
+  key_masked: string;
+}
+export interface MCCTaskFilters {
+  status: string;
+  phase: string;
+  preset: string;
+  search: string;
+}
 
 const LAYOUT_PINS_STORAGE_KEY = 'mcc_layout_pins_v1';
 const FOCUS_RESTORE_POLICY_STORAGE_KEY = 'mcc_focus_restore_policy_v1';
 const MYCO_HELPER_MODE_STORAGE_KEY = 'mcc_myco_helper_mode_v1';
+const MCC_SELECTED_KEY_STORAGE_KEY = 'mcc_selected_key';
+const MCC_FAVORITE_KEYS_STORAGE_KEY = 'mcc_favorite_keys';
+const MCC_TASK_FILTERS_STORAGE_KEY = 'mcc_task_filters';
+
+const DEFAULT_TASK_FILTERS: MCCTaskFilters = {
+  status: 'all',
+  phase: 'all',
+  preset: 'all',
+  search: '',
+};
 
 function loadLayoutPins(): LayoutPinsMap {
   if (typeof window === 'undefined') return {};
@@ -153,6 +173,84 @@ function saveMycoHelperMode(mode: MycoHelperMode): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(MYCO_HELPER_MODE_STORAGE_KEY, mode);
+  } catch {
+    // ignore persistence errors
+  }
+}
+
+function loadSelectedKey(): MCCSelectedKey | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(MCC_SELECTED_KEY_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      parsed
+      && typeof parsed === 'object'
+      && typeof parsed.provider === 'string'
+      && typeof parsed.key_masked === 'string'
+    ) {
+      return { provider: parsed.provider, key_masked: parsed.key_masked };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSelectedKey(key: MCCSelectedKey | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!key) {
+      window.localStorage.removeItem(MCC_SELECTED_KEY_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(MCC_SELECTED_KEY_STORAGE_KEY, JSON.stringify(key));
+  } catch {
+    // ignore persistence errors
+  }
+}
+
+function loadFavoriteKeys(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(MCC_FAVORITE_KEYS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFavoriteKeys(keys: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(MCC_FAVORITE_KEYS_STORAGE_KEY, JSON.stringify(keys));
+  } catch {
+    // ignore persistence errors
+  }
+}
+
+function loadTaskFilters(): MCCTaskFilters {
+  if (typeof window === 'undefined') return DEFAULT_TASK_FILTERS;
+  try {
+    const raw = window.localStorage.getItem(MCC_TASK_FILTERS_STORAGE_KEY);
+    if (!raw) return DEFAULT_TASK_FILTERS;
+    const parsed = JSON.parse(raw);
+    return {
+      ...DEFAULT_TASK_FILTERS,
+      ...(parsed && typeof parsed === 'object' ? parsed : {}),
+    };
+  } catch {
+    return DEFAULT_TASK_FILTERS;
+  }
+}
+
+function saveTaskFilters(filters: MCCTaskFilters): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(MCC_TASK_FILTERS_STORAGE_KEY, JSON.stringify(filters));
   } catch {
     // ignore persistence errors
   }
@@ -254,8 +352,13 @@ interface MCCState {
   activePreset: string;
   presets: Record<string, PresetConfig>;
 
+  // MARKER_175.0D: Standalone MCC key management
+  selectedKey: MCCSelectedKey | null;
+  favoriteKeys: string[];
+
   // Filters
   statusFilter: 'all' | 'pending' | 'running' | 'done';
+  taskFilters: MCCTaskFilters;
 
   // Heartbeat
   heartbeat: HeartbeatSettings | null;
@@ -299,7 +402,10 @@ interface MCCState {
   dispatchNext: (selectedKey?: any) => Promise<void>;
   selectTask: (taskId: string | null) => void;
   setActivePreset: (preset: string) => void;
+  setSelectedKey: (key: MCCSelectedKey | null) => void;
+  toggleFavoriteKey: (key: string) => void;
   setStatusFilter: (filter: 'all' | 'pending' | 'running' | 'done') => void;
+  setTaskFilter: (key: keyof MCCTaskFilters, value: string) => void;
   fetchPresets: () => Promise<void>;
   updateHeartbeat: (updates: Partial<HeartbeatSettings>) => Promise<void>;
   pushStreamEvent: (event: Omit<StreamEvent, 'id' | 'ts'>) => void;
@@ -343,13 +449,23 @@ interface MCCState {
 }
 
 const MAX_STREAM_EVENTS = 30;
+const INITIAL_SELECTED_KEY = loadSelectedKey();
+const INITIAL_FAVORITE_KEYS = loadFavoriteKeys();
+const INITIAL_TASK_FILTERS = loadTaskFilters();
+
+if (INITIAL_SELECTED_KEY) {
+  useStore.getState().setSelectedKey(INITIAL_SELECTED_KEY);
+}
+if (INITIAL_FAVORITE_KEYS.length > 0) {
+  useStore.getState().setFavoriteKeys(INITIAL_FAVORITE_KEYS);
+}
 
 // MARKER_153.1C: Debounced state persist to server
 let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 const _persistState = (state: { level: NavLevel; roadmapNodeId: string; taskId: string; history: NavLevel[] }) => {
   if (_saveTimer) clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
-    const selectedKey = useStore.getState().selectedKey;
+    const selectedKey = useMCCStore.getState().selectedKey;
     fetch(`${API_BASE}/mcc/state`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -372,7 +488,10 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   selectedTaskId: null,
   activePreset: 'dragon_silver',
   presets: {},
+  selectedKey: INITIAL_SELECTED_KEY,
+  favoriteKeys: INITIAL_FAVORITE_KEYS,
   statusFilter: 'all',
+  taskFilters: INITIAL_TASK_FILTERS,
   heartbeat: null,
   activeAgents: [],
   streamEvents: [],
@@ -496,6 +615,24 @@ export const useMCCStore = create<MCCState>((set, get) => ({
 
   // ── Preset management ──
   setActivePreset: (preset) => set({ activePreset: preset }),
+  setSelectedKey: (key) => {
+    saveSelectedKey(key);
+    if (key) {
+      useStore.getState().setSelectedKey(key);
+    } else {
+      useStore.getState().clearSelectedKey();
+    }
+    set({ selectedKey: key });
+  },
+  toggleFavoriteKey: (key) => {
+    const current = get().favoriteKeys;
+    const next = current.includes(key)
+      ? current.filter((item) => item !== key)
+      : [...current, key];
+    saveFavoriteKeys(next);
+    useStore.getState().setFavoriteKeys(next);
+    set({ favoriteKeys: next });
+  },
 
   fetchPresets: async () => {
     try {
@@ -516,6 +653,11 @@ export const useMCCStore = create<MCCState>((set, get) => ({
 
   // ── Filter ──
   setStatusFilter: (filter) => set({ statusFilter: filter }),
+  setTaskFilter: (key, value) => {
+    const next = { ...get().taskFilters, [key]: value };
+    saveTaskFilters(next);
+    set({ taskFilters: next });
+  },
 
   // ── Heartbeat ──
   updateHeartbeat: async (updates) => {
@@ -659,6 +801,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
           && typeof ss.selected_key.provider === 'string'
           && typeof ss.selected_key.key_masked === 'string'
         ) ? { provider: ss.selected_key.provider, key_masked: ss.selected_key.key_masked } : null;
+        saveSelectedKey(savedSelectedKey);
         if (savedSelectedKey) {
           useStore.getState().setSelectedKey(savedSelectedKey);
         } else {
@@ -672,6 +815,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
           projectConfig: data.project_config,
           activeProjectId: activeProjectId || String(data?.project_config?.project_id || ''),
           projectTabs: tabs,
+          selectedKey: savedSelectedKey,
           navLevel: 'roadmap',
           navRoadmapNodeId: '',
           navTaskId: '',

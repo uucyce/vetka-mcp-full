@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MiniWindow } from './MiniWindow';
 import { BalancesPanel } from '../panels/BalancesPanel';
-import { useStore } from '../../store/useStore';
+import { useMCCStore } from '../../store/useMCCStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 
 const API_DEBUG = 'http://localhost:5001/api/debug';
@@ -48,10 +48,10 @@ function formatNum(value: number | null | undefined): string {
 }
 
 function BalanceCompact() {
-  const selectedKey = useStore((s) => s.selectedKey);
-  const setSelectedKey = useStore((s) => s.setSelectedKey);
-  const favoriteKeys = useStore((s) => s.favoriteKeys);
-  const toggleFavoriteKey = useStore((s) => s.toggleFavoriteKey);
+  const selectedKey = useMCCStore((s) => s.selectedKey);
+  const setSelectedKey = useMCCStore((s) => s.setSelectedKey);
+  const favoriteKeys = useMCCStore((s) => s.favoriteKeys);
+  const toggleFavoriteKey = useMCCStore((s) => s.toggleFavoriteKey);
   const [records, setRecords] = useState<BalanceRecord[]>([]);
   const [totalCost, setTotalCost] = useState<number>(0);
   const [loading, setLoading] = useState(true);
