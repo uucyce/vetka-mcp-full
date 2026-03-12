@@ -633,6 +633,30 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
             source_info = f" (source: {model_source})" if model_source else ""
             logger.info(f"[MYCELIUM LLM] Calling {model} via {provider_name}{source_info}")
 
+            # MARKER_178.4.8: Universal REFLEX pre-hook for ALL LLM calls (async)
+            _reflex_recs = []
+            try:
+                from src.services.reflex_integration import reflex_pre_fc, _is_enabled
+                if _is_enabled():
+                    _messages = arguments.get("messages", [])
+                    _task_text = ""
+                    for m in reversed(_messages):
+                        if m.get("role") == "user":
+                            _task_text = str(m.get("content", ""))[:200]
+                            break
+
+                    class _RefSubtask:
+                        def __init__(self, desc, ctx):
+                            self.description = desc
+                            self.context = ctx
+
+                    _phase = arguments.get("_reflex_phase", "research")
+                    _role = arguments.get("_reflex_role", "coder")
+                    _sub = _RefSubtask(_task_text, {"phase_type": _phase, "agent_role": _role})
+                    _reflex_recs = reflex_pre_fc(_sub, phase_type=_phase, agent_role=_role)
+            except Exception:
+                pass
+
             # MARKER_133.C33A: Use resilient wrapper with retry + fallback
             response = await resilient_llm_call(
                 call_func=call_model_v2,
@@ -678,6 +702,26 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
 
             # Track usage
             self._track_usage_for_balance(provider_name, model, result.get('usage'))
+
+            # MARKER_178.4.9: Universal REFLEX post-hook for ALL LLM calls (async)
+            try:
+                from src.services.reflex_integration import reflex_post_fc, _is_enabled
+                if _is_enabled():
+                    _tool_calls = result.get("tool_calls", [])
+                    if _tool_calls:
+                        _tool_execs = []
+                        for tc in _tool_calls:
+                            _fn = tc.get("function", {})
+                            _tool_execs.append({
+                                "name": _fn.get("name", "unknown"),
+                                "success": True,
+                                "result": {"content": "from_llm_response"}
+                            })
+                        _phase = arguments.get("_reflex_phase", "research")
+                        _role = arguments.get("_reflex_role", "coder")
+                        reflex_post_fc(_tool_execs, phase_type=_phase, agent_role=_role, subtask_id="llm_call")
+            except Exception:
+                pass
 
             return {
                 'success': True,

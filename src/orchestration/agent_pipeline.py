@@ -2401,19 +2401,23 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             self._prefetch_context = None
             try:
                 from src.services.architect_prefetch import ArchitectPrefetch, PrefetchContext
+                task_packet = await self._load_mcc_task_context_packet()
+                packet_binding = task_packet.get("workflow_binding") if isinstance(task_packet.get("workflow_binding"), dict) else {}
                 prefetch_ctx = ArchitectPrefetch.prepare(
                     task_description=task,
                     task_type=phase_type,
                     complexity=5,  # default; architect will refine later
-                    workflow_family="",
+                    workflow_family=str(packet_binding.get("workflow_family") or ""),
+                    task_packet=task_packet,
                 )
                 self._prefetch_context = prefetch_ctx
                 _pf_files = [f["path"] for f in prefetch_ctx.relevant_files[:10]] if prefetch_ctx.relevant_files else []
                 _pf_markers = [m.get("content", "")[:60] for m in prefetch_ctx.markers[:5]] if prefetch_ctx.markers else []
+                _pf_docs = list(((prefetch_ctx.task_packet or {}).get("docs") or {}).get("architecture_docs") or [])
                 await self._emit_progress(
                     "@mycelium",
                     f"\U0001f52e Prefetch: {len(_pf_files)} files, {len(_pf_markers)} markers, "
-                    f"workflow={prefetch_ctx.workflow_name}"
+                    f"docs={len(_pf_docs)}, workflow={prefetch_ctx.workflow_name}"
                 )
                 logger.info(f"[Pipeline] MARKER_176.2: Prefetch ready \u2014 {prefetch_ctx.summary}")
             except Exception as prefetch_err:
@@ -3372,6 +3376,50 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         except Exception:
             return ""  # Graceful — never block pipeline
 
+    async def _load_mcc_task_context_packet(self) -> Dict[str, Any]:
+        """
+        MARKER_177.MCC.PACKET_FIRST_INTAKE.V1
+        Resolve the canonical MCC task packet for board-backed pipeline runs.
+        """
+        board_task_id = str(getattr(self, "_board_task_id", "") or "").strip()
+        if not board_task_id:
+            return {}
+        try:
+            from src.api.routes import mcc_routes as mcc_routes_module
+            from src.orchestration.task_board import get_task_board
+            from src.services.mcc_local_run_registry import get_localguys_run_registry
+            from src.services.roadmap_task_sync import build_task_context_packet
+
+            board = get_task_board()
+            task = board.get_task(board_task_id) if board else None
+            if not isinstance(task, dict) or not task:
+                return {}
+
+            workflow_binding = {
+                "workflow_id": str(task.get("workflow_id") or task.get("workflow_family") or "").strip(),
+                "workflow_family": str(task.get("workflow_family") or task.get("workflow_id") or "").strip(),
+                "workflow_selection_origin": str(task.get("workflow_selection_origin") or "").strip(),
+                "preset": str(task.get("preset") or task.get("team_profile") or "").strip(),
+            }
+            workflow_family = str(workflow_binding.get("workflow_family") or "").strip()
+            workflow_contract = {}
+            if workflow_family:
+                workflow_contract = await mcc_routes_module._resolve_workflow_contract(workflow_family) or {}
+
+            history = board.get_task_history(board_task_id) if hasattr(board, "get_task_history") else list(task.get("status_history") or [])
+            latest_run = get_localguys_run_registry().get_latest_for_task(board_task_id)
+            packet = build_task_context_packet(
+                task,
+                workflow_binding=workflow_binding,
+                workflow_contract=workflow_contract,
+                task_history=history,
+                localguys_run=latest_run or {},
+            )
+            return packet if isinstance(packet, dict) else {}
+        except Exception as exc:
+            logger.debug(f"[Pipeline] MCC task packet skipped: {exc}")
+            return {}
+
     # MARKER_102.5_START: Architect planning
     async def _architect_plan(self, task: str, phase_type: str, scout_context: Optional[Dict] = None,
                                research_context: Optional[Dict] = None,
@@ -3434,6 +3482,26 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             _pctx = self._prefetch_context
             _pfiles = [f["path"] for f in _pctx.relevant_files[:10]] if _pctx.relevant_files else []
             _pmarkers = [m.get("content", "")[:60] for m in _pctx.markers[:5]] if _pctx.markers else []
+            _packet = _pctx.task_packet if isinstance(getattr(_pctx, "task_packet", None), dict) else {}
+            _packet_docs = _packet.get("docs") if isinstance(_packet.get("docs"), dict) else {}
+            _packet_tests = _packet.get("tests") if isinstance(_packet.get("tests"), dict) else {}
+            _packet_scope = _packet.get("code_scope") if isinstance(_packet.get("code_scope"), dict) else {}
+            _packet_binding = _packet.get("roadmap_binding") if isinstance(_packet.get("roadmap_binding"), dict) else {}
+            _packet_gaps = [str(item).strip() for item in list(_packet.get("gaps") or []) if str(item).strip()]
+            _packet_slice = {}
+            if _packet:
+                try:
+                    from src.services.roadmap_task_sync import build_role_context_slice
+                    _packet_slice = build_role_context_slice(
+                        _packet,
+                        "architect",
+                        overlays={
+                            "pinned_summary": getattr(self, "_pinned_context", ""),
+                            "viewport_summary": str(getattr(self, "_viewport_summary", "") or ""),
+                        },
+                    )
+                except Exception:
+                    _packet_slice = {}
             _prefetch_block = (
                 f"\n\n[Prefetch Context (MARKER_176.2)]\n"
                 f"Workflow: {_pctx.workflow_name} ({_pctx.workflow_id})\n"
@@ -3447,6 +3515,23 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 _prefetch_block += "\nSimilar past tasks: " + "; ".join(
                     t.get("description", "")[:50] for t in _pctx.similar_tasks[:3]
                 )
+            if _packet:
+                _prefetch_block += (
+                    f"\nTask packet: {getattr(_pctx, 'task_packet_summary', '') or 'attached'}"
+                    f"\nRoadmap node: {str(_packet_binding.get('roadmap_node_id') or _packet_binding.get('roadmap_title') or 'none')}"
+                    f"\nPacket docs: {', '.join(list(_packet_docs.get('architecture_docs') or [])[:4]) if _packet_docs.get('architecture_docs') else 'none'}"
+                    f"\nPacket tests: {', '.join(list(_packet_tests.get('closure_tests') or [])[:3]) if _packet_tests.get('closure_tests') else 'none'}"
+                    f"\nPacket scope: {', '.join(list(_packet_scope.get('closure_files') or [])[:4]) if _packet_scope.get('closure_files') else 'none'}"
+                    f"\nPacket gaps: {', '.join(_packet_gaps) if _packet_gaps else 'none'}"
+                )
+                if _packet_slice:
+                    _prefetch_block += (
+                        f"\nArchitect slice keys: {', '.join(sorted(_packet_slice.keys()))}"
+                    )
+                    _slice_ui = _packet_slice.get("ui_context") if isinstance(_packet_slice.get("ui_context"), dict) else {}
+                    _slice_viewport = str(_slice_ui.get("viewport_summary") or "").strip()
+                    if _slice_viewport:
+                        _prefetch_block += f"\nArchitect viewport: {_slice_viewport[:180]}"
             user_content += _prefetch_block
         # MARKER_176.2B_END
         # MARKER_151.14B: Inject team performance summary for Architect awareness
@@ -3454,10 +3539,31 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if team_perf:
             user_content = f"{team_perf}\n\n{user_content}"
 
+        # MARKER_178.4.2: Inject REFLEX feedback summary into architect prompt
+        _arch_system_prompt = prompt["system"]
+        try:
+            from src.services.reflex_integration import _is_enabled
+            if _is_enabled():
+                from src.services.reflex_feedback import get_reflex_feedback
+                fb = get_reflex_feedback()
+                summary = fb.get_feedback_summary()
+                if summary.get("total_entries", 0) > 0:
+                    reflex_preamble = f"\n\n[REFLEX Team Performance]\n"
+                    reflex_preamble += f"Total tool calls tracked: {summary['total_entries']}\n"
+                    reflex_preamble += f"Success rate: {summary['success_rate']:.0%}\n"
+                    reflex_preamble += f"Useful rate: {summary.get('useful_rate', 0):.0%}\n"
+                    tools = summary.get("tools", {})
+                    top_tools = sorted(tools.items(), key=lambda x: x[1]["count"], reverse=True)[:3]
+                    if top_tools:
+                        reflex_preamble += "Top tools: " + ", ".join(f"{t[0]}({t[1]['count']})" for t in top_tools) + "\n"
+                    _arch_system_prompt = _arch_system_prompt + reflex_preamble
+        except Exception:
+            pass
+
         call_args = {
             "model": model,
             "messages": [
-                {"role": "system", "content": prompt["system"]},
+                {"role": "system", "content": _arch_system_prompt},
                 {"role": "user", "content": user_content}
             ],
             "temperature": temperature,
@@ -3840,6 +3946,21 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         model = prompt.get("model", "anthropic/claude-sonnet-4")
         temperature = prompt.get("temperature", 0.4)
         system_prompt = prompt.get("system", "Execute the subtask. Be concise.")
+
+        # MARKER_178.4.4: Inject REFLEX recommendations into coder prompt
+        _reflex_recs_coder = []
+        try:
+            from src.services.reflex_integration import reflex_pre_fc, _is_enabled
+            if _is_enabled():
+                _reflex_recs_coder = reflex_pre_fc(subtask, phase_type=phase_type, agent_role="coder")
+                if _reflex_recs_coder:
+                    coder_hint = "\n\n[REFLEX Recommendations]\n"
+                    for rec in _reflex_recs_coder[:5]:
+                        if isinstance(rec, dict):
+                            coder_hint += f"- {rec.get('tool_id', '?')} (score: {rec.get('score', 0):.2f})\n"
+                    system_prompt = system_prompt + coder_hint
+        except Exception:
+            pass
 
         # MARKER_119.8: Pre-fetch library docs for coder context
         lib_context = ""

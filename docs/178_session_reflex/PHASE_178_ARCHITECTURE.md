@@ -200,16 +200,34 @@ vetka_git_commit(message, files)
 
 **Exit criteria:** After pipeline run, `feedback_log.jsonl` has entries. Match rate tracked.
 
-### Wave 4: Pipeline REFLEX Injection (~1 session)
-**Goal:** Dragon agents see REFLEX recommendations in their system prompts.
+### Wave 4: Universal REFLEX Injection — ALL surfaces (~1.5 session)
+**Goal:** REFLEX visible EVERYWHERE a model picks a tool. Recommended vs chosen — tracked on ALL platforms.
 
-- [ ] 178.4.1 Inject REFLEX summary into `pipeline_prompts.json` at runtime (not static edit)
-- [ ] 178.4.2 Architect sees: "Team performance: coder success 78%, verifier caught 3 issues"
-- [ ] 178.4.3 Coder sees: "REFLEX recommends: vetka_edit_file (0.92), vetka_search_semantic (0.85)"
-- [ ] 178.4.4 Add REFLEX context to `inject_context` in architect/coder calls
-- [ ] 178.4.5 Tests: 6 tests in `test_phase178_wave4.py`
+#### 4A: Dragon Pipeline (agent_pipeline.py)
+- [x] 178.4.1 IP-1,3,5,7 already fire (Waves 1-3)
+- [ ] 178.4.2 Inject REFLEX summary into system prompts at runtime
+- [ ] 178.4.3 Architect sees: "Team performance: coder success 78%, verifier caught 3 issues"
+- [ ] 178.4.4 Coder sees: "REFLEX recommends: vetka_edit_file (0.92), vetka_search_semantic (0.85)"
 
-**Exit criteria:** Dragon agents receive REFLEX guidance. Two worlds connected.
+#### 4B: MCC Workflow (orchestrator_with_elisya.py — PM→Architect→Dev→QA)
+- [ ] 178.4.5 Find injection points in workflow orchestrator
+- [ ] 178.4.6 Add reflex_pre_fc/post_fc to workflow agent calls
+- [ ] 178.4.7 Track recommended vs chosen in workflow context
+
+#### 4C: Chat Agent Calls (vetka_call_model / mycelium_call_model)
+- [ ] 178.4.8 Add REFLEX pre/post hooks to vetka_call_model MCP tool
+- [ ] 178.4.9 Add REFLEX pre/post hooks to mycelium_call_model MCP tool
+- [ ] 178.4.10 Every LLM call through VETKA ecosystem logs: recommended tools, chosen tools, match_rate
+
+#### 4D: Session Init for External Agents (Claude Code, Cursor, API)
+- [ ] 178.4.11 session_init already returns reflex_recommendations + next_steps (Wave 1)
+- [ ] 178.4.12 Add `reflex_report` to session_init: last 10 match_rates, feedback_summary
+- [ ] 178.4.13 External agents see full REFLEX picture on connect
+
+#### 4E: Tests
+- [ ] 178.4.14 Tests: ~12 tests in `test_phase178_wave4.py`
+
+**Exit criteria:** Every model call in VETKA ecosystem (pipeline, workflow, chat, MCP) has REFLEX visibility. Recommended vs chosen tracked everywhere.
 
 ### Wave 5: CLAUDE.md Dynamic Bridge (~0.5 session)
 **Goal:** Bridge static CLAUDE.md with dynamic session_init.
