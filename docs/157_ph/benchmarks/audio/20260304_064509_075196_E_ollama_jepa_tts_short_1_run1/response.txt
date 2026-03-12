@@ -1,0 +1,3 @@
+1. **ANTI_GRAVITY_FORMULAS_CHEATSHEET.md** - Этот файл содержит формулы для решения проблемы с перекрытиями веток в интерактивной структуре VETKA Tree.
+
+2. **Not explicitly mentioned in the context, but inferred from the 3D viewport context:** A file related to the `google_maps_foveated` LOD model could be crucial for rendering the 3D visualization efficiently at different zoom levels.

@@ -13,6 +13,7 @@ import { User, Bot, ClipboardList, Code, TestTube, Building, Sparkles, Reply, Fi
 import type { ChatMessage } from '../../types/chat';
 import { CompoundMessage } from './CompoundMessage';
 import { ReflexInsight } from './ReflexInsight';
+import { useStore } from '../../store/useStore';
 
 // Phase 48.3: Max chars before showing "read more"
 const MAX_PREVIEW_LENGTH = 500;
@@ -83,6 +84,8 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
   const isCompound = message.type === 'compound';
   // MARKER_174.REFLEX_LIVE: Tool selection visibility
   const isReflex = message.type === 'reflex';
+  // MARKER_174.TOGGLE: Gate REFLEX pills by user preference
+  const showReflexInsight = useStore(s => s.showReflexInsight);
 
   // Phase 48.4: Emoji reactions state
   const [showReactions, setShowReactions] = useState(false);
@@ -551,8 +554,8 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
     );
   }
 
-  // MARKER_174.REFLEX_LIVE: REFLEX tool selection insight
-  if (isReflex && message.metadata?.reflex) {
+  // MARKER_174.REFLEX_LIVE: REFLEX tool selection insight (gated by toggle)
+  if (isReflex && showReflexInsight && message.metadata?.reflex) {
     return <ReflexInsight message={message} />;
   }
 

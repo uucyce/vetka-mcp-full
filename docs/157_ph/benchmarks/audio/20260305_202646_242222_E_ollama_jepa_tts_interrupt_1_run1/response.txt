@@ -1,0 +1,6 @@
+The user is asking for the first two steps to take when explaining how context packing works in VETKA. 
+
+The answer is: 
+
+1. **Prioritize Key-Value Context:** Instead of full memory snapshots, focus on packing only the key-value pairs.
+2. **Add endpoint code**: Add ~50 lines of endpoint code to `src/api/routes/config_routes.py` to enable fetching saved keys.

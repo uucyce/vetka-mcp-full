@@ -1,0 +1,3 @@
+Поскольку в предоставленном контексте нет конкретной информации о протоколе "interrupt + restart stream", я не могу предоставить точную explanations. 
+
+В контексте есть информация о voice handoff и tool-loop transparency, но это связано с более широкой темой "Capability Matrix: Unified Stream + Tools" (MARKER_152.CAP_MATRIX.UNIFIED_STREAM_TOOLS.SPEC).

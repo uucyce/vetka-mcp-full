@@ -1,0 +1,4 @@
+<think>
+Okay, let's tackle this user question. They want two specific files from the provided context and one phrase explaining why each is needed. 
+
+First, I'll look through the pinned_context section. The first pinned file is "HAIKU_TEST_4_WATCHER_MARKERS.md" which discusses

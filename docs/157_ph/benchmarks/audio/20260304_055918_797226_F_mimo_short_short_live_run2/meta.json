@@ -1,0 +1,10 @@
+{
+  "mode": "F_mimo_short",
+  "prompt_id": "short_live",
+  "run_index": 2,
+  "audio_chunks": 0,
+  "ttft_text_ms": 2039.8664159874897,
+  "ttfa_audio_ms": null,
+  "merged_wav": null,
+  "wav_qc": null
+}

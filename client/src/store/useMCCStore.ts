@@ -306,7 +306,8 @@ export const LEVEL_CONFIG: Record<NavLevel, LevelConfig> = {
     icon: '📋',
     actions: [
       { label: 'Launch', icon: '▶', action: 'launchTask', shortcut: '1', primary: true },
-      { label: 'Edit', icon: '✏', action: 'editTask', shortcut: '2' },
+      // MARKER_176.1F: Create roadmap-derived tasks from the current roadmap focus.
+      { label: 'Create Tasks', icon: '📋', action: 'createTasksFromRoadmap', shortcut: '2' },
       { label: 'Back', icon: '←', action: 'goBack', shortcut: 'Esc' },
     ],
   },
@@ -332,8 +333,9 @@ export const LEVEL_CONFIG: Record<NavLevel, LevelConfig> = {
     label: 'Results',
     icon: '📊',
     actions: [
-      { label: 'Accept', icon: '✓', action: 'apply', shortcut: '1', primary: true },
-      { label: 'Redo', icon: '↻', action: 'redo', shortcut: '2' },
+      { label: 'Apply', icon: '✓', action: 'apply', shortcut: '1', primary: true },
+      // MARKER_176.3F: Reject opens feedback/requeue flow for result review.
+      { label: 'Reject', icon: '✕', action: 'reject', shortcut: '2' },
       { label: 'Back', icon: '←', action: 'goBack', shortcut: 'Esc' },
     ],
   },

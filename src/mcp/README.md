@@ -4,6 +4,13 @@ VETKA MCP runtime core: a multi-transport MCP gateway and tool system for
 agent orchestration, semantic retrieval, workflow execution, and controlled
 write operations.
 
+## Canonical Terms
+
+- VETKA: Visual Enhanced Tree Knowledge Architecture.
+- MYCELIUM: Multi-agent Yielding Cognitive Execution Layer for Intelligent Unified Management.
+- ELISYA: Efficient Language-Independent Synchronization of Yielding Agents.
+- ELISION: Efficient Language-Independent Symbolic Inversion of Names.
+
 ## Why This Module Matters
 - Bridges external agents to VETKA through MCP with one tool surface.
 - Supports both low-latency stateless calls and heavy async pipelines.

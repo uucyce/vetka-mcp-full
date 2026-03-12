@@ -1,0 +1,5 @@
+Okay, let's break down the interrupt and restart stream protocol within this codebase, focusing on its impact on voice handoff and tool-loop transparency.
+
+**Understanding the Core Problem:**
+
+The current architecture, as revealed by these

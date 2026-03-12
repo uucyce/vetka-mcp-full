@@ -106,3 +106,143 @@ Protocol: `RECON -> REPORT -> WAIT GO -> IMPL NARROW -> VERIFY`
 3. `MARKER_162.P3.MYCO.ENGRAM_USER_TASK_MEMORY.V1`
 4. `MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1`
 5. `MARKER_162.P3.MYCO.NO_UI_MEMORY_SURFACE.V1`
+
+## P3.P2 (implemented, 2026-03-06)
+1. Add orchestration snapshot (`multitask + project_digest`) to hidden MYCO payload.
+2. Persist lightweight runtime facts back to ENGRAM (`myco_last_project`, `myco_last_focus`, `myco_last_phase`).
+3. Surface orchestration hints in MYCO quick replies and JEPA pack input.
+
+## Markers (P3.P2)
+1. `MARKER_162.P3.P2.MYCO.ORCHESTRATION_SNAPSHOT.V1`
+2. `MARKER_162.P3.P2.MYCO.ENGRAM_PERSIST_RUNTIME_FACTS.V1`
+
+## P3.P3 (implemented, 2026-03-06)
+1. Split instruction corpus into RAG-ready docs:
+- `myco_core`
+- `agent_roles`
+- `user_playbook`
+2. Enrich multitask snapshot with execution config (`max_concurrent`, `auto_dispatch`, board phase).
+3. Reflect enriched orchestration snapshot in quick MYCO reply contract.
+
+## Markers (P3.P3)
+1. `MARKER_162.P3.P3.MYCO.RAG_CORE_SPLIT.V1`
+2. `MARKER_162.P3.P3.MYCO.RAG_AGENT_ROLES_SPLIT.V1`
+3. `MARKER_162.P3.P3.MYCO.RAG_USER_PLAYBOOK_SPLIT.V1`
+4. `MARKER_162.P3.P3.MYCO.MULTITASK_CFG_SNAPSHOT.V1`
+
+## P3.P4 (recon locked, waiting GO)
+1. Connect hidden instruction index to real MYCO retrieval path.
+2. Add glossary alias expansion from canonical memory abbreviations glossary.
+3. Add retrieval quality gate + deterministic fallback.
+4. Add retrieval coverage tests for phase-162 gate.
+
+## Markers (P3.P4)
+1. `MARKER_162.P3.P4.MYCO.RETRIEVAL_BRIDGE.V1`
+2. `MARKER_162.P3.P4.MYCO.GLOSSARY_ALIAS_EXPANSION.V1`
+3. `MARKER_162.P3.P4.MYCO.RETRIEVAL_QUALITY_GATE.V1`
+4. `MARKER_162.P3.P4.MYCO.RETRIEVAL_COVERAGE_TESTS.V1`
+
+Status: `implemented (2026-03-06)` in:
+- `PHASE_162_P3_P4_RETRIEVAL_QUALITY_IMPL_REPORT_2026-03-06.md`
+
+## P4.P1 (implemented, 2026-03-06)
+1. Proactive MYCO reply on context switch in compact chat (deduped by stable context key).
+2. Proactive MYCO reply on context switch in expanded chat (deduped by stable context key).
+3. Remove compact-mode regression path that wrote to expanded-chat state (`setMessages`).
+
+## Markers (P4.P1)
+1. `MARKER_162.P4.P1.MYCO.CONTEXT_PROACTIVE_CHAT_COMPACT.V1`
+2. `MARKER_162.P4.P1.MYCO.CONTEXT_PROACTIVE_CHAT_EXPANDED.V1`
+3. `MARKER_162.P4.P1.MYCO.COMPACT_NO_STALE_SETMESSAGES.V1`
+
+Status: `implemented (2026-03-06)` in:
+- `PHASE_162_P4_P1_PROACTIVE_CHAT_RECON_REPORT_2026-03-06.md`
+- `PHASE_162_P4_P1_PROACTIVE_CHAT_IMPL_REPORT_2026-03-06.md`
+
+## P4.P2 (implemented, 2026-03-07)
+Goal: make MYCO proactive guidance state-aware after drill/unfold transitions.
+
+1. Top hint must switch from pre-drill prompt to post-drill actions once drill is expanded.
+2. Workflow-focused hinting should propose concrete next actions (select agent, inspect context, change model, run/retry).
+3. Roadmap node unfold hinting should propose unfold/navigation actions instead of generic drill prompt.
+4. Chat MYCO replies should use a state matrix (`what -> why -> next`) based on real MCC drill state.
+
+## Markers (P4.P2)
+1. `MARKER_162.P4.P2.MYCO.TOP_HINT_POST_DRILL_PRIORITY.V1`
+2. `MARKER_162.P4.P2.MYCO.TOP_HINT_WORKFLOW_ACTIONS.V1`
+3. `MARKER_162.P4.P2.MYCO.TOP_HINT_NODE_UNFOLD_ACTIONS.V1`
+4. `MARKER_162.P4.P2.MYCO.CHAT_REPLY_STATE_MATRIX.V1`
+5. `MARKER_162.P4.P2.MYCO.NO_STALE_DRILL_PROMPT_AFTER_EXPAND.V1`
+6. `MARKER_162.P4.P2.MYCO.PROACTIVE_NEXT_ACTION_PACK.V1`
+
+Status: `recon complete (2026-03-07)` in:
+- `PHASE_162_P4_P2_PROACTIVE_GUIDANCE_RECON_REPORT_2026-03-07.md`
+
+Status: `implemented (2026-03-07)` in:
+- `PHASE_162_P4_P2_PROACTIVE_GUIDANCE_IMPL_REPORT_2026-03-07.md`
+
+## P4.P3 (implemented, 2026-03-07)
+Goal: align MYCO instructions with real MYCELIUM capability surface and make RAG retrieval state-key aware.
+
+1. Add MYCELIUM capability matrix to MYCO instruction guide.
+2. Add proactive message state matrix (pre/post drill, workflow, tasks).
+3. Add state-key enrichment policy for hidden retrieval (`nav_level`, drill states, `node_kind`).
+4. Send drill-state fields from MiniChat to backend quick-chat context.
+5. Use state-aware next-action pack in quick MYCO replies.
+
+## Markers (P4.P3)
+1. `MARKER_162.P4.P3.MYCO.MYCELIUM_CAPABILITY_MATRIX.V1`
+2. `MARKER_162.P4.P3.MYCO.PROACTIVE_MESSAGE_STATE_MATRIX.V1`
+3. `MARKER_162.P4.P3.MYCO.RAG_STATE_KEY_ENRICHMENT.V1`
+4. `MARKER_162.P4.P3.MYCO.CHAT_CONTEXT_DRILL_FIELDS.V1`
+5. `MARKER_162.P4.P3.MYCO.PROACTIVE_NEXT_ACTION_PACK.V1`
+
+Status: `recon complete (2026-03-07)` in:
+- `PHASE_162_P4_P3_MYCELIUM_CAPABILITY_RAG_RECON_REPORT_2026-03-07.md`
+
+Status: `implemented (2026-03-07)` in:
+- `PHASE_162_P4_P3_MYCELIUM_CAPABILITY_RAG_IMPL_REPORT_2026-03-07.md`
+
+## P4.P4 (implemented, 2026-03-07)
+Goal: remove generic roadmap fallback in workflow contexts and provide node/role/workflow-family specific guidance.
+
+1. Expand MiniChat->quick-chat context with `graph_kind/workflow_id/team_profile/workflow_family/status/model/path`.
+2. Extend MYCO quick response matrix by:
+- node kind (`task/agent/file/directory/project`);
+- agent role (`architect/coder/verifier/eval/...`);
+- workflow family (`dragons/titans/g3/ralph_loop/bmad/custom`).
+3. Extend top hint matrix with role/family cues while workflow is open.
+4. Add detailed instruction matrix to guide (node/subnode/agent/role/workflow switch/run paths).
+
+## Markers (P4.P4)
+1. `MARKER_162.P4.P4.MYCO.TOP_HINT_NODE_ROLE_WORKFLOW_MATRIX.V1`
+2. `MARKER_162.P4.P4.MYCO.CHAT_REPLY_NODE_ROLE_WORKFLOW_MATRIX.V1`
+3. `MARKER_162.P4.P4.MYCO.NODE_ROLE_WORKFLOW_NEXT_ACTIONS.V1`
+4. `MARKER_162.P4.P4.MYCO.NODE_ROLE_WORKFLOW_GUIDE_MATRIX.V1`
+
+Status: `recon complete (2026-03-07)` in:
+- `PHASE_162_P4_P4_NODE_ROLE_WORKFLOW_RECON_REPORT_2026-03-07.md`
+
+Status: `implemented (2026-03-07)` in:
+- `PHASE_162_P4_P4_NODE_ROLE_WORKFLOW_IMPL_REPORT_2026-03-07.md`
+
+## P4.P5 (implemented, 2026-03-07)
+Goal: lock runtime MYCO scenario behavior by executable tests on real quick-reply matrix.
+
+1. Add direct runtime tests for `_build_myco_quick_reply(...)` (not only static marker contracts).
+2. Cover critical scenarios:
+- roadmap + module unfold;
+- roadmap + workflow expanded + architect (dragons);
+- roadmap + workflow expanded + coder (titans);
+- roadmap + workflow expanded + verifier;
+- task scope with family hint.
+3. Prevent regression to generic roadmap fallback on workflow-level contexts.
+
+## Markers (P4.P5)
+1. `MARKER_162.P4.P5.MYCO.RUNTIME_SCENARIO_MATRIX_LOCK.V1`
+
+Status: `recon complete (2026-03-07)` in:
+- `PHASE_162_P4_P5_RUNTIME_SCENARIO_MATRIX_RECON_REPORT_2026-03-07.md`
+
+Status: `implemented (2026-03-07)` in:
+- `PHASE_162_P4_P5_RUNTIME_SCENARIO_MATRIX_IMPL_REPORT_2026-03-07.md`

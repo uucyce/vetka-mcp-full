@@ -1,0 +1,15 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,122,False,TimeoutError: per-run timeout 20.0s,,,,,25462.41,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_044109_688340_D_ollama_tts_short_1_run1,,,,,,True,8,algorithmic,False,False,2026-03-04T01:41:35.099938+00:00
+D_ollama_tts,context_1,1,133,False,TimeoutError: per-run timeout 20.0s,,,,,44388.4,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_044135_113235_D_ollama_tts_context_1_run1,,,,,,True,8,algorithmic,False,False,2026-03-04T01:42:19.488994+00:00
+D_ollama_tts,long_1,1,171,False,TimeoutError: per-run timeout 20.0s,4678.93,,4678.93,,21502.69,38,0,133,0.0,"Interrupt + Restart Stream Protocol: Пошаговое объяснение
+
+1. **Понимание контекста**: В контексте задачи, представленной в предостав",docs/157_ph/benchmarks/audio/20260304_044219_503245_D_ollama_tts_long_1_run1,,,,,,True,8,algorithmic,False,False,2026-03-04T01:42:40.992626+00:00
+E_ollama_jepa_tts,short_1,1,122,False,TimeoutError: per-run timeout 20.0s,10812.79,,10812.79,,27226.33,41,0,146,0.0,"2 конкретных файла:
+
+* `101_ph_eval_reactions/chat_into_vetka_grok.txt`: Этот файл необходим для понимания интеграции чатов с VETKA, поскольку в н",docs/157_ph/benchmarks/audio/20260304_044243_412995_E_ollama_jepa_tts_short_1_run1,,,,,,True,8,hybrid-jepa,True,True,2026-03-04T01:43:08.223610+00:00
+E_ollama_jepa_tts,context_1,1,133,False,TimeoutError: per-run timeout 20.0s,10155.94,14722.45,10155.94,14722.45,20854.86,28,3,131,0.0,"Based on the provided context, here are three points to improve memory context packing in VETKA without regressing latency:
+
+1.  **",docs/157_ph/benchmarks/audio/20260304_044311_534791_E_ollama_jepa_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260304_044311_534791_E_ollama_jepa_tts_context_1_run1/merged.wav,41.75,20,1920,0,True,8,hybrid-jepa,True,True,2026-03-04T01:43:29.079121+00:00
+E_ollama_jepa_tts,long_1,1,171,False,TimeoutError: per-run timeout 20.0s,6421.28,12440.18,6421.28,12440.18,22247.81,37,3,186,0.0,"Interrupt + Restart Stream Protocol:
+
+1. **Interrupt**: When the tool execution mode is not enabled (`enabled_stream|enabled_non_stream|disabled_stream`), the model should not claim that",docs/157_ph/benchmarks/audio/20260304_044329_087265_E_ollama_jepa_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260304_044329_087265_E_ollama_jepa_tts_long_1_run1/merged.wav,31.0,23,2220,0,True,8,hybrid-jepa,True,True,2026-03-04T01:43:51.327273+00:00

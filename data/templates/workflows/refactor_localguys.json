@@ -1,0 +1,26 @@
+{
+  "id": "refactor_localguys_v1",
+  "name": "Refactor localguys",
+  "description": "Allowlisted local refactor workflow with scout, architect, coder, and verifier.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-03-12T00:00:00Z",
+    "author": "vetka-system",
+    "preset": "dragon_silver",
+    "task_types": ["localguys", "refactor_localguys", "refactor_patch_local"],
+    "workflow_family": {
+      "family": "refactor_localguys",
+      "version": "v1",
+      "roles": ["scout", "architect", "coder", "verifier"],
+      "policy": {
+        "edge_semantics": "strict",
+        "role_contract": "strict",
+        "supports_runtime_edge_edit": false,
+        "allows_structural_cycles": false,
+        "stub": false
+      }
+    }
+  },
+  "nodes": [],
+  "edges": []
+}

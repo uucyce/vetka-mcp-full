@@ -9,8 +9,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+// MARKER_176.15: Centralized MCC API config import.
+import { API_BASE } from '../../config/api.config';
 
-const PIPELINE_API = 'http://localhost:5001/api/pipeline';
+const PIPELINE_API = `${API_BASE}/pipeline`;
 
 export interface PresetInfo {
   name: string;

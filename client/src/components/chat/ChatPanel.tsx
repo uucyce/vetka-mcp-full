@@ -49,7 +49,8 @@ interface Props {
   onClose: () => void;
   leftPanel: 'none' | 'history' | 'models';
   setLeftPanel: (value: 'none' | 'history' | 'models') => void;
-  onVoiceTrigger?: () => void;
+  onVoiceTrigger?: (role?: 'myco' | 'vetka') => void;
+  onSpeakText?: (text: string, role?: 'myco' | 'vetka', options?: { autoListenAfter?: boolean }) => void;
   voiceState?: 'idle' | 'listening' | 'thinking' | 'speaking';
   voiceLevel?: number;
   mycoHint?: MycoModeAHint | null;
@@ -64,6 +65,7 @@ export function ChatPanel({
   leftPanel,
   setLeftPanel,
   onVoiceTrigger,
+  onSpeakText,
   voiceState,
   voiceLevel,
   mycoHint,
@@ -97,6 +99,7 @@ export function ChatPanel({
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const panelRootRef = useRef<HTMLDivElement>(null);
   // MARKER_137.2: Prevent pinned autosave race while loading/switching chats.
   const isHydratingChatPinsRef = useRef(false);
 
@@ -2454,6 +2457,7 @@ export function ChatPanel({
       {/* Phase 81.1: Position can be left or right */}
       {/* Phase I5: Drop zone for file pinning */}
       <div
+        ref={panelRootRef}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleFileDrop}
@@ -3036,9 +3040,12 @@ export function ChatPanel({
             onSelectResult={handleSearchSelect}
             onPinResult={handleSearchPin}
             onVoiceTrigger={onVoiceTrigger}
+            onSpeakText={onSpeakText}
             voiceState={voiceState}
             voiceLevel={voiceLevel}
             laneSurface="chat"
+            chatPosition={chatPosition}
+            previewAnchorRef={panelRootRef}
             mycoHint={mycoHint}
             mycoStateKey={mycoStateKey}
             preferredSearchContext={activeTab === 'scanner' ? scannerLaneContext : undefined}

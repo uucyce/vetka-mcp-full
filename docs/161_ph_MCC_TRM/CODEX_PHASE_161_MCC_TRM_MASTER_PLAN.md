@@ -153,6 +153,23 @@ Acceptance:
 - source step is understandable without technical wording
 - no regression in tab scope binding and existing `tests/mcc`
 
+### W9. Project naming contract (P161.9)
+Deliverables:
+- explicit `project_name` in project-init API request/response
+- persistent `display_name` in project config + project registry rows
+- tab label priority updated to `display_name -> sandbox basename -> source basename -> project_id`
+- first-run flow derives `project_name` from workspace folder basename by default
+
+Markers:
+- `MARKER_161.9.MULTIPROJECT.NAMING.API_CONTRACT.V1`
+- `MARKER_161.9.MULTIPROJECT.NAMING.CONFIG_PERSIST.V1`
+- `MARKER_161.9.MULTIPROJECT.NAMING.UI_TAB_LABEL.V1`
+
+Acceptance:
+- created project name is stable across restart/list/init/activate flows
+- workspace folder name fallback works when explicit name is omitted
+- no regression in `tests/mcc`
+
 ## Milestone Sequence (strict)
 
 1. M161-A (`RECON+REPORT`): docs + marker map + no behavior changes.

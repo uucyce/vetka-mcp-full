@@ -19,8 +19,9 @@ import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import type { DAGNode } from '../../types/dag';
 import { ReflexInsight } from '../chat/ReflexInsight';
 import type { ChatMessage } from '../../types/chat';
+// MARKER_176.15: Centralized MCC API config import.
+import { API_BASE } from '../../config/api.config';
 
-const API_BASE = 'http://localhost:5001/api';
 
 interface NodeArtifact {
   id: string;

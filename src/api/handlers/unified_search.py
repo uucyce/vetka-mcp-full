@@ -28,6 +28,27 @@ SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "bu
 SCAN_ROOTS = ("src", "data")
 
 
+def _provider_available(provider_name: str, env_var: str = "") -> bool:
+    """
+    Provider availability contract for search capabilities.
+
+    Order:
+    1) explicit env var (fast path)
+    2) UnifiedKeyManager provider pool (source of truth for runtime)
+    """
+    if env_var and os.getenv(env_var):
+        return True
+
+    try:
+        from src.utils.unified_key_manager import get_key_manager, ProviderType
+
+        km = get_key_manager()
+        provider_key = getattr(ProviderType, provider_name.upper(), provider_name.lower())
+        return km.get_provider_keys_count(provider_key) > 0
+    except Exception:
+        return False
+
+
 def _normalize_item(
     source: str,
     title: str,
@@ -158,7 +179,7 @@ def _semantic_search(query: str, limit: int) -> List[Dict[str, Any]]:
         return []
 
 
-def _web_search(query: str, limit: int) -> List[Dict[str, Any]]:
+def _web_search(query: str, limit: int) -> tuple[List[Dict[str, Any]], Optional[str]]:
     def _normalize_web_score(raw_score: Any, rank: int) -> float:
         try:
             score = float(raw_score)
@@ -177,7 +198,10 @@ def _web_search(query: str, limit: int) -> List[Dict[str, Any]]:
         from src.mcp.tools.web_search_tool import WebSearchTool
 
         payload = WebSearchTool().execute({"query": query, "max_results": min(limit, 10)})
-        rows = payload.get("result", {}).get("results", []) if payload.get("success") else []
+        if not payload.get("success"):
+            return [], str(payload.get("error") or "web search unavailable")
+
+        rows = payload.get("result", {}).get("results", [])
 
         results: List[Dict[str, Any]] = []
         seen_urls = set()
@@ -198,9 +222,9 @@ def _web_search(query: str, limit: int) -> List[Dict[str, Any]]:
                     url=url,
                 )
             )
-        return results
-    except Exception:
-        return []
+        return results, None
+    except Exception as e:
+        return [], str(e)
 
 
 def _social_search(query: str, limit: int) -> List[Dict[str, Any]]:  # noqa: ARG001
@@ -235,13 +259,17 @@ def run_unified_search(
         }
 
     by_source: Dict[str, List[Dict[str, Any]]] = {}
+    source_errors: Dict[str, str] = {}
 
     if "file" in selected_sources:
         by_source["file"] = _file_search(query, limit)
     if "semantic" in selected_sources:
         by_source["semantic"] = _semantic_search(query, limit)
     if "web" in selected_sources:
-        by_source["web"] = _web_search(query, limit)
+        web_results, web_error = _web_search(query, limit)
+        by_source["web"] = web_results
+        if web_error:
+            source_errors["web"] = web_error
     if "social" in selected_sources:
         by_source["social"] = _social_search(query, limit)
 
@@ -257,6 +285,7 @@ def run_unified_search(
         "query": query,
         "results": merged,
         "by_source": by_source,
+        "source_errors": source_errors,
         "sources": selected_sources,
         "count": len(merged),
         "took_ms": int((time.time() - started) * 1000),
@@ -269,13 +298,16 @@ def get_search_capabilities(context: str = "vetka") -> Dict[str, Any]:
     """
     ctx = (context or "vetka").strip().lower()
     if ctx == "web":
-        tavily_ready = bool(os.getenv("TAVILY_API_KEY"))
+        # MARKER_169.TAVILY_CAPABILITY_ENV_FIX: resolve provider health from env OR UnifiedKeyManager.
+        tavily_ready = _provider_available("tavily", env_var="TAVILY_API_KEY")
+        serper_ready = _provider_available("serper", env_var="SERPER_API_KEY")
         return {
             "success": True,
             "context": "web",
             "supported_modes": ["hybrid", "keyword"],
             "provider_health": {
                 "tavily": {"available": tavily_ready},
+                "serper": {"available": serper_ready},
             },
         }
     if ctx == "file":

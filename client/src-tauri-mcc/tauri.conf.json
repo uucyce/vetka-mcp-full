@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MYCELIUM",
+  "version": "0.1.0",
+  "identifier": "ai.vetka.mycelium",
+  "build": {
+    "beforeDevCommand": "VITE_MODE=mcc npm run dev:mcc",
+    "devUrl": "http://localhost:3002",
+    "beforeBuildCommand": "npm run build:mcc",
+    "frontendDist": "../../dist-mcc"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "MYCELIUM Command Center",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:5001 ws://127.0.0.1:5001 http://localhost:5001 ws://localhost:5001 http://127.0.0.1:8082 ws://127.0.0.1:8082 http://localhost:8082 ws://localhost:8082; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com https://fonts.googleapis.com"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
+  }
+}

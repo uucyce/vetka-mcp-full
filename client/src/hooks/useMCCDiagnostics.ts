@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+// MARKER_176.15: Centralized MCC API config import.
+import { MCC_API } from '../config/api.config';
 
-const API_BASE = 'http://localhost:5001/api';
 const MIN_RUNTIME_FETCH_INTERVAL_MS = 2000;
 const MIN_BUILD_FETCH_INTERVAL_MS = 15000;
 const MAX_EVENT_LOG = 30;
@@ -141,10 +142,10 @@ export function useMCCDiagnostics() {
 
     try {
       const runtimePromise = shouldFetchRuntime
-        ? fetch(`${API_BASE}/mcc/graph/predict/runtime-health?force=${forceRuntime ? 'true' : 'false'}`)
+        ? fetch(`${MCC_API}/graph/predict/runtime-health?force=${forceRuntime ? 'true' : 'false'}`)
         : Promise.resolve(null);
       const buildPromise = shouldFetchBuild
-        ? fetch(`${API_BASE}/mcc/graph/build-design`, {
+        ? fetch(`${MCC_API}/graph/build-design`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

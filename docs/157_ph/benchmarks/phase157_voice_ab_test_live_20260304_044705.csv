@@ -1,0 +1,11 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,122,False,TimeoutError: per-run timeout 20.0s,,,,,37160.47,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_044352_659246_D_ollama_tts_short_1_run1,,,,,,True,8,algorithmic,False,False,2026-03-04T01:44:29.772378+00:00
+D_ollama_tts,context_1,1,133,False,TimeoutError: per-run timeout 20.0s,,,,,55719.32,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_044429_804114_D_ollama_tts_context_1_run1,,,,,,True,8,algorithmic,False,False,2026-03-04T01:45:25.492626+00:00
+D_ollama_tts,long_1,1,171,False,TimeoutError: per-run timeout 20.0s,10429.32,,10429.32,,26766.42,20,0,90,0.0,"<think>
+Okay, let's tackle this question. The user wants a step-by-step explanation of the",docs/157_ph/benchmarks/audio/20260304_044525_513971_D_ollama_tts_long_1_run1,,,,,,True,8,algorithmic,False,False,2026-03-04T01:45:52.259688+00:00
+E_ollama_jepa_tts,short_1,1,122,False,TimeoutError: per-run timeout 20.0s,14671.69,19858.48,14671.69,19858.48,27249.48,19,2,93,0.0,"<think>
+Okay, let's tackle this question. The user wants two specific files from the provided",docs/157_ph/benchmarks/audio/20260304_044553_837905_E_ollama_jepa_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260304_044553_837905_E_ollama_jepa_tts_short_1_run1/merged.wav,56.75,6,1840,0,True,8,hybrid-jepa,True,True,2026-03-04T01:46:19.509761+00:00
+E_ollama_jepa_tts,context_1,1,133,False,TimeoutError: per-run timeout 20.0s,14002.97,,14002.97,,22387.2,11,0,45,0.0,"<think>
+Okay, let's tackle this question. The",docs/157_ph/benchmarks/audio/20260304_044619_526768_E_ollama_jepa_tts_context_1_run1,,,,,,True,8,hybrid-jepa,True,True,2026-03-04T01:46:41.902021+00:00
+E_ollama_jepa_tts,long_1,1,171,False,TimeoutError: per-run timeout 20.0s,15339.55,,15339.55,,23697.65,11,0,45,0.0,"<think>
+Okay, let's tackle this question. The",docs/157_ph/benchmarks/audio/20260304_044642_898203_E_ollama_jepa_tts_long_1_run1,,,,,,True,8,hybrid-jepa,True,True,2026-03-04T01:47:05.601127+00:00

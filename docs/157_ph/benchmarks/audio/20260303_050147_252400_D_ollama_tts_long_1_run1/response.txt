@@ -1,0 +1,5 @@
+**Устройство Interrupt + Restart Stream Protocol:**
+
+1. **Отправка данных**: Сокет-источник отправляет данные по
+
+[Stream stopped: timeout]

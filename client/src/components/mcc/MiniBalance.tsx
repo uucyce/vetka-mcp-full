@@ -11,8 +11,9 @@ import { MiniWindow } from './MiniWindow';
 import { BalancesPanel } from '../panels/BalancesPanel';
 import { useMCCStore } from '../../store/useMCCStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+// MARKER_176.15: Centralized MCC API config import.
+import { DEBUG_API } from '../../config/api.config';
 
-const API_DEBUG = 'http://localhost:5001/api/debug';
 
 interface BalanceRecord {
   provider: string;
@@ -62,7 +63,7 @@ function BalanceCompact() {
     if (now - lastFetchRef.current < 1000) return;
     lastFetchRef.current = now;
     try {
-      const res = await fetch(`${API_DEBUG}/usage/balances`);
+      const res = await fetch(`${DEBUG_API}/usage/balances`);
       if (!res.ok) return;
       const data: BalancesResponse = await res.json();
       if (data.success && Array.isArray(data.records)) {

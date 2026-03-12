@@ -1,0 +1,4 @@
+<think>
+Okay, let's tackle this question about improving memory context packing in VETKA without affecting latency. The user wants a concise plan with three specific points.
+
+First, I need to recall the context

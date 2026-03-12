@@ -1,0 +1,3 @@
+Interrupt+Restart Stream Protocol (ISR) используется в сетях с высокой задержкой для обеспечения прозрачности голосового потока при пер
+
+[Stream stopped: timeout]

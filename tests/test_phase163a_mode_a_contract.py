@@ -45,6 +45,17 @@ def test_mode_a_chat_and_search_event_bridges_exist():
     assert "MARKER_163A.MODE_A.SILENCE.ON_TYPING.V1" in chat
 
 
+def test_lane_trigger_split_keeps_prefix_for_context_and_icon_for_voice():
+    search = _read("client/src/components/search/UnifiedSearchBar.tsx")
+    assert "setShowContextMenu(!showContextMenu);" in search
+    assert "title=\"Change search context\"" in search
+    assert "&& voiceState === 'idle'" in search
+    assert "onSpeakText(deterministicSpeechText, 'myco', { autoListenAfter: true });" in search
+    assert "onVoiceTrigger?.(laneRoleVisual === 'vetka' ? 'vetka' : 'myco');" in search
+    prefix_block = search.split("title=\"Change search context\"", 1)[0]
+    assert "onVoiceTrigger?.(" not in prefix_block[-1200:]
+
+
 def test_mode_a_silence_rules_are_locked_in_rules_layer():
     rules = _read("client/src/components/myco/mycoModeARules.ts")
     assert "if (!snapshot.chatInputEmpty) return null;" in rules

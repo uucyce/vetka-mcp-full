@@ -18,7 +18,17 @@ Current strategy:
 - treat contextual actions as status-gated:
   - file not yet in VETKA -> show VETKA ingest action
   - file already in VETKA -> replace ingest action with time-marker actions
+- before `VETKA Core/CUT` is available, presses on the `VETKA` logo may be recorded as provisional player-side events using the same local marker/comment lane that can later export to SRT-compatible bundles
+- once `VETKA Core/CUT` is connected, these provisional events must migrate into canonical CUT time markers and the contextual icon switches from `VETKA` logo to `star`
 - keep preview quality selector in the donor-player because high-resolution media needs performance control independently of CUT runtime
+
+Transitional rule:
+- `VETKA` logo in standalone mode is not a permanent file favorite
+- it is a temporary capture affordance before Core/CUT is online
+- `star` appears only after Core/CUT-backed moment semantics are available
+
+Marker:
+- `MARKER_168.VIDEOPLAYER.TRANSITIONAL_VETKA_LOGO_BUFFER`
 
 Artifacts in this folder:
 - recon reports

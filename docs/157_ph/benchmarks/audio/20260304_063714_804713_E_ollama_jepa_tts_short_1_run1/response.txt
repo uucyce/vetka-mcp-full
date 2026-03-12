@@ -1,0 +1,2 @@
+1.  `GROK_ANTI_GRAVITY_COLLISION_AVOIDANCE.md`: "Найти формулы для anti-gravity и collision avoidance между файлами/ветками"
+2.  `GROK_ANTI_GRAVITY_COLLISION_AVOIDANCE.md`: "Использовать Sugiyama layered layout с Y-ось: слои (по глубине), файлы распределяются вертикально по времени"

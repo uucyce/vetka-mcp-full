@@ -1,0 +1,8 @@
+Okay, here’s a concise breakdown of the Interrupt + Restart Stream (IRS) protocol and its impact:
+
+**1. IRS Protocol - Steps:**
+
+*   **Interrupt:**  The current voice stream is abruptly terminated.
+*   **Short Delay:** A brief pause (milliseconds) occurs.
+*   **Restart:** A new voice stream is initiated.
+*   **Metadata:**  Crucially, metadata (e.g., session ID, caller ID) is

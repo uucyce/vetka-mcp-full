@@ -75,6 +75,18 @@ def test_cut_scene_assembly_async_creates_initial_timeline_state(tmp_path: Path)
     assert len(scene_graph['nodes']) >= 3
     assert any(node['node_type'] == 'scene' for node in scene_graph['nodes'])
     assert any(edge['edge_type'] == 'contains' for edge in scene_graph['edges'])
+    scene_node = next(node for node in scene_graph['nodes'] if node['node_type'] == 'scene')
+    take_node = next(node for node in scene_graph['nodes'] if node['node_type'] == 'take')
+    asset_node = next(node for node in scene_graph['nodes'] if node['node_type'] == 'asset')
+    assert scene_node['metadata']['scene_index'] == 1
+    assert scene_node['metadata']['take_count'] >= 1
+    assert scene_node['metadata']['asset_count'] >= 1
+    assert scene_node['metadata']['summary']
+    assert take_node['metadata']['take_index'] == 1
+    assert take_node['metadata']['source_path'].endswith(('.mp4', '.wav'))
+    assert take_node['metadata']['modality'] in {'video', 'audio'}
+    assert asset_node['metadata']['asset_kind'] in {'video', 'audio'}
+    assert asset_node['metadata']['modality'] in {'video', 'audio'}
 
     persisted_path = sandbox_root / 'cut_runtime' / 'state' / 'timeline_state.latest.json'
     assert persisted_path.exists()

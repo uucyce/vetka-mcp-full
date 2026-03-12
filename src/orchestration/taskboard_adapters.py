@@ -32,7 +32,9 @@ class BaseAdapter:
         return self.board.get_task(task_id)
 
     async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        ok = self.board.update_task(task_id, **updates)
+        payload = dict(updates or {})
+        actor_agent = str(payload.pop("actor_agent", "") or "").strip()
+        ok = self.board.update_task(task_id, _actor_agent=actor_agent, **payload)
         if not ok:
             return None
         return self.board.get_task(task_id)
@@ -65,6 +67,21 @@ class GenericRESTAdapter(BaseAdapter):
             workflow_selection_origin=data.get("workflow_selection_origin"),
             team_profile=data.get("team_profile"),
             task_origin=data.get("task_origin"),
+            roadmap_id=data.get("roadmap_id"),
+            roadmap_node_id=data.get("roadmap_node_id"),
+            roadmap_lane=data.get("roadmap_lane"),
+            roadmap_title=data.get("roadmap_title"),
+            ownership_scope=data.get("ownership_scope"),
+            allowed_paths=list(data.get("allowed_paths") or []),
+            owner_agent=data.get("owner_agent"),
+            completion_contract=list(data.get("completion_contract") or []),
+            verification_agent=data.get("verification_agent"),
+            blocked_paths=list(data.get("blocked_paths") or []),
+            forbidden_scopes=list(data.get("forbidden_scopes") or []),
+            worktree_hint=data.get("worktree_hint"),
+            touch_policy=data.get("touch_policy"),
+            overlap_risk=data.get("overlap_risk"),
+            depends_on_docs=list(data.get("depends_on_docs") or []),
         )
         return self.board.get_task(task_id) or {"id": task_id}
 

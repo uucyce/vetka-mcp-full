@@ -1,0 +1,1 @@
+In the context provided, there is no detailed explanation of the interrupt and restart stream protocols or their impact on voice handoffs or tool-loop transparency. The documents focus more on existing implementations

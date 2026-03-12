@@ -1,0 +1,29 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,quality_notes,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,122,False,TimeoutError: per-run timeout 45.0s,28774.16,34638.27,28774.16,34638.27,49519.85,42,3,185,0.2,"low_ru_ratio,timeout,stream_error","Базовый ответ: 
+
+1. `src/scanners/local_scanner.py` - necessary for file scanning and metadata extraction.
+2. `src/layout/knowledge_layout.py` - necessary for knowledge mode positioning",docs/157_ph/benchmarks/audio/20260305_202130_393421_D_ollama_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260305_202130_393421_D_ollama_tts_short_1_run1/merged.wav,29.5,21,2340,0,True,10,algorithmic,False,False,2026-03-05T17:22:19.860595+00:00
+D_ollama_tts,context_1,1,133,False,TimeoutError: per-run timeout 45.0s,,,,,58375.31,0,0,0,0.0,"low_ru_ratio,no_memory_terms,no_latency_terms,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260305_202219_880709_D_ollama_tts_context_1_run1,,,,,,True,10,algorithmic,False,False,2026-03-05T17:23:18.239026+00:00
+D_ollama_tts,long_1,1,171,True,,2057.55,8950.52,2057.55,8950.52,40083.44,93,8,353,0.85,,"Поскольку в контексте нет подробной информации о протоколе ""interrupt + restart stream"", я не могу предоставить точную explanations. 
+
+Однако, на основе предоставленного контекста, можно сделать некоторые выводы. В частности, в разделе ""5.5. Voice Handoff"" можно найти информацию ",docs/157_ph/benchmarks/audio/20260305_202318_247287_D_ollama_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260305_202318_247287_D_ollama_tts_long_1_run1/merged.wav,43.75,45,1200,0,True,10,algorithmic,False,False,2026-03-05T17:23:58.323184+00:00
+D_ollama_tts,interrupt_1,1,139,False,TimeoutError: per-run timeout 45.0s,,,,,58687.5,0,0,0,0.0,"low_ru_ratio,no_stepwise_followup,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260305_202358_332782_D_ollama_tts_interrupt_1_run1,,,,,,True,10,algorithmic,False,False,2026-03-05T17:24:57.016278+00:00
+E_ollama_jepa_tts,short_1,1,122,True,,1512.78,12949.44,1512.78,12949.44,27678.06,63,4,235,0.8,no_two_items,"Базовый файл: `src/layout/semantic_sugiyama.py`
+
+Фраза: «DAG-based knowledge level layout»
+
+Этот файл необходим для анализа структуры проекта и поиска скрытых файлов, поскольку он включает в себяKnowledge mode positioning + clustering.",docs/157_ph/benchmarks/audio/20260305_202457_023523_E_ollama_jepa_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260305_202457_023523_E_ollama_jepa_tts_short_1_run1/merged.wav,47.54,30,1080,0,True,10,algorithmic,False,False,2026-03-05T17:25:24.695080+00:00
+E_ollama_jepa_tts,context_1,1,133,True,,1398.43,4934.92,1398.43,4934.92,42861.37,94,10,456,0.75,low_ru_ratio,"Based on the provided context, here are three points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize API Gateway limits**: Reduce or eliminate the API Gateway's token limits for long responses, as the current limit (~8000 tokens) is causing t",docs/157_ph/benchmarks/audio/20260305_202524_703281_E_ollama_jepa_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260305_202524_703281_E_ollama_jepa_tts_context_1_run1/merged.wav,25.0,41,2940,0,True,10,algorithmic,False,False,2026-03-05T17:26:07.557405+00:00
+E_ollama_jepa_tts,long_1,1,171,True,,1346.9,5827.75,1346.9,5827.75,38676.96,88,9,391,0.75,low_ru_ratio,"Interrupt + Restart Stream Protocol:
+
+1. **Stop Stream**: When the interrupt protocol is triggered, the current stream is stopped.
+2. **Clean-up**: The voice handoff is cleaned up, and the tool-loop is paused.
+3. **Restart Stream**: A new stream is started, and the voice handoff ",docs/157_ph/benchmarks/audio/20260305_202607_565066_E_ollama_jepa_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260305_202607_565066_E_ollama_jepa_tts_long_1_run1/merged.wav,25.0,40,3280,0,True,10,algorithmic,False,False,2026-03-05T17:26:46.235397+00:00
+E_ollama_jepa_tts,interrupt_1,1,139,True,,1157.87,6061.63,1157.87,6061.63,32072.21,82,8,360,0.75,low_ru_ratio,"The user is asking for the first two steps to take when explaining how context packing works in VETKA. 
+
+The answer is: 
+
+1. **Prioritize Key-Value Context:** Instead of full memory snapshots, focus on packing only the key-value pairs.
+2. **Add endpoint code**: Add ~50 lines of e",docs/157_ph/benchmarks/audio/20260305_202646_242222_E_ollama_jepa_tts_interrupt_1_run1,docs/157_ph/benchmarks/audio/20260305_202646_242222_E_ollama_jepa_tts_interrupt_1_run1/merged.wav,32.25,36,2120,0,True,10,algorithmic,False,False,2026-03-05T17:27:18.308297+00:00

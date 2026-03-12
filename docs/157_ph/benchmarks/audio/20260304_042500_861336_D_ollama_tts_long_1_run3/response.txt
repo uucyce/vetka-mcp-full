@@ -1,0 +1,4 @@
+Interrupt + Restart Stream Protocol:
+
+1. **Stream Interruption**: Когда агент отслеживает interrupt (перебивание) во время ответа, модель не должна утверждать, что tools были выполнены.
+2. **Stream Restart**: При interruption stream protocol restarts the

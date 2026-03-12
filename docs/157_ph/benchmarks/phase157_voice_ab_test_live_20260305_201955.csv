@@ -1,0 +1,23 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,quality_notes,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,122,False,TimeoutError: per-run timeout 45.0s,29196.57,38998.42,29196.57,38998.42,62934.2,64,2,195,0.2,"no_two_items,timeout,stream_error","На основе предоставленного контекста:
+
+1. Файл: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md`
+   Фраза: Содержит спецификацию для реализации п",docs/157_ph/benchmarks/audio/20260305_201411_229844_D_ollama_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260305_201411_229844_D_ollama_tts_short_1_run1/merged.wav,40.25,23,1480,0,True,10,algorithmic,False,False,2026-03-05T17:15:14.114854+00:00
+D_ollama_tts,context_1,1,133,False,TimeoutError: per-run timeout 45.0s,,,,,58634.91,0,0,0,0.0,"low_ru_ratio,no_memory_terms,no_latency_terms,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260305_201514_152968_D_ollama_tts_context_1_run1,,,,,,True,10,algorithmic,False,False,2026-03-05T17:16:12.753762+00:00
+D_ollama_tts,long_1,1,171,True,,3794.4,14877.59,3794.4,14877.59,38084.04,68,5,248,0.85,,"В предоставленном контексте нет информации о ""interrupt + restart stream protocol"" или его влиянии на voice handoff/tool-loop transparency. Упоминается только capability matrix и реконструкция гипотезы для аудио-пайплайна, но нет деталей протокола.",docs/157_ph/benchmarks/audio/20260305_201612_764325_D_ollama_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260305_201612_764325_D_ollama_tts_long_1_run1/merged.wav,38.75,24,1600,0,True,10,algorithmic,False,False,2026-03-05T17:16:50.839777+00:00
+D_ollama_tts,interrupt_1,1,139,False,TimeoutError: per-run timeout 45.0s,,,,,57568.63,0,0,0,0.0,"low_ru_ratio,no_stepwise_followup,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260305_201650_887052_D_ollama_tts_interrupt_1_run1,,,,,,True,10,algorithmic,False,False,2026-03-05T17:17:48.411355+00:00
+E_ollama_jepa_tts,short_1,1,122,True,,3135.67,11208.93,3135.67,11208.93,37358.02,86,4,251,0.9,,"На основе предоставленного контекста:
+
+1. **File**: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md`  
+   **Пояснение**: Содержит спецификации для реализации плавного движения камеры в 3D-сцене.
+
+2. **",docs/157_ph/benchmarks/audio/20260305_201748_421118_E_ollama_jepa_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260305_201748_421118_E_ollama_jepa_tts_short_1_run1/merged.wav,27.5,36,2500,0,True,10,algorithmic,False,False,2026-03-05T17:18:25.769980+00:00
+E_ollama_jepa_tts,context_1,1,133,True,,3762.5,9517.3,3762.5,9517.3,36360.33,85,5,241,0.85,,"На основе контекста:
+1. Увеличить буферные размеры для хранения контекста, чтобы избежать обрезки.
+2. Оптимизировать алгоритм упаковки, чтобы снизить задержку.
+3. Добавить мониторинг производительности для своевременного выявления регрессий.",docs/157_ph/benchmarks/audio/20260305_201825_780687_E_ollama_jepa_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260305_201825_780687_E_ollama_jepa_tts_context_1_run1/merged.wav,39.58,28,1640,0,True,10,algorithmic,False,False,2026-03-05T17:19:02.131794+00:00
+E_ollama_jepa_tts,long_1,1,171,True,,3734.2,8215.81,3734.2,8215.81,24008.86,59,5,244,0.85,,"В предоставленном контексте нет информации об interrupt + restart stream protocol или его влиянии на voice handoff/tool-loop transparency. Упомянуты только общие аспекты голосового чата и возможные проблемы, но конкретного протокола не описано.",docs/157_ph/benchmarks/audio/20260305_201902_145498_E_ollama_jepa_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260305_201902_145498_E_ollama_jepa_tts_long_1_run1/merged.wav,35.5,20,1860,0,True,10,algorithmic,False,False,2026-03-05T17:19:26.142485+00:00
+E_ollama_jepa_tts,interrupt_1,1,139,True,,2516.38,11049.61,2516.38,11049.61,29462.2,68,3,195,0.85,,"**Краткий ответ:**  
+Для улучшения context packing в VETKA выполните:  
+1. Соберите метрики API и пользовательскую обратную связь.  
+2. Проведите A/B-тестирование с уменьшенными слоями контекста.",docs/157_ph/benchmarks/audio/20260305_201926_149270_E_ollama_jepa_tts_interrupt_1_run1,docs/157_ph/benchmarks/audio/20260305_201926_149270_E_ollama_jepa_tts_interrupt_1_run1/merged.wav,43.95,22,2600,0,True,10,algorithmic,False,False,2026-03-05T17:19:55.606438+00:00

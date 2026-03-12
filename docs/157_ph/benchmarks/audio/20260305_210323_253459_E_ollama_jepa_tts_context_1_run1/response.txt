@@ -1,0 +1,2 @@
+1.  **Усилить `ContextPacker`:** Добавить hysteresis, trace-поля для raw/effective trigger и latency метрики (`pack_latency_ms`, `jepa_latency_ms`).
+2.  **Использовать `probe-инструмент`:**  `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/context_packer_probe.py` для лока

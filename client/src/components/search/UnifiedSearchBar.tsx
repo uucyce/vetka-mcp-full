@@ -18,13 +18,15 @@ import { useStore } from '../../store/useStore';
 import { buildViewportContext } from '../../utils/viewport';
 import type { SearchResult } from '../../types/chat';
 import type { MycoModeAHint } from '../myco/mycoModeATypes';
-import { getLaneIdlePlaceholderText, resolveSearchLaneState } from './searchLaneMode';
+import { getLaneIdlePlaceholderText, resolveSearchLaneState, type VoiceAgentRole } from './searchLaneMode';
 import mycoIdleQuestion from '../../assets/myco/myco_idle_question.png';
 import mycoReadySmile from '../../assets/myco/myco_ready_smile.png';
 import mycoSpeakingLoop from '../../assets/myco/myco_speaking_loop.apng';
 import mycoThinkingLoop from '../../assets/myco/myco_thinking_loop.apng';
 
 const API_BASE = 'http://localhost:5001/api';
+const LANE_PREVIEW_WIDTH = 400;
+const LANE_PREVIEW_HEIGHT = 320;
 
 interface Props {
   /** Called when user clicks on a result */
@@ -40,7 +42,9 @@ interface Props {
   /** Compact mode for tight spaces */
   compact?: boolean;
   /** Optional voice trigger shown as mic icon before first text input */
-  onVoiceTrigger?: () => void;
+  onVoiceTrigger?: (role?: VoiceAgentRole) => void;
+  /** Optional direct deterministic speech trigger for current lane text */
+  onSpeakText?: (text: string, role?: VoiceAgentRole, options?: { autoListenAfter?: boolean }) => void;
   /** External voice state for inline activity indicator */
   voiceState?: 'idle' | 'listening' | 'thinking' | 'speaking';
   /** Normalized voice level (0..1) */
@@ -49,6 +53,10 @@ interface Props {
   mycoSurfaceScope?: 'main';
   /** Explicit lane ownership for mode-driven rendering */
   laneSurface?: 'main' | 'chat';
+  /** Current chat panel side for preview placement */
+  chatPosition?: 'left' | 'right';
+  /** Optional outer chat panel ref for mirrored preview placement */
+  previewAnchorRef?: React.RefObject<HTMLDivElement | null>;
   /** Deterministic MYCO hint payload for empty VETKA search lane */
   mycoHint?: MycoModeAHint | null;
   /** Stable key for resetting typed hint rendering */
@@ -398,10 +406,13 @@ export function UnifiedSearchBar({
   contextPrefix = 'vetka/',
   compact = false,
   onVoiceTrigger,
+  onSpeakText,
   voiceState = 'idle',
   voiceLevel = 0,
   mycoSurfaceScope,
   laneSurface = 'main',
+  chatPosition = 'left',
+  previewAnchorRef,
   mycoHint = null,
   mycoStateKey = '',
   preferredSearchContext,
@@ -501,6 +512,26 @@ export function UnifiedSearchBar({
     ? hasMore
     : activeResults.length > displayLimit;
   const webHasAnyProvider = Object.values(providerHealth).some((p) => p?.available);
+
+  const getPreviewPlacement = useCallback((
+    rect: DOMRect,
+    previewWidth: number,
+    previewHeight: number,
+    options?: { belowAnchor?: boolean; extraYOffset?: number; horizontalAnchorRect?: DOMRect | null },
+  ) => {
+    const gap = 6;
+    const preferOutsideLeft = laneSurface === 'chat' && chatPosition === 'right';
+    const baseTop = options?.belowAnchor ? rect.bottom + (options?.extraYOffset ?? 6) : rect.top;
+    const chatPanelRect = previewAnchorRef?.current?.getBoundingClientRect() || null;
+    const laneRect = laneSurface === 'chat'
+      ? (chatPanelRect || options?.horizontalAnchorRect || laneRootRef.current?.getBoundingClientRect() || rect)
+      : (options?.horizontalAnchorRect || laneRootRef.current?.getBoundingClientRect() || rect);
+    const x = preferOutsideLeft
+      ? Math.max(8, laneRect.left - previewWidth - gap)
+      : Math.min(laneRect.right + gap, Math.max(8, window.innerWidth - previewWidth - 8));
+    const y = Math.min(Math.max(8, baseTop), Math.max(8, window.innerHeight - previewHeight - 8));
+    return { x, y };
+  }, [chatPosition, laneSurface, previewAnchorRef]);
 
   useEffect(() => {
     if (!preferredSearchContext) return;
@@ -675,11 +706,14 @@ export function UnifiedSearchBar({
 
   const handleMouseEnter = useCallback((result: SearchResult, e: React.MouseEvent) => {
     const rect = e.currentTarget.getBoundingClientRect();
+    const horizontalAnchorRect = resultsRef.current?.getBoundingClientRect() || null;
     hoverTimerRef.current = setTimeout(() => {
       setHoveredResult(result);
-      setPreviewPosition({ x: rect.right + 8, y: rect.top });
+      setPreviewPosition(
+        getPreviewPlacement(rect, LANE_PREVIEW_WIDTH, LANE_PREVIEW_HEIGHT, { horizontalAnchorRect }),
+      );
     }, 300);
-  }, []);
+  }, [getPreviewPlacement]);
 
   const handleMouseLeave = useCallback(() => {
     clearResultPreview();
@@ -933,7 +967,7 @@ export function UnifiedSearchBar({
     searchContext: effectiveSearchContext,
     mycoHint,
     mycoStateKey,
-    explicitAgentMode: searchContext === 'vetka' ? 'jarvis_vetka' : searchContext === 'myco' ? 'myco' : undefined,
+    explicitAgentMode: searchContext === 'vetka' ? 'vetka' : searchContext === 'myco' ? 'myco' : undefined,
   }), [activeIsSearching, effectiveSearchContext, isFocused, laneSurface, mycoHint, mycoStateKey, onVoiceTrigger, query, searchContext, showContextMenu, voiceState]);
   const showVoiceTrigger = laneState.showVoiceTrigger;
   const showVoiceActivity = laneState.showVoiceActivity;
@@ -1138,21 +1172,21 @@ export function UnifiedSearchBar({
         borderRadius: '999px',
         position: 'relative' as const,
       },
-      width: compact ? '20px' : '26px',
-      height: compact ? '20px' : '26px',
+      width: compact ? '22px' : '30px',
+      height: compact ? '22px' : '30px',
       color: '#8a8a8a',
     },
     mycoAvatarImage: {
-      width: compact ? '20px' : '23px',
-      height: compact ? '20px' : '23px',
+      width: compact ? '22px' : '26px',
+      height: compact ? '22px' : '26px',
       objectFit: 'contain' as const,
       objectPosition: 'center' as const,
       display: 'block',
       filter: 'grayscale(0.12)',
     },
     vetkaAvatarIcon: {
-      width: compact ? '20px' : '26px',
-      height: compact ? '20px' : '26px',
+      width: compact ? '22px' : '30px',
+      height: compact ? '22px' : '30px',
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -1160,12 +1194,21 @@ export function UnifiedSearchBar({
       opacity: mycoAvatarState === 'speaking' ? 1 : 0.9,
     },
     contextMenuIconSlot: {
-      width: '24px',
-      height: '24px',
+      width: '26px',
+      height: '26px',
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
       flexShrink: 0,
+    },
+    contextMenuLogoImage: {
+      width: '20px',
+      height: '20px',
+      objectFit: 'contain' as const,
+      objectPosition: 'center' as const,
+      display: 'block',
+      filter: 'grayscale(0.12) brightness(0.9) contrast(0.92)',
+      opacity: 0.72,
     },
     resultsContainer: {
       marginTop: '8px',
@@ -1351,13 +1394,16 @@ export function UnifiedSearchBar({
       : mycoTickerWords.slice(0, mycoVisibleWordCount || 1).join(' ')
     : '';
   const laneIdlePlaceholderText = searchContext === 'vetka'
-    ? getLaneIdlePlaceholderText('jarvis_vetka')
+    ? getLaneIdlePlaceholderText('vetka', 'vetka')
     : searchContext === 'myco'
-      ? getLaneIdlePlaceholderText('myco')
+      ? getLaneIdlePlaceholderText('myco', 'myco')
       : 'tap text to search';
   const laneDisplayText = mycoTickerPlaybackDone
     ? laneIdlePlaceholderText
     : (displayedMycoTickerText || mycoTickerText);
+  const deterministicSpeechText = mycoHint
+    ? [mycoHint.body, ...mycoHint.nextActions.slice(0, 3)].filter(Boolean).join('. ').trim()
+    : '';
 
   return (
     <div ref={laneRootRef} style={styles.container}>
@@ -1377,15 +1423,23 @@ export function UnifiedSearchBar({
               <LoadingSpinner />
             ) : showLaneAvatar ? (
               <button
-                onClick={() => {
-                  if (laneState.mode === 'myco_guidance') {
-                    pendingInputFocusRef.current = true;
-                    setIsFocused(true);
-                    window.requestAnimationFrame(() => inputRef.current?.focus());
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (
+                    laneRoleVisual === 'myco'
+                    && deterministicSpeechText
+                    && onSpeakText
+                    && voiceState === 'idle'
+                    && !activeIsSearching
+                    && !showContextMenu
+                    && !query.trim()
+                  ) {
+                    onSpeakText(deterministicSpeechText, 'myco', { autoListenAfter: true });
                     return;
                   }
                   if (laneRoleVisual !== 'context') {
-                    onVoiceTrigger?.();
+                    onVoiceTrigger?.(laneRoleVisual === 'vetka' ? 'vetka' : 'myco');
                   }
                 }}
                 style={styles.mycoAvatarButton}
@@ -1411,16 +1465,16 @@ export function UnifiedSearchBar({
                               : `${searchContext} search`
                 }
               >
-                {laneRoleVisual === 'vetka' ? (
-                  <span aria-label="vetka" style={styles.vetkaAvatarIcon}>
-                    <VetkaIcon size={compact ? 18 : 20} />
+                  {laneRoleVisual === 'vetka' ? (
+                    <span aria-label="vetka" style={styles.vetkaAvatarIcon}>
+                    <VetkaIcon size={compact ? 20 : 23} />
                   </span>
                 ) : laneRoleVisual === 'myco' ? (
                   <img src={mycoAvatarSrc} alt="MYCO" style={styles.mycoAvatarImage} />
                 ) : (
                   <span aria-label={searchContext} style={styles.vetkaAvatarIcon}>
                     {searchContext === 'vetka'
-                      ? <VetkaIcon size={compact ? 18 : 20} />
+                      ? <VetkaIcon size={compact ? 20 : 23} />
                       : React.createElement(CONTEXT_ICONS[searchContext])}
                   </span>
                 )}
@@ -1454,7 +1508,11 @@ export function UnifiedSearchBar({
 
           {/* Phase 68.3: Clickable context prefix */}
           <button
-            onClick={() => setShowContextMenu(!showContextMenu)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setShowContextMenu(!showContextMenu);
+            }}
             style={{
               ...styles.contextPrefix,
               background: 'none',
@@ -1519,7 +1577,9 @@ export function UnifiedSearchBar({
               onMouseEnter={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 mycoPreviewTimerRef.current = window.setTimeout(() => {
-                  setMycoPreviewPosition({ x: rect.left, y: rect.bottom + 6 });
+                  setMycoPreviewPosition(
+                    getPreviewPlacement(rect, LANE_PREVIEW_WIDTH, LANE_PREVIEW_HEIGHT, { belowAnchor: true, extraYOffset: 6 }),
+                  );
                   setShowMycoPreview(true);
                 }, 300);
               }}
@@ -1632,7 +1692,13 @@ export function UnifiedSearchBar({
                       color: ctx.available ? '#888' : '#555',
                     }}
                   >
-                    {ctx.id === 'vetka' ? <VetkaIcon size={18} /> : <IconComponent />}
+                    {ctx.id === 'vetka' ? (
+                      <VetkaIcon size={20} />
+                    ) : ctx.id === 'myco' ? (
+                      <img src={mycoIdleQuestion} alt="MYCO" style={styles.contextMenuLogoImage} />
+                    ) : (
+                      <IconComponent />
+                    )}
                   </span>
                   <div style={{ flex: 1 }}>
                     <div style={{ color: ctx.available ? '#fff' : '#666', fontSize: 12, fontWeight: 500 }}>
@@ -2108,8 +2174,8 @@ export function UnifiedSearchBar({
           ref={resultPreviewRef}
           style={{
             ...styles.preview,
-            left: Math.min(previewPosition.x, window.innerWidth - 420),
-            top: Math.min(previewPosition.y, window.innerHeight - 320),
+            left: previewPosition.x,
+            top: previewPosition.y,
             zIndex: 10000,
           }}
         >
@@ -2148,8 +2214,8 @@ export function UnifiedSearchBar({
           ref={mycoPreviewRef}
           style={{
             ...styles.preview,
-            left: Math.min(mycoPreviewPosition.x, window.innerWidth - 420),
-            top: Math.min(mycoPreviewPosition.y, window.innerHeight - 320),
+            left: mycoPreviewPosition.x,
+            top: mycoPreviewPosition.y,
             maxWidth: '440px',
             zIndex: 10000,
           }}

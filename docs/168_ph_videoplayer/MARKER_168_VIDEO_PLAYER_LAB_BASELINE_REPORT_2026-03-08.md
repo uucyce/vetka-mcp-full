@@ -44,8 +44,21 @@ Current winning shell contract inside the lab:
 - contextual action model must be status-gated:
   - if media is not yet in VETKA, primary contextual action is `Add to VETKA`
   - once media is in VETKA, ingest action disappears and moment-based marker actions become primary
+- before `VETKA Core/CUT` is present, presses on the `VETKA` logo may be buffered as provisional local marker events through the same local marker/comment storage lane
+- these provisional events must be migratable into canonical CUT marker contracts once Core/CUT becomes available
+- only after that migration path exists should the contextual icon switch from `VETKA` logo to editorial `star`
 - editorial star is not a file-level favorite baseline; it is reserved for time markers / cognitive moments
 - preview quality stays inside the player shell because performance-aware playback is part of the player contract, not only CUT
+
+## Transitional donor rule
+
+- standalone donor-player may capture `VETKA`-logo presses before Core/CUT exists
+- these captures are temporary and must not define a second permanent favorite system
+- preferred temporary sink is the same marker/comment bundle lane that can also produce SRT-compatible exports
+- `star` remains reserved for full time-marker mode after `VETKA Core/CUT` handoff
+
+Marker:
+- `MARKER_168.BASELINE.TRANSITIONAL_VETKA_TO_STAR`
 
 ## Console API
 

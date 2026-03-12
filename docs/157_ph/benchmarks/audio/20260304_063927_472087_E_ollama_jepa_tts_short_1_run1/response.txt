@@ -1,0 +1,8 @@
+Базовые файлы:
+
+* `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/92_ph/HAIKU_3_SOCKET_STOP.md` - `scan_progress` с `{progress, status}` для frontend.
+* `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/92_ph/watcher_routes.py` - Emit `scan_complete` с `{path, filesCount, nodes_count}` для backend.
+
+Фразы и их цели:
+
+* В файле `/Users/danilagulin/Documents/VETKA_Project/vetka_live

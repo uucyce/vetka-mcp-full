@@ -14,8 +14,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+// MARKER_176.15: Centralized MCC API config import.
+import { MCC_API } from '../../config/api.config';
 
-const API_BASE = 'http://localhost:5001/api/mcc';
 
 interface SandboxStatus {
   exists: boolean;
@@ -36,7 +37,7 @@ export function SandboxDropdown() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/sandbox/status`);
+      const res = await fetch(`${MCC_API}/sandbox/status`);
       if (!res.ok) return;
       setStatus(await res.json());
     } catch {
@@ -79,7 +80,7 @@ export function SandboxDropdown() {
     setLoading(true);
     try {
       // Recreate uses the project config source → sandbox
-      await fetch(`${API_BASE}/sandbox/recreate`, {
+      await fetch(`${MCC_API}/sandbox/recreate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ force: false }),
@@ -94,7 +95,7 @@ export function SandboxDropdown() {
   const handleRecreate = useCallback(async () => {
     setLoading(true);
     try {
-      await fetch(`${API_BASE}/sandbox/recreate`, {
+      await fetch(`${MCC_API}/sandbox/recreate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ force: true }),
@@ -109,7 +110,7 @@ export function SandboxDropdown() {
   const handleDelete = useCallback(async () => {
     setLoading(true);
     try {
-      await fetch(`${API_BASE}/sandbox`, { method: 'DELETE' });
+      await fetch(`${MCC_API}/sandbox`, { method: 'DELETE' });
       await fetchStatus();
     } finally {
       setLoading(false);

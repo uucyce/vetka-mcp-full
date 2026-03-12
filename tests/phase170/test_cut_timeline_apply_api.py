@@ -99,6 +99,68 @@ def test_cut_timeline_apply_updates_revision_and_persists_edit_log(tmp_path: Pat
     assert events[0]["op_count"] == 4
 
 
+def test_cut_timeline_apply_supports_sync_offset_op(tmp_path: Path):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "clip_a_tc_01-00-00-00.mp4").write_bytes(b"00")
+    (source_dir / "audio_a_tc_01-00-00-12.wav").write_bytes(b"00")
+
+    sandbox_root = tmp_path / "sandbox"
+    _bootstrap_sandbox(sandbox_root)
+    client = _make_client()
+
+    bootstrap = client.post(
+        "/api/cut/bootstrap",
+        json={
+            "source_path": str(source_dir),
+            "sandbox_root": str(sandbox_root),
+            "project_name": "Sync Edit Demo",
+        },
+    )
+    project_id = bootstrap.json()["project"]["project_id"]
+    scene_job = client.post(
+        "/api/cut/scene-assembly-async",
+        json={"sandbox_root": str(sandbox_root), "project_id": project_id},
+    )
+    _wait_for_job(client, scene_job.json()["job_id"])
+
+    response = client.post(
+        "/api/cut/timeline/apply",
+        json={
+            "sandbox_root": str(sandbox_root),
+            "project_id": project_id,
+            "timeline_id": "main",
+            "author": "sync_agent",
+            "ops": [
+                {
+                    "op": "apply_sync_offset",
+                    "clip_id": "clip_0001",
+                    "offset_sec": 0.48,
+                    "method": "timecode",
+                    "confidence": 0.99,
+                    "reference_path": str(source_dir / "clip_a_tc_01-00-00-00.mp4"),
+                    "source": "sync_surface",
+                    "group_id": "sync_group_main",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["timeline_state"]["revision"] == 2
+
+    audio_lane = next(lane for lane in payload["timeline_state"]["lanes"] if lane["lane_id"] == "audio_sync")
+    synced_clip = next(clip for clip in audio_lane["clips"] if clip["clip_id"] == "clip_0001")
+    assert synced_clip["start_sec"] == 0.48
+    assert synced_clip["sync"]["method"] == "timecode"
+    assert synced_clip["sync"]["offset_sec"] == 0.48
+    assert synced_clip["sync"]["confidence"] == 0.99
+
+    assert payload["timeline_state"]["sync_groups"][0]["group_id"] == "sync_group_main"
+    assert payload["timeline_state"]["sync_groups"][0]["method"] == "timecode"
+
+
 def test_cut_timeline_apply_returns_recoverable_error_when_timeline_missing(tmp_path: Path):
     source_dir = tmp_path / "source"
     source_dir.mkdir()

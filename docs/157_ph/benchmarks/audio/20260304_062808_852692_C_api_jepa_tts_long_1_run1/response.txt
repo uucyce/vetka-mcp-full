@@ -1,0 +1,8 @@
+В предоставленном контексте нет информации о протоколе interrupt + restart stream или его влиянии на voice handoff и tool-loop transparency. 
+
+Контекст содержит детали о:
+- Capability Matrix для unified stream + tools (MARKER_152)
+- Voice pipeline для TTS/STT/agent voice (MARKER_156)
+- Runtime-решения для оркестрации execution plans
+
+Но конкретно про interrupt + restart stream protocol и его взаимодействие с tool-loop transparency в данных файлах не упоминается.

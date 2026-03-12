@@ -1,0 +1,17 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,timestamp
+A_qwen_only,short_1,1,45,True,,20.0,50.0,20.0,50.0,51.79,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.207730+00:00
+A_qwen_only,context_1,1,85,True,,20.0,50.0,20.0,50.0,51.94,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.259711+00:00
+A_qwen_only,long_1,1,124,True,,20.0,50.0,20.0,50.0,52.17,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.311914+00:00
+B_api_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,52.14,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.364092+00:00
+B_api_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,51.8,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.415919+00:00
+B_api_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,52.14,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.468097+00:00
+C_api_jepa_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,52.3,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.520430+00:00
+C_api_jepa_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,52.16,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.572637+00:00
+C_api_jepa_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,51.46,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.624141+00:00
+D_ollama_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,51.4,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.675594+00:00
+D_ollama_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,52.29,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.727940+00:00
+D_ollama_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,52.26,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.780241+00:00
+E_ollama_jepa_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,52.08,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.832402+00:00
+E_ollama_jepa_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,52.23,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.884703+00:00
+E_ollama_jepa_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,52.18,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.936919+00:00
+F_mimo_short,short_live,1,14,True,,20.0,50.0,20.0,50.0,51.89,20,1,7,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T19:56:56.988853+00:00

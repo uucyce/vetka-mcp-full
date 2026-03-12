@@ -1,0 +1,4 @@
+<think>
+Okay, let's tackle this user question. They want a step-by-step explanation of the interrupt + restart stream protocol and its impact on voice handoff and tool-loop transparency, referencing the context. If the context doesn't cover it, I need to say so directly.
+
+First, I'll check the provided context. The pinned files mention a capability matrix for unified stream and tools, aiming to align stream generation, tool calls, and model capabilities. There's a section about the current issues with partial support and separate implementations leading to false expectations. However, the specific details about the interrupt and restart protocol aren't mentioned here. The context

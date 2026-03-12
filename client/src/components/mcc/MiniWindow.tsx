@@ -18,6 +18,7 @@ import { useMCCStore } from '../../store/useMCCStore';
 
 type Position = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 type Size = { width: number; height: number };
+type Frame = { x: number; y: number; width: number; height: number };
 type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 const LAYOUT_VERSION = 4;
 const RESERVED_MINIMAP_WIDTH = 260;
@@ -26,6 +27,8 @@ const PERSIST_POSITIONS = true;
 const START_FROM_CENTER = false;
 const MIN_WINDOW_WIDTH = 180;
 const MIN_WINDOW_HEIGHT = 100;
+const MIN_EXPANDED_WIDTH = 420;
+const MIN_EXPANDED_HEIGHT = 260;
 
 function getViewportSize(): { width: number; height: number } {
   if (typeof window !== 'undefined') {
@@ -110,6 +113,10 @@ function sizeStorageKey(windowId: string): string {
   return `miniwindow_size_v${LAYOUT_VERSION}_${windowId}`;
 }
 
+function expandedFrameStorageKey(windowId: string): string {
+  return `miniwindow_expanded_frame_v${LAYOUT_VERSION}_${windowId}`;
+}
+
 function hasSavedPosition(windowId: string): boolean {
   if (!PERSIST_POSITIONS) return false;
   try {
@@ -137,6 +144,29 @@ function clampSize(size: Size): Size {
     width: Math.min(Math.max(size.width, MIN_WINDOW_WIDTH), maxWidth),
     height: Math.min(Math.max(size.height, MIN_WINDOW_HEIGHT), maxHeight),
   };
+}
+
+function getDefaultExpandedFrame(): Frame {
+  const padding = 12;
+  const { width: vw, height: vh } = getViewportSize();
+  const width = Math.min(Math.max(Math.round(vw * 0.8), MIN_EXPANDED_WIDTH), Math.max(MIN_EXPANDED_WIDTH, vw - padding * 2));
+  const height = Math.min(Math.max(Math.round(vh * 0.75), MIN_EXPANDED_HEIGHT), Math.max(MIN_EXPANDED_HEIGHT, vh - padding * 2));
+  return clampExpandedFrame({
+    x: Math.round((vw - width) / 2),
+    y: Math.round((vh - height) / 2),
+    width,
+    height,
+  });
+}
+
+function clampExpandedFrame(frame: Frame): Frame {
+  const padding = 12;
+  const { width: vw, height: vh } = getViewportSize();
+  const width = Math.min(Math.max(frame.width, MIN_EXPANDED_WIDTH), Math.max(MIN_EXPANDED_WIDTH, vw - padding * 2));
+  const height = Math.min(Math.max(frame.height, MIN_EXPANDED_HEIGHT), Math.max(MIN_EXPANDED_HEIGHT, vh - padding * 2));
+  const x = Math.min(Math.max(frame.x, padding), Math.max(padding, vw - width - padding));
+  const y = Math.min(Math.max(frame.y, padding), Math.max(padding, vh - height - padding));
+  return { x, y, width, height };
 }
 
 // MARKER_155.DRAGGABLE.003: Default positions.
@@ -239,6 +269,35 @@ function saveSize(windowId: string, size: Size) {
   }
 }
 
+function loadExpandedFrame(windowId: string): Frame {
+  const fallback = getDefaultExpandedFrame();
+  if (!PERSIST_POSITIONS) return fallback;
+  try {
+    const saved = localStorage.getItem(expandedFrameStorageKey(windowId));
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return clampExpandedFrame({
+        x: Number(parsed.x) || fallback.x,
+        y: Number(parsed.y) || fallback.y,
+        width: Number(parsed.width) || fallback.width,
+        height: Number(parsed.height) || fallback.height,
+      });
+    }
+  } catch {
+    // Ignore errors
+  }
+  return fallback;
+}
+
+function saveExpandedFrame(windowId: string, frame: Frame) {
+  if (!PERSIST_POSITIONS) return;
+  try {
+    localStorage.setItem(expandedFrameStorageKey(windowId), JSON.stringify(frame));
+  } catch {
+    // Ignore errors
+  }
+}
+
 export function MiniWindow({
   title,
   icon,
@@ -260,6 +319,7 @@ export function MiniWindow({
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [sizeState, setSizeState] = useState<Size>(initialSize);
+  const [expandedFrameState, setExpandedFrameState] = useState<Frame>(() => loadExpandedFrame(windowId));
   const resizeSessionRef = useRef<{
     direction: ResizeDirection;
     startX: number;
@@ -272,6 +332,13 @@ export function MiniWindow({
     nextPosY: number;
     nextWidth: number;
     nextHeight: number;
+  } | null>(null);
+  const expandedResizeSessionRef = useRef<{
+    direction: ResizeDirection;
+    startX: number;
+    startY: number;
+    startFrame: Frame;
+    nextFrame: Frame;
   } | null>(null);
   const [positionState, setPositionState] = useState(() =>
     loadSavedPosition(
@@ -385,6 +452,7 @@ export function MiniWindow({
         setPositionState((pos) => clampToViewport(pos, next.width, next.height));
         return next;
       });
+      setExpandedFrameState((prev) => clampExpandedFrame(prev));
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -412,6 +480,11 @@ export function MiniWindow({
   useEffect(() => {
     setPositionState((prev) => clampToViewport(prev, sizeState.width, sizeState.height));
   }, [sizeState.width, sizeState.height]);
+
+  useEffect(() => {
+    if (!expanded) return;
+    setExpandedFrameState((prev) => clampExpandedFrame(prev));
+  }, [expanded]);
 
   const handleResizeStart = useCallback((direction: ResizeDirection, e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -515,6 +588,61 @@ export function MiniWindow({
       window.removeEventListener('mouseup', onUp);
     };
   }, [isResizing, windowId]);
+
+  const handleExpandedResizeStart = useCallback((direction: ResizeDirection, e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    expandedResizeSessionRef.current = {
+      direction,
+      startX: e.clientX,
+      startY: e.clientY,
+      startFrame: expandedFrameState,
+      nextFrame: expandedFrameState,
+    };
+    setIsResizing(true);
+  }, [expandedFrameState]);
+
+  useEffect(() => {
+    if (!expanded || !isResizing || !expandedResizeSessionRef.current) return;
+    const onMove = (e: MouseEvent) => {
+      const session = expandedResizeSessionRef.current;
+      if (!session) return;
+      const dx = e.clientX - session.startX;
+      const dy = e.clientY - session.startY;
+      let { x, y, width, height } = session.startFrame;
+
+      if (session.direction.includes('e')) width += dx;
+      if (session.direction.includes('s')) height += dy;
+      if (session.direction.includes('w')) {
+        width -= dx;
+        x += dx;
+      }
+      if (session.direction.includes('n')) {
+        height -= dy;
+        y += dy;
+      }
+
+      const nextFrame = clampExpandedFrame({ x, y, width, height });
+      session.nextFrame = nextFrame;
+      setExpandedFrameState(nextFrame);
+    };
+    const onUp = () => {
+      const session = expandedResizeSessionRef.current;
+      if (session) {
+        const finalFrame = clampExpandedFrame(session.nextFrame);
+        setExpandedFrameState(finalFrame);
+        saveExpandedFrame(windowId, finalFrame);
+      }
+      expandedResizeSessionRef.current = null;
+      setIsResizing(false);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [expanded, isResizing, windowId]);
 
   return (
     <>
@@ -647,7 +775,7 @@ export function MiniWindow({
         </Draggable>
       )}
 
-      {/* MARKER_155.DRAGGABLE.010: Expanded mode — centered overlay (not draggable) */}
+      {/* MARKER_155.DRAGGABLE.010: Expanded mode — centered overlay with frictionless all-edge resize */}
       <AnimatePresence>
         {expanded && !minimized && (
           <motion.div
@@ -675,10 +803,10 @@ export function MiniWindow({
               transition={{ duration: 0.25 }}
               onMouseDownCapture={() => emitWindowFocusState(windowId, 'expanded')}
               style={{
-                width: '80%',
-                maxWidth: 700,
-                height: '75%',
-                maxHeight: 500,
+                width: expandedFrameState.width,
+                height: expandedFrameState.height,
+                marginLeft: expandedFrameState.x - Math.round((getViewportSize().width - expandedFrameState.width) / 2),
+                marginTop: expandedFrameState.y - Math.round((getViewportSize().height - expandedFrameState.height) / 2),
                 background: NOLAN_PALETTE.bgDim,
                 border: `1px solid ${NOLAN_PALETTE.border}`,
                 borderRadius: 10,
@@ -756,6 +884,29 @@ export function MiniWindow({
 
               {/* Expanded content */}
               <div style={{ flex: 1, overflow: 'auto' }}>{expandedContent}</div>
+              {/* MARKER_177.MINIWINDOW.RESIZE_ALL_EDGES.V1 */}
+              {([
+                { dir: 'n', style: { top: 0, left: 12, right: 12, height: 10, cursor: 'ns-resize' } },
+                { dir: 's', style: { bottom: 0, left: 12, right: 12, height: 10, cursor: 'ns-resize' } },
+                { dir: 'e', style: { right: 0, top: 12, bottom: 12, width: 10, cursor: 'ew-resize' } },
+                { dir: 'w', style: { left: 0, top: 12, bottom: 12, width: 10, cursor: 'ew-resize' } },
+                { dir: 'ne', style: { right: 0, top: 0, width: 14, height: 14, cursor: 'nesw-resize' } },
+                { dir: 'nw', style: { left: 0, top: 0, width: 14, height: 14, cursor: 'nwse-resize' } },
+                { dir: 'se', style: { right: 0, bottom: 0, width: 14, height: 14, cursor: 'nwse-resize' } },
+                { dir: 'sw', style: { left: 0, bottom: 0, width: 14, height: 14, cursor: 'nesw-resize' } },
+              ] as Array<{ dir: ResizeDirection; style: CSSProperties }>).map((h) => (
+                <div
+                  key={`expanded-${h.dir}`}
+                  data-no-drag="true"
+                  onMouseDown={(e) => handleExpandedResizeStart(h.dir, e)}
+                  style={{
+                    position: 'absolute',
+                    zIndex: 4,
+                    background: 'transparent',
+                    ...h.style,
+                  }}
+                />
+              ))}
             </motion.div>
           </motion.div>
         )}

@@ -12,9 +12,11 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { useStore } from '../../store/useStore';
 import type { DAGNode, DAGStats } from '../../types/dag';
+// MARKER_176.15: Centralized MCC API config import.
+import { API_BASE } from '../../config/api.config';
 
-const PIPELINE_API = 'http://localhost:5001/api/pipeline';
-const MODELS_API = 'http://localhost:5001/api/models';
+const PIPELINE_API = `${API_BASE}/pipeline`;
+const MODELS_API = `${API_BASE}/models`;
 
 // MARKER_137.7A: Map Balance panel key provider names → model source field values
 // Balance tab uses provider names like 'polza', 'openrouter', 'xai', 'openai'

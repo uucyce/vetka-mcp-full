@@ -28,6 +28,9 @@
     "scene_graph": {
       "type": ["object", "null"]
     },
+    "scene_graph_view": {
+      "type": ["object", "null"]
+    },
     "waveform_bundle": {
       "type": ["object", "null"]
     },
@@ -35,6 +38,18 @@
       "type": ["object", "null"]
     },
     "thumbnail_bundle": {
+      "type": ["object", "null"]
+    },
+    "audio_sync_result": {
+      "type": ["object", "null"]
+    },
+    "slice_bundle": {
+      "type": ["object", "null"]
+    },
+    "timecode_sync_result": {
+      "type": ["object", "null"]
+    },
+    "sync_surface": {
       "type": ["object", "null"]
     },
     "time_marker_bundle": {
@@ -62,6 +77,18 @@
       "type": "boolean"
     },
     "thumbnail_ready": {
+      "type": "boolean"
+    },
+    "audio_sync_ready": {
+      "type": "boolean"
+    },
+    "slice_ready": {
+      "type": "boolean"
+    },
+    "timecode_sync_ready": {
+      "type": "boolean"
+    },
+    "sync_surface_ready": {
       "type": "boolean"
     },
     "time_markers_ready": {

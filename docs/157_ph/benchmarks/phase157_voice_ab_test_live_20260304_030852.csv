@@ -1,0 +1,13 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,45,False,TimeoutError: per-run timeout 25.0s,,,,,62190.31,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_030447_543101_D_ollama_tts_short_1_run1,,,,,,True,10,algorithmic,False,False,2026-03-04T00:05:49.690441+00:00
+D_ollama_tts,context_1,1,85,False,TimeoutError: per-run timeout 25.0s,,,,,51900.14,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_030549_701590_D_ollama_tts_context_1_run1,,,,,,True,10,algorithmic,False,False,2026-03-04T00:06:41.591199+00:00
+D_ollama_tts,long_1,1,124,False,TimeoutError: per-run timeout 25.0s,,,,,52277.69,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_030641_603296_D_ollama_tts_long_1_run1,,,,,,True,10,algorithmic,False,False,2026-03-04T00:07:33.869497+00:00
+E_ollama_jepa_tts,short_1,1,45,True,,8009.24,13898.81,8009.24,13898.81,24657.88,37,4,141,1.0,"Okay, here’s a concise description of what VETKA does, suitable for a user who might be new to the project:
+
+“VETKA is a knowledge management",docs/157_ph/benchmarks/audio/20260304_030733_883065_E_ollama_jepa_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260304_030733_883065_E_ollama_jepa_tts_short_1_run1/merged.wav,62.58,16,1600,0,True,10,hybrid-jepa,True,True,2026-03-04T00:07:58.528145+00:00
+E_ollama_jepa_tts,context_1,1,85,False,TimeoutError: per-run timeout 25.0s,8384.75,13533.73,8384.75,13533.73,27494.36,54,4,217,0.0,"Okay, let's tackle improving memory context packing in VETKA without sacrificing latency. Here’s a phased approach, combining optimization strategies:
+
+**Phase 1: Immediate Wins (Low-Hanging Fruit - 1-2 Days)**
+
+1. **",docs/157_ph/benchmarks/audio/20260304_030758_535561_E_ollama_jepa_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260304_030758_535561_E_ollama_jepa_tts_context_1_run1/merged.wav,41.5,32,1380,0,True,10,hybrid-jepa,True,True,2026-03-04T00:08:26.023084+00:00
+E_ollama_jepa_tts,long_1,1,124,True,,8853.64,14705.53,8853.64,14705.53,26715.3,37,5,155,1.0,"Okay, let’s break down the interrupt/restart stream protocol and its impact on voice handoff and tool-loop transparency. This is a complex system, so we'll",docs/157_ph/benchmarks/audio/20260304_030826_033002_E_ollama_jepa_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260304_030826_033002_E_ollama_jepa_tts_long_1_run1/merged.wav,42.5,18,1300,0,True,10,hybrid-jepa,True,True,2026-03-04T00:08:52.739195+00:00

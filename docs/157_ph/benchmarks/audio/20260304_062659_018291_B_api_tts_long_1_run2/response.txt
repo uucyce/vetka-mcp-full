@@ -1,0 +1,1 @@
+В предоставленном контексте нет информации о протоколе interrupt + restart stream и его влиянии на voice handoff/tool-loop transparency. Контекст фокусируется на архитектуре TTS/voice pipeline, capability matrix и runtime-сценариях, но не содержит деталей о прерывании потока и перезапуске.

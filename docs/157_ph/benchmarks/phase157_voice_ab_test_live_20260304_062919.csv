@@ -1,0 +1,112 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,quality_notes,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+B_api_tts,short_1,1,122,True,,19581.38,,19581.38,,20846.23,35,0,255,0.9,,"На основе контекста:
+
+1. **PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md** — Описывает упрощённую анимацию камеры для плавного подлёта к объекту без рывков.
+2. **вкладка **Playground_GROK.txt** — Содержит backend-код для эндпоинта Playground в MyceliumCommandCenter.",docs/157_ph/benchmarks/audio/20260304_062538_242927_B_api_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:25:59.024882+00:00
+B_api_tts,short_1,2,122,True,,1345.7,,1345.7,,2829.67,43,0,359,0.8,no_two_items,"**Файл:** `PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md`  
+**Зачем нужен:** Описывает упрощённую анимацию камеры для плавного перемещения к объекту в одно движение без рывков.
+
+**Файл:** `вкладка **Playground_GROK.txt`  
+**Зачем нужен:** Содержит backend-код для эндпоинта `/api/debug/playg",docs/157_ph/benchmarks/audio/20260304_062559_033084_B_api_tts_short_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:26:01.854685+00:00
+B_api_tts,context_1,1,133,False,TimeoutError: per-run timeout 28.0s,,,,,48268.14,0,0,0,0.0,"low_ru_ratio,no_memory_terms,no_latency_terms,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_062601_885568_B_api_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:26:50.123139+00:00
+B_api_tts,context_1,2,133,True,,2499.75,,2499.75,,5121.09,62,0,626,0.75,low_ru_ratio,"Based on the provided context, here is a 3-point plan to improve memory context packing without latency regressions:
+
+1. **Implement incremental context loading**: Modify `src/memory/stm_manager.py` to load only the most recent 3-5 memory entries initially, then fetch additional ",docs/157_ph/benchmarks/audio/20260304_062650_137250_B_api_tts_context_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:26:55.244478+00:00
+B_api_tts,long_1,1,171,True,,2320.22,,2320.22,,3760.78,51,0,426,0.85,,"В предоставленном контексте нет детального описания протокола `interrupt + restart stream` и его влияния на `voice handoff` или `tool-loop transparency`. 
+
+Контекст упоминает:
+- Поддержку interrupt во время ответа в `voice_stream_start -> voice_pcm -> voice_utterance_end -> STT -",docs/157_ph/benchmarks/audio/20260304_062655_255698_B_api_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:26:59.005640+00:00
+B_api_tts,long_1,2,171,True,,1605.43,,1605.43,,2858.29,37,0,290,0.85,,"В предоставленном контексте нет информации о протоколе interrupt + restart stream и его влиянии на voice handoff/tool-loop transparency. Контекст фокусируется на архитектуре TTS/voice pipeline, capability matrix и runtime-сценариях, но не содержит деталей о прерывании потока и пе",docs/157_ph/benchmarks/audio/20260304_062659_018291_B_api_tts_long_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:27:01.864158+00:00
+B_api_tts,interrupt_1,1,139,False,TimeoutError: per-run timeout 28.0s,,,,,46708.05,0,0,0,0.0,"low_ru_ratio,no_stepwise_followup,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_062701_873201_B_api_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:27:48.572415+00:00
+B_api_tts,interrupt_1,2,139,True,,2112.35,,2112.35,,4714.12,51,0,653,0.7,"low_ru_ratio,too_long_after_interrupt","Based on the provided context, I cannot explain how context packing is structured in VETKA because the necessary details are missing from the pinned files. The context mentions compression (elision), weights, and some memory-related concepts, but no specific architecture or proce",docs/157_ph/benchmarks/audio/20260304_062748_585391_B_api_tts_interrupt_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:27:53.286672+00:00
+C_api_jepa_tts,short_1,1,122,True,,2891.94,,2891.94,,4701.16,39,0,467,0.8,low_ru_ratio,"Based on the provided context, here are two specific files and their purposes:
+
+1. **PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md** - This file documents the simplified camera movement system, replacing complex 3-phase animations with a single, smooth interpolation for user-friendly naviga",docs/157_ph/benchmarks/audio/20260304_062753_292848_C_api_jepa_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:27:57.988430+00:00
+C_api_jepa_tts,short_1,2,122,True,,1606.6,,1606.6,,3826.86,48,0,551,0.8,low_ru_ratio,"Based on the provided context, here are two specific files and their purposes:
+
+1. **PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md** – This file documents the simplified camera movement system that uses a single direct interpolation (lerp) with ease-in-out animation to provide smooth, one-m",docs/157_ph/benchmarks/audio/20260304_062758_058755_C_api_jepa_tts_short_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:01.815490+00:00
+C_api_jepa_tts,context_1,1,133,True,,1510.26,,1510.26,,3205.95,53,0,398,0.85,,"На основе контекста, вот 3 пункта для улучшения memory context packing без регрессий в latency:
+
+1. **Использовать CAM для контекстной фильтрации** — В `src/memory/cam_memory.py` применять фильтрацию по активному файлу/выделению (как в `DEBUG_BACKEND_CONNECTION.md`) для отправки ",docs/157_ph/benchmarks/audio/20260304_062801_822650_C_api_jepa_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:05.021563+00:00
+C_api_jepa_tts,context_1,2,133,True,,1558.13,,1558.13,,3824.64,54,0,531,0.75,low_ru_ratio,"Based on the provided context, here is a 3-point plan to improve memory context packing without latency regression:
+
+1. **Implement Token Budget Allocation**: In `chat_handler.py`, modify the prompt assembly to dynamically allocate token budgets per memory system (e.g., 40% STM, ",docs/157_ph/benchmarks/audio/20260304_062805_027698_C_api_jepa_tts_context_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:08.846306+00:00
+C_api_jepa_tts,long_1,1,171,True,,1621.07,,1621.07,,3877.18,56,0,466,0.85,,"В предоставленном контексте нет информации о протоколе interrupt + restart stream или его влиянии на voice handoff и tool-loop transparency. 
+
+Контекст содержит детали о:
+- Capability Matrix для unified stream + tools (MARKER_152)
+- Voice pipeline для TTS/STT/agent voice (MARKER_",docs/157_ph/benchmarks/audio/20260304_062808_852692_C_api_jepa_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:12.723592+00:00
+C_api_jepa_tts,long_1,2,171,True,,1711.86,,1711.86,,3140.65,41,0,324,0.85,,"В предоставленном контексте нет информации о протоколе interrupt + restart stream и его влиянии на voice handoff/tool-loop transparency. Контекст фокусируется на capability matrix, voice pipeline (TTS/STT), сокет-контрактах для голосовых сообщений и гигиене режимов, но не содержи",docs/157_ph/benchmarks/audio/20260304_062812_729845_C_api_jepa_tts_long_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:15.864337+00:00
+C_api_jepa_tts,interrupt_1,1,139,True,,4759.23,,4759.23,,7314.71,51,0,620,0.7,"low_ru_ratio,too_long_after_interrupt","Based on the provided context, I cannot explain how context packing is organized in VETKA in detail. The pinned files do not contain specific information about the internal mechanics of VETKA's context packing system.
+
+However, from the pinned file `response.txt` (relevance 0.46)",docs/157_ph/benchmarks/audio/20260304_062815_870778_C_api_jepa_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:23.179244+00:00
+C_api_jepa_tts,interrupt_1,2,139,True,,1469.75,,1469.75,,3086.55,50,0,372,0.85,,"**Первый шаг:** Реализовать ELISION compression layer (из VETKA glossary) для фильтрации нерелевантных данных перед упаковкой контекста, используя семантическую компакцию для снижения шума без увеличения задержки.
+
+**Второй шаг:** Интегрировать CAM activation signals (из context ",docs/157_ph/benchmarks/audio/20260304_062823_191561_C_api_jepa_tts_interrupt_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:26.265982+00:00
+D_ollama_tts,short_1,1,122,True,,1011.55,,1011.55,,3105.68,128,0,435,0.9,,"Из предоставленного контекста я не могу определить два конкретных файла, но я могу предложить два файла на основе общих тем и ключевых слов:
+
+1. `PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md` - Этот файл содержит описание проблемы с камерой и основной задачи пользователя.
+	* Фраза: ""Нам на",docs/157_ph/benchmarks/audio/20260304_062826_274574_D_ollama_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:29.371907+00:00
+D_ollama_tts,short_1,2,122,True,,101.52,,101.52,,2403.14,128,0,438,0.9,,"Базовый файл `data/playground_proposals.json` содержит информацию о предложениях для улучшения кода. 
+
+Два конкретных файла, которые упоминаются в контексте:
+
+1. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md`
+
+Фразы с этим файло",docs/157_ph/benchmarks/audio/20260304_062829_380670_D_ollama_tts_short_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:31.775224+00:00
+D_ollama_tts,context_1,1,133,True,,1074.97,,1074.97,,2075.65,40,0,221,0.65,"low_ru_ratio,no_latency_terms","Unfortunately, the provided context does not contain information about memory context packing or its optimization in VETKA. The context only provides information about pinned files, 3D viewport settings, and user queries.",docs/157_ph/benchmarks/audio/20260304_062831_786673_D_ollama_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:33.851031+00:00
+D_ollama_tts,context_1,2,133,True,,102.46,,102.46,,3442.14,127,0,694,0.75,low_ru_ratio,"Based on the provided context, here are 3 points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize file loading**: Reduce the number of files loaded at once by implementing lazy loading or batch loading. This can help decrease memory usage and ",docs/157_ph/benchmarks/audio/20260304_062833_859581_D_ollama_tts_context_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:37.293394+00:00
+D_ollama_tts,long_1,1,171,True,,1157.65,,1157.65,,2681.82,89,0,381,0.85,,"Поскольку в предоставленном контексте не упоминается конкретный protocol `interrupt + restart stream`, я не могу предоставить точную информацию о его работе и влиянии на voice handoff/tool-loop transparency. 
+
+Если вы можете предоставить дополнительные сведения или clarify, что и",docs/157_ph/benchmarks/audio/20260304_062837_303124_D_ollama_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:39.975414+00:00
+D_ollama_tts,long_1,2,171,True,,100.83,,100.83,,1426.06,85,0,353,0.85,,"Поскольку в предоставленном контексте нет конкретной информации о протоколе ""interrupt + restart stream"", я не могу предоставить точную explanations. 
+
+В контексте есть информация о voice handoff и tool-loop transparency, но это связано с более широкой темой ""Capability Matrix: U",docs/157_ph/benchmarks/audio/20260304_062839_985204_D_ollama_tts_long_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:41.401632+00:00
+D_ollama_tts,interrupt_1,1,139,True,,1083.32,,1083.32,,3832.86,120,0,636,0.7,"low_ru_ratio,too_long_after_interrupt","To explain how context packing works in VETKA, I'll break it down into two initial steps:
+
+1. **Implement ELISION compression layer**: This step involves reducing noise in the context packing process by using semantic compaction to filter out irrelevant data before storage. This ",docs/157_ph/benchmarks/audio/20260304_062841_410974_D_ollama_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:45.234626+00:00
+D_ollama_tts,interrupt_1,2,139,True,,123.35,,123.35,,3222.31,128,0,670,0.7,"low_ru_ratio,too_long_after_interrupt","To explain how context packing works in VETKA, I'll break it down into two initial steps:
+
+1. **Implement ELISION compression layer**: This step involves reducing noise in the context packing process by using semantic compaction to filter out irrelevant data before storage. This ",docs/157_ph/benchmarks/audio/20260304_062845_241114_D_ollama_tts_interrupt_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:48.457033+00:00
+E_ollama_jepa_tts,short_1,1,122,True,,1181.22,,1181.22,,3251.85,128,0,455,0.9,,"Базовый ответ:
+
+Из предоставленного контекста я можу определить два конкретных файла:
+
+1. `PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md` - это файл с пинкой, в котором пользователь жаловался на проблемы с камерой.
+2. `src/memory/engram.py` - этот файл является частью предложения для улучше",docs/157_ph/benchmarks/audio/20260304_062848_465890_E_ollama_jepa_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:51.709184+00:00
+E_ollama_jepa_tts,short_1,2,122,True,,101.9,,101.9,,2037.87,128,0,419,0.7,"low_ru_ratio,no_two_items","Базовый файл `data/playground_proposals.json` уже создан с примером содержимого:
+
+```json
+[
+  {
+    ""id"": ""prop_1740001234"",
+    ""agent"": ""dragon_gold"",
+    ""description"": ""Add new fractal memory layer using Engram + CAM hybrid"",
+    ""confidence"": 0.96,
+    ""status"": ""pending"",
+ ",docs/157_ph/benchmarks/audio/20260304_062851_719354_E_ollama_jepa_tts_short_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:53.747239+00:00
+E_ollama_jepa_tts,context_1,1,133,True,,1098.92,,1098.92,,4235.88,128,0,685,0.75,low_ru_ratio,"Based on the provided context, here are 3 points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize file loading**: Reduce the number of files loaded into memory by using lazy loading or streaming. This can help reduce memory usage and prevent l",docs/157_ph/benchmarks/audio/20260304_062853_755661_E_ollama_jepa_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:28:57.983298+00:00
+E_ollama_jepa_tts,context_1,2,133,True,,119.74,,119.74,,2497.27,128,0,628,0.75,low_ru_ratio,"Based on the provided context, here are three points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize `TEST_DELETE_ME.txt` file**: Reduce the file size and remove unnecessary content to minimize memory usage.
+2. **Enable caching for 3D models*",docs/157_ph/benchmarks/audio/20260304_062857_992849_E_ollama_jepa_tts_context_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:29:00.480748+00:00
+E_ollama_jepa_tts,long_1,1,171,True,,1180.41,,1180.41,,3360.88,128,0,485,0.85,,"Поскольку в предоставленном контексте нет упоминания прощупного протокола (interrupt + restart stream protocol), я не могу дать точный ответ на этот вопрос. 
+
+Однако, основываясь на предоставленной информации, я могу сделать вывод, что voice handoff/tool-loop transparency связана",docs/157_ph/benchmarks/audio/20260304_062900_489416_E_ollama_jepa_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:29:03.841850+00:00
+E_ollama_jepa_tts,long_1,2,171,True,,106.02,,106.02,,2334.2,128,0,484,0.85,,"Поскольку в задаче нет четкого вопроса, я предположил, что пользователь хочет узнать оushаговое объяснение интеррупта +.restart stream protocol и его влияние на voice handoff/tool-loop transparency. 
+
+Итак, интеррупт (interrupt) и restart stream protocol — это две отдельные конце",docs/157_ph/benchmarks/audio/20260304_062903_850561_E_ollama_jepa_tts_long_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:29:06.176173+00:00
+E_ollama_jepa_tts,interrupt_1,1,139,True,,1205.44,,1205.44,,3918.84,128,0,625,0.7,"low_ru_ratio,too_long_after_interrupt","To explain how context packing works in VETKA, I'll break it down into two initial steps:
+
+1. **Implement ELISION compression layer**: This step involves reducing noise in the context packing process by using semantic compaction to filter out irrelevant data before storage. This ",docs/157_ph/benchmarks/audio/20260304_062906_183561_E_ollama_jepa_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:29:10.095174+00:00
+E_ollama_jepa_tts,interrupt_1,2,139,True,,115.89,,115.89,,3409.06,128,0,681,0.7,"low_ru_ratio,too_long_after_interrupt","To explain how context packing works in VETKA and provide two initial steps:
+
+Context packing is a process that reduces the size of the data by removing irrelevant information. In the provided project context, it seems to be using ELISION compression layer to achieve this.
+
+Two i",docs/157_ph/benchmarks/audio/20260304_062910_103116_E_ollama_jepa_tts_interrupt_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:29:13.504454+00:00
+F_mimo_short,short_live,1,14,True,,2264.51,,2264.51,,3481.3,17,0,111,0.8,,"Привет! Да, я здесь, и в контексте есть файлы VETKA и MYCELIUM, но конкретно о том, ""ты тут?"" — информации нет.",docs/157_ph/benchmarks/audio/20260304_062913_511429_F_mimo_short_short_live_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:29:16.985924+00:00
+F_mimo_short,short_live,2,14,True,,2379.85,,2379.85,,2944.19,15,0,92,0.8,,"Да, я здесь — в контексте проекта VETKA, где Hostess Agent интегрирован для быстрых ответов.",docs/157_ph/benchmarks/audio/20260304_062916_994075_F_mimo_short_short_live_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:29:19.930230+00:00

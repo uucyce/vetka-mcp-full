@@ -1,0 +1,10 @@
+mode,prompt_id,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,timestamp
+A_qwen_only,short_1,45,True,,20.0,50.0,20.0,50.0,52.27,20,1,22,1.0,2026-03-02T21:46:54.883728
+A_qwen_only,context_1,85,True,,20.0,50.0,20.0,50.0,51.27,20,1,42,1.0,2026-03-02T21:46:54.935067
+A_qwen_only,long_1,124,True,,20.0,50.0,20.0,50.0,52.14,24,1,62,1.0,2026-03-02T21:46:54.987300
+B_api_tts,short_1,45,True,,20.0,50.0,20.0,50.0,50.8,20,1,22,1.0,2026-03-02T21:46:55.038183
+B_api_tts,context_1,85,True,,20.0,50.0,20.0,50.0,51.44,20,1,42,1.0,2026-03-02T21:46:55.089708
+B_api_tts,long_1,124,True,,20.0,50.0,20.0,50.0,51.89,24,1,62,1.0,2026-03-02T21:46:55.141672
+C_api_jepa_tts,short_1,45,True,,20.0,50.0,20.0,50.0,51.88,20,1,22,1.0,2026-03-02T21:46:55.193671
+C_api_jepa_tts,context_1,85,True,,20.0,50.0,20.0,50.0,51.91,20,1,42,1.0,2026-03-02T21:46:55.245777
+C_api_jepa_tts,long_1,124,True,,20.0,50.0,20.0,50.0,52.32,24,1,62,1.0,2026-03-02T21:46:55.298177

@@ -1,0 +1,22 @@
+{
+  "mode": "C_api_jepa_tts",
+  "prompt_id": "interrupt_1",
+  "run_index": 2,
+  "audio_chunks": 4,
+  "ttft_text_ms": 2905.887458997313,
+  "ttfa_audio_ms": 7790.754916990409,
+  "merged_wav": "docs/157_ph/benchmarks/audio/20260304_204422_662485_C_api_jepa_tts_interrupt_1_run2/merged.wav",
+  "wav_qc": {
+    "ok": true,
+    "sample_rate": 24000,
+    "duration_s": 16.88,
+    "frame_ms": 20,
+    "silence_threshold": 0.014745,
+    "silence_ratio": 0.3791,
+    "pause_count": 12,
+    "long_pause_count": 3,
+    "longest_pause_ms": 1120,
+    "stretch_events": 0,
+    "qc_score": 66.65
+  }
+}

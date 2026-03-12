@@ -23,10 +23,33 @@ import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { TaskDAGNode } from './nodes/TaskDAGNode';
+// MARKER_176.15: Centralized MCC API config import.
+import { ANALYTICS_API } from '../../config/api.config';
 
-const API_BASE = 'http://localhost:5001/api';
 
 const nodeTypes = { taskNode: TaskDAGNode };
+
+// MARKER_176.7: Compact edge labels for task DAG connections.
+function getTaskEdgeLabel(edgeType?: string): { label: string; color: string } {
+  switch (String(edgeType || 'structural')) {
+    case 'dataflow':
+      return { label: 'data ->', color: NOLAN_PALETTE.edgeDataflow };
+    case 'temporal':
+      return { label: 'then', color: NOLAN_PALETTE.edgeTemporal };
+    case 'conditional':
+      return { label: 'if', color: NOLAN_PALETTE.edgeConditional };
+    case 'parallel_fork':
+      return { label: 'fork', color: NOLAN_PALETTE.edgeParallelFork };
+    case 'parallel_join':
+      return { label: 'join', color: NOLAN_PALETTE.edgeParallelJoin };
+    case 'feedback':
+      return { label: 'feedback', color: NOLAN_PALETTE.edgeFeedback };
+    case 'dependency':
+      return { label: 'depends', color: NOLAN_PALETTE.textMuted };
+    default:
+      return { label: '', color: NOLAN_PALETTE.textDim };
+  }
+}
 
 interface TaskDAGViewProps {
   onTaskSelect: (taskId: string) => void;
@@ -73,7 +96,7 @@ export function TaskDAGView({
   // Fetch task DAG data
   const fetchDAG = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/analytics/dag/tasks?limit=50`);
+      const res = await fetch(`${ANALYTICS_API}/dag/tasks?limit=50`);
       if (!res.ok) {
         setError(`API ${res.status}`);
         return;
@@ -85,11 +108,21 @@ export function TaskDAGView({
       }
       setRawNodes(data.nodes || []);
       setRawEdges(
-        (data.edges || []).map((e: Edge) => ({
-          ...e,
-          type: 'smoothstep',
-          style: { stroke: NOLAN_PALETTE.edgeStructural, strokeWidth: 1.5 },
-        })),
+        (data.edges || []).map((e: Edge) => {
+          const labelMeta = getTaskEdgeLabel((e as { type?: string }).type);
+          return {
+            ...e,
+            type: 'smoothstep',
+            style: {
+              stroke: labelMeta.color === NOLAN_PALETTE.textDim ? NOLAN_PALETTE.edgeStructural : labelMeta.color,
+              strokeWidth: 1.5,
+            },
+            label: (e as { label?: string }).label || labelMeta.label,
+            labelShowBg: true,
+            labelBgStyle: { fill: '#070707', opacity: 0.88 },
+            labelStyle: { fill: labelMeta.color, fontSize: 8, fontFamily: 'monospace' },
+          } satisfies Edge;
+        }),
       );
       setError(null);
     } catch (err) {

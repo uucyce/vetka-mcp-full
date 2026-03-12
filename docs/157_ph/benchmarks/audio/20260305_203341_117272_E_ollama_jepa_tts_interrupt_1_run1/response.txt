@@ -1,0 +1,3 @@
+Based on the provided context, details about **context packing** in VETKA are not available. The pinned files discuss schema markup testing and a "3-point plan" for improving memory (involving Tavily), but do not explain the architecture or steps of context packing.
+
+Therefore, I cannot name the 2 initial steps as requested

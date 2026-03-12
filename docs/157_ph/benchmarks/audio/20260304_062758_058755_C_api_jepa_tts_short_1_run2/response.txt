@@ -1,0 +1,5 @@
+Based on the provided context, here are two specific files and their purposes:
+
+1. **PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md** – This file documents the simplified camera movement system that uses a single direct interpolation (lerp) with ease-in-out animation to provide smooth, one-motion camera transitions without jarring movements.
+
+2. **вкладка **Playground_GROK.txt** – This file contains the backend API code for the Playground tab in MyceliumCommandCenter, implementing endpoints to manage and approve/reject agent proposals stored in a JSON file.

@@ -17,9 +17,11 @@ import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { useDevPanelStore } from '../../store/useDevPanelStore';
 import { useMCCDiagnostics } from '../../hooks/useMCCDiagnostics';
 import { useMCCStore } from '../../store/useMCCStore';
+// MARKER_176.15: Centralized MCC API config import.
+import { ANALYTICS_API, MCC_API } from '../../config/api.config';
 import type { MiniContextPayload } from './MiniContext';
+import { resolveMiniStatsCompactRoleAsset, resolveRoleMotionAsset, resolveRolePreviewAsset, resolveWorkflowLeadRole, type MycoRolePreviewRole } from './mycoRolePreview';
 
-const API_BASE = 'http://localhost:5001/api';
 
 interface SummaryData {
   total_pipelines: number;
@@ -112,6 +114,84 @@ interface WorkflowMycoHintData {
   };
 }
 
+interface LocalguysRunData {
+  run_id: string;
+  task_id: string;
+  workflow_family: string;
+  status: string;
+  current_step: string;
+  active_role: string;
+  model_id: string;
+  failure_reason: string;
+  playground_id: string;
+  branch_name: string;
+  worktree_path: string;
+  artifact_manifest?: {
+    required?: string[];
+    missing?: string[];
+    files?: Record<string, {
+      name: string;
+      exists: boolean;
+      size_bytes?: number;
+      updated_at?: string;
+    }>;
+  };
+  metrics?: {
+    runtime_ms?: number;
+    required_artifact_count?: number;
+    artifact_missing_count?: number;
+    artifact_present_count?: number;
+    event_count?: number;
+    run_status?: string;
+    workflow_family?: string;
+  };
+}
+
+interface LocalguysBenchmarkSummaryData {
+  count: number;
+  workflow_family: string;
+  status_counts?: Record<string, number>;
+  model_counts?: Record<string, number>;
+  runtime_counts?: Record<string, number>;
+  avg_runtime_ms?: number;
+  avg_artifact_missing_count?: number;
+  avg_required_artifact_count?: number;
+  success_rate?: number;
+  recent_runs?: Array<{
+    runtime_name?: string;
+    run_status?: string;
+    accelerator?: string;
+    device_profile?: string;
+    notes?: string;
+    updated_at?: string;
+    created_at?: string;
+  }>;
+}
+
+function summarizeRuntimeCounts(summary?: LocalguysBenchmarkSummaryData | null): string {
+  const counts = summary?.runtime_counts;
+  if (!counts) return 'runtime:localguys';
+  const rows = Object.entries(counts)
+    .filter(([, value]) => Number(value || 0) > 0)
+    .sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0))
+    .map(([key, value]) => `${key}:${value}`);
+  return rows.length ? `runtime:${rows.join('/')}` : 'runtime:localguys';
+}
+
+function summarizeLatestLitert(summary?: LocalguysBenchmarkSummaryData | null): string | null {
+  const row = (summary?.recent_runs || []).find((item) => String(item?.runtime_name || '').trim() === 'litert');
+  if (!row) return null;
+  const status = String(row.run_status || 'unknown').trim() || 'unknown';
+  const accelerator = String(row.accelerator || '').trim();
+  const device = String(row.device_profile || '').trim();
+  const notes = String(row.notes || '').trim();
+  const parts = ['litert', status];
+  if (accelerator) parts.push(accelerator);
+  if (device) parts.push(device);
+  if (notes) parts.push(notes);
+  return parts.join(' · ');
+}
+
 function resolveContextSubtitle(context?: MiniContextPayload): string {
   if (!context || context.scope === 'project') return 'scope: project';
   if (context.nodeKind === 'task') return `scope: task (${context.label})`;
@@ -151,7 +231,7 @@ function usePrefetchReinforcement(context?: MiniContextPayload) {
     const complexity = context?.scope === 'project' ? 7 : 5;
 
     setLoading(true);
-    fetch(`${API_BASE}/mcc/prefetch`, {
+    fetch(`${MCC_API}/prefetch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -208,7 +288,7 @@ function useTaskWorkflowBinding(context: MiniContextPayload | undefined, tasks: 
       selection_origin: String(fallbackTask.workflow_selection_origin || '').trim(),
     } : null;
 
-    fetch(`${API_BASE}/mcc/tasks/${encodeURIComponent(taskId)}/workflow-binding`)
+    fetch(`${MCC_API}/tasks/${encodeURIComponent(taskId)}/workflow-binding`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled) return;
@@ -249,7 +329,7 @@ function useWorkflowCatalog() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/mcc/workflow-catalog`);
+      const res = await fetch(`${MCC_API}/workflow-catalog`);
       if (!res.ok) return;
       const json = await res.json();
       setCatalog(json);
@@ -266,6 +346,119 @@ function useWorkflowCatalog() {
 
   return { catalog, loading, refresh };
 }
+
+function useLocalguysRun(
+  context: MiniContextPayload | undefined,
+  binding: TaskWorkflowBinding | null,
+) {
+  const [run, setRun] = useState<LocalguysRunData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [starting, setStarting] = useState(false);
+  const taskId = String(context?.taskId || '').trim();
+  const workflowFamily = String(binding?.workflow_family || '').trim();
+  const enabled = taskId.length > 0 && workflowFamily.endsWith('_localguys');
+
+  useEffect(() => {
+    if (!enabled) {
+      setRun(null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    fetch(`${MCC_API}/tasks/${encodeURIComponent(taskId)}/localguys-run`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const row = data?.run;
+        setRun(row && typeof row === 'object' ? row as LocalguysRunData : null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRun(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, revision, taskId]);
+
+  const refresh = useCallback(() => {
+    setRevision((n) => n + 1);
+  }, []);
+
+  const startRun = useCallback(async () => {
+    if (!enabled || starting) return false;
+    setStarting(true);
+    try {
+      const res = await fetch(`${MCC_API}/tasks/${encodeURIComponent(taskId)}/localguys-run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) return false;
+      const json = await res.json();
+      const row = json?.run;
+      setRun(row && typeof row === 'object' ? row as LocalguysRunData : null);
+      setRevision((n) => n + 1);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setStarting(false);
+    }
+  }, [enabled, starting, taskId]);
+
+  return { enabled, run, loading, starting, refresh, startRun };
+}
+
+function useLocalguysBenchmarkSummary(
+  context: MiniContextPayload | undefined,
+  binding: TaskWorkflowBinding | null,
+) {
+  const [summary, setSummary] = useState<LocalguysBenchmarkSummaryData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const taskId = String(context?.taskId || '').trim();
+  const workflowFamily = String(binding?.workflow_family || '').trim();
+  const enabled = taskId.length > 0 && workflowFamily.endsWith('_localguys');
+
+  useEffect(() => {
+    if (!enabled) {
+      setSummary(null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    fetch(`${MCC_API}/localguys/benchmark-summary?workflow_family=${encodeURIComponent(workflowFamily)}&limit=20`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const row = data?.summary;
+        setSummary(row && typeof row === 'object' ? row as LocalguysBenchmarkSummaryData : null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSummary(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, revision, taskId, workflowFamily]);
+
+  const refresh = useCallback(() => {
+    setRevision((n) => n + 1);
+  }, []);
+
+  return { enabled, summary, loading, refresh };
+}
+
 
 function useWorkflowMycoHint(context: MiniContextPayload | undefined, binding: TaskWorkflowBinding | null) {
   const [data, setData] = useState<WorkflowMycoHintData | null>(null);
@@ -289,7 +482,7 @@ function useWorkflowMycoHint(context: MiniContextPayload | undefined, binding: T
     }
     let cancelled = false;
     setLoading(true);
-    fetch(`${API_BASE}/mcc/workflow/myco-hint`, {
+    fetch(`${MCC_API}/workflow/myco-hint`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -342,7 +535,7 @@ function useSummaryData() {
     if (now - lastFetchRef.current < 1000) return;
     lastFetchRef.current = now;
     try {
-      const res = await fetch(`${API_BASE}/analytics/summary`);
+      const res = await fetch(`${ANALYTICS_API}/summary`);
       if (!res.ok) return;
       const json = await res.json();
       // MARKER_154.14A_FIX: Normalize response (API wraps in {success, data})
@@ -385,7 +578,7 @@ function useAgentsData() {
     if (now - lastFetchRef.current < 1500) return;
     lastFetchRef.current = now;
     try {
-      const res = await fetch(`${API_BASE}/analytics/agents/summary?period=7d`);
+      const res = await fetch(`${ANALYTICS_API}/agents/summary?period=7d`);
       if (!res.ok) return;
       const json = await res.json();
       if (json.success) {
@@ -455,10 +648,19 @@ function StatsCompact({ context }: MiniStatsProps) {
   const scopeSubtitle = useMemo(() => resolveContextSubtitle(context), [context]);
   const { binding: taskWorkflowBinding } = useTaskWorkflowBinding(context, tasks);
   const workflowMycoHint = useWorkflowMycoHint(context, taskWorkflowBinding);
+  const [triggerRoleAsset, setTriggerRoleAsset] = useState<string | null>(null);
+  const triggerRoleTimerRef = useRef<number | null>(null);
+  const compactRoleAsset = useMemo(() => {
+    // MARKER_168.MYCO.RUNTIME.MINI_STATS_COMPACT_ROLE_PREVIEW.V1:
+    // Compact Stats previews the relevant role for the selected task/workflow surface.
+    return triggerRoleAsset || resolveMiniStatsCompactRoleAsset(context);
+  }, [context, triggerRoleAsset]);
   const selectedTask = useMemo(() => {
     if (!context?.taskId) return null;
     return tasks.find((t) => t.id === context.taskId || `task_overlay_${t.id}` === context.nodeId) || null;
   }, [context?.nodeId, context?.taskId, tasks]);
+  const localguys = useLocalguysRun(context, taskWorkflowBinding);
+  const localguysBenchmark = useLocalguysBenchmarkSummary(context, taskWorkflowBinding);
 
   const taskWorkflowSummary = useMemo(() => {
     if (!context?.taskId) return null;
@@ -481,8 +683,76 @@ function StatsCompact({ context }: MiniStatsProps) {
     };
   }, [context?.taskId, data?.by_preset, selectedTask, taskWorkflowBinding]);
 
+  useEffect(() => {
+    if (!context?.taskId) {
+      setTriggerRoleAsset(null);
+      return;
+    }
+    const clearTriggerTimer = () => {
+      if (triggerRoleTimerRef.current !== null) {
+        window.clearTimeout(triggerRoleTimerRef.current);
+        triggerRoleTimerRef.current = null;
+      }
+    };
+    const pulseRole = (role: string | null | undefined, seed: string) => {
+      const normalized = String(role || '').trim().toLowerCase();
+      if (!normalized) return;
+      const resolvedRole: MycoRolePreviewRole | null =
+        normalized === 'eval'
+          ? 'verifier'
+          : (normalized === 'architect' || normalized === 'coder' || normalized === 'researcher' || normalized === 'scout' || normalized === 'verifier'
+              ? normalized
+              : null);
+      if (!resolvedRole) return;
+      const asset = resolveRoleMotionAsset(
+        resolvedRole,
+        `${seed}:${context?.taskId || ''}:${context?.nodeId || ''}:${context?.label || ''}`,
+      );
+      if (!asset) return;
+      setTriggerRoleAsset(asset);
+      clearTriggerTimer();
+      triggerRoleTimerRef.current = window.setTimeout(() => {
+        setTriggerRoleAsset(null);
+        triggerRoleTimerRef.current = null;
+      }, 3200);
+    };
+
+    const onWorkflowSelected = (event: Event) => {
+      // MARKER_168.MYCO.RUNTIME.MINI_STATS_WORKFLOW_SELECTED_TRANSITION.V1:
+      // Compact Stats briefly pulses the workflow lead role after explicit task workflow choice.
+      const detail = (event as CustomEvent).detail || {};
+      if (String(detail.taskId || '') !== String(context?.taskId || '')) return;
+      pulseRole(detail.role || 'architect', `workflow_selected:${String(detail.workflowId || '')}`);
+    };
+
+    const onTaskBoardUpdated = (event: Event) => {
+      // MARKER_168.MYCO.RUNTIME.MINI_STATS_TASK_BOARD_TRANSITION.V1:
+      // Task-board lifecycle events may transiently foreground coder/verifier role previews
+      // for the currently selected task only.
+      const detail = (event as CustomEvent).detail || {};
+      const eventTaskId = String(detail.task_id || detail.taskId || '');
+      if (eventTaskId && eventTaskId !== String(context?.taskId || '')) return;
+      const action = String(detail.action || detail.type || '').toLowerCase();
+      if (action === 'task_claimed' || action === 'task_started' || action === 'running') {
+        pulseRole(detail.agent_type || detail.role || 'coder', `task_started:${action}`);
+      } else if (action === 'task_completed') {
+        pulseRole(detail.agent_type || detail.role || 'verifier', `task_completed:${action}`);
+      } else if (action === 'task_failed' || action === 'pipeline_failed') {
+        pulseRole(detail.agent_type || detail.role || 'verifier', `task_failed:${action}`);
+      }
+    };
+
+    window.addEventListener('mcc-workflow-selected', onWorkflowSelected as EventListener);
+    window.addEventListener('task-board-updated', onTaskBoardUpdated as EventListener);
+    return () => {
+      window.removeEventListener('mcc-workflow-selected', onWorkflowSelected as EventListener);
+      window.removeEventListener('task-board-updated', onTaskBoardUpdated as EventListener);
+      clearTriggerTimer();
+    };
+  }, [context?.label, context?.nodeId, context?.taskId]);
+
   const openWorkflowPanel = useCallback(() => {
-    setStatsMode('overview');
+    setStatsMode('ops');
     window.dispatchEvent(new CustomEvent('mcc-miniwindow-open', {
       detail: { windowId: 'stats', expanded: true },
     }));
@@ -556,23 +826,32 @@ function StatsCompact({ context }: MiniStatsProps) {
               gap: 8,
             }}
           >
-            <button
-              onClick={openWorkflowPanel}
-              style={{
-                border: '1px solid #2e2e2e',
-                borderRadius: 4,
-                background: '#151515',
-                color: NOLAN_PALETTE.text,
-                fontSize: 9,
-                padding: '2px 8px',
-                cursor: 'pointer',
-                fontFamily: 'monospace',
-                letterSpacing: 0.35,
-              }}
-              title="Open workflow selection in Stats panel"
-            >
-              WORKFLOW
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              {compactRoleAsset ? (
+                <img
+                  src={compactRoleAsset}
+                  alt="Workflow role preview"
+                  style={{ width: 22, height: 28, objectFit: 'contain', flexShrink: 0 }}
+                />
+              ) : null}
+              <button
+                onClick={openWorkflowPanel}
+                style={{
+                  border: '1px solid #2e2e2e',
+                  borderRadius: 4,
+                  background: '#151515',
+                  color: NOLAN_PALETTE.text,
+                  fontSize: 9,
+                  padding: '2px 8px',
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  letterSpacing: 0.35,
+                }}
+                title="Open workflow selection in Stats panel"
+              >
+                WORKFLOW
+              </button>
+            </div>
             <span style={{ fontSize: 8, color: '#a2abb5', textTransform: 'uppercase' }}>
               {taskWorkflowSummary.workflowBank}
             </span>
@@ -614,6 +893,59 @@ function StatsCompact({ context }: MiniStatsProps) {
               </span>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {localguys.enabled ? (
+        <div
+          style={{
+            border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+            borderRadius: 6,
+            padding: '6px 8px',
+            background: 'rgba(10,10,10,0.78)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+            <div style={{ color: '#c5ced8', fontSize: 8 }}>
+              localguys: {localguys.run ? `${localguys.run.status} · ${localguys.run.current_step}` : (localguys.loading ? 'loading' : 'idle')}
+            </div>
+            {!localguys.run ? (
+              <button
+                onClick={() => { void localguys.startRun(); }}
+                disabled={localguys.starting}
+                style={{
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 4,
+                  background: 'transparent',
+                  color: NOLAN_PALETTE.textMuted,
+                  fontSize: 8,
+                  padding: '2px 6px',
+                  cursor: localguys.starting ? 'default' : 'pointer',
+                  opacity: localguys.starting ? 0.6 : 1,
+                  fontFamily: 'monospace',
+                }}
+              >
+                {localguys.starting ? 'starting…' : 'start'}
+              </button>
+            ) : null}
+          </div>
+          {localguys.run ? (
+            <div style={{ color: '#7f8893', fontSize: 8, marginTop: 4 }}>
+              pg:{localguys.run.playground_id || '-'} · missing:{localguys.run.metrics?.artifact_missing_count ?? localguys.run.artifact_manifest?.missing?.length ?? 0} · rt:{localguys.run.metrics?.runtime_ms ?? 0}ms
+            </div>
+          ) : null}
+          {localguysBenchmark.summary ? (
+            <>
+              <div style={{ color: '#6f7882', fontSize: 8, marginTop: 2 }}>
+                bench:{localguysBenchmark.summary.count || 0} · ok:{Math.round(Number(localguysBenchmark.summary.success_rate || 0))}% · avg:{localguysBenchmark.summary.avg_runtime_ms || 0}ms · {summarizeRuntimeCounts(localguysBenchmark.summary)}
+              </div>
+              {summarizeLatestLitert(localguysBenchmark.summary) ? (
+                <div style={{ color: '#66707a', fontSize: 8, marginTop: 2 }}>
+                  {summarizeLatestLitert(localguysBenchmark.summary)}
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </div>
       ) : null}
 
@@ -715,6 +1047,20 @@ const AGENT_ICONS: Record<string, string> = {
   verifier: '[V]',
 };
 
+function asRolePreview(agentType: string): MycoRolePreviewRole | null {
+  const role = String(agentType || '').trim().toLowerCase();
+  if (role === 'architect' || role === 'coder' || role === 'researcher' || role === 'scout' || role === 'verifier') {
+    return role;
+  }
+  return null;
+}
+
+function resolveAgentStatsAvatar(agentType: string, seed: string): string | null {
+  const role = asRolePreview(agentType);
+  if (!role) return null;
+  return resolveRoleMotionAsset(role, seed) || resolveRolePreviewAsset(role, seed);
+}
+
 // Agent Performance Section
 function AgentPerformanceSection() {
   const { data, loading } = useAgentsData();
@@ -754,6 +1100,20 @@ function AgentPerformanceSection() {
         const successRate = stats.total_runs > 0 
           ? Math.round((stats.successful_runs / stats.total_runs) * 100) 
           : 0;
+        // MARKER_177.LOCALGUYS.AGENT_AVATAR_STATS.V1:
+        // Team role rows should use the prepared animated/static role assets instead of
+        // plain glyphs when a canonical MCC role is available.
+        const avatarSrc = resolveAgentStatsAvatar(agentType, `stats:${agentType}`) || resolveMiniStatsCompactRoleAsset({
+          scope: 'node',
+          navLevel: 'workflow',
+          focusScopeKey: `stats:${agentType}`,
+          workflowSourceMode: 'runtime',
+          selectedNodeIds: [],
+          nodeId: `stats:${agentType}`,
+          nodeKind: 'agent',
+          label: agentType,
+          role: agentType,
+        });
         
         return (
           <div
@@ -766,9 +1126,23 @@ function AgentPerformanceSection() {
               borderBottom: `1px solid ${NOLAN_PALETTE.borderDim}`,
             }}
           >
-            <span style={{ fontSize: 12, width: 20 }}>
-              {AGENT_ICONS[agentType] || '🤖'}
-            </span>
+            {avatarSrc ? (
+              <img
+                src={avatarSrc}
+                alt={`${agentType} avatar`}
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 999,
+                  objectFit: 'cover',
+                  flexShrink: 0,
+                }}
+              />
+            ) : (
+              <span style={{ fontSize: 12, width: 20 }}>
+                {AGENT_ICONS[agentType] || '🤖'}
+              </span>
+            )}
             <span style={{ 
               color: NOLAN_PALETTE.text, 
               fontSize: 10, 
@@ -818,10 +1192,25 @@ function AgentPerformanceSection() {
                   borderRadius: 4,
                   fontSize: 8,
                   color: '#888',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
                 }}
               >
-                <span style={{ color: NOLAN_PALETTE.textAccent }}>{AGENT_ICONS[agentType]}</span>
-                {' '}{remark}
+                {(() => {
+                  const avatarSrc = resolveAgentStatsAvatar(agentType, `remarks:${agentType}`);
+                  if (!avatarSrc) {
+                    return <span style={{ color: NOLAN_PALETTE.textAccent }}>{AGENT_ICONS[agentType]}</span>;
+                  }
+                  return (
+                    <img
+                      src={avatarSrc}
+                      alt={`${agentType} avatar`}
+                      style={{ width: 21, height: 21, borderRadius: 999, objectFit: 'cover', flexShrink: 0 }}
+                    />
+                  );
+                })()}
+                <span>{remark}</span>
               </div>
             ))
           ).slice(0, 3)}
@@ -838,6 +1227,8 @@ function StatsExpanded({ context }: MiniStatsProps) {
   const scopeSubtitle = useMemo(() => resolveContextSubtitle(context), [context]);
   const tasks = useMCCStore(s => s.tasks);
   const { binding: taskWorkflowBinding, refresh: refreshBinding } = useTaskWorkflowBinding(context, tasks);
+  const localguys = useLocalguysRun(context, taskWorkflowBinding);
+  const localguysBenchmark = useLocalguysBenchmarkSummary(context, taskWorkflowBinding);
   const { catalog, loading: catalogLoading, refresh: refreshCatalog } = useWorkflowCatalog();
   const workflowMycoHint = useWorkflowMycoHint(context, taskWorkflowBinding);
   const [selectedBank, setSelectedBank] = useState('core');
@@ -864,7 +1255,7 @@ function StatsExpanded({ context }: MiniStatsProps) {
     if (!workflowId) return;
     setSavingWorkflowId(workflowId);
     try {
-      await fetch(`${API_BASE}/mcc/tasks/${encodeURIComponent(context.taskId)}/workflow-binding`, {
+      await fetch(`${MCC_API}/tasks/${encodeURIComponent(context.taskId)}/workflow-binding`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -875,6 +1266,20 @@ function StatsExpanded({ context }: MiniStatsProps) {
           selection_origin: 'user-selected',
         }),
       });
+      window.dispatchEvent(new CustomEvent('mcc-workflow-selected', {
+        detail: {
+          taskId: context.taskId,
+          workflowId,
+          workflowBank: String(row?.bank || 'core'),
+          workflowFamily: String(row?.family || workflowId),
+          role: resolveWorkflowLeadRole({
+            id: workflowId,
+            title: String(row?.title || ''),
+            description: String(row?.description || ''),
+            compatibility_tags: Array.isArray(row?.compatibility_tags) ? row.compatibility_tags : [],
+          }),
+        },
+      }));
       refreshBinding();
     } catch {
       // ignore
@@ -922,6 +1327,133 @@ function StatsExpanded({ context }: MiniStatsProps) {
               active workflow: {taskWorkflowBinding?.workflow_family || taskWorkflowBinding?.workflow_id || '-'} · bank:{taskWorkflowBinding?.workflow_bank || '-'} · team:{taskWorkflowBinding?.team_profile || selectedTask?.preset || '-'} · via:{taskWorkflowBinding?.selection_origin || '-'}
             </div>
           </div>
+
+          {localguys.enabled ? (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: '10px 12px',
+                border: `1px solid ${NOLAN_PALETTE.border}`,
+                borderRadius: 6,
+                background: 'rgba(10,10,10,0.85)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <div style={{ color: NOLAN_PALETTE.textMuted, fontSize: 9, textTransform: 'uppercase' }}>
+                  Localguys Runtime
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    onClick={() => { localguys.refresh(); localguysBenchmark.refresh(); }}
+                    style={{
+                      border: `1px solid ${NOLAN_PALETTE.border}`,
+                      borderRadius: 4,
+                      background: 'transparent',
+                      color: NOLAN_PALETTE.textMuted,
+                      fontSize: 9,
+                      padding: '3px 8px',
+                      cursor: 'pointer',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    refresh
+                  </button>
+                  {!localguys.run ? (
+                    <button
+                      onClick={() => { void localguys.startRun(); }}
+                      disabled={localguys.starting}
+                      style={{
+                        border: `1px solid ${NOLAN_PALETTE.textAccent}`,
+                        borderRadius: 4,
+                        background: 'transparent',
+                        color: NOLAN_PALETTE.text,
+                        fontSize: 9,
+                        padding: '3px 8px',
+                        cursor: localguys.starting ? 'default' : 'pointer',
+                        opacity: localguys.starting ? 0.6 : 1,
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      {localguys.starting ? 'starting…' : 'start run'}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {localguys.loading && !localguys.run ? (
+                <div style={{ color: '#666', fontSize: 10 }}>Loading localguys runtime...</div>
+              ) : !localguys.run ? (
+                <div style={{ color: '#666', fontSize: 10 }}>No localguys run yet for this task.</div>
+              ) : (
+                <>
+                  <div style={{ color: NOLAN_PALETTE.text, fontSize: 11, marginBottom: 6 }}>
+                    {localguys.run.status} · {localguys.run.current_step} · role:{localguys.run.active_role || '-'}
+                  </div>
+                  <div style={{ color: '#9aa4af', fontSize: 9, lineHeight: 1.6, marginBottom: 8 }}>
+                    run:{localguys.run.run_id} · pg:{localguys.run.playground_id || '-'} · branch:{localguys.run.branch_name || '-'}
+                    {localguys.run.model_id ? ` · model:${localguys.run.model_id}` : ''}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                    <span style={{ color: '#9aa4af', fontSize: 9 }}>
+                      runtime: {localguys.run.metrics?.runtime_ms ?? 0}ms
+                    </span>
+                    <span style={{ color: '#9aa4af', fontSize: 9 }}>
+                      artifacts: {localguys.run.metrics?.artifact_present_count ?? 0}/{localguys.run.metrics?.required_artifact_count ?? localguys.run.artifact_manifest?.required?.length ?? 0}
+                    </span>
+                    <span style={{ color: '#9aa4af', fontSize: 9 }}>
+                      events: {localguys.run.metrics?.event_count ?? 0}
+                    </span>
+                  </div>
+                  {localguysBenchmark.summary ? (
+                    <>
+                      <div style={{ color: '#9aa4af', fontSize: 9, lineHeight: 1.6, marginBottom: 4 }}>
+                        benchmark: runs:{localguysBenchmark.summary.count || 0} · ok:{Math.round(Number(localguysBenchmark.summary.success_rate || 0))}% · avg rt:{localguysBenchmark.summary.avg_runtime_ms || 0}ms · avg missing:{localguysBenchmark.summary.avg_artifact_missing_count ?? 0}
+                      </div>
+                      <div style={{ color: '#8a949f', fontSize: 9, lineHeight: 1.6, marginBottom: 8 }}>
+                        {summarizeRuntimeCounts(localguysBenchmark.summary)}
+                        {summarizeLatestLitert(localguysBenchmark.summary) ? ` · ${summarizeLatestLitert(localguysBenchmark.summary)}` : ''}
+                      </div>
+                    </>
+                  ) : localguysBenchmark.loading ? (
+                    <div style={{ color: '#7f8893', fontSize: 9, marginBottom: 8 }}>
+                      benchmark: loading...
+                    </div>
+                  ) : null}
+                  {localguys.run.failure_reason ? (
+                    <div style={{ color: NEUTRAL_WARN, fontSize: 9, marginBottom: 8 }}>
+                      fail: {localguys.run.failure_reason}
+                    </div>
+                  ) : null}
+                  <div style={{ color: NOLAN_PALETTE.textMuted, fontSize: 9, textTransform: 'uppercase', marginBottom: 6 }}>
+                    Artifact Contract
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {(localguys.run.artifact_manifest?.required || []).map((name) => {
+                      const exists = Boolean(localguys.run?.artifact_manifest?.files?.[name]?.exists);
+                      return (
+                        <span
+                          key={name}
+                          style={{
+                            border: `1px solid ${exists ? '#42563e' : NOLAN_PALETTE.border}`,
+                            borderRadius: 999,
+                            padding: '2px 7px',
+                            fontSize: 8,
+                            color: exists ? '#9fd08f' : '#7f8893',
+                            background: exists ? 'rgba(56,86,46,0.22)' : 'transparent',
+                          }}
+                        >
+                          {exists ? 'ok' : 'missing'}:{name}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  <div style={{ color: '#9aa4af', fontSize: 9 }}>
+                    missing required: {localguys.run.metrics?.artifact_missing_count ?? localguys.run.artifact_manifest?.missing?.length ?? 0}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
 
           <div
             style={{

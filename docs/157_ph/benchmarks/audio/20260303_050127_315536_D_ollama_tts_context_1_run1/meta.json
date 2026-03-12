@@ -1,0 +1,9 @@
+{
+  "mode": "D_ollama_tts",
+  "prompt_id": "context_1",
+  "run_index": 1,
+  "audio_chunks": 4,
+  "ttft_text_ms": 840.5410420091357,
+  "ttfa_audio_ms": 7877.2129169956315,
+  "merged_wav": "docs/157_ph/benchmarks/audio/20260303_050127_315536_D_ollama_tts_context_1_run1/merged.wav"
+}

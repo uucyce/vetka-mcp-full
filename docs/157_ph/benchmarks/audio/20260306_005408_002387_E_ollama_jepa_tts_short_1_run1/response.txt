@@ -1,0 +1,5 @@
+Here are two specific files and one phrase for each, based on the provided context:
+
+1.  **`AUDIT_PROCESS_MAP.md`**: “It maps out the audit process steps.”
+2.  **`INSTALLATION_COMPLETE.md`**: “It indicates that the code has been successfully installed.”
+3.  **`CLIENT/src/components/canvas/FileCard.tsx:916`**: “This triggers the creation of a new

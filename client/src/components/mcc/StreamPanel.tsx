@@ -11,9 +11,11 @@ import { useMCCStore } from '../../store/useMCCStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { ReflexInsight } from '../chat/ReflexInsight';
 import type { ChatMessage } from '../../types/chat';
+import type { MiniContextPayload } from './MiniContext';
 
 interface StreamPanelProps {
   maxEvents?: number;
+  context?: MiniContextPayload;
 }
 
 export function StreamPanel({ maxEvents = 8 }: StreamPanelProps) {

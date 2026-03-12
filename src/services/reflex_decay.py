@@ -136,6 +136,24 @@ MODEL_PROFILES: Dict[str, ModelProfile] = {
         max_tools=15,
         prefer_simple=False,
     ),
+    "qwen3:8b": ModelProfile(
+        model_name="qwen3:8b",
+        fc_reliability=0.82,
+        max_tools=8,
+        prefer_simple=True,
+    ),
+    "qwen2.5:7b": ModelProfile(
+        model_name="qwen2.5:7b",
+        fc_reliability=0.80,
+        max_tools=8,
+        prefer_simple=True,
+    ),
+    "qwen2.5:3b": ModelProfile(
+        model_name="qwen2.5:3b",
+        fc_reliability=0.68,
+        max_tools=4,
+        prefer_simple=True,
+    ),
     "glm-4.7-flash": ModelProfile(
         model_name="glm-4.7-flash",
         fc_reliability=0.75,
@@ -162,6 +180,30 @@ MODEL_PROFILES: Dict[str, ModelProfile] = {
         fc_reliability=0.95,
         max_tools=45,
         prefer_simple=False,
+    ),
+    "deepseek-r1:8b": ModelProfile(
+        model_name="deepseek-r1:8b",
+        fc_reliability=0.74,
+        max_tools=6,
+        prefer_simple=True,
+    ),
+    "phi4-mini:latest": ModelProfile(
+        model_name="phi4-mini:latest",
+        fc_reliability=0.78,
+        max_tools=4,
+        prefer_simple=True,
+    ),
+    "qwen2.5vl:3b": ModelProfile(
+        model_name="qwen2.5vl:3b",
+        fc_reliability=0.72,
+        max_tools=4,
+        prefer_simple=True,
+    ),
+    "embeddinggemma:300m": ModelProfile(
+        model_name="embeddinggemma:300m",
+        fc_reliability=1.0,
+        max_tools=1,
+        prefer_simple=True,
     ),
 }
 

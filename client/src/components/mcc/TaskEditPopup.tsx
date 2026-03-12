@@ -5,6 +5,8 @@
  * Allows editing: team preset, description, workflow template.
  * Dispatches task on save.
  *
+ * MARKER_175B: Added workflow family selector grid.
+ *
  * @phase 154
  * @wave 3
  * @status active
@@ -25,13 +27,27 @@ const PHASE_TYPES = [
   { value: 'research', label: 'Research', icon: '🔍' },
 ];
 
+// MARKER_175B.WORKFLOW_TEMPLATES: 8 non-stub workflow families + Auto
+const WORKFLOW_FAMILIES = [
+  { value: '', label: 'Auto', icon: '🤖', desc: 'Architect heuristic selects best workflow' },
+  { value: 'bmad_default', label: 'BMAD Full', icon: '📋', desc: 'Full pipeline: Scout→Architect→Coder→Verifier' },
+  { value: 'ralph_loop', label: 'Ralph Solo', icon: '🔄', desc: 'Single-agent loop with self-correction' },
+  { value: 'g3_critic_coder', label: 'G3 Critic+Coder', icon: '👥', desc: 'Critic reviews coder output in loop' },
+  { value: 'quick_fix', label: 'Quick Fix', icon: '⚡', desc: 'Minimal pipeline for small patches' },
+  { value: 'research_first', label: 'Research First', icon: '🔬', desc: 'Deep research before implementation' },
+  { value: 'refactor', label: 'Refactor', icon: '🏗️', desc: 'Structural code reorganization' },
+  { value: 'test_only', label: 'Tests Only', icon: '🧪', desc: 'Write and run tests exclusively' },
+  { value: 'docs_update', label: 'Docs Update', icon: '📝', desc: 'Documentation generation and updates' },
+];
+
 interface TaskEditPopupProps {
   taskId: string;
   title: string;
   description?: string;
   preset?: string;
   phaseType?: string;
-  onSave: (updates: { description: string; preset: string; phaseType: string }) => void;
+  workflowFamily?: string;
+  onSave: (updates: { description: string; preset: string; phaseType: string; workflowFamily: string }) => void;
   onDispatch: () => void;
   onClose: () => void;
 }
@@ -42,6 +58,7 @@ export function TaskEditPopup({
   description: initialDesc = '',
   preset: initialPreset = 'dragon_silver',
   phaseType: initialPhaseType = 'build',
+  workflowFamily: initialWorkflowFamily = '',
   onSave,
   onDispatch,
   onClose,
@@ -49,6 +66,7 @@ export function TaskEditPopup({
   const [description, setDescription] = useState(initialDesc);
   const [preset, setPreset] = useState(initialPreset);
   const [phaseType, setPhaseType] = useState(initialPhaseType);
+  const [workflowFamily, setWorkflowFamily] = useState(initialWorkflowFamily);
   const overlayRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape
@@ -66,15 +84,15 @@ export function TaskEditPopup({
   }, [onClose]);
 
   const handleSave = useCallback(() => {
-    onSave({ description, preset, phaseType });
+    onSave({ description, preset, phaseType, workflowFamily });
     onClose();
-  }, [description, preset, phaseType, onSave, onClose]);
+  }, [description, preset, phaseType, workflowFamily, onSave, onClose]);
 
   const handleDispatch = useCallback(() => {
-    onSave({ description, preset, phaseType });
+    onSave({ description, preset, phaseType, workflowFamily });
     onDispatch();
     onClose();
-  }, [description, preset, phaseType, onSave, onDispatch, onClose]);
+  }, [description, preset, phaseType, workflowFamily, onSave, onDispatch, onClose]);
 
   return (
     <div
@@ -97,7 +115,7 @@ export function TaskEditPopup({
           border: `1px solid ${NOLAN_PALETTE.border}`,
           borderRadius: 8,
           padding: '16px 20px',
-          width: 360,
+          width: 380,
           maxHeight: '80vh',
           overflow: 'auto',
           fontFamily: 'monospace',
@@ -202,6 +220,36 @@ export function TaskEditPopup({
               }}
             >
               {p.icon} {p.label}
+            </button>
+          ))}
+        </div>
+
+        {/* MARKER_175B: Workflow Family Selector */}
+        <label style={{ color: NOLAN_PALETTE.textMuted, fontSize: 9, display: 'block', marginTop: 12, marginBottom: 4 }}>
+          WORKFLOW
+        </label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+          {WORKFLOW_FAMILIES.map(wf => (
+            <button
+              key={wf.value}
+              onClick={() => setWorkflowFamily(wf.value)}
+              title={wf.desc}
+              style={{
+                padding: '4px 2px',
+                background: workflowFamily === wf.value ? NOLAN_PALETTE.bgLight : NOLAN_PALETTE.bg,
+                border: `1px solid ${workflowFamily === wf.value ? NOLAN_PALETTE.text : NOLAN_PALETTE.border}`,
+                borderRadius: 4,
+                color: workflowFamily === wf.value ? NOLAN_PALETTE.text : NOLAN_PALETTE.textMuted,
+                fontSize: 9,
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                transition: 'all 0.15s',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {wf.icon} {wf.label}
             </button>
           ))}
         </div>

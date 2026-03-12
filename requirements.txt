@@ -67,6 +67,7 @@ torch==2.9.1
 
 # ===== Integrations / security =====
 composio==0.9.0
+tavily-python==0.7.12
 cryptography==46.0.3
 Authlib==1.6.5
 paramiko==4.0.0

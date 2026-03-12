@@ -9,8 +9,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import { DiffViewer } from '../panels/DiffViewer';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+// MARKER_176.15: Centralized MCC API config import.
+import { DEBUG_API } from '../../config/api.config';
 
-const API_BASE = 'http://localhost:5001/api/debug';
 
 interface VerifierFeedback {
   passed: boolean;
@@ -64,7 +65,7 @@ export function PipelineResultsViewer({ taskId }: PipelineResultsViewerProps) {
     setResults(null);
     setExpandedSubtask(null);
 
-    fetch(`${API_BASE}/pipeline-results/${taskId}`)
+    fetch(`${DEBUG_API}/pipeline-results/${taskId}`)
       .then(r => r.json())
       .then(data => {
         if (cancelled) return;
@@ -89,7 +90,7 @@ export function PipelineResultsViewer({ taskId }: PipelineResultsViewerProps) {
     setApplyingSubtask(idx);
     setApplyResult(null);
     try {
-      const res = await fetch(`${API_BASE}/pipeline-results/apply`, {
+      const res = await fetch(`${DEBUG_API}/pipeline-results/apply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ task_id: taskId, subtask_idx: idx }),
@@ -118,7 +119,7 @@ export function PipelineResultsViewer({ taskId }: PipelineResultsViewerProps) {
     for (let i = 0; i < subs.length; i++) {
       setApplyAllProgress({ current: i + 1, total: subs.length });
       try {
-        const res = await fetch(`${API_BASE}/pipeline-results/apply`, {
+        const res = await fetch(`${DEBUG_API}/pipeline-results/apply`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ task_id: taskId, subtask_idx: subs[i].idx }),
@@ -135,7 +136,7 @@ export function PipelineResultsViewer({ taskId }: PipelineResultsViewerProps) {
   // Update result lifecycle status
   const updateResultStatus = useCallback(async (status: 'applied' | 'rejected' | 'rework') => {
     try {
-      const res = await fetch(`${API_BASE}/pipeline-results/${taskId}/status`, {
+      const res = await fetch(`${DEBUG_API}/pipeline-results/${taskId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),

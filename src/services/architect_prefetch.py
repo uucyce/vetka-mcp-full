@@ -56,6 +56,9 @@ class PrefetchContext:
     workflow_reinforcement_policy: dict = field(default_factory=dict)
     # Selected team preset
     preset: str = "dragon_silver"
+    # Canonical MCC task packet
+    task_packet: dict = field(default_factory=dict)
+    task_packet_summary: str = ""
     # Summary for injection
     summary: str = ""
 
@@ -420,12 +423,25 @@ class ArchitectPrefetch:
         task_type: str = "",
         complexity: int = 5,
         config: Optional[ProjectConfig] = None,
+        workflow_family: str = "",
+        task_packet: Optional[dict] = None,
     ) -> PrefetchContext:
         """
         Full prefetch pipeline (sync version).
         Returns PrefetchContext ready for injection.
         """
         ctx = PrefetchContext()
+        packet = dict(task_packet or {})
+        packet_task = packet.get("task") if isinstance(packet.get("task"), dict) else {}
+        packet_docs = packet.get("docs") if isinstance(packet.get("docs"), dict) else {}
+        packet_scope = packet.get("code_scope") if isinstance(packet.get("code_scope"), dict) else {}
+        packet_tests = packet.get("tests") if isinstance(packet.get("tests"), dict) else {}
+        packet_binding = packet.get("workflow_binding") if isinstance(packet.get("workflow_binding"), dict) else {}
+
+        if not task_description.strip():
+            title = str(packet_task.get("title") or "").strip()
+            description = str(packet_task.get("description") or "").strip()
+            task_description = "\n\n".join(part for part in [title, description] if part)
 
         sandbox_path = config.sandbox_path if config else ""
 
@@ -443,18 +459,50 @@ class ArchitectPrefetch:
         # 4. History
         ctx.similar_tasks = cls.prefetch_history(task_description)
 
+        ctx.task_packet = packet
+        packet_files = [
+            str(path).strip()
+            for path in list(packet_scope.get("closure_files") or [])
+            if str(path).strip()
+        ]
+        existing_paths = {
+            str(row.get("path") or "").strip()
+            for row in list(ctx.relevant_files or [])
+            if isinstance(row, dict)
+        }
+        for path in packet_files:
+            if path not in existing_paths:
+                ctx.relevant_files.append({"path": path, "relevance": "task_packet"})
+                existing_paths.add(path)
+
         # 5. Select workflow
-        selection = WorkflowTemplateLibrary.select_workflow_with_policy(
-            task_type=task_type,
-            complexity=complexity,
-            task_description=task_description,
-        )
-        workflow_key = selection["workflow_key"]
-        ctx.workflow_id = workflow_key
-        tpl = WorkflowTemplateLibrary.get_template(workflow_key)
-        ctx.workflow_name = tpl.get("name", workflow_key) if tpl else workflow_key
-        ctx.workflow_reinforcement = list(selection.get("reinforcement", []))
-        ctx.workflow_reinforcement_policy = dict(selection.get("reinforcement_policy", {}))
+        # MARKER_175B.WORKFLOW_POLICY: Task metadata overrides heuristic
+        packet_wf = str(
+            packet_binding.get("workflow_family")
+            or packet_binding.get("workflow_id")
+            or ""
+        ).strip()
+        user_wf = workflow_family.strip() if workflow_family else packet_wf
+        user_tpl = WorkflowTemplateLibrary.get_template(user_wf) if user_wf else None
+        if user_wf and user_tpl:
+            # User explicitly selected workflow — skip heuristic
+            ctx.workflow_id = user_wf
+            ctx.workflow_name = user_tpl.get("name", user_wf)
+            ctx.workflow_reinforcement = []
+            ctx.workflow_reinforcement_policy = {}
+        else:
+            # Heuristic selection (existing logic)
+            selection = WorkflowTemplateLibrary.select_workflow_with_policy(
+                task_type=task_type,
+                complexity=complexity,
+                task_description=task_description,
+            )
+            workflow_key = selection["workflow_key"]
+            ctx.workflow_id = workflow_key
+            tpl = WorkflowTemplateLibrary.get_template(workflow_key)
+            ctx.workflow_name = tpl.get("name", workflow_key) if tpl else workflow_key
+            ctx.workflow_reinforcement = list(selection.get("reinforcement", []))
+            ctx.workflow_reinforcement_policy = dict(selection.get("reinforcement_policy", {}))
 
         # 6. Select team (simple for now — complexity-based)
         if complexity <= 3:
@@ -466,6 +514,15 @@ class ArchitectPrefetch:
 
         # Build summary for injection
         file_list = ", ".join(f["path"] for f in ctx.relevant_files[:3]) if ctx.relevant_files else "none"
+        packet_docs_count = len(list(packet_docs.get("architecture_docs") or [])) + len(list(packet_docs.get("recon_docs") or []))
+        packet_tests_count = len(list(packet_tests.get("closure_tests") or []))
+        packet_gaps = [str(item).strip() for item in list(packet.get("gaps") or []) if str(item).strip()]
+        if packet:
+            ctx.task_packet_summary = (
+                f"Packet: {packet_task.get('id') or 'task'} | "
+                f"docs={packet_docs_count}, files={len(packet_files)}, tests={packet_tests_count}, "
+                f"gaps={', '.join(packet_gaps) if packet_gaps else 'none'}"
+            )
         ctx.summary = (
             f"Prefetch: {len(ctx.relevant_files)} files found ({file_list}), "
             f"{len(ctx.markers)} markers, "
@@ -474,5 +531,7 @@ class ArchitectPrefetch:
             f"OpenHands reinforcement: "
             f"{', '.join(ctx.workflow_reinforcement) if ctx.workflow_reinforcement else 'off'}."
         )
+        if ctx.task_packet_summary:
+            ctx.summary += f" {ctx.task_packet_summary}"
 
         return ctx

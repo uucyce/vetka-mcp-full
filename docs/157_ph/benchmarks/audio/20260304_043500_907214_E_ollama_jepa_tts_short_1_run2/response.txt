@@ -1,0 +1,4 @@
+<think>
+Okay, let's tackle this question. The user wants two specific files from the provided context and one phrase explaining why each is needed. 
+
+First, I'll look through the pinned_context section. There are three files listed here. The

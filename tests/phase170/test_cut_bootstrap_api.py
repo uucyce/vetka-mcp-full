@@ -118,3 +118,42 @@ def test_cut_bootstrap_returns_recoverable_error_when_sandbox_missing(tmp_path: 
     assert payload["success"] is False
     assert payload["error"]["code"] == "sandbox_missing"
     assert payload["degraded_mode"] is True
+
+
+def test_cut_bootstrap_berlin_fixture_profile_returns_manifest_and_launch_metadata(tmp_path: Path):
+    source_dir = tmp_path / "berlin"
+    (source_dir / "source_gh5").mkdir(parents=True)
+    (source_dir / "video_gen").mkdir()
+    (source_dir / "boards").mkdir()
+    (source_dir / "prj").mkdir()
+    (source_dir / "source_gh5" / "take_01.mov").write_bytes(b"00")
+    (source_dir / "video_gen" / "scene_01.mp4").write_bytes(b"00")
+    (source_dir / "boards" / "frame_01.png").write_bytes(b"00")
+    (source_dir / "prj" / "edit.prproj").write_text("demo", encoding="utf-8")
+    (source_dir / "250623_vanpticdanyana_berlin_Punch.m4a").write_bytes(b"00")
+    (source_dir / "ironwall_v2_scenario.md").write_text("Opening scene", encoding="utf-8")
+
+    sandbox_root = tmp_path / "sandbox"
+    _bootstrap_sandbox(sandbox_root)
+
+    client = _make_client()
+    resp = client.post(
+        "/api/cut/bootstrap",
+        json={
+            "source_path": str(source_dir),
+            "sandbox_root": str(sandbox_root),
+            "project_name": "Berlin Fixture",
+            "bootstrap_profile": "berlin_fixture_v1",
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    profile = payload["bootstrap"]["profile"]
+    assert payload["success"] is True
+    assert payload["project"]["bootstrap_profile"] == "berlin_fixture_v1"
+    assert profile["profile_name"] == "berlin_fixture_v1"
+    assert profile["sandbox_hint"] == "codex54_cut_fixture_sandbox"
+    assert profile["reserved_port"] == 3211
+    assert profile["music_track"]["relative_path"] == "250623_vanpticdanyana_berlin_Punch.m4a"
+    assert profile["fixture_manifest"]["asset_totals"]["video"] == 2
+    assert profile["fixture_manifest"]["asset_totals"]["audio"] == 1

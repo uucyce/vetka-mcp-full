@@ -15,18 +15,41 @@ import { MiniWindow } from './MiniWindow';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import type { MiniContextPayload } from './MiniContext';
 import { useMCCStore } from '../../store/useMCCStore';
+// MARKER_176.15: Centralized MCC API config import.
+import { API_BASE } from '../../config/api.config';
 import type { MycoHelperMode } from '../../store/useMCCStore';
-import mycoIdleQuestion from '../../assets/myco/myco_idle_question.png';
-import mycoReadySmile from '../../assets/myco/myco_ready_smile.png';
-import mycoSpeakingLoop from '../../assets/myco/myco_speaking_loop.apng';
+import { resolveMiniChatCompactAvatar, resolveMiniStatsCompactRoleAsset, resolveRoleMotionAsset, resolveSystemMycoAsset, type MycoRolePreviewRole } from './mycoRolePreview';
 
-const API_BASE = 'http://localhost:5001/api';
 
 interface MiniChatProps {
   context?: MiniContextPayload;
 }
 
 const MYCO_MODE_ORDER: MycoHelperMode[] = ['off', 'passive'];
+const KEY_PROVIDER_TO_MODEL_SOURCE: Record<string, string[]> = {
+  polza: ['polza'],
+  openrouter: ['openrouter'],
+  xai: ['direct'],
+  openai: ['direct'],
+  anthropic: ['direct'],
+  google: ['gemini_direct'],
+  nanogpt: ['nanogpt'],
+  poe: ['poe'],
+};
+
+function buildQuickChatNodePath(context: MiniContextPayload | undefined, role: string): string {
+  const raw = String(
+    context?.path
+      || context?.taskId
+      || context?.nodeId
+      || context?.workflowId
+      || context?.label
+      || 'project',
+  ).trim();
+  const scope = String(context?.scope || 'project').trim().toLowerCase() || 'project';
+  return `mcc::${role}::${scope}::${raw}`;
+}
+
 
 function nextMycoMode(mode: MycoHelperMode): MycoHelperMode {
   const idx = MYCO_MODE_ORDER.indexOf(mode);
@@ -45,6 +68,66 @@ function emitMycoReplyEvent() {
   window.dispatchEvent(new CustomEvent('mcc-myco-reply', {
     detail: { ts: Date.now() },
   }));
+}
+
+// MARKER_164.P5.P1.MYCO.CHAT_STATUS_AWARE_NEXT_ACTIONS.V1:
+// Chat guidance must branch by canonical task status with actionable next steps.
+function buildWorkflowStatusAction(taskStatus: string): string {
+  return taskStatus === 'running'
+    ? 'monitor Stats/stream -> wait verify/eval gate -> retry only on fail'
+    : taskStatus === 'done'
+      ? 'inspect artifacts/result -> pick next queued/pending task in Tasks, else run targeted retry'
+      : taskStatus === 'failed'
+        ? 'open Context -> inspect failure cause -> retry from Tasks with corrected model/prompt'
+        : 'start from Tasks -> then inspect Context/stream and iterate';
+}
+
+function buildWorkflowRoleGuidance(params: {
+  role: string;
+  label: string;
+  kind: string;
+  familyHint: string;
+  statusAction: string;
+}): string {
+  const { role, label, kind, familyHint, statusAction } = params;
+  const labelLow = label.toLowerCase();
+  if (role === 'architect') {
+    return `workflow is open; architect selected (${familyHint})\n- next: define/adjust subtasks -> choose team preset (Dragons/Titans/G3/Ralph) -> ${statusAction}`;
+  }
+  // MARKER_164.P5.P4.MYCO.SCOUT_RESEARCH_GUIDANCE_SPLIT.V1:
+  // Recon roles must not collapse into generic agent guidance.
+  if (role === 'scout') {
+    return `workflow is open; scout selected (${familyHint})\n- next: inspect impacted files/deps in Context -> map code surface -> hand findings to coder/architect -> ${statusAction}`;
+  }
+  if (role === 'researcher') {
+    return `workflow is open; researcher selected (${familyHint})\n- next: inspect docs/web evidence -> confirm approach/constraints -> hand findings to coder/architect -> ${statusAction}`;
+  }
+  if (role === 'coder') {
+    return `coder selected (${familyHint})\n- next: open Context -> verify model/prompt -> ${statusAction}`;
+  }
+  // MARKER_164.P5.P4.MYCO.VERIFIER_EVAL_GUIDANCE_SPLIT.V1:
+  // Verifier and eval agent need distinct next-step language.
+  if (role === 'verifier') {
+    return `verifier selected (${familyHint})\n- next: inspect acceptance criteria in Context -> verify code/output completeness -> ${statusAction}`;
+  }
+  if (role === 'eval') {
+    return `eval selected (${familyHint})\n- next: inspect score/quality signals -> compare result vs target -> ${statusAction}`;
+  }
+  // MARKER_164.P5.P4.MYCO.QUALITY_DEPLOY_GUIDANCE_BRANCHES.V1:
+  // Workflow artifact/gate nodes need explicit branch-aware guidance.
+  if (kind === 'condition' || labelLow.includes('quality')) {
+    return `quality gate selected (${familyHint})\n- next: inspect verifier/eval inputs -> decide retry vs approval path -> ${statusAction}`;
+  }
+  if (labelLow.includes('approval')) {
+    return `approval gate selected (${familyHint})\n- next: review release decision -> approve deploy or send back to coder -> ${statusAction}`;
+  }
+  if (labelLow.includes('deploy')) {
+    return `deploy step selected (${familyHint})\n- next: verify approval passed -> confirm release target -> ${statusAction}`;
+  }
+  if (labelLow.includes('measure')) {
+    return `measure step selected (${familyHint})\n- next: inspect telemetry/test output -> feed verifier/eval -> ${statusAction}`;
+  }
+  return `workflow is open and agent ${role || label} is selected (${familyHint})\n- next: open Context -> check model/prompt -> ${statusAction}`;
 }
 
 function buildMycoReply(context?: MiniContextPayload): string {
@@ -68,17 +151,11 @@ function buildMycoReply(context?: MiniContextPayload): string {
               : 'BMAD/default workflow';
   const taskDrillExpanded = context?.taskDrillState === 'expanded' || Boolean(context?.workflowInlineExpanded);
   const nodeUnfoldExpanded = context?.roadmapNodeDrillState === 'expanded' || Boolean(context?.roadmapNodeInlineExpanded);
-  const inWorkflow = level === 'workflow' || taskDrillExpanded;
+  const workflowNodeContext = graphKind.startsWith('workflow_') || (kind === 'agent' && Boolean(context?.workflowId));
+  const inWorkflow = level === 'workflow' || taskDrillExpanded || workflowNodeContext;
   const scopeLine = `you are in ${level} view`;
   const taskStatus = String(context?.status || '').toLowerCase().trim();
-  const statusAction =
-    taskStatus === 'running'
-      ? 'monitor Stats/stream -> wait verify/eval gate -> retry only on fail'
-      : taskStatus === 'done'
-        ? 'inspect artifacts/result -> if accepted move to next task, else run targeted retry'
-        : taskStatus === 'failed'
-          ? 'open Context -> inspect failure cause -> retry from Tasks with corrected model/prompt'
-          : 'start from Tasks -> then inspect Context/stream and iterate';
+  const statusAction = buildWorkflowStatusAction(taskStatus);
   const windowFocus = String(context?.windowFocus || '').toLowerCase();
   const windowFocusState = String(context?.windowFocusState || '').toLowerCase();
   if (windowFocus === 'balance') {
@@ -96,27 +173,25 @@ function buildMycoReply(context?: MiniContextPayload): string {
   if (windowFocus === 'chat') {
     return `MYCO\n- ${scopeLine}\n- Chat window ${windowFocusState || 'focused'}\n- next: ask for concrete next steps on current node/task -> execute from Tasks`;
   }
-  if (taskDrillExpanded) {
+  if (taskDrillExpanded || workflowNodeContext) {
+    // MARKER_164.P5.P3.MYCO.WORKFLOW_NODE_PRIORITY_OVER_UNFOLD.V1:
+    // If workflow node/agent is selected, keep workflow guidance priority over module-unfold fallback.
     // MARKER_162.P4.P2.MYCO.CHAT_REPLY_STATE_MATRIX.V1:
     // MARKER_162.P4.P4.MYCO.CHAT_REPLY_NODE_ROLE_WORKFLOW_MATRIX.V1:
     // Post-drill guidance matrix expanded by role + workflow family.
+    // MARKER_164.P5.P4.MYCO.WORKFLOW_ROLE_STATUS_DEPTH_MATRIX.V1:
+    // Workflow-open MYCO chat must branch by role/gate with status-aware next actions.
     if (kind === 'agent') {
-      if (role === 'architect') {
-        // MARKER_164.P5.P1.MYCO.CHAT_STATUS_AWARE_NEXT_ACTIONS.V1:
-        // Workflow-open architect guidance must adapt to current task status.
-        return `MYCO\n- ${scopeLine}\n- workflow is open; architect selected (${familyHint})\n- next: define/adjust subtasks -> choose team preset (Dragons/Titans/G3/Ralph) -> ${statusAction}`;
-      }
-      if (role === 'coder') {
-        return `MYCO\n- ${scopeLine}\n- coder selected (${familyHint})\n- next: open Context -> verify model/prompt -> ${statusAction}`;
-      }
-      if (role === 'verifier' || role === 'eval') {
-        return `MYCO\n- ${scopeLine}\n- verifier selected (${familyHint})\n- next: inspect criteria in Context -> run verify stage -> ${statusAction}`;
-      }
-      return `MYCO\n- ${scopeLine}\n- workflow is open and agent ${role || label} is selected (${familyHint})\n- next: open Context -> check model/prompt -> ${statusAction}`;
+      return `MYCO\n- ${scopeLine}\n- ${buildWorkflowRoleGuidance({ role, label, kind, familyHint, statusAction })}`;
+    }
+    if (kind === 'condition' || String(label || '').toLowerCase().includes('quality') || String(label || '').toLowerCase().includes('approval') || String(label || '').toLowerCase().includes('deploy') || String(label || '').toLowerCase().includes('measure')) {
+      return `MYCO\n- ${scopeLine}\n- ${buildWorkflowRoleGuidance({ role, label, kind, familyHint, statusAction })}`;
     }
     if (kind === 'task' || graphKind === 'project_task') {
       return `MYCO\n- ${scopeLine}\n- task is active and workflow opened (${familyHint})\n- next: select agent node -> open Context -> ${statusAction}`;
     }
+    // MARKER_164.P5.P4.MYCO.WORKFLOW_OPEN_NO_GENERIC_ROADMAP_FALLBACK.V1:
+    // Once workflow focus is established, chat guidance must stay workflow-specific.
     return `MYCO\n- ${scopeLine}\n- workflow is already open for the active task (${familyHint})\n- next: select an agent node -> inspect Context/stream -> ${statusAction}`;
   }
   if (nodeUnfoldExpanded) {
@@ -161,6 +236,28 @@ function useChatModelLabel(context?: MiniContextPayload): string {
   if (context.model) return context.model;
   if (context.nodeKind === 'agent' && rolePresetModel) return rolePresetModel;
   return 'from preset';
+}
+
+function useChatRuntimeTarget(context?: MiniContextPayload): { model: string; modelSource?: string } {
+  const selectedKey = useMCCStore((s) => s.selectedKey);
+  const activePreset = useMCCStore((s) => s.activePreset || 'dragon_silver');
+  const presets = useMCCStore((s) => s.presets);
+  const fetchPresets = useMCCStore((s) => s.fetchPresets);
+
+  useEffect(() => {
+    fetchPresets();
+  }, [fetchPresets]);
+
+  const presetRoles = ((presets?.[activePreset] as any)?.roles || {}) as Record<string, string>;
+  const roleKey = context?.role ? String(context.role).toLowerCase() : '';
+  const effectiveRoleKey = roleKey === 'eval' ? 'verifier' : roleKey;
+  const rolePresetModel = effectiveRoleKey ? String(presetRoles?.[effectiveRoleKey] || '') : '';
+  const provider = String(selectedKey?.provider || '').toLowerCase().trim();
+  const modelSource = provider ? (KEY_PROVIDER_TO_MODEL_SOURCE[provider]?.[0] || provider) : undefined;
+  return {
+    model: String(context?.model || rolePresetModel || presetRoles?.architect || 'grok-fast-4.1'),
+    modelSource,
+  };
 }
 
 function openContextModelChooser() {
@@ -209,11 +306,13 @@ function buildMycoContextKey(context?: MiniContextPayload): string {
 function ChatCompact({ context }: MiniChatProps) {
   const [input, setInput] = useState('');
   const [lastAnswer, setLastAnswer] = useState<string | null>(null);
+  const [lastQuestion, setLastQuestion] = useState<string | null>(null);
   const [lastAnswerSource, setLastAnswerSource] = useState<'helper' | 'assistant' | null>(null);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const scope = useMemo(() => resolveChatScope(context), [context]);
   const modelLabel = useChatModelLabel(context);
+  const runtimeTarget = useChatRuntimeTarget(context);
   const contextName = String(context?.label || context?.taskId || 'project');
   const mycoHeaderHint = useMemo(() => buildMycoHeaderHint(context), [context]);
   const helperMode = useMCCStore((s) => s.helperMode);
@@ -221,11 +320,28 @@ function ChatCompact({ context }: MiniChatProps) {
   const [mycoAvatarState, setMycoAvatarState] = useState<MycoAvatarVisualState>('idle');
   const mycoAvatarTimersRef = useRef<number[]>([]);
   const proactiveContextKeyRef = useRef<string>('');
+  const compactTriggerTimerRef = useRef<number | null>(null);
+  const [compactTriggerRoleAvatar, setCompactTriggerRoleAvatar] = useState<string | null>(null);
+  const compactRoleAvatar = useMemo(() => {
+    return resolveMiniStatsCompactRoleAsset(context);
+  }, [context]);
   const mycoAvatarSrc = useMemo(() => {
-    if (mycoAvatarState === 'speaking') return mycoSpeakingLoop;
-    if (mycoAvatarState === 'ready') return mycoReadySmile;
-    return mycoIdleQuestion;
-  }, [mycoAvatarState]);
+    // MARKER_168.MYCO.RUNTIME.MINI_CHAT_COMPACT_ROLE_PREVIEW.V1:
+    // Compact MiniChat previews role-specific avatar only in architect/role mode.
+    // In helper mode the compact chat must remain visually MYCO-aligned with the top helper.
+    if (helperMode !== 'off') {
+      // MARKER_168.MYCO.RUNTIME.MINI_CHAT_COMPACT_HELPER_STAYS_MYCO.V1:
+      // Clicking top MYCO must never transiently replace chat MYCO with architect/role avatar.
+      return resolveSystemMycoAsset(mycoAvatarState);
+    }
+    if (helperMode === 'off' && (compactTriggerRoleAvatar || compactRoleAvatar)) {
+      // MARKER_168.MYCO.RUNTIME.MINI_CHAT_COMPACT_ROLE_STICKY.V1:
+      // Once chat is in architect/role mode, compact avatar must stay on that role instead of
+      // falling back to idle MYCO after the initial speaking animation ends.
+      return compactTriggerRoleAvatar || compactRoleAvatar;
+    }
+    return resolveMiniChatCompactAvatar(context, mycoAvatarState);
+  }, [compactRoleAvatar, compactTriggerRoleAvatar, context, helperMode, mycoAvatarState]);
 
   useEffect(() => {
     // MARKER_162.P4.P1.MYCO.OFF_MODE_NO_HELPER_ECHO.V1:
@@ -299,12 +415,66 @@ function ChatCompact({ context }: MiniChatProps) {
     };
   }, []);
 
+  useEffect(() => {
+    if (helperMode === 'off') return;
+    // MARKER_168.MYCO.RUNTIME.MINI_CHAT_TRIGGER_RESET_ON_HELPER.V1:
+    // Leaving role-specific architect mode must clear transient role pulses so helper mode
+    // always re-enters with canonical MYCO visuals.
+    if (compactTriggerTimerRef.current !== null) {
+      window.clearTimeout(compactTriggerTimerRef.current);
+      compactTriggerTimerRef.current = null;
+    }
+    setCompactTriggerRoleAvatar(null);
+  }, [helperMode]);
+
+  useEffect(() => {
+    const clearTriggerTimer = () => {
+      if (compactTriggerTimerRef.current !== null) {
+        window.clearTimeout(compactTriggerTimerRef.current);
+        compactTriggerTimerRef.current = null;
+      }
+    };
+    const onModelUpdated = (event: Event) => {
+      if (helperMode !== 'off') return;
+      if (context?.nodeKind !== 'agent' && !context?.role) return;
+      const detail = (event as CustomEvent).detail || {};
+      const normalized = String(detail.role || '').trim().toLowerCase();
+      const resolvedRole: MycoRolePreviewRole | null =
+        normalized === 'eval'
+          ? 'verifier'
+          : (normalized === 'architect' || normalized === 'coder' || normalized === 'researcher' || normalized === 'scout' || normalized === 'verifier'
+              ? normalized
+              : null);
+      if (!resolvedRole) return;
+      const asset = resolveRoleMotionAsset(
+        resolvedRole,
+        `model_selected:${normalized}:${String(context?.taskId || '')}:${String(context?.nodeId || '')}`,
+      );
+      if (!asset) return;
+      // MARKER_168.MYCO.RUNTIME.MINI_CHAT_MODEL_SELECTED_TRANSITION.V1:
+      // Model changes may briefly pulse the active role in compact chat, but only inside
+      // role-specific agent context so architect/task chat is not hijacked.
+      setCompactTriggerRoleAvatar(asset);
+      clearTriggerTimer();
+      compactTriggerTimerRef.current = window.setTimeout(() => {
+        setCompactTriggerRoleAvatar(null);
+        compactTriggerTimerRef.current = null;
+      }, 2200);
+    };
+    window.addEventListener('mcc-model-updated', onModelUpdated as EventListener);
+    return () => {
+      window.removeEventListener('mcc-model-updated', onModelUpdated as EventListener);
+      clearTriggerTimer();
+    };
+  }, [context?.nodeId, context?.nodeKind, context?.role, context?.taskId, helperMode]);
+
   const handleSend = useCallback(async () => {
     // MARKER_162.P4.P1.MYCO.COMPACT_NO_STALE_SETMESSAGES.V1:
     // Compact mode owns `lastAnswer` only; avoid expanded-chat state writes here.
     if (!input.trim() || loading) return;
     const message = input.trim();
     setInput('');
+    setLastQuestion(message);
     if (isMycoTrigger(message) && helperMode !== 'off') {
       emitMycoReplyEvent();
       setLastAnswer(buildMycoReply(context));
@@ -345,7 +515,10 @@ function ChatCompact({ context }: MiniChatProps) {
             workflow_family: context?.workflowFamily,
             label: context?.label,
             status: context?.status,
-            model: context?.model,
+            model: runtimeTarget.model,
+            model_source: runtimeTarget.modelSource,
+            selected_key_provider: useMCCStore.getState().selectedKey?.provider || '',
+            node_path: buildQuickChatNodePath(context, helperMode !== 'off' ? 'helper_myco' : 'architect'),
             path: context?.path,
             selected_node_ids: context?.selectedNodeIds || [],
           },
@@ -362,7 +535,7 @@ function ChatCompact({ context }: MiniChatProps) {
     } finally {
       setLoading(false);
     }
-  }, [context, helperMode, input, loading]);
+  }, [context, helperMode, input, loading, runtimeTarget.model, runtimeTarget.modelSource]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -412,14 +585,29 @@ function ChatCompact({ context }: MiniChatProps) {
               title="Disable helper and return MYCO to top bar"
             >
               <img
-                src={mycoAvatarSrc}
+                src={mycoAvatarSrc || undefined}
                 alt="Helper avatar"
                 style={{ width: 24, height: 34, objectFit: 'contain' }}
               />
               <span style={{ textTransform: 'none', letterSpacing: 0, color: '#b8c2cd' }}>{mycoHeaderHint}</span>
             </button>
           ) : (
-            scope.label
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              {compactRoleAvatar ? (
+                <img
+                  src={compactRoleAvatar}
+                  alt="Architect avatar"
+                  style={{ width: 24, height: 34, objectFit: 'contain' }}
+                />
+              ) : null}
+              <span>{scope.label}</span>
+            </span>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -458,6 +646,7 @@ function ChatCompact({ context }: MiniChatProps) {
           lineHeight: 1.4,
         }}
       >
+        {lastQuestion ? <div style={{ color: '#697482', marginBottom: 6 }}>you: {lastQuestion.slice(0, 120)}</div> : null}
         {loading ? (
           <span style={{ color: '#555' }}>thinking...</span>
         ) : lastAnswer && !(helperMode === 'off' && lastAnswerSource === 'helper') ? (
@@ -519,6 +708,7 @@ function ChatExpanded({ context }: MiniChatProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const scope = useMemo(() => resolveChatScope(context), [context]);
   const modelLabel = useChatModelLabel(context);
+  const runtimeTarget = useChatRuntimeTarget(context);
   const helperMode = useMCCStore((s) => s.helperMode);
   const setHelperMode = useMCCStore((s) => s.setHelperMode);
   const mycoHeaderHint = useMemo(() => buildMycoHeaderHint(context), [context]);
@@ -526,10 +716,26 @@ function ChatExpanded({ context }: MiniChatProps) {
   const mycoAvatarTimersRef = useRef<number[]>([]);
   const proactiveContextKeyRef = useRef<string>('');
   const mycoAvatarSrc = useMemo(() => {
-    if (mycoAvatarState === 'speaking') return mycoSpeakingLoop;
-    if (mycoAvatarState === 'ready') return mycoReadySmile;
-    return mycoIdleQuestion;
+    return resolveSystemMycoAsset(mycoAvatarState);
   }, [mycoAvatarState]);
+  const historyPath = useMemo(() => buildQuickChatNodePath(context, helperMode !== 'off' ? 'helper_myco' : 'architect'), [context, helperMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/chat/history?path=${encodeURIComponent(historyPath)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const history = Array.isArray(data?.history) ? data.history : [];
+        setMessages(history.map((row: any) => ({ role: String(row?.role || 'assistant'), content: String(row?.content || '') })));
+      })
+      .catch(() => {
+        if (!cancelled) setMessages([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [historyPath]);
 
   useEffect(() => {
     const handlePrefill = (event: Event) => {
@@ -624,7 +830,10 @@ function ChatExpanded({ context }: MiniChatProps) {
             workflow_family: context?.workflowFamily,
             label: context?.label,
             status: context?.status,
-            model: context?.model,
+            model: runtimeTarget.model,
+            model_source: runtimeTarget.modelSource,
+            selected_key_provider: useMCCStore.getState().selectedKey?.provider || '',
+            node_path: buildQuickChatNodePath(context, helperMode !== 'off' ? 'helper_myco' : 'architect'),
             path: context?.path,
             selected_node_ids: context?.selectedNodeIds || [],
           },
@@ -643,7 +852,7 @@ function ChatExpanded({ context }: MiniChatProps) {
     } finally {
       setLoading(false);
     }
-  }, [context, helperMode, input, loading]);
+  }, [context, helperMode, historyPath, input, loading, runtimeTarget.model, runtimeTarget.modelSource]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -683,7 +892,7 @@ function ChatExpanded({ context }: MiniChatProps) {
                 title="Disable helper and return MYCO to top bar"
               >
                 <img
-                  src={mycoAvatarSrc}
+                  src={mycoAvatarSrc || undefined}
                   alt="Helper avatar"
                   style={{ width: 24, height: 34, objectFit: 'contain' }}
                 />

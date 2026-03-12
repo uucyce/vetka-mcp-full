@@ -1,0 +1,9 @@
+Interrupt + Restart Stream Protocol:
+
+1. **Stop Stream**: When the interrupt protocol is triggered, the current stream is stopped.
+2. **Clean-up**: The voice handoff is cleaned up, and the tool-loop is paused.
+3. **Restart Stream**: A new stream is started, and the voice handoff is re-established.
+
+Influence on Voice Handoff/Tool-Loop Transparency:
+
+* Before interrupt + restart, the voice

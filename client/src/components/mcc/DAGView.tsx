@@ -548,7 +548,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
 
           for (const n of group) {
             const p = localById.get(n.id);
-            if (!p) continue;
+            if (!p?.position) continue;
             n.position = {
               x: anchorX + (p.position.x - minX) * scale,
               // bottom->top invariant: keep workflow above task anchor in roadmap view.
@@ -732,6 +732,8 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           String(edge.id || '').startsWith('rd_') ||
           String((edge as any).className || '').includes('wf-inline-edge') ||
           String((edge as any).className || '').includes('wf-bridge-edge');
+        const fractalDepth = Math.max(0, Number((edge.data as any)?.rd_depth_total || 0));
+        const fractalEdgeScale = Math.max(0.38, 1 / Math.pow(1.6, fractalDepth));
         const isFeedback =
           String((edge as any).type || '').toLowerCase() === 'feedback' ||
           String((edge as any).relationKind || '').toLowerCase() === 'retries';
@@ -745,8 +747,8 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           markerEnd: edge.markerEnd || { type: MarkerType.ArrowClosed, color: '#7d8590' },
           style: {
             ...(edge.style || {}),
-            strokeWidth: isMicroInline ? 0.7 : Number((edge.style as any)?.strokeWidth || 1),
-            opacity: isMicroInline ? 0.78 : Number((edge.style as any)?.opacity || 1),
+            strokeWidth: isMicroInline ? Math.max(0.34, 0.7 * fractalEdgeScale) : Number((edge.style as any)?.strokeWidth || 1),
+            opacity: isMicroInline ? Math.max(0.42, 0.78 * fractalEdgeScale) : Number((edge.style as any)?.opacity || 1),
             strokeDasharray: isFeedback ? '4 3' : (edge.style as any)?.strokeDasharray,
           },
         };

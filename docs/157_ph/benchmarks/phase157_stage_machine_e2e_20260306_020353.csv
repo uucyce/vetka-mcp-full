@@ -1,0 +1,4 @@
+prompt_id,run_index,success,error,ttfr_filler_ms,ttfr_response_ms,ttfa_audio_ms,t_idle_ms,response_status,stage_sequence,response_preview,timestamp
+short,1,False,timeout>50.0s,,,,,,,,2026-03-05T23:02:12.667753+00:00
+context,1,False,timeout>50.0s,,,,,,,,2026-03-05T23:03:02.879313+00:00
+deep,1,False,timeout>50.0s,,,,,,,,2026-03-05T23:03:53.109430+00:00

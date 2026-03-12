@@ -1,0 +1,22 @@
+{
+  "mode": "D_ollama_tts",
+  "prompt_id": "context_1",
+  "run_index": 2,
+  "audio_chunks": 1,
+  "ttft_text_ms": 5145.094125007745,
+  "ttfa_audio_ms": 13855.40937501355,
+  "merged_wav": "docs/157_ph/benchmarks/audio/20260304_020701_250558_D_ollama_tts_context_1_run2/merged.wav",
+  "wav_qc": {
+    "ok": true,
+    "sample_rate": 24000,
+    "duration_s": 12.56,
+    "frame_ms": 20,
+    "silence_threshold": 0.014924,
+    "silence_ratio": 0.6115,
+    "pause_count": 12,
+    "long_pause_count": 6,
+    "longest_pause_ms": 940,
+    "stretch_events": 0,
+    "qc_score": 47.0
+  }
+}

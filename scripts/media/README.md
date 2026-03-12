@@ -38,3 +38,31 @@ python /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/media/mp
   --depth-threshold 128 \
   --depth-invert
 ```
+
+## build_myco_motion_assets
+
+Path:
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/media/build_myco_motion_assets.py`
+
+Purpose:
+- Build one normalized MYCO role asset pack from `team_A_mp4`
+- Assemble `architect` multi-part source
+- Batch-convert source MP4 files to APNG
+- Write one shared batch manifest
+
+Baseline preset:
+- `mode=luma`
+- `fps=8`
+- `luma-threshold=52`
+- `alpha-blur=0.8`
+
+Dry run:
+```bash
+python /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/media/build_myco_motion_assets.py \
+  --dry-run
+```
+
+Batch build:
+```bash
+python /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/media/build_myco_motion_assets.py
+```

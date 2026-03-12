@@ -9,7 +9,12 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "dev:cut:opus": "vite --host 127.0.0.1 --port 3111",
+    "tauri:dev:cut:opus": "tauri dev --config src-tauri/tauri.opus.conf.json",
+    "tauri:build:cut:opus": "tauri build --config src-tauri/tauri.opus.conf.json",
+    "dev:mcc": "VITE_MODE=mcc vite",
+    "build:mcc": "VITE_MODE=mcc vite build"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.4",

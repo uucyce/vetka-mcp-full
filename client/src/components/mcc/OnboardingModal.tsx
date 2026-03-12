@@ -11,8 +11,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { isTauri, openFolderDialog } from '../../config/tauri';
+// MARKER_176.15: Centralized MCC API config import.
+import { MCC_API } from '../../config/api.config';
 
-const API_BASE = 'http://localhost:5001/api/mcc';
 
 type Step = 'source' | 'sandbox' | 'scanning' | 'ready' | 'error';
 
@@ -136,7 +137,7 @@ export function OnboardingModal({ onComplete }: Props) {
     setError('');
 
     try {
-      const res = await fetch(`${API_BASE}/project/init`, {
+      const res = await fetch(`${MCC_API}/project/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

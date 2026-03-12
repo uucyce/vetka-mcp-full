@@ -1,0 +1,7 @@
+Okay, here’s a breakdown of the Interrupt + Restart Stream (IRS) protocol and its impact:
+
+**1. IRS Protocol - Steps:**
+
+*   **Interruption:**  The current session detects a gap in audio.
+*   **Interrupt Signal:** Sends a signal to the other party (e.g., the receiving device).
+*   **Restart Request:** The initiating party sends a "restart" request

@@ -1,0 +1,1 @@
+В данном контексте не указано подробного описания interrupt + restart stream protocol и его влияния на voice handoff/tool-loop transparency. Данные аспекты не затронуты в предоставленном Capability Matrix или других файлах контекста.

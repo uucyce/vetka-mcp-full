@@ -1,0 +1,8 @@
+/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri-mcc/target/debug/deps/serde_with_macros-925b6db2b02cb468.d: /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_with_macros-3.17.0/src/lib.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_with_macros-3.17.0/src/apply.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_with_macros-3.17.0/src/lazy_bool.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_with_macros-3.17.0/src/utils.rs
+
+/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri-mcc/target/debug/deps/libserde_with_macros-925b6db2b02cb468.dylib: /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_with_macros-3.17.0/src/lib.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_with_macros-3.17.0/src/apply.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_with_macros-3.17.0/src/lazy_bool.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_with_macros-3.17.0/src/utils.rs
+
+/Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_with_macros-3.17.0/src/lib.rs:
+/Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_with_macros-3.17.0/src/apply.rs:
+/Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_with_macros-3.17.0/src/lazy_bool.rs:
+/Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde_with_macros-3.17.0/src/utils.rs:

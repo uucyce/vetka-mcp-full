@@ -1,0 +1,1 @@
+1. **HAIKU_TEST_4_WATCHER_MARKERS.md** — проверка маркеров BYPASS в watcher

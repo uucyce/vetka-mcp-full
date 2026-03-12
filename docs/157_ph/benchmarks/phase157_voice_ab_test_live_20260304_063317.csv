@@ -1,0 +1,26 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,quality_notes,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+C_api_jepa_tts,short_1,1,122,True,,20837.69,,20837.69,,22161.13,34,0,289,0.9,,"1. **HAIKU_TEST_4_WATCHER_MARKERS.md** — Проверяет корректность маркеров BYPASS в watcher_routes.py, чтобы обеспечить правильную интеграцию с TripleWriteManager.
+2. **HAIKU_1_BACKEND_STOP.md** — Описывает механизм остановки бэкенда, включая API endpoint для graceful shutdown скан",docs/157_ph/benchmarks/audio/20260304_063055_047615_C_api_jepa_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:31:17.168056+00:00
+C_api_jepa_tts,context_1,1,133,False,TimeoutError: per-run timeout 28.0s,,,,,48734.97,0,0,0,0.0,"low_ru_ratio,no_memory_terms,no_latency_terms,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_063117_177025_C_api_jepa_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:32:05.903192+00:00
+C_api_jepa_tts,long_1,1,171,True,,2508.57,,2508.57,,4554.27,58,0,457,0.85,,"В предоставленном контексте нет информации о протоколе interrupt + restart stream или его влиянии на voice handoff/tool-loop transparency. 
+
+Контекст содержит детали о:
+- Capability Matrix для unified stream + tools (MARKER_152)
+- Voice pipeline (TTS, STT, realtime) в VETKA Chat ",docs/157_ph/benchmarks/audio/20260304_063205_911914_C_api_jepa_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:32:10.457652+00:00
+C_api_jepa_tts,interrupt_1,1,139,False,TimeoutError: per-run timeout 28.0s,,,,,49027.98,0,0,0,0.0,"low_ru_ratio,no_stepwise_followup,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_063210_466905_C_api_jepa_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:32:59.485804+00:00
+D_ollama_tts,short_1,1,122,True,,1218.25,,1218.25,,3494.25,128,0,400,0.9,,"Базовый ответ:
+
+2 конкретных файла:
+
+1. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/watcher_routes.py` - нужен для анализа watcher_routes.py и проверки маркеров.
+2. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/95_ph/HAIKU_TEST_4_WATC",docs/157_ph/benchmarks/audio/20260304_063259_495571_D_ollama_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:33:02.980178+00:00
+D_ollama_tts,context_1,1,133,True,,1094.27,,1094.27,,3608.73,128,0,677,0.75,low_ru_ratio,"Based on the provided context, here are 3 points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize `hysteresis` thresholds**: Reduce the range of hysteresis thresholds to minimize unnecessary trigger checks, which can lead to increased latency.",docs/157_ph/benchmarks/audio/20260304_063302_990395_D_ollama_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:33:06.589087+00:00
+D_ollama_tts,long_1,1,171,True,,1199.46,,1199.46,,3514.9,128,0,513,0.85,,"Поскольку в предоставленном контексте нет конкретной информации о interrupt + restart stream protocol, я не могу дать точное объяснение. Однако, исходя из предоставленного контекста, можно сделать некоторые выводы:
+
+Interrupt и.restart(stream) протоколы часто используются в конте",docs/157_ph/benchmarks/audio/20260304_063306_600462_D_ollama_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:33:10.104127+00:00
+D_ollama_tts,interrupt_1,1,139,True,,1094.22,,1094.22,,3556.15,128,0,595,0.7,"low_ru_ratio,too_long_after_interrupt","To explain how context packing works in VETKA and provide two initial steps to take:
+
+Context packing is a technique used to compress and represent large amounts of data (in this case, around ~2008 tokens) into a more manageable format. This allows for efficient storage and retri",docs/157_ph/benchmarks/audio/20260304_063310_113432_D_ollama_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:33:13.660382+00:00
+F_mimo_short,short_live,1,14,True,,2862.42,,2862.42,,3678.25,19,0,101,0.8,,"Да, я здесь! В контексте есть файлы VETKA и MYCELIUM, но конкретно о том, ""ты тут?"" — информации нет.",docs/157_ph/benchmarks/audio/20260304_063313_666127_F_mimo_short_short_live_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:33:17.338726+00:00

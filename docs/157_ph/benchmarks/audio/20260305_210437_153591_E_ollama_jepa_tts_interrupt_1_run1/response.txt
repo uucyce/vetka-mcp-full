@@ -1,0 +1,2 @@
+1. Prioritize key-value context.
+2. Focus on packing only key-value pairs.

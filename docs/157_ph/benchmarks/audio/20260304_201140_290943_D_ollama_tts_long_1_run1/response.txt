@@ -1,0 +1,3 @@
+Поскольку в задаче нет четкой информации о "interrupt + restart stream protocol", я не могу предоставить точную ответь. Контекст предоставляет информацию о voice handoff и tool-loop transparency, но не упоминает конкретно interrupt и restart stream protocol.
+
+Если вы можете предоставить дополнительную информацию или clarify вопрос, я будет рад помочь.

@@ -1,0 +1,69 @@
+{
+  "sample_id": "hover-politsia",
+  "title": "Hover Politsia street",
+  "model": "qwen2.5vl:3b",
+  "scene_summary": "Hovering police vehicle in an urban setting",
+  "primary_subject": "Hovering police vehicle",
+  "background_note": "Urban setting with buildings and street elements",
+  "warnings": [],
+  "accepted_foreground_groups": [
+    {
+      "label": "focus fallback",
+      "x": 0.2586,
+      "y": 0.1864,
+      "width": 0.5428,
+      "height": 0.5472,
+      "reason": "Safe fallback around the default focus region because the model response was missing or too broad.",
+      "area": 0.297
+    }
+  ],
+  "accepted_midground_groups": [
+    {
+      "label": "midground fallback",
+      "x": 0.1856,
+      "y": 0.4898,
+      "width": 0.5299,
+      "height": 0.25,
+      "reason": "Fallback midground band derived from focus region for layered layouts.",
+      "area": 0.1325
+    }
+  ],
+  "raw_foreground_groups": [
+    {
+      "label": "Man walking",
+      "x": 0.1,
+      "y": 0.6,
+      "width": 0.1,
+      "height": 0.1,
+      "reason": "Foreground figure walking"
+    },
+    {
+      "label": "Cat",
+      "x": 1.0,
+      "y": 0.6,
+      "width": 0.1,
+      "height": 0.1,
+      "reason": "Foreground animal"
+    }
+  ],
+  "raw_midground_groups": [
+    {
+      "label": "Rusted car",
+      "x": 1.0,
+      "y": 0.6,
+      "width": 0.1,
+      "height": 0.1,
+      "reason": "Midground vehicle"
+    }
+  ],
+  "sanitation_flags": [
+    "rejected_fg_box",
+    "rejected_fg_box",
+    "rejected_mid_box",
+    "fallback_focus_box",
+    "fallback_midground_box"
+  ],
+  "confidence": 0.64,
+  "error": null,
+  "raw_response": "```json\n{\n  \"scene_summary\": \"Hovering police vehicle in an urban setting\",\n  \"primary_subject\": \"Hovering police vehicle\",\n  \"foreground_groups\": [\n    {\n      \"label\": \"Man walking\",\n      \"x\": 0.1,\n      \"y\": 0.6,\n      \"width\": 0.1,\n      \"height\": 0.1,\n      \"reason\": \"Foreground figure walking\"\n    },\n    {\n      \"label\": \"Cat\",\n      \"x\": 1.0,\n      \"y\": 0.6,\n      \"width\": 0.1,\n      \"height\": 0.1,\n      \"reason\": \"Foreground animal\"\n    }\n  ],\n  \"midground_groups\": [\n    {\n      \"label\": \"Rusted car\",\n      \"x\": 1.0,\n      \"y\": 0.6,\n      \"width\": 0.1,\n      \"height\": 0.1,\n      \"reason\": \"Midground vehicle\"\n    }\n  ],\n  \"background_note\": \"Urban setting with buildings and street elements\",\n  \"warnings\": []\n}\n```"
+}

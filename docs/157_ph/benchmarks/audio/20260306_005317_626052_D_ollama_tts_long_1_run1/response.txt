@@ -1,0 +1,5 @@
+Okay, let's break down how to interrupt and restart the stream protocol, focusing on voice handoff and transparency, referencing the provided context.
+
+**Understanding the Issue**
+
+The core problem is that the current implementation of the stream protocol isn't correctly handling voice transitions and transparency.  The goal is to ensure the

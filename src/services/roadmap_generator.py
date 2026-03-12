@@ -11,13 +11,16 @@ features, and phases that the Matryoshka navigation uses.
 """
 
 import json
+import logging
 import os
 import subprocess
 from dataclasses import dataclass, field, asdict
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timezone
 
 from src.services.project_config import ProjectConfig, DATA_DIR
+
+logger = logging.getLogger(__name__)
 
 # Roadmap persistence
 ROADMAP_PATH = os.path.join(DATA_DIR, "roadmap_dag.json")
@@ -106,6 +109,168 @@ class RoadmapDAG:
                 for e in self.edges
             ],
         }
+
+
+# MARKER_176.5: JEPA semantic clustering — cosine similarity for normalized vectors
+def _cosine_sim(a: List[float], b: List[float]) -> float:
+    """Dot product of two L2-normalized vectors = cosine similarity."""
+    return sum(x * y for x, y in zip(a, b))
+
+
+def _jepa_refine_modules(
+    nodes: List[dict],
+    edges: List[dict],
+    similarity_threshold: float = 0.70,
+) -> tuple:
+    """
+    MARKER_176.5: Refine roadmap nodes using JEPA semantic embeddings.
+
+    Groups semantically similar modules (e.g. "auth" across api + middleware + tests)
+    into single clustered nodes. Uses union-find for transitive clustering.
+
+    Args:
+        nodes: list of RoadmapNode dicts from generate_static_roadmap
+        edges: list of RoadmapEdge dicts
+        similarity_threshold: minimum cosine similarity to merge (0.0-1.0)
+
+    Returns:
+        (refined_nodes, refined_edges) — with clustered nodes tagged jepa_clustered=True
+    """
+    from src.services.mcc_jepa_adapter import embed_texts_for_overlay
+
+    # Only cluster leaf nodes (non-root, non-branch nodes that have a parent)
+    # Identify branch/root nodes by checking which nodes are sources of edges
+    parent_ids = {e["source"] for e in edges}
+    leaf_nodes = [n for n in nodes if n["id"] not in parent_ids]
+    non_leaf_nodes = [n for n in nodes if n["id"] in parent_ids]
+
+    if len(leaf_nodes) < 2:
+        return nodes, edges
+
+    # Build text representations for embedding: combine label + description + file_patterns
+    texts = []
+    for n in leaf_nodes:
+        parts = [n.get("label", ""), n.get("description", "")]
+        patterns = n.get("file_patterns", [])
+        if patterns:
+            parts.extend(patterns[:3])
+        texts.append(" ".join(p for p in parts if p))
+
+    # Get JEPA embeddings
+    result = embed_texts_for_overlay(texts, target_dim=128)
+    vectors = result.vectors
+
+    if len(vectors) != len(leaf_nodes):
+        logger.warning("MARKER_176.5: vector count mismatch, skipping clustering")
+        return nodes, edges
+
+    # Union-find for transitive clustering
+    parent_map = list(range(len(leaf_nodes)))
+
+    def find(i: int) -> int:
+        while parent_map[i] != i:
+            parent_map[i] = parent_map[parent_map[i]]
+            i = parent_map[i]
+        return i
+
+    def union(i: int, j: int) -> None:
+        ri, rj = find(i), find(j)
+        if ri != rj:
+            parent_map[ri] = rj
+
+    # Cluster nodes that share the same parent edge AND are semantically similar
+    # (only merge siblings — nodes under the same branch)
+    child_to_parent = {}
+    for e in edges:
+        child_to_parent[e["target"]] = e["source"]
+
+    for i in range(len(leaf_nodes)):
+        for j in range(i + 1, len(leaf_nodes)):
+            # Only merge siblings (same parent in the DAG)
+            pid_i = child_to_parent.get(leaf_nodes[i]["id"])
+            pid_j = child_to_parent.get(leaf_nodes[j]["id"])
+            if pid_i != pid_j:
+                continue
+            sim = _cosine_sim(vectors[i], vectors[j])
+            if sim >= similarity_threshold:
+                union(i, j)
+
+    # Group by cluster root
+    clusters: dict[int, list[int]] = {}
+    for i in range(len(leaf_nodes)):
+        root = find(i)
+        clusters.setdefault(root, []).append(i)
+
+    # Build refined node list
+    refined_nodes = list(non_leaf_nodes)  # keep branch/root nodes as-is
+    old_id_to_new_id: dict[str, str] = {}
+
+    for root_idx, member_indices in clusters.items():
+        if len(member_indices) == 1:
+            # Single node — keep as-is
+            refined_nodes.append(leaf_nodes[member_indices[0]])
+            continue
+
+        # Merge: pick the node with the most files as representative
+        members = [leaf_nodes[i] for i in member_indices]
+        # Sort by file count hint in label (e.g., "API Layer (12)" -> 12)
+        def _extract_count(n: dict) -> int:
+            label = n.get("label", "")
+            if "(" in label and ")" in label:
+                try:
+                    return int(label.rsplit("(", 1)[1].rstrip(")").strip())
+                except (ValueError, IndexError):
+                    pass
+            return 0
+
+        members.sort(key=_extract_count, reverse=True)
+        representative = dict(members[0])  # copy
+
+        # Merge metadata from all members
+        all_labels = [m.get("label", "").split(" (")[0] for m in members]
+        all_patterns = []
+        total_files = sum(_extract_count(m) for m in members)
+        for m in members:
+            all_patterns.extend(m.get("file_patterns", []))
+
+        representative["label"] = f"{' + '.join(all_labels)} ({total_files})"
+        representative["file_patterns"] = all_patterns
+        representative["jepa_clustered"] = True  # MARKER_176.5
+        representative["description"] = (
+            f"Semantic cluster of {len(members)} modules: "
+            + ", ".join(all_labels)
+        )
+
+        refined_nodes.append(representative)
+
+        # Map old IDs to the representative's ID for edge rewiring
+        rep_id = representative["id"]
+        for m in members:
+            if m["id"] != rep_id:
+                old_id_to_new_id[m["id"]] = rep_id
+
+    # Rewire edges: replace merged node IDs, remove duplicates
+    refined_edges = []
+    seen_edges: set[tuple[str, str]] = set()
+    for e in edges:
+        src = old_id_to_new_id.get(e["source"], e["source"])
+        tgt = old_id_to_new_id.get(e["target"], e["target"])
+        if src == tgt:
+            continue  # self-loop from merging
+        key = (src, tgt)
+        if key not in seen_edges:
+            refined_edges.append({"source": src, "target": tgt})
+            seen_edges.add(key)
+
+    cluster_count = sum(1 for c in clusters.values() if len(c) > 1)
+    merged_count = sum(len(c) for c in clusters.values() if len(c) > 1)
+    logger.info(
+        f"MARKER_176.5: JEPA clustering — {cluster_count} clusters formed, "
+        f"{merged_count} nodes merged into {cluster_count}, "
+        f"provider={result.provider_mode}"
+    )
+
+    return refined_nodes, refined_edges
 
 
 class RoadmapGenerator:
@@ -445,6 +610,14 @@ class RoadmapGenerator:
             )))
             edges.append(asdict(RoadmapEdge(source=root_id, target="core")))
             edges.append(asdict(RoadmapEdge(source="core", target="features")))
+
+        # --- Step 6: MARKER_176.5 — JEPA semantic clustering ---
+        # Refine directory-only modules by grouping semantically similar ones.
+        # Graceful fallback: any failure leaves nodes/edges unchanged.
+        try:
+            nodes, edges = _jepa_refine_modules(nodes, edges, similarity_threshold=0.70)
+        except Exception as exc:
+            logger.warning(f"MARKER_176.5: JEPA clustering skipped: {exc}")
 
         dag = RoadmapDAG(
             project_id=project_id,

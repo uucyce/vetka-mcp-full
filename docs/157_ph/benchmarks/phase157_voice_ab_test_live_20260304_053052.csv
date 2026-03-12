@@ -1,0 +1,20 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,122,False,TimeoutError: per-run timeout 25.0s,22412.92,28808.03,22412.92,28808.03,28875.0,10,1,23,0.0,"Базовые 2 файла:
+
+1. `/",docs/157_ph/benchmarks/audio/20260304_052752_836197_D_ollama_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260304_052752_836197_D_ollama_tts_short_1_run1/merged.wav,51.0,4,2300,0,True,6,algorithmic,False,False,2026-03-04T02:28:21.667488+00:00
+D_ollama_tts,context_1,1,133,False,TimeoutError: per-run timeout 25.0s,,,,,42177.73,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_052821_698643_D_ollama_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T02:29:03.845128+00:00
+D_ollama_tts,long_1,1,171,False,TimeoutError: per-run timeout 25.0s,4513.39,9136.97,4513.39,9136.97,25414.32,55,5,277,0.0,"Interrupt + Restart Stream Protocol:
+
+1. **Interrupt**: When an agent's response is interrupted by another user's message, the system detects this and triggers an interrupt event (`tool_execution_mode != enabled_*`).
+2. **Restart Stream Protocol**: The system then restarts the",docs/157_ph/benchmarks/audio/20260304_052903_854843_D_ollama_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260304_052903_854843_D_ollama_tts_long_1_run1/merged.wav,43.0,28,1260,0,True,6,algorithmic,False,False,2026-03-04T02:29:29.259637+00:00
+E_ollama_jepa_tts,short_1,1,122,False,TimeoutError: per-run timeout 25.0s,6043.63,10754.5,6043.63,10754.5,26816.86,72,1,232,0.0,"2 конкретных файла:
+
+1. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/101_ph_eval_reactions/chat_into_vetka_grok.txt` - Этот файл необходим для понимания интеграции чатов в VETKA как ""динамических артефактов"".
+2. `/",docs/157_ph/benchmarks/audio/20260304_052929_267129_E_ollama_jepa_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260304_052929_267129_E_ollama_jepa_tts_short_1_run1/merged.wav,71.0,11,700,0,True,6,hybrid-jepa,True,True,2026-03-04T02:29:56.077249+00:00
+E_ollama_jepa_tts,context_1,1,133,False,TimeoutError: per-run timeout 25.0s,10597.01,14885.05,10597.01,14885.05,29424.95,57,5,230,0.0,"Based on the provided context, here are three points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize TTS Speed**: Explore more efficient MLX TTS models (e.g., Piper-MLX or Bark-MLX) and adjust",docs/157_ph/benchmarks/audio/20260304_053000_436608_E_ollama_jepa_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260304_053000_436608_E_ollama_jepa_tts_context_1_run1/merged.wav,41.75,24,1360,0,True,6,hybrid-jepa,True,True,2026-03-04T02:30:25.502968+00:00
+E_ollama_jepa_tts,long_1,1,171,False,TimeoutError: per-run timeout 25.0s,5921.18,10239.98,5921.18,10239.98,26799.35,52,6,253,0.0,"Interrupt + Restart Stream Protocol:
+
+1. **Context**: When an agent's response is interrupted (e.g., due to a user's input or another agent's response), the current stream protocol kicks in.
+2. **Protocol**: The interrupt protocol involves the following",docs/157_ph/benchmarks/audio/20260304_053025_508814_E_ollama_jepa_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260304_053025_508814_E_ollama_jepa_tts_long_1_run1/merged.wav,32.0,31,2140,0,True,6,hybrid-jepa,True,True,2026-03-04T02:30:52.302482+00:00

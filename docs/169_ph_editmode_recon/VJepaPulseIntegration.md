@@ -1,0 +1,16 @@
+# V-JEPA / Multimedia / PULSE Integration Audit
+
+## 1. Core components
+- **Extractor registry & optional enrichments:** `src/scanners/extractor_registry.py` adds optional JEPA/PULSE hooks when ingesting audio/video/image/pdf. Configuration keys (`VETKA_EXTRACTOR_JEPA_*`, PULSE `librosa`/proxy) are described in `docs/158_ph/PHASE_158_MULTIMEDIA_VJEPA_ROADMAP_CHECKLIST_2026-03-02.md` and `VETKA_UNIFIED_IO_MATRIX_V1.md` (`MARKER_158.INGEST.JEPA_PULSE_ENRICH`). Enrichments emit `optional_enrichments.jepa.*` payload (provider_mode, vector_dim) and mark statuses (`ok/error/over_budget`). The pipeline ensures degraded-safe semantics (errors do not halt ingest).
+- **V-JEPA2 baseline:** Documented in Phase 158 (points 35-37) – target `fps=2.0`, `window_sec=8.0`, `stride_sec=2.0`, validated on Berlin dataset. Output is vectorized scene embeddings stored via TripleWrite/Qdrant per `media_chunks_v1`. V-JEPA acts as semantic summarizer for media (scene graph, hero/action tags) and feeds the semantic links + music binding.
+- **PULSE music layer:** Documented `PULSE bridge` interactions (docs/158 etc). APIs `media/rhythm-assist` and `media/cam-overlay` rely on PULSE energy cues (`cut_density`, `motion_volatility`, `phase_markers`). `Pulse` repo integration status tracked in P5.6 updates (native/proxy fallback). `documents mention `link: docs/158_ph/PHASE_158_MULTIMEDIA_VJEPA_ROADMAP_CHECKLIST_2026-03-02.md` lines 18-37). `media/rhythm-assist` returns `pulse_bridge` availability & heuristics.
+
+## 2. Connectivity & sandbox copying
+- **How to connect:** import `src/scanners/extractor_registry` in the watcher/triple-write entrypoints. Ensure env variables control JEPA/PULSE plugins. For vectorization, configure `get_triple_write_manager().search_media_chunks` and `qdrant_updater` to store `media_chunks_v1` with `hero_entities`, `rhythm_features`, `cam_features`. Use `docs/contracts/vetka_montage_sheet_v1.schema.json` for consistent field mapping.
+- **Sandbox copy:** replicate the extractor registry into sandbox (copy file + dependencies). Use local `pulse` repo path (per docs) and mock `librosa`/`ffmpeg` to run `media/rhythm-assist` there. Keep `VETKA_EXTRACTOR_JEPA_*` env var settings in `.env.sandbox` to avoid hitting real vendor endpoints. For V-JEPA vectors re-use `tests/phase158/test_phase158_vjepa2_profile_berlin.py` as validation without connecting to remote data. Use `rsync` to copy code + docs: `rsync -av --exclude='venv' /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/scanners ~/sandbox/src/scanners`.
+- **Security note:** When copying PULSE assets or `pulse` repo, ensure no API keys travel; keep `.env` secrets local and use placeholders in sandbox to prevent unauthorized usage.
+
+## 3. Recommendations
+1. Document the V-JEPA + PULSE config in `docs/contracts` or `docs/158_ph`, referencing `MARKER_158.INGEST.JEPA_PULSE_ENRICH`. 2. Keep `pulse_bridge` statuses (`degraded_reason` if repo missing) so UI knows when to disable overlay. 3. Use sandboxed `media/rhythm-assist` + `media/cam-overlay` to test interplay with V-JEPA vectors before enabling on production data.
+
+Saved to `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/169_ph_editmode_recon/VJepaPulseIntegration.md`.

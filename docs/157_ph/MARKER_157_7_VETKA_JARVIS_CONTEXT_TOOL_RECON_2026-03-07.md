@@ -224,6 +224,3 @@ No-Go, если:
 3. более глубокого memory/tool orchestration (ARC/HOPE chain) поверх уже подключенного ContextPacker+JEPA+ELISION.
 
 Технически это реализуемо без смены базового голоса (`edge_ru_female`) и без возврата к Plan B.
-
-## TODO (Voice profile)
-- `MARKER_157_7_TODO_VOICE_PROFILE_LOCK.V1`: зафиксировать женский голос VETKA (`edge_ru_female`) как runtime default во всех voice entry points, и вынести переключение голоса в отдельный будущий UI-пункт.

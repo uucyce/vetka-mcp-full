@@ -8,8 +8,17 @@ export interface GeometrySnapshot {
   reason?: string;
   fileName: string;
   devicePixelRatio: number;
+  nativeScaleFactor: number | null;
   windowInnerWidth: number;
   windowInnerHeight: number;
+  nativeInnerLogicalWidth: number | null;
+  nativeInnerLogicalHeight: number | null;
+  nativeOuterLogicalWidth: number | null;
+  nativeOuterLogicalHeight: number | null;
+  nativeInnerPhysicalWidth: number | null;
+  nativeInnerPhysicalHeight: number | null;
+  nativeOuterPhysicalWidth: number | null;
+  nativeOuterPhysicalHeight: number | null;
   topbarHeight: number;
   shellWidth: number;
   shellHeight: number;

@@ -1,0 +1,1 @@
+Interrupt and restart protocols for streams in this context are not detailed. Voice handoff and tool-loop transparency issues are noted but no step-by-step protocol is provided.

@@ -1,0 +1,5 @@
+Поскольку в задаче нет четкого вопроса, я предположил, что пользователь хочет узнать оushаговое объяснение интеррупта +.restart stream protocol и его влияние на voice handoff/tool-loop transparency. 
+
+Итак, интеррупт (interrupt) и restart stream protocol — это две отдельные концепции.
+
+**Interrupt**: в контексте чата, когда агентный ответ в группе или solo эмитруется как текст, а не с аудио payload/voice metadata. Это означает, что voice handoff не происходит напрямую из агента к

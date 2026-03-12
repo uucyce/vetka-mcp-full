@@ -24,6 +24,8 @@ const GEAR_ACTIONS: Partial<Record<NavLevel, ActionDef[]>> = {
     { label: 'Settings', icon: '⚙', action: 'openSettings' },
   ],
   tasks: [
+    // MARKER_176.1F: Edit remains available in gear now that primary slot 2 is roadmap task creation.
+    { label: 'Edit', icon: '✏', action: 'editTask' },
     { label: 'Add Task', icon: '+', action: 'addTask' },
     { label: 'Filter', icon: '🔍', action: 'openFilter' },
   ],

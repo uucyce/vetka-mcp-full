@@ -93,9 +93,19 @@ Rules:
 3. `cut_scene_graph_v1`
 4. `cut_playback_session_v1`
 5. `cut_worker_task_v1`
+6. `cut_audio_sync_result_v1`
+7. future shared multi-sync alignment surface for `timecode`, `waveform`, and `meta_sync`
 
 Constraint:
 - new contracts must be additive and namespace-safe; do not break shared VETKA contracts.
+
+## Sync hierarchy
+CUT sync should be layered, not monolithic.
+
+1. `timecode sync` is the first hard-sync path when reliable metadata exists.
+2. `waveform sync` is the second hard-sync path when timecode is absent, broken, or incomplete.
+3. `meta_sync` is a later intelligence layer that may refine or suggest alignment from scenario semantics, visual similarity, and rhythm.
+4. `meta_sync` must not replace hard sync; it can only rank, propose, or refine after `timecode` and `waveform` evaluation.
 
 ## Editorial identity rules
 These rules keep `player`, `CUT`, and `VETKA Core` aligned so the same media item does not gain conflicting meanings across products.

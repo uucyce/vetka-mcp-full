@@ -874,6 +874,66 @@ def _trm_refine_gate(
         steps += 1
 
     trial_graph["edges"] = trial_edges
+
+    # MARKER_176.4: TRM enriches DAG nodes with policy metadata
+    try:
+        _trm_affected_nodes: Dict[str, Dict[str, Any]] = {}
+        candidates = candidate_bundle.get("candidates") or {}
+
+        # Nodes touched by edge reranks
+        for cand in candidates.get("edge_rerank", []):
+            for nid_key in ("source", "target"):
+                nid = str(cand.get(nid_key) or "")
+                if nid and nid in node_ids:
+                    entry = _trm_affected_nodes.setdefault(nid, {"reasons": []})
+                    entry["reasons"].append(
+                        {"kind": "edge_rerank", "confidence": float(cand.get("confidence") or 0.0)}
+                    )
+
+        # Nodes touched by edge insertions
+        for cand in candidates.get("edge_insertions", []):
+            for nid_key in ("source", "target"):
+                nid = str(cand.get(nid_key) or "")
+                if nid and nid in node_ids:
+                    entry = _trm_affected_nodes.setdefault(nid, {"reasons": []})
+                    entry["reasons"].append(
+                        {"kind": "edge_insertion", "confidence": float(cand.get("confidence") or 0.0)}
+                    )
+
+        # Nodes with rank adjustments
+        for cand in candidates.get("node_rank_adjustments", []):
+            nid = str(cand.get("node_id") or "")
+            if nid and nid in node_ids:
+                entry = _trm_affected_nodes.setdefault(nid, {"reasons": []})
+                entry["reasons"].append(
+                    {"kind": "rank_adjustment", "priority": float(cand.get("priority") or 0.0)}
+                )
+
+        # Nodes with root adjustments
+        for cand in candidates.get("root_adjustments", []):
+            nid = str(cand.get("node_id") or "")
+            if nid and nid in node_ids:
+                entry = _trm_affected_nodes.setdefault(nid, {"reasons": []})
+                entry["reasons"].append(
+                    {"kind": "root_adjustment", "action": str(cand.get("action") or ""), "confidence": float(cand.get("confidence") or 0.0)}
+                )
+
+        # Annotate trial_graph nodes  # MARKER_176.4
+        if _trm_affected_nodes:
+            trial_nodes = trial_graph.get("nodes") or []
+            for node in trial_nodes:
+                nid = str(node.get("id") or "")
+                trm_meta_for_node = _trm_affected_nodes.get(nid)
+                if trm_meta_for_node:
+                    node["trm_source"] = True
+                    node["trm_policy"] = {
+                        "profile": profile,
+                        "reasons": trm_meta_for_node["reasons"],
+                    }
+    except Exception:
+        pass  # MARKER_176.4: TRM node enrichment is non-critical
+    # END MARKER_176.4
+
     verifier_after = _verifier_report(
         [dict(n) for n in (trial_graph.get("nodes") or []) if isinstance(n, dict)],
         [dict(e) for e in (trial_graph.get("edges") or []) if isinstance(e, dict)],

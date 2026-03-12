@@ -77,12 +77,23 @@ Markers:
 - [x] Add retry/backpressure/cancel semantics baseline at control-plane contract level.
 - [ ] Route long-running jobs away from main CUT control lane.
 - [x] Return partial states and degraded-safe statuses at contract/job-envelope level.
+- [x] Add audio-based sync worker for external recorders / second-camera audio using waveform peaks first, then correlation refinement.
+- [x] Freeze `audio_sync` alignment result contract: source pair/group, detected offset, confidence, method, degraded_reason.
+- [x] Run recon on existing open-source audio sync options before custom implementation to avoid inventing a weak sync pipeline.
+- [x] Add comparison bakeoff tests for sync methods and decide whether hybrid `peaks + correlation` becomes the CUT baseline.
+- [x] Add standard timecode sync path as first-class worker/result alongside waveform sync.
+- [x] Freeze shared sync result model so `timecode`, `waveform`, and future `meta_sync` can coexist in one alignment surface.
 
 Markers:
 1. `MARKER_170.WORKER.MEDIA_SUBMCP`
 2. `MARKER_170.WORKER.BACKPRESSURE`
 3. `MARKER_170.WORKER.RETRY_CANCEL`
 4. `MARKER_170.WORKER.DEGRADED_SAFE`
+5. `MARKER_170.WORKER.AUDIO_SYNC_V1`
+6. `MARKER_170.RECON.OPEN_SOURCE_AUDIO_SYNC`
+7. `MARKER_170.WORKER.AUDIO_SYNC_BAKEOFF`
+8. `MARKER_170.WORKER.TIMECODE_SYNC_V1`
+9. `MARKER_170.CONTRACT.MULTI_SYNC_ALIGNMENT_V1`
 
 ### P170.5 Editorial Data Model
 - [x] Define `cut_project_v1`.
@@ -113,6 +124,10 @@ Markers:
 - [ ] Gate contextual action icon by VETKA status:
   `not in VETKA -> show VETKA ingest action`
   `already in VETKA -> hide ingest action and enable moment-star / marker actions`
+- [ ] Support transitional donor-player behavior before Core/CUT exists:
+  `VETKA logo press -> provisional local marker/comment event`
+  `Core/CUT appears -> migrate provisional events into canonical CUT markers`
+  `after handoff -> replace VETKA logo with star`
 - [ ] Treat `favorite` in editorial surfaces as a time marker action only, never as a primary file-level state.
 - [ ] Keep preview quality selector in donor-player because CUT preview surfaces will need the same performance discipline for high-resolution footage.
 
@@ -123,6 +138,7 @@ Architectural rule:
   `star means favorite moment`
   `CAM and chat attach to markers, not to a parallel file-favorite system`
 - keep player-lab docs aligned with this rule so donor patterns do not reintroduce file-favorite logic into CUT.
+- allow standalone donor-player to capture provisional `VETKA`-logo events before Core/CUT is present, but require those events to migrate into canonical marker contracts instead of becoming a second permanent state system.
 
 Design timing note:
 - Do not start full design-system recon before CUT MCP read/write surfaces are stable enough to avoid UI-contract churn.
@@ -143,6 +159,7 @@ Markers:
 9. `MARKER_170.INTEL.TIME_MARKERS_CAM_BRIDGE`
 10. `MARKER_170.UI.PURE_PLAYER_DONOR`
 11. `MARKER_170.UI.VETKA_STATUS_GATED_ACTIONS`
+12. `MARKER_170.UI.TRANSITIONAL_VETKA_TO_STAR_HANDOFF`
 
 ### P170.7 Intelligence Overlays
 - [ ] Add semantic links overlay.
@@ -153,8 +170,16 @@ Markers:
 - [ ] Add ranking logic where media importance increases with density/quality of marked moments instead of file-level favorite only.
 - [ ] Add MCP/API write-read path for time markers compatible with player-lab bridge.
 - [ ] Use simple window-around-anchor slice first, then upgrade marker creation to pause-to-pause / silence-aware segmentation.
+- [x] Add interim transcript-aware smart slice heuristic before full pause/silence-aware segmentation.
+- [x] Capture external recon for `pydub` / `pyannote` pause-aware slicing candidates and baseline hybrid recommendation.
+- [x] Add comparison bakeoff tests for slicing methods and decide whether hybrid transcript + silence windows becomes the CUT baseline.
+- [x] Add first worker-backed `energy_pause_v1` slice bundle for offline pause/silence-aware segmentation.
 - [ ] Allow marker payloads to carry `cam_payload`, `chat_thread_id`, and `comment_thread_id` without forcing full CUT runtime into the donor-player.
 - [ ] Keep media ranking derived from weighted marked moments, not from persistent file star state.
+- [ ] Treat pre-Core `VETKA`-logo captures as provisional events only; once Core/CUT is online they must be absorbed into the same marker/ranking model instead of remaining a parallel store.
+- [ ] Add `meta_sync` overlay path for scenario/semantic/visual/rhythm alignment once hard sync baselines are stable.
+- [x] Freeze initial `meta_sync` result contract as proposal/refinement-only layer; do not wire runtime until hard sync surfaces are stable.
+- [ ] Keep `meta_sync` secondary to hard sync methods: `timecode -> waveform -> meta_sync refinement`, not replacement.
 
 Architectural rule:
 - `star time marker` is the same core primitive across player, CUT, and future edit-mode reintegration.
@@ -166,8 +191,11 @@ Markers:
 3. `MARKER_170.INTEL.JEPA_PULSE_OVERLAY`
 4. `MARKER_170.INTEL.FALLBACK_LOOP`
 5. `MARKER_170.INTEL.COGNITIVE_TIME_MARKERS`
+6. `MARKER_170.INTEL.META_SYNC_V1`
+7. `MARKER_170.INTEL.META_SYNC_GUARDRAIL`
 6. `MARKER_170.INTEL.MOMENT_RANKING`
 7. `MARKER_170.MCP.TIME_MARKERS_V1`
+8. `MARKER_170.INTEL.SLICE_METHOD_BAKEOFF`
 
 ### P170.8 Upstream Sync + Reintegration Path
 - [ ] Define automated or scripted sync from main VETKA core.

@@ -106,6 +106,23 @@ Bundle-level `ranking_summary` should later support:
 - `weighted_score`
 - `media_rank`
 
+### 6. Transitional `VETKA` logo before Core/CUT
+Before `VETKA Core/CUT` is connected, standalone player surfaces may still expose a `VETKA` logo as the primary contextual action.
+
+Behavior rule:
+- pressing `VETKA` logo before Core/CUT exists should create a provisional local event in the same marker/comment-compatible storage lane
+- this provisional event is not a permanent file favorite
+- once Core/CUT is available, provisional events must migrate into canonical `cut_time_marker_v1` records
+- after migration path is available, UI should switch from `VETKA` logo to `star`
+
+Preferred temporary sink:
+- local marker bundle compatible with later `cut_time_marker_bundle_v1`
+- optionally mirrored/exportable to SRT-compatible comment bundles for standalone exchange
+
+UI meaning:
+- `VETKA logo` = pre-Core capture affordance
+- `star` = full moment-marker affordance after Core/CUT handoff
+
 ## Exact endpoint recommendation for player sandbox
 These can be implemented in player-lab now without pulling full CUT runtime.
 
@@ -166,3 +183,4 @@ Please prepare player-lab for this bridge:
 3. `MARKER_170.INTEL.MOMENT_RANKING`
 4. `MARKER_170.MCP.TIME_MARKERS_V1`
 5. `MARKER_170.CONTRACT.CUT_TIME_MARKER_V1`
+6. `MARKER_170.CONTRACT.TRANSITIONAL_VETKA_LOGO_BUFFER`

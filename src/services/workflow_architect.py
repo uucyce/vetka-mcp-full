@@ -14,6 +14,7 @@ Reads preset config to determine which model to use as architect.
 import json
 import uuid
 import logging
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -375,6 +376,36 @@ def _generate_fallback_workflow(
     Creates a basic sequential pipeline: Research → Plan → Implement → Verify.
     """
     complexity = complexity_hint or "medium"
+
+    try:
+        from src.services.architect_prefetch import WorkflowTemplateLibrary
+
+        template_key = WorkflowTemplateLibrary.select_workflow(
+            task_type="",
+            complexity={"low": 3, "medium": 5, "high": 8}.get(str(complexity).lower(), 5),
+            task_description=description,
+        )
+        template = WorkflowTemplateLibrary.get_template(template_key)
+        if template:
+            workflow = deepcopy(template)
+            workflow["id"] = str(workflow.get("id") or f"wf_{uuid.uuid4().hex[:8]}")
+            workflow["name"] = str(workflow.get("name") or description[:50].strip())
+            workflow["description"] = str(workflow.get("description") or description)
+            metadata = workflow.setdefault("metadata", {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+                workflow["metadata"] = metadata
+            metadata["template_first"] = True
+            metadata["fallback_reason"] = "llm_unavailable"
+            metadata["template_key"] = template_key
+            return {
+                "success": True,
+                "workflow": workflow,
+                "model_used": f"template_library:{template_key}",
+                "validation": _quick_validate(workflow),
+            }
+    except Exception as e:
+        logger.debug("[WorkflowArchitect] Template-first fallback unavailable: %s", e)
 
     if complexity == "low":
         nodes = [

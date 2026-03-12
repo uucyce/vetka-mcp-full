@@ -18,12 +18,14 @@ import shutil
 import asyncio
 import time
 import tempfile
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
 from src.services.project_config import ProjectConfig, SessionState
+from src.services.mcc_benchmark_store import get_mcc_benchmark_store
 from src.services.mcc_trm_config import resolve_trm_policy
+from src.services.mcc_local_run_registry import get_localguys_run_registry
 
 router = APIRouter(prefix="/api/mcc", tags=["MCC"])
 
@@ -139,10 +141,98 @@ def _load_active_session_state(project_id: str) -> "SessionState":
         return SessionState.load()
 
 
+def _active_project_scope_root(config: Optional["ProjectConfig"]) -> str:
+    if config is None:
+        return ""
+    sandbox_scope = _norm_abs(str(config.sandbox_path or "").strip()) if str(config.sandbox_path or "").strip() else ""
+    source_scope = _norm_abs(str(config.source_path or "").strip()) if str(config.source_path or "").strip() else ""
+    if sandbox_scope and os.path.isdir(sandbox_scope):
+        return sandbox_scope
+    if source_scope and os.path.isdir(source_scope):
+        return source_scope
+    return ""
+
+
+def _resolve_project_scope_path(base_scope: str, requested_path: str) -> str:
+    candidate = str(requested_path or "").strip()
+    if not candidate:
+        return base_scope
+    resolved = _norm_abs(candidate) if os.path.isabs(candidate) else _norm_abs(os.path.join(base_scope, candidate))
+    if os.path.commonpath([base_scope, resolved]) != base_scope:
+        raise HTTPException(status_code=400, detail=f"path must be inside active project scope: {base_scope}")
+    return resolved
+
+
+def _build_directory_tree(abs_path: str, root_scope: str, *, depth: int, limit: int) -> Dict[str, Any]:
+    target = _norm_abs(abs_path)
+    root = _norm_abs(root_scope)
+    if not os.path.isdir(target):
+        raise HTTPException(status_code=404, detail=f"Directory not found: {target}")
+
+    def _walk(current: str, remaining_depth: int) -> Dict[str, Any]:
+        rel = os.path.relpath(current, root).replace("\\", "/")
+        if rel == ".":
+            rel = ""
+        node: Dict[str, Any] = {
+            "name": os.path.basename(current.rstrip(os.sep)) or os.path.basename(root.rstrip(os.sep)) or current,
+            "path": rel,
+            "kind": "directory",
+            "children": [],
+            "truncated": False,
+        }
+        if remaining_depth <= 0:
+            return node
+        try:
+            entries = sorted(os.scandir(current), key=lambda item: (not item.is_dir(follow_symlinks=False), item.name.lower()))
+        except Exception:
+            node["error"] = "unreadable"
+            return node
+        for idx, entry in enumerate(entries):
+            if idx >= limit:
+                node["truncated"] = True
+                break
+            child_abs = _norm_abs(entry.path)
+            child_rel = os.path.relpath(child_abs, root).replace("\\", "/")
+            if entry.is_dir(follow_symlinks=False):
+                node["children"].append(_walk(child_abs, remaining_depth - 1))
+            else:
+                node["children"].append({
+                    "name": entry.name,
+                    "path": child_rel,
+                    "kind": "file",
+                })
+        return node
+
+    return _walk(target, max(1, int(depth)))
+
+
 def _get_task_board_instance():
     from src.orchestration.task_board import get_task_board
 
     return get_task_board()
+
+
+async def _create_localguys_playground(
+    *,
+    task_description: str,
+    preset: str,
+    source_branch: str,
+) -> Dict[str, Any]:
+    from src.orchestration.playground_manager import create_playground
+
+    return await create_playground(
+        task=task_description,
+        preset=preset,
+        auto_write=True,
+    )
+
+
+def _get_localguys_run_registry():
+    return get_localguys_run_registry()
+
+
+def _get_mcc_benchmark_store():
+    return get_mcc_benchmark_store()
 
 
 def _list_core_workflow_templates() -> List[Dict[str, Any]]:
@@ -337,6 +427,779 @@ def _resolve_task_workflow_binding(task: Dict[str, Any]) -> Dict[str, Any]:
     return _select_heuristic_workflow_binding(task)
 
 
+_LOCALGUYS_MODEL_MATRIX: Dict[str, Dict[str, Any]] = {
+    "qwen3:8b": {
+        "role_fit": ["coder", "architect", "researcher"],
+        "prompt_style": "coder_compact_v1",
+        "tool_budget_class": "medium",
+        "workflow_usage": [
+            "g3_localguys",
+            "ralph_localguys",
+            "quickfix_localguys",
+            "testonly_localguys",
+            "docs_localguys",
+            "research_localguys",
+            "dragons_localguys",
+            "refactor_localguys",
+            "bmad_localguys",
+        ],
+    },
+    "qwen2.5:7b": {
+        "role_fit": ["coder", "architect", "researcher"],
+        "prompt_style": "coder_compact_v1",
+        "tool_budget_class": "medium",
+        "workflow_usage": [
+            "g3_localguys",
+            "ralph_localguys",
+            "quickfix_localguys",
+            "testonly_localguys",
+            "docs_localguys",
+            "research_localguys",
+            "dragons_localguys",
+            "refactor_localguys",
+            "bmad_localguys",
+        ],
+    },
+    "qwen2.5:3b": {
+        "role_fit": ["coder", "support", "researcher"],
+        "prompt_style": "coder_compact_v1",
+        "tool_budget_class": "low",
+        "workflow_usage": [
+            "g3_localguys",
+            "ralph_localguys",
+            "quickfix_localguys",
+            "testonly_localguys",
+            "docs_localguys",
+            "research_localguys",
+            "dragons_localguys",
+            "refactor_localguys",
+            "bmad_localguys",
+        ],
+    },
+    "deepseek-r1:8b": {
+        "role_fit": ["verifier", "architect"],
+        "prompt_style": "verifier_attack_v1",
+        "tool_budget_class": "low-medium",
+        "workflow_usage": [
+            "g3_localguys",
+            "ralph_localguys",
+            "quickfix_localguys",
+            "testonly_localguys",
+            "research_localguys",
+            "dragons_localguys",
+            "refactor_localguys",
+            "bmad_localguys",
+        ],
+    },
+    "phi4-mini:latest": {
+        "role_fit": ["router", "verifier", "scout", "approval"],
+        "prompt_style": "router_tiny_v1",
+        "tool_budget_class": "low",
+        "workflow_usage": [
+            "g3_localguys",
+            "ralph_localguys",
+            "quickfix_localguys",
+            "testonly_localguys",
+            "docs_localguys",
+            "research_localguys",
+            "dragons_localguys",
+            "refactor_localguys",
+            "bmad_localguys",
+        ],
+    },
+    "qwen2.5vl:3b": {
+        "role_fit": ["scout"],
+        "prompt_style": "visual_scout_v1",
+        "tool_budget_class": "low",
+        "workflow_usage": [
+            "g3_localguys",
+            "quickfix_localguys",
+            "testonly_localguys",
+            "docs_localguys",
+            "research_localguys",
+            "dragons_localguys",
+            "refactor_localguys",
+            "bmad_localguys",
+        ],
+    },
+    "embeddinggemma:300m": {
+        "role_fit": ["retrieval"],
+        "prompt_style": "embedding_only_v1",
+        "tool_budget_class": "n/a",
+        "workflow_usage": [
+            "g3_localguys",
+            "ralph_localguys",
+            "quickfix_localguys",
+            "testonly_localguys",
+            "docs_localguys",
+            "research_localguys",
+            "dragons_localguys",
+        ],
+    },
+}
+
+_LOCALGUYS_CATALOG_IDS = [
+    "qwen3:8b",
+    "qwen2.5:7b",
+    "qwen2.5:3b",
+    "deepseek-r1:8b",
+    "phi4-mini:latest",
+    "qwen2.5vl:3b",
+    "embeddinggemma:300m",
+]
+
+_LOCALGUYS_OPERATOR_METHODS: Dict[str, Dict[str, str]] = {
+    "g3_localguys": {
+        "method": "g3",
+        "source_family": "g3_critic_coder",
+        "command_template": "localguys run g3 --task {task_id}",
+    },
+    "ralph_localguys": {
+        "method": "ralph",
+        "source_family": "ralph_loop",
+        "command_template": "localguys run ralph --task {task_id}",
+    },
+    "quickfix_localguys": {
+        "method": "quickfix",
+        "source_family": "quick_fix",
+        "command_template": "localguys run quickfix --task {task_id}",
+    },
+    "testonly_localguys": {
+        "method": "testonly",
+        "source_family": "test_only",
+        "command_template": "localguys run testonly --task {task_id}",
+    },
+    "docs_localguys": {
+        "method": "docs",
+        "source_family": "docs_update",
+        "command_template": "localguys run docs --task {task_id}",
+    },
+    "research_localguys": {
+        "method": "research",
+        "source_family": "research_first",
+        "command_template": "localguys run research --task {task_id}",
+    },
+    "dragons_localguys": {
+        "method": "dragons",
+        "source_family": "dragons",
+        "command_template": "localguys run dragons --task {task_id}",
+    },
+    "refactor_localguys": {
+        "method": "refactor",
+        "source_family": "refactor",
+        "command_template": "localguys run refactor --task {task_id}",
+    },
+    "bmad_localguys": {
+        "method": "bmad",
+        "source_family": "bmad_default",
+        "command_template": "localguys run bmad --task {task_id}",
+    },
+}
+
+
+def _infer_capability_values(model_id: str, model_registry: Any) -> List[str]:
+    entry = getattr(model_registry, "_models", {}).get(model_id) if model_registry is not None else None
+    if entry is not None:
+        caps = []
+        for cap in list(getattr(entry, "capabilities", []) or []):
+            value = getattr(cap, "value", None)
+            if isinstance(value, str) and value:
+                caps.append(value)
+        if caps:
+            return sorted(dict.fromkeys(caps))
+
+    model_lower = str(model_id or "").lower()
+    caps = ["chat"]
+    if "coder" in model_lower or "code" in model_lower or model_lower.startswith("qwen"):
+        caps.append("code")
+    if "vl" in model_lower or "vision" in model_lower:
+        caps.append("vision")
+    if "embedding" in model_lower or "embed" in model_lower:
+        return ["embeddings"]
+    if "reason" in model_lower or "deepseek-r1" in model_lower or "phi4" in model_lower:
+        caps.append("reasoning")
+    return sorted(dict.fromkeys(caps))
+
+
+async def _build_local_model_descriptor(model_id: str) -> Dict[str, Any]:
+    from src.elisya.llm_model_registry import get_llm_registry
+    from src.services.model_registry import get_model_registry
+
+    llm_profile = await get_llm_registry().get_profile(model_id)
+    model_registry = get_model_registry()
+    entry = getattr(model_registry, "_models", {}).get(model_id)
+    policy = dict(_LOCALGUYS_MODEL_MATRIX.get(model_id, {}))
+
+    provider = str(
+        getattr(entry, "provider", "")
+        or getattr(llm_profile, "provider", "")
+        or ("ollama" if ":" in model_id and "/" not in model_id else "unknown")
+    ).strip() or "unknown"
+    entry_type = str(getattr(getattr(entry, "type", None), "value", "") or "").strip()
+    return {
+        "model_id": str(model_id),
+        "provider": provider,
+        "source": str(getattr(llm_profile, "source", "") or "").strip() or "fallback",
+        "context_length": int(getattr(llm_profile, "context_length", 0) or 0),
+        "output_tokens_per_second": float(getattr(llm_profile, "output_tokens_per_second", 0.0) or 0.0),
+        "input_tokens_per_second": float(getattr(llm_profile, "input_tokens_per_second", 0.0) or 0.0),
+        "ttft_ms": float(getattr(llm_profile, "ttft_ms", 0.0) or 0.0),
+        "available": bool(getattr(entry, "available", True)),
+        "model_type": entry_type or ("local" if provider == "ollama" else "unknown"),
+        "capabilities": _infer_capability_values(model_id, model_registry),
+        "role_fit": list(policy.get("role_fit") or []),
+        "prompt_style": str(policy.get("prompt_style") or "").strip(),
+        "tool_budget_class": str(policy.get("tool_budget_class") or "").strip(),
+        "workflow_usage": list(policy.get("workflow_usage") or []),
+    }
+
+
+async def _build_local_model_catalog() -> List[Dict[str, Any]]:
+    return [await _build_local_model_descriptor(model_id) for model_id in _LOCALGUYS_CATALOG_IDS]
+
+
+async def _build_model_group(model_ids: List[str]) -> List[Dict[str, Any]]:
+    return [await _build_local_model_descriptor(model_id) for model_id in model_ids]
+
+
+async def _build_localguys_contract(
+    *,
+    workflow_family: str,
+    roles: List[str],
+    steps: List[str],
+    model_policy: Dict[str, Dict[str, Any]],
+    tool_budget: Dict[str, Dict[str, int]],
+    required_artifacts: List[str],
+    completion_policy: Dict[str, Any],
+    allowed_tools: Optional[List[str]] = None,
+    allowed_files: Optional[List[str]] = None,
+    failure_stop_on: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    operator_method = dict(_LOCALGUYS_OPERATOR_METHODS.get(workflow_family, {}))
+    return {
+        "workflow_family": workflow_family,
+        "version": "v1",
+        "roles": roles,
+        "steps": steps,
+        "model_policy": model_policy,
+        "tool_budget": tool_budget,
+        "allowed_tools": allowed_tools or ["context", "tasks", "artifacts", "stats", "search", "tests", "git_diff"],
+        "allowed_files": allowed_files or [],
+        "artifact_contract": {
+            "required": required_artifacts,
+            "base_path": "artifacts/mcc_local/{task_id}/",
+        },
+        "failure_policy": {
+            "stop_on": failure_stop_on or [
+                "budget_exhausted",
+                "playground_missing",
+                "verifier_blocked",
+                "required_artifact_missing",
+                "required_test_failed",
+            ],
+            "terminal_states": ["blocked", "failed", "escalated"],
+        },
+        "sandbox_policy": {
+            "mode": "playground_only",
+            "requires_playground": True,
+            "requires_branch": True,
+            "allow_main_tree_write": False,
+            "lock_to_playground_id": True,
+        },
+        "completion_policy": completion_policy,
+        "operator_method": operator_method,
+        "local_model_catalog": await _build_local_model_catalog(),
+    }
+
+
+async def _resolve_g3_localguys_contract() -> Dict[str, Any]:
+    return await _build_localguys_contract(
+        workflow_family="g3_localguys",
+        roles=["coder", "verifier"],
+        steps=["recon", "plan", "execute", "verify", "review", "finalize"],
+        model_policy={
+            "coder": {
+                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:3b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 24000,
+            },
+            "verifier": {
+                "preferred_models": await _build_model_group(["deepseek-r1:8b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "verifier_attack_v1",
+                "max_context_chars": 18000,
+            },
+        },
+        tool_budget={
+            "recon": {"max_tool_calls": 6, "max_retries": 1},
+            "plan": {"max_tool_calls": 2, "max_retries": 1},
+            "execute": {"max_tool_calls": 8, "max_retries": 2},
+            "verify": {"max_tool_calls": 4, "max_retries": 1},
+            "review": {"max_tool_calls": 3, "max_retries": 1},
+            "finalize": {"max_tool_calls": 2, "max_retries": 1},
+        },
+        required_artifacts=[
+            "facts.json",
+            "plan.json",
+            "patch.diff",
+            "test_output.txt",
+            "review.json",
+            "final_report.json",
+        ],
+        completion_policy={
+            "requires_verifier_pass": True,
+            "requires_required_artifacts": True,
+            "requires_targeted_tests": True,
+            "requires_final_report": True,
+        },
+    )
+
+
+async def _resolve_ralph_localguys_contract() -> Dict[str, Any]:
+    return await _build_localguys_contract(
+        workflow_family="ralph_localguys",
+        roles=["coder", "verifier"],
+        steps=["recon", "execute", "verify", "finalize"],
+        model_policy={
+            "coder": {
+                "preferred_models": await _build_model_group(["qwen3:8b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:7b", "qwen2.5:3b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 18000,
+            },
+            "verifier": {
+                "preferred_models": await _build_model_group(["deepseek-r1:8b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "verifier_attack_v1",
+                "max_context_chars": 12000,
+            },
+        },
+        tool_budget={
+            "recon": {"max_tool_calls": 4, "max_retries": 1},
+            "execute": {"max_tool_calls": 6, "max_retries": 2},
+            "verify": {"max_tool_calls": 3, "max_retries": 1},
+            "finalize": {"max_tool_calls": 2, "max_retries": 1},
+        },
+        required_artifacts=[
+            "facts.json",
+            "patch.diff",
+            "test_output.txt",
+            "final_report.json",
+        ],
+        completion_policy={
+            "requires_verifier_pass": True,
+            "requires_required_artifacts": True,
+            "requires_targeted_tests": True,
+            "requires_final_report": True,
+        },
+    )
+
+
+async def _resolve_quickfix_localguys_contract() -> Dict[str, Any]:
+    return await _build_localguys_contract(
+        workflow_family="quickfix_localguys",
+        roles=["scout", "coder", "verifier"],
+        steps=["recon", "execute", "verify", "review", "finalize"],
+        model_policy={
+            "scout": {
+                "preferred_models": await _build_model_group(["qwen2.5vl:3b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "visual_scout_v1",
+                "max_context_chars": 12000,
+            },
+            "coder": {
+                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:3b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 20000,
+            },
+            "verifier": {
+                "preferred_models": await _build_model_group(["deepseek-r1:8b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "verifier_attack_v1",
+                "max_context_chars": 14000,
+            },
+        },
+        tool_budget={
+            "recon": {"max_tool_calls": 5, "max_retries": 1},
+            "execute": {"max_tool_calls": 6, "max_retries": 2},
+            "verify": {"max_tool_calls": 3, "max_retries": 1},
+            "review": {"max_tool_calls": 2, "max_retries": 1},
+            "finalize": {"max_tool_calls": 2, "max_retries": 1},
+        },
+        required_artifacts=[
+            "facts.json",
+            "patch.diff",
+            "test_output.txt",
+            "review.json",
+            "final_report.json",
+        ],
+        completion_policy={
+            "requires_verifier_pass": True,
+            "requires_required_artifacts": True,
+            "requires_targeted_tests": True,
+            "requires_final_report": True,
+        },
+    )
+
+
+async def _resolve_testonly_localguys_contract() -> Dict[str, Any]:
+    return await _build_localguys_contract(
+        workflow_family="testonly_localguys",
+        roles=["scout", "coder", "verifier"],
+        steps=["recon", "plan", "execute", "verify", "finalize"],
+        model_policy={
+            "scout": {
+                "preferred_models": await _build_model_group(["qwen2.5vl:3b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "visual_scout_v1",
+                "max_context_chars": 12000,
+            },
+            "coder": {
+                "preferred_models": await _build_model_group(["qwen2.5:7b", "qwen3:8b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:3b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 20000,
+            },
+            "verifier": {
+                "preferred_models": await _build_model_group(["deepseek-r1:8b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "verifier_attack_v1",
+                "max_context_chars": 14000,
+            },
+        },
+        tool_budget={
+            "recon": {"max_tool_calls": 5, "max_retries": 1},
+            "plan": {"max_tool_calls": 2, "max_retries": 1},
+            "execute": {"max_tool_calls": 6, "max_retries": 2},
+            "verify": {"max_tool_calls": 4, "max_retries": 1},
+            "finalize": {"max_tool_calls": 2, "max_retries": 1},
+        },
+        required_artifacts=[
+            "facts.json",
+            "plan.json",
+            "patch.diff",
+            "test_output.txt",
+            "review.json",
+            "final_report.json",
+        ],
+        completion_policy={
+            "requires_verifier_pass": True,
+            "requires_required_artifacts": True,
+            "requires_targeted_tests": True,
+            "requires_final_report": True,
+        },
+    )
+
+
+async def _resolve_docs_localguys_contract() -> Dict[str, Any]:
+    return await _build_localguys_contract(
+        workflow_family="docs_localguys",
+        roles=["scout", "coder"],
+        steps=["recon", "execute", "review", "finalize"],
+        model_policy={
+            "scout": {
+                "preferred_models": await _build_model_group(["qwen2.5vl:3b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "visual_scout_v1",
+                "max_context_chars": 10000,
+            },
+            "coder": {
+                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:3b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 16000,
+            },
+        },
+        tool_budget={
+            "recon": {"max_tool_calls": 4, "max_retries": 1},
+            "execute": {"max_tool_calls": 5, "max_retries": 2},
+            "review": {"max_tool_calls": 2, "max_retries": 1},
+            "finalize": {"max_tool_calls": 2, "max_retries": 1},
+        },
+        required_artifacts=[
+            "facts.json",
+            "patch.diff",
+            "final_report.json",
+        ],
+        completion_policy={
+            "requires_verifier_pass": False,
+            "requires_required_artifacts": True,
+            "requires_targeted_tests": False,
+            "requires_final_report": True,
+        },
+    )
+
+
+async def _resolve_research_localguys_contract() -> Dict[str, Any]:
+    return await _build_localguys_contract(
+        workflow_family="research_localguys",
+        roles=["researcher", "architect", "coder", "verifier"],
+        steps=["recon", "research", "plan", "execute", "verify", "review", "finalize"],
+        model_policy={
+            "researcher": {
+                "preferred_models": await _build_model_group(["qwen3:8b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:7b", "phi4-mini:latest"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 22000,
+            },
+            "architect": {
+                "preferred_models": await _build_model_group(["qwen3:8b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:7b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 20000,
+            },
+            "coder": {
+                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:3b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 22000,
+            },
+            "verifier": {
+                "preferred_models": await _build_model_group(["deepseek-r1:8b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "verifier_attack_v1",
+                "max_context_chars": 16000,
+            },
+        },
+        tool_budget={
+            "recon": {"max_tool_calls": 5, "max_retries": 1},
+            "research": {"max_tool_calls": 6, "max_retries": 1},
+            "plan": {"max_tool_calls": 3, "max_retries": 1},
+            "execute": {"max_tool_calls": 7, "max_retries": 2},
+            "verify": {"max_tool_calls": 4, "max_retries": 1},
+            "review": {"max_tool_calls": 3, "max_retries": 1},
+            "finalize": {"max_tool_calls": 2, "max_retries": 1},
+        },
+        required_artifacts=[
+            "facts.json",
+            "plan.json",
+            "patch.diff",
+            "test_output.txt",
+            "review.json",
+            "final_report.json",
+        ],
+        completion_policy={
+            "requires_verifier_pass": True,
+            "requires_required_artifacts": True,
+            "requires_targeted_tests": True,
+            "requires_final_report": True,
+        },
+    )
+
+
+async def _resolve_dragons_localguys_contract() -> Dict[str, Any]:
+    return await _build_localguys_contract(
+        workflow_family="dragons_localguys",
+        roles=["scout", "architect", "coder", "verifier"],
+        steps=["recon", "plan", "execute", "verify", "review", "finalize"],
+        model_policy={
+            "scout": {
+                "preferred_models": await _build_model_group(["qwen2.5vl:3b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "visual_scout_v1",
+                "max_context_chars": 14000,
+            },
+            "architect": {
+                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 20000,
+            },
+            "coder": {
+                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:3b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 22000,
+            },
+            "verifier": {
+                "preferred_models": await _build_model_group(["deepseek-r1:8b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "verifier_attack_v1",
+                "max_context_chars": 16000,
+            },
+        },
+        tool_budget={
+            "recon": {"max_tool_calls": 5, "max_retries": 1},
+            "plan": {"max_tool_calls": 3, "max_retries": 1},
+            "execute": {"max_tool_calls": 7, "max_retries": 2},
+            "verify": {"max_tool_calls": 4, "max_retries": 1},
+            "review": {"max_tool_calls": 3, "max_retries": 1},
+            "finalize": {"max_tool_calls": 2, "max_retries": 1},
+        },
+        required_artifacts=[
+            "facts.json",
+            "plan.json",
+            "patch.diff",
+            "test_output.txt",
+            "review.json",
+            "final_report.json",
+        ],
+        completion_policy={
+            "requires_verifier_pass": True,
+            "requires_required_artifacts": True,
+            "requires_targeted_tests": True,
+            "requires_final_report": True,
+            "requires_team_profile": True,
+        },
+    )
+
+
+async def _resolve_refactor_localguys_contract() -> Dict[str, Any]:
+    return await _build_localguys_contract(
+        workflow_family="refactor_localguys",
+        roles=["scout", "architect", "coder", "verifier"],
+        steps=["recon", "research", "plan", "execute", "verify", "review", "finalize"],
+        model_policy={
+            "scout": {
+                "preferred_models": await _build_model_group(["qwen2.5vl:3b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "visual_scout_v1",
+                "max_context_chars": 16000,
+            },
+            "architect": {
+                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "fallback_models": await _build_model_group(["deepseek-r1:8b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 24000,
+            },
+            "coder": {
+                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:3b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 24000,
+            },
+            "verifier": {
+                "preferred_models": await _build_model_group(["deepseek-r1:8b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "verifier_attack_v1",
+                "max_context_chars": 18000,
+            },
+        },
+        tool_budget={
+            "recon": {"max_tool_calls": 6, "max_retries": 1},
+            "research": {"max_tool_calls": 5, "max_retries": 1},
+            "plan": {"max_tool_calls": 4, "max_retries": 1},
+            "execute": {"max_tool_calls": 8, "max_retries": 2},
+            "verify": {"max_tool_calls": 4, "max_retries": 1},
+            "review": {"max_tool_calls": 3, "max_retries": 1},
+            "finalize": {"max_tool_calls": 2, "max_retries": 1},
+        },
+        required_artifacts=[
+            "facts.json",
+            "plan.json",
+            "patch.diff",
+            "test_output.txt",
+            "review.json",
+            "final_report.json",
+        ],
+        completion_policy={
+            "requires_verifier_pass": True,
+            "requires_required_artifacts": True,
+            "requires_targeted_tests": True,
+            "requires_final_report": True,
+            "requires_allowlist_scope": True,
+        },
+        allowed_tools=["context", "tasks", "artifacts", "stats", "search", "tests", "git_diff"],
+    )
+
+
+async def _resolve_bmad_localguys_contract() -> Dict[str, Any]:
+    return await _build_localguys_contract(
+        workflow_family="bmad_localguys",
+        roles=["scout", "researcher", "architect", "coder", "verifier", "approval"],
+        steps=["recon", "research", "plan", "execute", "verify", "review", "approve", "finalize"],
+        model_policy={
+            "scout": {
+                "preferred_models": await _build_model_group(["qwen2.5vl:3b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "visual_scout_v1",
+                "max_context_chars": 14000,
+            },
+            "researcher": {
+                "preferred_models": await _build_model_group(["qwen3:8b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:7b", "qwen2.5:3b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 22000,
+            },
+            "architect": {
+                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "fallback_models": await _build_model_group(["deepseek-r1:8b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 22000,
+            },
+            "coder": {
+                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:3b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 24000,
+            },
+            "verifier": {
+                "preferred_models": await _build_model_group(["deepseek-r1:8b"]),
+                "fallback_models": await _build_model_group(["phi4-mini:latest"]),
+                "prompt_style": "verifier_attack_v1",
+                "max_context_chars": 18000,
+            },
+            "approval": {
+                "preferred_models": await _build_model_group(["phi4-mini:latest"]),
+                "fallback_models": await _build_model_group(["deepseek-r1:8b"]),
+                "prompt_style": "router_tiny_v1",
+                "max_context_chars": 12000,
+            },
+        },
+        tool_budget={
+            "recon": {"max_tool_calls": 6, "max_retries": 1},
+            "research": {"max_tool_calls": 6, "max_retries": 1},
+            "plan": {"max_tool_calls": 4, "max_retries": 1},
+            "execute": {"max_tool_calls": 8, "max_retries": 2},
+            "verify": {"max_tool_calls": 4, "max_retries": 1},
+            "review": {"max_tool_calls": 3, "max_retries": 1},
+            "approve": {"max_tool_calls": 2, "max_retries": 1},
+            "finalize": {"max_tool_calls": 2, "max_retries": 1},
+        },
+        required_artifacts=[
+            "facts.json",
+            "plan.json",
+            "patch.diff",
+            "test_output.txt",
+            "review.json",
+            "approval.json",
+            "final_report.json",
+        ],
+        completion_policy={
+            "requires_verifier_pass": True,
+            "requires_required_artifacts": True,
+            "requires_targeted_tests": True,
+            "requires_final_report": True,
+            "requires_approval_gate": True,
+        },
+    )
+
+
+async def _resolve_workflow_contract(workflow_family: str) -> Dict[str, Any] | None:
+    family = str(workflow_family or "").strip().lower()
+    if family == "g3_localguys":
+        return await _resolve_g3_localguys_contract()
+    if family == "ralph_localguys":
+        return await _resolve_ralph_localguys_contract()
+    if family == "quickfix_localguys":
+        return await _resolve_quickfix_localguys_contract()
+    if family == "testonly_localguys":
+        return await _resolve_testonly_localguys_contract()
+    if family == "docs_localguys":
+        return await _resolve_docs_localguys_contract()
+    if family == "research_localguys":
+        return await _resolve_research_localguys_contract()
+    if family == "dragons_localguys":
+        return await _resolve_dragons_localguys_contract()
+    if family == "refactor_localguys":
+        return await _resolve_refactor_localguys_contract()
+    if family == "bmad_localguys":
+        return await _resolve_bmad_localguys_contract()
+    return None
+
+
 def _save_active_session_state(project_id: str, state: "SessionState") -> bool:
     try:
         from src.services.mcc_project_registry import save_session_for_project
@@ -392,6 +1255,7 @@ class MCCTaskUpdateRequest(BaseModel):
     phase_type: Optional[str] = None
     priority: Optional[int] = None
     tags: Optional[List[str]] = None
+    workflow_family: Optional[str] = None  # MARKER_175B: User-selected workflow template
 
 
 class MCCTaskFeedbackRequest(BaseModel):
@@ -978,7 +1842,7 @@ async def update_mcc_task(task_id: str, body: MCCTaskUpdateRequest):
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
     updates = body.model_dump(exclude_none=True)
-    allowed_fields = {"title", "description", "preset", "phase_type", "priority", "tags"}
+    allowed_fields = {"title", "description", "preset", "phase_type", "priority", "tags", "workflow_family"}
     updates = {key: value for key, value in updates.items() if key in allowed_fields}
     if not updates:
         raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -1028,6 +1892,103 @@ async def submit_mcc_task_feedback(task_id: str, body: MCCTaskFeedbackRequest):
     }
 
 
+# MARKER_176.3B: Apply pipeline results — user accepts output
+@router.post("/tasks/{task_id}/apply")
+async def apply_task_result(task_id: str):
+    """Mark task result as applied (accepted by user)."""
+    board = _get_task_board_instance()
+    task = board.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+    board.update_task(task_id, result_status="applied", status="done")
+    updated = board.get_task(task_id)
+    return {"success": True, "task": updated}
+
+
+# MARKER_176.3B: Reject pipeline results — user wants redo with feedback
+@router.post("/tasks/{task_id}/reject")
+async def reject_task_result(task_id: str, body: dict = Body(...)):
+    """Reject result and requeue task with user feedback."""
+    board = _get_task_board_instance()
+    task = board.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+    feedback = body.get("feedback", "")
+    old_desc = task.get("description", "")
+    new_desc = f"{old_desc}\n\n[USER FEEDBACK]: {feedback}" if feedback else old_desc
+    board.update_task(task_id, result_status="rejected", status="pending", description=new_desc)
+    updated = board.get_task(task_id)
+    return {"success": True, "task": updated}
+
+
+# MARKER_176.1B: Create tasks from roadmap node
+@router.post("/roadmap/{node_id}/create-tasks")
+async def create_tasks_from_roadmap_node(node_id: str):
+    """
+    Generate task board entries from a specific roadmap module node.
+    Users click a roadmap node → drill to tasks → 'Create Tasks' button calls this.
+    """
+    from src.services.roadmap_generator import RoadmapDAG
+    from src.services.roadmap_task_sync import generate_task_payloads_from_roadmap_node
+
+    dag = RoadmapDAG.load()
+    if dag is None:
+        raise HTTPException(status_code=404, detail="No roadmap found. Generate roadmap first.")
+
+    # Find the target node in the roadmap DAG
+    target_node = None
+    frontend_data = dag.to_frontend_format()
+    for node in frontend_data.get("nodes", []):
+        ndata = node.get("data", {})
+        if node.get("id") == node_id or ndata.get("id") == node_id:
+            target_node = {**ndata, "id": node.get("id", node_id)}
+            break
+
+    if not target_node:
+        raise HTTPException(status_code=404, detail=f"Roadmap node '{node_id}' not found")
+
+    board = _get_task_board_instance()
+    created_tasks = []
+    module_name = target_node.get("label", target_node.get("id", node_id))
+    payloads = generate_task_payloads_from_roadmap_node(
+        dict(target_node),
+        roadmap_id=str(getattr(dag, "project_id", "") or ""),
+    )
+
+    main_task_id = ""
+    for payload in payloads:
+        payload.setdefault("preset", "dragon_silver")
+        payload.setdefault("priority", target_node.get("priority", 5))
+        payload["tags"] = list(payload.get("tags") or []) + [f"roadmap:{node_id}"]
+        task_id = board.add_task(**payload)
+        created_tasks.append(task_id)
+        if not main_task_id:
+            main_task_id = task_id
+
+    # If node has children/sub-modules, create subtasks
+    children = target_node.get("children", [])
+    for sub in children[:5]:
+        sub_label = sub.get("label", sub.get("id", "subtask"))
+        sub_id = board.add_task(
+            title=f"Subtask: {sub_label}"[:100],
+            description=sub.get("description", f"Sub-module of {module_name}"),
+            priority=target_node.get("priority", 5),
+            phase_type="build",
+            preset="dragon_silver",
+            tags=[f"roadmap:{node_id}", f"parent:{main_task_id}"],
+            roadmap_id=str(getattr(dag, "project_id", "") or ""),
+            roadmap_node_id=str(sub.get("id") or node_id),
+            roadmap_lane=str(sub.get("layer") or target_node.get("layer") or "core"),
+            roadmap_title=str(sub_label),
+            task_origin="roadmap_sync",
+            workflow_selection_origin="roadmap_sync",
+        )
+        created_tasks.append(sub_id)
+
+    return {"success": True, "tasks": created_tasks, "count": len(created_tasks), "node_id": node_id}
+# MARKER_176.1B_END
+
+
 @router.get("/tasks/{task_id}/workflow-binding")
 async def get_task_workflow_binding(task_id: str):
     board = _get_task_board_instance()
@@ -1074,6 +2035,328 @@ async def update_task_workflow_binding(task_id: str, body: "WorkflowBindingReque
     }
 
 
+@router.get("/workflow-contract/{workflow_family}")
+async def get_workflow_contract(workflow_family: str):
+    contract = await _resolve_workflow_contract(workflow_family)
+    if contract is None:
+        raise HTTPException(status_code=404, detail=f"Workflow contract '{workflow_family}' not found")
+    return {
+        "success": True,
+        "workflow_family": str(contract.get("workflow_family") or workflow_family),
+        "contract": contract,
+    }
+
+
+@router.get("/localguys/operator-methods")
+async def list_localguys_operator_methods():
+    rows = []
+    for workflow_family, meta in sorted(_LOCALGUYS_OPERATOR_METHODS.items()):
+        contract = await _resolve_workflow_contract(workflow_family)
+        if contract is None:
+            continue
+        rows.append(
+            {
+                "workflow_family": workflow_family,
+                "source_family": str(meta.get("source_family") or ""),
+                "method": str(meta.get("method") or ""),
+                "command_template": str(meta.get("command_template") or ""),
+                "roles": list(contract.get("roles") or []),
+                "steps": list(contract.get("steps") or []),
+            }
+        )
+    return {
+        "success": True,
+        "count": len(rows),
+        "methods": rows,
+    }
+
+
+@router.get("/localguys/benchmark-summary")
+async def get_localguys_benchmark_summary(
+    runtime_name: str = "",
+    workflow_family: str = "",
+    task_id: str = "",
+    limit: int = 20,
+):
+    registry = _get_localguys_run_registry()
+    run_summary = registry.summarize_runs(
+        workflow_family=str(workflow_family or "").strip(),
+        task_id=str(task_id or "").strip(),
+        limit=max(1, min(int(limit or 20), 100)),
+    )
+    benchmark_rows = _get_mcc_benchmark_store().list_records(
+        runtime_name=str(runtime_name or "").strip(),
+        workflow_family=str(workflow_family or "").strip(),
+        task_id=str(task_id or "").strip(),
+        limit=max(1, min(int(limit or 20), 100)),
+    )
+    status_counts = dict(run_summary.get("status_counts") or {})
+    model_counts = dict(run_summary.get("model_counts") or {})
+    runtime_counts: Dict[str, int] = {}
+    runtime_counts["localguys"] = int(run_summary.get("count") or 0)
+    runtime_total = int(run_summary.get("avg_runtime_ms") or 0) * int(run_summary.get("count") or 0)
+    missing_total = float(run_summary.get("avg_artifact_missing_count") or 0.0) * int(run_summary.get("count") or 0)
+    required_total = float(run_summary.get("avg_required_artifact_count") or 0.0) * int(run_summary.get("count") or 0)
+    success_total = float(run_summary.get("success_rate") or 0.0) * int(run_summary.get("count") or 0)
+
+    merged_recent = list(run_summary.get("recent_runs") or [])
+    for row in benchmark_rows:
+        runtime = str(row.get("runtime_name") or "benchmark").strip() or "benchmark"
+        runtime_counts[runtime] = runtime_counts.get(runtime, 0) + 1
+        status = str(row.get("run_status") or "measured").strip() or "measured"
+        status_counts[status] = status_counts.get(status, 0) + 1
+        runtime_total += int(row.get("runtime_ms") or 0)
+        missing_total += float(row.get("artifact_missing_count") or 0.0)
+        required_total += float(row.get("required_artifact_count") or 0.0)
+        success_total += float(row.get("success_rate") or 0.0)
+        merged_recent.append(dict(row))
+
+    count = int(run_summary.get("count") or 0) + len(benchmark_rows)
+    summary = {
+        **run_summary,
+        "count": count,
+        "status_counts": status_counts,
+        "model_counts": model_counts,
+        "runtime_counts": runtime_counts,
+        "avg_runtime_ms": int(runtime_total / count) if count else 0,
+        "avg_artifact_missing_count": round(missing_total / count, 2) if count else 0.0,
+        "avg_required_artifact_count": round(required_total / count, 2) if count else 0.0,
+        "success_rate": round(success_total / count, 2) if count else 0.0,
+        "recent_runs": sorted(
+            merged_recent,
+            key=lambda row: str(row.get("updated_at") or row.get("created_at") or ""),
+            reverse=True,
+        )[: max(1, min(int(limit or 20), 100))],
+    }
+    return {
+        "success": True,
+        "summary": summary,
+    }
+
+
+@router.post("/benchmarks")
+async def create_benchmark_record(payload: "BenchmarkRecordRequest"):
+    record = _get_mcc_benchmark_store().add_record(payload.model_dump())
+    return {
+        "success": True,
+        "record": record,
+    }
+
+
+@router.get("/tasks/{task_id}/workflow-contract")
+async def get_task_workflow_contract(task_id: str):
+    board = _get_task_board_instance()
+    task = board.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+
+    binding = _resolve_task_workflow_binding(task)
+    workflow_family = str(binding.get("workflow_family") or binding.get("workflow_id") or "").strip()
+    contract = await _resolve_workflow_contract(workflow_family)
+    if contract is None:
+        raise HTTPException(status_code=404, detail=f"Workflow contract '{workflow_family}' not found")
+    return {
+        "success": True,
+        "task_id": task_id,
+        "binding": binding,
+        "contract": contract,
+    }
+
+
+@router.get("/tasks/{task_id}/context-packet")
+async def get_task_context_packet(task_id: str):
+    from src.services.roadmap_task_sync import build_task_context_packet
+    from src.services.mcc_local_run_registry import get_localguys_run_registry
+
+    board = _get_task_board_instance()
+    task = board.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+
+    binding = _resolve_task_workflow_binding(task)
+    workflow_family = str(binding.get("workflow_family") or binding.get("workflow_id") or "").strip()
+    contract = await _resolve_workflow_contract(workflow_family)
+    history = board.get_task_history(task_id) if hasattr(board, "get_task_history") else list(task.get("status_history") or [])
+    latest_run = get_localguys_run_registry().get_latest_for_task(task_id)
+    packet = build_task_context_packet(
+        task,
+        workflow_binding=binding,
+        workflow_contract=contract or {},
+        task_history=history,
+        localguys_run=latest_run or {},
+    )
+    return {
+        "success": True,
+        "task_id": task_id,
+        "packet": packet,
+    }
+
+
+def _validate_localguys_run_update(
+    body: "LocalguysRunUpdateRequest",
+    contract: Dict[str, Any],
+) -> None:
+    allowed_statuses = {"queued", "running", "reviewing", "done", "blocked", "failed"}
+    if body.status is not None and str(body.status).strip() not in allowed_statuses:
+        raise HTTPException(status_code=400, detail="invalid localguys run status")
+
+    steps = [str(step).strip() for step in list(contract.get("steps") or []) if str(step).strip()]
+    if body.current_step is not None and str(body.current_step).strip() not in steps:
+        raise HTTPException(status_code=400, detail="invalid localguys run step")
+
+    roles = [str(role).strip() for role in list(contract.get("roles") or []) if str(role).strip()]
+    if body.active_role is not None and str(body.active_role).strip() not in roles:
+        raise HTTPException(status_code=400, detail="invalid localguys run role")
+
+
+@router.post("/tasks/{task_id}/localguys-run")
+async def start_localguys_run(task_id: str, body: "LocalguysRunStartRequest" = Body(default=None)):
+    board = _get_task_board_instance()
+    task = board.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+
+    body = body or LocalguysRunStartRequest()
+    binding = _resolve_task_workflow_binding(task)
+    workflow_family = (
+        str(body.workflow_family or "").strip()
+        or str(binding.get("workflow_family") or binding.get("workflow_id") or "").strip()
+    )
+    contract = await _resolve_workflow_contract(workflow_family)
+    if contract is None:
+        raise HTTPException(status_code=404, detail=f"Workflow contract '{workflow_family}' not found")
+
+    preset = str(body.preset or task.get("team_profile") or task.get("preset") or "dragon_silver").strip() or "dragon_silver"
+    task_description = (
+        str(body.task_description or "").strip()
+        or str(task.get("description") or task.get("title") or "").strip()
+    )
+    source_branch = str(body.source_branch or "main").strip() or "main"
+
+    try:
+        playground = await _create_localguys_playground(
+            task_description=task_description,
+            preset=preset,
+            source_branch=source_branch,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"playground creation failed: {exc}") from exc
+
+    registry = _get_localguys_run_registry()
+    run = registry.create_run(
+        task_id=task_id,
+        workflow_family=workflow_family,
+        contract=contract,
+        playground=playground,
+        task_snapshot=task,
+    )
+    return {
+        "success": True,
+        "task_id": task_id,
+        "binding": binding,
+        "contract": contract,
+        "run": run,
+    }
+
+
+@router.get("/tasks/{task_id}/localguys-run")
+async def get_latest_localguys_run(task_id: str):
+    board = _get_task_board_instance()
+    task = board.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+
+    registry = _get_localguys_run_registry()
+    run = registry.get_latest_for_task(task_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"No localguys run found for task '{task_id}'")
+    return {
+        "success": True,
+        "task_id": task_id,
+        "run": run,
+    }
+
+
+@router.get("/localguys-runs/{run_id}")
+async def get_localguys_run(run_id: str):
+    registry = _get_localguys_run_registry()
+    run = registry.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Localguys run '{run_id}' not found")
+    return {
+        "success": True,
+        "run": run,
+    }
+
+
+@router.patch("/localguys-runs/{run_id}")
+async def update_localguys_run(run_id: str, body: "LocalguysRunUpdateRequest"):
+    registry = _get_localguys_run_registry()
+    run = registry.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Localguys run '{run_id}' not found")
+
+    contract = await _resolve_workflow_contract(str(run.get("workflow_family") or ""))
+    if contract is None:
+        raise HTTPException(status_code=404, detail="Workflow contract for localguys run not found")
+    _validate_localguys_run_update(body, contract)
+
+    updated = registry.update_run(
+        run_id,
+        status=body.status,
+        current_step=body.current_step,
+        active_role=body.active_role,
+        model_id=body.model_id,
+        failure_reason=body.failure_reason,
+        metadata=body.metadata,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"Localguys run '{run_id}' not found")
+
+    if str(body.status or "").strip() == "done":
+        manifest = registry.validate_required_artifacts(run_id)
+        missing = list((manifest or {}).get("missing") or [])
+        if missing:
+            registry.update_run(
+                run_id,
+                status="blocked",
+                failure_reason=f"required_artifact_missing: {', '.join(missing)}",
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=f"required_artifact_missing: {', '.join(missing)}",
+            )
+        updated = registry.get_run(run_id) or updated
+
+    return {
+        "success": True,
+        "run": updated,
+    }
+
+
+@router.put("/localguys-runs/{run_id}/artifacts/{artifact_name:path}")
+async def write_localguys_artifact(
+    run_id: str,
+    artifact_name: str,
+    body: "LocalguysArtifactWriteRequest",
+):
+    registry = _get_localguys_run_registry()
+    artifact = registry.write_artifact(
+        run_id,
+        artifact_name,
+        body.content,
+        metadata=body.metadata,
+    )
+    if artifact is None:
+        raise HTTPException(status_code=404, detail=f"Localguys run '{run_id}' not found")
+    run = registry.get_run(run_id)
+    return {
+        "success": True,
+        "artifact": artifact,
+        "run": run,
+    }
+
+
 @router.get("/workflows/{workflow_key}")
 async def get_workflow(workflow_key: str):
     """Get a specific workflow template by key."""
@@ -1096,6 +2379,44 @@ class WorkflowBindingRequest(BaseModel):
     workflow_family: str = ""
     team_profile: str = ""
     selection_origin: str = "user-selected"
+
+
+class LocalguysRunStartRequest(BaseModel):
+    workflow_family: str = ""
+    preset: str = ""
+    task_description: str = ""
+    source_branch: str = "main"
+
+
+class LocalguysRunUpdateRequest(BaseModel):
+    status: Optional[str] = None
+    current_step: Optional[str] = None
+    active_role: Optional[str] = None
+    model_id: Optional[str] = None
+    failure_reason: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class LocalguysArtifactWriteRequest(BaseModel):
+    content: str = ""
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class BenchmarkRecordRequest(BaseModel):
+    runtime_name: str
+    workflow_family: str = ""
+    task_id: str = ""
+    run_status: str = "measured"
+    device_profile: str = ""
+    accelerator: str = ""
+    cold_start_ms: int = 0
+    avg_runtime_ms: int = 0
+    runtime_ms: int = 0
+    artifact_missing_count: int = 0
+    required_artifact_count: int = 0
+    artifact_present_count: int = 0
+    success_rate: float = 0.0
+    notes: str = ""
 
 
 class WorkflowMycoHintRequest(BaseModel):
@@ -1428,6 +2749,32 @@ async def mcc_scoped_file_search(req: MCCScopedFileSearchRequest):
     out["mode"] = mode
     out["marker"] = "MARKER_165.MCC.CONTEXT_SEARCH.API_SCOPED_FILE_ROUTE.V1"
     return out
+
+
+@router.get("/directory-tree")
+async def get_mcc_directory_tree(
+    path: str = Query("", description="Directory path relative to active project scope"),
+    depth: int = Query(4, ge=1, le=8),
+    limit: int = Query(200, ge=1, le=1000),
+):
+    config = _load_active_project_config()
+    base_scope = _active_project_scope_root(config)
+    if not base_scope:
+        raise HTTPException(status_code=400, detail="No active project scope available")
+    resolved_path = _resolve_project_scope_path(base_scope, path)
+    tree = await asyncio.to_thread(
+        _build_directory_tree,
+        resolved_path,
+        base_scope,
+        depth=int(depth),
+        limit=int(limit),
+    )
+    return {
+        "success": True,
+        "scope_root": base_scope,
+        "path": tree.get("path", ""),
+        "tree": tree,
+    }
 
 
 @router.post("/graph/predict")

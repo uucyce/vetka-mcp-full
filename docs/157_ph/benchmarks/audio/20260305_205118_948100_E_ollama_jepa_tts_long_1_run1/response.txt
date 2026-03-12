@@ -1,0 +1,5 @@
+Okay, let's break down the problem and how to address it. Here’s a step-by-step explanation, referencing the context:
+
+1. **The Core Issue:** The current system has a fragmented approach to the “voice” and “tool” interaction, leading to potential inconsistencies and “false expectations” in the chat experience.  The goal is to ensure the UI consistently reflects the actual state of the model's output.
+
+2. **

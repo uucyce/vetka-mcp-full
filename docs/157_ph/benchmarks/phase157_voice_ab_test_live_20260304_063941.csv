@@ -1,0 +1,25 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,quality_notes,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,122,True,,18954.0,,18954.0,,19471.84,24,0,100,0.6,"no_file_refs,no_two_items","Базовый ответ не могу предоставить, поскольку falta информация о конкретных файлах и их содержимyah.",docs/157_ph/benchmarks/audio/20260304_063729_404366_D_ollama_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:37:48.827508+00:00
+D_ollama_tts,context_1,1,133,False,TimeoutError: per-run timeout 28.0s,,,,,47626.2,0,0,0,0.0,"low_ru_ratio,no_memory_terms,no_latency_terms,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_063748_839507_D_ollama_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:38:36.453921+00:00
+D_ollama_tts,long_1,1,171,True,,1675.24,,1675.24,,3988.51,128,0,635,0.75,low_ru_ratio,"Interrupt and Restart Stream Protocol:
+
+1. **Purpose**: Remove discrepancies between:
+	* Stream generation (`stream`),
+	* Tool calls (`tool calling`),
+	* Model/Provider capabilities.
+2. **Key issue**: Current project has partial support for capability logic scattered across `prov",docs/157_ph/benchmarks/audio/20260304_063836_464718_D_ollama_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:38:40.442650+00:00
+D_ollama_tts,interrupt_1,1,139,False,TimeoutError: per-run timeout 28.0s,,,,,47014.98,0,0,0,0.0,"low_ru_ratio,no_stepwise_followup,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_063840_451241_D_ollama_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:39:27.457823+00:00
+E_ollama_jepa_tts,short_1,1,122,True,,1114.1,,1114.1,,3029.71,128,0,411,0.8,low_ru_ratio,"Базовые файлы:
+
+* `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/92_ph/HAIKU_3_SOCKET_STOP.md` - `scan_progress` с `{progress, status}` для frontend.
+* `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/92_ph/watcher_routes.py` - Emit `scan_complete` с",docs/157_ph/benchmarks/audio/20260304_063927_472087_E_ollama_jepa_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:39:30.487802+00:00
+E_ollama_jepa_tts,context_1,1,133,True,,1117.29,,1117.29,,4268.31,128,0,667,0.75,low_ru_ratio,"Based on the provided context, here are three points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize hysteresis thresholds**: Reduce the hysteresis threshold values to minimize false positives and reduce latency.
+2. **Use more efficient data ",docs/157_ph/benchmarks/audio/20260304_063930_498904_E_ollama_jepa_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:39:34.756590+00:00
+E_ollama_jepa_tts,long_1,1,171,True,,1238.99,,1238.99,,3176.09,128,0,493,0.85,,"Поскольку в предоставленном контексте нет конкретной информации об interrupt + restart stream protocol, я не могу дать точный ответ на этот вопрос. 
+
+В контексте задачи с agenty и voice handoff/tool-loop transparency, это может быть связано с тем, что при интерруптации (interrupt",docs/157_ph/benchmarks/audio/20260304_063934_769818_E_ollama_jepa_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:39:37.933039+00:00
+E_ollama_jepa_tts,interrupt_1,1,139,True,,1115.57,,1115.57,,3660.31,117,0,622,0.7,"low_ru_ratio,too_long_after_interrupt","To explain how context packing works in VETKA, I'll break it down into two initial steps:
+
+1. **Implement ELISION compression layer**: This step involves using semantic compaction to filter irrelevant data before storage. The goal is to reduce noise in the context packing process",docs/157_ph/benchmarks/audio/20260304_063937_940821_E_ollama_jepa_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:39:41.593474+00:00

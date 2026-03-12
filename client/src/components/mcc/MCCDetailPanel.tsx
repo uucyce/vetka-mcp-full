@@ -21,8 +21,10 @@ import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { PipelineStats } from '../panels/PipelineStats';
 import { ArchitectChat } from '../panels/ArchitectChat';
 import type { DAGNode, DAGStats } from '../../types/dag';
+// MARKER_176.15: Centralized MCC API config import.
+import { API_BASE } from '../../config/api.config';
 
-const PIPELINE_API = 'http://localhost:5001/api/pipeline';
+const PIPELINE_API = `${API_BASE}/pipeline`;
 
 interface MCCDetailPanelProps {
   // DAG context

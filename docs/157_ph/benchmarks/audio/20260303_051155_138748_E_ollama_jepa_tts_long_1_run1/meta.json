@@ -1,0 +1,9 @@
+{
+  "mode": "E_ollama_jepa_tts",
+  "prompt_id": "long_1",
+  "run_index": 1,
+  "audio_chunks": 4,
+  "ttft_text_ms": 543.7267920060549,
+  "ttfa_audio_ms": 8088.368249998894,
+  "merged_wav": "docs/157_ph/benchmarks/audio/20260303_051155_138748_E_ollama_jepa_tts_long_1_run1/merged.wav"
+}

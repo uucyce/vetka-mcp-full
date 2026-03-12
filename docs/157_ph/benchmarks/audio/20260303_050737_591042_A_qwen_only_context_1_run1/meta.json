@@ -1,0 +1,9 @@
+{
+  "mode": "A_qwen_only",
+  "prompt_id": "context_1",
+  "run_index": 1,
+  "audio_chunks": 3,
+  "ttft_text_ms": 676.453499996569,
+  "ttfa_audio_ms": 2441.7188329971395,
+  "merged_wav": "docs/157_ph/benchmarks/audio/20260303_050737_591042_A_qwen_only_context_1_run1/merged.wav"
+}

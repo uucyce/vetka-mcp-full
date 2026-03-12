@@ -337,6 +337,13 @@ class TestPhase126_9_KeySelection:
         assert "handleKeyClick" in source
         assert "selectedKey" in source
 
+    def test_balances_panel_uses_mcc_store_for_selected_key(self):
+        """Balance panel selection must flow through MCC store so reopen keeps the same active key."""
+        source = _read_source("client/src/components/panels/BalancesPanel.tsx")
+        assert "useMCCStore" in source
+        assert "const selectedKey = useMCCStore" in source
+        assert "const setSelectedKey = useMCCStore" in source
+
     def test_marker_126_9b_usestore_selected_key(self):
         """MARKER_126.9B: useStore should have selectedKey state."""
         source = _read_source("client/src/store/useStore.ts")

@@ -1,0 +1,2 @@
+1.  `108_knowledg_directed_chat_artefacts.txt`: "Мы работаем по такому алгоритму - Ты архитектор, командир."
+2.  `open_router_bridge.py`: "Мост для взаимодействия с OpenRouter через

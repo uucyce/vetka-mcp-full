@@ -288,6 +288,41 @@ class TestArchitectPrefetch:
         assert ctx.workflow_id == "quick_fix"
         assert len(ctx.relevant_files) == 0
 
+    def test_prepare_accepts_task_packet_and_extends_prefetch_context(self):
+        ctx = ArchitectPrefetch.prepare(
+            task_description="",
+            task_type="fix",
+            complexity=4,
+            workflow_family="g3_localguys",
+            task_packet={
+                "task": {
+                    "id": "tb_packet_1",
+                    "title": "Packet-first fix",
+                    "description": "Use MCC packet",
+                },
+                "workflow_binding": {
+                    "workflow_family": "g3_localguys",
+                },
+                "docs": {
+                    "architecture_docs": ["docs/177_MCC_local/MCC_WORKFLOW_CONTRACT_V1.md"],
+                    "recon_docs": [],
+                },
+                "code_scope": {
+                    "closure_files": ["src/services/roadmap_task_sync.py"],
+                },
+                "tests": {
+                    "closure_tests": ["python -m pytest tests/test_phase153_wave4.py -q"],
+                },
+                "gaps": [],
+            },
+        )
+
+        assert ctx.workflow_id == "g3_localguys"
+        assert ctx.task_packet["task"]["id"] == "tb_packet_1"
+        assert ctx.relevant_files[0]["path"] == "src/services/roadmap_task_sync.py"
+        assert "docs=1" in ctx.task_packet_summary
+        assert "tests=1" in ctx.task_packet_summary
+
 
 # ══════════════════════════════════════════════════════════════
 # TestMCCWave4API — REST endpoints

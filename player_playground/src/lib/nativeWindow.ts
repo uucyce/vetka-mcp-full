@@ -6,6 +6,18 @@ export function isTauriRuntimeSync() {
   }
 }
 
+export interface PlayerNativeWindowTrace {
+  scale_factor: number;
+  inner_physical_width: number;
+  inner_physical_height: number;
+  outer_physical_width: number;
+  outer_physical_height: number;
+  inner_logical_width: number;
+  inner_logical_height: number;
+  outer_logical_width: number;
+  outer_logical_height: number;
+}
+
 export async function isTauriRuntime() {
   try {
     return isTauriRuntimeSync();
@@ -62,6 +74,18 @@ export async function configurePlayerWindow(
   }
 
   return setCurrentWindowLogicalSize(safeWidth, safeHeight);
+}
+
+export async function tracePlayerWindow(): Promise<PlayerNativeWindowTrace | null> {
+  if (!(await isTauriRuntime())) return null;
+  try {
+    const invoke = await getInvoke();
+    if (!invoke) return null;
+    return await invoke<PlayerNativeWindowTrace>("trace_player_window");
+  } catch (error) {
+    console.warn("[VETKA Player Lab] trace_player_window failed:", error);
+    return null;
+  }
 }
 
 export async function toggleFullscreen(): Promise<boolean | null> {

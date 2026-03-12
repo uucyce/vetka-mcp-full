@@ -1,0 +1,1 @@
+В контексте нет информации о протоколе interrupt + restart stream и его влиянии на voice handoff/tool-loop transparency.

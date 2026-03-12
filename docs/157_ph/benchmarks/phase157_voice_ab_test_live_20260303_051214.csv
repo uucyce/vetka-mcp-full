@@ -1,0 +1,51 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,timestamp
+A_qwen_only,short_1,1,45,False,,4638.48,10545.14,4638.48,10545.14,22270.15,29,4,157,0.0,"VETKA - это система, которая специализируется на автоматизации процессов управления проектами и бизнесом с использованием искусств
+
+[Stream stopped: timeout]",docs/157_ph/benchmarks/audio/20260303_050715_347582_A_qwen_only_short_1_run1,docs/157_ph/benchmarks/audio/20260303_050715_347582_A_qwen_only_short_1_run1/merged.wav,2026-03-03T02:07:37.575755+00:00
+A_qwen_only,context_1,1,85,False,,676.45,2441.72,676.45,2441.72,19578.38,34,3,132,0.0,"1. **Анализ текущей реализации**: Проведите детальный анализ текущего кода и алгоритмов, используемых для
+
+[Stream stopped: timeout]",docs/157_ph/benchmarks/audio/20260303_050737_591042_A_qwen_only_context_1_run1,docs/157_ph/benchmarks/audio/20260303_050737_591042_A_qwen_only_context_1_run1/merged.wav,2026-03-03T02:07:57.175942+00:00
+A_qwen_only,long_1,1,124,False,,319.47,6477.3,319.47,6477.3,19214.21,33,4,164,0.0,"Interrupt + Restart Stream (IRS) Protocol используется для обеспечения непрерывности потока данных при передаче голосовых вызовов через с
+
+[Stream stopped: timeout]",docs/157_ph/benchmarks/audio/20260303_050757_185981_A_qwen_only_long_1_run1,docs/157_ph/benchmarks/audio/20260303_050757_185981_A_qwen_only_long_1_run1/merged.wav,2026-03-03T02:08:16.401687+00:00
+B_api_tts,short_1,1,45,False,,3077.95,8360.56,3077.95,8360.56,19662.54,16,4,135,0.0,"VETKA — это российский онлайн-сервис для быстрой проверки контрагентов и подготовки налоговых документов. Он
+
+[Stream stopped: timeout]",docs/157_ph/benchmarks/audio/20260303_050816_407380_B_api_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260303_050816_407380_B_api_tts_short_1_run1/merged.wav,2026-03-03T02:08:36.067957+00:00
+B_api_tts,context_1,1,85,False,,2091.78,5703.13,2091.78,5703.13,20389.82,50,5,184,0.0,"Вот краткий план оптимизации `memory context packing` в VETKA (обычно это касается оптимизации передачи KV-кэша и состояний между слоями/нодами) с фокусом на
+
+[Stream stopped: timeout]",docs/157_ph/benchmarks/audio/20260303_050836_073824_B_api_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260303_050836_073824_B_api_tts_context_1_run1/merged.wav,2026-03-03T02:08:56.458958+00:00
+B_api_tts,long_1,1,124,False,,1023.76,5056.9,1023.76,5056.9,21500.6,42,5,204,0.0,"Краткий ответ:  
+**Interrupt + Restart Stream** — это протокол, который позволяет пользователю прервать генерацию ответа ассистента («перебить»), после чего модель мгновенно пер
+
+[Stream stopped: timeout]",docs/157_ph/benchmarks/audio/20260303_050856_465153_B_api_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260303_050856_465153_B_api_tts_long_1_run1/merged.wav,2026-03-03T02:09:17.960238+00:00
+C_api_jepa_tts,short_1,1,45,False,,2164.49,5128.61,2164.49,5128.61,22026.25,26,5,213,0.0,"VETKA — это российская IT-компания, специализирующаяся на разработке и внедрении комплексных цифровых решений для бизнеса. Она создает корпоративные информационные системы, мобильные при
+
+[Stream stopped: timeout]",docs/157_ph/benchmarks/audio/20260303_050917_966887_C_api_jepa_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260303_050917_966887_C_api_jepa_tts_short_1_run1/merged.wav,2026-03-03T02:09:39.986852+00:00
+C_api_jepa_tts,context_1,1,85,False,TimeoutError: per-run timeout 20.0s,978.94,3757.62,978.94,3757.62,20095.2,58,6,202,0.0,"Вот краткий план оптимизации `memory context packing` в VETKA с фокусом на минимизацию latency.
+
+### 1. Анализ и Профилирование (Baseline)
+*   **Измерение текущих метрик:** Зафиксируйте текущие значения",docs/157_ph/benchmarks/audio/20260303_050939_994956_C_api_jepa_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260303_050939_994956_C_api_jepa_tts_context_1_run1/merged.wav,2026-03-03T02:10:00.082352+00:00
+C_api_jepa_tts,long_1,1,124,False,,1260.91,5518.19,1260.91,5518.19,21636.26,48,5,210,0.0,"Краткий ответ:  
+**Interrupt + Restart Stream** — это протокол, который позволяет пользователю прервать генерацию ответа ассистента («перебить»), после чего модель «перезапускает» пот
+
+[Stream stopped: timeout]",docs/157_ph/benchmarks/audio/20260303_051000_091477_C_api_jepa_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260303_051000_091477_C_api_jepa_tts_long_1_run1/merged.wav,2026-03-03T02:10:21.718998+00:00
+D_ollama_tts,short_1,1,45,False,TimeoutError: per-run timeout 20.0s,4401.85,,4401.85,,21000.89,31,0,108,0.0,"ВЕТКА (Всероссийский экспортно-торговый центр алкогольной продукции) - это государственная компания, которая",docs/157_ph/benchmarks/audio/20260303_051021_725316_D_ollama_tts_short_1_run1,,2026-03-03T02:10:42.720527+00:00
+D_ollama_tts,context_1,1,85,False,TimeoutError: per-run timeout 20.0s,3433.54,8793.36,3433.54,8793.36,20895.77,33,5,111,0.0,"1. Анализ текущего кода и выявление узких мест.
+2. Оптимизация алгоритма packing, например, использование более",docs/157_ph/benchmarks/audio/20260303_051044_809518_D_ollama_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260303_051044_809518_D_ollama_tts_context_1_run1/merged.wav,2026-03-03T02:11:03.618606+00:00
+D_ollama_tts,long_1,1,124,False,,1100.67,16532.8,1100.67,16532.8,19375.47,25,2,125,0.0,"Устройство Interrupt+Restart Stream Protocol:
+
+1. **Отправка данных**: Сторона A отправляет данные
+
+[Stream stopped: timeout]",docs/157_ph/benchmarks/audio/20260303_051103_669472_D_ollama_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260303_051103_669472_D_ollama_tts_long_1_run1/merged.wav,2026-03-03T02:11:22.995799+00:00
+E_ollama_jepa_tts,short_1,1,45,True,,490.85,5793.58,490.85,5793.58,9315.73,23,3,81,1.0,"Vetka производит и распространяет алкогольные напитки, в основном водку и коньяк.",docs/157_ph/benchmarks/audio/20260303_051123_009254_E_ollama_jepa_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260303_051123_009254_E_ollama_jepa_tts_short_1_run1/merged.wav,2026-03-03T02:11:32.312167+00:00
+E_ollama_jepa_tts,context_1,1,85,False,,247.11,7565.45,247.11,7565.45,22815.32,43,5,172,0.0,"Улучшение memory context packing в VETKA:
+
+1. **Анализ текущей конфигурации**: Определите, сколько контекстов памяти используется и насколько они
+
+[Stream stopped: timeout]",docs/157_ph/benchmarks/audio/20260303_051132_318558_E_ollama_jepa_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260303_051132_318558_E_ollama_jepa_tts_context_1_run1/merged.wav,2026-03-03T02:11:55.127804+00:00
+E_ollama_jepa_tts,long_1,1,124,False,,543.73,8088.37,543.73,8088.37,19714.99,26,4,129,0.0,"Устройство Interrupt+Restart Stream Protocol:
+
+1. **Прием данных**: Клиент отправляет данные серверу.
+
+
+[Stream stopped: timeout]",docs/157_ph/benchmarks/audio/20260303_051155_138748_E_ollama_jepa_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260303_051155_138748_E_ollama_jepa_tts_long_1_run1/merged.wav,2026-03-03T02:12:14.845160+00:00

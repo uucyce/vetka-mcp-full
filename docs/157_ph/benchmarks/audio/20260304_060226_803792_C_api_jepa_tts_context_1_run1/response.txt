@@ -1,0 +1,5 @@
+1. **Implement ELISION compression layer** (from VETKA glossary) to reduce noise in STM/ENGRAM transitions, using semantic compaction without data loss (as per SCANNER_LAZY_GUIDE's focus on efficient indexing).
+
+2. **Add CAM-activation saliency signals** to prioritize high-relevance memory pins (like the 6 pinned files here), ensuring only critical context is packed, reducing latency from unnecessary data.
+
+3. **Integrate deterministic DAG validation** (from PULSE_ARCHITECT_TRACK) for memory updates, with telemetry markers to monitor drift and fallback policies, preventing regression in latency during JE

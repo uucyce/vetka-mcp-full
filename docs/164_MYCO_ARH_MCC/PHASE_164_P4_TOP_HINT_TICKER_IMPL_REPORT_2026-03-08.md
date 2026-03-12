@@ -9,6 +9,8 @@ Improve readability of top MYCO short update:
 ## Markers
 1. `MARKER_164.P4.TOP_HINT_TICKER_2WPS.V1`
 2. `MARKER_164.P4.TOP_HINT_TICKER_STOPS_SPEAKING_AT_END.V1`
+3. `MARKER_164.P4.P6.TOP_HINT_REAL_MARQUEE_PORT.V1`
+4. `MARKER_164.P4.P6.TOP_HINT_NO_LABEL_DUPLICATION.V1`
 
 ## Impl
 1. Added constants in [MyceliumCommandCenter.tsx](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/mcc/MyceliumCommandCenter.tsx):
@@ -21,6 +23,9 @@ Improve readability of top MYCO short update:
    - Reveals words with interval at fixed speed.
    - Sets badge to `idle` once full text is rendered.
 4. UI output switched from raw `mycoTopHint` to progressive `mycoTopHintRendered`.
+5. `P4.P6` lock:
+   - moved from pseudo word-reveal to real marquee (VETKA port, duplicate lane + `translateX(-50%)`);
+   - removed noisy label/file echo in top hint branches, keeping action-oriented hints.
 
 ## Verify
 Test:
@@ -30,3 +35,5 @@ pytest -q tests/test_phase164_p4_top_hint_ticker_contract.py
 Expected:
 1. Marker presence.
 2. Speed constant = 2 words/sec.
+3. Real marquee keyframes are present.
+4. No label-duplication marker is present.

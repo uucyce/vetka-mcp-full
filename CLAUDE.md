@@ -124,6 +124,37 @@ Three agents work on ONE codebase through ONE TaskBoard:
 - After completing a task, check if new tasks appeared (board may update)
 - If blocked, update task status to `hold` and note the blocker in description
 
+### File Ownership & Conflict Prevention (Phase 170+)
+
+**CRITICAL: All agents MUST follow these rules to prevent merge conflicts.**
+
+#### Rule 1: File-Level Locking
+When claiming a task, declare the files you will modify in the task description.
+Other agents MUST NOT edit those files until the task is completed or released.
+```
+Example: "Working on: VideoPreview.tsx, AudioLevelMeter.tsx (new)"
+```
+
+#### Rule 2: Task Closure Ownership
+Only TWO parties can close/complete a task:
+1. **The agent who did the work** (author closes their own task)
+2. **A verification agent** (3rd agent reviews and closes after QA)
+
+NO agent may close another agent's task without verification.
+
+#### Rule 3: Conflict Detection Protocol
+If you discover another agent is modifying the **same file** or **adjacent functionality**:
+1. **STOP immediately** — do not proceed with your changes
+2. **Report the conflict** — note which files/functions overlap
+3. **Wait for resolution** — the user (commander) decides who proceeds
+4. **Never assume** — even if tasks seem different, overlapping files = conflict
+
+#### Rule 4: Zone Declaration
+Each agent should work in clearly separated zones. When a task spans multiple zones,
+the claiming agent MUST declare which files they will touch in the task description.
+When modifying a **shared** file, the agent MUST check git diff first to ensure
+no other agent has uncommitted changes in the same file.
+
 ## Methodology (Opus = Commander)
 You are the architect and commander. When planning ANY non-trivial task, deploy your full army:
 

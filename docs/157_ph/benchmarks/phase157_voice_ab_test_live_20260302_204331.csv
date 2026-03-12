@@ -1,0 +1,10 @@
+mode,prompt_id,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,e2e_ms,tokens_out,audio_chunks,timestamp
+A_qwen_only,short_1,45,True,,272.73,,463.6,1,0,2026-03-02T17:42:30.844408
+A_qwen_only,context_1,85,True,,169.07,,355.8,1,0,2026-03-02T17:42:31.200313
+A_qwen_only,long_1,124,True,,168.13,,357.24,1,0,2026-03-02T17:42:31.557641
+B_api_tts,short_1,45,True,,1571.95,,8100.6,115,0,2026-03-02T17:42:39.658307
+B_api_tts,context_1,85,False,TimeoutError: per-run timeout 12.0s,,,,0,0,2026-03-02T17:42:51.659626
+B_api_tts,long_1,124,False,TimeoutError: per-run timeout 12.0s,,,,0,0,2026-03-02T17:43:03.664166
+C_api_jepa_tts,short_1,45,True,,1386.8,,4225.2,102,0,2026-03-02T17:43:07.893402
+C_api_jepa_tts,context_1,85,False,TimeoutError: per-run timeout 12.0s,,,,0,0,2026-03-02T17:43:19.894391
+C_api_jepa_tts,long_1,124,False,TimeoutError: per-run timeout 12.0s,,,,0,0,2026-03-02T17:43:31.897565

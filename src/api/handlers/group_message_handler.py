@@ -928,6 +928,24 @@ async def handle_intake_reply(chat_id: str, reply_text: str) -> bool:
         # Immediate pipeline execution
         preset = "titan_core" if team == "titan" else "dragon_silver"
 
+        # MARKER_176.6: Also track in MCC task board (same as "queue" path)
+        # Previously "now" path executed pipeline without board entry — invisible to MCC
+        from src.orchestration.task_board import get_task_board
+        board = get_task_board()
+        board_task_id = board.add_task(
+            title=task_text[:100],
+            description=task_text,
+            priority=1,  # High — user chose "now"
+            phase_type=phase_type,
+            preset=preset,
+            status="in_progress",  # Already dispatching
+            source=f"intake_{agent_id}_now",
+            tags=[team, agent_id, "immediate"],
+            source_group_id=chat_id,
+        )
+        logger.info(f"[INTAKE] MARKER_176.6: Now task tracked in board as {board_task_id}")
+        # MARKER_176.6_END
+
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(

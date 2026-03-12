@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cut_timecode_sync_result_v1.schema.json",
+  "title": "VETKA CUT Timecode Sync Result V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "revision",
+    "items",
+    "generated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "cut_timecode_sync_result_v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "item_id",
+          "reference_path",
+          "source_path",
+          "reference_timecode",
+          "source_timecode",
+          "fps",
+          "detected_offset_sec",
+          "confidence",
+          "method",
+          "degraded_mode",
+          "degraded_reason"
+        ],
+        "properties": {
+          "item_id": { "type": "string", "minLength": 1 },
+          "reference_path": { "type": "string", "minLength": 1 },
+          "source_path": { "type": "string", "minLength": 1 },
+          "reference_timecode": { "type": "string" },
+          "source_timecode": { "type": "string" },
+          "fps": { "type": "integer", "minimum": 1 },
+          "detected_offset_sec": { "type": "number" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "method": {
+            "type": "string",
+            "enum": ["timecode_v1"]
+          },
+          "degraded_mode": { "type": "boolean" },
+          "degraded_reason": { "type": "string" }
+        }
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

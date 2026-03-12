@@ -30,7 +30,7 @@
     },
     "job_type": {
       "type": "string",
-      "enum": ["bootstrap", "scene_assembly", "timeline_init", "waveform_build", "transcript_normalize", "thumbnail_build"]
+      "enum": ["bootstrap", "scene_assembly", "timeline_init", "waveform_build", "transcript_normalize", "thumbnail_build", "audio_sync", "pause_slice", "timecode_sync"]
     },
     "state": {
       "type": "string",

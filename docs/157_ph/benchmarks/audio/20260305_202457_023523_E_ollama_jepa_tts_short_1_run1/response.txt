@@ -1,0 +1,5 @@
+Базовый файл: `src/layout/semantic_sugiyama.py`
+
+Фраза: «DAG-based knowledge level layout»
+
+Этот файл необходим для анализа структуры проекта и поиска скрытых файлов, поскольку он включает в себяKnowledge mode positioning + clustering.

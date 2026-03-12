@@ -1,0 +1,83 @@
+{
+  "generated_at": "2026-03-04T02:57:43.809382+00:00",
+  "dry_run": false,
+  "rows": [
+    {
+      "mode": "F_mimo_short",
+      "prompt_id": "short_live",
+      "run_index": 1,
+      "prompt_chars": 14,
+      "success": false,
+      "error": "TypeError: ProgressiveTtsService.stream_sentences() got an unexpected keyword argument 'session_key'",
+      "ttft_text_ms": 4677.57,
+      "ttfa_audio_ms": null,
+      "reaction_text_ms": 4677.57,
+      "reaction_audio_ms": null,
+      "e2e_ms": 5033.56,
+      "tokens_out": 8,
+      "audio_chunks": 0,
+      "response_chars": 50,
+      "quality_proxy": 0.45,
+      "quality_notes": "stream_error",
+      "response_preview": "Привет! Да, я тут — в контексте проекта VETKA с ин",
+      "audio_dir": "docs/157_ph/benchmarks/audio/20260304_055736_205728_F_mimo_short_short_live_run1",
+      "audio_merged_wav": null,
+      "audio_qc_score": null,
+      "audio_pause_count": null,
+      "audio_longest_pause_ms": null,
+      "audio_stretch_events": null,
+      "grounded_context": true,
+      "grounded_files": 4,
+      "grounded_packing_path": "algorithmic",
+      "grounded_jepa_trigger": false,
+      "grounded_jepa_mode": false,
+      "timestamp": "2026-03-04T02:57:41.195894+00:00"
+    },
+    {
+      "mode": "F_mimo_short",
+      "prompt_id": "short_live",
+      "run_index": 2,
+      "prompt_chars": 14,
+      "success": false,
+      "error": "TypeError: ProgressiveTtsService.stream_sentences() got an unexpected keyword argument 'session_key'",
+      "ttft_text_ms": 2260.85,
+      "ttfa_audio_ms": null,
+      "reaction_text_ms": 2260.85,
+      "reaction_audio_ms": null,
+      "e2e_ms": 2613.25,
+      "tokens_out": 9,
+      "audio_chunks": 0,
+      "response_chars": 52,
+      "quality_proxy": 0.45,
+      "quality_notes": "stream_error",
+      "response_preview": "Да, я здесь, и в контексте есть файлы с описанием ин",
+      "audio_dir": "docs/157_ph/benchmarks/audio/20260304_055741_209875_F_mimo_short_short_live_run2",
+      "audio_merged_wav": null,
+      "audio_qc_score": null,
+      "audio_pause_count": null,
+      "audio_longest_pause_ms": null,
+      "audio_stretch_events": null,
+      "grounded_context": true,
+      "grounded_files": 4,
+      "grounded_packing_path": "algorithmic",
+      "grounded_jepa_trigger": false,
+      "grounded_jepa_mode": false,
+      "timestamp": "2026-03-04T02:57:43.809238+00:00"
+    }
+  ],
+  "summary": {
+    "modes": {
+      "F_mimo_short": {
+        "runs": 2,
+        "success_runs": 0,
+        "success_rate": 0.0,
+        "ttft_text_ms_p50": null,
+        "ttfa_audio_ms_p50": null,
+        "reaction_text_ms_p50": null,
+        "reaction_audio_ms_p50": null,
+        "e2e_ms_p50": null,
+        "quality_proxy_mean": 0.45
+      }
+    }
+  }
+}

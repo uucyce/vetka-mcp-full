@@ -37,6 +37,11 @@ export const API_BASE = (() => {
   return import.meta.env.VITE_API_BASE || '/api';
 })();
 
+// MARKER_176.15: Centralized MCC endpoint helpers for standalone-safe fetch wiring.
+export const MCC_API = `${API_BASE}/mcc`;
+export const DEBUG_API = `${API_BASE}/debug`;
+export const ANALYTICS_API = `${API_BASE}/analytics`;
+
 /**
  * Backend origin without /api suffix.
  * Useful for modules that need non-API routes or custom sub-path composition.
@@ -106,6 +111,9 @@ if (import.meta.env.DEV) {
 // Export for convenience
 export default {
   API_BASE,
+  MCC_API,
+  DEBUG_API,
+  ANALYTICS_API,
   BACKEND_ORIGIN,
   getSocketUrl,
   SOCKET_PATH,

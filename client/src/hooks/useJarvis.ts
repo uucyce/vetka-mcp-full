@@ -18,6 +18,7 @@ import { getSocketUrl } from '../config/api.config';
 
 // Jarvis state machine
 type JarvisState = 'idle' | 'listening' | 'thinking' | 'speaking';
+type VoiceAgentRole = 'myco' | 'vetka';
 
 interface UseJarvisReturn {
   state: JarvisState;
@@ -25,9 +26,10 @@ interface UseJarvisReturn {
   response: string;
   audioLevel: number;
   error: string | null;
-  startListening: () => Promise<void>;
+  startListening: (options?: { agentRole?: VoiceAgentRole }) => Promise<void>;
   stopListening: () => void;
-  toggle: () => Promise<void>;
+  speakText: (text: string, options?: { agentRole?: VoiceAgentRole }) => void;
+  toggle: (options?: { agentRole?: VoiceAgentRole }) => Promise<void>;
   isListening: boolean;
   selectedLlmModel: string;
   setSelectedLlmModel: (modelId: string) => void;
@@ -78,6 +80,7 @@ export const useJarvis = (): UseJarvisReturn => {
   const captureActiveRef = useRef<boolean>(false);
   const transcriptHintRef = useRef<string>('');
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const agentRoleRef = useRef<VoiceAgentRole>('myco');
 
   const stopSpeechRecognition = useCallback(() => {
     if (speechRecognitionRef.current) {
@@ -90,7 +93,7 @@ export const useJarvis = (): UseJarvisReturn => {
     }
   }, []);
 
-  const buildJarvisContextSnapshot = useCallback(() => {
+  const buildJarvisContextSnapshot = useCallback((agentRole?: VoiceAgentRole) => {
     const state = useStore.getState();
     const pinnedIds = state.pinnedFileIds || [];
     const nodes = state.nodes || {};
@@ -142,6 +145,7 @@ export const useJarvis = (): UseJarvisReturn => {
     })();
 
     return {
+      agent_role: agentRole || agentRoleRef.current,
       pinned_files: pinnedFiles.length > 0 ? pinnedFiles : undefined,
       viewport_context: compactViewport,
       open_chat_context: state.currentChatId
@@ -263,9 +267,10 @@ export const useJarvis = (): UseJarvisReturn => {
   /**
    * Start listening for user speech
    */
-  const startListening = useCallback(async (): Promise<void> => {
+  const startListening = useCallback(async (options?: { agentRole?: VoiceAgentRole }): Promise<void> => {
     try {
       setError(null);
+      agentRoleRef.current = options?.agentRole || 'myco';
 
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -321,7 +326,7 @@ export const useJarvis = (): UseJarvisReturn => {
         transcriptHintRef.current = '';
         socketRef.current.emit('jarvis_listen_start', {
           user_id: 'default_user',
-          ...buildJarvisContextSnapshot(),
+          ...buildJarvisContextSnapshot(agentRoleRef.current),
         });
       }
 
@@ -375,7 +380,7 @@ export const useJarvis = (): UseJarvisReturn => {
       setError(errorMsg);
       cleanup();
     }
-  }, []);
+  }, [buildJarvisContextSnapshot]);
 
   /**
    * Stop listening
@@ -388,7 +393,7 @@ export const useJarvis = (): UseJarvisReturn => {
       socketRef.current.emit('jarvis_listen_stop', {
         user_id: 'default_user',
         transcript_hint: transcriptHintRef.current || undefined,
-        ...buildJarvisContextSnapshot(),
+        ...buildJarvisContextSnapshot(agentRoleRef.current),
       });
     }
 
@@ -398,6 +403,31 @@ export const useJarvis = (): UseJarvisReturn => {
     setState('idle');
     setAudioLevel(0);
     smoothedLevelRef.current = 0;
+  }, [buildJarvisContextSnapshot, stopSpeechRecognition]);
+
+  /**
+   * Speak a deterministic text payload directly through Jarvis TTS routing,
+   * without microphone capture or LLM generation.
+   */
+  const speakText = useCallback((text: string, options?: { agentRole?: VoiceAgentRole; autoListenAfter?: boolean }): void => {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return;
+
+    if (!socketRef.current?.connected) {
+      setError('Jarvis socket is not connected');
+      return;
+    }
+
+    agentRoleRef.current = options?.agentRole || agentRoleRef.current || 'myco';
+    conversationActiveRef.current = Boolean(options?.autoListenAfter);
+    captureActiveRef.current = false;
+    stopSpeechRecognition();
+
+    socketRef.current.emit('jarvis_speak_text', {
+      user_id: 'default_user',
+      text: trimmed,
+      ...buildJarvisContextSnapshot(agentRoleRef.current),
+    });
   }, [buildJarvisContextSnapshot, stopSpeechRecognition]);
 
   const setSelectedLlmModel = useCallback((modelId: string) => {
@@ -430,7 +460,7 @@ export const useJarvis = (): UseJarvisReturn => {
    * Handles all states: idle, listening, thinking, speaking
    * Click during active conversation = end conversation
    */
-  const toggle = useCallback(async (): Promise<void> => {
+  const toggle = useCallback(async (options?: { agentRole?: VoiceAgentRole }): Promise<void> => {
     if (state === 'speaking') {
       // Stop playback and end conversation
       conversationActiveRef.current = false;
@@ -457,7 +487,7 @@ export const useJarvis = (): UseJarvisReturn => {
       conversationActiveRef.current = false;
       stopListening();
     } else if (state === 'idle') {
-      await startListening();
+      await startListening(options);
     }
   }, [state, startListening, stopListening, stopSpeechRecognition]);
 
@@ -533,7 +563,7 @@ export const useJarvis = (): UseJarvisReturn => {
           setTimeout(() => {
             // Small delay before resuming to avoid feedback
             if (conversationActiveRef.current) {
-              startListening();
+              startListening({ agentRole: agentRoleRef.current });
             }
           }, 300);
         } else {
@@ -557,6 +587,7 @@ export const useJarvis = (): UseJarvisReturn => {
     error,
     startListening,
     stopListening,
+    speakText,
     toggle,
     isListening: state === 'listening',
     selectedLlmModel,

@@ -7,6 +7,8 @@ export type SearchLaneMode =
   | 'voice_thinking'
   | 'voice_speaking';
 
+export type VoiceAgentRole = 'myco' | 'vetka';
+
 export interface SearchLanePayload {
   title: string;
   body: string;
@@ -24,11 +26,11 @@ export interface SearchLaneResolverInput {
   showContextMenu: boolean;
   isFocused: boolean;
   voiceState: 'idle' | 'listening' | 'thinking' | 'speaking';
-  onVoiceTrigger?: (() => void) | undefined;
-  searchContext: 'vetka' | 'web' | 'file' | 'cloud' | 'social';
+  onVoiceTrigger?: ((role?: VoiceAgentRole) => void) | undefined;
+  searchContext: 'vetka' | 'myco' | 'web' | 'file' | 'cloud' | 'social';
   mycoHint?: MycoModeAHint | null;
   mycoStateKey?: string;
-  explicitAgentMode?: 'myco' | 'jarvis_vetka';
+  explicitAgentMode?: VoiceAgentRole;
 }
 
 export interface SearchLaneResolvedState {
@@ -41,8 +43,15 @@ export interface SearchLaneResolvedState {
   showMycoTicker: boolean;
 }
 
-export function getLaneIdlePlaceholderText(explicitAgentMode?: 'myco' | 'jarvis_vetka'): string {
-  return explicitAgentMode === 'jarvis_vetka'
+export function getLaneIdlePlaceholderText(
+  searchContext: SearchLaneResolverInput['searchContext'],
+  explicitAgentMode?: VoiceAgentRole,
+): string {
+  if (searchContext === 'web') return 'tap text to search the web';
+  if (searchContext === 'file') return 'tap text to search files';
+  if (searchContext === 'cloud') return 'tap text to search cloud';
+  if (searchContext === 'social') return 'tap text to search social';
+  return explicitAgentMode === 'vetka'
     ? 'tap vetka to talk or tap text to search'
     : 'tap myco to talk or tap text to search';
 }
@@ -159,7 +168,7 @@ export function resolveSearchLaneState(input: SearchLaneResolverInput): SearchLa
       payload: {
         title: '',
         body: '',
-        previewBody: getLaneIdlePlaceholderText(input.explicitAgentMode),
+        previewBody: getLaneIdlePlaceholderText(input.searchContext, input.explicitAgentMode),
         stateKey: input.mycoStateKey || '',
         editable: true,
         interactive: false,

@@ -1,0 +1,2 @@
+1. Understand the context: The user is asking for an explanation of context packing in VETKA, specifically in a 3D visualization context. They want to know the first two steps to take.
+2. Provide a concise answer: First, familiarize yourself with the VETKA documentation and its context packing mechanisms. Second, start with a basic overview of the context packing process in VETKA.

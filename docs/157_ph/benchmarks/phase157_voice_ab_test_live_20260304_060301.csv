@@ -1,0 +1,68 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,quality_notes,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+B_api_tts,short_1,1,122,True,,22041.19,,22041.19,,23988.96,43,0,465,0.8,low_ru_ratio,"Based on the provided context, here are 2 specific files and their purposes:
+
+1. **GROK_ANTI_GRAVITY_COLLISION_AVOIDANCE.md** - Contains formulas for dynamic collision avoidance and repulsion forces between files/branches during manual dragging in the VETKA tree layout.
+
+2. **GRO",docs/157_ph/benchmarks/audio/20260304_060002_633170_B_api_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:00:26.580889+00:00
+B_api_tts,short_1,2,122,True,,1796.24,,1796.24,,3478.6,43,0,487,0.8,low_ru_ratio,"Based on the provided context, here are 2 specific files and their purposes:
+
+1. **GROK_ANTI_GRAVITY_COLLISION_AVOIDANCE.md**  
+   Needed to define dynamic formulas for preventing file collisions and repulsion forces during manual branch dragging in the VETKA tree layout.
+
+2. **G",docs/157_ph/benchmarks/audio/20260304_060026_589585_B_api_tts_short_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:00:30.059622+00:00
+B_api_tts,context_1,1,133,False,TimeoutError: per-run timeout 28.0s,,,,,48482.03,0,0,0,0.0,"low_ru_ratio,no_memory_terms,no_latency_terms,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_060030_069383_B_api_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:01:18.541590+00:00
+B_api_tts,context_1,2,133,True,,2547.56,,2547.56,,5523.53,62,0,620,0.75,low_ru_ratio,"1. **Implement ELISION compression layer** (from VETKA glossary) to reduce noise in context packing—use semantic compaction to filter irrelevant data before storage, ensuring no latency increase by processing only high-saliency items.
+
+2. **Integrate CAM activation signals** (fro",docs/157_ph/benchmarks/audio/20260304_060118_554924_B_api_tts_context_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:01:24.065436+00:00
+B_api_tts,long_1,1,171,True,,2303.94,,2303.94,,3634.63,39,0,303,0.85,,"В предоставленном контексте нет информации о протоколе interrupt + restart stream и его влиянии на voice handoff/tool-loop transparency. Контекст фокусируется на capability matrix, voice pipeline (TTS/STT), сокет-контрактах и архитектуре агентов, но не содержит деталей о прерыван",docs/157_ph/benchmarks/audio/20260304_060124_075240_B_api_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:01:27.700239+00:00
+B_api_tts,long_1,2,171,True,,3208.66,,3208.66,,4722.68,55,0,414,0.85,,"В предоставленном контексте нет информации о протоколе `interrupt + restart stream` и его влиянии на `voice handoff` или `tool-loop transparency`. Контекст фокусируется на:
+- Capability Matrix для stream и tool calling (MARKER_152).
+- Voice pipeline (TTS/STT) и агентские голосовы",docs/157_ph/benchmarks/audio/20260304_060127_709482_B_api_tts_long_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:01:32.423006+00:00
+B_api_tts,interrupt_1,1,139,False,TimeoutError: per-run timeout 28.0s,,,,,43701.6,0,0,0,0.0,"low_ru_ratio,no_stepwise_followup,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_060132_431575_B_api_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:16.124564+00:00
+B_api_tts,interrupt_1,2,139,True,,1763.51,,1763.51,,3864.11,53,0,439,0.8,too_long_after_interrupt,"**Контекст не содержит информации о context packing в VETKA.**  
+В предоставленных файлах нет описания механизма упаковки контекста (context packing). Есть только общие рекомендации по оптимизации памяти (например, из response.txt), но без деталей реализации в VETKA.
+
+**Коротко: ",docs/157_ph/benchmarks/audio/20260304_060216_135374_B_api_tts_interrupt_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:19.988925+00:00
+C_api_jepa_tts,short_1,1,122,True,,2150.92,,2150.92,,3807.44,41,0,486,0.8,low_ru_ratio,"Based on the provided context, here are 2 specific files and their purposes:
+
+1. **GROK_ANTI_GRAVITY_COLLISION_AVOIDANCE.md**  
+   Needed for defining dynamic formulas to prevent file collisions and repulsion forces during interactive dragging in the VETKA tree layout.
+
+2. **GROK",docs/157_ph/benchmarks/audio/20260304_060219_995640_C_api_jepa_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:23.796520+00:00
+C_api_jepa_tts,short_1,2,122,True,,1417.67,,1417.67,,2996.86,40,0,427,0.8,low_ru_ratio,"Based on the provided context, here are 2 specific files and their purposes:
+
+1. **GROK_ANTI_GRAVITY_COLLISION_AVOIDANCE.md**  
+   Needed for defining dynamic formulas to prevent file/branch collisions during manual dragging in the VETKA tree layout.
+
+2. **GROK_RESEARCH_PROMPT_15",docs/157_ph/benchmarks/audio/20260304_060223_805828_C_api_jepa_tts_short_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:26.793548+00:00
+C_api_jepa_tts,context_1,1,133,True,,1583.75,,1583.75,,3928.58,65,0,611,0.75,low_ru_ratio,"1. **Implement ELISION compression layer** (from VETKA glossary) to reduce noise in STM/ENGRAM transitions, using semantic compaction without data loss (as per SCANNER_LAZY_GUIDE's focus on efficient indexing).
+
+2. **Add CAM-activation saliency signals** to prioritize high-releva",docs/157_ph/benchmarks/audio/20260304_060226_803792_C_api_jepa_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:30.722213+00:00
+C_api_jepa_tts,context_1,2,133,True,,1438.41,,1438.41,,3603.06,49,0,493,0.75,low_ru_ratio,"1. **Implement ELISION compression layer** (from VETKA glossary) to reduce noise in STM/ENGRAM context packing, using semantic compaction without data loss.
+
+2. **Add CAM saliency signals** to prioritize high-relevance memory traces during packing, ensuring only critical context ",docs/157_ph/benchmarks/audio/20260304_060230_728422_C_api_jepa_tts_context_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:34.325371+00:00
+C_api_jepa_tts,long_1,1,171,True,,2442.25,,2442.25,,3683.8,36,0,286,0.85,,"В предоставленном контексте нет информации о протоколе interrupt + restart stream и его влиянии на voice handoff/tool-loop transparency. Контекст фокусируется на capability matrix, voice pipeline (TTS/STT), и архитектуре агентов, но не содержит деталей о прерывании потока или рес",docs/157_ph/benchmarks/audio/20260304_060234_331475_C_api_jepa_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:38.009321+00:00
+C_api_jepa_tts,long_1,2,171,True,,1718.63,,1718.63,,3184.18,37,0,334,0.85,,"В предоставленном контексте нет информации о протоколе interrupt + restart stream и его влиянии на voice handoff/tool-loop transparency. Упоминания прерывания (interrupt) есть только в общем виде в разделе 2.1 контекста: ""Поддерживает interrupt (перебивание) во время ответа"", но ",docs/157_ph/benchmarks/audio/20260304_060238_020992_C_api_jepa_tts_long_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:41.193651+00:00
+C_api_jepa_tts,interrupt_1,1,139,True,,1352.59,,1352.59,,3563.39,54,0,432,0.85,,"**Контекст не содержит информации о context packing в VETKA.**  
+В предоставленных файлах нет описания механизма упаковки контекста (context packing). Упоминаются только общие идеи по оптимизации памяти (например, ELISION compression, CAM activation), но без деталей реализации в ",docs/157_ph/benchmarks/audio/20260304_060241_202604_C_api_jepa_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:44.757227+00:00
+C_api_jepa_tts,interrupt_1,2,139,True,,1610.85,,1610.85,,3552.8,59,0,410,0.85,,"**Контекст отсутствует:** В предоставленных файлах нет информации о том, как устроен context packing в VETKA. Все pinned файлы либо описывают ошибки (Tavily ключи, отсутствие API endpoints), либо содержат общие планы по оптимизации памяти без деталей реализации.
+
+**Ответ на вопро",docs/157_ph/benchmarks/audio/20260304_060244_766091_C_api_jepa_tts_interrupt_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:48.310199+00:00
+D_ollama_tts,short_1,1,122,False,,197.03,,197.03,,377.12,1,0,35,0.25,"low_ru_ratio,no_file_refs,no_two_items",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060248_318175_D_ollama_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:48.687423+00:00
+D_ollama_tts,short_1,2,122,False,,170.16,,170.16,,353.09,1,0,35,0.25,"low_ru_ratio,no_file_refs,no_two_items",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060248_696554_D_ollama_tts_short_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:49.040635+00:00
+D_ollama_tts,context_1,1,133,False,,181.62,,181.62,,393.01,1,0,35,0.25,"low_ru_ratio,no_memory_terms,no_latency_terms",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060249_050566_D_ollama_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:49.433777+00:00
+D_ollama_tts,context_1,2,133,False,,167.81,,167.81,,350.7,1,0,35,0.25,"low_ru_ratio,no_memory_terms,no_latency_terms",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060249_440715_D_ollama_tts_context_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:49.784563+00:00
+D_ollama_tts,long_1,1,171,False,,166.47,,166.47,,507.76,1,0,35,0.4,"low_ru_ratio,no_handoff_terms",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060249_791566_D_ollama_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:50.292429+00:00
+D_ollama_tts,long_1,2,171,False,,172.64,,172.64,,366.32,1,0,35,0.4,"low_ru_ratio,no_handoff_terms",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060250_301024_D_ollama_tts_long_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:50.658867+00:00
+D_ollama_tts,interrupt_1,1,139,False,,173.64,,173.64,,356.94,1,0,35,0.3,"low_ru_ratio,no_stepwise_followup",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060250_667727_D_ollama_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:51.015900+00:00
+D_ollama_tts,interrupt_1,2,139,False,,178.87,,178.87,,368.47,1,0,35,0.3,"low_ru_ratio,no_stepwise_followup",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060251_024031_D_ollama_tts_interrupt_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:51.384467+00:00
+E_ollama_jepa_tts,short_1,1,122,False,,173.65,,173.65,,356.34,1,0,35,0.25,"low_ru_ratio,no_file_refs,no_two_items",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060251_392629_E_ollama_jepa_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:51.740888+00:00
+E_ollama_jepa_tts,short_1,2,122,False,,180.25,,180.25,,364.09,1,0,35,0.25,"low_ru_ratio,no_file_refs,no_two_items",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060251_750432_E_ollama_jepa_tts_short_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:52.105074+00:00
+E_ollama_jepa_tts,context_1,1,133,False,,180.39,,180.39,,377.49,1,0,35,0.25,"low_ru_ratio,no_memory_terms,no_latency_terms",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060252_114439_E_ollama_jepa_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:52.482646+00:00
+E_ollama_jepa_tts,context_1,2,133,False,,170.41,,170.41,,355.75,1,0,35,0.25,"low_ru_ratio,no_memory_terms,no_latency_terms",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060252_492275_E_ollama_jepa_tts_context_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:52.838566+00:00
+E_ollama_jepa_tts,long_1,1,171,False,,181.98,,181.98,,369.66,1,0,35,0.4,"low_ru_ratio,no_handoff_terms",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060252_847619_E_ollama_jepa_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:53.208399+00:00
+E_ollama_jepa_tts,long_1,2,171,False,,191.22,,191.22,,383.26,1,0,35,0.4,"low_ru_ratio,no_handoff_terms",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060253_233474_E_ollama_jepa_tts_long_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:53.591742+00:00
+E_ollama_jepa_tts,interrupt_1,1,139,False,,185.15,,185.15,,370.68,1,0,35,0.3,"low_ru_ratio,no_stepwise_followup",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060253_600149_E_ollama_jepa_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:53.962497+00:00
+E_ollama_jepa_tts,interrupt_1,2,139,False,,173.06,,173.06,,403.58,1,0,35,0.3,"low_ru_ratio,no_stepwise_followup",[STREAM ERROR]:  (status code: 503),docs/157_ph/benchmarks/audio/20260304_060253_972343_E_ollama_jepa_tts_interrupt_1_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:54.366154+00:00
+F_mimo_short,short_live,1,14,True,,3058.42,,3058.42,,3982.71,18,0,113,0.8,,"Привет! Да, я тут, но в контексте нет информации о том, что вы хотели обсудить — пожалуйста, уточните ваш вопрос.",docs/157_ph/benchmarks/audio/20260304_060254_375684_F_mimo_short_short_live_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:02:58.348943+00:00
+F_mimo_short,short_live,2,14,True,,1826.83,,1826.83,,2812.19,16,0,119,0.8,,"Привет! Да, я тут — в контексте вашей системы VETKA и MYCELIUM, где Hostess Agent уже интегрирован для быстрых ответов.",docs/157_ph/benchmarks/audio/20260304_060258_356967_F_mimo_short_short_live_run2,,,,,,True,6,algorithmic,False,False,2026-03-04T03:03:01.161234+00:00

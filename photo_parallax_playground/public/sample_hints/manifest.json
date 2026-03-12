@@ -1,0 +1,38 @@
+[
+  {
+    "sample": "cassette-closeup",
+    "path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/public/sample_hints/cassette-closeup.png",
+    "colors": {
+      "red": "closer",
+      "blue": "farther",
+      "green": "protect"
+    }
+  },
+  {
+    "sample": "keyboard-hands",
+    "path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/public/sample_hints/keyboard-hands.png",
+    "colors": {
+      "red": "closer",
+      "blue": "farther",
+      "green": "protect"
+    }
+  },
+  {
+    "sample": "drone-portrait",
+    "path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/public/sample_hints/drone-portrait.png",
+    "colors": {
+      "red": "closer",
+      "blue": "farther",
+      "green": "protect"
+    }
+  },
+  {
+    "sample": "hover-politsia",
+    "path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/public/sample_hints/hover-politsia.png",
+    "colors": {
+      "red": "closer",
+      "blue": "farther",
+      "green": "protect"
+    }
+  }
+]

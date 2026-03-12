@@ -1178,8 +1178,14 @@ export default function App() {
         onClose={() => setIsChatOpen(false)}
         leftPanel={leftPanel}
         setLeftPanel={setLeftPanel}
-        onVoiceTrigger={() => {
-          void jarvis.toggle();
+        onVoiceTrigger={(role) => {
+          void jarvis.toggle({ agentRole: role ?? 'myco' });
+        }}
+        onSpeakText={(text, role, options) => {
+          jarvis.speakText(text, {
+            agentRole: role ?? 'myco',
+            autoListenAfter: options?.autoListenAfter,
+          });
         }}
         voiceState={jarvis.state}
         voiceLevel={jarvis.audioLevel}
@@ -1271,8 +1277,14 @@ export default function App() {
               placeholder="Search..."
               contextPrefix="vetka/"
               compact={false}
-              onVoiceTrigger={() => {
-                void jarvis.toggle();
+              onVoiceTrigger={(role) => {
+                void jarvis.toggle({ agentRole: role ?? 'myco' });
+              }}
+              onSpeakText={(text, role, options) => {
+                jarvis.speakText(text, {
+                  agentRole: role ?? 'myco',
+                  autoListenAfter: options?.autoListenAfter,
+                });
               }}
               voiceState={jarvis.state}
               voiceLevel={jarvis.audioLevel}

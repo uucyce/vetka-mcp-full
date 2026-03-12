@@ -33,15 +33,13 @@ import { MiniWindowDock } from './MiniWindow';
 import { StepIndicator } from './StepIndicator';
 import { FirstRunView } from './FirstRunView';
 import { PlaygroundBadge } from './PlaygroundBadge';
-// MARKER_155.WIZARD.001: Wizard flow for steps 1-3
-import { WizardContainer, type WizardStep } from './WizardContainer';
 import { ToastContainer } from './ToastContainer';
 import { useMCCStore, type WorkflowSourceMode } from '../../store/useMCCStore';
 import { useStore } from '../../store/useStore';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useRoadmapDAG } from '../../hooks/useRoadmapDAG';
+import { readFileViaApi } from '../../utils/fileReadClient';
 import { useToast } from '../../hooks/useToast';
-import { useCaptain } from '../../hooks/useCaptain';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { NOLAN_PALETTE, createTestDAGData } from '../../utils/dagLayout';
 import {
@@ -54,8 +52,9 @@ import type { TaskData } from '../panels/TaskCard';
 import mycoIdleQuestion from '../../assets/myco/myco_idle_question.png';
 import mycoReadySmile from '../../assets/myco/myco_ready_smile.png';
 import mycoSpeakingLoop from '../../assets/myco/myco_speaking_loop.apng';
+// MARKER_176.15: Centralized MCC API config import.
+import { API_BASE, DEBUG_API, MCC_API } from '../../config/api.config';
 
-const API_BASE = 'http://localhost:5001/api';
 
 interface PredictedEdgePayload {
   source: string;
@@ -134,7 +133,6 @@ type RoadmapNodeDrillState = 'collapsed' | 'expanded';
 type MycoBadgeVisualState = 'idle' | 'speaking' | 'ready';
 type MiniWindowFocusState = 'compact' | 'expanded' | 'minimized';
 const MYCO_TOP_HINT_WORDS_PER_SECOND = 2;
-const MYCO_TOP_HINT_TICK_MS = Math.round(1000 / MYCO_TOP_HINT_WORDS_PER_SECOND);
 
 function buildTopHintWorkflowStatusAction(taskStatus: string): string {
   return taskStatus === 'running'
@@ -945,17 +943,24 @@ function overlayWorkflowOnSelectedTask(
 function overlayRoadmapNodeChildren(
   baseNodes: DAGNode[],
   baseEdges: DAGEdge[],
-  parentNodeId: string,
-): { nodes: DAGNode[]; edges: DAGEdge[] } {
-  if (!parentNodeId) return { nodes: baseNodes, edges: baseEdges };
+  parentVisualId: string,
+  parentAnchorId: string,
+): { nodes: DAGNode[]; edges: DAGEdge[]; remapIndex: Map<string, string> } {
+  if (!parentVisualId || !parentAnchorId) return { nodes: baseNodes, edges: baseEdges, remapIndex: new Map<string, string>() };
   const structural = baseEdges.filter((e) => {
     if (e.relationKind === 'contains') return true;
     if (e.type === 'structural') return true;
     return false;
   });
-  if (structural.length === 0) return { nodes: baseNodes, edges: baseEdges };
+  if (structural.length === 0) return { nodes: baseNodes, edges: baseEdges, remapIndex: new Map<string, string>() };
 
   const byId = new Map(baseNodes.map((n) => [n.id, n]));
+  const parentVisualNode = byId.get(parentVisualId);
+  const parentVisualMeta: any = parentVisualNode?.metadata || {};
+  const parentFractalDepth = Math.max(
+    0,
+    Number(parentVisualMeta.rd_depth_total || parentVisualMeta.rd_depth || 0),
+  );
   const validRoadmapNode = (id: string): boolean => {
     if (!id) return false;
     if (id.startsWith('task_overlay_') || id.startsWith('wf_') || id.startsWith('rd_')) return false;
@@ -984,7 +989,7 @@ function overlayRoadmapNodeChildren(
 
   // MARKER_155A.G23.NODE_DRILL_BREADTH:
   // Show richer next-depth context (children + limited grandchildren) instead of a single node.
-  let depth1CandidatesAll = Array.from(adjacency.get(parentNodeId) || [])
+  let depth1CandidatesAll = Array.from(adjacency.get(parentAnchorId) || [])
     .filter((id) => validRoadmapNode(id))
     .sort((a, b) => a.localeCompare(b));
   let depth1 = depth1CandidatesAll.slice(0, DEPTH1_LIMIT);
@@ -992,7 +997,7 @@ function overlayRoadmapNodeChildren(
   // MARKER_155A.G23.NODE_DRILL_PATH_FALLBACK:
   // If graph edges provide too sparse neighborhood, derive child candidates by path hierarchy.
   if (depth1.length < 2) {
-    const parent = byId.get(parentNodeId);
+    const parent = byId.get(parentAnchorId);
     const parentMeta: any = parent?.metadata || {};
     const parentPath = normalizePathKey(
       String(parentMeta.path || parentMeta.file_path || parent?.projectNodeId || parent?.id || '')
@@ -1044,7 +1049,7 @@ function overlayRoadmapNodeChildren(
   const depth2Set = new Set<string>();
   for (const c of depth1) {
     const neighbors = Array.from(adjacency.get(c) || [])
-      .filter((id) => id !== parentNodeId && validRoadmapNode(id))
+      .filter((id) => id !== parentAnchorId && validRoadmapNode(id))
       .sort((a, b) => a.localeCompare(b))
       .slice(0, DEPTH2_PER_PARENT_LIMIT);
     neighbors.forEach((id) => depth2Set.add(id));
@@ -1053,35 +1058,42 @@ function overlayRoadmapNodeChildren(
   const depth2All = Array.from(depth2Set);
   const depth2 = depth2All.slice(0, DEPTH2_TOTAL_LIMIT);
   const depth2Overflow = Math.max(0, depth2All.length - depth2.length);
+  const remapIndex = new Map<string, string>();
 
   const pushNode = (childId: string, depth: number) => {
     if (seen.has(childId)) return;
     const child = byId.get(childId);
     if (!child) return;
     seen.add(childId);
-    const rid = `rd_${parentNodeId}_${childId}`;
+    const rid = `rd_${parentVisualId}_${childId}`;
     remappedNodes.push({
       ...child,
       id: rid,
       metadata: {
         ...(child.metadata || {}),
-        rd_parent: parentNodeId,
+        rd_parent: parentVisualId,
         rd_depth: depth,
+        rd_depth_total: parentFractalDepth + depth,
+        rd_origin_id: childId,
         // Keep folder/node drill readable (larger than workflow micro layer).
         mini_scale: 0.22,
       },
       width: 62,
       height: 26,
     });
+    remapIndex.set(childId, rid);
     remappedEdges.push({
-      id: `rd_bridge_${parentNodeId}_${childId}`,
-      source: parentNodeId,
+      id: `rd_bridge_${parentVisualId}_${childId}`,
+      source: parentVisualId,
       target: rid,
       sourceHandle: 'source-top',
       targetHandle: 'target-bottom',
       type: 'structural',
       relationKind: 'contains',
       strength: 0.24,
+      data: {
+        rd_depth_total: parentFractalDepth + depth,
+      },
     });
   };
 
@@ -1090,17 +1102,19 @@ function overlayRoadmapNodeChildren(
 
   const pushOverflowNode = (depth: number, count: number) => {
     if (count <= 0) return;
-    const overflowId = `rd_${parentNodeId}__overflow_d${depth}`;
+    const overflowId = `rd_${parentVisualId}__overflow_d${depth}`;
     remappedNodes.push({
       id: overflowId,
       type: 'subtask',
       label: `+${count} more`,
       status: 'pending',
       layer: 2,
+      taskId: String(byId.get(parentAnchorId)?.taskId || parentAnchorId || 'roadmap'),
       graphKind: 'workflow_artifact',
       metadata: {
-        rd_parent: parentNodeId,
+        rd_parent: parentVisualId,
         rd_depth: depth,
+        rd_depth_total: parentFractalDepth + depth,
         rd_overflow: true,
         mini_scale: 0.14,
       },
@@ -1108,14 +1122,17 @@ function overlayRoadmapNodeChildren(
       height: 18,
     });
     remappedEdges.push({
-      id: `rd_bridge_${parentNodeId}__overflow_d${depth}`,
-      source: parentNodeId,
+      id: `rd_bridge_${parentVisualId}__overflow_d${depth}`,
+      source: parentVisualId,
       target: overflowId,
       sourceHandle: 'source-top',
       targetHandle: 'target-bottom',
       type: 'structural',
       relationKind: 'contains',
       strength: 0.18,
+      data: {
+        rd_depth_total: parentFractalDepth + depth,
+      },
     });
   };
   // MARKER_155A.G25.NODE_DRILL_OVERFLOW_BADGE:
@@ -1123,11 +1140,20 @@ function overlayRoadmapNodeChildren(
   pushOverflowNode(1, depth1Overflow);
   pushOverflowNode(2, depth2Overflow);
 
-  if (remappedNodes.length === 0) return { nodes: baseNodes, edges: baseEdges };
+  if (remappedNodes.length === 0) {
+    return { nodes: baseNodes, edges: baseEdges, remapIndex };
+  }
   return {
     nodes: [...baseNodes, ...remappedNodes],
     edges: [...baseEdges, ...remappedEdges],
+    remapIndex,
   };
+}
+
+function resolveRoadmapDrillAnchorId(nodes: DAGNode[], nodeId: string): string {
+  const node = nodes.find((entry) => entry.id === nodeId);
+  const meta: any = node?.metadata || {};
+  return String(meta.rd_origin_id || nodeId || '');
 }
 
 function buildInlineWorkflowFromPipeline(taskId: string, subtasks: Array<any>): { nodes: DAGNode[]; edges: DAGEdge[] } {
@@ -1355,20 +1381,17 @@ export function MyceliumCommandCenter() {
   // UI state
   const [taskDrillState, setTaskDrillState] = useState<TaskDrillState>('collapsed');
   const [roadmapNodeDrillState, setRoadmapNodeDrillState] = useState<RoadmapNodeDrillState>('collapsed');
-  const [roadmapDrillNodeId, setRoadmapDrillNodeId] = useState<string | null>(null);
+  const [roadmapDrillNodeChain, setRoadmapDrillNodeChain] = useState<string[]>([]);
+  const roadmapDrillNodeId = roadmapDrillNodeChain.length > 0 ? roadmapDrillNodeChain[roadmapDrillNodeChain.length - 1] : null;
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
-  const [selectedEdge, setSelectedEdge] = useState<{
+  const [, setSelectedEdge] = useState<{
     id: string; source: string; target: string; type: string;
   } | null>(null);
   const [showStream, setShowStream] = useState(true);
-  const [executing, setExecuting] = useState(false);
-  const [executeMsg, setExecuteMsg] = useState<string | null>(null);
+  const [, setExecuting] = useState(false);
+  const [, setExecuteMsg] = useState<string | null>(null);
   const { step: onboardingStep, completed: onboardingCompleted, dismissed: onboardingDismissed, advance: onboardingAdvance, dismiss: onboardingDismiss } = useOnboarding();
-
-  // MARKER_155.WIZARD.027: Wizard flow state — track current step (1-5)
-  const [wizardStep, setWizardStep] = useState<WizardStep>(1);
-  const [wizardData, setWizardData] = useState<Record<number, any>>({});
   
   // MARKER_144.6: Edit mode + context menu
   const editMode = useMCCStore(s => s.editMode);
@@ -1381,6 +1404,7 @@ export function MyceliumCommandCenter() {
     id: string; name: string; file_path: string; language: string;
   } | null>(null);
   const [artifactContent, setArtifactContent] = useState<string>('');
+  const [artifactViewerMode, setArtifactViewerMode] = useState<'pane' | 'fullscreen'>('pane');
 
   // MARKER_154.8A: Task editor popup state (Wave 3)
   const [showTaskEdit, setShowTaskEdit] = useState(false);
@@ -1413,15 +1437,44 @@ export function MyceliumCommandCenter() {
   }, [selectedTaskId, tasks]);
 
   const handleViewArtifact = useCallback((artifact: { id: string; name: string; file_path: string; language: string }) => {
+    setArtifactViewerMode('pane');
     setViewingArtifact(artifact);
     // Fetch artifact content
-    fetch(`http://localhost:5001/api/artifacts/${encodeURIComponent(artifact.id)}/content`)
+    fetch(`${API_BASE}/artifacts/${encodeURIComponent(artifact.id)}/content`)
       .then(r => r.json())
       .then(data => {
         setArtifactContent(data.content || data.text || '');
       })
       .catch(() => setArtifactContent('(failed to load artifact content)'));
   }, []);
+  const inferPaneLanguage = useCallback((path: string) => {
+    const lower = String(path || '').toLowerCase();
+    if (lower.endsWith('.py')) return 'python';
+    if (lower.endsWith('.ts') || lower.endsWith('.tsx')) return 'typescript';
+    if (lower.endsWith('.js') || lower.endsWith('.jsx')) return 'javascript';
+    if (lower.endsWith('.md')) return 'markdown';
+    if (lower.endsWith('.json')) return 'json';
+    if (lower.endsWith('.yml') || lower.endsWith('.yaml')) return 'yaml';
+    return 'text';
+  }, []);
+
+  const handleOpenFileInPane = useCallback((path: string, mode: 'pane' | 'fullscreen' = 'pane') => {
+    const filePath = String(path || '').trim();
+    if (!filePath) return;
+    setArtifactViewerMode(mode);
+    setViewingArtifact({
+      id: `linked-file:${filePath}`,
+      name: filePath.split('/').slice(-1)[0] || filePath,
+      file_path: filePath,
+      language: inferPaneLanguage(filePath),
+    });
+    readFileViaApi(filePath)
+      .then((result) => {
+        setArtifactContent(result.content || '');
+      })
+      .catch(() => setArtifactContent('(failed to load file content)'));
+  }, [inferPaneLanguage]);
+
 
   // Track last update for debouncing
   const lastFetchRef = useRef<number>(0);
@@ -1614,26 +1667,6 @@ export function MyceliumCommandCenter() {
       window.removeEventListener('mcc-miniwindow-focus', onMiniWindowFocus as EventListener);
     };
   }, []);
-
-  // MARKER_155.WIZARD.028: Wizard navigation handlers (after initMCC declared)
-  const handleWizardComplete = useCallback((step: WizardStep, data: any) => {
-    setWizardData(prev => ({ ...prev, [step]: data }));
-    
-    if (step < 5) {
-      setWizardStep((step + 1) as WizardStep);
-    }
-    
-    // When completing step 3 (Keys), initialize the project
-    if (step === 3) {
-      initMCC();
-    }
-  }, [initMCC]);
-
-  const handleWizardBack = useCallback(() => {
-    if (wizardStep > 1) {
-      setWizardStep((wizardStep - 1) as WizardStep);
-    }
-  }, [wizardStep]);
 
   // MARKER_153.5B: Roadmap DAG data hook
   // MARKER_161.7.MULTIPROJECT.UI.TAB_SCOPE_BIND.V1:
@@ -1963,10 +1996,6 @@ export function MyceliumCommandCenter() {
       color: source === 'trm_refined' ? '#8ecbff' : '#9a9386',
     };
   }, [roadmapGraphSource, roadmapTrmMeta]);
-
-  // MARKER_153.7C: Architect Captain recommendations
-  const captain = useCaptain(mccReady && hasProject);
-  const [captainDismissed, setCaptainDismissed] = useState(false);
 
   useEffect(() => {
     initMCC().then(() => {
@@ -2662,32 +2691,32 @@ export function MyceliumCommandCenter() {
   useEffect(() => {
     if (navLevel !== 'roadmap') {
       if (roadmapNodeDrillState !== 'collapsed') setRoadmapNodeDrillState('collapsed');
-      if (roadmapDrillNodeId !== null) setRoadmapDrillNodeId(null);
+      if (roadmapDrillNodeChain.length > 0) setRoadmapDrillNodeChain([]);
       return;
     }
 
     // Task workflow drill and roadmap node drill are mutually exclusive to avoid mixed inline artifacts.
     if (taskDrillState === 'expanded' && roadmapNodeDrillState === 'expanded') {
       setRoadmapNodeDrillState('collapsed');
-      setRoadmapDrillNodeId(null);
+      setRoadmapDrillNodeChain([]);
       return;
     }
 
     // If drill anchor disappeared from current effective graph, collapse safely.
     if (
       roadmapNodeDrillState === 'expanded' &&
-      roadmapDrillNodeId &&
-      !effectiveNodes.some((n) => n.id === roadmapDrillNodeId)
+      roadmapDrillNodeChain.length > 0 &&
+      !effectiveNodes.some((n) => n.id === roadmapDrillNodeChain[0])
     ) {
       setRoadmapNodeDrillState('collapsed');
-      setRoadmapDrillNodeId(null);
+      setRoadmapDrillNodeChain([]);
       return;
     }
   }, [
     navLevel,
     taskDrillState,
     roadmapNodeDrillState,
-    roadmapDrillNodeId,
+    roadmapDrillNodeChain,
     effectiveNodes,
   ]);
 
@@ -2775,14 +2804,22 @@ export function MyceliumCommandCenter() {
     if (
       navLevel === 'roadmap' &&
       roadmapNodeDrillState === 'expanded' &&
-      roadmapDrillNodeId &&
-      !roadmapDrillNodeId.startsWith('task_overlay_')
+      roadmapDrillNodeChain.length > 0
     ) {
-      roadmapNodeExpanded = overlayRoadmapNodeChildren(
-        effectiveNodes,
-        effectiveEdgesWithPredicted,
-        roadmapDrillNodeId,
-      );
+      let visualParentId = roadmapDrillNodeChain[0] || '';
+      for (let idx = 0; idx < roadmapDrillNodeChain.length; idx += 1) {
+        const anchorId = roadmapDrillNodeChain[idx];
+        if (!anchorId || String(anchorId).startsWith('task_overlay_')) continue;
+        const expanded = overlayRoadmapNodeChildren(
+          roadmapNodeExpanded.nodes,
+          roadmapNodeExpanded.edges,
+          visualParentId || anchorId,
+          anchorId,
+        );
+        roadmapNodeExpanded = { nodes: expanded.nodes, edges: expanded.edges };
+        const nextAnchorId = roadmapDrillNodeChain[idx + 1] || '';
+        visualParentId = nextAnchorId ? (expanded.remapIndex.get(nextAnchorId) || nextAnchorId) : anchorId;
+      }
     }
 
     if (isInlineWorkflowFocus && selectedTaskId) {
@@ -2835,7 +2872,7 @@ export function MyceliumCommandCenter() {
     effectiveNodes,
     focusDisplayMode,
     focusIdsForView,
-    roadmapDrillNodeId,
+    roadmapDrillNodeChain,
     roadmapNodeDrillState,
     isInlineWorkflowFocus,
     navLevel,
@@ -3443,14 +3480,33 @@ export function MyceliumCommandCenter() {
       }
       // MARKER_155A.G23.NODE_DRILL_NEXT_DEPTH:
       // Non-task roadmap node drill (folder/module matryoshka).
-      const isSameExpanded = roadmapDrillNodeId === nodeId && roadmapNodeDrillState === 'expanded';
+      const anchorId = resolveRoadmapDrillAnchorId(graphForView.nodes as any, nodeId);
+      const existingIndex = roadmapDrillNodeChain.indexOf(anchorId);
+      const hasDescendantsExpanded = existingIndex >= 0 && existingIndex < roadmapDrillNodeChain.length - 1;
+      const isDeepestExpanded = existingIndex === roadmapDrillNodeChain.length - 1 && roadmapNodeDrillState === 'expanded';
       // MARKER_155A.G27.NODE_DRILL_PRIORITY:
       // Node/folder drill has explicit priority over task drill on non-task double-click.
-      if (!isSameExpanded && taskDrillState === 'expanded') {
+      if (existingIndex < 0 && taskDrillState === 'expanded') {
         setTaskDrillState('collapsed');
       }
-      setRoadmapDrillNodeId(isSameExpanded ? null : nodeId);
-      setRoadmapNodeDrillState(isSameExpanded ? 'collapsed' : 'expanded');
+      if (!anchorId) return;
+      setRoadmapDrillNodeChain((prev) => {
+        const idx = prev.indexOf(anchorId);
+        if (idx >= 0) {
+          if (idx === prev.length - 1) {
+            return prev.length === 1 ? [] : prev;
+          }
+          return prev.slice(0, idx + 1);
+        }
+        return [...prev, anchorId];
+      });
+      setRoadmapNodeDrillState((prev) => {
+        if (!anchorId) return 'collapsed';
+        if (existingIndex >= 0 && !hasDescendantsExpanded && isDeepestExpanded && roadmapDrillNodeChain.length === 1) {
+          return 'collapsed';
+        }
+        return 'expanded';
+      });
       return;
     } else if (navLevel === 'tasks') {
       // MARKER_155.2A: Ignore virtual tree nodes (root + branches), only drill real tasks
@@ -3459,7 +3515,7 @@ export function MyceliumCommandCenter() {
       drillDown('workflow', { taskId: nodeId });
     }
     // Other levels: workflow level uses existing DAG editor behavior
-  }, [navLevel, selectTask, drillDown, selectedTaskId, roadmapDrillNodeId, roadmapNodeDrillState, taskDrillState]);
+  }, [navLevel, selectTask, drillDown, selectedTaskId, roadmapDrillNodeChain, roadmapNodeDrillState, taskDrillState, graphForView.nodes]);
 
   // Handle edge selection
   const handleEdgeSelect = useCallback((edgeId: string | null) => {
@@ -3472,21 +3528,6 @@ export function MyceliumCommandCenter() {
       setSelectedEdge({ id: edge.id, source: edge.source, target: edge.target, type: edge.type });
     }
   }, [effectiveEdgesWithPredicted]);
-
-  // Handle node actions
-  const handleNodeAction = useCallback(async (action: string) => {
-    if (!selectedNode) return;
-    try {
-      const res = await fetch(`${API_BASE}/dag/node/${selectedNode}/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-      if (res.ok) fetchDAG(selectedTaskId);
-    } catch (err) {
-      console.error('[DAG] Action error:', err);
-    }
-  }, [selectedNode, fetchDAG, selectedTaskId]);
 
   // MARKER_144.7: Handle generated workflow — load into DAG editor
   // MARKER_154.3A: Commented out — WorkflowToolbar removed. Will restore in Wave 4 for MiniChat.
@@ -3533,12 +3574,12 @@ export function MyceliumCommandCenter() {
     try {
       // MARKER_151.18A: Auto-create sandbox on first execute when none exists.
       try {
-        const listRes = await fetch('http://localhost:5001/api/debug/playground');
+        const listRes = await fetch(`${DEBUG_API}/playground`);
         if (listRes.ok) {
           const listData = await listRes.json();
           const playgrounds = Array.isArray(listData.playgrounds) ? listData.playgrounds : [];
           if (playgrounds.length === 0) {
-            await fetch('http://localhost:5001/api/debug/playground/create', {
+            await fetch(`${DEBUG_API}/playground/create`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -4359,6 +4400,7 @@ export function MyceliumCommandCenter() {
                   nodeData={miniContextNodeData}
                   onSearchSelect={handleContextSearchSelect}
                   onViewArtifact={handleViewArtifact}
+                  onOpenFile={handleOpenFileInPane}
                 />
                 <MiniWindowDock />
               </>
@@ -4748,6 +4790,32 @@ export function MyceliumCommandCenter() {
                   if (taskId) useMCCStore.getState().dispatchTask(taskId);
                   break;
                 }
+                case 'createTasksFromRoadmap': {
+                  const roadmapNodeId = useMCCStore.getState().navRoadmapNodeId;
+                  if (!roadmapNodeId) {
+                    addToast('info', 'Select a roadmap node first');
+                    break;
+                  }
+                  void (async () => {
+                    try {
+                      // MARKER_176.1F: Frontend bridge for roadmap -> task generation.
+                      const res = await fetch(`${MCC_API}/roadmap/${encodeURIComponent(roadmapNodeId)}/create-tasks`, {
+                        method: 'POST',
+                      });
+                      const data = await res.json().catch(() => ({}));
+                      if (!res.ok) {
+                        const detail = String(data?.detail || data?.error || `HTTP ${res.status}`);
+                        addToast('error', detail.includes('404') ? 'Roadmap task bridge backend not ready' : detail);
+                        return;
+                      }
+                      await useMCCStore.getState().fetchTasks();
+                      addToast('success', `Created ${Number(data?.count || data?.tasks?.length || 0)} tasks from roadmap node`);
+                    } catch (err) {
+                      addToast('error', err instanceof Error ? err.message : 'Create tasks failed');
+                    }
+                  })();
+                  break;
+                }
                 case 'editTask':
                   // MARKER_154.8A: Open TaskEditPopup
                   setShowTaskEdit(true);
@@ -4769,23 +4837,32 @@ export function MyceliumCommandCenter() {
                 }
                 // Result actions
                 case 'apply': {
-                  // MARKER_154.10B: Apply code — mark task as done + update result_status
                   const applyTaskId = useMCCStore.getState().navTaskId || selectedTaskId;
                   if (applyTaskId) {
-                    fetch(`${API_BASE}/debug/task-board/${applyTaskId}`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ status: 'done', result_status: 'applied' }),
-                    }).then(() => {
-                      addToast('success', 'Result applied ✓');
-                      useMCCStore.getState().fetchTasks();
-                      goBack();
-                    }).catch(() => addToast('error', 'Failed to apply'));
+                    void (async () => {
+                      try {
+                        // MARKER_176.3F: Prefer MCC apply endpoint, keep debug fallback during backend rollout.
+                        let res = await fetch(`${MCC_API}/tasks/${encodeURIComponent(applyTaskId)}/apply`, { method: 'POST' });
+                        if (res.status === 404) {
+                          res = await fetch(`${DEBUG_API}/task-board/${applyTaskId}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: 'done', result_status: 'applied' }),
+                          });
+                        }
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        addToast('success', 'Result applied ✓');
+                        await useMCCStore.getState().fetchTasks();
+                        goBack();
+                      } catch {
+                        addToast('error', 'Failed to apply');
+                      }
+                    })();
                   }
                   break;
                 }
-                case 'redo':
-                  // MARKER_154.10A: Open RedoFeedbackInput
+                case 'reject':
+                  // MARKER_176.3F: Open feedback capture before requeue/reject.
                   setShowRedoInput(true);
                   break;
                 // First Run actions — MARKER_154.16A: FirstRunView handles these directly
@@ -4832,9 +4909,10 @@ export function MyceliumCommandCenter() {
                   break;
               }
             }}
-            disabledActions={
-              navLevel === 'roadmap' && !selectedNode ? ['launch'] : []
-            }
+            disabledActions={[
+              ...(navLevel === 'roadmap' && !selectedNode ? ['launch'] : []),
+              ...(navLevel === 'tasks' && !navRoadmapNodeId ? ['createTasksFromRoadmap'] : []),
+            ]}
           />
           )}
 
@@ -4850,12 +4928,47 @@ export function MyceliumCommandCenter() {
                 description={task.description || ''}
                 preset={task.preset || 'dragon_silver'}
                 phaseType={task.phase_type || 'build'}
+                workflowFamily={(task as any).workflow_family || ''}
                 onSave={(updates) => {
-                  fetch(`${API_BASE}/debug/task-board/${task.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(updates),
-                  }).then(() => useMCCStore.getState().fetchTasks());
+                  void (async () => {
+                    const patchBody: Record<string, any> = {
+                      description: updates.description,
+                      preset: updates.preset,
+                      phase_type: updates.phaseType,
+                    };
+                    try {
+                      // MARKER_176.15: Prefer MCC task patch endpoint, fallback to debug task-board during transition.
+                      let res = await fetch(`${MCC_API}/tasks/${encodeURIComponent(task.id)}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(patchBody),
+                      });
+                      if (res.status === 404) {
+                        res = await fetch(`${DEBUG_API}/task-board/${task.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(patchBody),
+                        });
+                      }
+                      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                      if (updates.workflowFamily) {
+                        await fetch(`${MCC_API}/tasks/${encodeURIComponent(task.id)}/workflow-binding`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            workflow_id: updates.workflowFamily,
+                            workflow_family: updates.workflowFamily,
+                            workflow_bank: 'core',
+                            selection_origin: 'task-edit-popup',
+                            team_profile: updates.preset,
+                          }),
+                        });
+                      }
+                      await useMCCStore.getState().fetchTasks();
+                    } catch {
+                      addToast('error', 'Failed to save task changes');
+                    }
+                  })();
                 }}
                 onDispatch={() => {
                   useMCCStore.getState().dispatchTask(task.id);
@@ -4875,21 +4988,34 @@ export function MyceliumCommandCenter() {
                 taskId={task.id}
                 taskTitle={task.title}
                 onSubmit={(feedback) => {
-                  // PATCH task back to pending with feedback, then re-dispatch
-                  fetch(`${API_BASE}/debug/task-board/${task.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      status: 'pending',
-                      result_status: 'rework',
-                      description: `${task.description || ''}\n\n[REDO FEEDBACK]: ${feedback}`,
-                    }),
-                  }).then(() => {
-                    useMCCStore.getState().fetchTasks();
-                    useMCCStore.getState().dispatchTask(task.id);
-                    addToast('info', 'Task re-dispatched with feedback');
-                  });
-                  setShowRedoInput(false);
+                  void (async () => {
+                    try {
+                      // MARKER_176.3F: Prefer MCC reject endpoint, keep debug fallback until backend lands everywhere.
+                      let res = await fetch(`${MCC_API}/tasks/${encodeURIComponent(task.id)}/reject`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ feedback }),
+                      });
+                      if (res.status === 404) {
+                        res = await fetch(`${DEBUG_API}/task-board/${task.id}`, {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            status: 'pending',
+                            result_status: 'rework',
+                            description: `${task.description || ''}\n\n[REDO FEEDBACK]: ${feedback}`,
+                          }),
+                        });
+                      }
+                      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                      await useMCCStore.getState().fetchTasks();
+                      addToast('info', 'Task requeued with feedback');
+                    } catch {
+                      addToast('error', 'Failed to reject result');
+                    } finally {
+                      setShowRedoInput(false);
+                    }
+                  })();
                 }}
                 onCancel={() => setShowRedoInput(false)}
               />
@@ -4917,10 +5043,10 @@ export function MyceliumCommandCenter() {
         >
           <div
             style={{
-              margin: '20px auto',
-              width: '80%',
-              maxWidth: 700,
-              maxHeight: '80%',
+              margin: artifactViewerMode === 'fullscreen' ? '8px auto' : '20px auto',
+              width: artifactViewerMode === 'fullscreen' ? '96%' : '80%',
+              maxWidth: artifactViewerMode === 'fullscreen' ? 'none' : 700,
+              maxHeight: artifactViewerMode === 'fullscreen' ? '96%' : '80%',
               background: NOLAN_PALETTE.bg,
               border: `1px solid ${NOLAN_PALETTE.border}`,
               borderRadius: 4,
@@ -4944,6 +5070,22 @@ export function MyceliumCommandCenter() {
                   {viewingArtifact.language} · {viewingArtifact.file_path}
                 </div>
               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                onClick={() => setArtifactViewerMode((prev) => (prev === 'pane' ? 'fullscreen' : 'pane'))}
+                style={{
+                  background: 'transparent',
+                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                  borderRadius: 2,
+                  color: NOLAN_PALETTE.textMuted,
+                  padding: '2px 8px',
+                  fontSize: 9,
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                }}
+              >
+                {artifactViewerMode === 'fullscreen' ? 'pane' : 'fullscreen'}
+              </button>
               <button
                 onClick={() => setViewingArtifact(null)}
                 style={{
@@ -4959,6 +5101,7 @@ export function MyceliumCommandCenter() {
               >
                 close
               </button>
+            </div>
             </div>
             {/* Content */}
             <pre style={{

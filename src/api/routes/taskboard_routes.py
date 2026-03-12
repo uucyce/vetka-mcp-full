@@ -29,6 +29,21 @@ _CREATE_FIELDS = {
     "workflow_selection_origin",
     "team_profile",
     "task_origin",
+    "roadmap_id",
+    "roadmap_node_id",
+    "roadmap_lane",
+    "roadmap_title",
+    "ownership_scope",
+    "allowed_paths",
+    "owner_agent",
+    "completion_contract",
+    "verification_agent",
+    "blocked_paths",
+    "forbidden_scopes",
+    "worktree_hint",
+    "touch_policy",
+    "overlap_risk",
+    "depends_on_docs",
 }
 
 _UPDATE_FIELDS = {
@@ -48,8 +63,26 @@ _UPDATE_FIELDS = {
     "workflow_selection_origin",
     "team_profile",
     "task_origin",
+    "roadmap_id",
+    "roadmap_node_id",
+    "roadmap_lane",
+    "roadmap_title",
+    "ownership_scope",
+    "allowed_paths",
+    "owner_agent",
+    "completion_contract",
+    "verification_agent",
+    "blocked_paths",
+    "forbidden_scopes",
+    "worktree_hint",
+    "touch_policy",
+    "overlap_risk",
+    "depends_on_docs",
     "feedback",
     "result_status",
+    "result_summary",
+    "completed_at",
+    "actor_agent",
 }
 
 
@@ -111,6 +144,12 @@ async def update_task(task_id: str, body: Dict[str, Any] = Body(...)) -> Dict[st
         raise HTTPException(status_code=400, detail="No valid fields to update")
     task = await adapter.update_task(task_id, updates)
     if task is None:
+        board = getattr(adapter, "board", None)
+        last_error = str(getattr(board, "_last_update_error", "") or "").strip()
+        if last_error == "task_not_found":
+            raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+        if last_error:
+            raise HTTPException(status_code=409, detail=last_error)
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
     return {"success": True, "adapter": adapter.adapter_name, "task": task}
 

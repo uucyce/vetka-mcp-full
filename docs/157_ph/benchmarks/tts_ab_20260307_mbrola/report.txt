@@ -1,0 +1,3 @@
+edge_ru_female	bytes=45792	latency_ms=2781.1
+espeak_c3po_ru	bytes=236800	latency_ms=38.8
+espeak_mb_en1_path	bytes=236800	latency_ms=36.5

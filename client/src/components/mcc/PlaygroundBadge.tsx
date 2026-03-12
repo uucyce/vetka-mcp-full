@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+// MARKER_176.15: Centralized MCC API config import.
+import { DEBUG_API } from '../../config/api.config';
 
 interface PlaygroundInfo {
   playground_id: string;
@@ -17,7 +19,6 @@ function fmtAge(minutes: number): string {
   return `${Math.floor(minutes / 1440)}d`;
 }
 
-const API_DEBUG = 'http://localhost:5001/api/debug';
 
 export function PlaygroundBadge() {
   const [playgrounds, setPlaygrounds] = useState<PlaygroundInfo[]>([]);
@@ -26,7 +27,7 @@ export function PlaygroundBadge() {
 
   const fetchPlaygrounds = useCallback(async () => {
     try {
-      const res = await fetch(`${API_DEBUG}/playground`);
+      const res = await fetch(`${DEBUG_API}/playground`);
       if (!res.ok) return;
       const data = await res.json();
       setPlaygrounds(data.playgrounds || []);
@@ -60,7 +61,7 @@ export function PlaygroundBadge() {
   const handleDestroy = useCallback(async (pgId: string) => {
     setLoading(true);
     try {
-      await fetch(`${API_DEBUG}/playground/${pgId}`, { method: 'DELETE' });
+      await fetch(`${DEBUG_API}/playground/${pgId}`, { method: 'DELETE' });
       await fetchPlaygrounds();
     } catch {
       // silently fail

@@ -1,0 +1,5 @@
+Okay, here’s a breakdown of the context and the first two steps to start understanding the context packing process in VETKA, focusing on the most crucial aspects:
+
+**Understanding Context Packing in VETKA**
+
+Context packing in VETKA is a critical process that ensures the correct

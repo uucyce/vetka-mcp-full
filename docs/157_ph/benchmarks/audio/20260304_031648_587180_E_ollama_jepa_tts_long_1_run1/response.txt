@@ -1,0 +1,4 @@
+Interrupt + Restart Stream Protocol:
+
+1. **Interrupt**: When a user sends an interrupt message (e.g., "Stop"), the system detects this and stops the current stream.
+2. **

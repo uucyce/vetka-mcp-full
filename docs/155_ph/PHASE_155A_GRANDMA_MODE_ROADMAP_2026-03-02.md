@@ -126,3 +126,6 @@ Protocol: `ROADMAP -> RECON+markers -> WAIT GO -> IMPL NARROW -> VERIFY`
 4. Ограничение исполнения:
    - в рамках Phase 155A не расширяем pipeline-фичи до полного мульти-family runtime,
    - только фиксируем TODO и готовим интерфейсные посадочные места.
+5. Debug tail (regression watch):
+   - восстановить и зафиксировать контракт `MiniChat model button -> open MiniContext model chooser`,
+   - добавить UI-contract тест, чтобы повторно не ломалось.

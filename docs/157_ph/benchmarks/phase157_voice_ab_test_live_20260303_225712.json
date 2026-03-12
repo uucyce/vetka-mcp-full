@@ -1,0 +1,63 @@
+{
+  "generated_at": "2026-03-03T19:57:12.028358+00:00",
+  "dry_run": false,
+  "rows": [
+    {
+      "mode": "F_mimo_short",
+      "prompt_id": "short_live",
+      "run_index": 1,
+      "prompt_chars": 14,
+      "success": true,
+      "error": null,
+      "ttft_text_ms": 1767.9,
+      "ttfa_audio_ms": 4680.14,
+      "reaction_text_ms": 1767.9,
+      "reaction_audio_ms": 4680.14,
+      "e2e_ms": 9106.91,
+      "tokens_out": 11,
+      "audio_chunks": 2,
+      "response_chars": 40,
+      "quality_proxy": 1.0,
+      "response_preview": "Привет! Да, я здесь и готов тебе помочь.",
+      "audio_dir": "docs/157_ph/benchmarks/audio/20260303_225655_531682_F_mimo_short_short_live_run1",
+      "audio_merged_wav": "docs/157_ph/benchmarks/audio/20260303_225655_531682_F_mimo_short_short_live_run1/merged.wav",
+      "timestamp": "2026-03-03T19:57:04.584984+00:00"
+    },
+    {
+      "mode": "F_mimo_short",
+      "prompt_id": "short_live",
+      "run_index": 2,
+      "prompt_chars": 14,
+      "success": true,
+      "error": null,
+      "ttft_text_ms": 882.73,
+      "ttfa_audio_ms": 3022.45,
+      "reaction_text_ms": 882.73,
+      "reaction_audio_ms": 3022.45,
+      "e2e_ms": 7442.35,
+      "tokens_out": 12,
+      "audio_chunks": 2,
+      "response_chars": 38,
+      "quality_proxy": 1.0,
+      "response_preview": "Привет! Да, я здесь и готов к общению.",
+      "audio_dir": "docs/157_ph/benchmarks/audio/20260303_225704_600587_F_mimo_short_short_live_run2",
+      "audio_merged_wav": "docs/157_ph/benchmarks/audio/20260303_225704_600587_F_mimo_short_short_live_run2/merged.wav",
+      "timestamp": "2026-03-03T19:57:12.028143+00:00"
+    }
+  ],
+  "summary": {
+    "modes": {
+      "F_mimo_short": {
+        "runs": 2,
+        "success_runs": 2,
+        "success_rate": 1.0,
+        "ttft_text_ms_p50": 1325.32,
+        "ttfa_audio_ms_p50": 3851.3,
+        "reaction_text_ms_p50": 1325.32,
+        "reaction_audio_ms_p50": 3851.3,
+        "e2e_ms_p50": 8274.63,
+        "quality_proxy_mean": 1.0
+      }
+    }
+  }
+}

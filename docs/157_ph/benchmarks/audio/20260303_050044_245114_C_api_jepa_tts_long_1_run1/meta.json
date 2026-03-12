@@ -1,0 +1,9 @@
+{
+  "mode": "C_api_jepa_tts",
+  "prompt_id": "long_1",
+  "run_index": 1,
+  "audio_chunks": 7,
+  "ttft_text_ms": 1890.7918749901,
+  "ttfa_audio_ms": 6966.24733300996,
+  "merged_wav": "docs/157_ph/benchmarks/audio/20260303_050044_245114_C_api_jepa_tts_long_1_run1/merged.wav"
+}

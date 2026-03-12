@@ -1,0 +1,11 @@
+Базовый файл `data/playground_proposals.json` содержит информацию о предложениях для улучшения кода. 
+
+Два конкретных файла, которые упоминаются в контексте:
+
+1. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md`
+
+Фразы с этим файлом:
+- "Резкие боковые рывки": needed for smooth camera movement.
+- "Подлет в упор + отдаление": needed to avoid unwanted camera behavior.
+
+2. Намеченный файл `

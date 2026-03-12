@@ -1,0 +1,61 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,122,False,TimeoutError: per-run timeout 25.0s,,,,,25950.14,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_042049_589726_D_ollama_tts_short_1_run1,,,,,,True,10,algorithmic,False,False,2026-03-04T01:21:15.492427+00:00
+D_ollama_tts,short_1,2,122,False,TimeoutError: per-run timeout 25.0s,87.66,3248.61,87.66,3248.61,27504.02,66,1,237,0.0,"Базовые файлы:
+
+1. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/watcher_routes.py` - Этот файл необходим для проверки маркеров в watcher_routes.py.
+   Фраза: ""Watchdog scan uses QdrantUpdater which writes only",docs/157_ph/benchmarks/audio/20260304_042115_505931_D_ollama_tts_short_1_run2,docs/157_ph/benchmarks/audio/20260304_042115_505931_D_ollama_tts_short_1_run2/merged.wav,85.0,3,540,0,True,10,algorithmic,False,False,2026-03-04T01:21:42.997239+00:00
+D_ollama_tts,short_1,3,122,False,TimeoutError: per-run timeout 25.0s,1217.53,7525.86,1217.53,7525.86,25103.81,105,2,329,0.0,"Из предоставленного контекста я могу определить два конкретных файла:
+
+1. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/95_ph/HAIKU_TEST_4_WATCHER_MARKERS.md`
+2. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/81_ph_mcp_fixes/81_PHASE_COMPLETE.md`
+",docs/157_ph/benchmarks/audio/20260304_042143_250061_D_ollama_tts_short_1_run3,docs/157_ph/benchmarks/audio/20260304_042143_250061_D_ollama_tts_short_1_run3/merged.wav,79.11,8,860,0,True,10,algorithmic,False,False,2026-03-04T01:22:08.105884+00:00
+D_ollama_tts,context_1,1,133,False,TimeoutError: per-run timeout 25.0s,,,,,64914.19,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_042230_237596_D_ollama_tts_context_1_run1,,,,,,True,10,algorithmic,False,False,2026-03-04T01:23:13.021707+00:00
+D_ollama_tts,context_1,2,133,False,TimeoutError: per-run timeout 25.0s,87.73,12566.42,87.73,12566.42,25894.81,73,2,277,0.0,"Here are three points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize `hysteresis` threshold**: Reduce the default value of `VETKA_CONTEXT_PACKER_HYSTERESIS_ON` from 3 to 2 and adjust `VETKA_CONTEXT_PACKER_HYSTERESIS_OFF` accordingly. This",docs/157_ph/benchmarks/audio/20260304_042313_032338_D_ollama_tts_context_1_run2,docs/157_ph/benchmarks/audio/20260304_042313_032338_D_ollama_tts_context_1_run2/merged.wav,44.75,9,1680,0,True,10,algorithmic,False,False,2026-03-04T01:23:38.916813+00:00
+D_ollama_tts,context_1,3,133,False,TimeoutError: per-run timeout 25.0s,4659.59,10215.69,4659.59,10215.69,30395.11,72,2,291,0.0,"Here are three points to improve the memory context packing in VETKA without regressing latency:
+
+1.  **Optimize Hysteresis Thresholds**: Adjust hysteresis thresholds (`VETKA_CONTEXT_PACKER_HYSTERESIS_ON` and `VETKA_CONTEXT_PACKER_HYSTERESIS_OFF`) to find an optimal balance betwe",docs/157_ph/benchmarks/audio/20260304_042342_538954_D_ollama_tts_context_1_run3,docs/157_ph/benchmarks/audio/20260304_042342_538954_D_ollama_tts_context_1_run3/merged.wav,66.14,5,1600,0,True,10,algorithmic,False,False,2026-03-04T01:24:09.313123+00:00
+D_ollama_tts,long_1,1,171,False,TimeoutError: per-run timeout 25.0s,9582.19,16549.18,9582.19,16549.18,26316.28,33,3,157,0.0,"Interrupt + Restart Stream Protocol:
+
+1. **Interrupt**: When the `tool_execution_mode` is not set to `enabled_stream`, the model should not assert that tools",docs/157_ph/benchmarks/audio/20260304_042412_954475_D_ollama_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260304_042412_954475_D_ollama_tts_long_1_run1/merged.wav,35.0,21,1900,0,True,10,algorithmic,False,False,2026-03-04T01:24:35.631151+00:00
+D_ollama_tts,long_1,2,171,False,TimeoutError: per-run timeout 25.0s,176.36,6016.48,176.36,6016.48,25198.76,62,5,274,0.0,"Поскольку в контексте отсутствует подробный описания interrupt + restart stream protocol, я не могу предоставить точное объяснение. Однако, основываясь на предоставленном контексте, я можу сделать предположение:
+
+Interrupt и.restart stream protocol — это протоколы, использу",docs/157_ph/benchmarks/audio/20260304_042435_646015_D_ollama_tts_long_1_run2,docs/157_ph/benchmarks/audio/20260304_042435_646015_D_ollama_tts_long_1_run2/merged.wav,40.25,28,1480,0,True,10,algorithmic,False,False,2026-03-04T01:25:00.831406+00:00
+D_ollama_tts,long_1,3,171,False,TimeoutError: per-run timeout 25.0s,621.02,6115.5,621.02,6115.5,25794.56,58,5,254,0.0,"Interrupt + Restart Stream Protocol:
+
+1. **Stream Interruption**: Когда агент отслеживает interrupt (перебивание) во время ответа, модель не должна утверждать, что tools были выполнены.
+2. **Stream Restart**: При interruption stream protocol restarts the",docs/157_ph/benchmarks/audio/20260304_042500_861336_D_ollama_tts_long_1_run3,docs/157_ph/benchmarks/audio/20260304_042500_861336_D_ollama_tts_long_1_run3/merged.wav,25.0,37,5920,0,True,10,algorithmic,False,False,2026-03-04T01:25:26.627026+00:00
+E_ollama_jepa_tts,short_1,1,122,False,TimeoutError: per-run timeout 25.0s,7737.58,12679.45,7737.58,12679.45,33166.23,90,2,308,0.0,"По предоставленному контексту я могу определить два конкретных файла:
+
+1. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/74_ph/CHAT_HISTORY_AUDIT.md`
+2. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/81_ph_mcp_fixes/81_PHASE_COMPLETE.md`
+
+По этим ф",docs/157_ph/benchmarks/audio/20260304_042526_636946_E_ollama_jepa_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260304_042526_636946_E_ollama_jepa_tts_short_1_run1/merged.wav,57.41,9,1260,0,True,10,hybrid-jepa,True,True,2026-03-04T01:25:59.794095+00:00
+E_ollama_jepa_tts,short_1,2,122,False,TimeoutError: per-run timeout 25.0s,,,,,35099.43,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_042610_275096_E_ollama_jepa_tts_short_1_run2,,,,,,True,10,hybrid-jepa,True,True,2026-03-04T01:26:34.893944+00:00
+E_ollama_jepa_tts,short_1,3,122,False,TimeoutError: per-run timeout 25.0s,174.69,,174.69,,32804.64,115,0,354,0.0,"Базовый файл: `вкладка **Playground_GROK.txt**` и `phase_106g_report.md`.
+
+Фразы:
+
+* `вкладка **Playground_GROK.txt**: Полный готовый backend-код для эндпоинта `/api/debug/playground/proposals`, чтобы вкладка **Playground** в `MyceliumCommandCenter` работала сразу.`
+* `phase_106g",docs/157_ph/benchmarks/audio/20260304_042634_902536_E_ollama_jepa_tts_short_1_run3,,,,,,True,10,hybrid-jepa,True,True,2026-03-04T01:27:07.698975+00:00
+E_ollama_jepa_tts,context_1,1,133,False,TimeoutError: per-run timeout 25.0s,10768.28,15915.42,10768.28,15915.42,26665.08,43,4,193,0.0,"Based on the provided context, here are three points to improve memory context packing in VETKA without regressing latency:
+
+1.  **Optimize `hysteresis` threshold**: Reduce the default value of",docs/157_ph/benchmarks/audio/20260304_042712_147957_E_ollama_jepa_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260304_042712_147957_E_ollama_jepa_tts_context_1_run1/merged.wav,25.0,23,2760,0,True,10,hybrid-jepa,True,True,2026-03-04T01:27:34.364328+00:00
+E_ollama_jepa_tts,context_1,2,133,False,TimeoutError: per-run timeout 25.0s,108.84,3655.95,108.84,3655.95,27854.7,75,3,316,0.0,"Based on the provided context, here are three points to improve memory context packing in VETKA without regressing latency:
+
+1.  **Optimize `hysteresis` threshold**: Reduce the `VETKA_CONTEXT_PACKER_HYSTERESIS_ON` and `VETKA_CONTEXT_PACKER_HYSTERESIS_OFF` thresholds to minimize u",docs/157_ph/benchmarks/audio/20260304_042734_371017_E_ollama_jepa_tts_context_1_run2,docs/157_ph/benchmarks/audio/20260304_042734_371017_E_ollama_jepa_tts_context_1_run2/merged.wav,40.25,10,2040,0,True,10,hybrid-jepa,True,True,2026-03-04T01:28:02.219413+00:00
+E_ollama_jepa_tts,context_1,3,133,False,TimeoutError: per-run timeout 25.0s,611.48,5261.01,611.48,5261.01,27618.91,85,4,345,0.0,"Here are three points to improve memory context packing in VETKA without regressing latency:
+
+1.  **Optimize `hysteresis` threshold**: Reduce the `VETKA_CONTEXT_PACKER_HYSTERESIS_ON` and `VETKA_CONTEXT_PACKER_HYSTERESIS_OFF` thresholds to minimize unnecessary latency adjustments.",docs/157_ph/benchmarks/audio/20260304_042802_677629_E_ollama_jepa_tts_context_1_run3,docs/157_ph/benchmarks/audio/20260304_042802_677629_E_ollama_jepa_tts_context_1_run3/merged.wav,46.0,27,1020,0,True,10,hybrid-jepa,True,True,2026-03-04T01:28:29.838881+00:00
+E_ollama_jepa_tts,long_1,1,171,False,TimeoutError: per-run timeout 25.0s,6822.54,11904.83,6822.54,11904.83,25672.84,48,4,221,0.0,"Interrupt + Restart Stream Protocol:
+
+1. **Interrupt**: Когда агент завершает свою работу и хочет передать voice stream на another agent или tool, он должен отслеживать interrupt events (`on_tool_in_stream_unsupported`) в",docs/157_ph/benchmarks/audio/20260304_042829_845584_E_ollama_jepa_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260304_042829_845584_E_ollama_jepa_tts_long_1_run1/merged.wav,45.75,28,1040,0,True,10,hybrid-jepa,True,True,2026-03-04T01:28:55.512430+00:00
+E_ollama_jepa_tts,long_1,2,171,False,TimeoutError: per-run timeout 25.0s,119.8,5393.44,119.8,5393.44,26409.81,63,8,308,0.0,"Interrupt + Restart Stream Protocol:
+
+1. **Interrupt**: When a tool is executed in the stream, and its execution mode is not `enabled_stream`, the model should not assert that the tool was executed. Instead, it should indicate that the tool was interrupted.
+2. **Restart Stream Pr",docs/157_ph/benchmarks/audio/20260304_042855_518537_E_ollama_jepa_tts_long_1_run2,docs/157_ph/benchmarks/audio/20260304_042855_518537_E_ollama_jepa_tts_long_1_run2/merged.wav,40.5,32,1460,0,True,10,hybrid-jepa,True,True,2026-03-04T01:29:21.922514+00:00
+E_ollama_jepa_tts,long_1,3,171,False,TimeoutError: per-run timeout 25.0s,184.92,5216.52,184.92,5216.52,27639.93,69,8,339,0.0,"Interrupt + Restart Stream Protocol:
+
+1. **Interrupt**: When the `tool_execution_mode` is not `enabled_stream`, the model should not assert that tools were executed. This rule applies to all models without `tool_calling_in_stream`.
+2. **Restart Stream Protocol**: The system promp",docs/157_ph/benchmarks/audio/20260304_042921_928539_E_ollama_jepa_tts_long_1_run3,docs/157_ph/benchmarks/audio/20260304_042921_928539_E_ollama_jepa_tts_long_1_run3/merged.wav,25.5,23,2660,0,True,10,hybrid-jepa,True,True,2026-03-04T01:29:49.562822+00:00

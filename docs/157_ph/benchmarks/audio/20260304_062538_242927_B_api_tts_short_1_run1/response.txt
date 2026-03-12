@@ -1,0 +1,4 @@
+На основе контекста:
+
+1. **PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md** — Описывает упрощённую анимацию камеры для плавного подлёта к объекту без рывков.
+2. **вкладка **Playground_GROK.txt** — Содержит backend-код для эндпоинта Playground в MyceliumCommandCenter.

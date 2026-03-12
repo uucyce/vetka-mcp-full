@@ -1,0 +1,26 @@
+{
+  "id": "dragons_localguys_v1",
+  "name": "Dragons localguys",
+  "description": "Preset-aware local team workflow for fast and cheap playground execution.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-03-12T00:00:00Z",
+    "author": "vetka-system",
+    "preset": "dragon_silver",
+    "task_types": ["localguys", "dragons_localguys", "dragon_team_local"],
+    "workflow_family": {
+      "family": "dragons_localguys",
+      "version": "v1",
+      "roles": ["scout", "architect", "coder", "verifier"],
+      "policy": {
+        "edge_semantics": "strict",
+        "role_contract": "strict",
+        "supports_runtime_edge_edit": false,
+        "allows_structural_cycles": false,
+        "stub": false
+      }
+    }
+  },
+  "nodes": [],
+  "edges": []
+}

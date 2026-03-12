@@ -774,6 +774,34 @@ def _resolve_voice_setup() -> Tuple[str, str]:
     return fast_voice, filler_voice
 
 
+def _resolve_voice_runtime_for_context(context: Dict[str, Any], lang_hint: str) -> Dict[str, str]:
+    agent_role = str((context or {}).get("agent_role") or "myco").strip().lower()
+    if agent_role == "vetka":
+        profile_id = "vetka_ru_female" if lang_hint == "ru" else "vetka_en_female"
+        profile = VOICE_PROFILES.get(profile_id, {})
+        return {
+            "agent_role": "vetka",
+            "provider": "edge",
+            "voice_profile": profile_id,
+            "fast_voice": profile.get("fast_tts_voice") or JARVIS_FAST_TTS_VOICE,
+            "filler_voice": profile.get("filler_voice") or JARVIS_FILLER_AUDIO_VOICE,
+            "espeak_voice": JARVIS_ESPEAK_VOICE_RU if lang_hint == "ru" else JARVIS_ESPEAK_VOICE_EN,
+            "espeak_preset": JARVIS_ESPEAK_PRESET,
+        }
+
+    profile_id = "myco_chip_ru"
+    profile = VOICE_PROFILES.get(profile_id, {})
+    return {
+        "agent_role": "myco",
+        "provider": "espeak",
+        "voice_profile": profile_id,
+        "fast_voice": profile.get("fast_tts_voice") or JARVIS_FAST_TTS_VOICE,
+        "filler_voice": profile.get("filler_voice") or JARVIS_FILLER_AUDIO_VOICE,
+        "espeak_voice": JARVIS_ESPEAK_VOICE_RU if lang_hint == "ru" else JARVIS_ESPEAK_VOICE_EN,
+        "espeak_preset": "chip",
+    }
+
+
 def _is_planb_filler_effective() -> bool:
     # MARKER_163.P1.FILLER_GUARD.V1:
     # In MYCO_HELP mode Plan B filler is disabled to avoid noisy/mismatched speech.
@@ -817,6 +845,176 @@ def _normalize_text_for_espeak(text: str, lang_hint: str) -> str:
         out = out.replace("Vetka", "Ветка")
         out = out.replace("vetka", "ветка")
     return out
+
+
+async def _synthesize_jarvis_audio(
+    response_text: str,
+    transcript: str,
+    client_context: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Shared TTS synthesis path for both listen-stop turns and deterministic
+    speak-text requests. Keeps role-based provider/profile routing aligned.
+    """
+    tts_provider = "none"
+    tts_audio_format = "none"
+    tts_duration_ms: Optional[float] = None
+    tts_ok = False
+    voice_runtime = _resolve_voice_runtime_for_context(
+        client_context or {},
+        _detect_language_hint(f"{transcript}\n{response_text}"),
+    )
+
+    if not (HAS_TTS and response_text):
+        return {
+            "audio_base64": "",
+            "audio_format": "mp3",
+            "tts_provider": tts_provider,
+            "tts_audio_format": tts_audio_format,
+            "tts_duration_ms": tts_duration_ms,
+            "tts_ok": tts_ok,
+            "voice_runtime": voice_runtime,
+        }
+
+    tts_start = time.perf_counter()
+    try:
+        emitted_audio_format = "unknown"
+        emitted_audio_bytes = b""
+        lang_hint = _detect_language_hint(f"{transcript}\n{response_text}")
+        tts_language = "Russian" if lang_hint == "ru" else "English"
+        use_fast_tts = HAS_FAST_TTS and (
+            JARVIS_VOICE_LOCK_EDGE_RU_FEMALE
+            or voice_runtime["provider"] == "edge"
+            or TTS_MODE == "fast"
+            or lang_hint == "ru"
+        )
+        logger.info(
+            f"[JARVIS] TTS start mode={'fast' if use_fast_tts else 'quality'} "
+            f"lang={tts_language} chars={len(response_text)} provider={voice_runtime['provider']}"
+        )
+
+        if use_fast_tts:
+            preferred_provider = "edge" if JARVIS_VOICE_LOCK_EDGE_RU_FEMALE else voice_runtime["provider"]
+            fast_voice = voice_runtime["fast_voice"]
+            espeak_voice = voice_runtime["espeak_voice"]
+
+            async def _edge_synth() -> bytes:
+                if not HAS_FAST_TTS:
+                    return b""
+                fast_tts = FastTTSClient(voice=fast_voice)
+                return await fast_tts.synthesize(response_text)
+
+            async def _espeak_synth() -> bytes:
+                if not HAS_ESPEAK_TTS:
+                    return b""
+                normalized_text = _normalize_text_for_espeak(response_text, lang_hint)
+                espeak = ESpeakTTSClient(
+                    voice=espeak_voice,
+                    rate=JARVIS_ESPEAK_RATE,
+                    pitch=JARVIS_ESPEAK_PITCH,
+                    amplitude=JARVIS_ESPEAK_AMPLITUDE,
+                    preset=voice_runtime["espeak_preset"],
+                )
+                return await espeak.synthesize(normalized_text)
+
+            audio_bytes = b""
+            if preferred_provider == "edge":
+                tts_provider = "fast_tts_edge"
+                audio_bytes = await _edge_synth()
+                if (
+                    not JARVIS_VOICE_LOCK_EDGE_RU_FEMALE
+                    and not audio_bytes
+                    and JARVIS_TTS_FALLBACK_PROVIDER == "espeak"
+                ):
+                    tts_provider = "espeak_tts_fallback"
+                    audio_bytes = await _espeak_synth()
+            elif preferred_provider == "espeak":
+                tts_provider = "espeak_tts"
+                audio_bytes = await _espeak_synth()
+                if not audio_bytes and JARVIS_TTS_FALLBACK_PROVIDER == "edge":
+                    tts_provider = "fast_tts_edge_fallback"
+                    audio_bytes = await _edge_synth()
+            else:
+                tts_provider = "fast_tts_edge_auto"
+                audio_bytes = await _edge_synth()
+                if not audio_bytes:
+                    tts_provider = "espeak_tts_auto_fallback"
+                    audio_bytes = await _espeak_synth()
+
+            if audio_bytes:
+                detected = _detect_audio_format(audio_bytes)
+                if detected in {"mp3", "wav"}:
+                    emitted_audio_bytes = audio_bytes
+                    emitted_audio_format = detected
+                elif detected == "pcm":
+                    emitted_audio_bytes = pcm_to_wav(audio_bytes, sample_rate=24000)
+                    emitted_audio_format = "wav"
+                if emitted_audio_bytes and len(emitted_audio_bytes) >= 2048:
+                    audio_base64 = base64.b64encode(emitted_audio_bytes).decode("utf-8")
+                    audio_format = emitted_audio_format
+                    tts_audio_format = emitted_audio_format
+                else:
+                    logger.warning("[JARVIS] TTS produced invalid/too small audio, skipping emit")
+                    audio_base64 = ""
+                    audio_format = "mp3"
+            else:
+                audio_base64 = ""
+                audio_format = "mp3"
+        else:
+            if JARVIS_VOICE_LOCK_EDGE_RU_FEMALE:
+                logger.warning("[JARVIS] Edge lock enabled but FastTTS unavailable; skipping quality fallback")
+                tts_provider = "fast_tts_edge_unavailable"
+                audio_base64 = ""
+                audio_format = "mp3"
+            else:
+                tts_provider = "qwen3_tts"
+                tts_client = Qwen3TTSClient(server_url="http://127.0.0.1:5003")
+                audio_bytes = await tts_client.synthesize(
+                    text=response_text,
+                    language=tts_language,
+                    speaker="ryan"
+                )
+                await tts_client.close()
+                if audio_bytes:
+                    detected = _detect_audio_format(audio_bytes)
+                    if detected == "wav":
+                        emitted_audio_bytes = audio_bytes
+                        emitted_audio_format = "wav"
+                    elif detected == "mp3":
+                        emitted_audio_bytes = audio_bytes
+                        emitted_audio_format = "mp3"
+                    else:
+                        emitted_audio_bytes = pcm_to_wav(audio_bytes, sample_rate=24000)
+                        emitted_audio_format = "wav"
+                    if emitted_audio_bytes and len(emitted_audio_bytes) >= 2048:
+                        audio_base64 = base64.b64encode(emitted_audio_bytes).decode("utf-8")
+                        audio_format = emitted_audio_format
+                        tts_audio_format = emitted_audio_format
+                    else:
+                        logger.warning("[JARVIS] Qwen3TTS produced invalid/too small audio, skipping emit")
+                        audio_base64 = ""
+                        audio_format = "wav"
+                else:
+                    audio_base64 = ""
+                    audio_format = "wav"
+
+        tts_ok = bool(audio_base64)
+    except Exception as e:
+        logger.error(f"[JARVIS] TTS failed: {e}")
+        audio_base64 = ""
+        audio_format = "mp3"
+        tts_provider = "error"
+
+    tts_duration_ms = round((time.perf_counter() - tts_start) * 1000, 1)
+    return {
+        "audio_base64": audio_base64,
+        "audio_format": audio_format,
+        "tts_provider": tts_provider,
+        "tts_audio_format": tts_audio_format,
+        "tts_duration_ms": tts_duration_ms,
+        "tts_ok": tts_ok,
+        "voice_runtime": voice_runtime,
+    }
 
 
 def _select_filler_phrase(partial_input: str) -> str:
@@ -1427,6 +1625,10 @@ def _extract_client_context(data: Dict[str, Any]) -> Dict[str, Any]:
     llm_model = data.get("llm_model")
     if isinstance(llm_model, str) and llm_model.strip():
         context["llm_model"] = llm_model.strip()
+
+    agent_role = data.get("agent_role")
+    if isinstance(agent_role, str) and agent_role.strip().lower() in {"myco", "vetka"}:
+        context["agent_role"] = agent_role.strip().lower()
 
     # MARKER_157_7_2_VOICE_STATE_KEY_FIELDS.V1:
     # Drill/state fields (MYCO-style) for state-key retrieval in voice path.
@@ -2104,18 +2306,22 @@ def register_jarvis_handlers(sio):
                     emitted_audio_bytes = b""
                     lang_hint = _detect_language_hint(f"{transcript}\n{response_text}")
                     tts_language = "Russian" if lang_hint == "ru" else "English"
-                    use_fast_tts = HAS_FAST_TTS and (JARVIS_VOICE_LOCK_EDGE_RU_FEMALE or TTS_MODE == "fast" or lang_hint == "ru")
+                    voice_runtime = _resolve_voice_runtime_for_context(session.client_context, lang_hint)
+                    use_fast_tts = HAS_FAST_TTS and (
+                        JARVIS_VOICE_LOCK_EDGE_RU_FEMALE
+                        or voice_runtime["provider"] == "edge"
+                        or TTS_MODE == "fast"
+                        or lang_hint == "ru"
+                    )
                     logger.info(
                         f"[JARVIS] TTS start mode={'fast' if use_fast_tts else 'quality'} "
                         f"lang={tts_language} chars={len(response_text)}"
                     )
 
                     if use_fast_tts:
-                        preferred_provider = "edge" if JARVIS_VOICE_LOCK_EDGE_RU_FEMALE else (
-                            JARVIS_TTS_PROVIDER if JARVIS_TTS_PROVIDER in {"edge", "espeak"} else "auto"
-                        )
-                        fast_voice, _ = _resolve_voice_setup()
-                        espeak_voice = JARVIS_ESPEAK_VOICE_RU if lang_hint == "ru" else JARVIS_ESPEAK_VOICE_EN
+                        preferred_provider = "edge" if JARVIS_VOICE_LOCK_EDGE_RU_FEMALE else voice_runtime["provider"]
+                        fast_voice = voice_runtime["fast_voice"]
+                        espeak_voice = voice_runtime["espeak_voice"]
 
                         async def _edge_synth() -> bytes:
                             if not HAS_FAST_TTS:
@@ -2134,7 +2340,7 @@ def register_jarvis_handlers(sio):
                                 rate=JARVIS_ESPEAK_RATE,
                                 pitch=JARVIS_ESPEAK_PITCH,
                                 amplitude=JARVIS_ESPEAK_AMPLITUDE,
-                                preset=JARVIS_ESPEAK_PRESET,
+                                preset=voice_runtime["espeak_preset"],
                             )
                             return await espeak.synthesize(normalized_text)
 
@@ -2320,7 +2526,9 @@ def register_jarvis_handlers(sio):
                 "first_response_ms": first_response_ms,
                 "total_turn_ms": round((time.perf_counter() - turn_start) * 1000, 1),
                 "tts_provider": tts_provider,
-                "voice_profile": JARVIS_VOICE_PROFILE,
+                "agent_role": str((session.client_context or {}).get("agent_role") or "myco"),
+                "voice_profile": voice_runtime["voice_profile"] if "voice_runtime" in locals() else JARVIS_VOICE_PROFILE,
+                "tts_preferred_provider": voice_runtime["provider"] if "voice_runtime" in locals() else JARVIS_TTS_PROVIDER,
                 "myco_help_mode": JARVIS_MYCO_HELP_MODE,
                 "planb_filler_effective": _is_planb_filler_effective(),
                 "voice_lock_edge_ru_female": JARVIS_VOICE_LOCK_EDGE_RU_FEMALE,
@@ -2347,6 +2555,101 @@ def register_jarvis_handlers(sio):
             await sio.emit('jarvis_state', {
                 'state': JarvisState.IDLE,
                 'user_id': session.user_id if session else 'unknown'
+            }, to=sid)
+
+    @sio.event
+    async def jarvis_speak_text(sid, data):
+        """
+        Direct deterministic TTS path for MYCO/VETKA hints without mic/STT/LLM.
+
+        Expected data:
+        {
+            user_id: str,
+            text: str,
+            agent_role?: "myco" | "vetka",
+            ...client_context
+        }
+        Emits: jarvis_state, jarvis_response, jarvis_audio
+        """
+        try:
+            user_id = str((data or {}).get("user_id") or "default_user")
+            response_text = str((data or {}).get("text") or "").strip()
+            if not response_text:
+                return
+
+            context = _extract_client_context(data or {})
+            session = _active_sessions.get(sid) or JarvisSession(user_id=user_id)
+            session.user_id = user_id
+            session.client_context.update(context)
+            session.response_text = response_text
+            _active_sessions[sid] = session
+
+            await sio.emit('jarvis_state', {
+                'state': JarvisState.THINKING,
+                'user_id': user_id
+            }, to=sid)
+            await sio.emit('jarvis_response', {
+                'text': response_text,
+                'user_id': user_id,
+                'status': 'deterministic_tts',
+                'is_draft': False,
+            }, to=sid)
+            await sio.emit('jarvis_state', {
+                'state': JarvisState.SPEAKING,
+                'user_id': user_id
+            }, to=sid)
+
+            tts_result = await _synthesize_jarvis_audio(
+                response_text=response_text,
+                transcript="",
+                client_context=session.client_context,
+            )
+
+            audio_base64 = str(tts_result.get("audio_base64") or "")
+            audio_format = str(tts_result.get("audio_format") or "mp3")
+            if audio_base64:
+                await sio.emit('jarvis_audio', {
+                    'audio': audio_base64,
+                    'format': audio_format,
+                    'user_id': user_id,
+                }, to=sid)
+
+            await sio.emit('jarvis_state', {
+                'state': JarvisState.IDLE,
+                'user_id': user_id
+            }, to=sid)
+
+            voice_runtime = tts_result.get("voice_runtime") or _resolve_voice_runtime_for_context(
+                session.client_context,
+                _detect_language_hint(response_text),
+            )
+            trace_payload = {
+                "ts": time.time(),
+                "sid": sid,
+                "user_id": user_id,
+                "status": "deterministic_tts",
+                "response_lang": _detect_language_hint(response_text),
+                "response_status": "deterministic_tts",
+                "tts_provider": str(tts_result.get("tts_provider") or "none"),
+                "agent_role": str((session.client_context or {}).get("agent_role") or "myco"),
+                "voice_profile": voice_runtime["voice_profile"],
+                "tts_preferred_provider": voice_runtime["provider"],
+                "tts_engine": "espeak" if "espeak" in str(tts_result.get("tts_provider")) else ("edge" if "fast_tts" in str(tts_result.get("tts_provider")) else "qwen3"),
+                "tts_audio_format": str(tts_result.get("tts_audio_format") or "none"),
+                "tts_duration_ms": tts_result.get("tts_duration_ms"),
+                "tts_ok": bool(tts_result.get("tts_ok")),
+                "deterministic_speech": True,
+            }
+            _append_jarvis_trace(trace_payload)
+        except Exception as e:
+            logger.error(f"[JARVIS] Error in jarvis_speak_text: {e}", exc_info=True)
+            await sio.emit('jarvis_error', {
+                'error': str(e),
+                'event': 'jarvis_speak_text'
+            }, to=sid)
+            await sio.emit('jarvis_state', {
+                'state': JarvisState.IDLE,
+                'user_id': str((data or {}).get("user_id") or "default_user")
             }, to=sid)
 
 

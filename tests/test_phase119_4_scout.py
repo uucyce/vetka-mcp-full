@@ -8,6 +8,7 @@ MARKER_119.4
 import json
 import pytest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 
@@ -241,3 +242,50 @@ class TestScoutIntegration:
         # No scout report in user message
         user_msg = mock_tool.execute.call_args[0][0]["messages"][1]["content"]
         assert "[Scout Report]" not in user_msg
+
+    @pytest.mark.asyncio
+    async def test_architect_receives_task_packet_from_prefetch_context(self):
+        pipe = self._make_pipeline()
+
+        mock_tool = MagicMock()
+        mock_tool.execute.return_value = {
+            "success": True,
+            "result": {
+                "content": json.dumps({
+                    "subtasks": [{"description": "task 1", "needs_research": False, "marker": "MARKER_177.1"}],
+                    "execution_order": "sequential",
+                    "estimated_complexity": "medium"
+                }),
+                "model": "test"
+            }
+        }
+        pipe.llm_tool = mock_tool
+        pipe._prefetch_context = SimpleNamespace(
+            relevant_files=[{"path": "src/services/roadmap_task_sync.py"}],
+            markers=[],
+            workflow_name="G3 Localguys",
+            workflow_id="g3_localguys",
+            preset="dragon_silver",
+            workflow_reinforcement=[],
+            similar_tasks=[],
+            task_packet_summary="Packet: tb_packet_1 | docs=1, files=1, tests=1, gaps=none",
+            task_packet={
+                "roadmap_binding": {"roadmap_node_id": "node_sync_1"},
+                "docs": {"architecture_docs": ["docs/177_MCC_local/MCC_WORKFLOW_CONTRACT_V1.md"]},
+                "tests": {"closure_tests": ["python -m pytest tests/test_phase119_4_scout.py -q"]},
+                "code_scope": {"closure_files": ["src/services/roadmap_task_sync.py"]},
+                "gaps": [],
+            },
+        )
+        pipe._viewport_summary = "task node_sync_1 and context window in focus"
+
+        await pipe._architect_plan("simple task", "build", scout_context=None)
+
+        user_msg = mock_tool.execute.call_args[0][0]["messages"][1]["content"]
+        assert "Task packet:" in user_msg
+        assert "Roadmap node: node_sync_1" in user_msg
+        assert "Packet tests: python -m pytest tests/test_phase119_4_scout.py -q" in user_msg
+        assert "Architect slice keys:" in user_msg
+        assert "Architect viewport: task node_sync_1 and context window in focus" in user_msg
+        assert "code_scope" in user_msg
+        assert "docs" in user_msg

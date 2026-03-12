@@ -1,0 +1,3 @@
+1.  Optimize `jepa_runtime.py` for memory usage – reduce unnecessary data copies.
+2.  Implement a caching mechanism for frequently accessed data – store results locally.
+3.  Profile memory allocation within

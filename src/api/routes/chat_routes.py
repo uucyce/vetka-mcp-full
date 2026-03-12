@@ -129,6 +129,65 @@ def _load_chat_history(chat_dir: Path, node_path: str) -> list:
     return []
 
 
+def _append_chat_history(chat_dir: Path, node_path: str, message: Dict[str, Any]) -> None:
+    """Append one message to lightweight quick-chat history."""
+    if not node_path:
+        return
+    if not chat_dir:
+        chat_dir = Path("data/chat_history")
+    chat_dir.mkdir(parents=True, exist_ok=True)
+    file = _get_chat_history_file(chat_dir, node_path)
+    history = _load_chat_history(chat_dir, node_path)
+    history.append(message)
+    try:
+        file.write_text(json.dumps(history[-80:], ensure_ascii=False, indent=2))
+    except Exception as e:
+        print(f"  [Chat] Error saving history: {e}")
+
+
+def _resolve_quick_chat_node_path(context: Dict[str, Any], role: str) -> str:
+    explicit = str(context.get("node_path") or "").strip()
+    if explicit.startswith("mcc::"):
+        return explicit
+    raw = str(
+        explicit
+        or context.get("path")
+        or context.get("task_id")
+        or context.get("taskId")
+        or context.get("node_id")
+        or context.get("nodeId")
+        or context.get("workflow_id")
+        or context.get("workflowId")
+        or context.get("label")
+        or "project"
+    ).strip()
+    scope = str(context.get("chat_scope") or context.get("chatScope") or context.get("scope") or "project").strip().lower() or "project"
+    return f"mcc::{role}::{scope}::{raw}"
+
+
+def _resolve_quick_chat_target(context: Dict[str, Any]) -> tuple[str, Optional[str]]:
+    model = str(context.get("model") or "").strip()
+    source = str(context.get("model_source") or "").strip() or None
+    provider = str(context.get("selected_key_provider") or context.get("provider") or "").strip().lower()
+    if not source and provider:
+        provider_to_source = {
+            "polza": "polza",
+            "openrouter": "openrouter",
+            "xai": "direct",
+            "openai": "direct",
+            "anthropic": "direct",
+            "google": "gemini_direct",
+            "nanogpt": "nanogpt",
+            "poe": "poe",
+        }
+        source = provider_to_source.get(provider)
+    if not model:
+        model = "grok-fast-4.1"
+    if not source and model == "grok-fast-4.1":
+        source = "polza"
+    return model, source
+
+
 def _normalize_guidance_context(context: Dict[str, Any]) -> Dict[str, Any]:
     focus = dict(context or {})
     nav_level = str(focus.get("nav_level") or focus.get("navLevel") or "").strip().lower() or "roadmap"
@@ -551,6 +610,7 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
 
     role = str(req.role or "architect").strip().lower()
     context = dict(req.context or {})
+    node_path = _resolve_quick_chat_node_path(context, role)
     helper_mode = str(context.get("helper_mode") or context.get("helperMode") or "").strip().lower()
     is_myco = role == "helper_myco" or helper_mode in {"passive", "active"} or msg.lower() in {"?", "/myco", "/help myco", "help"}
 
@@ -621,6 +681,9 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
                 packed = {}
 
             response = _build_myco_quick_reply(msg, payload, context, retrieval)
+            chat_dir = _get_chat_components(request).get("CHAT_HISTORY_DIR")
+            _append_chat_history(chat_dir, node_path, {"role": "user", "content": msg, "node_path": node_path})
+            _append_chat_history(chat_dir, node_path, {"role": "helper_myco", "content": response, "node_path": node_path})
             return {
                 "success": True,
                 "status": "ok",
@@ -633,28 +696,35 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
                 "retrieval": retrieval,
                 "packed_meta": packed.get("meta", {}),
                 "marker": "MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1",
+                "node_path": node_path,
             }
         except Exception as e:
+            fallback = f"MYCO helper fallback: {str(e)[:160]}"
+            chat_dir = _get_chat_components(request).get("CHAT_HISTORY_DIR")
+            _append_chat_history(chat_dir, node_path, {"role": "user", "content": msg, "node_path": node_path})
+            _append_chat_history(chat_dir, node_path, {"role": "helper_myco", "content": fallback, "node_path": node_path})
             return {
                 "success": True,
                 "status": "fallback",
-                "reply": f"MYCO helper fallback: {str(e)[:160]}",
-                "response": f"MYCO helper fallback: {str(e)[:160]}",
+                "reply": fallback,
+                "response": fallback,
                 "role": "helper_myco",
                 "mode": "fallback",
+                "node_path": node_path,
             }
 
     # Architect quick path: lightweight single-turn model for MiniChat.
     try:
         from src.elisya.provider_registry import call_model_v2
 
+        model_name, model_source = _resolve_quick_chat_target(context)
         result = await call_model_v2(
             messages=[
                 {"role": "system", "content": _build_architect_quick_system_prompt(context)},
                 {"role": "user", "content": msg},
             ],
-            model="grok-fast-4.1",
-            source="polza",
+            model=model_name,
+            source=model_source,
             max_tokens=500,
             temperature=0.4,
         )
@@ -672,24 +742,33 @@ async def api_chat_quick(req: QuickChatRequest, request: Request):
         if not reply:
             raise RuntimeError("empty quick chat reply")
 
+        chat_dir = _get_chat_components(request).get("CHAT_HISTORY_DIR")
+        _append_chat_history(chat_dir, node_path, {"role": "user", "content": msg, "node_path": node_path})
+        _append_chat_history(chat_dir, node_path, {"role": "assistant", "content": reply, "node_path": node_path})
         return {
             "success": True,
             "status": "ok",
             "reply": reply,
             "response": reply,
             "role": "assistant",
-            "model": "grok-fast-4.1",
-            "provider": "polza",
+            "model": model_name,
+            "provider": model_source or "auto",
             "mode": "single_turn",
+            "node_path": node_path,
         }
     except Exception:
+        fallback = "Backend model unavailable"
+        chat_dir = _get_chat_components(request).get("CHAT_HISTORY_DIR")
+        _append_chat_history(chat_dir, node_path, {"role": "user", "content": msg, "node_path": node_path})
+        _append_chat_history(chat_dir, node_path, {"role": "assistant", "content": fallback, "node_path": node_path})
         return {
             "success": True,
             "status": "fallback",
-            "reply": "Backend model unavailable",
-            "response": "Backend model unavailable",
+            "reply": fallback,
+            "response": fallback,
             "role": "assistant",
             "mode": "fallback",
+            "node_path": node_path,
         }
 
 

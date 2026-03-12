@@ -1,0 +1,3 @@
+Okay, here’s a 3-point plan to improve VETKA memory context packing, focusing on minimizing latency regressions:
+
+1. **Prioritize Key-Value Context:**  Instead of full memory snapshots, focus on packing *only* the key-value pairs directly relevant to the current musical context (scale, key, chord

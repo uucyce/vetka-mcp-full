@@ -7,8 +7,9 @@
  * @status active
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
+// MARKER_176.15: Centralized MCC API config import.
+import { DEBUG_API } from '../../config/api.config';
 
-const API_BASE = 'http://localhost:5001/api/debug';
 
 interface WatcherData {
   indexed_today: number;
@@ -23,7 +24,7 @@ export function WatcherMicroStatus() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/watcher-stats`);
+      const res = await fetch(`${DEBUG_API}/watcher-stats`);
       if (res.ok) {
         const json = await res.json();
         if (json.success) {

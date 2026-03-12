@@ -83,6 +83,19 @@ Target runtime flow (VETKA voice button path):
 6. Stable TTS output (`edge_ru_female`)
 7. trace logging for explainability and verification
 
+## MARKER_163.P4A.ROADMAP_CORRECTION_NOTE.V1
+Roadmap correction after runtime verification:
+
+- `MYCO` should converge toward deterministic speech delivery of selected guidance/instructions
+- `MYCO` does not need free-form LLM generation as its primary value layer
+- LLM remains optional/fallback-only for `MYCO`
+- `vetka/` remains a separate stronger future agent path and should not be collapsed into the MYCO helper contract
+
+Implication:
+- continue separating:
+  - deterministic MYCO guidance and speech
+  - broader VETKA/JARVIS agent behavior
+
 ---
 
 ## MARKER_163.P5.MYCO_HELP.RESPONSE_CONTRACT.V1

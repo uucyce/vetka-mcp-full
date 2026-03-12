@@ -1,0 +1,10 @@
+{
+  "mode": "B_api_tts",
+  "prompt_id": "short_1",
+  "run_index": 2,
+  "audio_chunks": 0,
+  "ttft_text_ms": null,
+  "ttfa_audio_ms": null,
+  "merged_wav": null,
+  "wav_qc": null
+}

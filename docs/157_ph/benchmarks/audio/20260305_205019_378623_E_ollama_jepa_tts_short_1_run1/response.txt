@@ -1,0 +1,5 @@
+Here are two specific files and one phrase explaining their purpose, based on the provided context:
+
+*   **PHASE\_52\_6\_SIMPLE\_SMOOTH\_CAMERA.md:** This file contains the core code for the camera movement, specifically the smooth camera effect.
+*   **ПроБЛЕМА:** This file describes the problem – the user is experiencing jerky movements and instability in the camera.
+*   **Логика:** This file details the main request

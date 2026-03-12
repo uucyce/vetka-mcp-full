@@ -1,0 +1,5 @@
+Based on the provided context, here is a 3-point plan to improve memory context packing without latency regressions:
+
+1. **Implement incremental context loading**: Modify `src/memory/stm_manager.py` to load only the most recent 3-5 memory entries initially, then fetch additional context asynchronously in the background, preventing initial latency spikes.
+
+2. **Add context size validation**: In `chat_handler.py`, before sending to the LLM, validate the total token count of the packed memory context and implement a fallback to truncate older entries if exceeding a safe threshold (e.g., 4000 tokens), using the existing `V

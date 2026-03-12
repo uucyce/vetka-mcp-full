@@ -1,0 +1,31 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,quality_notes,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,122,False,TimeoutError: per-run timeout 25.0s,19668.22,27578.33,19668.22,27578.33,27596.87,9,1,51,0.0,"low_ru_ratio,no_file_refs,no_two_items,timeout,stream_error",Here are two specific files and a phrase explaining,docs/157_ph/benchmarks/audio/20260306_005222_775852_D_ollama_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260306_005222_775852_D_ollama_tts_short_1_run1/merged.wav,81.24,5,680,0,True,6,algorithmic,False,False,2026-03-05T21:52:50.258926+00:00
+D_ollama_tts,context_1,1,133,False,TimeoutError: per-run timeout 25.0s,8445.04,14382.82,8445.04,14382.82,27355.99,46,3,206,0.05,"low_ru_ratio,no_latency_terms,timeout,stream_error","1.  Optimize `jepa_runtime.py` for memory usage – reduce unnecessary data copies.
+2.  Implement a caching mechanism for frequently accessed data – store results locally.
+3.  Profile memory allocation within",docs/157_ph/benchmarks/audio/20260306_005250_287036_D_ollama_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260306_005250_287036_D_ollama_tts_context_1_run1/merged.wav,42.0,25,1340,0,True,6,algorithmic,False,False,2026-03-05T21:53:17.615207+00:00
+D_ollama_tts,long_1,1,171,True,,1348.26,5305.46,1348.26,5305.46,25183.35,66,7,343,0.75,low_ru_ratio,"Okay, let's break down how to interrupt and restart the stream protocol, focusing on voice handoff and transparency, referencing the provided context.
+
+**Understanding the Issue**
+
+The core problem is that the current implementation of the stream protocol isn't correctly handling",docs/157_ph/benchmarks/audio/20260306_005317_626052_D_ollama_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260306_005317_626052_D_ollama_tts_long_1_run1/merged.wav,39.15,32,1620,0,True,6,algorithmic,False,False,2026-03-05T21:53:42.798896+00:00
+D_ollama_tts,interrupt_1,1,139,True,,2266.58,4212.29,2266.58,4212.29,25191.61,67,8,332,0.55,"low_ru_ratio,no_stepwise_followup","Here’s a breakdown of the context to help you understand the context packing process in VETKA:
+
+The context describes a process called “context packing” within the VETKA project. It’s a series of steps designed to ensure the codebase is organized and easily navigable, especially ",docs/157_ph/benchmarks/audio/20260306_005342_806649_D_ollama_tts_interrupt_1_run1,docs/157_ph/benchmarks/audio/20260306_005342_806649_D_ollama_tts_interrupt_1_run1/merged.wav,39.99,30,1580,0,True,6,algorithmic,False,False,2026-03-05T21:54:07.990745+00:00
+E_ollama_jepa_tts,short_1,1,122,False,TimeoutError: per-run timeout 25.0s,539.46,4175.58,539.46,4175.58,27481.79,99,5,347,0.2,"low_ru_ratio,timeout,stream_error","Here are two specific files and one phrase for each, based on the provided context:
+
+1.  **`AUDIT_PROCESS_MAP.md`**: “It maps out the audit process steps.”
+2.  **`INSTALLATION_COMPLETE.md`**: “It indicates that the code has been successfully installed.”
+3.  **`CLIENT/src/componen",docs/157_ph/benchmarks/audio/20260306_005408_002387_E_ollama_jepa_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260306_005408_002387_E_ollama_jepa_tts_short_1_run1/merged.wav,37.5,54,1700,0,True,6,algorithmic,False,False,2026-03-05T21:54:35.472849+00:00
+E_ollama_jepa_tts,context_1,1,133,True,,759.15,6917.6,759.15,6917.6,15889.71,55,4,217,0.75,low_ru_ratio,"1.  Optimize `jepa_runtime.py` for faster trigger calculations.
+2.  Reduce the number of `pack_latency_ms` metrics in the recent stats API.
+3.  Implement a more efficient memory management strategy for the probe tool.",docs/157_ph/benchmarks/audio/20260306_005435_481948_E_ollama_jepa_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260306_005435_481948_E_ollama_jepa_tts_context_1_run1/merged.wav,51.71,20,1280,0,True,6,algorithmic,False,False,2026-03-05T21:54:51.362953+00:00
+E_ollama_jepa_tts,long_1,1,171,False,TimeoutError: per-run timeout 25.0s,491.18,4127.4,491.18,4127.4,25472.52,74,6,351,0.15,"low_ru_ratio,timeout,stream_error","Okay, let's break down the interruption and restart of the stream protocol, focusing on voice handoff and transparency, based on the provided context.
+
+Here’s a step-by-step explanation:
+
+1.  **The Problem:** The current system has a fragmented approach to stream handling, partic",docs/157_ph/benchmarks/audio/20260306_005451_371194_E_ollama_jepa_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260306_005451_371194_E_ollama_jepa_tts_long_1_run1/merged.wav,34.52,24,2000,0,True,6,algorithmic,False,False,2026-03-05T21:55:16.835568+00:00
+E_ollama_jepa_tts,interrupt_1,1,139,True,,968.57,5689.45,968.57,5689.45,27260.79,60,6,279,0.55,"low_ru_ratio,no_stepwise_followup","Okay, here’s a breakdown of the context and the first two steps to start understanding the context packing process in VETKA, focusing on the most crucial aspects:
+
+**Understanding Context Packing in VETKA**
+
+Context packing in VETKA is a critical process that ensures the correct",docs/157_ph/benchmarks/audio/20260306_005516_853072_E_ollama_jepa_tts_interrupt_1_run1,docs/157_ph/benchmarks/audio/20260306_005516_853072_E_ollama_jepa_tts_interrupt_1_run1/merged.wav,36.5,37,1780,0,True,6,algorithmic,False,False,2026-03-05T21:55:44.096538+00:00

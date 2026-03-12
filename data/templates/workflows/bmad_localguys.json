@@ -1,0 +1,26 @@
+{
+  "id": "bmad_localguys_v1",
+  "name": "BMAD localguys",
+  "description": "Local-first BMAD contract for bounded playground execution with approval gate.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-03-12T00:00:00Z",
+    "author": "vetka-system",
+    "preset": "dragon_silver",
+    "task_types": ["localguys", "bmad_localguys", "bmad_patch_local"],
+    "workflow_family": {
+      "family": "bmad_localguys",
+      "version": "v1",
+      "roles": ["scout", "researcher", "architect", "coder", "verifier", "approval"],
+      "policy": {
+        "edge_semantics": "strict",
+        "role_contract": "strict",
+        "supports_runtime_edge_edit": false,
+        "allows_structural_cycles": false,
+        "stub": false
+      }
+    }
+  },
+  "nodes": [],
+  "edges": []
+}

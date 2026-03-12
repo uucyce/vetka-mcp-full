@@ -1,0 +1,6 @@
+<think>
+Okay, let's tackle this query. The user is asking about how the context packing works in VETKA and wants two steps first.
+
+First, I need to parse the provided contexts carefully. There are benchmark and dependency contexts given. The main pinned file is about Schema Markup Testing Tool from Google Search Central, but that seems unrelated unless there's a connection through abbreviations or terms.
+
+Looking at the context_meta, it mentions "qdrant_semantic + cam_activation". So maybe VETKA uses Qdrant for semantic search and CAM activation to prioritize memory. The weights are qdrant=0.4, cam

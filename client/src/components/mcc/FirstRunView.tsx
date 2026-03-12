@@ -11,8 +11,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { isTauri, openFolderDialog } from '../../config/tauri';
+// MARKER_176.15: Centralized MCC API config import.
+import { MCC_API } from '../../config/api.config';
 
-const API_BASE = 'http://localhost:5001/api';
 
 type Step = 'hidden' | 'choose' | 'source_input' | 'workspace' | 'creating' | 'error';
 type SourceMode = 'local' | 'git' | 'empty';
@@ -149,7 +150,7 @@ export function FirstRunView() {
         quota_gb: 10,
       };
 
-      const res = await fetch(`${API_BASE}/mcc/project/init`, {
+      const res = await fetch(`${MCC_API}/project/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -164,7 +165,11 @@ export function FirstRunView() {
       await initMCC();
       drillDown('roadmap');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Create failed');
+      // MARKER_176.18: Surface backend/network failures instead of silent create dead-ends.
+      const message = err instanceof Error ? err.message : 'Create failed';
+      setError(message && /fetch|network|failed to fetch/i.test(message)
+        ? 'Network error - check if backend is running'
+        : message);
       setStep('error');
     }
   }, [workspacePath, sourceMode, sourcePath, projectTabs, initMCC, drillDown]);
@@ -264,8 +269,29 @@ export function FirstRunView() {
               <button onClick={() => { void submit(); }} disabled={!workspacePath.trim() || step === 'creating'} style={{ flex: 2, borderRadius: 6, border: `1px solid ${workspacePath.trim() ? NOLAN_PALETTE.borderLight : NOLAN_PALETTE.border}`, background: workspacePath.trim() ? NOLAN_PALETTE.bgDim : NOLAN_PALETTE.bg, color: workspacePath.trim() ? NOLAN_PALETTE.text : NOLAN_PALETTE.textDim, padding: '9px 10px', cursor: workspacePath.trim() ? 'pointer' : 'not-allowed' }}>{step === 'creating' ? 'Creating...' : 'Create Tab Project'}</button>
             </div>
             {error && (
-              <div style={{ marginTop: 10, border: `1px solid ${NOLAN_PALETTE.border}`, borderRadius: 6, background: NOLAN_PALETTE.bg, color: NOLAN_PALETTE.text, padding: '8px 10px', fontSize: 10 }}>
-                {error}
+              <div style={{ marginTop: 10, border: `1px solid ${NOLAN_PALETTE.border}`, borderRadius: 6, background: NOLAN_PALETTE.bg, color: '#ff6b6b', padding: '8px 10px', fontSize: 10 }}>
+                <div>{error}</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // MARKER_176.18: Retry clears error and returns to editable workspace state.
+                    setError('');
+                    setStep('workspace');
+                  }}
+                  style={{
+                    marginTop: 8,
+                    borderRadius: 4,
+                    border: `1px solid ${NOLAN_PALETTE.border}`,
+                    background: NOLAN_PALETTE.bgDim,
+                    color: NOLAN_PALETTE.text,
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                    fontSize: 9,
+                  }}
+                >
+                  Retry
+                </button>
               </div>
             )}
           </div>

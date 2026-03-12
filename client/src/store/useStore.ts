@@ -219,6 +219,10 @@ interface TreeState {
   toggleFavoriteKey: (key: string) => void;
   toggleFavoriteModel: (modelId: string) => void;
   loadFavorites: () => Promise<void>;
+
+  // MARKER_174.TOGGLE: Show/hide REFLEX insight pills in chat
+  showReflexInsight: boolean;
+  setShowReflexInsight: (show: boolean) => void;
 }
 
 // Phase 113.1: Persistent Spatial Memory
@@ -338,6 +342,10 @@ export const useStore = create<TreeState>((set, get) => ({
       }
     } catch {}
   },
+
+  // MARKER_174.TOGGLE: REFLEX insight pills visibility
+  showReflexInsight: true,
+  setShowReflexInsight: (show) => set({ showReflexInsight: show }),
 
   setNodes: (nodesList) => set({
     nodes: Object.fromEntries(nodesList.map(n => [n.id, n])),

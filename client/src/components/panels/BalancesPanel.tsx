@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
+import { useMCCStore } from '../../store/useMCCStore';
 
 interface UsageRecord {
   provider: string;
@@ -73,8 +74,8 @@ export function BalancesPanel() {
   const [addMessage, setAddMessage] = useState<string | null>(null);
 
   // MARKER_126.9A: Selected API key for next pipeline dispatch
-  const selectedKey = useStore((s) => s.selectedKey);
-  const setSelectedKey = useStore((s) => s.setSelectedKey);
+  const selectedKey = useMCCStore((s) => s.selectedKey);
+  const setSelectedKey = useMCCStore((s) => s.setSelectedKey);
   const favoriteKeys = useStore((s) => s.favoriteKeys);
   const toggleFavoriteKey = useStore((s) => s.toggleFavoriteKey);
   const loadFavorites = useStore((s) => s.loadFavorites);

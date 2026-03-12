@@ -1,0 +1,3 @@
+Here are two specific files and one phrase explaining their purpose, based on the provided context:
+
+*   **PHASE\_52\_6\_SIMPLE\_SMOOTH\_CAMERA.md:** This file contains the core semantic neighbors

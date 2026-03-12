@@ -1,0 +1,274 @@
+{
+  "marker": "MARKER_168.MYCO.TRIGGER_STATE.MAPPING.V1",
+  "version": 1,
+  "note": "Top MYCO surfaces remain system-helper only. Role assets are mapped to role-aware panels and task/workflow surfaces.",
+  "source_batch_manifest": "artifacts/myco_motion/team_A/batch_manifest.json",
+  "system_myco_assets": {
+    "idle": "client/src/assets/myco/myco_idle_question.png",
+    "ready": "client/src/assets/myco/myco_ready_smile.png",
+    "speaking": "client/src/assets/myco/myco_speaking_loop.apng"
+  },
+  "role_assets": {
+    "architect": {
+      "primary": "artifacts/myco_motion/team_A/architect/primary/architect_primary.apng"
+    },
+    "coder": {
+      "coder1": "artifacts/myco_motion/team_A/coder/coder1/coder_coder1.apng",
+      "coder2": "artifacts/myco_motion/team_A/coder/coder2/coder_coder2.apng"
+    },
+    "researcher": {
+      "primary": "artifacts/myco_motion/team_A/researcher/primary/researcher_primary.apng"
+    },
+    "scout": {
+      "scout1": "artifacts/myco_motion/team_A/scout/scout1/scout_scout1.apng",
+      "scout2": "artifacts/myco_motion/team_A/scout/scout2/scout_scout2.apng",
+      "scout3": "artifacts/myco_motion/team_A/scout/scout3/scout_scout3.apng"
+    },
+    "verifier": {
+      "primary": "artifacts/myco_motion/team_A/verifier/primary/verifier_primary.apng"
+    }
+  },
+  "surface_policy": {
+    "top_avatar": {
+      "channel": "system_myco",
+      "role_assets_allowed": false,
+      "fallback_channel": null,
+      "states": [
+        "idle",
+        "ready",
+        "speaking"
+      ]
+    },
+    "top_hint": {
+      "channel": "system_myco",
+      "role_assets_allowed": false,
+      "fallback_channel": null,
+      "states": [
+        "idle",
+        "ready",
+        "speaking"
+      ]
+    },
+    "mini_chat_compact": {
+      "channel": "role_preview",
+      "role_assets_allowed": true,
+      "fallback_channel": "system_myco",
+      "states": [
+        "idle",
+        "ready",
+        "speaking"
+      ]
+    },
+    "mini_chat_expanded": {
+      "channel": "role_preview",
+      "role_assets_allowed": true,
+      "fallback_channel": "system_myco",
+      "states": [
+        "idle",
+        "ready",
+        "speaking"
+      ]
+    },
+    "mini_stats_compact": {
+      "channel": "role_preview",
+      "role_assets_allowed": true,
+      "fallback_channel": "system_myco",
+      "states": [
+        "idle",
+        "ready",
+        "speaking"
+      ]
+    },
+    "mini_stats_expanded": {
+      "channel": "role_preview",
+      "role_assets_allowed": true,
+      "fallback_channel": "system_myco",
+      "states": [
+        "idle",
+        "ready",
+        "speaking"
+      ]
+    }
+  },
+  "variant_assignment": {
+    "architect": {
+      "strategy": "singleton_primary",
+      "order": [
+        "primary"
+      ],
+      "max_parallel": 1
+    },
+    "researcher": {
+      "strategy": "singleton_primary",
+      "order": [
+        "primary"
+      ],
+      "max_parallel": 1
+    },
+    "verifier": {
+      "strategy": "singleton_primary",
+      "order": [
+        "primary"
+      ],
+      "max_parallel": 1
+    },
+    "coder": {
+      "strategy": "ordinal_cycle",
+      "order": [
+        "coder1",
+        "coder2"
+      ],
+      "max_parallel": 2
+    },
+    "scout": {
+      "strategy": "ordinal_cycle",
+      "order": [
+        "scout1",
+        "scout2",
+        "scout3"
+      ],
+      "max_parallel": 3
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "idle",
+      "target_surfaces": [
+        "top_avatar",
+        "top_hint"
+      ],
+      "state": "idle",
+      "channel": "system_myco",
+      "role_source": "none"
+    },
+    {
+      "trigger": "ready",
+      "target_surfaces": [
+        "top_avatar",
+        "top_hint"
+      ],
+      "state": "ready",
+      "channel": "system_myco",
+      "role_source": "none"
+    },
+    {
+      "trigger": "speaking",
+      "target_surfaces": [
+        "top_avatar",
+        "top_hint"
+      ],
+      "state": "speaking",
+      "channel": "system_myco",
+      "role_source": "none"
+    },
+    {
+      "trigger": "window_focus_chat",
+      "target_surfaces": [
+        "mini_chat_compact",
+        "mini_chat_expanded"
+      ],
+      "state": "ready",
+      "channel": "system_myco",
+      "role_source": "focused_role_or_generic"
+    },
+    {
+      "trigger": "window_focus_context",
+      "target_surfaces": [
+        "mini_chat_compact",
+        "mini_chat_expanded"
+      ],
+      "state": "ready",
+      "channel": "system_myco",
+      "role_source": "focused_role_or_generic"
+    },
+    {
+      "trigger": "window_focus_stats",
+      "target_surfaces": [
+        "mini_stats_compact",
+        "mini_stats_expanded"
+      ],
+      "state": "ready",
+      "channel": "role_preview",
+      "role_source": "active_task_workflow_or_selected_role"
+    },
+    {
+      "trigger": "window_focus_tasks",
+      "target_surfaces": [
+        "mini_stats_compact"
+      ],
+      "state": "ready",
+      "channel": "role_preview",
+      "role_source": "active_task_workflow_or_selected_role"
+    },
+    {
+      "trigger": "window_focus_balance",
+      "target_surfaces": [
+        "top_avatar",
+        "top_hint"
+      ],
+      "state": "ready",
+      "channel": "system_myco",
+      "role_source": "none"
+    },
+    {
+      "trigger": "workflow_selected",
+      "target_surfaces": [
+        "mini_stats_compact",
+        "mini_stats_expanded"
+      ],
+      "state": "ready",
+      "channel": "role_preview",
+      "role_source": "workflow_lead_role"
+    },
+    {
+      "trigger": "model_selected",
+      "target_surfaces": [
+        "mini_chat_compact",
+        "mini_chat_expanded"
+      ],
+      "state": "ready",
+      "channel": "role_preview",
+      "role_source": "selected_role"
+    },
+    {
+      "trigger": "task_started",
+      "target_surfaces": [
+        "mini_stats_compact",
+        "mini_stats_expanded"
+      ],
+      "state": "speaking",
+      "channel": "role_preview",
+      "role_source": "active_running_role"
+    },
+    {
+      "trigger": "task_completed",
+      "target_surfaces": [
+        "mini_stats_compact",
+        "mini_stats_expanded"
+      ],
+      "state": "ready",
+      "channel": "role_preview",
+      "role_source": "active_running_role"
+    },
+    {
+      "trigger": "task_failed",
+      "target_surfaces": [
+        "mini_stats_compact",
+        "mini_stats_expanded"
+      ],
+      "state": "speaking",
+      "channel": "role_preview",
+      "role_source": "active_running_role"
+    },
+    {
+      "trigger": "parallel_role_active",
+      "target_surfaces": [
+        "mini_chat_expanded",
+        "mini_stats_expanded"
+      ],
+      "state": "speaking",
+      "channel": "role_preview",
+      "role_source": "parallel_role_set"
+    }
+  ]
+}

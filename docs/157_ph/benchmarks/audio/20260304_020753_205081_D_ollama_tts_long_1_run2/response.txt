@@ -1,0 +1,5 @@
+Okay, here’s a concise breakdown of the Interrupt + Restart Stream (IRS) protocol and its impact:
+
+**1. IRS Protocol - Step-by-Step:**
+
+*   **Interrupt:**  A device (e.g., a phone) detects a loss of connection or a need to switch streams. It

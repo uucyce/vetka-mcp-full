@@ -62,7 +62,19 @@
                 "take_id": {"type": "string", "minLength": 1},
                 "start_sec": {"type": "number", "minimum": 0},
                 "duration_sec": {"type": "number", "exclusiveMinimum": 0},
-                "source_path": {"type": "string", "minLength": 1}
+                "source_path": {"type": "string", "minLength": 1},
+                "sync": {
+                  "type": ["object", "null"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "method": {"type": "string"},
+                    "offset_sec": {"type": "number"},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "applied_at": {"type": "string", "format": "date-time"},
+                    "reference_path": {"type": "string"},
+                    "source": {"type": "string"}
+                  }
+                }
               }
             }
           }
@@ -90,6 +102,23 @@
     "updated_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "sync_groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["group_id", "source_path", "reference_path", "method", "offset_sec", "confidence"],
+        "properties": {
+          "group_id": {"type": "string", "minLength": 1},
+          "source_path": {"type": "string", "minLength": 1},
+          "reference_path": {"type": "string", "minLength": 1},
+          "method": {"type": "string"},
+          "offset_sec": {"type": "number"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "applied_at": {"type": ["string", "null"], "format": "date-time"}
+        }
+      }
     }
   }
 }

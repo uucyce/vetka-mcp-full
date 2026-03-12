@@ -1,0 +1,4 @@
+Based on the provided context, here are three points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize API Gateway limits**: Reduce or eliminate the API Gateway's token limits for long responses, as the current limit (~8000 tokens) is causing truncation.
+2. **Use a more efficient compression algorithm**: Consider switching from elision compression to a more efficient algorithm, such as LZ4 or Zstandard, to reduce the

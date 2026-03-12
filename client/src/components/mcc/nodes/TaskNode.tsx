@@ -57,6 +57,9 @@ function TaskNodeComponent({ data, selected }: TaskNodeProps) {
 
       {/* Task label */}
       <div
+        data-testid="dag-node-label"
+        data-node-label={data.label}
+        data-node-task-id={data.taskId}
         style={{
           color: NOLAN_PALETTE.textAccent,
           fontSize: 12,

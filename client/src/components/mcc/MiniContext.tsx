@@ -8,7 +8,7 @@
  * - lightweight file preview for file nodes via existing read API
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MiniWindow } from './MiniWindow';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { readFileViaApi } from '../../utils/fileReadClient';
@@ -64,6 +64,7 @@ interface MiniContextProps {
     file_path: string;
     size_bytes: number;
   }) => void;
+  onOpenFile?: (path: string, mode?: 'pane' | 'fullscreen') => void;
 }
 
 interface ContextSearchRow {
@@ -77,6 +78,46 @@ interface ModelInfo {
   id: string;
   provider: string;
   source: string;
+}
+
+interface TaskContextPacket {
+  task?: {
+    id?: string;
+    title?: string;
+    description?: string;
+  };
+  docs?: {
+    architecture_docs?: string[];
+    recon_docs?: string[];
+  };
+  governance?: {
+    depends_on_docs?: string[];
+    ownership_scope?: string;
+    owner_agent?: string;
+    allowed_paths?: string[];
+  };
+  code_scope?: {
+    closure_files?: string[];
+  };
+  tests?: {
+    closure_tests?: string[];
+  };
+  gaps?: string[];
+}
+
+interface DirectoryTreeNode {
+  name: string;
+  path: string;
+  kind: 'directory' | 'file';
+  children?: DirectoryTreeNode[];
+  truncated?: boolean;
+}
+
+function descendantLabel(generations: number): string {
+  if (generations <= 1) return 'children';
+  if (generations === 2) return 'grandchildren';
+  if (generations === 3) return 'great-grandchildren';
+  return `level ${generations}`;
 }
 
 const KEY_PROVIDER_TO_MODEL_SOURCE: Record<string, string[]> = {
@@ -126,6 +167,68 @@ function useModelList(): ModelInfo[] {
     fetchModelsOnce();
   }, []);
   return models;
+}
+
+function useTaskContextPacket(taskId?: string | null): { loading: boolean; packet: TaskContextPacket | null } {
+  const [loading, setLoading] = useState(false);
+  const [packet, setPacket] = useState<TaskContextPacket | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const resolvedTaskId = String(taskId || '').trim();
+    if (!resolvedTaskId) {
+      setPacket(null);
+      return;
+    }
+    setLoading(true);
+    fetch(`/api/mcc/tasks/${encodeURIComponent(resolvedTaskId)}/context-packet`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled) setPacket(data);
+      })
+      .catch(() => {
+        if (!cancelled) setPacket(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [taskId]);
+
+  return { loading, packet };
+}
+
+function useDirectoryTree(path?: string | null, enabled: boolean = true): { loading: boolean; tree: DirectoryTreeNode | null } {
+  const [loading, setLoading] = useState(false);
+  const [tree, setTree] = useState<DirectoryTreeNode | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const resolvedPath = String(path || '').trim();
+    if (!enabled || !resolvedPath) {
+      setTree(null);
+      return;
+    }
+    setLoading(true);
+    fetch(`/api/mcc/directory-tree?path=${encodeURIComponent(resolvedPath)}&depth=1`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled) setTree((data?.tree as DirectoryTreeNode) || null);
+      })
+      .catch(() => {
+        if (!cancelled) setTree(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, path]);
+
+  return { loading, tree };
 }
 
 // MARKER_155A.WC.MODEL_EDIT_BIND.V2:
@@ -611,6 +714,40 @@ function row(label: string, value: string | undefined) {
   );
 }
 
+function CodeBreadcrumbs({ path, onJump }: { path?: string; onJump?: (path: string) => void }) {
+  const parts = String(path || '').split('/').filter(Boolean);
+  if (parts.length === 0) return null;
+  return (
+    <div style={{ color: '#9aa4af', fontSize: 9, marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+      <span style={{ color: '#d7dde5' }}>code scope switch:</span>
+      {parts.map((part, idx) => {
+        const partialPath = parts.slice(0, idx + 1).join('/');
+        return (
+          <span key={`${part}_${idx}`}>
+            {idx > 0 ? ' / ' : ''}
+            <button
+              type="button"
+              onClick={() => onJump?.(partialPath)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: idx === parts.length - 1 ? '#d7dde5' : '#9aa4af',
+                padding: 0,
+                cursor: 'pointer',
+                fontSize: 9,
+                fontFamily: 'monospace',
+              }}
+              title={`switch context to ${partialPath}`}
+            >
+              {part}
+            </button>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function kindLabel(kind: MiniContextKind): string {
   if (kind === 'directory') return 'Directory';
   if (kind === 'file') return 'File';
@@ -752,6 +889,251 @@ function FilePreview({ path }: { path: string }) {
       {text}
       {text.length >= 2400 ? '\n\n... (truncated)' : ''}
     </pre>
+  );
+}
+
+function DirectoryTreeView({
+  node,
+  depth = 0,
+  autoExpandDepth = 1,
+  onPreviewFile,
+  onOpenFile,
+  onFocusFile,
+}: {
+  node: DirectoryTreeNode;
+  depth?: number;
+  autoExpandDepth?: number;
+  onPreviewFile?: (path: string) => void;
+  onOpenFile?: (path: string, mode?: 'pane' | 'fullscreen') => void;
+  onFocusFile?: (path: string) => void;
+}) {
+  const isDirectory = node.kind === 'directory';
+  const isFile = node.kind === 'file';
+  const shouldAutoExpand = isDirectory && depth < autoExpandDepth;
+  const [expanded, setExpanded] = useState(shouldAutoExpand);
+  const [loadingChildren, setLoadingChildren] = useState(false);
+  const [loadedOnce, setLoadedOnce] = useState(shouldAutoExpand || (Array.isArray(node.children) && node.children.length > 0));
+  const [children, setChildren] = useState<DirectoryTreeNode[]>(Array.isArray(node.children) ? node.children : []);
+
+  useEffect(() => {
+    setChildren(Array.isArray(node.children) ? node.children : []);
+    setLoadedOnce(shouldAutoExpand || (Array.isArray(node.children) && node.children.length > 0));
+    setExpanded(shouldAutoExpand);
+  }, [depth, node.children, node.path, shouldAutoExpand]);
+
+  const loadChildren = useCallback(async () => {
+    if (!isDirectory || loadingChildren || loadedOnce) return;
+    setLoadingChildren(true);
+    try {
+      const res = await fetch(`/api/mcc/directory-tree?path=${encodeURIComponent(node.path)}&depth=1`);
+      const data = await (res.ok ? res.json() : Promise.resolve(null));
+      setChildren(Array.isArray(data?.tree?.children) ? data.tree.children : []);
+    } catch {
+      setChildren([]);
+    } finally {
+      setLoadedOnce(true);
+      setLoadingChildren(false);
+    }
+  }, [isDirectory, loadedOnce, loadingChildren, node.path]);
+
+  const handleToggle = useCallback(() => {
+    if (!isDirectory) return;
+    const next = !expanded;
+    setExpanded(next);
+    if (next) {
+      void loadChildren();
+    }
+  }, [expanded, isDirectory, loadChildren]);
+
+  useEffect(() => {
+    if (shouldAutoExpand) {
+      void loadChildren();
+    }
+  }, [loadChildren, shouldAutoExpand]);
+
+  return (
+    <div style={{ marginLeft: depth === 0 ? 0 : 12 }}>
+      <div style={{ color: isDirectory ? '#d7dde5' : '#9fb3c8', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={handleToggle}
+          disabled={!isDirectory}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: 'inherit',
+            padding: 0,
+            fontSize: 10,
+            cursor: isDirectory ? 'pointer' : 'default',
+            fontFamily: 'monospace',
+          }}
+        >
+          {isDirectory ? (expanded ? '▾' : '▸') : '·'} {node.name}
+        </button>
+        {isFile ? (
+          <>
+            <button
+              type="button"
+              onClick={() => onPreviewFile?.(node.path)}
+              style={{ border: `1px solid ${NOLAN_PALETTE.borderDim}`, background: 'rgba(255,255,255,0.02)', color: '#c5cfda', borderRadius: 6, padding: '1px 6px', fontSize: 8, cursor: 'pointer' }}
+            >
+              preview
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenFile?.(node.path, 'pane')}
+              style={{ border: `1px solid ${NOLAN_PALETTE.borderDim}`, background: 'rgba(255,255,255,0.02)', color: '#c5cfda', borderRadius: 6, padding: '1px 6px', fontSize: 8, cursor: 'pointer' }}
+            >
+              open
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenFile?.(node.path, 'fullscreen')}
+              style={{ border: `1px solid ${NOLAN_PALETTE.borderDim}`, background: 'rgba(255,255,255,0.02)', color: '#c5cfda', borderRadius: 6, padding: '1px 6px', fontSize: 8, cursor: 'pointer' }}
+            >
+              full
+            </button>
+            <button
+              type="button"
+              onClick={() => onFocusFile?.(node.path)}
+              style={{ border: `1px solid ${NOLAN_PALETTE.borderDim}`, background: 'rgba(255,255,255,0.02)', color: '#c5cfda', borderRadius: 6, padding: '1px 6px', fontSize: 8, cursor: 'pointer' }}
+            >
+              focus
+            </button>
+          </>
+        ) : null}
+      </div>
+      {isDirectory && expanded ? (
+        <>
+          {loadingChildren ? (
+            <div style={{ marginLeft: 12, color: '#8e98a4' }}>loading...</div>
+          ) : null}
+          {children.map((child) => (
+            <DirectoryTreeView
+              key={`${child.kind}:${child.path}`}
+              node={child}
+              depth={depth + 1}
+              autoExpandDepth={autoExpandDepth}
+              onPreviewFile={onPreviewFile}
+              onOpenFile={onOpenFile}
+              onFocusFile={onFocusFile}
+            />
+          ))}
+          {node.truncated ? (
+            <div style={{ marginLeft: 12, color: '#8e98a4' }}>... more entries truncated</div>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function LinkedDocActions({
+  path,
+  source,
+  onSearchSelect,
+  onPreview,
+  onOpenFile,
+}: {
+  path: string;
+  source: string;
+  onSearchSelect?: MiniContextProps['onSearchSelect'];
+  onPreview?: (path: string) => void;
+  onOpenFile?: (path: string, mode?: 'pane' | 'fullscreen') => void;
+}) {
+  const handleFocus = useCallback(() => {
+    onSearchSelect?.({
+      path,
+      title: path.split('/').slice(-1)[0] || path,
+      snippet: `linked ${source} doc`,
+      score: 1,
+    });
+  }, [onSearchSelect, path, source]);
+
+  const handleCopyPath = useCallback(() => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(path);
+    }
+  }, [path]);
+
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, marginBottom: 8 }}>
+      <button
+        type="button"
+        onClick={() => onPreview?.(path)}
+        style={{
+          border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+          background: 'rgba(255,255,255,0.02)',
+          color: '#c5cfda',
+          borderRadius: 6,
+          padding: '3px 8px',
+          fontSize: 9,
+          cursor: 'pointer',
+        }}
+      >
+        preview
+      </button>
+      <button
+        type="button"
+        onClick={handleFocus}
+        style={{
+          border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+          background: 'rgba(255,255,255,0.02)',
+          color: '#c5cfda',
+          borderRadius: 6,
+          padding: '3px 8px',
+          fontSize: 9,
+          cursor: 'pointer',
+        }}
+      >
+        focus in DAG
+      </button>
+      <button
+        type="button"
+        onClick={() => onOpenFile?.(path, 'pane')}
+        style={{
+          border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+          background: 'rgba(255,255,255,0.02)',
+          color: '#c5cfda',
+          borderRadius: 6,
+          padding: '3px 8px',
+          fontSize: 9,
+          cursor: 'pointer',
+        }}
+      >
+        open in pane
+      </button>
+      <button
+        type="button"
+        onClick={() => onOpenFile?.(path, 'fullscreen')}
+        style={{
+          border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+          background: 'rgba(255,255,255,0.02)',
+          color: '#c5cfda',
+          borderRadius: 6,
+          padding: '3px 8px',
+          fontSize: 9,
+          cursor: 'pointer',
+        }}
+      >
+        open fullscreen
+      </button>
+      <button
+        type="button"
+        onClick={handleCopyPath}
+        style={{
+          border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+          background: 'rgba(255,255,255,0.02)',
+          color: '#c5cfda',
+          borderRadius: 6,
+          padding: '3px 8px',
+          fontSize: 9,
+          cursor: 'pointer',
+        }}
+      >
+        copy path
+      </button>
+    </div>
   );
 }
 
@@ -953,7 +1335,56 @@ function ContextSearchPanel({
   );
 }
 
-function ContextExpanded({ context, nodeData, onSearchSelect, onViewArtifact }: MiniContextProps) {
+function ContextExpanded({ context, nodeData, onSearchSelect, onViewArtifact, onOpenFile }: MiniContextProps) {
+  const contextTaskId = useMemo(
+    () => context.taskId || context.activeTaskId || null,
+    [context.activeTaskId, context.taskId],
+  );
+  const { loading: packetLoading, packet } = useTaskContextPacket(contextTaskId);
+  const [selectedDocPath, setSelectedDocPath] = useState<string>('');
+  const [directoryGenerations, setDirectoryGenerations] = useState(1);
+  const { loading: directoryLoading, tree: directoryTree } = useDirectoryTree(
+    context.nodeKind === 'directory' ? context.path || context.label : null,
+    context.nodeKind === 'directory',
+  );
+  const packetDocs = useMemo(() => {
+    const docs = [
+      ...((packet?.docs?.architecture_docs || []).map((path) => ({ path, source: 'architecture' }))),
+      ...((packet?.docs?.recon_docs || []).map((path) => ({ path, source: 'recon' }))),
+      ...((packet?.governance?.depends_on_docs || []).map((path) => ({ path, source: 'depends' }))),
+    ];
+    const seen = new Set<string>();
+    return docs.filter((row) => {
+      const path = String(row.path || '').trim();
+      if (!path || seen.has(path)) return false;
+      seen.add(path);
+      return true;
+    });
+  }, [packet]);
+
+  useEffect(() => {
+    if (!packetDocs.length) {
+      setSelectedDocPath('');
+      return;
+    }
+    if (!selectedDocPath || !packetDocs.some((row) => row.path === selectedDocPath)) {
+      setSelectedDocPath(packetDocs[0].path);
+    }
+  }, [packetDocs, selectedDocPath]);
+
+  useEffect(() => {
+    setDirectoryGenerations(1);
+  }, [context.nodeKind, context.path, context.label]);
+
+  const handleFocusLinkedPath = useCallback((path: string) => {
+    onSearchSelect?.({
+      path,
+      title: path.split('/').slice(-1)[0] || path,
+      snippet: 'code scope jump',
+      score: 1,
+    });
+  }, [onSearchSelect]);
+
   const header = useMemo(
     () => (context.scope === 'project' ? 'Project Context' : `${kindLabel(context.nodeKind)} Context`),
     [context.scope, context.nodeKind],
@@ -964,6 +1395,7 @@ function ContextExpanded({ context, nodeData, onSearchSelect, onViewArtifact }: 
       <div style={{ color: NOLAN_PALETTE.text, fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
         {header}
       </div>
+      {(context.nodeKind === 'file' || context.nodeKind === 'directory') ? <CodeBreadcrumbs path={context.path || context.label} onJump={handleFocusLinkedPath} /> : null}
       <div
         style={{
           color: '#8f99a5',
@@ -999,7 +1431,7 @@ function ContextExpanded({ context, nodeData, onSearchSelect, onViewArtifact }: 
         </>
       ) : (
         <>
-          <Section title="Summary">
+          <Section title={(context.nodeKind === 'file' || context.nodeKind === 'directory') ? 'Code Summary' : 'Summary'}>
             <div>{context.label}</div>
             <div style={{ marginTop: 6 }}>
               type: {kindLabel(context.nodeKind)}
@@ -1035,20 +1467,178 @@ function ContextExpanded({ context, nodeData, onSearchSelect, onViewArtifact }: 
             <Section title="Task">
               <div>task id: {context.taskId || '-'}</div>
               <div style={{ marginTop: 6 }}>graph kind: {context.graphKind || '-'}</div>
+              {packet?.governance?.ownership_scope ? (
+                <div style={{ marginTop: 6 }}>scope: {packet.governance.ownership_scope}</div>
+              ) : null}
+            </Section>
+          ) : null}
+
+          {(context.nodeKind === 'task' || context.nodeKind === 'agent' || context.nodeKind === 'workflow' || context.nodeKind === 'node') && contextTaskId ? (
+            <Section title="Task Packet">
+              {packetLoading ? (
+                <div style={{ color: '#8e98a4' }}>Loading task packet...</div>
+              ) : packet ? (
+                <>
+                  <div>task packet: {packet.task?.id || contextTaskId}</div>
+                  {packet.governance?.owner_agent ? (
+                    <div style={{ marginTop: 6 }}>owner: {packet.governance.owner_agent}</div>
+                  ) : null}
+                  {packet.gaps && packet.gaps.length ? (
+                    <div style={{ marginTop: 6 }}>gaps: {packet.gaps.join(' | ')}</div>
+                  ) : null}
+                  {packet.code_scope?.closure_files?.length ? (
+                    <div style={{ marginTop: 6 }}>
+                      closure files: {packet.code_scope.closure_files.slice(0, 3).join(', ')}
+                    </div>
+                  ) : null}
+                  {packet.tests?.closure_tests?.length ? (
+                    <div style={{ marginTop: 6 }}>
+                      closure tests: {packet.tests.closure_tests.slice(0, 2).join(' | ')}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div style={{ color: '#8e98a4' }}>Task packet unavailable for this node.</div>
+              )}
+            </Section>
+          ) : null}
+
+          {(context.nodeKind === 'task' || context.nodeKind === 'agent' || context.nodeKind === 'workflow' || context.nodeKind === 'node') && contextTaskId ? (
+            <Section title="Documents">
+              {packetLoading ? (
+                <div style={{ color: '#8e98a4' }}>Loading linked documents...</div>
+              ) : !packetDocs.length ? (
+                <div style={{ color: '#8e98a4' }}>No linked documents in the current task packet.</div>
+              ) : (
+                <>
+                  <div style={{ color: '#9aa4af', marginBottom: 8 }}>
+                    linked docs: {packetDocs.length} | click to preview
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                    {packetDocs.map((row) => {
+                      const active = row.path === selectedDocPath;
+                      return (
+                        <div
+                          key={`${row.source}:${row.path}`}
+                          style={{
+                            border: `1px solid ${active ? '#7ee787' : NOLAN_PALETTE.borderDim}`,
+                            background: active ? 'rgba(126,231,135,0.12)' : 'rgba(255,255,255,0.02)',
+                            color: active ? '#d7ffe0' : '#c5cfda',
+                            borderRadius: 8,
+                            padding: '6px 8px',
+                            minWidth: 150,
+                          }}
+                          title={row.path}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDocPath(row.path)}
+                            style={{
+                              border: 'none',
+                              background: 'transparent',
+                              color: 'inherit',
+                              padding: 0,
+                              fontSize: 9,
+                              cursor: 'pointer',
+                              display: 'block',
+                              textAlign: 'left',
+                              width: '100%',
+                            }}
+                          >
+                            {row.source}: {row.path.split('/').slice(-1)[0]}
+                          </button>
+                          <div style={{ color: '#8f99a5', fontSize: 8, marginTop: 4 }}>
+                            {row.path}
+                          </div>
+                          <LinkedDocActions
+                            path={row.path}
+                            source={row.source}
+                            onSearchSelect={onSearchSelect}
+                            onPreview={setSelectedDocPath}
+                            onOpenFile={onOpenFile}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {selectedDocPath ? (
+                    <>
+                      <div style={{ color: '#8f99a5', fontSize: 9, marginBottom: 6 }}>
+                        previewing: {selectedDocPath}
+                      </div>
+                      <FilePreview path={selectedDocPath} />
+                    </>
+                  ) : null}
+                </>
+              )}
             </Section>
           ) : null}
 
           {context.nodeKind === 'directory' ? (
             <Section title="Directory">
               <div>directory path: {context.path || context.label}</div>
-              <div style={{ marginTop: 6, color: '#98a3af' }}>
-                Next waves: directory tree, children list, and linked tasks.
+              <div style={{ marginTop: 8, color: '#8f99a5', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                <span>showing: {descendantLabel(directoryGenerations)}</span>
+                {[1, 2, 3].map((level) => {
+                  const active = directoryGenerations === level;
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setDirectoryGenerations(level)}
+                      style={{
+                        border: `1px solid ${active ? '#7ee787' : NOLAN_PALETTE.borderDim}`,
+                        background: active ? 'rgba(126,231,135,0.12)' : 'rgba(255,255,255,0.02)',
+                        color: active ? '#d7ffe0' : '#c5cfda',
+                        borderRadius: 6,
+                        padding: '3px 8px',
+                        fontSize: 9,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {descendantLabel(level)}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setDirectoryGenerations((prev) => Math.min(prev + 1, 6))}
+                  style={{
+                    border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+                    background: 'rgba(255,255,255,0.02)',
+                    color: '#c5cfda',
+                    borderRadius: 6,
+                    padding: '3px 8px',
+                    fontSize: 9,
+                    cursor: 'pointer',
+                  }}
+                >
+                  +1 deeper
+                </button>
               </div>
+              {directoryLoading ? (
+                <div style={{ marginTop: 6, color: '#98a3af' }}>Loading directory tree...</div>
+              ) : directoryTree ? (
+                <div style={{ marginTop: 8 }}>
+                  <DirectoryTreeView
+                    node={directoryTree}
+                    autoExpandDepth={directoryGenerations}
+                    onPreviewFile={setSelectedDocPath}
+                    onOpenFile={onOpenFile}
+                    onFocusFile={handleFocusLinkedPath}
+                  />
+                </div>
+              ) : (
+                <div style={{ marginTop: 6, color: '#98a3af' }}>
+                  Directory tree unavailable for this node.
+                </div>
+              )}
             </Section>
           ) : null}
 
           {context.nodeKind === 'file' && context.path ? (
             <Section title="File Preview">
+              <LinkedDocActions path={context.path} source="file" onSearchSelect={onSearchSelect} onPreview={() => {}} onOpenFile={onOpenFile} />
               <FilePreview path={context.path} />
             </Section>
           ) : null}
@@ -1077,7 +1667,7 @@ function ContextExpanded({ context, nodeData, onSearchSelect, onViewArtifact }: 
   );
 }
 
-export function MiniContext({ context, nodeData, onSearchSelect, onViewArtifact }: MiniContextProps) {
+export function MiniContext({ context, nodeData, onSearchSelect, onViewArtifact, onOpenFile }: MiniContextProps) {
   return (
     <MiniWindow
       windowId="context"
@@ -1093,6 +1683,7 @@ export function MiniContext({ context, nodeData, onSearchSelect, onViewArtifact 
           nodeData={nodeData}
           onSearchSelect={onSearchSelect}
           onViewArtifact={onViewArtifact}
+          onOpenFile={onOpenFile}
         />
       }
     />

@@ -17,6 +17,8 @@ import { memo, useState, useCallback, useEffect } from 'react';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { useMCCStore } from '../../store/useMCCStore';
 import type { WorkflowSummary } from '../../types/dag';
+// MARKER_176.15: Centralized MCC API config import.
+import { API_BASE } from '../../config/api.config';
 
 interface WorkflowToolbarProps {
   // State from useDAGEditor
@@ -166,7 +168,7 @@ function WorkflowToolbarComponent({
     setGenerating(true);
     setValidationMsg('Generating...');
     try {
-      const res = await fetch('http://localhost:5001/api/workflows/generate', {
+      const res = await fetch(`${API_BASE}/workflows/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -207,7 +209,7 @@ function WorkflowToolbarComponent({
         const text = await file.text();
         const data = JSON.parse(text);
         setValidationMsg('Importing...');
-        const res = await fetch('http://localhost:5001/api/workflows/import', {
+        const res = await fetch(`${API_BASE}/workflows/import`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ data, save: true }),
@@ -241,7 +243,7 @@ function WorkflowToolbarComponent({
     }
     setShowExportMenu(false);
     try {
-      const res = await fetch(`http://localhost:5001/api/workflows/${workflowId}/export`, {
+      const res = await fetch(`${API_BASE}/workflows/${workflowId}/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ format }),

@@ -14,7 +14,7 @@ export type DAGNodeType = 'task' | 'agent' | 'subtask' | 'proposal'
   | 'roadmap_task';
 
 // Agent roles in the pipeline
-export type AgentRole = 'scout' | 'architect' | 'researcher' | 'coder' | 'verifier';
+export type AgentRole = 'scout' | 'architect' | 'researcher' | 'coder' | 'verifier' | 'eval';
 
 // Node status
 export type NodeStatus = 'pending' | 'running' | 'done' | 'failed';
@@ -55,6 +55,9 @@ export interface DAGNode {
   role?: AgentRole;           // For agent nodes
   description?: string;       // Full description for detail view
   code?: string;              // Code preview for subtasks
+  position?: { x: number; y: number };
+  width?: number;
+  height?: number;
 
   // MARKER_155.1A: Extra fields for RoadmapTaskNode at tasks level
   preset?: string;            // Team preset (dragon_bronze/silver/gold) for badge
@@ -99,9 +102,14 @@ export interface DAGEdge {
   type: EdgeType;
   strength: number;           // 0.0-1.0
   animated?: boolean;
+  label?: string;
+  className?: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+  data?: Record<string, any>;
 
   // MARKER_155A.P1.GRAPH_SCHEMA: Unified edge relation metadata
-  relationKind?: 'contains' | 'depends_on' | 'affects' | 'executes' | 'passes' | 'produces' | 'predicted';
+  relationKind?: string;
 }
 
 /**

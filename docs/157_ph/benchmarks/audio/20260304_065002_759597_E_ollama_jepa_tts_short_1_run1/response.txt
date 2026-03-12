@@ -1,0 +1,8 @@
+<think>
+Okay, let's break this down based on the provided context. 
+
+First, I see there's only one current file mentioned in the dependency context: `GROK_ANTI_GRAVITY_COLLISION_AVOIDANCE.md`. That seems to be about camera movement issues (like sudden lateral movements) and a user request for smooth camera transitions.
+
+Then, looking at the pinned files section, the most relevant ones are ranked by semantic similarity. The top file is `PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md`, which directly addresses the camera problem described earlier. 
+
+The other pinned files appear to be related but their

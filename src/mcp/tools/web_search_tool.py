@@ -92,21 +92,12 @@ class WebSearchTool(BaseMCPTool):
                     "score": item.get("score", 0)
                 })
 
-            # Apply score normalization using RRF utilities
-            try:
-                from src.search.rrf_fusion import normalize_results
-                normalized_results = normalize_results(results, 'web')
-                logger.debug(f"[WebSearch] Normalized {len(results)} web results")
-            except Exception as norm_error:
-                logger.warning(f"[WebSearch] Failed to normalize results: {norm_error}")
-                # Fall back to original results if normalization fails
-                normalized_results = results
-
             return {
                 "success": True,
                 "result": {
                     "query": query,
-                    "results": normalized_results,
+                    # Keep native Tavily shape (title/url/content/score) for unified_search adapter.
+                    "results": results,
                     "answer": response.get("answer", "")
                 }
             }

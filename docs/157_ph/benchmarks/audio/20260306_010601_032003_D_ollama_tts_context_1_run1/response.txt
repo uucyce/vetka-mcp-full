@@ -1,0 +1,3 @@
+1.  Optimize `jepa_runtime.py` for faster trigger handling.
+2.  Reduce unnecessary data collection in the `get_recent_stats(limit=...)` API call.
+3.  Implement a more efficient memory management strategy for recent data.

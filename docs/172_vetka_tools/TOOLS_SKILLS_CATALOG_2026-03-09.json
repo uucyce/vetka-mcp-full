@@ -1,0 +1,1157 @@
+{
+  "generated_at": "2026-03-09",
+  "counts": {
+    "codex_tools": 16,
+    "codex_skills_installed": 33,
+    "vetka_bridge_tools": 32,
+    "mycelium_tools": 24,
+    "vetka_package_tools": 33,
+    "mcc_routes": 34,
+    "task_routes": 13
+  },
+  "items": [
+    {
+      "name": "exec_command",
+      "group": "codex_local",
+      "surface": "functions",
+      "context": "Run shell commands in workspace (read/write/test/git)."
+    },
+    {
+      "name": "write_stdin",
+      "group": "codex_local",
+      "surface": "functions",
+      "context": "Continue interactive process sessions."
+    },
+    {
+      "name": "apply_patch",
+      "group": "codex_local",
+      "surface": "functions",
+      "context": "Patch files with structured diffs."
+    },
+    {
+      "name": "update_plan",
+      "group": "codex_local",
+      "surface": "functions",
+      "context": "Track execution plan states."
+    },
+    {
+      "name": "view_image",
+      "group": "codex_local",
+      "surface": "functions",
+      "context": "Inspect local image files."
+    },
+    {
+      "name": "parallel",
+      "group": "codex_local",
+      "surface": "multi_tool_use",
+      "context": "Run independent developer tools in parallel."
+    },
+    {
+      "name": "search_query",
+      "group": "codex_web",
+      "surface": "web",
+      "context": "Internet search for fresh/volatile facts."
+    },
+    {
+      "name": "open",
+      "group": "codex_web",
+      "surface": "web",
+      "context": "Open URL/search result and inspect content."
+    },
+    {
+      "name": "click",
+      "group": "codex_web",
+      "surface": "web",
+      "context": "Navigate links on opened pages."
+    },
+    {
+      "name": "find",
+      "group": "codex_web",
+      "surface": "web",
+      "context": "Find text pattern on opened pages."
+    },
+    {
+      "name": "image_query",
+      "group": "codex_web",
+      "surface": "web",
+      "context": "Image search queries."
+    },
+    {
+      "name": "finance",
+      "group": "codex_web",
+      "surface": "web",
+      "context": "Market quotes for equities/funds/crypto/index."
+    },
+    {
+      "name": "sports",
+      "group": "codex_web",
+      "surface": "web",
+      "context": "Schedules/standings APIs."
+    },
+    {
+      "name": "weather",
+      "group": "codex_web",
+      "surface": "web",
+      "context": "Weather lookups."
+    },
+    {
+      "name": "time",
+      "group": "codex_web",
+      "surface": "web",
+      "context": "Time by UTC offsets."
+    },
+    {
+      "name": "screenshot",
+      "group": "codex_web",
+      "surface": "web",
+      "context": "PDF page screenshots for cited docs."
+    },
+    {
+      "name": "skill-creator",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/.system/skill-creator/SKILL.md"
+    },
+    {
+      "name": "skill-installer",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/.system/skill-installer/SKILL.md"
+    },
+    {
+      "name": "chatgpt-apps",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/chatgpt-apps/SKILL.md"
+    },
+    {
+      "name": "cloudflare-deploy",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/cloudflare-deploy/SKILL.md"
+    },
+    {
+      "name": "doc",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/doc/SKILL.md"
+    },
+    {
+      "name": "figma",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/figma/SKILL.md"
+    },
+    {
+      "name": "figma-implement-design",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/figma-implement-design/SKILL.md"
+    },
+    {
+      "name": "gh-address-comments",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/gh-address-comments/SKILL.md"
+    },
+    {
+      "name": "gh-fix-ci",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/gh-fix-ci/SKILL.md"
+    },
+    {
+      "name": "imagegen",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/imagegen/SKILL.md"
+    },
+    {
+      "name": "linear",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/linear/SKILL.md"
+    },
+    {
+      "name": "media-apng-alpha",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/media-apng-alpha/SKILL.md"
+    },
+    {
+      "name": "netlify-deploy",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/netlify-deploy/SKILL.md"
+    },
+    {
+      "name": "notion-knowledge-capture",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/notion-knowledge-capture/SKILL.md"
+    },
+    {
+      "name": "notion-meeting-intelligence",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/notion-meeting-intelligence/SKILL.md"
+    },
+    {
+      "name": "notion-research-documentation",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/notion-research-documentation/SKILL.md"
+    },
+    {
+      "name": "notion-spec-to-implementation",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/notion-spec-to-implementation/SKILL.md"
+    },
+    {
+      "name": "openai-docs",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/openai-docs/SKILL.md"
+    },
+    {
+      "name": "pdf",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/pdf/SKILL.md"
+    },
+    {
+      "name": "playwright",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/playwright/SKILL.md"
+    },
+    {
+      "name": "playwright-interactive",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/playwright-interactive/SKILL.md"
+    },
+    {
+      "name": "render-deploy",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/render-deploy/SKILL.md"
+    },
+    {
+      "name": "screenshot",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/screenshot/SKILL.md"
+    },
+    {
+      "name": "security-best-practices",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/security-best-practices/SKILL.md"
+    },
+    {
+      "name": "security-ownership-map",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/security-ownership-map/SKILL.md"
+    },
+    {
+      "name": "security-threat-model",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/security-threat-model/SKILL.md"
+    },
+    {
+      "name": "slides",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/slides/SKILL.md"
+    },
+    {
+      "name": "sora",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/sora/SKILL.md"
+    },
+    {
+      "name": "speech",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/speech/SKILL.md"
+    },
+    {
+      "name": "spreadsheet",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/spreadsheet/SKILL.md"
+    },
+    {
+      "name": "transcribe",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/transcribe/SKILL.md"
+    },
+    {
+      "name": "vercel-deploy",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/vercel-deploy/SKILL.md"
+    },
+    {
+      "name": "yeet",
+      "group": "codex_skill",
+      "surface": "skill.md",
+      "context": "Codex reusable workflow skill",
+      "path": "/Users/danilagulin/.codex/skills/yeet/SKILL.md"
+    },
+    {
+      "name": "vetka_approve_artifact",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_arc_suggest",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_call_model",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_camera_focus",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_edit_artifact",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_edit_file",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_get_chat_digest",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_get_conversation_context",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_get_knowledge_graph",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_get_media_window_debug",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_get_memory_summary",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_get_metrics",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_get_tree",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_get_user_preferences",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_git_commit",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_git_status",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_health",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_heartbeat_status",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_heartbeat_tick",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_list_artifacts",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_list_files",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_mycelium_pipeline",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_read_file",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_read_group_messages",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_reject_artifact",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_run_tests",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_search_files",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_search_semantic",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_send_message",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_task_board",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_task_dispatch",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "vetka_task_import",
+      "group": "vetka_mcp_bridge",
+      "surface": "mcp_stdio",
+      "context": "VETKA MCP stdio tool exposed by vetka_mcp_bridge.py"
+    },
+    {
+      "name": "mycelium_approve_artifact",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_call_model",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_devpanel_stream",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_execute_workflow",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_health",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_heartbeat_status",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_heartbeat_tick",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_implement",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_list_artifacts",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_pipeline",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_playground_create",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_playground_destroy",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_playground_diff",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_playground_list",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_reject_artifact",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_research",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_review",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_task_board",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_task_dispatch",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_task_import",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_track_done",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_track_started",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_tracker_status",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "mycelium_workflow_status",
+      "group": "mycelium_mcp",
+      "surface": "mcp_stdio",
+      "context": "MYCELIUM async MCP tool exposed by mycelium_mcp_server.py"
+    },
+    {
+      "name": "vetka_add_markers",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_approve_artifact",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_arc_concepts",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_arc_gap",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_call_model",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_camera_focus",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_create_branch",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_edit_artifact",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_edit_file",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_execute_workflow",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_get_context_dag",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_get_node",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_get_pinned_files",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_get_tree",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_get_viewport_detail",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_git_commit",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_git_status",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_implement",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_library_docs",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_list_artifacts",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_list_files",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_read_file",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_reject_artifact",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_research",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_review",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_run_tests",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_search",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_search_knowledge",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_session_init",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_session_status",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_verify_markers",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_web_search",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "vetka_workflow_status",
+      "group": "vetka_mcp_package",
+      "surface": "python_registry",
+      "context": "Tool implemented in src/mcp/tools/*.py"
+    },
+    {
+      "name": "POST /api/mcc/state",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/state",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/projects/list",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/projects/activate",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "DELETE /api/mcc/project",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/sandbox/recreate",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "DELETE /api/mcc/sandbox",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "PATCH /api/mcc/sandbox/quota",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/roadmap",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/graph/condensed",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/roadmap/generate",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/workflows",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/workflow-catalog",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/tasks/{task_id}/workflow-binding",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/workflows/{workflow_key}",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/prefetch",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/search/file",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/graph/predict",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/graph/build-design",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/graph/build-design/from-array",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/dag-versions/create",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/dag-versions/list",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/dag-versions/{version_id}",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/dag-versions/{version_id}/set-primary",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/dag-versions/auto-compare",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/layout/preferences",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/layout/preferences",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/myco/hidden-index/reindex",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/myco/context",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/workflow/myco-hint",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/captain/recommend",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/captain/accept",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "POST /api/mcc/captain/reject",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/mcc/captain/progress",
+      "group": "mcc_api",
+      "surface": "fastapi",
+      "context": "MCC route endpoint"
+    },
+    {
+      "name": "GET /api/tasks/{task_id}",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    },
+    {
+      "name": "PATCH /api/tasks/{task_id}",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    },
+    {
+      "name": "DELETE /api/tasks/{task_id}",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    },
+    {
+      "name": "POST /api/tasks/dispatch",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    },
+    {
+      "name": "POST /api/tasks/{task_id}/claim",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    },
+    {
+      "name": "POST /api/tasks/{task_id}/complete",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    },
+    {
+      "name": "POST /api/tasks/{task_id}/cancel",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    },
+    {
+      "name": "GET /api/tasks/{task_id}/results",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    },
+    {
+      "name": "GET /api/tasks/active-agents",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    },
+    {
+      "name": "GET /api/tasks/concurrent",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    },
+    {
+      "name": "POST /api/tasks/cleanup",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    },
+    {
+      "name": "GET /api/tasks/claimable",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    },
+    {
+      "name": "POST /api/tasks/take",
+      "group": "task_api",
+      "surface": "fastapi",
+      "context": "Task board / orchestration endpoint"
+    }
+  ]
+}

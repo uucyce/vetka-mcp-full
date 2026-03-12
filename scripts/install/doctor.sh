@@ -28,7 +28,7 @@ if [[ -d ".venv" ]]; then
   # shellcheck disable=SC1091
   source .venv/bin/activate
   python - <<'PY'
-mods = ["fastapi", "uvicorn", "requests", "qdrant_client", "socketio"]
+mods = ["fastapi", "uvicorn", "requests", "qdrant_client", "socketio", "tavily"]
 missing = []
 for m in mods:
     try:

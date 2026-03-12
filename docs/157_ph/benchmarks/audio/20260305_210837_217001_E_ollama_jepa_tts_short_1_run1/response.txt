@@ -1,0 +1,1 @@
+1. **вкладка Playground_GROK.txt**: Этот файл содержит готовый backend-код для эндпоинта `/api/debug/playground/proposals`, который позволяет вкладка **Playground** в `MyceliumCommandCenter` работать сразу. Он

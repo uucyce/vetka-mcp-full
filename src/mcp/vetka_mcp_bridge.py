@@ -913,10 +913,34 @@ async def list_tools() -> list[Tool]:
             description="[DEPRECATED] Use mycelium_heartbeat_status instead. Moved to MCP MYCELIUM.",
             inputSchema={"type": "object", "properties": {}}
         ),
+        # MARKER_178.6.1: Un-deprecated — live fallback when MYCELIUM unavailable
         Tool(
             name="vetka_task_board",
-            description="[DEPRECATED] Use mycelium_task_board instead. Moved to MCP MYCELIUM.",
-            inputSchema={"type": "object", "properties": {"action": {"type": "string"}}, "required": ["action"]}
+            description="Task Board CRUD (add/list/get/update/remove/summary/claim/complete). Uses local transport as fallback when MYCELIUM MCP is unavailable.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents"],
+                        "description": "Operation to perform"
+                    },
+                    "title": {"type": "string", "description": "Task title (for add)"},
+                    "description": {"type": "string", "description": "Task description"},
+                    "priority": {"type": "number", "description": "1=critical..5=someday"},
+                    "phase_type": {"type": "string", "enum": ["build", "fix", "research"]},
+                    "preset": {"type": "string", "description": "Pipeline preset"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "task_id": {"type": "string", "description": "Task ID (for get/update/remove/claim/complete)"},
+                    "status": {"type": "string", "description": "New status (for update)"},
+                    "filter_status": {"type": "string", "description": "Filter by status (for list)"},
+                    "assigned_to": {"type": "string", "description": "Agent name"},
+                    "agent_type": {"type": "string", "description": "Agent type"},
+                    "complexity": {"type": "string"},
+                    "dependencies": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["action"]
+            }
         ),
         Tool(
             name="vetka_task_dispatch",

@@ -1,0 +1,5 @@
+Based on the provided context, here are three points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize `TEST_DELETE_ME.txt` file**: Reduce the file size and remove unnecessary content to minimize memory usage.
+2. **Enable caching for 3D models**: Implement caching for 3D models to reduce loading times and improve performance, especially for large models like google_maps_foveated.
+3. **Use efficient compression algorithms**: Consider using more efficient compression algorithms (e.g., LZ4 or Zstd) instead of elision to compress the context data, which can help reduce memory usage without

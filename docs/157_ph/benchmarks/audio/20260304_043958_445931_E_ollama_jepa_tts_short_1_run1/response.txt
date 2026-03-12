@@ -1,0 +1,5 @@
+Okay, based on the provided context, here’s a response to the user’s question:
+
+**File 1: `knowledge_layout.py`**
+
+*   **Purpose:** This file

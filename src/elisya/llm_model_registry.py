@@ -149,6 +149,13 @@ _SAFE_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "ttft_ms": 500.0,
         "provider": "polza",
     },
+    "qwen3:8b": {
+        "context_length": 32768,
+        "output_tokens_per_second": 42.0,
+        "input_tokens_per_second": 115.0,
+        "ttft_ms": 650.0,
+        "provider": "ollama",
+    },
     "qwen3-30b-a3b": {
         "context_length": 131072,
         "output_tokens_per_second": 70.0,
@@ -205,12 +212,54 @@ _SAFE_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "ttft_ms": 500.0,
         "provider": "deepseek",
     },
+    "deepseek-r1:8b": {
+        "context_length": 32768,
+        "output_tokens_per_second": 28.0,
+        "input_tokens_per_second": 95.0,
+        "ttft_ms": 900.0,
+        "provider": "ollama",
+    },
     "deepseek-v3": {
         "context_length": 128000,
         "output_tokens_per_second": 80.0,
         "input_tokens_per_second": 180.0,
         "ttft_ms": 600.0,
         "provider": "deepseek",
+    },
+    "qwen2.5:7b": {
+        "context_length": 32768,
+        "output_tokens_per_second": 38.0,
+        "input_tokens_per_second": 105.0,
+        "ttft_ms": 700.0,
+        "provider": "ollama",
+    },
+    "qwen2.5:3b": {
+        "context_length": 16384,
+        "output_tokens_per_second": 62.0,
+        "input_tokens_per_second": 140.0,
+        "ttft_ms": 420.0,
+        "provider": "ollama",
+    },
+    "phi4-mini:latest": {
+        "context_length": 16384,
+        "output_tokens_per_second": 70.0,
+        "input_tokens_per_second": 155.0,
+        "ttft_ms": 350.0,
+        "provider": "ollama",
+    },
+    "qwen2.5vl:3b": {
+        "context_length": 16384,
+        "output_tokens_per_second": 34.0,
+        "input_tokens_per_second": 88.0,
+        "ttft_ms": 720.0,
+        "provider": "ollama",
+    },
+    "embeddinggemma:300m": {
+        "context_length": 8192,
+        "output_tokens_per_second": 0.0,
+        "input_tokens_per_second": 0.0,
+        "ttft_ms": 50.0,
+        "provider": "ollama",
     },
 }
 

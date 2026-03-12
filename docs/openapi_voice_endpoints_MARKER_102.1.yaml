@@ -1,0 +1,266 @@
+openapi: 3.0.3
+info:
+  title: VETKA Voice API
+  description: Voice processing endpoints for speech-to-text and text-to-speech functionality
+  version: 1.0.0
+  contact:
+    name: VETKA Development Team
+
+servers:
+  - url: http://localhost:5001
+    description: Local development server
+
+tags:
+  - name: voice
+    description: Voice processing operations (STT/TTS)
+  - name: audio
+    description: Audio file handling and conversion
+
+paths:
+  /api/voice/stt:
+    post:
+      tags:
+        - voice
+      summary: Speech-to-Text transcription
+      description: Transcribe audio file to text using MLX Whisper
+      operationId: transcribeAudio
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - audio_file
+              properties:
+                audio_file:
+                  type: string
+                  format: binary
+                  description: Audio file to transcribe (WAV, MP3, M4A, etc.)
+                language:
+                  type: string
+                  description: Language code (e.g., 'en', 'ru')
+                  default: auto
+                model:
+                  type: string
+                  description: Whisper model size
+                  enum: [tiny, base, small, medium, large]
+                  default: base
+      responses:
+        '200':
+          description: Transcription successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  text:
+                    type: string
+                    description: Transcribed text
+                  language:
+                    type: string
+                    description: Detected language
+                  duration:
+                    type: number
+                    description: Audio duration in seconds
+                  processing_time:
+                    type: number
+                    description: Processing time in seconds
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/voice/tts:
+    post:
+      tags:
+        - voice
+      summary: Text-to-Speech synthesis
+      description: Convert text to speech audio using Kokoro TTS
+      operationId: synthesizeSpeech
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  description: Text to synthesize
+                  maxLength: 5000
+                voice:
+                  type: string
+                  description: Voice identifier
+                  default: af_sky
+                speed:
+                  type: number
+                  description: Speech speed multiplier
+                  minimum: 0.5
+                  maximum: 2.0
+                  default: 1.0
+                format:
+                  type: string
+                  description: Output audio format
+                  enum: [wav, mp3]
+                  default: wav
+      responses:
+        '200':
+          description: Speech synthesis successful
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/audio/convert:
+    post:
+      tags:
+        - audio
+      summary: Convert audio format
+      description: Convert audio files between different formats
+      operationId: convertAudio
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - audio_file
+                - target_format
+              properties:
+                audio_file:
+                  type: string
+                  format: binary
+                  description: Audio file to convert
+                target_format:
+                  type: string
+                  description: Target audio format
+                  enum: [wav, mp3, m4a, ogg, flac]
+                sample_rate:
+                  type: integer
+                  description: Target sample rate in Hz
+                  enum: [8000, 16000, 22050, 44100, 48000]
+                  default: 44100
+                channels:
+                  type: integer
+                  description: Number of audio channels
+                  enum: [1, 2]
+                  default: 1
+      responses:
+        '200':
+          description: Conversion successful
+          content:
+            audio/*:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/voice/models:
+    get:
+      tags:
+        - voice
+      summary: List available voice models
+      description: Get list of available STT and TTS models
+      operationId: listVoiceModels
+      responses:
+        '200':
+          description: Models list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stt_models:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        size:
+                          type: string
+                        languages:
+                          type: array
+                          items:
+                            type: string
+                  tts_voices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        language:
+                          type: string
+                        gender:
+                          type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    Error:
+      type: object
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: Error message
+        details:
+          type: object
+          description: Additional error details
+          additionalProperties: true

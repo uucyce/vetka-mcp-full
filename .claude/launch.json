@@ -1,0 +1,59 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vetka-backend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["main.py"],
+      "port": 5001
+    },
+    {
+      "name": "mycelium",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["run_mycelium.py"],
+      "port": 8083
+    },
+    {
+      "name": "vetka-client",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "client",
+      "port": 3001
+    },
+    {
+      "name": "mycelium-client",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:mcc"],
+      "cwd": "client",
+      "port": 3002
+    },
+    {
+      "name": "pulse",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "pulse",
+      "port": 1420
+    },
+    {
+      "name": "player-lab",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "player_playground",
+      "port": 1424
+    },
+    {
+      "name": "photo-parallax",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "photo_parallax_playground",
+      "port": 5173
+    },
+    {
+      "name": "artifact-panel",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "app/artifact-panel",
+      "port": 5174
+    }
+  ]
+}

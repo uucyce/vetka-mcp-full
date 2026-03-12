@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { useDevPanelStore } from '../../store/useDevPanelStore';
+// MARKER_176.15: Centralized MCC API config import.
+import { DEBUG_API } from '../../config/api.config';
 
 interface BalanceRecord {
   provider: string;
@@ -14,7 +16,6 @@ interface BalancesResponse {
   records?: BalanceRecord[];
 }
 
-const API_DEBUG = 'http://localhost:5001/api/debug';
 
 function formatUsd(value: number | null): string {
   if (value === null || Number.isNaN(value)) return '--';
@@ -61,7 +62,7 @@ export function KeyDropdown() {
   const fetchBalances = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_DEBUG}/usage/balances`);
+      const res = await fetch(`${DEBUG_API}/usage/balances`);
       if (!res.ok) return;
       const data: BalancesResponse = await res.json();
       if (data.success && Array.isArray(data.records)) {

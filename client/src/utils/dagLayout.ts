@@ -332,7 +332,10 @@ export function layoutSugiyamaBT(
 
   // Add edges to dagre
   for (const edge of dagEdges) {
-    g.setEdge(edge.source, edge.target);
+    // MARKER_176.7: Preserve edge label metadata for layout + renderer parity.
+    g.setEdge(edge.source, edge.target, {
+      label: (edge as any).label || edge.type || '',
+    });
   }
 
   // Run layout
@@ -371,10 +374,12 @@ export function layoutSugiyamaBT(
         anchorState: node.anchorState,
         taskOrigin: node.taskOrigin,
         teamProfile: node.teamProfile,
+        graphKind: node.graphKind,
         wf_x: Number((node as any)?.metadata?.wf_x),
         wf_y: Number((node as any)?.metadata?.wf_y),
         rd_parent: String((node as any)?.metadata?.rd_parent || ''),
         rd_depth: Number((node as any)?.metadata?.rd_depth || 0),
+        rd_depth_total: Number((node as any)?.metadata?.rd_depth_total || (node as any)?.metadata?.rd_depth || 0),
         miniScale: Number((node as any)?.metadata?.mini_scale),
         // MARKER_155A.G24.NODE_SIZE_CONTROL_PATH:
         // Inline micro sizing is controlled primarily by node component styles via mini/miniScale.
@@ -480,22 +485,52 @@ export function layoutSugiyamaBT(
     }
   };
 
+  // MARKER_176.7: Human-readable edge labels for MCC DAG surfaces.
+  const getEdgeLabelMeta = (edgeType: string): { label: string; color: string } => {
+    switch (edgeType) {
+      case 'dataflow':
+        return { label: 'data ->', color: NOLAN_PALETTE.edgeDataflow };
+      case 'temporal':
+        return { label: 'then', color: NOLAN_PALETTE.edgeTemporal };
+      case 'conditional':
+        return { label: 'if', color: NOLAN_PALETTE.edgeConditional };
+      case 'parallel_fork':
+        return { label: 'fork', color: NOLAN_PALETTE.edgeParallelFork };
+      case 'parallel_join':
+        return { label: 'join', color: NOLAN_PALETTE.edgeParallelJoin };
+      case 'feedback':
+        return { label: 'feedback', color: NOLAN_PALETTE.edgeFeedback };
+      case 'dependency':
+        return { label: 'depends', color: NOLAN_PALETTE.edgeStructural };
+      case 'predicted':
+        return { label: 'predict', color: '#6dc8ff' };
+      case 'structural':
+      default:
+        return { label: '', color: NOLAN_PALETTE.textDim };
+    }
+  };
+
   // Convert to xyflow edges
-  const edges: Edge[] = dagEdges.map((edge) => ({
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    type: 'step',       // MARKER_151.2B: Orthogonal routing — clean right-angle connections (was smoothstep)
-    animated: edge.type === 'temporal' || edge.type === 'feedback' || edge.animated,
-    style: {
-      stroke: getEdgeColor(edge.type),
-      strokeWidth: 1 + edge.strength * 2,
-      opacity: 0.6 + edge.strength * 0.4,
-      strokeDasharray: edge.type === 'feedback' || edge.type === 'predicted' ? '6 4' : undefined,
-    },
-    label: (edge as any).label || undefined,
-    labelStyle: { fill: NOLAN_PALETTE.textDim, fontSize: 9, fontFamily: 'monospace' },
-  }));
+  const edges: Edge[] = dagEdges.map((edge) => {
+    const labelMeta = getEdgeLabelMeta(edge.type);
+    return {
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      type: 'step',       // MARKER_151.2B: Orthogonal routing — clean right-angle connections (was smoothstep)
+      animated: edge.type === 'temporal' || edge.type === 'feedback' || edge.animated,
+      style: {
+        stroke: getEdgeColor(edge.type),
+        strokeWidth: 1 + edge.strength * 2,
+        opacity: 0.6 + edge.strength * 0.4,
+        strokeDasharray: edge.type === 'feedback' || edge.type === 'predicted' ? '6 4' : undefined,
+      },
+      label: (edge as any).label || labelMeta.label,
+      labelShowBg: true,
+      labelBgStyle: { fill: '#070707', opacity: 0.88 },
+      labelStyle: { fill: labelMeta.color, fontSize: 9, fontFamily: 'monospace' },
+    };
+  });
 
   return { nodes, edges };
 }

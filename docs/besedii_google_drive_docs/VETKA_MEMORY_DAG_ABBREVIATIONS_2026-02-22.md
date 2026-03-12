@@ -4,8 +4,16 @@ Status: Canonical glossary for MCC/Mycelium architecture discussions.
 
 ## Core graph and orchestration
 
+- VETKA: Visual Enhanced Tree Knowledge Architecture.
+  - knowledge structure skeleton/tree.
+- MYCELIUM: Multi-agent Yielding Cognitive Execution Layer for Intelligent Unified Management.
+  - distributed agent network ("brain under the ground").
+- ELISYA: Efficient Language-Independent Synchronization of Yielding Agents.
+  - coordination/consciousness/synchronization layer.
+- ELISION: Efficient Language-Independent Symbolic Inversion of Names.
+  - compression/forgetting/abstraction layer ("memory compressor").
+
 - MCC: Mycelium Command Center (single-window control interface).
-- MYCELIUM: Core graph/memory fabric for project architecture, tasks, and workflows.
 - DAG: Directed Acyclic Graph (approved acyclic architecture view).
 - SCC: Strongly Connected Components (cycle condensation unit).
 - Sugiyama: Layered DAG layout family (readable hierarchy rendering).

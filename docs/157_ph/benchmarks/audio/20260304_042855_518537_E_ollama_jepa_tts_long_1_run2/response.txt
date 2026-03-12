@@ -1,0 +1,4 @@
+Interrupt + Restart Stream Protocol:
+
+1. **Interrupt**: When a tool is executed in the stream, and its execution mode is not `enabled_stream`, the model should not assert that the tool was executed. Instead, it should indicate that the tool was interrupted.
+2. **Restart Stream Protocol**: When the tool loop

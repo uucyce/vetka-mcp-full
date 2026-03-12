@@ -1,0 +1,6 @@
+Based on the provided context, I cannot explain how context packing is structured in VETKA because the necessary details are missing from the pinned files. The context mentions compression (elision), weights, and some memory-related concepts, but no specific architecture or process for context packing is described.
+
+For your second question, here are the 2 steps to do first, based on the available context:
+
+1. **Implement ELISION compression layer** (from VETKA glossary) to reduce noise in context packing by filtering irrelevant data before storage.
+2. **Integrate CAM activation signals** (from context meta) to prioritize memory packing based on
