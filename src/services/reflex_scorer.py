@@ -35,8 +35,8 @@ from typing import Dict, List, Optional, Any, Set
 
 logger = logging.getLogger(__name__)
 
-# Feature flag — off by default, opt-in
-REFLEX_ENABLED = os.getenv("REFLEX_ENABLED", "false").lower() in ("true", "1", "yes")
+# MARKER_178.1.6: REFLEX enabled by default (Phase 178)
+REFLEX_ENABLED = os.getenv("REFLEX_ENABLED", "true").lower() in ("true", "1", "yes")
 
 # --- MARKER_172.P2.CONTEXT: Configurable weights via env vars ---
 _W = {

@@ -338,6 +338,10 @@ class ReflexFeedback:
 
     def _append_entry(self, entry: FeedbackEntry) -> None:
         """Append a single entry to the JSONL log (thread-safe)."""
+        # MARKER_178.1.5: Auto-create feedback log
+        if not FEEDBACK_LOG_PATH.exists():
+            FEEDBACK_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            FEEDBACK_LOG_PATH.touch()
         with self._lock:
             self._log_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self._log_path, "a") as f:
