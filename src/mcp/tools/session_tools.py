@@ -363,6 +363,22 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # REFLEX errors never block session init
 
+        # MARKER_178.4.12: REFLEX report — last match_rates + feedback summary
+        try:
+            from src.services.reflex_feedback import ReflexFeedback
+            fb = ReflexFeedback()
+            summary = fb.get_feedback_summary()
+            if summary and summary.get("total_entries", 0) > 0:
+                context["reflex_report"] = {
+                    "total_entries": summary["total_entries"],
+                    "success_rate": summary.get("success_rate", 0),
+                    "useful_rate": summary.get("useful_rate", 0),
+                    "verified_rate": summary.get("verified_rate", 0),
+                    "top_tools": list(summary.get("per_tool", {}).keys())[:5],
+                }
+        except Exception:
+            pass  # REFLEX report never blocks session init
+
         # MARKER_178.1.4: Build actionable next_steps from context
         try:
             next_steps = []
@@ -370,7 +386,8 @@ class SessionInitTool(BaseMCPTool):
             # From tasks
             tb = context.get("task_board_summary", {})
             if tb.get("pending_count", 0) > 0:
-                next_steps.append(f"{tb['pending_count']} pending tasks -> mycelium_task_board action=list")
+                # MARKER_178.5.2: Reference both task board tools (primary + fallback)
+                next_steps.append(f"{tb['pending_count']} pending tasks -> mycelium_task_board action=list (or vetka_task_board as fallback)")
             if tb.get("in_progress_count", 0) > 0:
                 items = ", ".join(t["title"][:30] for t in tb.get("in_progress", [])[:2])
                 next_steps.append(f"In progress: {items}")

@@ -1758,10 +1758,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             ))]
 
         elif name == "vetka_task_board":
-            return [TextContent(type="text", text=(
-                "⚠️ DEPRECATED: vetka_task_board moved to MCP MYCELIUM.\n"
-                "Use mycelium_task_board instead."
-            ))]
+            # MARKER_178.6.1: Live fallback — uses local task_board handler
+            try:
+                from src.mcp.tools.task_board_tools import handle_task_board
+                import json
+                result = handle_task_board(arguments)
+                transport_note = "🔧 Transport: vetka_task_board (local fallback)"
+                return [TextContent(type="text", text=f"{transport_note}\n{json.dumps(result, indent=2, ensure_ascii=False)}")]
+            except Exception as e:
+                import logging
+                logging.getLogger("VETKA_MCP").error(f"vetka_task_board fallback failed: {e}")
+                return [TextContent(type="text", text=f"❌ vetka_task_board fallback error: {e}")]
 
         elif name == "vetka_task_dispatch":
             return [TextContent(type="text", text=(

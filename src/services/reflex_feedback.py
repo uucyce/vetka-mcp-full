@@ -297,6 +297,48 @@ class ReflexFeedback:
             "avg_usefulness_rate": total_useful / len(entries) if entries else 0.0,
         }
 
+    def get_feedback_summary(self) -> Dict[str, Any]:
+        """MARKER_178.3.3: Summary for session_init reflex_report.
+
+        Returns total_entries, success_rate, useful_rate, verified_rate,
+        and per_tool breakdown for top tools.
+        """
+        entries = self._load_entries()
+        if not entries:
+            return {
+                "total_entries": 0,
+                "success_rate": 0.0,
+                "useful_rate": 0.0,
+                "verified_rate": 0.0,
+                "per_tool": {},
+            }
+
+        total = len(entries)
+        success_count = sum(1 for e in entries if e.success)
+        useful_count = sum(1 for e in entries if e.useful)
+        verified_count = sum(1 for e in entries if getattr(e, 'verifier_passed', None) is True)
+
+        # Per-tool breakdown
+        groups: Dict[str, List[FeedbackEntry]] = {}
+        for e in entries:
+            groups.setdefault(e.tool_id, []).append(e)
+
+        per_tool = {}
+        for tool_id, tool_entries in sorted(groups.items(), key=lambda x: -len(x[1]))[:10]:
+            s = sum(1 for e in tool_entries if e.success)
+            per_tool[tool_id] = {
+                "count": len(tool_entries),
+                "success_rate": round(s / len(tool_entries), 3),
+            }
+
+        return {
+            "total_entries": total,
+            "success_rate": round(success_count / total, 3),
+            "useful_rate": round(useful_count / total, 3),
+            "verified_rate": round(verified_count / total, 3) if total > 0 else 0.0,
+            "per_tool": per_tool,
+        }
+
     def compact(self) -> int:
         """Compact the log: aggregate old entries, keep newest COMPACT_KEEP raw.
 

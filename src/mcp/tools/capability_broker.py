@@ -90,6 +90,11 @@ def _check_file() -> TransportStatus:
     return TransportStatus.UNAVAILABLE
 
 
+def build_manifest(timeout_s: float = 0.5) -> CapabilityManifest:
+    """Alias for build_capability_manifest — used by session_tools."""
+    return build_capability_manifest(timeout_s)
+
+
 def build_capability_manifest(timeout_s: float = 0.5) -> CapabilityManifest:
     """MARKER_177.3: Build capability manifest by checking all transports in parallel.
 
