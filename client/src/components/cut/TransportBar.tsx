@@ -6,6 +6,11 @@
 import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import {
+  IconSkipStart, IconPlay, IconPause, IconSkipEnd,
+  IconExport, IconSpinner, IconCheck,
+  IconLayoutNLE, IconWrench,
+} from './icons/CutIcons';
 
 const BAR_STYLE: CSSProperties = {
   display: 'flex',
@@ -352,7 +357,7 @@ export default function TransportBar() {
     <div data-testid="cut-transport-bar" style={BAR_STYLE}>
       {/* Skip to start */}
       <button style={BTN_STYLE} onClick={() => seek(0)} title="Go to start (Home)">
-        ⏮
+        <IconSkipStart size={14} />
       </button>
 
       {/* Play/Pause */}
@@ -361,12 +366,12 @@ export default function TransportBar() {
         onClick={togglePlay}
         title="Play/Pause (Space)"
       >
-        {isPlaying ? '⏸' : '▶'}
+        {isPlaying ? <IconPause size={14} /> : <IconPlay size={14} />}
       </button>
 
       {/* Skip to end */}
       <button style={BTN_STYLE} onClick={() => seek(duration)} title="Go to end (End)">
-        ⏭
+        <IconSkipEnd size={14} />
       </button>
 
       <div style={SEPARATOR} />
@@ -442,7 +447,7 @@ export default function TransportBar() {
         disabled={!sandboxRoot || exportStatus === 'exporting'}
         title={`Export to ${exportFormat === 'premiere' ? 'Premiere Pro XML' : 'FCPXML (FCP/DaVinci)'}`}
       >
-        {exportStatus === 'exporting' ? '⏳' : exportStatus === 'done' ? '✓' : '📤'}
+        {exportStatus === 'exporting' ? <IconSpinner size={14} /> : exportStatus === 'done' ? <IconCheck size={14} /> : <IconExport size={14} />}
       </button>
 
       <div style={SEPARATOR} />
@@ -462,7 +467,7 @@ export default function TransportBar() {
         onClick={() => setViewMode(viewMode === 'nle' ? 'debug' : 'nle')}
         title="Toggle NLE / Debug view"
       >
-        {viewMode === 'nle' ? '🎬' : '🔧'}
+        {viewMode === 'nle' ? <IconLayoutNLE size={14} /> : <IconWrench size={14} />}
       </button>
     </div>
   );

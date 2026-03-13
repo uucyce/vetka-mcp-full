@@ -18,13 +18,14 @@ import {
 import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
 import WaveformCanvas from './WaveformCanvas';
+import { IconFilmStrip, IconSpeaker, IconCamera, IconLink } from './icons/CutIcons';
 
-const LANE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
-  video_main: { label: 'V1', color: '#4a9eff', icon: '🎬' },
-  audio_sync: { label: 'A1', color: '#22c55e', icon: '🔊' },
-  take_alt_y: { label: 'V2', color: '#a855f7', icon: '🎥' },
-  take_alt_z: { label: 'V3', color: '#f59e0b', icon: '🎥' },
-  aux: { label: 'AUX', color: '#888', icon: '📎' },
+const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  video_main: { label: 'V1', color: '#4a9eff', icon: <IconFilmStrip size={12} color="#888" /> },
+  audio_sync: { label: 'A1', color: '#22c55e', icon: <IconSpeaker size={12} color="#888" /> },
+  take_alt_y: { label: 'V2', color: '#a855f7', icon: <IconCamera size={12} color="#888" /> },
+  take_alt_z: { label: 'V3', color: '#f59e0b', icon: <IconCamera size={12} color="#888" /> },
+  aux: { label: 'AUX', color: '#888', icon: <IconLink size={12} color="#888" /> },
 };
 
 const CONTAINER_STYLE: CSSProperties = {
@@ -1188,7 +1189,7 @@ export default function TimelineTrackView() {
           return (
             <div key={lane.lane_id} style={{ ...LANE_ROW, height: trackHeight, opacity: laneDimmed ? 0.3 : 1 }}>
               <div style={LANE_HEADER}>
-                <span style={{ fontSize: 9, color: '#555' }}>{config.icon}</span>
+                <span style={{ display: 'flex', alignItems: 'center' }}>{config.icon}</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: config.color }}>{config.label}</span>
                 {/* MARKER_170.NLE.TRACK_SOLO_MUTE: per-lane solo/mute controls live in the header. */}
                 <div style={TRACK_BUTTON_ROW}>

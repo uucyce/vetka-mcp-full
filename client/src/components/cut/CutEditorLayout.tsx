@@ -6,13 +6,15 @@
  *
  * This replaces the debug shell layout when viewMode === 'nle'.
  */
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { type CSSProperties, type ReactNode } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import TransportBar from './TransportBar';
 import VideoPreview from './VideoPreview';
 import TimelineTrackView from './TimelineTrackView';
 import ClipInspector from './ClipInspector';
 import MarkerNode from './nodes/MarkerNode';
+import { IconMusicNote } from './icons/CutIcons';
+import { useResizeHandle } from './useResizeHandle';
 
 // ─── Styles ───
 const ROOT_STYLE: CSSProperties = {
@@ -34,13 +36,19 @@ const MIDDLE_ROW: CSSProperties = {
 };
 
 const SOURCE_PANEL: CSSProperties = {
-  width: 280,
   flexShrink: 0,
-  borderRight: '1px solid #222',
   background: '#050505',
   display: 'flex',
   flexDirection: 'column',
   overflow: 'hidden',
+};
+
+const H_RESIZE_HANDLE: CSSProperties = {
+  width: 4,
+  cursor: 'col-resize',
+  background: '#1a1a1a',
+  flexShrink: 0,
+  transition: 'background 0.15s',
 };
 
 const SOURCE_HEADER: CSSProperties = {
@@ -110,9 +118,9 @@ const SOURCE_BADGE: CSSProperties = {
   alignItems: 'center',
   padding: '1px 5px',
   borderRadius: 999,
-  border: '1px solid #1f2937',
-  background: '#111827',
-  color: '#93c5fd',
+  border: '1px solid #333',
+  background: '#1a1a1a',
+  color: '#999',
   fontSize: 8,
   letterSpacing: 0.2,
 };
@@ -144,9 +152,7 @@ const PREVIEW_CONTENT: CSSProperties = {
 };
 
 const SCENE_GRAPH_PANE: CSSProperties = {
-  width: 280,
   flexShrink: 0,
-  borderLeft: '1px solid #1a1a1a',
   background: '#040404',
   display: 'flex',
   flexDirection: 'column',
@@ -231,7 +237,12 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
   const syncSurface = useCutEditorStore((s) => s.syncSurface);
   const markers = useCutEditorStore((s) => s.markers);
   const sceneGraphSurfaceMode = useCutEditorStore((s) => s.sceneGraphSurfaceMode);
-  const [timelineHeight] = useState(300);
+
+  // MARKER_170.11.RESIZABLE_PANELS: draggable panel sizes
+  const sourceResize = useResizeHandle('horizontal', 280, 180, 450);
+  const inspectorResize = useResizeHandle('horizontal', 260, 180, 400, true);
+  const sceneGraphResize = useResizeHandle('horizontal', 280, 180, 400, true);
+  const timelineResize = useResizeHandle('vertical', 300, 120, 600, true);
 
   // MARKER_170.8.SCENE_GRAPH_MARKERS: Music-sync marker stats
   const musicMarkers = markers.filter((m) => m.kind === 'music_sync');
@@ -344,7 +355,7 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
       {/* Middle: Source Browser | Video Preview | Inspector */}
       <div style={MIDDLE_ROW}>
         {/* Source Browser (left) */}
-        <div data-testid="cut-source-browser" style={SOURCE_PANEL}>
+        <div data-testid="cut-source-browser" style={{ ...SOURCE_PANEL, width: sourceResize.size }}>
           <div style={SOURCE_HEADER}>
             Source Browser
             <span style={{ float: 'right', color: '#333' }}>{sourceItems.length} assets</span>
@@ -413,7 +424,7 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
                             </span>
                           ))}
                           {syncItem?.recommended_method ? (
-                            <span style={{ ...SOURCE_BADGE, color: '#86efac', borderColor: '#14532d' }}>
+                            <span style={{ ...SOURCE_BADGE, color: '#aaa', borderColor: '#444' }}>
                               Sync {syncItem.recommended_method}
                             </span>
                           ) : null}
@@ -435,6 +446,9 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
           </div>
         </div>
 
+        {/* Source ↔ Preview resize handle */}
+        <div style={H_RESIZE_HANDLE} onMouseDown={sourceResize.onMouseDown} />
+
         {/* Video Preview (center) */}
         <div style={PREVIEW_PANEL}>
           <div style={PREVIEW_HEADER}>
@@ -454,7 +468,7 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
                     fontSize: 9,
                   }}
                 >
-                  🎵 {musicMarkerCount} markers (Sync {(avgMusicScore * 100).toFixed(0)}%)
+                  <IconMusicNote size={11} /> {musicMarkerCount} markers (Sync {(avgMusicScore * 100).toFixed(0)}%)
                 </span>
               ) : null}
               {statusText ? (
@@ -468,7 +482,10 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
         </div>
 
         {sceneGraphSurfaceMode === 'nle_ready' ? (
-          <div style={SCENE_GRAPH_PANE}>
+          <>
+          {/* Preview ↔ Scene Graph resize handle */}
+          <div style={H_RESIZE_HANDLE} onMouseDown={sceneGraphResize.onMouseDown} />
+          <div style={{ ...SCENE_GRAPH_PANE, width: sceneGraphResize.size }}>
             <div style={SOURCE_HEADER}>Scene Graph Surface</div>
             <div style={SCENE_GRAPH_PANE_BODY}>
               {sceneGraphSurface || (
@@ -503,14 +520,17 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
               )}
             </div>
           </div>
+          </>
         ) : null}
+
+        {/* Preview/SceneGraph ↔ Inspector resize handle */}
+        <div style={H_RESIZE_HANDLE} onMouseDown={inspectorResize.onMouseDown} />
 
         {/* Inspector (right) — ClipInspector or custom content */}
         <div
           style={{
-            width: 260,
+            width: inspectorResize.size,
             flexShrink: 0,
-            borderLeft: '1px solid #222',
             background: '#050505',
             overflowY: 'auto',
             fontSize: 11,
@@ -520,11 +540,11 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
         </div>
       </div>
 
-      {/* Resize handle */}
-      <div style={RESIZE_HANDLE} />
+      {/* Timeline resize handle */}
+      <div style={RESIZE_HANDLE} onMouseDown={timelineResize.onMouseDown} />
 
       {/* Timeline (bottom) */}
-      <div style={{ ...TIMELINE_PANEL, height: timelineHeight }}>
+      <div style={{ ...TIMELINE_PANEL, height: timelineResize.size }}>
         <TimelineTrackView />
       </div>
     </div>
