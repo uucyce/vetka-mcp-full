@@ -23,6 +23,7 @@ from src.api.routes.artifact_routes import (
 )
 from src.services.converters.fcpxml_converter import build_fcpxml
 from src.services.converters.premiere_xml_converter import build_premiere_xml
+from src.services.cut_ffmpeg_waveform import build_waveform_with_fallback
 from src.services.cut_audio_intel_eval import (
     derive_pause_windows_from_silence,
     detect_offset_hybrid,
@@ -1767,7 +1768,7 @@ def _run_cut_waveform_build_job(job_id: str, body: CutWaveformBuildRequest) -> N
             if current_job and bool(current_job.get("cancel_requested")):
                 job_store.update_job(job_id, state="cancelled", progress=1.0)
                 return
-            bins, degraded_mode, degraded_reason = _build_waveform_proxy_from_bytes(media_path, int(body.bins))
+            bins, degraded_mode, degraded_reason = build_waveform_with_fallback(media_path, int(body.bins))
             if degraded_mode:
                 degraded_count += 1
             items.append(
