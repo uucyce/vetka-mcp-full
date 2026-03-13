@@ -1327,6 +1327,57 @@ def _build_sync_surface(
     }
 
 
+def _enrich_timeline_with_sync_hints(
+    timeline_state: dict[str, Any] | None,
+    sync_surface: dict[str, Any],
+) -> None:
+    """
+    MARKER_170.15.SYNC_HINT_ENRICHMENT
+    Embed sync_hint on each clip that has a matching sync_surface recommendation,
+    and add sync_summary to each lane. Mutates timeline_state in place.
+    """
+    if timeline_state is None:
+        return
+    surface_by_source: dict[str, dict[str, Any]] = {}
+    for item in sync_surface.get("items", []):
+        sp = str(item.get("source_path") or "")
+        if sp:
+            surface_by_source[sp] = item
+
+    for lane in timeline_state.get("lanes", []):
+        total = 0
+        synced = 0
+        pending_hints = 0
+        methods_used: set[str] = set()
+        for clip in lane.get("clips", []):
+            total += 1
+            source_path = str(clip.get("source_path") or "")
+            already_synced = clip.get("sync") is not None and clip["sync"].get("method")
+            if already_synced:
+                synced += 1
+                methods_used.add(str(clip["sync"].get("method") or ""))
+            surface_item = surface_by_source.get(source_path)
+            if surface_item and surface_item.get("recommended_method"):
+                clip["sync_hint"] = {
+                    "recommended_method": surface_item["recommended_method"],
+                    "recommended_offset_sec": surface_item["recommended_offset_sec"],
+                    "confidence": surface_item["confidence"],
+                    "reference_path": surface_item.get("reference_path", ""),
+                    "already_applied": bool(already_synced),
+                }
+                if not already_synced:
+                    pending_hints += 1
+            else:
+                clip.pop("sync_hint", None)
+        lane["sync_summary"] = {
+            "total_clips": total,
+            "synced": synced,
+            "unsynced": total - synced,
+            "pending_hints": pending_hints,
+            "methods_used": sorted(methods_used),
+        }
+
+
 def _run_audio_sync_method(
     method: str,
     reference_signal: list[float],
@@ -2989,6 +3040,7 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         audio_sync_result=audio_sync_result,
         meta_sync_result=None,
     )
+    _enrich_timeline_with_sync_hints(timeline_state, sync_surface)
     scene_graph_view = _build_scene_graph_view(
         scene_graph,
         timeline_state,
