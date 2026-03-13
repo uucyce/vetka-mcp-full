@@ -21,6 +21,8 @@ from src.api.routes.artifact_routes import (
     media_preview,
     media_transcript_normalized,
 )
+from src.services.converters.fcpxml_converter import build_fcpxml
+from src.services.converters.premiere_xml_converter import build_premiere_xml
 from src.services.cut_audio_intel_eval import (
     derive_pause_windows_from_silence,
     detect_offset_hybrid,
@@ -3810,4 +3812,124 @@ async def cut_media_proxy(request: Request, sandbox_root: str, path: str) -> Res
             **cors_headers,
             "Content-Length": str(file_size),
         },
+    )
+
+
+# ─── MARKER_172.5 — CUT Export Endpoints ───────────────────────────────────
+
+
+def _timeline_to_export_payload(
+    timeline_state: dict[str, Any],
+    markers: list[dict[str, Any]] | None = None,
+    sequence_name: str = "CUT_Sequence",
+) -> dict[str, Any]:
+    """Convert CUT timeline_state + markers into the generic payload
+    expected by build_premiere_xml() / build_fcpxml()."""
+    fps = float(timeline_state.get("fps", 30.0) or 30.0)
+
+    clips: list[dict[str, Any]] = []
+    max_end: float = 0.0
+    for lane in timeline_state.get("lanes", []):
+        for clip in lane.get("clips", []):
+            start = float(clip.get("start_sec", 0.0) or 0.0)
+            end = float(clip.get("end_sec", start) or start)
+            name = clip.get("label") or clip.get("clip_id") or ""
+            source_path = clip.get("source_path", "")
+            clips.append({
+                "start_sec": start,
+                "end_sec": end,
+                "name": str(name),
+                "source_path": str(source_path),
+            })
+            if end > max_end:
+                max_end = end
+
+    export_markers: list[dict[str, Any]] = []
+    if markers:
+        for m in markers:
+            export_markers.append({
+                "time_sec": float(m.get("start_sec", 0.0) or 0.0),
+                "comment": str(m.get("label") or m.get("kind") or "marker"),
+            })
+
+    return {
+        "project_name": str(timeline_state.get("project_id", "CUT_Project")),
+        "sequence_name": sequence_name,
+        "source_path": clips[0]["source_path"] if clips else "",
+        "fps": fps,
+        "duration_sec": max_end,
+        "clips": clips,
+        "markers": export_markers,
+    }
+
+
+def _build_export_result(
+    fmt: str, xml_content: str, clip_count: int, marker_count: int,
+    sandbox_root: str, project_id: str,
+) -> dict[str, Any]:
+    """Build cut_export_result_v1 contract response."""
+    return {
+        "schema_version": "cut_export_result_v1",
+        "format": fmt,
+        "project_id": project_id,
+        "clip_count": clip_count,
+        "marker_count": marker_count,
+        "xml_content": xml_content,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@router.post("/export/premiere-xml")
+async def cut_export_premiere_xml(body: dict[str, Any]) -> dict[str, Any]:
+    """Export CUT timeline as Premiere Pro XML (XMEML v5)."""
+    sandbox_root = str(body.get("sandbox_root") or "")
+    project_id = str(body.get("project_id") or "")
+    sequence_name = str(body.get("sequence_name") or "CUT_Sequence")
+
+    if not sandbox_root or not project_id:
+        raise HTTPException(status_code=400, detail="sandbox_root and project_id required")
+
+    store = CutProjectStore(sandbox_root)
+    timeline = store.load_timeline_state()
+    if timeline is None:
+        raise HTTPException(status_code=404, detail="No timeline state found")
+
+    marker_bundle = store.load_time_marker_bundle()
+    markers = marker_bundle.get("items", []) if marker_bundle else []
+
+    payload = _timeline_to_export_payload(timeline, markers, sequence_name)
+    xml_content = build_premiere_xml(payload)
+
+    return _build_export_result(
+        "premiere_xml", xml_content,
+        len(payload["clips"]), len(payload["markers"]),
+        sandbox_root, project_id,
+    )
+
+
+@router.post("/export/fcpxml")
+async def cut_export_fcpxml(body: dict[str, Any]) -> dict[str, Any]:
+    """Export CUT timeline as Final Cut Pro XML (FCPXML v1.10)."""
+    sandbox_root = str(body.get("sandbox_root") or "")
+    project_id = str(body.get("project_id") or "")
+    sequence_name = str(body.get("sequence_name") or "CUT_Sequence")
+
+    if not sandbox_root or not project_id:
+        raise HTTPException(status_code=400, detail="sandbox_root and project_id required")
+
+    store = CutProjectStore(sandbox_root)
+    timeline = store.load_timeline_state()
+    if timeline is None:
+        raise HTTPException(status_code=404, detail="No timeline state found")
+
+    marker_bundle = store.load_time_marker_bundle()
+    markers = marker_bundle.get("items", []) if marker_bundle else []
+
+    payload = _timeline_to_export_payload(timeline, markers, sequence_name)
+    xml_content = build_fcpxml(payload)
+
+    return _build_export_result(
+        "fcpxml", xml_content,
+        len(payload["clips"]), len(payload["markers"]),
+        sandbox_root, project_id,
     )
