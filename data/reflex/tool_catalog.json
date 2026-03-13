@@ -1,28 +1,29 @@
 {
   "version": "1.0.0",
-  "generated_at": "2026-03-10T21:14:39.827522+00:00",
+  "generated_at": "2026-03-13T01:43:21.453027+00:00",
   "generator": "scripts/generate_reflex_catalog.py",
   "marker": "MARKER_172.P1.CATALOG",
   "stats": {
-    "total_tools": 85,
+    "total_tools": 92,
     "by_namespace": {
       "vetka": 40,
-      "internal": 7,
+      "internal": 10,
       "mycelium": 24,
-      "cut": 14
+      "cut": 18
     },
     "by_kind": {
       "file_op": 4,
-      "search": 11,
-      "media": 16,
+      "search": 12,
+      "media": 20,
       "reasoning": 2,
       "keys": 4,
+      "visualization": 1,
+      "orchestration": 17,
       "system": 5,
       "other": 15,
       "context": 4,
       "memory": 2,
       "llm": 2,
-      "orchestration": 16,
       "artifact": 4
     }
   },
@@ -44,9 +45,9 @@
       "kind": "file_op",
       "description": "Read file content from VETKA project. Returns full file content with line numbers.",
       "intent_tags": [
-        "content",
-        "view",
         "inspect",
+        "view",
+        "content",
         "examine"
       ],
       "trigger_patterns": {
@@ -83,17 +84,17 @@
       "kind": "search",
       "description": "Semantic search in VETKA knowledge base using Qdrant vector search. ",
       "intent_tags": [
-        "reason",
-        "concept",
-        "abstract",
-        "hypothesis",
-        "find",
-        "discover",
-        "meaning",
         "similar",
         "query",
+        "hypothesis",
+        "reason",
+        "discover",
+        "vector",
+        "meaning",
+        "find",
+        "abstract",
         "locate",
-        "vector"
+        "concept"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -116,14 +117,14 @@
       },
       "permission": "READ",
       "roles": [
-        "Hostess",
-        "Architect",
-        "QA",
-        "PM",
+        "Default",
+        "Dev",
         "Researcher",
         "coder",
-        "Dev",
-        "Default"
+        "Architect",
+        "Hostess",
+        "QA",
+        "PM"
       ],
       "deprecated_aliases": [],
       "active": true,
@@ -135,12 +136,12 @@
       "kind": "search",
       "description": "Search for files by name or content pattern using ripgrep-style search. ",
       "intent_tags": [
-        "reason",
-        "abstract",
-        "hypothesis",
-        "find",
-        "discover",
         "query",
+        "hypothesis",
+        "reason",
+        "discover",
+        "find",
+        "abstract",
         "locate"
       ],
       "trigger_patterns": {
@@ -177,12 +178,12 @@
       "kind": "search",
       "description": "Pipeline coder tool: vetka_search_code",
       "intent_tags": [
-        "reason",
-        "abstract",
-        "hypothesis",
-        "find",
-        "discover",
         "query",
+        "hypothesis",
+        "reason",
+        "discover",
+        "find",
+        "abstract",
         "locate"
       ],
       "trigger_patterns": {
@@ -219,9 +220,9 @@
       "kind": "search",
       "description": "List files in a directory or matching a pattern. Returns file paths with metadata.",
       "intent_tags": [
+        "browse",
         "enumerate",
-        "directory",
-        "browse"
+        "directory"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -257,12 +258,12 @@
       "kind": "search",
       "description": "Search for text/pattern in codebase using grep. Returns matching lines with file paths.",
       "intent_tags": [
-        "reason",
-        "abstract",
-        "hypothesis",
-        "find",
-        "discover",
         "query",
+        "hypothesis",
+        "reason",
+        "discover",
+        "find",
+        "abstract",
         "locate"
       ],
       "trigger_patterns": {
@@ -286,12 +287,12 @@
       },
       "permission": "READ",
       "roles": [
+        "Default",
+        "Dev",
+        "Researcher",
         "Architect",
         "QA",
-        "PM",
-        "Researcher",
-        "Dev",
-        "Default"
+        "PM"
       ],
       "deprecated_aliases": [],
       "active": true,
@@ -303,10 +304,10 @@
       "kind": "media",
       "description": "Execute a shell command. Use for running tests, builds, Python scripts, etc. Commands run in sandbox by default for secu",
       "intent_tags": [
+        "video",
         "timeline",
         "montage",
-        "edit",
-        "video"
+        "edit"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -340,9 +341,9 @@
       "kind": "reasoning",
       "description": "Get creative suggestions for workflow improvements, ",
       "intent_tags": [
-        "reason",
         "hypothesis",
-        "abstract"
+        "abstract",
+        "reason"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -363,11 +364,11 @@
       },
       "permission": "READ",
       "roles": [
-        "Hostess",
-        "Architect",
-        "PM",
+        "Default",
         "Researcher",
-        "Default"
+        "Architect",
+        "Hostess",
+        "PM"
       ],
       "deprecated_aliases": [],
       "active": true,
@@ -379,8 +380,8 @@
       "kind": "keys",
       "description": "Save an API key with automatic provider detection (OpenAI, Anthropic, Groq, etc.)",
       "intent_tags": [
-        "api",
         "auth",
+        "api",
         "credential"
       ],
       "trigger_patterns": {
@@ -415,8 +416,8 @@
       "kind": "keys",
       "description": "Learn a new API key pattern and save the key. Use after user identifies an unknown key's provider.",
       "intent_tags": [
-        "api",
         "auth",
+        "api",
         "credential"
       ],
       "trigger_patterns": {
@@ -451,8 +452,8 @@
       "kind": "keys",
       "description": "Get status of API keys and configured providers",
       "intent_tags": [
-        "api",
         "auth",
+        "api",
         "credential"
       ],
       "trigger_patterns": {
@@ -488,8 +489,8 @@
       "kind": "keys",
       "description": "Analyze an unknown API key to identify its pattern (prefix, length, charset)",
       "intent_tags": [
-        "api",
         "auth",
+        "api",
         "credential"
       ],
       "trigger_patterns": {
@@ -513,6 +514,141 @@
       "permission": "READ",
       "roles": [
         "Hostess"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "seed_mcc_playwright_fixture",
+      "namespace": "internal",
+      "kind": "visualization",
+      "description": "Seed a deterministic MCC Playwright fixture project and return project_id plus browser_url.",
+      "intent_tags": [
+        "bootstrap",
+        "ui",
+        "replay",
+        "fixture",
+        "visual",
+        "prepare",
+        "regression",
+        "browser"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "seed",
+          "mcc",
+          "playwright",
+          "fixture"
+        ]
+      },
+      "cost": {
+        "latency_ms": 1500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "Dev",
+        "Researcher",
+        "Architect"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "remember_reflex_tool",
+      "namespace": "internal",
+      "kind": "orchestration",
+      "description": "Remember a local script, tool, or skill for REFLEX so it can be suggested later.",
+      "intent_tags": [
+        "catalog",
+        "workflow",
+        "tooling",
+        "recommend",
+        "registry",
+        "utility",
+        "remember"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "remember",
+          "reflex",
+          "tool"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "Dev",
+        "Researcher",
+        "Architect",
+        "Hostess",
+        "PM"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "list_reflex_tool_memory",
+      "namespace": "internal",
+      "kind": "search",
+      "description": "List remembered REFLEX scripts, tools, and skills, optionally filtered by type or query.",
+      "intent_tags": [
+        "workflow",
+        "tooling",
+        "enumerate",
+        "browse",
+        "utility",
+        "directory"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "research",
+          "fix",
+          "build"
+        ],
+        "keywords": [
+          "list",
+          "reflex",
+          "tool",
+          "memory"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Default",
+        "Dev",
+        "Researcher",
+        "Architect",
+        "Hostess",
+        "PM"
       ],
       "deprecated_aliases": [],
       "active": true,
@@ -555,9 +691,9 @@
       "kind": "system",
       "description": "Check VETKA server health and component status. Shows which components ",
       "intent_tags": [
-        "status",
         "monitor",
-        "diagnostic"
+        "diagnostic",
+        "status"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -683,10 +819,10 @@
       "kind": "file_op",
       "description": "Edit or create a file. Creates backup before changes. ",
       "intent_tags": [
+        "change",
         "update",
-        "patch",
         "modify",
-        "change"
+        "patch"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -718,10 +854,10 @@
       "kind": "system",
       "description": "Create a git commit. Default: dry_run=true (preview only). ",
       "intent_tags": [
-        "history",
         "version",
-        "branch",
-        "commit"
+        "history",
+        "commit",
+        "branch"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -754,9 +890,9 @@
       "description": "Run pytest tests with output capture. Returns stdout/stderr/exit code.",
       "intent_tags": [
         "verify",
-        "check",
+        "validate",
         "quality",
-        "validate"
+        "check"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -787,10 +923,10 @@
       "kind": "memory",
       "description": "Move 3D camera to focus on a specific file, branch, or overview. ",
       "intent_tags": [
-        "view",
         "focus",
-        "navigate",
-        "3d"
+        "view",
+        "3d",
+        "navigate"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -811,13 +947,13 @@
       },
       "permission": "READ",
       "roles": [
-        "Hostess",
-        "Architect",
-        "QA",
-        "PM",
-        "Researcher",
+        "Default",
         "Dev",
-        "Default"
+        "Researcher",
+        "Architect",
+        "Hostess",
+        "QA",
+        "PM"
       ],
       "deprecated_aliases": [],
       "active": true,
@@ -829,10 +965,10 @@
       "kind": "system",
       "description": "Get git status showing modified, staged, and untracked files. ",
       "intent_tags": [
-        "history",
         "version",
-        "branch",
-        "commit"
+        "history",
+        "commit",
+        "branch"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -863,10 +999,10 @@
       "kind": "llm",
       "description": "Call any LLM model through VETKA infrastructure (Grok, GPT, Claude, Gemini, Ollama). ",
       "intent_tags": [
-        "generate",
-        "llm",
+        "ai",
         "infer",
-        "ai"
+        "generate",
+        "llm"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -897,9 +1033,9 @@
       "kind": "file_op",
       "description": "Read messages from VETKA group chat. Use to see what other agents wrote.",
       "intent_tags": [
-        "content",
-        "view",
         "inspect",
+        "view",
+        "content",
         "examine"
       ],
       "trigger_patterns": {
@@ -1093,9 +1229,9 @@
       "kind": "reasoning",
       "description": "Generate ARC (Adaptive Reasoning Context) suggestions for workflow graphs. ",
       "intent_tags": [
-        "reason",
         "hypothesis",
-        "abstract"
+        "abstract",
+        "reason"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1126,10 +1262,10 @@
       "kind": "orchestration",
       "description": "[DEPRECATED] Use mycelium_pipeline instead. Pipeline tools moved to MCP MYCELIUM.",
       "intent_tags": [
-        "execute",
+        "automate",
         "orchestrate",
         "run",
-        "automate"
+        "execute"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1219,12 +1355,12 @@
       "tool_id": "vetka_task_board",
       "namespace": "vetka",
       "kind": "orchestration",
-      "description": "[DEPRECATED] Use mycelium_task_board instead. Moved to MCP MYCELIUM.",
+      "description": "Task Board CRUD (add/list/get/update/remove/summary/claim/complete). Uses local transport as fallback when MYCELIUM MCP ",
       "intent_tags": [
         "assign",
         "track",
-        "manage",
-        "plan"
+        "plan",
+        "manage"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1257,8 +1393,8 @@
       "intent_tags": [
         "assign",
         "track",
-        "manage",
-        "plan"
+        "plan",
+        "manage"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1291,8 +1427,8 @@
       "intent_tags": [
         "assign",
         "track",
-        "manage",
-        "plan"
+        "plan",
+        "manage"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1323,13 +1459,13 @@
       "kind": "file_op",
       "description": "Edit artifact content by artifact_id. Updates artifact file on disk. ",
       "intent_tags": [
-        "modify",
         "output",
-        "result",
-        "deliverable",
-        "update",
         "patch",
-        "change"
+        "change",
+        "update",
+        "result",
+        "modify",
+        "deliverable"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1351,9 +1487,9 @@
       },
       "permission": "WRITE",
       "roles": [
-        "Architect",
         "Dev",
-        "PM"
+        "PM",
+        "Architect"
       ],
       "deprecated_aliases": [],
       "active": true,
@@ -1365,9 +1501,9 @@
       "kind": "artifact",
       "description": "Approve an artifact for deployment/integration. Marks artifact as approved ",
       "intent_tags": [
+        "output",
         "deliverable",
-        "result",
-        "output"
+        "result"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1398,9 +1534,9 @@
       "kind": "artifact",
       "description": "Reject an artifact and provide feedback. Marks artifact as rejected in ",
       "intent_tags": [
+        "output",
         "deliverable",
-        "result",
-        "output"
+        "result"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1431,12 +1567,12 @@
       "kind": "search",
       "description": "List artifacts by status (pending, approved, rejected, all). Returns artifact ",
       "intent_tags": [
-        "result",
         "output",
-        "directory",
         "deliverable",
+        "enumerate",
         "browse",
-        "enumerate"
+        "result",
+        "directory"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1469,9 +1605,9 @@
       "kind": "context",
       "description": "VETKA tool: vetka_session_init",
       "intent_tags": [
-        "initialize",
+        "state",
         "connect",
-        "state"
+        "initialize"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1502,9 +1638,9 @@
       "kind": "context",
       "description": "VETKA tool: vetka_session_status",
       "intent_tags": [
-        "initialize",
+        "state",
         "connect",
-        "state"
+        "initialize"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1535,12 +1671,12 @@
       "kind": "search",
       "description": "VETKA tool: vetka_research",
       "intent_tags": [
-        "reason",
-        "abstract",
-        "hypothesis",
-        "find",
-        "discover",
         "query",
+        "hypothesis",
+        "reason",
+        "discover",
+        "find",
+        "abstract",
         "locate"
       ],
       "trigger_patterns": {
@@ -1633,10 +1769,10 @@
       "kind": "orchestration",
       "description": "VETKA tool: vetka_execute_workflow",
       "intent_tags": [
+        "video",
         "timeline",
         "montage",
-        "edit",
-        "video"
+        "edit"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1698,10 +1834,10 @@
       "kind": "orchestration",
       "description": "Mycelium agent pipeline for fractal task execution. ",
       "intent_tags": [
-        "execute",
+        "automate",
         "orchestrate",
         "run",
-        "automate"
+        "execute"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1733,10 +1869,10 @@
       "kind": "llm",
       "description": "Call any LLM model through MYCELIUM async infrastructure ",
       "intent_tags": [
-        "generate",
-        "llm",
+        "ai",
         "infer",
-        "ai"
+        "generate",
+        "llm"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1771,8 +1907,8 @@
       "intent_tags": [
         "assign",
         "track",
-        "manage",
-        "plan"
+        "plan",
+        "manage"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1807,8 +1943,8 @@
       "intent_tags": [
         "assign",
         "track",
-        "manage",
-        "plan"
+        "plan",
+        "manage"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -1843,8 +1979,8 @@
       "intent_tags": [
         "assign",
         "track",
-        "manage",
-        "plan"
+        "plan",
+        "manage"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -2042,10 +2178,10 @@
       "kind": "orchestration",
       "description": "Execute full VETKA workflow. Types: pm_to_qa, pm_only, dev_qa.",
       "intent_tags": [
+        "video",
         "timeline",
         "montage",
-        "edit",
-        "video"
+        "edit"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -2111,12 +2247,12 @@
       "kind": "search",
       "description": "Research a topic: semantic search → read files → summarize.",
       "intent_tags": [
-        "reason",
-        "abstract",
-        "hypothesis",
-        "find",
-        "discover",
         "query",
+        "hypothesis",
+        "reason",
+        "discover",
+        "find",
+        "abstract",
         "locate"
       ],
       "trigger_patterns": {
@@ -2213,12 +2349,12 @@
       "kind": "search",
       "description": "List artifacts by status (pending, approved, rejected, all).",
       "intent_tags": [
-        "result",
         "output",
-        "directory",
         "deliverable",
+        "enumerate",
         "browse",
-        "enumerate"
+        "result",
+        "directory"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -2251,9 +2387,9 @@
       "kind": "artifact",
       "description": "Approve an artifact for deployment/integration.",
       "intent_tags": [
+        "output",
         "deliverable",
-        "result",
-        "output"
+        "result"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -2286,9 +2422,9 @@
       "kind": "artifact",
       "description": "Reject an artifact with feedback.",
       "intent_tags": [
+        "output",
         "deliverable",
-        "result",
-        "output"
+        "result"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -2354,9 +2490,9 @@
       "kind": "search",
       "description": "List active playground instances with status, age, and pipeline run count.",
       "intent_tags": [
+        "browse",
         "enumerate",
-        "directory",
-        "browse"
+        "directory"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -2455,9 +2591,9 @@
       "kind": "system",
       "description": "MYCELIUM health check: uptime, active pipelines, WS clients, VETKA connectivity.",
       "intent_tags": [
-        "status",
         "monitor",
-        "diagnostic"
+        "diagnostic",
+        "status"
       ],
       "trigger_patterns": {
         "file_types": [
@@ -2805,6 +2941,150 @@
       "source": "cut_routes.py"
     },
     {
+      "tool_id": "cut_worker_audio-sync-async",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /worker/audio-sync-async",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_worker_pause-slice-async",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /worker/pause-slice-async",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_worker_timecode-sync-async",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /worker/timecode-sync-async",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
       "tool_id": "cut_job_job_id",
       "namespace": "cut",
       "kind": "media",
@@ -3001,6 +3281,54 @@
       "namespace": "cut",
       "kind": "media",
       "description": "CUT API: POST /time-markers/apply",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_timeline_apply-with-markers",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /timeline/apply-with-markers",
       "intent_tags": [
         "video",
         "edit",

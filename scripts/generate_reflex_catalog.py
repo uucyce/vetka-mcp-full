@@ -273,6 +273,8 @@ def _infer_kind(name: str) -> str:
         return "context"
     if any(k in name_lower for k in ["camera", "viewport"]):
         return "visualization"
+    if any(k in name_lower for k in ["playwright", "screenshot", "screen", "visual"]):
+        return "visualization"
     if any(k in name_lower for k in ["artifact", "approve", "reject"]):
         return "artifact"
     if any(k in name_lower for k in ["model", "call"]):
@@ -281,6 +283,8 @@ def _infer_kind(name: str) -> str:
         return "keys"
     if any(k in name_lower for k in ["arc", "suggest"]):
         return "reasoning"
+    if any(k in name_lower for k in ["remember", "registry", "catalog"]):
+        return "orchestration"
     return "other"
 
 
@@ -302,6 +306,8 @@ def _infer_intent_tags(name: str) -> list:
         "task": ["plan", "track", "manage", "assign"],
         "artifact": ["output", "result", "deliverable"],
         "camera": ["view", "focus", "navigate", "3d"],
+        "playwright": ["browser", "visual", "ui", "regression"],
+        "seed": ["bootstrap", "fixture", "prepare", "replay"],
         "session": ["connect", "initialize", "state"],
         "health": ["status", "diagnostic", "monitor"],
         "surprise": ["novelty", "anomaly", "unexpected"],
@@ -310,6 +316,8 @@ def _infer_intent_tags(name: str) -> list:
         "model": ["llm", "ai", "generate", "infer"],
         "arc": ["reason", "abstract", "hypothesis"],
         "key": ["auth", "credential", "api"],
+        "remember": ["catalog", "remember", "recommend", "registry"],
+        "tool": ["tooling", "utility", "workflow"],
     }
 
     for keyword, intent in tag_map.items():
@@ -342,7 +350,7 @@ def _infer_permission(name: str) -> str:
     name_lower = name.lower()
     if any(k in name_lower for k in ["edit", "write", "commit"]):
         return "WRITE"
-    if any(k in name_lower for k in ["execute", "pipeline", "dispatch"]):
+    if any(k in name_lower for k in ["execute", "pipeline", "dispatch", "seed"]):
         return "EXECUTE"
     if any(k in name_lower for k in ["call_model"]):
         return "EXTERNAL"
@@ -354,6 +362,8 @@ def _infer_cost(name: str) -> dict:
     name_lower = name.lower()
     if "call_model" in name_lower:
         return {"latency_ms": 2000, "tokens": 500, "risk_level": "external"}
+    if any(k in name_lower for k in ["playwright", "seed"]):
+        return {"latency_ms": 1500, "tokens": 0, "risk_level": "execute"}
     if any(k in name_lower for k in ["pipeline", "workflow", "execute"]):
         return {"latency_ms": 5000, "tokens": 0, "risk_level": "execute"}
     if any(k in name_lower for k in ["edit", "write", "commit"]):

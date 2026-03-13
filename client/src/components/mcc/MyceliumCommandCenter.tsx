@@ -1419,6 +1419,14 @@ export function MyceliumCommandCenter() {
   } | null>(null);
   const focusMemoryRef = useRef<Record<string, string[]>>({});
   const isRestoringFocusRef = useRef(false);
+  const bootProjectId = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    try {
+      return String(new URLSearchParams(window.location.search).get('project_id') || '').trim();
+    } catch {
+      return '';
+    }
+  }, []);
 
   const selectedTaskMeta = useMemo(() => {
     const selectedTask = tasks.find((t) => t.id === selectedTaskId);
@@ -1998,10 +2006,10 @@ export function MyceliumCommandCenter() {
   }, [roadmapGraphSource, roadmapTrmMeta]);
 
   useEffect(() => {
-    initMCC().then(() => {
+    initMCC(bootProjectId).then(() => {
       setMccReady(true);
     });
-  }, [initMCC]);
+  }, [bootProjectId, initMCC]);
 
   useEffect(() => {
     if (!mccReady) return;

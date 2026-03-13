@@ -28,6 +28,7 @@ This module provides:
 import os
 import subprocess
 import json
+import sys
 import glob as glob_module
 import ast
 from typing import Optional, Dict, Any, List
@@ -42,6 +43,10 @@ from src.tools.base_tool import (
     ToolResult,
     PermissionLevel,
     registry,
+)
+from src.services.reflex_tool_memory import (
+    list_reflex_tool_memory,
+    remember_reflex_tool,
 )
 
 # Project root
@@ -1165,11 +1170,209 @@ class AnalyzeUnknownKeyTool(BaseTool):
             return ToolResult(success=False, result=None, error=str(e))
 
 
+class SeedMCCPlaywrightFixtureTool(BaseTool):
+    """
+    Seed a deterministic MCC project fixture for Playwright visual regression.
+    Phase 177: Internal bridge so REFLEX can recommend and execute the seeded path.
+    """
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="seed_mcc_playwright_fixture",
+            description="Seed a deterministic MCC Playwright fixture project and return project_id plus browser_url.",
+            parameters={
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+            permission_level=PermissionLevel.EXECUTE,
+            needs_user_approval=False,
+        )
+
+    async def execute(self) -> ToolResult:
+        try:
+            script_path = PROJECT_ROOT / "scripts" / "mcc_seed_playwright_fixture.py"
+            if not script_path.exists():
+                return ToolResult(
+                    success=False,
+                    result=None,
+                    error=f"Seed script not found: {script_path}",
+                )
+
+            result = subprocess.run(
+                [sys.executable, str(script_path)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                cwd=str(PROJECT_ROOT),
+            )
+
+            if result.returncode != 0:
+                return ToolResult(
+                    success=False,
+                    result=None,
+                    error=(result.stderr or result.stdout or "Seed script failed").strip(),
+                )
+
+            payload = json.loads((result.stdout or "").strip())
+            return ToolResult(success=True, result=payload)
+        except json.JSONDecodeError as e:
+            return ToolResult(
+                success=False,
+                result=None,
+                error=f"Seed script returned invalid JSON: {e}",
+            )
+        except subprocess.TimeoutExpired:
+            return ToolResult(
+                success=False,
+                result=None,
+                error="Seed script timed out",
+            )
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+
+
+class RememberReflexToolTool(BaseTool):
+    """
+    Persist a reminder about a local script/tool/skill so REFLEX can surface it later.
+    """
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="remember_reflex_tool",
+            description="Remember a local script, tool, or skill for REFLEX so it can be suggested later.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "tool_name": {
+                        "type": "string",
+                        "description": "Canonical tool or script name to remember.",
+                    },
+                    "entry_type": {
+                        "type": "string",
+                        "description": "Type of entry, for example script, tool, skill, or workflow.",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Project-relative or absolute path for the remembered entry.",
+                    },
+                    "notes": {
+                        "type": "string",
+                        "description": "Short notes about when and why to use it.",
+                    },
+                    "intent_tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Intent tags that help REFLEX match this entry later.",
+                    },
+                    "trigger_hint": {
+                        "type": "string",
+                        "description": "Short hint about what user request should trigger this tool.",
+                    },
+                    "aliases": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Alternative names or search phrases for this entry.",
+                    },
+                    "active": {
+                        "type": "boolean",
+                        "description": "Whether the remembered tool should stay active for recommendations.",
+                        "default": True,
+                    },
+                },
+                "required": ["tool_name", "entry_type", "path"],
+            },
+            permission_level=PermissionLevel.WRITE,
+            needs_user_approval=False,
+        )
+
+    async def execute(
+        self,
+        tool_name: str,
+        entry_type: str,
+        path: str,
+        notes: str = "",
+        intent_tags: List[str] = None,
+        trigger_hint: str = "",
+        aliases: List[str] = None,
+        active: bool = True,
+    ) -> ToolResult:
+        try:
+            result = remember_reflex_tool(
+                tool_name=tool_name,
+                entry_type=entry_type,
+                path=path,
+                notes=notes,
+                intent_tags=intent_tags or [],
+                trigger_hint=trigger_hint,
+                aliases=aliases or [],
+                active=active,
+            )
+            return ToolResult(success=True, result=result)
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+
+
+class ListReflexToolMemoryTool(BaseTool):
+    """
+    List remembered REFLEX scripts/tools/skills.
+    """
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="list_reflex_tool_memory",
+            description="List remembered REFLEX scripts, tools, and skills, optionally filtered by type or query.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "entry_type": {
+                        "type": "string",
+                        "description": "Optional type filter such as script, tool, skill, or workflow.",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Optional free-text filter across tool_name, path, notes, and aliases.",
+                    },
+                    "only_active": {
+                        "type": "boolean",
+                        "description": "Whether to return only active remembered entries.",
+                        "default": True,
+                    },
+                },
+                "required": [],
+            },
+            permission_level=PermissionLevel.READ,
+            needs_user_approval=False,
+        )
+
+    async def execute(
+        self,
+        entry_type: str = "",
+        query: str = "",
+        only_active: bool = True,
+    ) -> ToolResult:
+        try:
+            result = list_reflex_tool_memory(
+                entry_type=entry_type,
+                query=query,
+                only_active=only_active,
+            )
+            return ToolResult(success=True, result=result)
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+
+
 # Register API Key tools
 registry.register(SaveAPIKeyTool())
 registry.register(LearnAPIKeyTool())
 registry.register(GetAPIKeyStatusTool())
 registry.register(AnalyzeUnknownKeyTool())
+registry.register(SeedMCCPlaywrightFixtureTool())
+registry.register(RememberReflexToolTool())
+registry.register(ListReflexToolMemoryTool())
 
 
 # ============================================================================
@@ -1202,6 +1405,7 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "adaptive_memory_sizing",
         # ARC for creative suggestions
         "arc_suggest",
+        "list_reflex_tool_memory",
     ],
     "PM": [
         "read_code_file",
@@ -1216,6 +1420,8 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "adaptive_memory_sizing",  # Optimize memory for project management
         # Phase 97: ARC Tool for creative suggestions
         "arc_suggest",  # Get creative workflow suggestions when planning
+        "list_reflex_tool_memory",
+        "remember_reflex_tool",
     ],
     "Dev": [
         "read_code_file",
@@ -1231,6 +1437,9 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "calculate_surprise",  # Detect novel implementation challenges
         "compress_with_elision",  # Reduce token usage for large codebases
         "adaptive_memory_sizing",  # Optimize memory for complex implementations
+        "seed_mcc_playwright_fixture",
+        "list_reflex_tool_memory",
+        "remember_reflex_tool",
     ],
     "QA": [
         "read_code_file",
@@ -1257,6 +1466,9 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "adaptive_memory_sizing",
         # Phase 97: ARC Tool for creative architecture suggestions
         "arc_suggest",  # Get creative suggestions for system design
+        "seed_mcc_playwright_fixture",
+        "list_reflex_tool_memory",
+        "remember_reflex_tool",
     ],
     # Phase 57.8: Researcher Agent - Knowledge Investigator (Full CAM access)
     "Researcher": [
@@ -1272,6 +1484,9 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "adaptive_memory_sizing",
         # Phase 97: ARC Tool for creative research suggestions
         "arc_suggest",  # Get creative suggestions during research
+        "seed_mcc_playwright_fixture",
+        "list_reflex_tool_memory",
+        "remember_reflex_tool",
     ],
     "Hostess": [
         "vetka_search_semantic",  # MARKER_114.1: was "search_semantic"
@@ -1286,6 +1501,8 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "calculate_surprise",  # Detect novel user needs
         # Phase 97: ARC Tool for creative suggestions to users
         "arc_suggest",  # Suggest creative connections to help users
+        "list_reflex_tool_memory",
+        "remember_reflex_tool",
     ],
 }
 # MARKER_114.1_TOOL_NAME_FIX_END
@@ -1393,6 +1610,9 @@ __all__ = [
     "CalculateSurpriseTool",
     "CompressWithElisionTool",
     "AdaptiveMemorySizingTool",
+    "SeedMCCPlaywrightFixtureTool",
+    "RememberReflexToolTool",
+    "ListReflexToolMemoryTool",
     # Agent permissions
     "AGENT_TOOL_PERMISSIONS",
     "get_tools_for_agent",

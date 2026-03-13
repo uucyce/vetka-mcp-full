@@ -427,7 +427,7 @@ interface MCCState {
     error?: string;
   }>;
   // MARKER_153.1C: Navigation actions
-  initMCC: () => Promise<void>;
+  initMCC: (projectIdOverride?: string) => Promise<void>;
   refreshProjectTabs: () => Promise<void>;
   activateProjectTab: (projectId: string) => Promise<boolean>;
   drillDown: (level: NavLevel, context?: { roadmapNodeId?: string; taskId?: string }) => void;
@@ -775,11 +775,15 @@ export const useMCCStore = create<MCCState>((set, get) => ({
 
   // ── MARKER_153.1C: Init MCC — load project config + session state ──
   // MARKER_154.1B: first_run level when no project configured
-  initMCC: async () => {
+  initMCC: async (projectIdOverride?: string) => {
     // MARKER_161.7.MULTIPROJECT.UI.INIT_ROUTE.V1:
     // Future init will hydrate tab list + active project context before DAG fetch.
     try {
-      const res = await fetch(`${API_BASE}/mcc/init`);
+      const projectId = String(projectIdOverride || '').trim();
+      const initUrl = projectId
+        ? `${API_BASE}/mcc/init?project_id=${encodeURIComponent(projectId)}`
+        : `${API_BASE}/mcc/init`;
+      const res = await fetch(initUrl);
       if (!res.ok) {
         // No backend → first_run
         set({

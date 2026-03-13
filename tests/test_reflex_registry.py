@@ -120,6 +120,16 @@ class TestMCPToolsCovered:
         for name in key_mycelium:
             assert registry.has_tool(name), f"MYCELIUM tool '{name}' missing"
 
+    def test_new_internal_reflex_tools_present(self, registry):
+        """Phase 177: Playwright seed + REFLEX memory tools are cataloged."""
+        key_internal = [
+            "seed_mcc_playwright_fixture",
+            "remember_reflex_tool",
+            "list_reflex_tool_memory",
+        ]
+        for name in key_internal:
+            assert registry.has_tool(name), f"Internal tool '{name}' missing"
+
 
 # ─── T1.4: Role permissions ──────────────────────────────────────────
 
