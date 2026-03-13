@@ -42,6 +42,7 @@ from src.services.cut_scene_detector import (
     detect_scene_boundaries,
     group_clips_into_scenes,
 )
+from src.services.cut_timeline_events import CutTimelineEventEmitter
 from src.services.cut_undo_redo import CutUndoRedoService, build_op_label
 from src.services.cut_project_store import (
     CutProjectStore,
@@ -4505,6 +4506,18 @@ async def cut_timeline_apply(body: CutTimelinePatchRequest) -> dict[str, Any]:
     }
     if undo_info:
         result["undo_info"] = undo_info
+
+    # MARKER_173.4 — emit real-time event
+    try:
+        _emitter = CutTimelineEventEmitter.get_instance()
+        asyncio.ensure_future(_emitter.emit_edit(
+            str(body.project_id), str(body.timeline_id),
+            applied_ops, int(updated_state.get("revision") or 0),
+            author=str(body.author or "cut_mcp"),
+        ))
+    except Exception:
+        pass  # non-fatal
+
     return result
 
 
@@ -4600,6 +4613,17 @@ async def cut_undo(body: CutUndoRedoRequest) -> dict[str, Any]:
     }
     store.append_timeline_edit_event(edit_event)
 
+    # MARKER_173.4 — emit real-time event
+    try:
+        _emitter = CutTimelineEventEmitter.get_instance()
+        asyncio.ensure_future(_emitter.emit_undo(
+            str(body.project_id), str(body.timeline_id),
+            result["entry"]["label"], int(restore_state.get("revision") or 0),
+            result["undo_depth"], result["redo_depth"],
+        ))
+    except Exception:
+        pass
+
     return {
         "success": True,
         "schema_version": "cut_undo_v1",
@@ -4652,6 +4676,17 @@ async def cut_redo(body: CutUndoRedoRequest) -> dict[str, Any]:
         "created_at": _utc_now_iso(),
     }
     store.append_timeline_edit_event(edit_event)
+
+    # MARKER_173.4 — emit real-time event
+    try:
+        _emitter = CutTimelineEventEmitter.get_instance()
+        asyncio.ensure_future(_emitter.emit_redo(
+            str(body.project_id), str(body.timeline_id),
+            result["entry"]["label"], int(updated_state.get("revision") or 0),
+            result["undo_depth"], result["redo_depth"],
+        ))
+    except Exception:
+        pass
 
     return {
         "success": True,
@@ -4871,6 +4906,16 @@ async def cut_scene_detect_and_apply(body: CutSceneDetectApplyRequest) -> dict[s
     timeline_state["revision"] = int(timeline_state.get("revision") or 0) + 1
     timeline_state["updated_at"] = _utc_now_iso()
     store.save_timeline_state(timeline_state)
+
+    # MARKER_173.4 — emit real-time event
+    try:
+        _emitter = CutTimelineEventEmitter.get_instance()
+        asyncio.ensure_future(_emitter.emit_scene_detected(
+            str(body.project_id), str(body.timeline_id),
+            len(all_boundaries), len(created_clips), lane_id,
+        ))
+    except Exception:
+        pass
 
     return {
         "success": True,
