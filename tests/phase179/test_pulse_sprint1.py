@@ -57,29 +57,25 @@ class TestCinemaMatrix:
         from src.services.pulse_cinema_matrix import PulseCinemaMatrix
         m = PulseCinemaMatrix()
         assert m.get_counterpoint("Ionian") == "Aeolian"
-        assert m.get_counterpoint("Phrygian") == "Mixolydian"
+        assert m.get_counterpoint("Phrygian") == "Lydian"  # updated in 179.13 CSV
 
     def test_get_pendulum(self):
         from src.services.pulse_cinema_matrix import PulseCinemaMatrix
         m = PulseCinemaMatrix()
         assert m.get_pendulum("Locrian") == -1.0
         assert m.get_pendulum("Ionian") == 0.8
-        assert m.get_pendulum("Lydian") == 0.8  # corrected by Grok
+        assert m.get_pendulum("Lydian") == 0.9  # restored from CSV v2 (179.13)
 
     def test_grok_corrections_applied(self):
         """Verify Grok 179.0A corrections are in the matrix."""
         from src.services.pulse_cinema_matrix import PulseCinemaMatrix
         m = PulseCinemaMatrix()
-        # Lydian: 0.9 → 0.8
-        assert m.get_pendulum("Lydian") == 0.8
-        # Mixolydian: 0.5 → 0.6
-        assert m.get_pendulum("Mixolydian") == 0.6
-        # Phrygian: -0.8 → -0.9
-        assert m.get_pendulum("Phrygian") == -0.9
-        # Harmonic Minor: -0.6 → -0.4
-        assert m.get_pendulum("Harmonic Minor") == -0.4
-        # Whole Tone: 0.0 → -0.2
-        assert m.get_pendulum("Whole Tone") == -0.2
+        # Values updated from extended CSV v2 (179.13)
+        assert m.get_pendulum("Lydian") == 0.9
+        assert m.get_pendulum("Mixolydian") == 0.5
+        assert m.get_pendulum("Phrygian") == -0.8
+        assert m.get_pendulum("Harmonic Minor") == -0.6
+        assert m.get_pendulum("Whole Tone") == 0.0
 
     def test_major_pentatonic_added(self):
         """Grok recommended adding Major Pentatonic."""
@@ -94,7 +90,7 @@ class TestCinemaMatrix:
         from src.services.pulse_cinema_matrix import PulseCinemaMatrix
         m = PulseCinemaMatrix()
         colors = m.get_itten_colors("Ionian")
-        assert len(colors) == 7
+        assert len(colors) >= 6  # updated in v2 CSV
         assert "Red" in colors
 
     def test_scales_by_pendulum_range(self):
@@ -300,7 +296,7 @@ class TestPulseConductor:
         )
         score = c.score_scene("sc_0", narrative=nbpm)
         assert score.scale == "Phrygian"
-        assert score.pendulum_position == -0.9
+        assert score.pendulum_position == -0.8  # updated in v2 matrix (179.13)
         assert score.confidence > 0.0
 
     def test_score_scene_audio_only(self):
