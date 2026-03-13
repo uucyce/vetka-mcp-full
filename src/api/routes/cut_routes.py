@@ -1378,6 +1378,38 @@ def _enrich_timeline_with_sync_hints(
         }
 
 
+def _build_music_summary(music_sync_result: dict[str, Any] | None) -> dict[str, Any] | None:
+    """
+    MARKER_170.C11.MUSIC_SUMMARY_LANE
+    Compact summary of music analysis for the project-state response.
+    """
+    if music_sync_result is None:
+        return None
+    tempo = music_sync_result.get("tempo") or {}
+    phrases = music_sync_result.get("phrases") or []
+    cue_points = music_sync_result.get("cue_points") or []
+    downbeats = music_sync_result.get("downbeats") or []
+    phrase_labels = [p.get("label", "") for p in phrases]
+    high_energy = [p for p in phrases if float(p.get("energy", 0)) >= 0.7]
+    cue_kinds: dict[str, int] = {}
+    for cue in cue_points:
+        kind = str(cue.get("kind", ""))
+        cue_kinds[kind] = cue_kinds.get(kind, 0) + 1
+    return {
+        "music_path": str(music_sync_result.get("music_path", "")),
+        "bpm": float(tempo.get("bpm", 0)),
+        "bpm_confidence": float(tempo.get("confidence", 0)),
+        "time_signature": str(tempo.get("time_signature", "4/4")),
+        "total_downbeats": len(downbeats),
+        "total_phrases": len(phrases),
+        "total_cue_points": len(cue_points),
+        "high_energy_phrases": len(high_energy),
+        "phrase_labels": phrase_labels,
+        "cue_kind_counts": cue_kinds,
+        "derived_from": str(music_sync_result.get("derived_from", "")),
+    }
+
+
 def _run_audio_sync_method(
     method: str,
     reference_signal: list[float],
@@ -3042,6 +3074,7 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         meta_sync_result=None,
     )
     _enrich_timeline_with_sync_hints(timeline_state, sync_surface)
+    music_summary = _build_music_summary(music_sync_result)
     scene_graph_view = _build_scene_graph_view(
         scene_graph,
         timeline_state,
@@ -3065,6 +3098,7 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         "slice_bundle": slice_bundle,
         "timecode_sync_result": timecode_sync_result,
         "music_sync_result": music_sync_result,
+        "music_summary": music_summary,
         "sync_surface": sync_surface,
         "time_marker_bundle": time_marker_bundle,
         "recent_jobs": recent_jobs,

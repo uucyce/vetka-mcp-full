@@ -11,7 +11,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.routes.cut_routes import router
+from src.api.routes.cut_routes import router, _build_music_summary
 from src.services.cut_project_store import CutProjectStore
 
 
@@ -145,6 +145,29 @@ def test_load_missing_returns_none(tmp_path: Path):
     assert store.load_music_sync_result() is None
 
 
+# ─── Music summary ───
+
+
+def test_music_summary_from_valid_result():
+    result = _valid_music_sync()
+    summary = _build_music_summary(result)
+    assert summary is not None
+    assert summary["bpm"] == 120.0
+    assert summary["bpm_confidence"] == 0.95
+    assert summary["total_downbeats"] == 8
+    assert summary["total_phrases"] == 2
+    assert summary["total_cue_points"] == 3
+    assert summary["high_energy_phrases"] == 1  # verse energy=0.8 >= 0.7
+    assert summary["phrase_labels"] == ["intro", "verse"]
+    assert summary["cue_kind_counts"]["downbeat"] == 1
+    assert summary["cue_kind_counts"]["phrase_start"] == 1
+    assert summary["cue_kind_counts"]["drop"] == 1
+
+
+def test_music_summary_none_when_no_result():
+    assert _build_music_summary(None) is None
+
+
 # ─── Project-state integration ───
 
 
@@ -202,3 +225,7 @@ def test_project_state_includes_music_sync(tmp_path: Path):
     assert state2["music_sync_ready"] is True
     assert state2["music_sync_result"]["tempo"]["bpm"] == 120.0
     assert len(state2["music_sync_result"]["cue_points"]) == 3
+    # Music summary lane
+    assert state2["music_summary"] is not None
+    assert state2["music_summary"]["bpm"] == 120.0
+    assert state2["music_summary"]["total_cue_points"] == 3
