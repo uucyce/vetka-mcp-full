@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import math
 import os
 import re
 import threading
+
+logger = logging.getLogger("cut.routes")
 from copy import deepcopy
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import Response
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from src.api.routes.artifact_routes import (
@@ -21,11 +25,8 @@ from src.api.routes.artifact_routes import (
     media_preview,
     media_transcript_normalized,
 )
-from src.services.converters.fcpxml_converter import build_fcpxml
-from src.services.converters.premiere_xml_converter import build_premiere_xml
-from src.services.cut_ffmpeg_audio_sync import extract_signal_with_fallback, sync_two_files_ffmpeg
-from src.services.cut_ffmpeg_waveform import build_waveform_with_fallback
 from src.services.cut_audio_intel_eval import (
+    build_energy_envelope,
     derive_pause_windows_from_silence,
     detect_offset_hybrid,
     detect_offset_via_correlation,
@@ -36,6 +37,7 @@ from src.services.cut_marker_bundle_service import (
     hybrid_merge_slices,
 )
 from src.services.cut_mcp_job_store import get_cut_mcp_job_store
+from src.services.cut_undo_redo import CutUndoRedoService, build_op_label
 from src.services.cut_project_store import (
     CutProjectStore,
     build_cut_bootstrap_profile,
@@ -117,6 +119,17 @@ class CutTimeMarkerApplyRequest(BaseModel):
     source_engine: str = "cut_mcp"
 
 
+class CutMontagePromoteMarkerRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    marker_id: str
+    author: str = "cut_mcp"
+    decision_id: str = ""
+    lane_id: str = "V1"
+    decision_status: Literal["accepted", "rejected"] = "accepted"
+    editorial_intent: str = ""
+
+
 class CutWaveformBuildRequest(BaseModel):
     sandbox_root: str
     project_id: str
@@ -164,6 +177,14 @@ class CutTimecodeSyncRequest(BaseModel):
     project_id: str
     limit: int = Field(default=6, ge=2, le=16)
     fps: int = Field(default=25, ge=1, le=120)
+
+
+class CutMusicSyncRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    music_path: str = ""
+    bpm_hint: float | None = Field(default=None, ge=40.0, le=240.0)
+    max_analysis_sec: int = Field(default=180, ge=10, le=1200)
 
 
 class CutMusicSyncSliceConfig(BaseModel):
@@ -265,6 +286,20 @@ def _worker_job_error(code: str, message: str, *, existing_job: dict[str, Any] |
         payload["job"] = existing_job
         payload["job_id"] = str(existing_job.get("job_id") or "")
     return payload
+
+
+def _montage_error(code: str, message: str, *, recoverable: bool = True) -> dict[str, Any]:
+    return {
+        "success": False,
+        "schema_version": "cut_montage_state_v1",
+        "decision": None,
+        "montage_state": None,
+        "error": {
+            "code": code,
+            "message": message,
+            "recoverable": recoverable,
+        },
+    }
 
 
 def _utc_now_iso() -> str:
@@ -1332,86 +1367,576 @@ def _build_sync_surface(
     }
 
 
-def _enrich_timeline_with_sync_hints(
-    timeline_state: dict[str, Any] | None,
-    sync_surface: dict[str, Any],
-) -> None:
-    """
-    MARKER_170.15.SYNC_HINT_ENRICHMENT
-    Embed sync_hint on each clip that has a matching sync_surface recommendation,
-    and add sync_summary to each lane. Mutates timeline_state in place.
-    """
-    if timeline_state is None:
-        return
-    surface_by_source: dict[str, dict[str, Any]] = {}
-    for item in sync_surface.get("items", []):
-        sp = str(item.get("source_path") or "")
-        if sp:
-            surface_by_source[sp] = item
+def _build_music_cue_summary(
+    *,
+    bootstrap_state: dict[str, Any] | None,
+    music_sync_result: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    profile = (bootstrap_state or {}).get("profile") if isinstance(bootstrap_state, dict) else None
+    profile = profile if isinstance(profile, dict) else {}
+    music_track = profile.get("music_track") if isinstance(profile.get("music_track"), dict) else {}
+    music_path = str((music_sync_result or {}).get("music_path") or music_track.get("path") or "")
+    if not music_path:
+        return None
 
-    for lane in timeline_state.get("lanes", []):
-        total = 0
-        synced = 0
-        pending_hints = 0
-        methods_used: set[str] = set()
-        for clip in lane.get("clips", []):
-            total += 1
-            source_path = str(clip.get("source_path") or "")
-            already_synced = clip.get("sync") is not None and clip["sync"].get("method")
-            if already_synced:
-                synced += 1
-                methods_used.add(str(clip["sync"].get("method") or ""))
-            surface_item = surface_by_source.get(source_path)
-            if surface_item and surface_item.get("recommended_method"):
-                clip["sync_hint"] = {
-                    "recommended_method": surface_item["recommended_method"],
-                    "recommended_offset_sec": surface_item["recommended_offset_sec"],
-                    "confidence": surface_item["confidence"],
-                    "reference_path": surface_item.get("reference_path", ""),
-                    "already_applied": bool(already_synced),
+    cue_points = [cue for cue in (music_sync_result or {}).get("cue_points", []) if isinstance(cue, dict)]
+    phrases = [phrase for phrase in (music_sync_result or {}).get("phrases", []) if isinstance(phrase, dict)]
+    downbeats = [value for value in (music_sync_result or {}).get("downbeats", []) if isinstance(value, (int, float))]
+    tempo = (music_sync_result or {}).get("tempo") if isinstance((music_sync_result or {}).get("tempo"), dict) else {}
+    track_label = str(music_track.get("relative_path") or os.path.basename(music_path) or music_path)
+    top_cues = [
+        {
+            "cue_id": str(cue.get("cue_id") or ""),
+            "label": str(cue.get("label") or ""),
+            "start_sec": float(cue.get("start_sec") or 0.0),
+            "cue_type": str(cue.get("cue_type") or ""),
+            "confidence": float(cue.get("confidence") or 0.0),
+        }
+        for cue in sorted(
+            cue_points,
+            key=lambda item: (-float(item.get("confidence") or 0.0), float(item.get("start_sec") or 0.0)),
+        )[:3]
+    ]
+    return {
+        "schema_version": "cut_music_cue_summary_v1",
+        "track_label": track_label,
+        "music_path": music_path,
+        "primary_candidate": True,
+        "cue_point_count": len(cue_points),
+        "phrase_count": len(phrases),
+        "downbeat_count": len(downbeats),
+        "tempo_bpm": float(tempo.get("bpm") or 0.0) if tempo else None,
+        "tempo_confidence": float(tempo.get("confidence") or 0.0) if tempo else None,
+        "top_cues": top_cues,
+    }
+
+
+def _resolve_music_sync_path(
+    *,
+    store: CutProjectStore,
+    project: dict[str, Any],
+    requested_path: str,
+) -> tuple[str, str]:
+    source_root = str(project.get("source_path") or "")
+
+    def _normalize_candidate(raw: str) -> str:
+        value = str(raw or "").strip()
+        if not value:
+            return ""
+        if not os.path.isabs(value):
+            value = os.path.join(source_root, value)
+        return os.path.realpath(os.path.abspath(value))
+
+    bootstrap_state = store.load_bootstrap_state()
+    profile = (bootstrap_state or {}).get("profile") if isinstance(bootstrap_state, dict) else None
+    profile = profile if isinstance(profile, dict) else {}
+    music_track = profile.get("music_track") if isinstance(profile.get("music_track"), dict) else {}
+
+    candidates: list[tuple[int, str, str]] = []
+    explicit_path = _normalize_candidate(requested_path)
+    if explicit_path:
+        candidates.append((10, explicit_path, "request_path"))
+    profile_path = _normalize_candidate(str(music_track.get("path") or music_track.get("relative_path") or ""))
+    if profile_path:
+        candidates.append((9, profile_path, "bootstrap_profile"))
+
+    for path in _pick_audio_sync_media_paths(source_root, 12):
+        name = os.path.basename(path).lower()
+        score = 3 if any(token in name for token in ("punch", "music", "song", "score", "ost")) else 1
+        candidates.append((score, os.path.realpath(path), "source_autodiscovery"))
+
+    for _, path, reason in sorted(candidates, key=lambda item: (-item[0], item[1])):
+        if os.path.isfile(path):
+            return path, reason
+    return "", "music_track_missing"
+
+
+def _build_music_peak_times_from_signal(
+    signal: list[float],
+    *,
+    sample_rate: int,
+    frame_ms: int = 20,
+) -> tuple[list[float], list[float]]:
+    envelope = build_energy_envelope(signal, sample_rate, frame_ms=frame_ms)
+    if not envelope:
+        return [], []
+    mean_value = sum(envelope) / max(1, len(envelope))
+    variance = sum((value - mean_value) ** 2 for value in envelope) / max(1, len(envelope))
+    std_value = math.sqrt(max(0.0, variance))
+    threshold = max(0.08, mean_value + std_value * 0.45)
+    frame_sec = frame_ms / 1000.0
+    min_gap_frames = max(1, int(0.24 / max(frame_sec, 1e-6)))
+
+    peaks: list[float] = []
+    last_peak_idx = -min_gap_frames
+    for idx in range(1, len(envelope) - 1):
+        current = float(envelope[idx])
+        if current < threshold:
+            continue
+        if current < float(envelope[idx - 1]) or current < float(envelope[idx + 1]):
+            continue
+        if idx - last_peak_idx < min_gap_frames:
+            continue
+        peaks.append(round(idx * frame_sec, 4))
+        last_peak_idx = idx
+
+    if not peaks:
+        ranked = sorted(envelope, reverse=True)[: min(8, len(envelope))]
+        if ranked:
+            fallback_threshold = ranked[-1]
+            peaks = [
+                round(idx * frame_sec, 4)
+                for idx, value in enumerate(envelope)
+                if value >= fallback_threshold
+            ][:8]
+    return peaks, envelope
+
+
+def _normalize_tempo_candidate(raw_bpm: float, bpm_hint: float | None) -> float:
+    bpm = float(raw_bpm or 0.0)
+    if bpm <= 0.0:
+        return 0.0
+    while bpm < 60.0:
+        bpm *= 2.0
+    while bpm > 180.0:
+        bpm /= 2.0
+    if bpm_hint is not None and bpm_hint > 0.0:
+        candidates = [bpm / 4.0, bpm / 2.0, bpm, bpm * 2.0, bpm * 4.0]
+        valid = [value for value in candidates if 40.0 <= value <= 240.0]
+        if valid:
+            bpm = min(valid, key=lambda value: abs(value - float(bpm_hint)))
+    return round(max(40.0, min(240.0, bpm)), 3)
+
+
+def _estimate_bpm_from_peak_times(peak_times: list[float], bpm_hint: float | None) -> tuple[float, float]:
+    intervals = [
+        float(peak_times[idx + 1] - peak_times[idx])
+        for idx in range(len(peak_times) - 1)
+        if 0.18 <= float(peak_times[idx + 1] - peak_times[idx]) <= 1.5
+    ]
+    if not intervals:
+        fallback_bpm = _normalize_tempo_candidate(float(bpm_hint or 120.0), bpm_hint)
+        fallback_confidence = 0.52 if bpm_hint is not None else 0.24
+        return fallback_bpm, round(fallback_confidence, 3)
+
+    ordered = sorted(intervals)
+    median_interval = ordered[len(ordered) // 2]
+    bpm = _normalize_tempo_candidate(60.0 / max(median_interval, 1e-6), bpm_hint)
+    mean_interval = sum(intervals) / len(intervals)
+    variance = sum((value - mean_interval) ** 2 for value in intervals) / len(intervals)
+    cv = math.sqrt(max(0.0, variance)) / max(mean_interval, 1e-6)
+    regularity = max(0.0, min(1.0, 1.0 - cv))
+    coverage = max(0.0, min(1.0, len(intervals) / 24.0))
+    confidence = max(0.18, min(0.97, 0.55 * regularity + 0.45 * coverage))
+    return bpm, round(confidence, 3)
+
+
+def _build_music_phrases(anchors: list[float], duration_sec: float) -> list[dict[str, Any]]:
+    if duration_sec <= 0.0:
+        return []
+    clean = [round(max(0.0, float(value)), 4) for value in anchors if isinstance(value, (int, float))]
+    clean = sorted({value for value in clean if value < duration_sec})
+    if not clean or clean[0] > 0.001:
+        clean.insert(0, 0.0)
+    if clean[-1] < duration_sec:
+        clean.append(round(duration_sec, 4))
+    labels = ["Intro", "Lift", "Drive", "Break", "Push", "Finale", "Outro"]
+    phrases: list[dict[str, Any]] = []
+    for index in range(len(clean) - 1):
+        start_sec = float(clean[index])
+        end_sec = float(clean[index + 1])
+        if end_sec - start_sec < 0.12:
+            continue
+        phrases.append(
+            {
+                "phrase_id": f"phrase_{index + 1:02d}",
+                "start_sec": round(start_sec, 4),
+                "end_sec": round(end_sec, 4),
+                "label": labels[index % len(labels)],
+                "energy": round(min(0.98, 0.58 + (0.07 * (index % 5))), 3),
+            }
+        )
+    return phrases
+
+
+def _build_music_cues(
+    *,
+    downbeats: list[float],
+    envelope: list[float],
+    duration_sec: float,
+    tempo_bpm: float,
+) -> list[dict[str, Any]]:
+    if duration_sec <= 0.0:
+        return []
+
+    def _energy_at(time_sec: float) -> float:
+        if not envelope:
+            return 0.6
+        idx = int((time_sec / max(duration_sec, 1e-6)) * max(0, len(envelope) - 1))
+        idx = max(0, min(len(envelope) - 1, idx))
+        peak = max(envelope) or 1.0
+        return max(0.0, min(1.0, float(envelope[idx]) / peak))
+
+    beat_period = 60.0 / max(float(tempo_bpm or 120.0), 1.0)
+    selected: list[tuple[int, float, str]] = []
+    for beat_index, time_sec in enumerate(downbeats):
+        cue_type = ""
+        energy = _energy_at(time_sec)
+        if beat_index == 0:
+            cue_type = "intro"
+        elif beat_index % 8 == 0:
+            cue_type = "phrase_turn"
+        elif energy >= 0.78:
+            cue_type = "drop"
+        elif beat_index % 4 == 0:
+            cue_type = "accent"
+        if cue_type:
+            selected.append((beat_index, float(time_sec), cue_type))
+
+    if len(selected) < 2:
+        for beat_index, time_sec in enumerate(downbeats[1:], start=1):
+            if len(selected) >= 3:
+                break
+            selected.append((beat_index, float(time_sec), "accent"))
+
+    label_map = {
+        "intro": "Intro anchor",
+        "phrase_turn": "Phrase turn",
+        "drop": "Drop lead",
+        "accent": "Accent hit",
+    }
+    cues: list[dict[str, Any]] = []
+    for cue_index, (beat_index, time_sec, cue_type) in enumerate(selected[:8], start=1):
+        energy = _energy_at(time_sec)
+        confidence = max(0.45, min(0.98, 0.45 + energy * 0.45))
+        cues.append(
+            {
+                "cue_id": f"cue_{cue_index:02d}",
+                "start_sec": round(time_sec, 4),
+                "end_sec": round(min(duration_sec, time_sec + max(0.18, beat_period * 0.35)), 4),
+                "label": label_map.get(cue_type, "Music cue"),
+                "cue_type": cue_type,
+                "confidence": round(confidence, 3),
+                "energy": round(max(0.2, energy), 3),
+            }
+        )
+    return cues
+
+
+def _analyze_music_track_fallback(
+    *,
+    path: str,
+    bpm_hint: float | None,
+    max_analysis_sec: int,
+) -> dict[str, Any]:
+    sample_rate = 1000
+    sample_bytes = max(4096, min(262144, int(max_analysis_sec) * sample_rate))
+    signal, degraded_mode, degraded_reason = _build_signal_proxy_from_bytes(path, sample_bytes)
+    if not signal:
+        bpm = _normalize_tempo_candidate(float(bpm_hint or 120.0), bpm_hint)
+        return {
+            "tempo_bpm": bpm,
+            "tempo_confidence": 0.12,
+            "downbeats": [0.0],
+            "phrases": _build_music_phrases([0.0], 1.0),
+            "cue_points": [
+                {
+                    "cue_id": "cue_01",
+                    "start_sec": 0.0,
+                    "end_sec": 0.2,
+                    "label": "Intro anchor",
+                    "cue_type": "intro",
+                    "confidence": 0.3,
+                    "energy": 0.3,
                 }
-                if not already_synced:
-                    pending_hints += 1
-            else:
-                clip.pop("sync_hint", None)
-        lane["sync_summary"] = {
-            "total_clips": total,
-            "synced": synced,
-            "unsynced": total - synced,
-            "pending_hints": pending_hints,
-            "methods_used": sorted(methods_used),
+            ],
+            "derived_from": "music_sync_proxy_v1",
+            "degraded_mode": True,
+            "degraded_reason": degraded_reason or "signal_proxy_unavailable",
         }
 
-
-def _build_music_summary(music_sync_result: dict[str, Any] | None) -> dict[str, Any] | None:
-    """
-    MARKER_170.C11.MUSIC_SUMMARY_LANE
-    Compact summary of music analysis for the project-state response.
-    """
-    if music_sync_result is None:
-        return None
-    tempo = music_sync_result.get("tempo") or {}
-    phrases = music_sync_result.get("phrases") or []
-    cue_points = music_sync_result.get("cue_points") or []
-    downbeats = music_sync_result.get("downbeats") or []
-    phrase_labels = [p.get("label", "") for p in phrases]
-    high_energy = [p for p in phrases if float(p.get("energy", 0)) >= 0.7]
-    cue_kinds: dict[str, int] = {}
-    for cue in cue_points:
-        kind = str(cue.get("kind", ""))
-        cue_kinds[kind] = cue_kinds.get(kind, 0) + 1
+    duration_sec = max(0.2, len(signal) / sample_rate)
+    peak_times, envelope = _build_music_peak_times_from_signal(signal, sample_rate=sample_rate)
+    tempo_bpm, tempo_confidence = _estimate_bpm_from_peak_times(peak_times, bpm_hint)
+    beat_period = 60.0 / max(tempo_bpm, 1.0)
+    if len(peak_times) < 4:
+        peak_times = [
+            round(step * beat_period, 4)
+            for step in range(max(4, int(duration_sec / max(beat_period, 1e-6)) + 1))
+            if (step * beat_period) < duration_sec
+        ]
+    downbeats = [round(value, 4) for idx, value in enumerate(peak_times) if idx % 4 == 0]
+    if not downbeats:
+        downbeats = [0.0]
+    phrase_anchors = [value for idx, value in enumerate(downbeats) if idx % 2 == 0]
+    phrases = _build_music_phrases(phrase_anchors, duration_sec)
+    cue_points = _build_music_cues(
+        downbeats=downbeats,
+        envelope=envelope,
+        duration_sec=duration_sec,
+        tempo_bpm=tempo_bpm,
+    )
     return {
-        "music_path": str(music_sync_result.get("music_path", "")),
-        "bpm": float(tempo.get("bpm", 0)),
-        "bpm_confidence": float(tempo.get("confidence", 0)),
-        "time_signature": str(tempo.get("time_signature", "4/4")),
-        "total_downbeats": len(downbeats),
-        "total_phrases": len(phrases),
-        "total_cue_points": len(cue_points),
-        "high_energy_phrases": len(high_energy),
-        "phrase_labels": phrase_labels,
-        "cue_kind_counts": cue_kinds,
-        "derived_from": str(music_sync_result.get("derived_from", "")),
+        "tempo_bpm": tempo_bpm,
+        "tempo_confidence": tempo_confidence,
+        "downbeats": downbeats,
+        "phrases": phrases,
+        "cue_points": cue_points,
+        "derived_from": "music_sync_proxy_v1",
+        "degraded_mode": bool(degraded_mode),
+        "degraded_reason": degraded_reason,
+    }
+
+
+def _try_native_music_sync_analysis(
+    *,
+    path: str,
+    bpm_hint: float | None,
+    max_analysis_sec: int,
+) -> dict[str, Any]:
+    try:
+        import librosa  # type: ignore
+        import numpy as np  # type: ignore
+    except Exception as exc:
+        return {"ok": False, "reason": f"native_deps_unavailable:{exc.__class__.__name__}"}
+
+    try:
+        y, sr = librosa.load(str(path), sr=22050, mono=True, duration=max_analysis_sec)
+        if y is None or len(y) < int(sr * 0.8):
+            return {"ok": False, "reason": "audio_too_short"}
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+        tempo, beat_frames = librosa.beat.beat_track(
+            onset_envelope=onset_env,
+            sr=sr,
+            start_bpm=float(bpm_hint or 120.0),
+        )
+        beat_times = [round(float(value), 4) for value in librosa.frames_to_time(beat_frames, sr=sr)]
+        tempo_raw = float(np.asarray(tempo).reshape(-1)[0]) if np.asarray(tempo).size > 0 else 0.0
+        tempo_bpm, tempo_confidence = _estimate_bpm_from_peak_times(beat_times, bpm_hint)
+        if tempo_raw > 0.0:
+            tempo_bpm = _normalize_tempo_candidate(tempo_raw, bpm_hint)
+            tempo_confidence = min(0.98, max(tempo_confidence, 0.74))
+        duration_sec = float(len(y) / max(1, sr))
+        peak = float(np.max(onset_env)) if np.asarray(onset_env).size else 1.0
+        envelope = [
+            max(0.0, min(1.0, round(float(value) / max(peak, 1e-6), 4)))
+            for value in np.asarray(onset_env).reshape(-1).tolist()
+        ]
+        downbeats = [round(value, 4) for idx, value in enumerate(beat_times) if idx % 4 == 0] or ([0.0] if beat_times else [])
+        phrase_anchors = [value for idx, value in enumerate(downbeats) if idx % 2 == 0]
+        phrases = _build_music_phrases(phrase_anchors, duration_sec)
+        cue_points = _build_music_cues(
+            downbeats=downbeats or beat_times,
+            envelope=envelope,
+            duration_sec=duration_sec,
+            tempo_bpm=tempo_bpm,
+        )
+        return {
+            "ok": True,
+            "tempo_bpm": tempo_bpm,
+            "tempo_confidence": tempo_confidence,
+            "downbeats": downbeats or [0.0],
+            "phrases": phrases,
+            "cue_points": cue_points,
+            "derived_from": "music_sync_native_v1",
+            "degraded_mode": False,
+            "degraded_reason": "",
+        }
+    except Exception as exc:
+        return {"ok": False, "reason": f"native_runtime_error:{exc.__class__.__name__}"}
+
+
+def _lookup_pulse_manifest_entry(path: str) -> dict[str, Any] | None:
+    manifest_path = Path(__file__).resolve().parents[4] / "pulse" / "data" / "processed" / "jepa_training_manifest.jsonl"
+    if not manifest_path.is_file():
+        return None
+    target_path = os.path.realpath(path)
+    target_name = os.path.basename(target_path)
+    try:
+        with manifest_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                try:
+                    payload = json.loads(line)
+                except Exception:
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                manifest_file = os.path.realpath(str(payload.get("path") or ""))
+                if manifest_file == target_path or os.path.basename(manifest_file) == target_name:
+                    return payload
+    except Exception:
+        return None
+    return None
+
+
+def _analyze_music_track(
+    *,
+    path: str,
+    bpm_hint: float | None,
+    max_analysis_sec: int,
+) -> dict[str, Any]:
+    manifest_entry = _lookup_pulse_manifest_entry(path)
+    manifest_bpm = float((manifest_entry or {}).get("bpm_ref") or 0.0)
+    native = _try_native_music_sync_analysis(path=path, bpm_hint=bpm_hint, max_analysis_sec=max_analysis_sec)
+    if native.get("ok") is True:
+        native.pop("ok", None)
+        if manifest_bpm > 0.0:
+            native["tempo_bpm"] = round(manifest_bpm, 3)
+            native["tempo_confidence"] = max(float(native.get("tempo_confidence") or 0.0), 0.94)
+            native["derived_from"] = "pulse_manifest_v1+native_audio_v1"
+        return native
+    fallback = _analyze_music_track_fallback(path=path, bpm_hint=bpm_hint, max_analysis_sec=max_analysis_sec)
+    reason = str(native.get("reason") or "")
+    if reason:
+        fallback["degraded_mode"] = True
+        fallback["degraded_reason"] = reason
+    if manifest_bpm > 0.0:
+        fallback["tempo_bpm"] = round(manifest_bpm, 3)
+        fallback["tempo_confidence"] = max(float(fallback.get("tempo_confidence") or 0.0), 0.96)
+        fallback["derived_from"] = "pulse_manifest_v1"
+    return fallback
+
+
+def _estimate_scene_target_bpm_from_timeline(
+    timeline_state: dict[str, Any] | None,
+    *,
+    music_tempo_bpm: float | None,
+) -> dict[str, Any]:
+    lanes = (timeline_state or {}).get("lanes") if isinstance((timeline_state or {}).get("lanes"), list) else []
+    video_clips: list[dict[str, Any]] = []
+    for lane in lanes:
+        if not isinstance(lane, dict):
+            continue
+        lane_type = str(lane.get("lane_type") or "")
+        if "audio" in lane_type:
+            continue
+        for clip in lane.get("clips", []):
+            if isinstance(clip, dict):
+                video_clips.append(clip)
+    if not video_clips:
+        fallback_bpm = round(max(72.0, min(168.0, float(music_tempo_bpm or 96.0))))
+        return {
+            "target_bpm": fallback_bpm,
+            "rhythm_profile": "steady",
+            "cut_density_per_min": 0.0,
+            "source_engine": "pulse_scene_fallback_v1",
+        }
+
+    ordered = sorted(video_clips, key=lambda clip: float(clip.get("start_sec") or 0.0))
+    durations: list[float] = []
+    total_duration = 0.0
+    for index, clip in enumerate(ordered):
+        start_sec = float(clip.get("start_sec") or 0.0)
+        end_value = clip.get("end_sec")
+        if isinstance(end_value, (int, float)):
+            end_sec = float(end_value)
+        elif isinstance(clip.get("duration_sec"), (int, float)):
+            end_sec = start_sec + float(clip.get("duration_sec") or 0.0)
+        elif index + 1 < len(ordered):
+            end_sec = float(ordered[index + 1].get("start_sec") or start_sec + 2.0)
+        else:
+            end_sec = start_sec + 2.5
+        duration = max(0.1, end_sec - start_sec)
+        durations.append(duration)
+        total_duration = max(total_duration, end_sec)
+
+    cut_count = max(0, len(ordered) - 1)
+    cut_density_per_min = (cut_count / max(total_duration, 1e-6)) * 60.0
+    mean_duration = sum(durations) / max(1, len(durations))
+    variance = sum((value - mean_duration) ** 2 for value in durations) / max(1, len(durations))
+    duration_cv = math.sqrt(max(0.0, variance)) / max(mean_duration, 1e-6)
+    motion_volatility = max(0.0, min(1.0, duration_cv))
+    if cut_density_per_min > 28.0:
+        rhythm_profile = "aggressive"
+    elif cut_density_per_min > 16.0:
+        rhythm_profile = "dynamic"
+    else:
+        rhythm_profile = "steady"
+    target_bpm = int(max(72, min(168, round(78 + cut_density_per_min * 1.6 + motion_volatility * 22.0))))
+    return {
+        "target_bpm": target_bpm,
+        "rhythm_profile": rhythm_profile,
+        "cut_density_per_min": round(cut_density_per_min, 2),
+        "source_engine": "pulse_scene_proxy_v1",
+    }
+
+
+def _build_rhythm_surface(
+    *,
+    project_id: str,
+    music_sync_result: dict[str, Any] | None,
+    timeline_state: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(music_sync_result, dict):
+        return None
+
+    music_path = str(music_sync_result.get("music_path") or "")
+    tempo = music_sync_result.get("tempo") if isinstance(music_sync_result.get("tempo"), dict) else {}
+    music_tempo_bpm = float(tempo.get("bpm") or 0.0) if tempo else 0.0
+    scene_binding = _estimate_scene_target_bpm_from_timeline(
+        timeline_state,
+        music_tempo_bpm=music_tempo_bpm or None,
+    )
+    target_bpm = float(scene_binding.get("target_bpm") or 0.0)
+    bpm_delta = round(target_bpm - music_tempo_bpm, 3) if music_tempo_bpm > 0.0 and target_bpm > 0.0 else None
+    cue_points = [cue for cue in music_sync_result.get("cue_points", []) if isinstance(cue, dict)]
+    downbeats = [float(value) for value in music_sync_result.get("downbeats", []) if isinstance(value, (int, float))]
+
+    items: list[dict[str, Any]] = []
+    recommendation_map = {
+        "drop": "accent_cut",
+        "phrase_turn": "phrase_bridge",
+        "accent": "micro_hit",
+        "intro": "establish",
+        "downbeat": "downbeat_lock",
+    }
+    for index, cue in enumerate(cue_points[:24], start=1):
+        cue_type = str(cue.get("cue_type") or "accent")
+        items.append(
+            {
+                "item_id": f"rhythm_{index:04d}",
+                "start_sec": round(float(cue.get("start_sec") or 0.0), 4),
+                "end_sec": round(float(cue.get("end_sec") or cue.get("start_sec") or 0.0), 4),
+                "label": str(cue.get("label") or "Music cue"),
+                "cue_type": cue_type,
+                "confidence": round(float(cue.get("confidence") or 0.0), 3),
+                "energy": round(float(cue.get("energy") or 0.0), 3),
+                "target_bpm": target_bpm or None,
+                "music_bpm": music_tempo_bpm or None,
+                "bpm_delta": bpm_delta,
+                "recommendation": recommendation_map.get(cue_type, "accent_cut"),
+            }
+        )
+    if not items:
+        for index, time_sec in enumerate(downbeats[:12], start=1):
+            items.append(
+                {
+                    "item_id": f"rhythm_{index:04d}",
+                    "start_sec": round(float(time_sec), 4),
+                    "end_sec": round(float(time_sec), 4),
+                    "label": f"Downbeat {index}",
+                    "cue_type": "downbeat",
+                    "confidence": 0.55,
+                    "energy": 0.5,
+                    "target_bpm": target_bpm or None,
+                    "music_bpm": music_tempo_bpm or None,
+                    "bpm_delta": bpm_delta,
+                    "recommendation": "downbeat_lock",
+                }
+            )
+
+    return {
+        "schema_version": "cut_rhythm_surface_v1",
+        "project_id": str(project_id),
+        "music_path": music_path,
+        "music_tempo_bpm": music_tempo_bpm or None,
+        "scene_target_bpm": target_bpm or None,
+        "bpm_delta": bpm_delta,
+        "rhythm_profile": str(scene_binding.get("rhythm_profile") or "steady"),
+        "cut_density_per_min": float(scene_binding.get("cut_density_per_min") or 0.0),
+        "source_engine": str(scene_binding.get("source_engine") or "pulse_scene_fallback_v1"),
+        "items": items,
+        "generated_at": _utc_now_iso(),
     }
 
 
@@ -1488,6 +2013,54 @@ def _build_time_marker(body: CutTimeMarkerApplyRequest, project_id: str, timelin
         "status": "active",
         "created_at": now,
         "updated_at": now,
+    }
+
+
+def _default_editorial_intent_for_marker(marker: dict[str, Any]) -> str:
+    kind = str(marker.get("kind") or "")
+    return {
+        "favorite": "accent_cut",
+        "comment": "commentary_hold",
+        "cam": "camera_emphasis",
+        "insight": "insight_emphasis",
+        "chat": "dialogue_anchor",
+    }.get(kind, "accent_cut")
+
+
+def _build_montage_decision_from_marker(
+    marker: dict[str, Any],
+    *,
+    marker_bundle_revision: int,
+    decision_id: str,
+    lane_id: str,
+    decision_status: str,
+    author: str,
+    editorial_intent: str,
+) -> dict[str, Any]:
+    start_sec = float(marker.get("start_sec") or 0.0)
+    end_sec = float(marker.get("end_sec") or start_sec)
+    anchor_sec = marker.get("anchor_sec")
+    if anchor_sec is None:
+        anchor_sec = round((start_sec + end_sec) / 2.0, 4)
+    now = _utc_now_iso()
+    return {
+        "decision_id": decision_id,
+        "source_family": "marker",
+        "cue_provenance_ids": [str(marker.get("marker_id") or "")],
+        "confidence": float(marker.get("score") or 0.0),
+        "score": float(marker.get("score") or 0.0),
+        "editorial_intent": editorial_intent or _default_editorial_intent_for_marker(marker),
+        "status": decision_status,
+        "timeline_id": str(marker.get("timeline_id") or "main"),
+        "lane_id": str(lane_id or "V1"),
+        "anchor_sec": float(anchor_sec),
+        "start_sec": start_sec,
+        "end_sec": end_sec,
+        "source_bundle_id": "time_marker_bundle",
+        "source_bundle_revision": int(marker_bundle_revision),
+        "created_at": now,
+        "updated_at": now,
+        "author": str(author or "cut_mcp"),
     }
 
 
@@ -1769,7 +2342,7 @@ def _run_cut_waveform_build_job(job_id: str, body: CutWaveformBuildRequest) -> N
             if current_job and bool(current_job.get("cancel_requested")):
                 job_store.update_job(job_id, state="cancelled", progress=1.0)
                 return
-            bins, degraded_mode, degraded_reason = build_waveform_with_fallback(media_path, int(body.bins))
+            bins, degraded_mode, degraded_reason = _build_waveform_proxy_from_bytes(media_path, int(body.bins))
             if degraded_mode:
                 degraded_count += 1
             items.append(
@@ -2247,7 +2820,7 @@ def _run_cut_audio_sync_job(job_id: str, body: CutAudioSyncRequest) -> None:
             return
 
         reference_path = media_paths[0]
-        reference_signal, ref_sample_rate, reference_degraded, reference_reason = extract_signal_with_fallback(
+        reference_signal, reference_degraded, reference_reason = _build_signal_proxy_from_bytes(
             reference_path, int(body.sample_bytes)
         )
         if reference_degraded:
@@ -2259,16 +2832,15 @@ def _run_cut_audio_sync_job(job_id: str, body: CutAudioSyncRequest) -> None:
             if current_job and bool(current_job.get("cancel_requested")):
                 job_store.update_job(job_id, state="cancelled", progress=1.0)
                 return
-            candidate_signal, cand_sample_rate, degraded_mode, degraded_reason = extract_signal_with_fallback(
+            candidate_signal, degraded_mode, degraded_reason = _build_signal_proxy_from_bytes(
                 media_path, int(body.sample_bytes)
             )
-            effective_rate = min(ref_sample_rate, cand_sample_rate)
             if reference_degraded or degraded_mode or not reference_signal or not candidate_signal:
                 degraded_mode = True
                 degraded_reason = degraded_reason or reference_reason or "signal_proxy_unavailable"
                 sync_result = detect_offset_hybrid([], [], 1000)
             else:
-                sync_result = _run_audio_sync_method(str(body.method), reference_signal, candidate_signal, effective_rate)
+                sync_result = _run_audio_sync_method(str(body.method), reference_signal, candidate_signal, 1000)
             if degraded_mode:
                 degraded_count += 1
             items.append(
@@ -2336,6 +2908,133 @@ def _run_cut_audio_sync_job(job_id: str, body: CutAudioSyncRequest) -> None:
             progress=1.0,
             error={
                 "code": "audio_sync_exception",
+                "message": str(exc),
+                "recoverable": False,
+            },
+        )
+
+
+def _run_cut_music_sync_job(job_id: str, body: CutMusicSyncRequest) -> None:
+    job_store = get_cut_mcp_job_store()
+    job_store.update_job(job_id, state="running", progress=0.1)
+    try:
+        store = CutProjectStore(body.sandbox_root)
+        project = store.load_project()
+        if project is None or str(project.get("project_id") or "") != str(body.project_id):
+            job_store.update_job(
+                job_id,
+                state="error",
+                progress=1.0,
+                error={
+                    "code": "project_not_found",
+                    "message": "CUT project not found for music sync build.",
+                    "recoverable": True,
+                },
+            )
+            return
+
+        music_path, path_resolution = _resolve_music_sync_path(
+            store=store,
+            project=project,
+            requested_path=body.music_path,
+        )
+        if not music_path:
+            job_store.update_job(
+                job_id,
+                state="error",
+                progress=1.0,
+                error={
+                    "code": "music_path_not_found",
+                    "message": "No music track found for CUT music sync build.",
+                    "recoverable": True,
+                },
+            )
+            return
+        if not os.path.isfile(music_path):
+            job_store.update_job(
+                job_id,
+                state="error",
+                progress=1.0,
+                error={
+                    "code": "music_path_missing",
+                    "message": f"CUT music sync source is missing: {music_path}",
+                    "recoverable": True,
+                },
+            )
+            return
+
+        current_job = job_store.get_job(job_id)
+        if current_job and bool(current_job.get("cancel_requested")):
+            job_store.update_job(job_id, state="cancelled", progress=1.0)
+            return
+
+        result_prev = store.load_music_sync_result()
+        revision = int((result_prev or {}).get("revision") or 0) + 1
+        analysis = _analyze_music_track(
+            path=music_path,
+            bpm_hint=body.bpm_hint,
+            max_analysis_sec=int(body.max_analysis_sec),
+        )
+        job_store.update_job(job_id, progress=0.85)
+
+        music_sync_result = {
+            "schema_version": "cut_music_sync_result_v1",
+            "project_id": str(project.get("project_id") or ""),
+            "revision": revision,
+            "music_path": music_path,
+            "tempo": {
+                "bpm": float(analysis.get("tempo_bpm") or 0.0),
+                "confidence": float(analysis.get("tempo_confidence") or 0.0),
+            },
+            "downbeats": [round(float(value), 4) for value in analysis.get("downbeats", [])],
+            "phrases": list(analysis.get("phrases", [])),
+            "cue_points": list(analysis.get("cue_points", [])),
+            "derived_from": str(analysis.get("derived_from") or "music_sync_proxy_v1"),
+            "generated_at": _utc_now_iso(),
+        }
+        store.save_music_sync_result(music_sync_result)
+
+        degraded_mode = bool(analysis.get("degraded_mode"))
+        degraded_reason_parts = [str(analysis.get("degraded_reason") or "").strip(), str(path_resolution or "").strip()]
+        degraded_reason = ",".join([part for part in degraded_reason_parts if part])
+        worker_task = {
+            "schema_version": "cut_worker_task_v1",
+            "task_id": job_id,
+            "project_id": str(project.get("project_id") or ""),
+            "task_type": "music_sync",
+            "route_mode": "background",
+            "priority": "normal",
+            "status": "done",
+            "input": {
+                "music_path": music_path,
+                "bpm_hint": body.bpm_hint,
+                "max_analysis_sec": int(body.max_analysis_sec),
+            },
+            "output_ref": store.paths.music_sync_result_path,
+            "degraded_mode": degraded_mode,
+            "degraded_reason": degraded_reason,
+            "created_at": _utc_now_iso(),
+            "updated_at": _utc_now_iso(),
+        }
+        job_store.update_job(
+            job_id,
+            state="done",
+            progress=1.0,
+            degraded_mode=degraded_mode,
+            degraded_reason=degraded_reason,
+            result={
+                "success": True,
+                "worker_task": worker_task,
+                "music_sync_result": music_sync_result,
+            },
+        )
+    except Exception as exc:
+        job_store.update_job(
+            job_id,
+            state="error",
+            progress=1.0,
+            error={
+                "code": "music_sync_exception",
                 "message": str(exc),
                 "recoverable": False,
             },
@@ -2418,7 +3117,7 @@ def _run_cut_pause_slice_job(job_id: str, body: CutPauseSliceRequest) -> None:
             if current_job and bool(current_job.get("cancel_requested")):
                 job_store.update_job(job_id, state="cancelled", progress=1.0)
                 return
-            signal, sig_sample_rate, degraded_mode, degraded_reason = extract_signal_with_fallback(media_path, int(body.sample_bytes))
+            signal, degraded_mode, degraded_reason = _build_signal_proxy_from_bytes(media_path, int(body.sample_bytes))
             if signal:
                 windows = _build_slice_windows_from_signal(
                     signal,
@@ -2929,6 +3628,54 @@ async def cut_audio_sync_async(body: CutAudioSyncRequest) -> dict[str, Any]:
     }
 
 
+@router.post("/worker/music-sync-async")
+async def cut_music_sync_async(body: CutMusicSyncRequest) -> dict[str, Any]:
+    """
+    MARKER_171.WORKER.MUSIC_SYNC_V1
+    MARKER_171.WORKER.BEAT_TRACK_PROXY
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _worker_job_error("project_not_found", "CUT project not found for music sync worker task.")
+    if _count_active_background_jobs_for_sandbox(str(body.sandbox_root)) >= _SANDBOX_BACKGROUND_LIMIT:
+        return _worker_job_error(
+            "worker_backpressure_limit",
+            "CUT worker queue is saturated for this sandbox. Wait for active jobs to finish.",
+        )
+    duplicate_job = _find_active_duplicate_job(
+        job_type="music_sync",
+        project_id=str(body.project_id),
+        sandbox_root=str(body.sandbox_root),
+    )
+    if duplicate_job is not None:
+        return _worker_job_error(
+            "duplicate_job_active",
+            "A music sync job is already active for this CUT project.",
+            existing_job=duplicate_job,
+        )
+    job_store = get_cut_mcp_job_store()
+    job = job_store.create_job(
+        "music_sync",
+        {
+            "project_id": str(body.project_id),
+            "sandbox_root": str(body.sandbox_root),
+            "music_path": str(body.music_path or ""),
+            "bpm_hint": body.bpm_hint,
+            "max_analysis_sec": int(body.max_analysis_sec),
+            "task_type": "music_sync",
+        },
+    )
+    thread = threading.Thread(target=_run_cut_music_sync_job, args=(str(job["job_id"]), body), daemon=True)
+    thread.start()
+    return {
+        "success": True,
+        "schema_version": "cut_mcp_job_v1",
+        "job_id": str(job["job_id"]),
+        "job": job,
+    }
+
+
 @router.post("/worker/pause-slice-async")
 async def cut_pause_slice_async(body: CutPauseSliceRequest) -> dict[str, Any]:
     """
@@ -3069,18 +3816,17 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
     transcript_bundle = store.load_transcript_bundle()
     thumbnail_bundle = store.load_thumbnail_bundle()
     audio_sync_result = store.load_audio_sync_result()
+    music_sync_result = store.load_music_sync_result()
     slice_bundle = store.load_slice_bundle()
     timecode_sync_result = store.load_timecode_sync_result()
-    music_sync_result = store.load_music_sync_result()
     time_marker_bundle = store.load_time_marker_bundle()
+    montage_state = store.load_montage_state()
     sync_surface = _build_sync_surface(
         project_id=str(project.get("project_id") or ""),
         timecode_sync_result=timecode_sync_result,
         audio_sync_result=audio_sync_result,
         meta_sync_result=None,
     )
-    _enrich_timeline_with_sync_hints(timeline_state, sync_surface)
-    music_summary = _build_music_summary(music_sync_result)
     scene_graph_view = _build_scene_graph_view(
         scene_graph,
         timeline_state,
@@ -3089,6 +3835,15 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         time_marker_bundle=time_marker_bundle,
     )
     recent_jobs, active_jobs = _collect_project_jobs(project_id=str(project.get("project_id") or ""), sandbox_root=str(sandbox_root))
+    music_cue_summary = _build_music_cue_summary(
+        bootstrap_state=bootstrap_state,
+        music_sync_result=music_sync_result,
+    )
+    rhythm_surface = _build_rhythm_surface(
+        project_id=str(project.get("project_id") or ""),
+        music_sync_result=music_sync_result,
+        timeline_state=timeline_state,
+    )
     return {
         "success": True,
         "schema_version": "cut_project_state_v1",
@@ -3101,12 +3856,14 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         "transcript_bundle": transcript_bundle,
         "thumbnail_bundle": thumbnail_bundle,
         "audio_sync_result": audio_sync_result,
+        "music_sync_result": music_sync_result,
+        "music_cue_summary": music_cue_summary,
+        "rhythm_surface": rhythm_surface,
         "slice_bundle": slice_bundle,
         "timecode_sync_result": timecode_sync_result,
-        "music_sync_result": music_sync_result,
-        "music_summary": music_summary,
         "sync_surface": sync_surface,
         "time_marker_bundle": time_marker_bundle,
+        "montage_state": montage_state,
         "recent_jobs": recent_jobs,
         "active_jobs": active_jobs,
         "layout": store.sandbox_layout_status(),
@@ -3116,11 +3873,13 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         "transcript_ready": transcript_bundle is not None,
         "thumbnail_ready": thumbnail_bundle is not None,
         "audio_sync_ready": audio_sync_result is not None,
+        "music_cues_ready": music_sync_result is not None,
+        "rhythm_surface_ready": bool((rhythm_surface or {}).get("items")),
         "slice_ready": slice_bundle is not None,
         "timecode_sync_ready": timecode_sync_result is not None,
         "sync_surface_ready": bool(sync_surface.get("items")),
-        "music_sync_ready": music_sync_result is not None,
         "time_markers_ready": time_marker_bundle is not None,
+        "montage_ready": montage_state is not None,
     }
 
 
@@ -3233,6 +3992,107 @@ async def cut_time_marker_apply(body: CutTimeMarkerApplyRequest) -> dict[str, An
         "schema_version": "cut_time_marker_apply_v1",
         "marker": marker,
         "marker_bundle": updated_bundle,
+        "edit_event": edit_event,
+        "error": None,
+    }
+
+
+@router.post("/montage/promote-marker")
+async def cut_montage_promote_marker(body: CutMontagePromoteMarkerRequest) -> dict[str, Any]:
+    """
+    MARKER_171.MONTAGE_ENGINE.MARKER_PROMOTION_BRIDGE
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _montage_error("project_not_found", "CUT project not found for montage promotion.")
+
+    marker_bundle = store.load_time_marker_bundle()
+    if marker_bundle is None:
+        return _montage_error("marker_bundle_missing", "CUT time marker bundle is missing for montage promotion.")
+
+    marker_id = str(body.marker_id or "").strip()
+    if not marker_id:
+        return _montage_error("marker_invalid", "marker_id is required for montage promotion.")
+
+    marker = next((item for item in marker_bundle.get("items", []) if str(item.get("marker_id") or "") == marker_id), None)
+    if marker is None:
+        return _montage_error("marker_not_found", f"Time marker not found: {marker_id}")
+
+    decision_status = str(body.decision_status or "accepted")
+    decision_id = str(body.decision_id or f"montage_{marker_id}").strip()
+    if not decision_id:
+        return _montage_error("decision_invalid", "decision_id could not be resolved for montage promotion.")
+
+    montage_state = store.load_montage_state()
+    if montage_state is None:
+        montage_state = {
+            "schema_version": "cut_montage_state_v1",
+            "project_id": str(project.get("project_id") or ""),
+            "revision": 0,
+            "source_bundle_revisions": {},
+            "accepted_decisions": [],
+            "rejected_decisions": [],
+            "updated_at": _utc_now_iso(),
+            "updated_by": str(body.author or "cut_mcp"),
+        }
+
+    accepted_decisions = [
+        deepcopy(item)
+        for item in montage_state.get("accepted_decisions", [])
+        if str(item.get("decision_id") or "") != decision_id
+    ]
+    rejected_decisions = [
+        deepcopy(item)
+        for item in montage_state.get("rejected_decisions", [])
+        if str(item.get("decision_id") or "") != decision_id
+    ]
+
+    decision = _build_montage_decision_from_marker(
+        deepcopy(marker),
+        marker_bundle_revision=int(marker_bundle.get("revision") or 0),
+        decision_id=decision_id,
+        lane_id=str(body.lane_id or "V1"),
+        decision_status=decision_status,
+        author=str(body.author or "cut_mcp"),
+        editorial_intent=str(body.editorial_intent or ""),
+    )
+
+    if decision_status == "accepted":
+        accepted_decisions.append(decision)
+    else:
+        rejected_decisions.append(decision)
+
+    source_bundle_revisions = dict(montage_state.get("source_bundle_revisions") or {})
+    source_bundle_revisions["time_marker_bundle"] = int(marker_bundle.get("revision") or 0)
+
+    updated_state = {
+        "schema_version": "cut_montage_state_v1",
+        "project_id": str(project.get("project_id") or ""),
+        "revision": int(montage_state.get("revision") or 0) + 1,
+        "source_bundle_revisions": source_bundle_revisions,
+        "accepted_decisions": accepted_decisions,
+        "rejected_decisions": rejected_decisions,
+        "updated_at": _utc_now_iso(),
+        "updated_by": str(body.author or "cut_mcp"),
+    }
+    store.save_montage_state(updated_state)
+
+    edit_event = {
+        "event_id": f"montage_promote_{uuid4().hex[:12]}",
+        "project_id": str(project.get("project_id") or ""),
+        "marker_id": marker_id,
+        "decision_id": decision_id,
+        "decision_status": decision_status,
+        "author": str(body.author or "cut_mcp"),
+        "revision": int(updated_state.get("revision") or 0),
+        "created_at": _utc_now_iso(),
+    }
+    return {
+        "success": True,
+        "schema_version": "cut_montage_state_v1",
+        "decision": decision,
+        "montage_state": updated_state,
         "edit_event": edit_event,
         "error": None,
     }
@@ -3441,12 +4301,37 @@ async def cut_timeline_apply(body: CutTimelinePatchRequest) -> dict[str, Any]:
         return _timeline_error("timeline_not_ready", "CUT timeline state is missing. Run scene assembly first.")
     if str(timeline_state.get("timeline_id") or "") != str(body.timeline_id):
         return _timeline_error("timeline_not_found", "Requested CUT timeline does not match stored timeline state.")
+    # MARKER_173.1 — snapshot for undo before mutation
+    prev_state_snapshot = deepcopy(timeline_state)
+    revision_before = int(timeline_state.get("revision") or 0)
+
     try:
         updated_state, applied_ops = _apply_timeline_ops(timeline_state, body.ops)
     except ValueError as exc:
         return _timeline_error("timeline_patch_invalid", str(exc))
 
     store.save_timeline_state(updated_state)
+
+    # MARKER_173.1 — push to undo stack (skip non-undoable ops like set_selection/set_view)
+    undoable_ops = [op for op in applied_ops if op.get("op") not in ("set_selection", "set_view")]
+    undo_info = None
+    if undoable_ops:
+        try:
+            undo_service = CutUndoRedoService(
+                body.sandbox_root, str(body.project_id), str(body.timeline_id)
+            )
+            revision_after = int(updated_state.get("revision") or 0)
+            undo_info = undo_service.push(
+                label=build_op_label(undoable_ops),
+                prev_state=prev_state_snapshot,
+                applied_ops=undoable_ops,
+                revision_before=revision_before,
+                revision_after=revision_after,
+            )
+        except Exception as exc:
+            # Undo push failure is non-fatal — edit still applied
+            logger.warning("Undo push failed (non-fatal): %s", exc)
+
     edit_event = {
         "event_id": f"timeline_edit_{uuid4().hex[:12]}",
         "project_id": str(project.get("project_id") or ""),
@@ -3458,13 +4343,16 @@ async def cut_timeline_apply(body: CutTimelinePatchRequest) -> dict[str, Any]:
         "created_at": _utc_now_iso(),
     }
     store.append_timeline_edit_event(edit_event)
-    return {
+    result = {
         "success": True,
         "schema_version": "cut_timeline_apply_v1",
         "timeline_state": updated_state,
         "applied_ops": applied_ops,
         "edit_event": edit_event,
     }
+    if undo_info:
+        result["undo_info"] = undo_info
+    return result
 
 
 @router.post("/scene-graph/apply")
@@ -3515,424 +4403,127 @@ async def cut_bootstrap_job_status(job_id: str) -> dict[str, Any]:
     return await cut_job_status(job_id)
 
 
-# ─── MARKER_170.9: Player Lab → CUT marker bridge ───
+# ── MARKER_173.1 Undo/Redo Endpoints ───────────────────────
 
 
-class CutPlayerLabImportItem(BaseModel):
-    """One provisional event from Player Lab."""
-    start_sec: float = Field(ge=0.0)
-    end_sec: float = Field(ge=0.0)
-    text: str = ""
-    kind: Literal["favorite", "comment"] = "comment"
-    export_mode: str = "srt_comment"
-    migration_status: str = "local_only"
-    cam_payload: dict[str, Any] | None = None
-    anchor_sec: float | None = None
-    label: str = ""
-    author: str = "player_lab"
-
-
-class CutPlayerLabImportRequest(BaseModel):
-    """Import batch of Player Lab provisional events as CUT time markers."""
+class CutUndoRedoRequest(BaseModel):
     sandbox_root: str
     project_id: str
-    timeline_id: str = "main"
-    media_path: str = ""
-    events: list[CutPlayerLabImportItem] = Field(min_length=1)
-    source_engine: str = "player_lab_srt"
+    timeline_id: str
 
 
-@router.post("/markers/import-player-lab")
-async def cut_import_player_lab_markers(body: CutPlayerLabImportRequest) -> dict[str, Any]:
+@router.post("/undo")
+async def cut_undo(body: CutUndoRedoRequest) -> dict[str, Any]:
     """
-    MARKER_170.9.PLAYER_LAB_IMPORT
-    Batch-import Player Lab provisional events as CUT time markers.
-    Bridges the gap between Player Lab local storage and CUT marker bundle.
+    MARKER_173.1.UNDO_ENDPOINT
+    Undo the last timeline edit. Restores previous timeline state.
     """
     store = CutProjectStore(body.sandbox_root)
     project = store.load_project()
     if project is None or str(project.get("project_id") or "") != str(body.project_id):
-        return _time_marker_error("project_not_found", "CUT project not found for player lab import.")
+        return {"success": False, "error": "project_not_found"}
 
-    timeline_state = store.load_timeline_state()
-    resolved_timeline_id = str((timeline_state or {}).get("timeline_id") or body.timeline_id or "main")
+    undo_service = CutUndoRedoService(
+        body.sandbox_root, str(body.project_id), str(body.timeline_id)
+    )
+    result = undo_service.undo()
+    if result is None:
+        return {"success": False, "error": "nothing_to_undo", "undo_depth": 0, "redo_depth": 0}
 
-    marker_bundle = store.load_time_marker_bundle()
-    if marker_bundle is None:
-        marker_bundle = {
-            "schema_version": "cut_time_marker_bundle_v1",
-            "project_id": str(project.get("project_id") or ""),
-            "timeline_id": resolved_timeline_id,
-            "revision": 0,
-            "items": [],
-            "ranking_summary": _compute_time_marker_ranking_summary([]),
-            "generated_at": _utc_now_iso(),
-        }
+    # Restore the previous state
+    restore_state = result["restore_state"]
+    store.save_timeline_state(restore_state)
 
-    items = [deepcopy(item) for item in marker_bundle.get("items", [])]
-    imported: list[dict[str, Any]] = []
-
-    for ev in body.events:
-        marker_id = f"plb_{uuid4().hex[:12]}"
-        marker = {
-            "marker_id": marker_id,
-            "schema_version": "cut_time_marker_v1",
-            "project_id": str(project.get("project_id") or ""),
-            "timeline_id": resolved_timeline_id,
-            "media_path": body.media_path,
-            "kind": ev.kind,
-            "start_sec": ev.start_sec,
-            "end_sec": ev.end_sec,
-            "anchor_sec": ev.anchor_sec if ev.anchor_sec is not None else ev.start_sec,
-            "score": 1.0,
-            "label": ev.label or ev.text[:40] if ev.text else "",
-            "text": ev.text,
-            "author": ev.author,
-            "context_slice": {
-                "source": "player_lab",
-                "export_mode": ev.export_mode,
-                "migration_status": "migrated",
-            },
-            "cam_payload": deepcopy(ev.cam_payload) if ev.cam_payload else None,
-            "chat_thread_id": None,
-            "comment_thread_id": None,
-            "source_engine": body.source_engine,
-            "status": "active",
-            "created_at": _utc_now_iso(),
-            "updated_at": _utc_now_iso(),
-        }
-        items.append(marker)
-        imported.append(marker)
-
-    updated_bundle = {
-        "schema_version": "cut_time_marker_bundle_v1",
-        "project_id": str(project.get("project_id") or ""),
-        "timeline_id": resolved_timeline_id,
-        "revision": int(marker_bundle.get("revision") or 0) + 1,
-        "items": items,
-        "ranking_summary": _compute_time_marker_ranking_summary(items),
-        "generated_at": _utc_now_iso(),
-    }
-    store.save_time_marker_bundle(updated_bundle)
-
+    # Log the undo as an edit event
     edit_event = {
-        "event_id": f"player_lab_import_{uuid4().hex[:12]}",
-        "project_id": str(project.get("project_id") or ""),
-        "timeline_id": resolved_timeline_id,
-        "author": "player_lab_bridge",
-        "revision": int(updated_bundle.get("revision") or 0),
-        "op": "batch_import",
-        "imported_count": len(imported),
-        "source_engine": body.source_engine,
+        "event_id": f"undo_{uuid4().hex[:12]}",
+        "project_id": str(body.project_id),
+        "timeline_id": str(body.timeline_id),
+        "author": "undo",
+        "revision": int(restore_state.get("revision") or 0),
+        "op_count": 0,
+        "ops": [{"op": "undo", "undone_label": result["entry"]["label"]}],
         "created_at": _utc_now_iso(),
     }
-    store.append_time_marker_edit_event(edit_event)
+    store.append_timeline_edit_event(edit_event)
 
     return {
         "success": True,
-        "schema_version": "cut_player_lab_import_v1",
-        "imported_count": len(imported),
-        "imported_markers": imported,
-        "marker_bundle": updated_bundle,
+        "schema_version": "cut_undo_v1",
+        "undone_label": result["entry"]["label"],
+        "timeline_state": restore_state,
+        "undo_depth": result["undo_depth"],
+        "redo_depth": result["redo_depth"],
         "edit_event": edit_event,
-        "error": None,
     }
 
 
-def _srt_timecode(seconds: float) -> str:
-    """Convert seconds to SRT timecode: HH:MM:SS,mmm"""
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    ms = int((seconds % 1) * 1000)
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
-
-@router.get("/markers/export-srt")
-async def cut_export_markers_srt(
-    sandbox_root: str,
-    project_id: str = "",
-    timeline_id: str = "",
-    kind: str = "",
-) -> dict[str, Any]:
+@router.post("/redo")
+async def cut_redo(body: CutUndoRedoRequest) -> dict[str, Any]:
     """
-    MARKER_170.9.SRT_EXPORT
-    Export active time markers as SRT subtitle text.
-    Optionally filter by marker kind (e.g. 'comment', 'favorite', 'music_sync').
+    MARKER_173.1.REDO_ENDPOINT
+    Redo the last undone timeline edit. Re-applies ops.
     """
-    store = CutProjectStore(sandbox_root)
-    marker_bundle = store.load_time_marker_bundle()
-    if marker_bundle is None:
-        return {
-            "success": True,
-            "schema_version": "cut_srt_export_v1",
-            "srt_content": "",
-            "marker_count": 0,
-        }
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
 
-    items = marker_bundle.get("items", [])
-    active = [m for m in items if str(m.get("status") or "active") == "active"]
-    if kind:
-        active = [m for m in active if str(m.get("kind") or "") == kind]
+    timeline_state = store.load_timeline_state()
+    if timeline_state is None:
+        return {"success": False, "error": "timeline_not_ready"}
 
-    # Sort by start_sec
-    active.sort(key=lambda m: float(m.get("start_sec") or 0))
+    undo_service = CutUndoRedoService(
+        body.sandbox_root, str(body.project_id), str(body.timeline_id)
+    )
+    result = undo_service.redo()
+    if result is None:
+        return {"success": False, "error": "nothing_to_redo", "undo_depth": 0, "redo_depth": 0}
 
-    lines: list[str] = []
-    for idx, marker in enumerate(active, start=1):
-        start = float(marker.get("start_sec") or 0)
-        end = float(marker.get("end_sec") or start + 1)
-        text = str(marker.get("text") or marker.get("label") or f"Marker {idx}")
-        lines.append(str(idx))
-        lines.append(f"{_srt_timecode(start)} --> {_srt_timecode(end)}")
-        lines.append(text)
-        lines.append("")  # blank line separator
+    # Re-apply the ops
+    try:
+        updated_state, applied_ops = _apply_timeline_ops(timeline_state, result["reapply_ops"])
+    except ValueError as exc:
+        return {"success": False, "error": "redo_failed", "detail": str(exc)}
 
-    srt_content = "\n".join(lines)
+    store.save_timeline_state(updated_state)
+
+    edit_event = {
+        "event_id": f"redo_{uuid4().hex[:12]}",
+        "project_id": str(body.project_id),
+        "timeline_id": str(body.timeline_id),
+        "author": "redo",
+        "revision": int(updated_state.get("revision") or 0),
+        "op_count": len(applied_ops),
+        "ops": [{"op": "redo", "redone_label": result["entry"]["label"]}] + applied_ops,
+        "created_at": _utc_now_iso(),
+    }
+    store.append_timeline_edit_event(edit_event)
 
     return {
         "success": True,
-        "schema_version": "cut_srt_export_v1",
-        "srt_content": srt_content,
-        "marker_count": len(active),
+        "schema_version": "cut_redo_v1",
+        "redone_label": result["entry"]["label"],
+        "timeline_state": updated_state,
+        "applied_ops": applied_ops,
+        "undo_depth": result["undo_depth"],
+        "redo_depth": result["redo_depth"],
+        "edit_event": edit_event,
     }
 
 
-# ─── Media Proxy ───
-
-
-_MIME_MAP: dict[str, str] = {
-    ".mp4": "video/mp4",
-    ".mov": "video/quicktime",
-    ".avi": "video/x-msvideo",
-    ".mkv": "video/x-matroska",
-    ".webm": "video/webm",
-    ".m4v": "video/x-m4v",
-    ".mp3": "audio/mpeg",
-    ".wav": "audio/wav",
-    ".m4a": "audio/mp4",
-    ".aac": "audio/aac",
-    ".ogg": "audio/ogg",
-    ".flac": "audio/flac",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".tiff": "image/tiff",
-    ".tif": "image/tiff",
-    ".bmp": "image/bmp",
-}
-
-
-def _resolve_mime(file_path: str) -> str:
-    ext = os.path.splitext(file_path)[1].lower()
-    return _MIME_MAP.get(ext, "application/octet-stream")
-
-
-def _is_safe_subpath(sandbox_root: str, target: str) -> bool:
-    """Ensure target resolves strictly inside sandbox_root (no path traversal)."""
-    root = os.path.realpath(sandbox_root)
-    resolved = os.path.realpath(target)
-    return resolved.startswith(root + os.sep) or resolved == root
-
-
-@router.get("/media-proxy")
-async def cut_media_proxy(request: Request, sandbox_root: str, path: str) -> Response:
-    """
-    MARKER_172.1.MEDIA_PROXY
-    Serve media files from within sandbox_root with range-request support.
-    Security: validates path is inside sandbox_root, rejects traversal.
-    """
-    if not sandbox_root or not path:
-        raise HTTPException(status_code=400, detail="sandbox_root and path are required")
-
-    # Path may be absolute or relative to sandbox
-    if os.path.isabs(path):
-        file_path = path
-    else:
-        file_path = os.path.join(sandbox_root, path)
-
-    # Security: reject path traversal
-    if not _is_safe_subpath(sandbox_root, file_path):
-        raise HTTPException(status_code=403, detail="Path outside sandbox boundary")
-
-    if not os.path.isfile(file_path):
-        raise HTTPException(status_code=404, detail=f"Media file not found: {os.path.basename(file_path)}")
-
-    file_size = os.path.getsize(file_path)
-    mime = _resolve_mime(file_path)
-
-    # CORS headers for cross-origin media loading
-    cors_headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-        "Access-Control-Allow-Headers": "Range",
-        "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "public, max-age=3600",
-    }
-
-    # Handle Range requests (HTTP 206 Partial Content)
-    range_header = request.headers.get("range")
-    if range_header:
-        range_match = re.match(r"bytes=(\d+)-(\d*)", range_header)
-        if not range_match:
-            raise HTTPException(status_code=416, detail="Invalid Range header")
-        start = int(range_match.group(1))
-        end_str = range_match.group(2)
-        end = int(end_str) if end_str else file_size - 1
-        end = min(end, file_size - 1)
-        if start > end or start >= file_size:
-            raise HTTPException(
-                status_code=416,
-                detail="Range not satisfiable",
-                headers={"Content-Range": f"bytes */{file_size}"},
-            )
-        content_length = end - start + 1
-        with open(file_path, "rb") as f:
-            f.seek(start)
-            data = f.read(content_length)
-        return Response(
-            content=data,
-            status_code=206,
-            media_type=mime,
-            headers={
-                **cors_headers,
-                "Content-Range": f"bytes {start}-{end}/{file_size}",
-                "Content-Length": str(content_length),
-            },
-        )
-
-    # Full file response (small files or no Range header)
-    with open(file_path, "rb") as f:
-        data = f.read()
-    return Response(
-        content=data,
-        status_code=200,
-        media_type=mime,
-        headers={
-            **cors_headers,
-            "Content-Length": str(file_size),
-        },
-    )
-
-
-# ─── MARKER_172.5 — CUT Export Endpoints ───────────────────────────────────
-
-
-def _timeline_to_export_payload(
-    timeline_state: dict[str, Any],
-    markers: list[dict[str, Any]] | None = None,
-    sequence_name: str = "CUT_Sequence",
+@router.get("/undo-stack")
+async def cut_undo_stack(
+    sandbox_root: str,
+    project_id: str,
+    timeline_id: str,
 ) -> dict[str, Any]:
-    """Convert CUT timeline_state + markers into the generic payload
-    expected by build_premiere_xml() / build_fcpxml()."""
-    fps = float(timeline_state.get("fps", 30.0) or 30.0)
-
-    clips: list[dict[str, Any]] = []
-    max_end: float = 0.0
-    for lane in timeline_state.get("lanes", []):
-        for clip in lane.get("clips", []):
-            start = float(clip.get("start_sec", 0.0) or 0.0)
-            end = float(clip.get("end_sec", start) or start)
-            name = clip.get("label") or clip.get("clip_id") or ""
-            source_path = clip.get("source_path", "")
-            clips.append({
-                "start_sec": start,
-                "end_sec": end,
-                "name": str(name),
-                "source_path": str(source_path),
-            })
-            if end > max_end:
-                max_end = end
-
-    export_markers: list[dict[str, Any]] = []
-    if markers:
-        for m in markers:
-            export_markers.append({
-                "time_sec": float(m.get("start_sec", 0.0) or 0.0),
-                "comment": str(m.get("label") or m.get("kind") or "marker"),
-            })
-
+    """
+    MARKER_173.1.UNDO_STACK_ENDPOINT
+    Get undo/redo stack metadata (depths, labels). No heavy state payloads.
+    """
+    undo_service = CutUndoRedoService(sandbox_root, project_id, timeline_id)
     return {
-        "project_name": str(timeline_state.get("project_id", "CUT_Project")),
-        "sequence_name": sequence_name,
-        "source_path": clips[0]["source_path"] if clips else "",
-        "fps": fps,
-        "duration_sec": max_end,
-        "clips": clips,
-        "markers": export_markers,
+        "success": True,
+        **undo_service.get_stack_info(),
     }
-
-
-def _build_export_result(
-    fmt: str, xml_content: str, clip_count: int, marker_count: int,
-    sandbox_root: str, project_id: str,
-) -> dict[str, Any]:
-    """Build cut_export_result_v1 contract response."""
-    return {
-        "schema_version": "cut_export_result_v1",
-        "format": fmt,
-        "project_id": project_id,
-        "clip_count": clip_count,
-        "marker_count": marker_count,
-        "xml_content": xml_content,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-@router.post("/export/premiere-xml")
-async def cut_export_premiere_xml(body: dict[str, Any]) -> dict[str, Any]:
-    """Export CUT timeline as Premiere Pro XML (XMEML v5)."""
-    sandbox_root = str(body.get("sandbox_root") or "")
-    project_id = str(body.get("project_id") or "")
-    sequence_name = str(body.get("sequence_name") or "CUT_Sequence")
-
-    if not sandbox_root or not project_id:
-        raise HTTPException(status_code=400, detail="sandbox_root and project_id required")
-
-    store = CutProjectStore(sandbox_root)
-    timeline = store.load_timeline_state()
-    if timeline is None:
-        raise HTTPException(status_code=404, detail="No timeline state found")
-
-    marker_bundle = store.load_time_marker_bundle()
-    markers = marker_bundle.get("items", []) if marker_bundle else []
-
-    payload = _timeline_to_export_payload(timeline, markers, sequence_name)
-    xml_content = build_premiere_xml(payload)
-
-    return _build_export_result(
-        "premiere_xml", xml_content,
-        len(payload["clips"]), len(payload["markers"]),
-        sandbox_root, project_id,
-    )
-
-
-@router.post("/export/fcpxml")
-async def cut_export_fcpxml(body: dict[str, Any]) -> dict[str, Any]:
-    """Export CUT timeline as Final Cut Pro XML (FCPXML v1.10)."""
-    sandbox_root = str(body.get("sandbox_root") or "")
-    project_id = str(body.get("project_id") or "")
-    sequence_name = str(body.get("sequence_name") or "CUT_Sequence")
-
-    if not sandbox_root or not project_id:
-        raise HTTPException(status_code=400, detail="sandbox_root and project_id required")
-
-    store = CutProjectStore(sandbox_root)
-    timeline = store.load_timeline_state()
-    if timeline is None:
-        raise HTTPException(status_code=404, detail="No timeline state found")
-
-    marker_bundle = store.load_time_marker_bundle()
-    markers = marker_bundle.get("items", []) if marker_bundle else []
-
-    payload = _timeline_to_export_payload(timeline, markers, sequence_name)
-    xml_content = build_fcpxml(payload)
-
-    return _build_export_result(
-        "fcpxml", xml_content,
-        len(payload["clips"]), len(payload["markers"]),
-        sandbox_root, project_id,
-    )
