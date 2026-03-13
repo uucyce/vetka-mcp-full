@@ -37,6 +37,7 @@ from src.services.cut_marker_bundle_service import (
     hybrid_merge_slices,
 )
 from src.services.cut_mcp_job_store import get_cut_mcp_job_store
+from src.services.cut_montage_ranker import MontageRanker, ScoredClip
 from src.services.cut_scene_detector import (
     SceneBoundary,
     detect_scene_boundaries,
@@ -4929,4 +4930,68 @@ async def cut_scene_detect_and_apply(body: CutSceneDetectApplyRequest) -> dict[s
         "source_paths_analysed": [p for p in resolved_paths if os.path.isfile(p)],
         "threshold": body.threshold,
         "interval_sec": body.interval_sec,
+    }
+
+
+@router.get("/montage/suggestions")
+async def cut_montage_suggestions(
+    sandbox_root: str,
+    project_id: str,
+    timeline_id: str = "main",
+    limit: int = 10,
+    min_score: float = 0.05,
+) -> dict[str, Any]:
+    """
+    MARKER_173.5 — Montage suggestion ranking.
+
+    Returns scored clip suggestions from all sources (markers, decisions),
+    ranked by weighted signal fusion (transcript conf × energy × sync × marker × intent × recency).
+    Pure math — <5ms execution.
+    """
+    store = CutProjectStore(sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    # Load markers and decisions
+    marker_bundle = store.load_time_marker_bundle()
+    markers: list[dict[str, Any]] = []
+    if marker_bundle and isinstance(marker_bundle, dict):
+        markers = marker_bundle.get("markers", [])
+    elif isinstance(marker_bundle, list):
+        markers = marker_bundle
+
+    montage_state = store.load_montage_state()
+    decisions: list[dict[str, Any]] = []
+    if montage_state and isinstance(montage_state, dict):
+        decisions = montage_state.get("decisions", [])
+
+    ranker = MontageRanker(min_score=min_score)
+    scored_clips = ranker.rank_clips(markers, decisions, limit=limit)
+
+    suggestions = []
+    for clip in scored_clips:
+        suggestions.append({
+            "clip_id": clip.clip_id,
+            "source_path": clip.source_path,
+            "start_sec": clip.start_sec,
+            "end_sec": clip.end_sec,
+            "duration_sec": clip.duration_sec,
+            "score": clip.score,
+            "confidence": clip.confidence,
+            "editorial_intent": clip.editorial_intent,
+            "reasoning": clip.reasoning,
+            "source_signals": clip.source_signals,
+            "marker_id": clip.marker_id,
+        })
+
+    return {
+        "success": True,
+        "schema_version": "cut_montage_suggestions_v1",
+        "suggestions": suggestions,
+        "total": len(suggestions),
+        "limit": limit,
+        "min_score": min_score,
+        "marker_count": len(markers),
+        "decision_count": len(decisions),
     }
