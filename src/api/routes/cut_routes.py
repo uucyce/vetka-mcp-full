@@ -1005,6 +1005,141 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             )
             continue
 
+        # MARKER_173.2 — ripple_delete: remove clip, shift subsequent clips left
+        if op_type == "ripple_delete":
+            clip_id = str(op.get("clip_id") or "")
+            source_lane, clip = _find_clip(state, clip_id)
+            if source_lane is None or clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            clip_start = float(clip.get("start_sec") or 0.0)
+            clip_dur = float(clip.get("duration_sec") or 0.0)
+            gap = clip_dur
+            # Remove the clip
+            source_lane["clips"] = [c for c in source_lane.get("clips", []) if str(c.get("clip_id") or "") != clip_id]
+            # Shift all subsequent clips left by the gap
+            for c in source_lane.get("clips", []):
+                c_start = float(c.get("start_sec") or 0.0)
+                if c_start > clip_start:
+                    c["start_sec"] = max(0.0, round(c_start - gap, 4))
+            source_lane["clips"] = sorted(source_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "lane_id": str(source_lane.get("lane_id") or ""), "gap_sec": gap})
+            continue
+
+        # MARKER_173.2 — insert_at: insert clip at timecode, push subsequent clips right
+        if op_type == "insert_at":
+            lane_id = str(op.get("lane_id") or "")
+            start_sec = float(op.get("start_sec"))
+            source_path = str(op.get("source_path") or "")
+            duration_sec = float(op.get("duration_sec") or 0.0)
+            clip_id = str(op.get("clip_id") or f"clip_{uuid4().hex[:8]}")
+            if start_sec < 0:
+                raise ValueError("start_sec must be >= 0")
+            if duration_sec <= 0:
+                raise ValueError("duration_sec must be > 0")
+            target_lane = _find_lane(state, lane_id)
+            if target_lane is None:
+                raise ValueError(f"lane not found: {lane_id}")
+            # Push subsequent clips right
+            for c in target_lane.get("clips", []):
+                c_start = float(c.get("start_sec") or 0.0)
+                if c_start >= start_sec:
+                    c["start_sec"] = round(c_start + duration_sec, 4)
+            # Insert new clip
+            new_clip = {
+                "clip_id": clip_id,
+                "source_path": source_path,
+                "start_sec": start_sec,
+                "duration_sec": duration_sec,
+            }
+            target_lane.setdefault("clips", []).append(new_clip)
+            target_lane["clips"] = sorted(target_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({
+                "op": op_type, "clip_id": clip_id, "lane_id": lane_id,
+                "start_sec": start_sec, "duration_sec": duration_sec, "source_path": source_path,
+            })
+            continue
+
+        # MARKER_173.2 — overwrite_at: place clip at timecode, no shift
+        if op_type == "overwrite_at":
+            lane_id = str(op.get("lane_id") or "")
+            start_sec = float(op.get("start_sec"))
+            source_path = str(op.get("source_path") or "")
+            duration_sec = float(op.get("duration_sec") or 0.0)
+            clip_id = str(op.get("clip_id") or f"clip_{uuid4().hex[:8]}")
+            if start_sec < 0:
+                raise ValueError("start_sec must be >= 0")
+            if duration_sec <= 0:
+                raise ValueError("duration_sec must be > 0")
+            target_lane = _find_lane(state, lane_id)
+            if target_lane is None:
+                raise ValueError(f"lane not found: {lane_id}")
+            end_sec = start_sec + duration_sec
+            # Remove any clips fully within the overwrite range
+            target_lane["clips"] = [
+                c for c in target_lane.get("clips", [])
+                if not (float(c.get("start_sec") or 0.0) >= start_sec
+                        and float(c.get("start_sec") or 0.0) + float(c.get("duration_sec") or 0.0) <= end_sec)
+            ]
+            new_clip = {
+                "clip_id": clip_id,
+                "source_path": source_path,
+                "start_sec": start_sec,
+                "duration_sec": duration_sec,
+            }
+            target_lane.setdefault("clips", []).append(new_clip)
+            target_lane["clips"] = sorted(target_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({
+                "op": op_type, "clip_id": clip_id, "lane_id": lane_id,
+                "start_sec": start_sec, "duration_sec": duration_sec, "source_path": source_path,
+            })
+            continue
+
+        # MARKER_173.2 — split_at: split a clip at a given time into two clips
+        if op_type == "split_at":
+            clip_id = str(op.get("clip_id") or "")
+            split_sec = float(op.get("split_sec"))
+            source_lane, clip = _find_clip(state, clip_id)
+            if source_lane is None or clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            clip_start = float(clip.get("start_sec") or 0.0)
+            clip_dur = float(clip.get("duration_sec") or 0.0)
+            clip_end = clip_start + clip_dur
+            if split_sec <= clip_start or split_sec >= clip_end:
+                raise ValueError(
+                    f"split_sec {split_sec} must be within clip range ({clip_start}, {clip_end})"
+                )
+            # Create two clips from one
+            left_dur = round(split_sec - clip_start, 4)
+            right_dur = round(clip_end - split_sec, 4)
+            right_id = f"{clip_id}_R{uuid4().hex[:4]}"
+
+            # Modify original clip to be the left half
+            clip["duration_sec"] = left_dur
+
+            # Create right half
+            right_clip = {
+                "clip_id": right_id,
+                "source_path": str(clip.get("source_path") or ""),
+                "start_sec": split_sec,
+                "duration_sec": right_dur,
+            }
+            # Copy optional fields
+            if "in_point_sec" in clip:
+                in_point = float(clip.get("in_point_sec") or 0.0)
+                clip_in = in_point
+                right_clip["in_point_sec"] = round(in_point + left_dur, 4)
+            if "sync" in clip:
+                right_clip["sync"] = dict(clip["sync"])
+
+            source_lane.setdefault("clips", []).append(right_clip)
+            source_lane["clips"] = sorted(source_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({
+                "op": op_type, "clip_id": clip_id, "split_sec": split_sec,
+                "left_id": clip_id, "right_id": right_id,
+                "left_duration": left_dur, "right_duration": right_dur,
+            })
+            continue
+
         raise ValueError(f"unsupported timeline op: {op_type or '<empty>'}")
 
     state["revision"] = int(state.get("revision") or 0) + 1
