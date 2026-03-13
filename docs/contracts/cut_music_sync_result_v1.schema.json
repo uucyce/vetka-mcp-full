@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cut_music_sync_result_v1.schema.json",
+  "title": "VETKA CUT Music Sync Result V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "revision",
+    "music_path",
+    "tempo",
+    "downbeats",
+    "phrases",
+    "cue_points",
+    "derived_from",
+    "generated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "cut_music_sync_result_v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "music_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tempo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bpm", "confidence"],
+      "properties": {
+        "bpm": { "type": "number", "minimum": 1 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "downbeats": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0 }
+    },
+    "phrases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phrase_id", "start_sec", "end_sec", "label", "energy"],
+        "properties": {
+          "phrase_id": { "type": "string", "minLength": 1 },
+          "start_sec": { "type": "number", "minimum": 0 },
+          "end_sec": { "type": "number", "minimum": 0 },
+          "label": { "type": "string", "minLength": 1 },
+          "energy": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "cue_points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cue_id", "start_sec", "end_sec", "label", "cue_type", "confidence", "energy"],
+        "properties": {
+          "cue_id": { "type": "string", "minLength": 1 },
+          "start_sec": { "type": "number", "minimum": 0 },
+          "end_sec": { "type": "number", "minimum": 0 },
+          "label": { "type": "string", "minLength": 1 },
+          "cue_type": { "type": "string", "minLength": 1 },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "energy": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "derived_from": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

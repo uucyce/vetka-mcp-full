@@ -110,6 +110,29 @@ class _FakeHttp:
                     "status": "done",
                 },
             }
+        if method == "PATCH" and url.endswith("/localguys-runs/lg_run_demo"):
+            return {
+                "success": True,
+                "run": {
+                    "run_id": "lg_run_demo",
+                    "task_id": "tb_177",
+                    "workflow_family": "g3_localguys",
+                    "status": payload.get("status", "running") if payload else "running",
+                    "current_step": payload.get("current_step", "execute") if payload else "execute",
+                    "metadata": dict((payload or {}).get("metadata") or {}),
+                },
+                "runtime_guard": {
+                    "current_step": payload.get("current_step", "execute") if payload else "execute",
+                    "allowed_tools": ["context", "tests"],
+                    "write_opt_ins": {
+                        "task_board": False,
+                        "edit_file": True,
+                        "playground_artifacts": True,
+                        "main_tree_write": False,
+                    },
+                    "verification_target": "targeted_tests",
+                },
+            }
         raise AssertionError(f"unexpected call: {method} {url}")
 
 
@@ -215,3 +238,46 @@ def test_start_localguys_run_rejects_unknown_method() -> None:
         assert "Unsupported localguys method" in str(exc)
     else:
         raise AssertionError("expected ValueError for unsupported method")
+
+
+def test_signal_localguys_run_sends_lifecycle_metadata_and_returns_runtime_guard() -> None:
+    fake_http = _FakeHttp()
+    result = localguys.signal_localguys_run(
+        run_id="lg_run_demo",
+        base_url="http://127.0.0.1:5001",
+        status="running",
+        current_step="execute",
+        active_role="coder",
+        used_tools=["context", "tests"],
+        write_attempts=["edit_file"],
+        turn_increment=1,
+        recommended_tools=["pytest"],
+        filtered_tool_schemas=["task_board"],
+        verification_passed=True,
+        verification_target="targeted_tests",
+        http_json=fake_http,
+    )
+
+    assert result["success"] is True
+    assert result["run"]["metadata"]["used_tools"] == ["context", "tests"]
+    assert result["run"]["metadata"]["write_attempts"] == ["edit_file"]
+    assert result["run"]["metadata"]["turn_increment"] == 1
+    assert result["runtime_guard"]["allowed_tools"] == ["context", "tests"]
+    assert fake_http.calls[-1] == (
+        "PATCH",
+        "http://127.0.0.1:5001/api/mcc/localguys-runs/lg_run_demo",
+        {
+            "status": "running",
+            "current_step": "execute",
+            "active_role": "coder",
+            "metadata": {
+                "used_tools": ["context", "tests"],
+                "write_attempts": ["edit_file"],
+                "turn_increment": 1,
+                "recommended_tools": ["pytest"],
+                "filtered_tool_schemas": ["task_board"],
+                "verification_passed": True,
+                "verification_target": "targeted_tests",
+            },
+        },
+    )

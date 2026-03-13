@@ -229,6 +229,64 @@ def test_taskboard_create_accepts_extended_governance_fields(monkeypatch: pytest
     assert task["depends_on_docs"] == ["docs/177_MCC_local/TASKBOARD_GOVERNANCE_V1.md"]
 
 
+def test_taskboard_create_p6_profile_enforces_protocol_defaults(monkeypatch: pytest.MonkeyPatch, board) -> None:
+    import src.orchestration.taskboard_adapters as adapters
+    from src.api.routes.taskboard_routes import router
+
+    monkeypatch.setattr(adapters.task_board_module, "get_task_board", lambda: board)
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    resp = client.post(
+        "/api/taskboard/create",
+        json={
+            "title": "P6 emergency verification",
+            "profile": "p6",
+            "project_lane": "phase171_emergency",
+            "architecture_docs": ["docs/171_ph_multytask_vetka_MCP/PHASE_171_MULTITASK_MCC_PROJECT_LANE_RECON_2026-03-13.md"],
+            "closure_tests": ["pytest -q tests/test_phase177_roadmap_task_sync.py"],
+            "allowed_paths": ["src/api/routes/taskboard_routes.py"],
+        },
+    )
+    assert resp.status_code == 200
+    task = resp.json()["task"]
+    assert task["project_lane"] == "phase171_emergency"
+    assert task["phase_type"] == "test"
+    assert task["require_closure_proof"] is True
+    assert task["protocol_version"] == "multitask_mcp_v1"
+    assert task["task_origin"] == "p6_profile"
+    assert task["workflow_selection_origin"] == "p6_profile"
+    assert "p6" in task["tags"]
+    assert "closure_proof" in task["tags"]
+    assert task["closure_files"] == ["src/api/routes/taskboard_routes.py"]
+    assert task["depends_on_docs"] == [
+        "docs/171_ph_multytask_vetka_MCP/PHASE_171_MULTITASK_MCC_PROJECT_LANE_RECON_2026-03-13.md"
+    ]
+    assert "closure proof required" in task["completion_contract"]
+
+
+def test_taskboard_create_p6_profile_requires_docs_and_tests(monkeypatch: pytest.MonkeyPatch, board) -> None:
+    import src.orchestration.taskboard_adapters as adapters
+    from src.api.routes.taskboard_routes import router
+
+    monkeypatch.setattr(adapters.task_board_module, "get_task_board", lambda: board)
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    resp = client.post(
+        "/api/taskboard/create",
+        json={
+            "title": "Broken p6 task",
+            "profile": "p6",
+            "project_lane": "phase171_emergency",
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "p6 profile requires: architecture_docs, closure_tests"
+
+
 def test_verification_agent_can_update_status_when_owner_differs(monkeypatch: pytest.MonkeyPatch, board) -> None:
     import src.orchestration.taskboard_adapters as adapters
     from src.api.routes.taskboard_routes import router
@@ -348,7 +406,18 @@ def test_mcc_task_context_packet_includes_roadmap_binding(monkeypatch: pytest.Mo
     monkeypatch.setattr(routes, "_get_task_board_instance", lambda: board)
 
     async def _fake_contract(_family: str):
-        return {"workflow_family": "g3_localguys", "steps": ["recon", "execute"], "artifact_contract": {"required": []}}
+        return {
+            "workflow_family": "g3_localguys",
+            "steps": ["recon", "execute"],
+            "execution_mode": "staged_state_machine",
+            "sandbox_policy": {"mode": "playground_only", "requires_playground": True},
+            "write_opt_ins": {"task_board": False, "edit_file": True},
+            "verification_target": "targeted_tests",
+            "max_turns": 8,
+            "idle_nudge_template": "Stay inside the playground.",
+            "stage_tool_policy": {"recon": ["context", "search"]},
+            "artifact_contract": {"required": []},
+        }
 
     monkeypatch.setattr(routes, "_resolve_workflow_contract", _fake_contract)
 
@@ -366,6 +435,25 @@ def test_mcc_task_context_packet_includes_roadmap_binding(monkeypatch: pytest.Mo
         "roadmap_title": "Sync Node",
     }
     assert packet["workflow_contract"]["workflow_family"] == "g3_localguys"
+    assert packet["localguys_compliance"] == {
+        "workflow_family": "g3_localguys",
+        "execution_mode": "staged_state_machine",
+        "sandbox_mode": "playground_only",
+        "requires_playground": True,
+        "write_opt_ins": {"task_board": False, "edit_file": True},
+        "verification_target": "targeted_tests",
+        "max_turns": 8,
+        "idle_nudge_template": "Stay inside the playground.",
+        "stage_tool_policy": {"recon": ["context", "search"]},
+        "active_step": "",
+        "active_step_allowed_tools": [],
+        "telemetry": {
+            "recommended_tools": [],
+            "filtered_tool_schemas": [],
+            "idle_turn_count": 0,
+            "verification_passed": False,
+        },
+    }
     assert packet["governance"] == {
         "ownership_scope": "mcc",
         "allowed_paths": ["client/src/components/mcc/**"],
@@ -430,7 +518,17 @@ def test_mcc_task_context_packet_enriches_roadmap_docs_and_localguys_artifacts(
     run = registry.create_run(
         task_id=task_id,
         workflow_family="g3_localguys",
-        contract={"version": "v1", "artifact_contract": {"required": ["facts.json"]}},
+        contract={
+            "version": "v1",
+            "execution_mode": "staged_state_machine",
+            "sandbox_policy": {"mode": "playground_only", "requires_playground": True},
+            "write_opt_ins": {"task_board": False, "edit_file": True},
+            "verification_target": "targeted_tests",
+            "max_turns": 6,
+            "idle_nudge_template": "Stay inside the playground.",
+            "stage_tool_policy": {"recon": ["context", "search"]},
+            "artifact_contract": {"required": ["facts.json"]},
+        },
         playground={
             "playground_id": "pg_test",
             "branch_name": "playground/pg_test",
@@ -438,6 +536,17 @@ def test_mcc_task_context_packet_enriches_roadmap_docs_and_localguys_artifacts(
         },
         task_snapshot=board.get_task(task_id),
     )
+    run = registry.update_run(
+        run["run_id"],
+        current_step="recon",
+        metadata={
+            "recommended_tools": ["rg", "pytest"],
+            "filtered_tool_schemas": ["edit_file"],
+            "idle_turn_count": 1,
+            "verification_passed": True,
+            "verification_target": "targeted_tests",
+        },
+    ) or run
 
     monkeypatch.setattr(routes, "_get_task_board_instance", lambda: board)
     monkeypatch.setattr("src.services.mcc_local_run_registry.get_localguys_run_registry", lambda: registry)
@@ -447,7 +556,18 @@ def test_mcc_task_context_packet_enriches_roadmap_docs_and_localguys_artifacts(
     )
 
     async def _fake_contract(_family: str):
-        return {"workflow_family": "g3_localguys", "steps": ["recon"], "artifact_contract": {"required": ["facts.json"]}}
+        return {
+            "workflow_family": "g3_localguys",
+            "steps": ["recon"],
+            "execution_mode": "staged_state_machine",
+            "sandbox_policy": {"mode": "playground_only", "requires_playground": True},
+            "write_opt_ins": {"task_board": False, "edit_file": True},
+            "verification_target": "targeted_tests",
+            "max_turns": 6,
+            "idle_nudge_template": "Stay inside the playground.",
+            "stage_tool_policy": {"recon": ["context", "search"]},
+            "artifact_contract": {"required": ["facts.json"]},
+        }
 
     monkeypatch.setattr(routes, "_resolve_workflow_contract", _fake_contract)
 
@@ -461,6 +581,10 @@ def test_mcc_task_context_packet_enriches_roadmap_docs_and_localguys_artifacts(
     assert "docs/177_MCC_local/LITERT_BENCHMARK_DIRECTION.md" in packet["docs"]["architecture_docs"]
     assert "src/services/roadmap_task_sync.py" in packet["code_scope"]["closure_files"]
     assert packet["artifacts"]["recent_localguys_runs"][0]["run_id"] == run["run_id"]
+    assert packet["localguys_compliance"]["active_step"] == "recon"
+    assert packet["localguys_compliance"]["active_step_allowed_tools"] == ["context", "search"]
+    assert packet["localguys_compliance"]["telemetry"]["recommended_tools"] == ["rg", "pytest"]
+    assert packet["localguys_compliance"]["telemetry"]["verification_passed"] is True
     assert "missing_tests" in packet["gaps"]
 
 

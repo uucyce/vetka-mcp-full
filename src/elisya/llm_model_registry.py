@@ -149,6 +149,13 @@ _SAFE_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "ttft_ms": 500.0,
         "provider": "polza",
     },
+    "qwen3.5:latest": {
+        "context_length": 32768,
+        "output_tokens_per_second": 46.0,
+        "input_tokens_per_second": 120.0,
+        "ttft_ms": 620.0,
+        "provider": "ollama",
+    },
     "qwen3:8b": {
         "context_length": 32768,
         "output_tokens_per_second": 42.0,

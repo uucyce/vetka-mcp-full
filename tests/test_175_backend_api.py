@@ -51,9 +51,12 @@ def test_mcc_patch_task_updates_fields(client, board):
             "title": "Updated task",
             "description": "Updated description",
             "preset": "dragon_gold",
-            "phase_type": "fix",
+            "phase_type": "test",
             "priority": 1,
             "tags": ["phase175", "edited"],
+            "project_lane": "mcc_test_lane",
+            "architecture_docs": ["docs/177_MCC_local/MCC_CODE_CONTEXT_INSPECTION_ARCHITECTURE.md"],
+            "closure_tests": ["pytest -q tests/test_175_backend_api.py"],
         },
     )
 
@@ -63,9 +66,12 @@ def test_mcc_patch_task_updates_fields(client, board):
     assert data["task"]["id"] == task_id
     assert data["task"]["title"] == "Updated task"
     assert data["task"]["preset"] == "dragon_gold"
-    assert data["task"]["phase_type"] == "fix"
+    assert data["task"]["phase_type"] == "test"
     assert data["task"]["priority"] == 1
     assert data["task"]["tags"] == ["phase175", "edited"]
+    assert data["task"]["project_lane"] == "mcc_test_lane"
+    assert data["task"]["require_closure_proof"] is True
+    assert data["task"]["closure_tests"] == ["pytest -q tests/test_175_backend_api.py"]
 
 
 def test_mcc_patch_task_rejects_unknown_fields(client, board):
@@ -85,6 +91,93 @@ def test_mcc_patch_task_returns_404_for_missing_task(client):
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
+
+
+def test_mcc_create_attached_task_derives_lane_docs_and_scope(client, monkeypatch):
+    import src.services.roadmap_generator as roadmap_mod
+
+    class _FakeRoadmap:
+        project_id = "rm_171"
+        nodes = [
+            {
+                "id": "cut_montage_engine",
+                "label": "CUT Montage Engine",
+                "layer": "feature",
+                "docs": ["docs/171_ph_CUT_MONTAGE_ENGINE/PHASE_171_MONTAGE.md"],
+                "file_patterns": ["src/montage/state.py"],
+            }
+        ]
+
+        @classmethod
+        def load(cls):
+            return cls()
+
+    monkeypatch.setattr(roadmap_mod, "RoadmapDAG", _FakeRoadmap)
+
+    response = client.post(
+        "/api/mcc/tasks/create-attached",
+        json={
+            "preset": "dragon_silver",
+            "node_id": "node_montage_state",
+            "node_label": "Montage State",
+            "node_path": "src/montage/state.py",
+            "node_graph_kind": "project_file",
+            "roadmap_node_id": "cut_montage_engine",
+        },
+    )
+
+    assert response.status_code == 200
+    task = response.json()["task"]
+    assert task["primary_node_id"] == "node_montage_state"
+    assert task["project_lane"] == "cut_montage_engine"
+    assert task["roadmap_node_id"] == "cut_montage_engine"
+    assert task["roadmap_id"] == "rm_171"
+    assert task["architecture_docs"] == ["docs/171_ph_CUT_MONTAGE_ENGINE/PHASE_171_MONTAGE.md"]
+    assert "src/montage/state.py" in task["closure_files"]
+    assert task["task_origin"] == "mcc_attached"
+
+
+def test_mcc_attach_node_updates_task_binding(client, board, monkeypatch):
+    import src.services.roadmap_generator as roadmap_mod
+
+    task_id = _seed_task(board, title="Attach me")
+
+    class _FakeRoadmap:
+        project_id = "rm_171"
+        nodes = [
+            {
+                "id": "cut_fixture",
+                "label": "CUT Fixture",
+                "layer": "test",
+                "docs": ["docs/171_ph_CUT_FIXTURE/PHASE_171_FIXTURE.md"],
+                "file_patterns": ["tests/test_fixture.py"],
+            }
+        ]
+
+        @classmethod
+        def load(cls):
+            return cls()
+
+    monkeypatch.setattr(roadmap_mod, "RoadmapDAG", _FakeRoadmap)
+
+    response = client.post(
+        f"/api/mcc/tasks/{task_id}/attach-node",
+        json={
+            "node_id": "node_fixture",
+            "node_label": "Fixture Tests",
+            "node_path": "tests/test_fixture.py",
+            "node_graph_kind": "project_file",
+            "roadmap_node_id": "cut_fixture",
+        },
+    )
+
+    assert response.status_code == 200
+    task = response.json()["task"]
+    assert task["primary_node_id"] == "node_fixture"
+    assert task["project_lane"] == "cut_fixture"
+    assert task["roadmap_lane"] == "test"
+    assert "docs/171_ph_CUT_FIXTURE/PHASE_171_FIXTURE.md" in task["architecture_docs"]
+    assert "tests/test_fixture.py" in task["closure_files"]
 
 
 def test_mcc_feedback_redo_sets_pending_and_feedback(client, board):

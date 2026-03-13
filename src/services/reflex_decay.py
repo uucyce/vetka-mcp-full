@@ -136,6 +136,12 @@ MODEL_PROFILES: Dict[str, ModelProfile] = {
         max_tools=15,
         prefer_simple=False,
     ),
+    "qwen3.5:latest": ModelProfile(
+        model_name="qwen3.5:latest",
+        fc_reliability=0.86,
+        max_tools=10,
+        prefer_simple=True,
+    ),
     "qwen3:8b": ModelProfile(
         model_name="qwen3:8b",
         fc_reliability=0.82,

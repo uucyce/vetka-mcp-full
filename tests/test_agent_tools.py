@@ -22,6 +22,7 @@ from src.tools import registry, SafeToolExecutor, ToolCall, PermissionLevel
 from src.agents.tools import (
     SearchCodebaseTool,
     ExecuteCodeTool,
+    SelectBestLocalQwenModelTool,
     get_tools_for_agent,
     get_tool_names_for_agent,
     AGENT_TOOL_PERMISSIONS,
@@ -217,6 +218,58 @@ class TestAgentPermissions:
         for schema in dev_schemas:
             assert "type" in schema
             assert "function" in schema
+
+    def test_default_tools_include_local_qwen_selector(self):
+        default_tools = get_tool_names_for_agent("Default")
+        assert "select_best_local_qwen_model" in default_tools
+
+
+class TestSelectBestLocalQwenModelTool:
+    @pytest.mark.asyncio
+    async def test_select_best_local_qwen_model_tool_returns_best_candidate(self, monkeypatch):
+        tool = SelectBestLocalQwenModelTool()
+
+        monkeypatch.setattr(
+            "src.agents.tools.get_best_local_qwen_model",
+            lambda ollama_url="http://127.0.0.1:11434", timeout=3.0: {
+                "best_model": "qwen3.5:latest",
+                "best": {"name": "qwen3.5:latest", "score": 13.75},
+                "candidates": [
+                    {"name": "qwen3.5:latest", "score": 13.75},
+                    {"name": "qwen3:8b", "score": 11.2},
+                ],
+                "count": 2,
+                "ollama_url": ollama_url,
+                "total_models": 5,
+            },
+        )
+
+        result = await tool.execute()
+
+        assert result.success is True
+        assert result.result["best_model"] == "qwen3.5:latest"
+        assert result.result["count"] == 2
+
+    @pytest.mark.asyncio
+    async def test_select_best_local_qwen_model_tool_fails_without_qwen(self, monkeypatch):
+        tool = SelectBestLocalQwenModelTool()
+
+        monkeypatch.setattr(
+            "src.agents.tools.get_best_local_qwen_model",
+            lambda ollama_url="http://127.0.0.1:11434", timeout=3.0: {
+                "best_model": "",
+                "best": None,
+                "candidates": [],
+                "count": 0,
+                "ollama_url": ollama_url,
+                "total_models": 3,
+            },
+        )
+
+        result = await tool.execute()
+
+        assert result.success is False
+        assert "No local Qwen models found" in (result.error or "")
 
 
 # ============================================

@@ -200,7 +200,11 @@ function useTaskContextPacket(taskId?: string | null): { loading: boolean; packe
   return { loading, packet };
 }
 
-function useDirectoryTree(path?: string | null, enabled: boolean = true): { loading: boolean; tree: DirectoryTreeNode | null } {
+function useDirectoryTree(
+  path?: string | null,
+  enabled: boolean = true,
+  projectId?: string | null,
+): { loading: boolean; tree: DirectoryTreeNode | null } {
   const [loading, setLoading] = useState(false);
   const [tree, setTree] = useState<DirectoryTreeNode | null>(null);
 
@@ -212,7 +216,9 @@ function useDirectoryTree(path?: string | null, enabled: boolean = true): { load
       return;
     }
     setLoading(true);
-    fetch(`/api/mcc/directory-tree?path=${encodeURIComponent(resolvedPath)}&depth=1`)
+    const qs = new URLSearchParams({ path: resolvedPath, depth: '1' });
+    if (projectId) qs.set('project_id', String(projectId));
+    fetch(`/api/mcc/directory-tree?${qs.toString()}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!cancelled) setTree((data?.tree as DirectoryTreeNode) || null);
@@ -226,7 +232,7 @@ function useDirectoryTree(path?: string | null, enabled: boolean = true): { load
     return () => {
       cancelled = true;
     };
-  }, [enabled, path]);
+  }, [enabled, path, projectId]);
 
   return { loading, tree };
 }
@@ -907,6 +913,7 @@ function DirectoryTreeView({
   onOpenFile?: (path: string, mode?: 'pane' | 'fullscreen') => void;
   onFocusFile?: (path: string) => void;
 }) {
+  const activeProjectId = useMCCStore((s) => s.activeProjectId);
   const isDirectory = node.kind === 'directory';
   const isFile = node.kind === 'file';
   const shouldAutoExpand = isDirectory && depth < autoExpandDepth;
@@ -925,7 +932,9 @@ function DirectoryTreeView({
     if (!isDirectory || loadingChildren || loadedOnce) return;
     setLoadingChildren(true);
     try {
-      const res = await fetch(`/api/mcc/directory-tree?path=${encodeURIComponent(node.path)}&depth=1`);
+      const qs = new URLSearchParams({ path: node.path, depth: '1' });
+      if (activeProjectId) qs.set('project_id', activeProjectId);
+      const res = await fetch(`/api/mcc/directory-tree?${qs.toString()}`);
       const data = await (res.ok ? res.json() : Promise.resolve(null));
       setChildren(Array.isArray(data?.tree?.children) ? data.tree.children : []);
     } catch {
@@ -934,7 +943,7 @@ function DirectoryTreeView({
       setLoadedOnce(true);
       setLoadingChildren(false);
     }
-  }, [isDirectory, loadedOnce, loadingChildren, node.path]);
+  }, [activeProjectId, isDirectory, loadedOnce, loadingChildren, node.path]);
 
   const handleToggle = useCallback(() => {
     if (!isDirectory) return;
@@ -1165,6 +1174,7 @@ function ContextSearchPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          project_id: activeProjectId,
           query: q,
           limit: 8,
           mode,
@@ -1336,6 +1346,7 @@ function ContextSearchPanel({
 }
 
 function ContextExpanded({ context, nodeData, onSearchSelect, onViewArtifact, onOpenFile }: MiniContextProps) {
+  const activeProjectId = useMCCStore((s) => s.activeProjectId);
   const contextTaskId = useMemo(
     () => context.taskId || context.activeTaskId || null,
     [context.activeTaskId, context.taskId],
@@ -1346,6 +1357,7 @@ function ContextExpanded({ context, nodeData, onSearchSelect, onViewArtifact, on
   const { loading: directoryLoading, tree: directoryTree } = useDirectoryTree(
     context.nodeKind === 'directory' ? context.path || context.label : null,
     context.nodeKind === 'directory',
+    activeProjectId,
   );
   const packetDocs = useMemo(() => {
     const docs = [

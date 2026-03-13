@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Body, HTTPException, Query
 
 from src.orchestration.taskboard_adapters import get_taskboard_adapter
+from src.services.roadmap_task_sync import apply_task_profile_defaults
 
 router = APIRouter(prefix="/api/taskboard", tags=["taskboard"])
 
@@ -44,6 +45,15 @@ _CREATE_FIELDS = {
     "touch_policy",
     "overlap_risk",
     "depends_on_docs",
+    "project_id",
+    "project_lane",
+    "parent_task_id",
+    "architecture_docs",
+    "recon_docs",
+    "protocol_version",
+    "require_closure_proof",
+    "closure_tests",
+    "closure_files",
 }
 
 _UPDATE_FIELDS = {
@@ -93,6 +103,16 @@ def _resolve_adapter(adapter_name: Optional[str] = None):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _prepare_create_payload(body: Dict[str, Any]) -> Dict[str, Any]:
+    payload = {key: value for key, value in body.items() if key in _CREATE_FIELDS}
+    if body.get("profile") not in (None, ""):
+        payload["profile"] = body.get("profile")
+    try:
+        return apply_task_profile_defaults(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/create")
 async def create_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     title = str(body.get("title") or "").strip()
@@ -100,8 +120,11 @@ async def create_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="title is required")
 
     adapter = _resolve_adapter(body.get("adapter"))
-    payload = {key: value for key, value in body.items() if key in _CREATE_FIELDS}
-    task = await adapter.create_task(payload)
+    payload = _prepare_create_payload(body)
+    try:
+        task = await adapter.create_task(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"success": True, "adapter": adapter.adapter_name, "task": task}
 
 

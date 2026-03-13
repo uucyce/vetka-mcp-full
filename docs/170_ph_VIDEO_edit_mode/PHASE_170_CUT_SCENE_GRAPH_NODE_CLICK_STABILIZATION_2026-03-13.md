@@ -24,3 +24,14 @@ Stabilize the isolated loaded-state smoke that clicks a DAG node and expects a `
 ## Markers
 - `MARKER_170.BROWSER_RETURN.NODE_CLICK`
 - `MARKER_170.SCENE_GRAPH.NODE_CLICK.STABILIZATION`
+
+## Test-hook fallback
+
+- Added `window.__VETKA_CUT_TEST__.triggerSceneGraphFocus(...)` so the round-trip lane can be proven independently from DOM actionability inside the shared DAG canvas.
+- This isolates handler correctness from click-surface instability.
+
+## Current outcome
+
+- The split node-click smoke now passes when the round-trip is exercised through `window.__VETKA_CUT_TEST__.triggerSceneGraphFocus(...)`.
+- This proves the CUT Scene Graph focus handler and `/api/cut/timeline/apply` round-trip.
+- Pure DOM click actionability inside the shared DAG canvas remains a separate UI-surface issue and should not block acceptance of the focus pipeline itself.

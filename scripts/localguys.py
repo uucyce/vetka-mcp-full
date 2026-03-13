@@ -107,6 +107,66 @@ def get_localguys_run(
     return dict(payload.get("run") or {})
 
 
+def signal_localguys_run(
+    *,
+    run_id: str,
+    base_url: str = DEFAULT_MCC_BASE,
+    status: str = "",
+    current_step: str = "",
+    active_role: str = "",
+    model_id: str = "",
+    failure_reason: str = "",
+    used_tools: Optional[List[str]] = None,
+    write_attempts: Optional[List[str]] = None,
+    turn_increment: int = 0,
+    recommended_tools: Optional[List[str]] = None,
+    filtered_tool_schemas: Optional[List[str]] = None,
+    idle_turn_count: Optional[int] = None,
+    verification_passed: Optional[bool] = None,
+    verification_target: str = "",
+    http_json: JsonFn = _http_json,
+) -> Dict[str, Any]:
+    root = _normalize_base_url(base_url)
+    metadata: Dict[str, Any] = {}
+    if used_tools:
+        metadata["used_tools"] = [str(item).strip() for item in used_tools if str(item).strip()]
+    if write_attempts:
+        metadata["write_attempts"] = [str(item).strip() for item in write_attempts if str(item).strip()]
+    if turn_increment > 0:
+        metadata["turn_increment"] = int(turn_increment)
+    if recommended_tools:
+        metadata["recommended_tools"] = [str(item).strip() for item in recommended_tools if str(item).strip()]
+    if filtered_tool_schemas:
+        metadata["filtered_tool_schemas"] = [str(item).strip() for item in filtered_tool_schemas if str(item).strip()]
+    if idle_turn_count is not None:
+        metadata["idle_turn_count"] = max(0, int(idle_turn_count))
+    if verification_passed is not None:
+        metadata["verification_passed"] = bool(verification_passed)
+    if verification_target:
+        metadata["verification_target"] = str(verification_target).strip()
+
+    payload: Dict[str, Any] = {}
+    if status:
+        payload["status"] = status
+    if current_step:
+        payload["current_step"] = current_step
+    if active_role:
+        payload["active_role"] = active_role
+    if model_id:
+        payload["model_id"] = model_id
+    if failure_reason:
+        payload["failure_reason"] = failure_reason
+    if metadata:
+        payload["metadata"] = metadata
+
+    response = http_json("PATCH", root + f"/localguys-runs/{run_id}", payload)
+    return {
+        "success": bool(response.get("success", True)),
+        "run": dict(response.get("run") or {}),
+        "runtime_guard": dict(response.get("runtime_guard") or {}),
+    }
+
+
 def wait_for_localguys_run(
     run_id: str,
     *,
@@ -263,6 +323,22 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("--run-id", default="", help="run id")
     status_parser.add_argument("--task", default="", help="task id for latest run lookup")
 
+    signal_parser = sub.add_parser("signal", help="send lifecycle signal for a localguys run")
+    signal_parser.add_argument("--run-id", required=True, help="run id")
+    signal_parser.add_argument("--status", default="", help="optional run status")
+    signal_parser.add_argument("--step", default="", help="optional current step")
+    signal_parser.add_argument("--role", default="", help="optional active role")
+    signal_parser.add_argument("--model-id", default="", help="optional active model id")
+    signal_parser.add_argument("--failure-reason", default="", help="optional failure reason")
+    signal_parser.add_argument("--tool", action="append", dest="tools", default=[], help="tool used during this turn")
+    signal_parser.add_argument("--write-scope", action="append", dest="write_scopes", default=[], help="write scope attempted during this turn")
+    signal_parser.add_argument("--turns", type=int, default=0, help="turn increment to record")
+    signal_parser.add_argument("--recommend-tool", action="append", dest="recommended_tools", default=[], help="recommended tool for next turn")
+    signal_parser.add_argument("--filtered-schema", action="append", dest="filtered_schemas", default=[], help="filtered tool schema name")
+    signal_parser.add_argument("--idle-turn-count", type=int, default=None, help="explicit idle turn count")
+    signal_parser.add_argument("--verification-passed", action="store_true", help="mark verification as passed")
+    signal_parser.add_argument("--verification-target", default="", help="verification target label")
+
     bench_parser = sub.add_parser("benchmark", help="start a benchmark batch")
     bench_parser.add_argument("method", help="operator method or workflow family")
     bench_parser.add_argument("--task", action="append", dest="tasks", default=[], help="task id to include")
@@ -284,6 +360,24 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.command == "status":
             run = get_localguys_run(base_url=args.server, run_id=args.run_id, task_id=args.task)
             payload = {"success": True, "run": run}
+        elif args.command == "signal":
+            payload = signal_localguys_run(
+                run_id=args.run_id,
+                base_url=args.server,
+                status=args.status,
+                current_step=args.step,
+                active_role=args.role,
+                model_id=args.model_id,
+                failure_reason=args.failure_reason,
+                used_tools=list(args.tools),
+                write_attempts=list(args.write_scopes),
+                turn_increment=int(args.turns or 0),
+                recommended_tools=list(args.recommended_tools),
+                filtered_tool_schemas=list(args.filtered_schemas),
+                idle_turn_count=args.idle_turn_count,
+                verification_passed=True if args.verification_passed else None,
+                verification_target=args.verification_target,
+            )
         elif args.command == "benchmark":
             payload = benchmark_localguys_runs(
                 args.method,

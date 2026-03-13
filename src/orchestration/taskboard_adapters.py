@@ -34,6 +34,28 @@ class BaseAdapter:
     async def update_task(self, task_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         payload = dict(updates or {})
         actor_agent = str(payload.pop("actor_agent", "") or "").strip()
+        board = self.board
+        setattr(board, "_last_update_error", "")
+        current = board.get_task(task_id)
+        if current is None:
+            setattr(board, "_last_update_error", "task_not_found")
+            return None
+
+        next_status = str(payload.get("status") or current.get("status") or "").strip()
+        current_status = str(current.get("status") or "").strip()
+        if next_status and next_status != current_status:
+            owner_agent = str(current.get("owner_agent") or "").strip()
+            verification_agent = str(current.get("verification_agent") or "").strip()
+            if owner_agent and actor_agent and actor_agent not in {owner_agent, verification_agent}:
+                setattr(board, "_last_update_error", "owner_agent_mismatch")
+                return None
+            completion_contract = [str(item).strip() for item in list(current.get("completion_contract") or []) if str(item).strip()]
+            current_summary = str(current.get("result_summary") or "").strip()
+            next_summary = str(payload.get("result_summary") or current_summary).strip()
+            if next_status == "done" and "result_summary required" in completion_contract and not next_summary:
+                setattr(board, "_last_update_error", "completion_contract_missing_result_summary")
+                return None
+
         ok = self.board.update_task(task_id, _actor_agent=actor_agent, **payload)
         if not ok:
             return None
@@ -82,6 +104,15 @@ class GenericRESTAdapter(BaseAdapter):
             touch_policy=data.get("touch_policy"),
             overlap_risk=data.get("overlap_risk"),
             depends_on_docs=list(data.get("depends_on_docs") or []),
+            project_id=data.get("project_id"),
+            project_lane=data.get("project_lane"),
+            parent_task_id=data.get("parent_task_id"),
+            architecture_docs=list(data.get("architecture_docs") or []),
+            recon_docs=list(data.get("recon_docs") or []),
+            protocol_version=data.get("protocol_version"),
+            require_closure_proof=bool(data.get("require_closure_proof")),
+            closure_tests=list(data.get("closure_tests") or []),
+            closure_files=list(data.get("closure_files") or []),
         )
         return self.board.get_task(task_id) or {"id": task_id}
 

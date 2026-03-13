@@ -31,6 +31,8 @@ type CutProjectState = {
   transcript_bundle?: Record<string, unknown> | null;
   thumbnail_bundle?: Record<string, unknown> | null;
   audio_sync_result?: Record<string, unknown> | null;
+  music_sync_result?: Record<string, unknown> | null;
+  music_cue_summary?: Record<string, unknown> | null;
   slice_bundle?: Record<string, unknown> | null;
   timecode_sync_result?: Record<string, unknown> | null;
   sync_surface?: Record<string, unknown> | null;
@@ -43,6 +45,7 @@ type CutProjectState = {
   transcript_ready?: boolean;
   thumbnail_ready?: boolean;
   audio_sync_ready?: boolean;
+  music_cues_ready?: boolean;
   slice_ready?: boolean;
   timecode_sync_ready?: boolean;
   sync_surface_ready?: boolean;
@@ -119,6 +122,13 @@ type CutShellJob = {
   state?: string;
   progress?: number;
   updated_at?: string;
+};
+
+type MusicCueSummary = {
+  track_label?: string;
+  cue_point_count?: number;
+  phrase_count?: number;
+  tempo_bpm?: number | null;
 };
 
 type SliceWindow = {
@@ -337,6 +347,21 @@ function findSyncSurfaceMatch(items: SyncSurfaceItem[], sourcePath: string) {
   return items.find((item) => item.source_path === sourcePath || item.reference_path === sourcePath) || null;
 }
 
+function formatMusicCueStatus(summary?: MusicCueSummary | null): string | null {
+  if (!summary) return null;
+  const cueCount = Number(summary.cue_point_count || 0);
+  const phraseCount = Number(summary.phrase_count || 0);
+  const bpm = typeof summary.tempo_bpm === 'number' && summary.tempo_bpm > 0 ? Math.round(summary.tempo_bpm) : null;
+  if (cueCount <= 0 && phraseCount <= 0 && !bpm) {
+    return null;
+  }
+  const cueLabel = cueCount === 1 ? 'cue' : 'cues';
+  const parts = [`Music cues: ${cueCount} ${cueLabel}`];
+  if (bpm) parts.push(`@ ${bpm} BPM`);
+  if (phraseCount > 0) parts.push(`phrases ${phraseCount}`);
+  return parts.join(' ');
+}
+
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
@@ -529,6 +554,7 @@ export default function CutStandalone() {
   const timecodeSyncItems = (projectState?.timecode_sync_result?.items as TimecodeSyncResultItem[] | undefined) || [];
   const syncSurfaceItems = (projectState?.sync_surface?.items as SyncSurfaceItem[] | undefined) || [];
   const timeMarkers = (projectState?.time_marker_bundle?.items as CutTimeMarker[] | undefined) || [];
+  const musicCueSummary = (projectState?.music_cue_summary as MusicCueSummary | undefined) || null;
   const recentJobs = projectState?.recent_jobs || [];
   const activeJobs = projectState?.active_jobs || [];
   const fallbackQuestions = (projectState?.bootstrap_state?.last_stats as Record<string, unknown> | undefined) || null;
@@ -637,7 +663,10 @@ export default function CutStandalone() {
     if (payload.success) {
       setProjectId(String(payload.project?.project_id || pid));
       if (!options?.silent) {
-        setStatus(payload.runtime_ready ? 'Runtime ready' : 'Project loaded');
+        setStatus(
+          formatMusicCueStatus(payload.music_cue_summary as MusicCueSummary | null | undefined) ||
+            (payload.runtime_ready ? 'Runtime ready' : 'Project loaded')
+        );
       }
     } else {
       setStatus(payload.error?.message || 'Project state error');
@@ -663,6 +692,20 @@ export default function CutStandalone() {
   useEffect(() => {
     persistSceneGraphPaneMode(sceneGraphPaneMode);
   }, [sceneGraphPaneMode]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const api = {
+      triggerSceneGraphFocus: (dagNodeId: string | null) => void handleSceneGraphNodeSelect(dagNodeId),
+      getStatus: () => status,
+    };
+    (window as any).__VETKA_CUT_TEST__ = api;
+    return () => {
+      if ((window as any).__VETKA_CUT_TEST__ === api) {
+        delete (window as any).__VETKA_CUT_TEST__;
+      }
+    };
+  }, [handleSceneGraphNodeSelect, status]);
+
 
   useEffect(() => {
     if (!thumbnailItems.length) {
@@ -2287,7 +2330,7 @@ export default function CutStandalone() {
     <CutEditorLayout
       sceneGraphSurface={nleSceneGraphSurface}
       debugView={debugShell}
-      statusText={status}
+      statusText={formatMusicCueStatus(musicCueSummary) || status}
     />
   );
 }

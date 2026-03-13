@@ -144,6 +144,18 @@ interface LocalguysRunData {
     event_count?: number;
     run_status?: string;
     workflow_family?: string;
+    recommended_tool_count?: number;
+    filtered_tool_schema_count?: number;
+    idle_turn_count?: number;
+    verification_passed?: boolean;
+    verification_target?: string;
+  };
+  telemetry?: {
+    recommended_tools?: string[];
+    filtered_tool_schemas?: string[];
+    idle_turn_count?: number;
+    verification_passed?: boolean;
+    verification_target?: string;
   };
 }
 
@@ -156,6 +168,10 @@ interface LocalguysBenchmarkSummaryData {
   avg_runtime_ms?: number;
   avg_artifact_missing_count?: number;
   avg_required_artifact_count?: number;
+  avg_idle_turn_count?: number;
+  verification_pass_rate?: number;
+  runs_with_recommended_tools?: number;
+  runs_with_filtered_tool_schemas?: number;
   success_rate?: number;
   recent_runs?: Array<{
     runtime_name?: string;
@@ -166,6 +182,26 @@ interface LocalguysBenchmarkSummaryData {
     updated_at?: string;
     created_at?: string;
   }>;
+}
+
+interface LocalguysComplianceData {
+  workflow_family: string;
+  execution_mode?: string;
+  sandbox_mode?: string;
+  requires_playground?: boolean;
+  write_opt_ins?: Record<string, boolean>;
+  verification_target?: string;
+  max_turns?: number;
+  idle_nudge_template?: string;
+  stage_tool_policy?: Record<string, string[]>;
+  active_step?: string;
+  active_step_allowed_tools?: string[];
+  telemetry?: {
+    recommended_tools?: string[];
+    filtered_tool_schemas?: string[];
+    idle_turn_count?: number;
+    verification_passed?: boolean;
+  };
 }
 
 function summarizeRuntimeCounts(summary?: LocalguysBenchmarkSummaryData | null): string {
@@ -208,6 +244,7 @@ function resolveAgentLane(role?: string): string | null {
 }
 
 function usePrefetchReinforcement(context?: MiniContextPayload) {
+  const activeProjectId = useMCCStore((s) => s.activeProjectId);
   const [diag, setDiag] = useState<PrefetchWorkflowSelectionDiagnostics | null>(null);
   const [loading, setLoading] = useState(false);
   const requestKey = useMemo(() => {
@@ -235,6 +272,7 @@ function usePrefetchReinforcement(context?: MiniContextPayload) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        project_id: activeProjectId,
         task_description: taskDescription,
         task_type: taskType,
         complexity,
@@ -257,7 +295,7 @@ function usePrefetchReinforcement(context?: MiniContextPayload) {
     return () => {
       cancelled = true;
     };
-  }, [requestKey]);
+  }, [requestKey, activeProjectId]);
 
   return { diag, loading };
 }
@@ -459,6 +497,51 @@ function useLocalguysBenchmarkSummary(
   return { enabled, summary, loading, refresh };
 }
 
+function useLocalguysCompliance(
+  context: MiniContextPayload | undefined,
+  binding: TaskWorkflowBinding | null,
+) {
+  const [data, setData] = useState<LocalguysComplianceData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const taskId = String(context?.taskId || '').trim();
+  const workflowFamily = String(binding?.workflow_family || '').trim();
+  const enabled = taskId.length > 0 && workflowFamily.endsWith('_localguys');
+
+  useEffect(() => {
+    if (!enabled) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    fetch(`${MCC_API}/tasks/${encodeURIComponent(taskId)}/context-packet`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled) return;
+        const row = json?.packet?.localguys_compliance;
+        setData(row && typeof row === 'object' ? row as LocalguysComplianceData : null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setData(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, revision, taskId]);
+
+  const refresh = useCallback(() => {
+    setRevision((n) => n + 1);
+  }, []);
+
+  return { enabled, data, loading, refresh };
+}
+
 
 function useWorkflowMycoHint(context: MiniContextPayload | undefined, binding: TaskWorkflowBinding | null) {
   const [data, setData] = useState<WorkflowMycoHintData | null>(null);
@@ -641,7 +724,8 @@ function StatBox({ label, value, unit }: { label: string; value: string | number
 function StatsCompact({ context }: MiniStatsProps) {
   const { data, loading } = useSummaryData();
   const setStatsMode = useDevPanelStore(s => s.setStatsMode);
-  const diagnostics = useMCCDiagnostics();
+  const activeProjectId = useMCCStore(s => s.activeProjectId);
+  const diagnostics = useMCCDiagnostics(activeProjectId);
   const prefetchDiag = usePrefetchReinforcement(context);
   const tasks = useMCCStore(s => s.tasks);
   const streamEvents = useMCCStore(s => s.streamEvents);
@@ -1223,12 +1307,14 @@ function AgentPerformanceSection() {
 // Expanded: detailed stats
 function StatsExpanded({ context }: MiniStatsProps) {
   const { data, loading, refresh } = useSummaryData();
-  const diagnostics = useMCCDiagnostics();
+  const activeProjectId = useMCCStore(s => s.activeProjectId);
+  const diagnostics = useMCCDiagnostics(activeProjectId);
   const scopeSubtitle = useMemo(() => resolveContextSubtitle(context), [context]);
   const tasks = useMCCStore(s => s.tasks);
   const { binding: taskWorkflowBinding, refresh: refreshBinding } = useTaskWorkflowBinding(context, tasks);
   const localguys = useLocalguysRun(context, taskWorkflowBinding);
   const localguysBenchmark = useLocalguysBenchmarkSummary(context, taskWorkflowBinding);
+  const localguysCompliance = useLocalguysCompliance(context, taskWorkflowBinding);
   const { catalog, loading: catalogLoading, refresh: refreshCatalog } = useWorkflowCatalog();
   const workflowMycoHint = useWorkflowMycoHint(context, taskWorkflowBinding);
   const [selectedBank, setSelectedBank] = useState('core');
@@ -1344,7 +1430,7 @@ function StatsExpanded({ context }: MiniStatsProps) {
                 </div>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button
-                    onClick={() => { localguys.refresh(); localguysBenchmark.refresh(); }}
+                    onClick={() => { localguys.refresh(); localguysBenchmark.refresh(); localguysCompliance.refresh(); }}
                     style={{
                       border: `1px solid ${NOLAN_PALETTE.border}`,
                       borderRadius: 4,
@@ -1417,6 +1503,26 @@ function StatsExpanded({ context }: MiniStatsProps) {
                   ) : localguysBenchmark.loading ? (
                     <div style={{ color: '#7f8893', fontSize: 9, marginBottom: 8 }}>
                       benchmark: loading...
+                    </div>
+                  ) : null}
+                  {localguysCompliance.data ? (
+                    <>
+                      <div style={{ color: NOLAN_PALETTE.textMuted, fontSize: 9, textTransform: 'uppercase', marginBottom: 6 }}>
+                        Compliance
+                      </div>
+                      <div style={{ color: '#9aa4af', fontSize: 9, lineHeight: 1.6, marginBottom: 4 }}>
+                        sandbox: {localguysCompliance.data.sandbox_mode || '-'} · exec: {localguysCompliance.data.execution_mode || '-'} · verify: {localguysCompliance.data.verification_target || '-'} · max turns: {localguysCompliance.data.max_turns ?? 0}
+                      </div>
+                      <div style={{ color: '#8a949f', fontSize: 9, lineHeight: 1.6, marginBottom: 4 }}>
+                        writes: task_board {localguysCompliance.data.write_opt_ins?.task_board ? 'yes' : 'no'} · edit_file {localguysCompliance.data.write_opt_ins?.edit_file ? 'yes' : 'no'} · main_tree {localguysCompliance.data.write_opt_ins?.main_tree_write ? 'yes' : 'no'}
+                      </div>
+                      <div style={{ color: '#8a949f', fontSize: 9, lineHeight: 1.6, marginBottom: 8 }}>
+                        step tools[{localguysCompliance.data.active_step || '-'}]: {(localguysCompliance.data.active_step_allowed_tools || []).join(', ') || 'none'} · idle:{localguysCompliance.data.telemetry?.idle_turn_count ?? 0} · verify:{localguysCompliance.data.telemetry?.verification_passed ? 'pass' : 'pending'}
+                      </div>
+                    </>
+                  ) : localguysCompliance.loading ? (
+                    <div style={{ color: '#7f8893', fontSize: 9, marginBottom: 8 }}>
+                      compliance: loading...
                     </div>
                   ) : null}
                   {localguys.run.failure_reason ? (

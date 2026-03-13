@@ -689,7 +689,7 @@ function mapTreeToArchitectureDAG(
   return { nodes, edges };
 }
 
-export function useRoadmapDAG(scopePath?: string): RoadmapData & {
+export function useRoadmapDAG(scopePath?: string, projectId?: string): RoadmapData & {
   fetchRoadmap: () => Promise<void>;
   regenerateRoadmap: () => Promise<void>;
 } {
@@ -714,6 +714,7 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          project_id: projectId || '',
           scope_path: scopePath || '',
           max_nodes: 220,
           include_artifacts: false,
@@ -750,6 +751,7 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
       // Prefer SCC-condensed L2 architecture graph for MCC roadmap canvas.
       const qs = new URLSearchParams();
       if (scopePath) qs.set('scope_path', scopePath);
+      if (projectId) qs.set('project_id', projectId);
       qs.set('max_nodes', '220');
       qs.set('refresh', '1');
       const condensedRes = await fetch(`${API_BASE}/mcc/graph/condensed?${qs.toString()}`);
@@ -802,27 +804,30 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
       }
 
       // MARKER_155A.G22.VETKA_TREE_ARCH: Prefer canonical VETKA tree/fan source for architecture LOD.
-      const treeRes = await fetch(`${API_BASE}/tree/data`);
-      if (treeRes.ok) {
-        const treeData = await treeRes.json();
-        const treeNodes: VetkaApiNodeLite[] = treeData?.tree?.nodes || [];
-        const treeEdges: VetkaApiEdgeLite[] = treeData?.tree?.edges || [];
-        if (treeNodes.length > 0) {
-          const mapped = mapTreeToArchitectureDAG(treeNodes, treeEdges, scopePath);
-          if (mapped.nodes.length > 0) {
-            setNodes(mapped.nodes);
-            setEdges(mapped.edges);
-            setCrossEdges([]);
-            setVerifier(null);
-            setGraphSource('baseline');
-            setTrmMeta(null);
-            return;
+      if (!projectId) {
+        const treeRes = await fetch(`${API_BASE}/tree/data`);
+        if (treeRes.ok) {
+          const treeData = await treeRes.json();
+          const treeNodes: VetkaApiNodeLite[] = treeData?.tree?.nodes || [];
+          const treeEdges: VetkaApiEdgeLite[] = treeData?.tree?.edges || [];
+          if (treeNodes.length > 0) {
+            const mapped = mapTreeToArchitectureDAG(treeNodes, treeEdges, scopePath);
+            if (mapped.nodes.length > 0) {
+              setNodes(mapped.nodes);
+              setEdges(mapped.edges);
+              setCrossEdges([]);
+              setVerifier(null);
+              setGraphSource('baseline');
+              setTrmMeta(null);
+              return;
+            }
           }
         }
       }
 
       // Fallback to older MCC roadmap endpoint.
-      const res = await fetch(`${API_BASE}/mcc/roadmap`);
+      const roadmapQs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+      const res = await fetch(`${API_BASE}/mcc/roadmap${roadmapQs}`);
       if (res.status === 404) {
         // No project configured — not an error
         setNodes([]);
@@ -857,13 +862,14 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
     } finally {
       setLoading(false);
     }
-  }, [scopePath]);
+  }, [projectId, scopePath]);
 
   const regenerateRoadmap = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/mcc/roadmap/generate`, { method: 'POST' });
+      const roadmapQs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
+      const res = await fetch(`${API_BASE}/mcc/roadmap/generate${roadmapQs}`, { method: 'POST' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       // Refetch after generation
       await fetchRoadmap();
@@ -873,7 +879,7 @@ export function useRoadmapDAG(scopePath?: string): RoadmapData & {
     } finally {
       setLoading(false);
     }
-  }, [fetchRoadmap]);
+  }, [fetchRoadmap, projectId]);
 
   return {
     nodes,

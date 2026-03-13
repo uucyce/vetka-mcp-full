@@ -876,3 +876,184 @@
   - exported assets были preview-sized;
   - final render initially трактовал их как full-res;
   - введён `asset_scale` bridge по отношению к `layout.source.width`.
+
+
+### P7B.2
+
+- `multiplate` renderer расширен на `special-clean aware` underlay:
+  - hidden `special-clean` / `cleanVariant` plate-ы теперь читаются из `plate_export_manifest.json`;
+  - `*_clean.png` подмешиваются как clean underlay до `background_rgba` и visible RGBA plate-ов;
+  - report теперь отдельно фиксирует `special_clean_count`.
+- updated batch render подтверждён на `3` complex scenes:
+  - `hover-politsia`
+  - `keyboard-hands`
+  - `truck-driver`
+
+
+### P7B.3
+
+- добавлен compare runner:
+  - `scripts/photo_parallax_compare_multiplate.py`
+  - `scripts/photo_parallax_compare_multiplate.sh`
+- compare artifacts собираются как:
+  - `compare_sheet.png`
+  - `compare_grid.mp4`
+  - `compare_batch_sheet.png`
+- compare summary теперь не молча теряет неполные кейсы, а пишет `skipped` с reason;
+- текущий статус:
+  - `hover-politsia` -> compare собран
+  - `keyboard-hands` -> compare собран
+  - `truck-driver` -> `skipped`, потому что отсутствует legacy `2-layer` base preview path.
+
+
+### P7B.4
+
+- введён `plate-local clean routing`:
+  - visible plate теперь может иметь собственный `cleanVariant`;
+  - hidden `special-clean` plate с тем же `cleanVariant` используется не глобально, а как local underlay перед этим plate;
+  - это уже ближе к AE-логике `no vehicle / no hands / no driver`.
+- подтверждено на complex scenes:
+  - `hover-politsia` -> `routed_clean_count = 1`
+  - `keyboard-hands` -> `routed_clean_count = 1`
+  - `truck-driver` -> `routed_clean_count = 1`
+- `truck-driver` browser export blocker снят:
+  - problem source был в hydration path для `sourceRasterReady`;
+  - export-spec теперь умеет принудительно гидратировать raster из уже загруженного sample image;
+  - `truck-driver` снова проходит `photo_parallax_plate_export.sh`.
+- compare для `truck-driver` всё ещё `skipped`, но уже по другой причине:
+  - у сцены отсутствует legacy `2-layer` base preview path, а не сам multiplate/export pipeline.
+
+
+### P7C.1
+
+- добавлен локальный `Qwen Plate Planner`:
+  - `scripts/photo_parallax_qwen_plate_plan.py`
+  - `scripts/photo_parallax_qwen_plate_plan.sh`
+- planner читает:
+  - source image
+  - `global_depth_bw.png`
+  - current `plate_stack.json`
+- planner пишет:
+  - `output/qwen_plate_plans/<sample>.json`
+  - `public/qwen_plate_plans/<sample>.json`
+  - `manifest.json`
+- planner подтверждён на `3` complex scenes:
+  - `hover-politsia`
+  - `keyboard-hands`
+  - `truck-driver`
+- sanitizing слой допилен:
+  - `special-clean` дедуплицируются;
+  - `cleanVariant` нормализуется в slug;
+  - `target_plate` резолвится по semantic label или plate id;
+  - `plate_stack_proposal` больше не размазывает один `cleanVariant` по всем visible plate-ам.
+- sandbox получил hidden bridge:
+  - app подгружает `/qwen_plate_plans/<sample>.json`;
+  - в debug panel добавлен блок `Qwen Plate Plan`;
+  - proposal можно применить в текущий `plateStack` через hidden action `apply qwen plan`.
+
+
+### P7C.2
+
+- собран первый end-to-end compare-flow:
+  - `manual plate stack -> export -> multiplate render`
+  - против `qwen plate plan -> export -> multiplate render`
+- exporter теперь умеет опционально применять `Qwen` proposal перед export:
+  - `photo_parallax_plate_export.sh <sample> --apply-qwen-plan`
+- Qwen export pack пишется отдельно:
+  - `photo_parallax_playground/output/plate_exports_qwen/<sample>`
+- добавлены инструменты:
+  - `scripts/photo_parallax_compare_qwen_multiplate.py`
+  - `scripts/photo_parallax_compare_qwen_multiplate.sh`
+  - `scripts/photo_parallax_qwen_multiplate_flow.sh`
+- compare собран на `3/3` complex scenes:
+  - `hover-politsia`
+  - `keyboard-hands`
+  - `truck-driver`
+- текущий вывод:
+  - `Qwen Plate Planner` уже полезен как structural proposal layer;
+  - он добавляет meaningful `special-clean` варианты вроде `no-people`, `no-vehicle`, `no-keyboard`;
+  - но всё ещё не должен автозаменять manual/default stack без gate.
+
+
+### P7C.3
+
+- добавлен deterministic `Qwen Plate Gate`:
+  - `scripts/photo_parallax_qwen_plate_gate.py`
+  - `scripts/photo_parallax_qwen_plate_gate.sh`
+- gate читает:
+  - manual `plate_stack.json`
+  - qwen-applied `plate_stack.json`
+  - `qwen_plate_plan.json`
+- gate пишет:
+  - `output/qwen_plate_gates/<sample>.json`
+  - `public/qwen_plate_gates/<sample>.json`
+  - `manifest.json`
+- policy now:
+  - `keep-current-stack`
+  - `enrich-current-stack`
+  - `replace-current-stack`
+- текущие решения:
+  - `hover-politsia` -> `enrich-current-stack`
+  - `keyboard-hands` -> `keep-current-stack`
+  - `truck-driver` -> `keep-current-stack`
+- sandbox получил hidden bridge:
+  - app подгружает `/qwen_plate_gates/<sample>.json`;
+  - `Qwen Plate Plan` block показывает decision;
+  - можно применить `gated_plate_stack` через hidden action `apply gated stack`.
+- residual risk:
+  - repeated end-to-end `qwen_multiplate_flow.sh` всё ещё headless-flaky на части сцен из-за browser export orchestration;
+  - сам gate считается корректно по уже собранным manual/qwen stack outputs.
+
+
+### P7C.4
+
+- собран полный gate-aware flow:
+  - `manual stack -> Qwen Plate Gate -> gated stack -> export -> multiplate render -> compare`
+- добавлен wrapper:
+  - `scripts/photo_parallax_qwen_gated_multiplate_flow.sh`
+- compare собран на `3/3` complex scenes:
+  - `hover-politsia`
+  - `keyboard-hands`
+  - `truck-driver`
+- подтверждено, что:
+  - `hover-politsia` идёт как `enrich-current-stack`;
+  - `keyboard-hands` и `truck-driver` остаются `keep-current-stack`;
+  - raw planner больше не нужен в final render path.
+- для browser export orchestration добавлен hardening:
+  - export-spec переведён на внешний Playwright polling вместо одной длинной `page.evaluate`;
+  - `hydrateSourceRasterFromAsset()` используется как повторяемый fallback;
+  - `photo_parallax_plate_export.sh` получил retry policy с `3` попытками и паузой между ними.
+- residual risk после hardening:
+  - batch path теперь проходит полностью, но orchestration остаётся чувствительным местом и не должен считаться закрытым навсегда;
+  - сам product policy уже достаточно стабилен для движения дальше по roadmap.
+
+
+### P7C.5
+
+- введён первый deterministic routing rule между `Portrait Base` и `Multi-Plate`;
+- routing встроен в sandbox contracts:
+  - `getState()`
+  - `exportPlateLayout()`
+- current rule:
+  - `multi-plate`, если есть `special-clean` plate;
+  - `multi-plate`, если visible renderable plate-ов больше двух;
+  - иначе `portrait-base`.
+- это даёт первый product-level split без роста пользовательского UI.
+
+
+### P7C.6
+
+- в `plate_layout.json` введён первый `camera-safe` contract;
+- для каждого plate добавлен `risk`:
+  - `plateCoverage`
+  - `recommendedOverscanPct`
+  - `minSafeOverscanPct`
+  - `disocclusionRisk`
+  - `cameraSafe`
+- на уровне layout добавлены:
+  - `cameraSafe`
+  - `transitions[]`
+- `photo_parallax_render_preview_multiplate.py` теперь пишет это и в render report.
+- прогон на gated multi-plate set показал:
+  - все `3/3` complex scenes сейчас просят больший overscan;
+  - `truck-driver` дополнительно даёт самый высокий transition risk.

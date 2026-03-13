@@ -46,11 +46,18 @@
 - `PLATE_EDITOR_AND_LAYOUT_BRIDGE_RESULTS_2026-03-13.md`: первый `plate order / visibility / z` editor и plate-aware bridge в layout snapshot.
 - `PLATE_AWARE_LAYOUT_RESULTS_2026-03-13.md`: первый `exportPlateLayout()` contract и переход от `foreground/background` к plate-aware layout JSON.
 - `PLATE_AWARE_PREVIEW_RENDER_RESULTS_2026-03-13.md`: первый live preview renderer, который читает `plateStack + exportPlateLayout()`, пусть пока и через proxy rectangular plates.
+- `MULTIPLATE_ROUTING_RESULTS_2026-03-13.md`: первый deterministic routing rule между `Portrait Base` и `Multi-Plate`.
+- `CAMERA_SAFE_AND_PLATE_RISK_RESULTS_2026-03-14.md`: первый `camera-safe` contract, per-plate overscan risk и transition risk для `Multi-Plate`.
 - `PLATE_MASK_COMPOSITION_RESULTS_2026-03-13.md`: переход от прямоугольных proxy plate-ов к mask-based plate composition в live preview.
 - `PLATE_RGBA_COMPOSITION_RESULTS_2026-03-13.md`: переход от `mask-only` preview к `background_rgba + plate_rgba[]` в браузерном stage preview.
 - `PLATE_EXPORT_CONTRACT_RESULTS_2026-03-13.md`: первый export contract с `global depth + plate rgba/mask/depth + layout + stack`.
 - `PLATE_EXPORT_FILES_RESULTS_2026-03-13.md`: первый реальный file/export flow на диск с `plate_01_rgba.png`, `plate_01_depth.png`, `global_depth_bw.png` и `plate_stack.json`.
 - `MULTIPLATE_FINAL_RENDER_RESULTS_2026-03-13.md`: первый final render path, который читает exported plate assets и собирает `preview_multiplate.mp4`.
+- `MULTIPLATE_COMPARE_AND_SPECIAL_CLEAN_RESULTS_2026-03-13.md`: compare `2-layer base vs multi-plate` и внедрение `special-clean aware` underlay в новом renderer.
+- `QWEN_PLATE_PLANNER_RESULTS_2026-03-13.md`: первый рабочий `Qwen Plate Planner`, `qwen_plate_plan.json` и hidden bridge из planner proposal в `plateStack`.
+- `QWEN_MULTIPLATE_COMPARE_RESULTS_2026-03-13.md`: compare `manual multiplate` против `qwen multiplate` на `3/3` complex scenes.
+- `QWEN_PLATE_GATE_RESULTS_2026-03-13.md`: deterministic gate над `Qwen Plate Planner` с решениями `keep / enrich / replace`.
+- `QWEN_GATED_MULTIPLATE_RESULTS_2026-03-13.md`: полный `gate-aware` flow `manual -> gate -> export -> render -> compare` на `3/3` complex scenes.
 - `sample_analysis_2026-03-10.json`: автоматически собранная baseline-диагностика test images.
 
 Связанная песочница:
@@ -95,6 +102,17 @@
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_render_preview_3layer.sh`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_plate_export.sh`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_plate_export_batch.sh`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_render_preview_multiplate.py`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_render_preview_multiplate.sh`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_compare_multiplate.py`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_compare_multiplate.sh`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_qwen_plate_plan.py`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_qwen_plate_plan.sh`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_compare_qwen_multiplate.py`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_compare_qwen_multiplate.sh`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_qwen_multiplate_flow.sh`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_qwen_plate_gate.py`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_qwen_plate_gate.sh`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_mode_routing_review.py`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_mode_routing_review.sh`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_compare_modes.py`

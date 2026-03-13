@@ -50,6 +50,8 @@ declare global {
       setPreviewMode: (mode: PreviewMode) => PreviewMode;
       setRenderMode: (mode: RenderMode) => RenderMode;
       setStageTool: (mode: StageTool) => StageTool;
+      hydrateSourceRasterFromStage: () => boolean;
+      hydrateSourceRasterFromAsset: () => Promise<boolean>;
       setBrushMode: (mode: BrushMode) => BrushMode;
       setMatteSeedMode: (mode: MatteSeedMode) => MatteSeedMode;
       clearManualHints: () => number;
@@ -85,6 +87,8 @@ declare global {
       toggleAiAssistOverlay: () => boolean;
       applyAiAssistSuggestion: () => number;
       applyRecommendedPreset: () => ParallaxSnapshot;
+      applyQwenPlatePlan: () => number;
+      applyQwenPlateGate: () => number;
     };
   }
 }
@@ -155,7 +159,7 @@ type PlateRole =
   | "background-far"
   | "special-clean";
 
-type PlateSource = "auto" | "manual" | "special-clean";
+type PlateSource = "auto" | "manual" | "special-clean" | "qwen-plan";
 
 type Plate = {
   id: string;
@@ -170,6 +174,7 @@ type Plate = {
   depthPriority: number;
   visible: boolean;
   cleanVariant?: string;
+  targetPlate?: string;
 };
 
 type PlateStackContract = {
@@ -189,11 +194,19 @@ type PlateLayoutLayer = {
   parallaxStrength: number;
   motionDamping: number;
   cleanVariant?: string;
+  targetPlate?: string;
   box: {
     x: number;
     y: number;
     width: number;
     height: number;
+  };
+  risk: {
+    plateCoverage: number;
+    recommendedOverscanPct: number;
+    minSafeOverscanPct: number;
+    disocclusionRisk: number;
+    cameraSafe: boolean;
   };
 };
 
@@ -222,6 +235,29 @@ type PlateAwareLayoutContract = {
     fps: number;
     overscanPct: number;
   };
+  cameraSafe: {
+    ok: boolean;
+    recommendedOverscanPct: number;
+    minSafeOverscanPct: number;
+    highestDisocclusionRisk: number;
+    worstTransitionRisk: number;
+    riskyPlateIds: string[];
+    warning: string | null;
+  };
+  routing: {
+    mode: "portrait-base" | "multi-plate";
+    visibleRenderableCount: number;
+    specialCleanCount: number;
+    reasons: string[];
+  };
+  transitions: Array<{
+    fromId: string;
+    toId: string;
+    overlapArea: number;
+    zGap: number;
+    transitionRisk: number;
+    cameraSafe: boolean;
+  }>;
   plates: PlateLayoutLayer[];
 };
 
@@ -271,6 +307,7 @@ type PlateExportAsset = {
   depthUrl: string;
   cleanUrl?: string;
   cleanVariant?: string;
+  targetPlate?: string;
 };
 
 type PlateExportAssetsContract = {
@@ -381,6 +418,38 @@ type AiAssistSuggestion = {
 };
 
 type AiCompareMode = "manual" | "ai" | "blend";
+
+type QwenPlatePlan = {
+  sample_id: string;
+  title: string;
+  model: string;
+  scene_summary: string;
+  recommended_plate_count: number;
+  special_clean_plates: Array<{
+    name: string;
+    target_plate?: string | null;
+    reason?: string;
+  }>;
+  confidence: number;
+  error: string | null;
+  plate_stack_proposal?: PlateStackContract;
+};
+
+type QwenPlateGate = {
+  sample_id: string;
+  decision: "keep-current-stack" | "enrich-current-stack" | "replace-current-stack";
+  confidence: number;
+  metrics: {
+    manual_visible_count: number;
+    qwen_visible_count: number;
+    manual_special_clean_count: number;
+    qwen_special_clean_count: number;
+    visible_overlap_ratio: number;
+  };
+  added_special_clean_variants: string[];
+  reasons: string[];
+  gated_plate_stack: PlateStackContract;
+};
 
 const JOB_STATE_STORAGE_KEY = "marker_180.photo_parallax.job_state";
 const REAL_DEPTH_BACKEND = "depth-pro";
@@ -675,18 +744,18 @@ function getDefaultPlateStack(sampleId: string, focus: FocusSettings): Plate[] {
   switch (sampleId) {
     case "hover-politsia":
       return [
-        buildPlate("plate_01", "vehicle", "foreground-subject", "auto", { x: 0.28, y: 0.21, width: 0.5, height: 0.54 }, 26, 0.86),
+        buildPlate("plate_01", "vehicle", "foreground-subject", "auto", { x: 0.28, y: 0.21, width: 0.5, height: 0.54 }, 26, 0.86, "no-vehicle"),
         buildPlate("plate_02", "walker", "secondary-subject", "manual", { x: 0.02, y: 0.45, width: 0.16, height: 0.4 }, 14, 0.58),
         buildPlate("plate_03", "street steam", "environment-mid", "manual", { x: 0.24, y: 0.55, width: 0.44, height: 0.28 }, -8, 0.36),
         buildPlate("plate_04", "background city", "background-far", "auto", backgroundBox, -30, 0.14),
-        { ...buildPlate("plate_05", "no vehicle", "special-clean", "special-clean", backgroundBox, -34, 0.08, "no-vehicle"), visible: false },
+        { ...buildPlate("plate_05", "no vehicle", "special-clean", "special-clean", backgroundBox, -34, 0.08, "no-vehicle"), visible: false, targetPlate: "plate_01" },
       ];
     case "keyboard-hands":
       return [
-        buildPlate("plate_01", "hands+note", "foreground-subject", "auto", { x: 0.14, y: 0.26, width: 0.54, height: 0.52 }, 24, 0.78),
+        buildPlate("plate_01", "hands+note", "foreground-subject", "auto", { x: 0.14, y: 0.26, width: 0.54, height: 0.52 }, 24, 0.78, "no-hands"),
         buildPlate("plate_02", "keyboard", "environment-mid", "manual", { x: 0.28, y: 0.42, width: 0.44, height: 0.34 }, 10, 0.52),
         buildPlate("plate_03", "monitors+background", "background-far", "auto", backgroundBox, -24, 0.18),
-        { ...buildPlate("plate_04", "no hands", "special-clean", "special-clean", backgroundBox, -28, 0.08, "no-hands"), visible: false },
+        { ...buildPlate("plate_04", "no hands", "special-clean", "special-clean", backgroundBox, -28, 0.08, "no-hands"), visible: false, targetPlate: "plate_01" },
       ];
     case "cassette-closeup":
       return [
@@ -695,10 +764,10 @@ function getDefaultPlateStack(sampleId: string, focus: FocusSettings): Plate[] {
       ];
     case "truck-driver":
       return [
-        buildPlate("plate_01", "driver", "foreground-subject", "auto", focusBox, 18, 0.74),
+        buildPlate("plate_01", "driver", "foreground-subject", "auto", focusBox, 18, 0.74, "no-driver"),
         buildPlate("plate_02", "truck cabin", "environment-mid", "manual", { x: 0.24, y: 0.18, width: 0.56, height: 0.64 }, 8, 0.44),
         buildPlate("plate_03", "roadside", "background-far", "auto", backgroundBox, -22, 0.16),
-        { ...buildPlate("plate_04", "no driver", "special-clean", "special-clean", backgroundBox, -26, 0.08, "no-driver"), visible: false },
+        { ...buildPlate("plate_04", "no driver", "special-clean", "special-clean", backgroundBox, -26, 0.08, "no-driver"), visible: false, targetPlate: "plate_01" },
       ];
     case "punk-rooftop":
       return [
@@ -713,6 +782,42 @@ function getDefaultPlateStack(sampleId: string, focus: FocusSettings): Plate[] {
         buildPlate("plate_02", "background clean", "background-far", "auto", backgroundBox, -18, 0.18),
       ];
   }
+}
+
+function normalizeImportedPlateStack(plates: Plate[] | undefined, fallback: Plate[] = []): Plate[] {
+  if (!plates || plates.length === 0) return fallback;
+  return plates.map((plate, index) => {
+    const source: PlateSource =
+      plate.source === "auto" ||
+      plate.source === "manual" ||
+      plate.source === "special-clean" ||
+      plate.source === "qwen-plan"
+        ? plate.source
+        : "manual";
+    const role: PlateRole =
+      plate.role === "foreground-subject" ||
+      plate.role === "secondary-subject" ||
+      plate.role === "environment-mid" ||
+      plate.role === "background-far" ||
+      plate.role === "special-clean"
+        ? plate.role
+        : "environment-mid";
+    return {
+      id: plate.id || `plate_${String(index + 1).padStart(2, "0")}`,
+      label: plate.label || `plate ${index + 1}`,
+      role,
+      source,
+      x: clamp(Number(plate.x) || 0.02, 0, 0.98),
+      y: clamp(Number(plate.y) || 0.02, 0, 0.98),
+      width: clamp(Number(plate.width) || 0.4, 0.02, 0.98),
+      height: clamp(Number(plate.height) || 0.4, 0.02, 0.98),
+      z: clamp(Number(plate.z) || 0, -64, 64),
+      depthPriority: clamp(Number(plate.depthPriority) || 0.2, 0.02, 0.98),
+      visible: plate.visible !== false,
+      cleanVariant: plate.cleanVariant || undefined,
+      targetPlate: plate.targetPlate || undefined,
+    };
+  });
 }
 
 function buildHintMaps(strokes: HintStroke[], width: number, height: number) {
@@ -846,6 +951,28 @@ function deriveParallaxStrength(plate: Plate, minZ: number, maxZ: number) {
   if (maxZ <= minZ) return Number(clamp(plate.depthPriority, 0.18, 0.9).toFixed(3));
   const normalized = (plate.z - minZ) / Math.max(1e-6, maxZ - minZ);
   return Number(clamp(0.22 + normalized * 0.58 + plate.depthPriority * 0.12, 0.18, 0.95).toFixed(3));
+}
+
+function recommendWorkflowRouting(plates: Plate[]) {
+  const visibleRenderable = plates.filter((plate) => plate.visible && plate.role !== "special-clean");
+  const specialClean = plates.filter((plate) => plate.role === "special-clean");
+  const reasons: string[] = [];
+  if (specialClean.length > 0) reasons.push("special-clean plates present");
+  if (visibleRenderable.length > 2) reasons.push("more than two visible renderable plates");
+  return {
+    mode: specialClean.length > 0 || visibleRenderable.length > 2 ? "multi-plate" : "portrait-base",
+    visibleRenderableCount: visibleRenderable.length,
+    specialCleanCount: specialClean.length,
+    reasons: reasons.length > 0 ? reasons : ["single-subject / low plate complexity"],
+  } as const;
+}
+
+function intersectionArea(a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) {
+  const left = Math.max(a.x, b.x);
+  const top = Math.max(a.y, b.y);
+  const right = Math.min(a.x + a.width, b.x + b.width);
+  const bottom = Math.min(a.y + a.height, b.y + b.height);
+  return Math.max(0, right - left) * Math.max(0, bottom - top);
 }
 
 function smoothBoxMask(nx: number, ny: number, plate: Plate) {
@@ -1397,6 +1524,8 @@ function App() {
   const [matteSeedMode, setMatteSeedMode] = useState<MatteSeedMode>("add");
   const [matteSeeds, setMatteSeeds] = useState<MatteSeed[]>([]);
   const [aiAssistSuggestion, setAiAssistSuggestion] = useState<AiAssistSuggestion | null>(null);
+  const [qwenPlatePlan, setQwenPlatePlan] = useState<QwenPlatePlan | null>(null);
+  const [qwenPlateGate, setQwenPlateGate] = useState<QwenPlateGate | null>(null);
   const [aiAssistVisible, setAiAssistVisible] = useState(false);
   const [manualGroupBaseline, setManualGroupBaseline] = useState<GroupBox[]>([]);
   const [aiCompareMode, setAiCompareMode] = useState<AiCompareMode>("manual");
@@ -1413,6 +1542,7 @@ function App() {
     () => visiblePlates.filter((plate) => plate.role !== "special-clean"),
     [visiblePlates],
   );
+  const workflowRouting = useMemo(() => recommendWorkflowRouting(plateStack), [plateStack]);
   const plateZSpan = useMemo(() => {
     if (visibleRenderablePlates.length <= 1) return 0;
     const values = visibleRenderablePlates.map((plate) => plate.z);
@@ -1457,30 +1587,38 @@ function App() {
   }, [sampleId]);
   useEffect(() => {
     let cancelled = false;
-    const image = new Image();
-    image.onload = () => {
-      if (cancelled) return;
-      const canvas = document.createElement("canvas");
-      canvas.width = image.naturalWidth;
-      canvas.height = image.naturalHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        setSourceRaster(null);
-        return;
+    setSourceRaster(null);
+
+    const loadSourceRaster = async () => {
+      try {
+        const response = await fetch(`/samples/${sample.fileName}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`source fetch failed: ${response.status}`);
+        const blob = await response.blob();
+        const bitmap = await createImageBitmap(blob);
+        if (cancelled) return;
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          setSourceRaster(null);
+          return;
+        }
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        setSourceRaster({
+          sampleId,
+          width: canvas.width,
+          height: canvas.height,
+          values: imageData.data,
+        });
+      } catch {
+        if (!cancelled) setSourceRaster(null);
       }
-      ctx.drawImage(image, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      setSourceRaster({
-        sampleId,
-        width: canvas.width,
-        height: canvas.height,
-        values: imageData.data,
-      });
     };
-    image.onerror = () => {
-      if (!cancelled) setSourceRaster(null);
-    };
-    image.src = `/samples/${sample.fileName}`;
+
+    void loadSourceRaster();
     return () => {
       cancelled = true;
     };
@@ -1538,6 +1676,38 @@ function App() {
       })
       .catch(() => {
         if (!cancelled) setAiAssistSuggestion(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sampleId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setQwenPlatePlan(null);
+    fetch(`/qwen_plate_plans/${sampleId}.json`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!cancelled) setQwenPlatePlan(payload);
+      })
+      .catch(() => {
+        if (!cancelled) setQwenPlatePlan(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sampleId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setQwenPlateGate(null);
+    fetch(`/qwen_plate_gates/${sampleId}.json`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!cancelled) setQwenPlateGate(payload);
+      })
+      .catch(() => {
+        if (!cancelled) setQwenPlateGate(null);
       });
     return () => {
       cancelled = true;
@@ -1604,6 +1774,92 @@ function App() {
     const zValues = renderable.map((plate) => plate.z);
     const minZ = zValues.length > 0 ? Math.min(...zValues) : 0;
     const maxZ = zValues.length > 0 ? Math.max(...zValues) : 0;
+    const motionMagnitude = Math.sqrt(layoutMotion.travelXPct ** 2 + layoutMotion.travelYPct ** 2);
+    const layoutPlates = plateStack.map((plate, index) => {
+      const parallaxStrength = deriveParallaxStrength(plate, minZ, maxZ);
+      const motionDamping = Number(clamp(1 - parallaxStrength * 0.62, 0.22, 0.88).toFixed(3));
+      const plateCoverage = Number(clamp(plate.width * plate.height, 0, 1).toFixed(4));
+      const motionLoad = motionMagnitude * parallaxStrength * Math.max(0.24, 1 - motionDamping * 0.35);
+      const recommendedOverscanPct = Number(clamp(8 + motionLoad * 1.5 + plateCoverage * 18, 8, 32).toFixed(2));
+      const minSafeOverscanPct = Number(clamp(6 + motionLoad * 1.2 + plateCoverage * 14, 6, 28).toFixed(2));
+      const disocclusionRisk = Number(
+        clamp(
+          10 + motionLoad * 10 + plateCoverage * 52 - layoutMotion.overscanPct * 1.35 + (plate.cleanVariant ? -10 : 0),
+          0,
+          100,
+        ).toFixed(2),
+      );
+      const cameraSafe = layoutMotion.overscanPct >= minSafeOverscanPct && disocclusionRisk < 55;
+      return {
+        id: plate.id,
+        label: plate.label,
+        role: plate.role,
+        source: plate.source,
+        order: index,
+        visible: plate.visible,
+        z: plate.z,
+        depthPriority: Number(plate.depthPriority.toFixed(3)),
+        parallaxStrength,
+        motionDamping,
+        cleanVariant: plate.cleanVariant,
+        targetPlate: plate.targetPlate,
+        box: {
+          x: Number(plate.x.toFixed(4)),
+          y: Number(plate.y.toFixed(4)),
+          width: Number(plate.width.toFixed(4)),
+          height: Number(plate.height.toFixed(4)),
+        },
+        risk: {
+          plateCoverage,
+          recommendedOverscanPct,
+          minSafeOverscanPct,
+          disocclusionRisk,
+          cameraSafe,
+        },
+      };
+    });
+    const visibleRiskPlates = layoutPlates.filter((plate) => plate.visible && plate.role !== "special-clean");
+    const transitions = visibleRiskPlates
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .slice(0, -1)
+      .map((plate, index) => {
+        const nextPlate = visibleRiskPlates[index + 1];
+        const overlapArea = Number(intersectionArea(plate.box, nextPlate.box).toFixed(4));
+        const zGap = Number(Math.abs(nextPlate.z - plate.z).toFixed(2));
+        const strengthGap = Math.abs(nextPlate.parallaxStrength - plate.parallaxStrength);
+        const transitionRisk = Number(
+          clamp(
+            8 + overlapArea * 70 + zGap * 0.25 + strengthGap * 32 + motionMagnitude * 4 - layoutMotion.overscanPct * 0.9,
+            0,
+            100,
+          ).toFixed(2),
+        );
+        return {
+          fromId: plate.id,
+          toId: nextPlate.id,
+          overlapArea,
+          zGap,
+          transitionRisk,
+          cameraSafe: transitionRisk < 58,
+        };
+      });
+    const highestDisocclusionRisk = visibleRiskPlates.length > 0 ? Math.max(...visibleRiskPlates.map((plate) => plate.risk.disocclusionRisk)) : 0;
+    const worstTransitionRisk = transitions.length > 0 ? Math.max(...transitions.map((transition) => transition.transitionRisk)) : 0;
+    const recommendedOverscanPct = visibleRiskPlates.length > 0 ? Math.max(...visibleRiskPlates.map((plate) => plate.risk.recommendedOverscanPct)) : snapshot.recommendedOverscanPct;
+    const minSafeOverscanPct = visibleRiskPlates.length > 0 ? Math.max(...visibleRiskPlates.map((plate) => plate.risk.minSafeOverscanPct)) : snapshot.minSafeOverscanPct;
+    const riskyPlateIds = visibleRiskPlates.filter((plate) => !plate.risk.cameraSafe).map((plate) => plate.id);
+    const cameraSafeOk =
+      riskyPlateIds.length === 0 &&
+      transitions.every((transition) => transition.cameraSafe) &&
+      layoutMotion.overscanPct >= minSafeOverscanPct;
+    const cameraSafeWarning = cameraSafeOk
+      ? null
+      : layoutMotion.overscanPct < minSafeOverscanPct
+        ? "overscan below plate-safe minimum"
+        : riskyPlateIds.length > 0
+          ? "one or more plates exceed safe disocclusion threshold"
+          : "plate transition risk is above safe threshold";
 
     return {
       sampleId,
@@ -1630,25 +1886,18 @@ function App() {
         fps: layoutMotion.fps,
         overscanPct: Number(layoutMotion.overscanPct.toFixed(2)),
       },
-      plates: plateStack.map((plate, index) => ({
-        id: plate.id,
-        label: plate.label,
-        role: plate.role,
-        source: plate.source,
-        order: index,
-        visible: plate.visible,
-        z: plate.z,
-        depthPriority: Number(plate.depthPriority.toFixed(3)),
-        parallaxStrength: deriveParallaxStrength(plate, minZ, maxZ),
-        motionDamping: Number(clamp(1 - deriveParallaxStrength(plate, minZ, maxZ) * 0.62, 0.22, 0.88).toFixed(3)),
-        cleanVariant: plate.cleanVariant,
-        box: {
-          x: Number(plate.x.toFixed(4)),
-          y: Number(plate.y.toFixed(4)),
-          width: Number(plate.width.toFixed(4)),
-          height: Number(plate.height.toFixed(4)),
-        },
-      })),
+      cameraSafe: {
+        ok: cameraSafeOk,
+        recommendedOverscanPct,
+        minSafeOverscanPct,
+        highestDisocclusionRisk: Number(highestDisocclusionRisk.toFixed(2)),
+        worstTransitionRisk: Number(worstTransitionRisk.toFixed(2)),
+        riskyPlateIds,
+        warning: cameraSafeWarning,
+      },
+      routing: workflowRouting,
+      transitions,
+      plates: layoutPlates,
     };
   };
 
@@ -1689,8 +1938,9 @@ function App() {
           rgbaUrl: plateCompositeMaps.plateRgbaUrls[plate.id] || "",
           maskUrl: plateCompositeMaps.plateMaskUrls[plate.id] || "",
           depthUrl: plateCompositeMaps.plateDepthUrls[plate.id] || "",
-          cleanUrl: plate.role === "special-clean" || plate.cleanVariant ? plateCompositeMaps.backgroundRgbaUrl : "",
+          cleanUrl: plate.role === "special-clean" ? plateCompositeMaps.backgroundRgbaUrl : "",
           cleanVariant: plate.cleanVariant,
+          targetPlate: plate.targetPlate,
         };
       }),
     };
@@ -1710,7 +1960,12 @@ function App() {
     setMatteSeedMode(jobState.matteSeedMode || "add");
     setMatteSettings(jobState.matteSettings || { visible: true, view: "rgb", growRadius: 0.16, edgeSnap: 0.12, opacity: 0.62 });
     setMatteSeeds(jobState.matteSeeds || []);
-    setPlateStack(jobState.plateStack || getDefaultPlateStack(nextSample.id, jobState.focus));
+    setPlateStack(
+      normalizeImportedPlateStack(
+        jobState.plateStack,
+        getDefaultPlateStack(nextSample.id, jobState.focus),
+      ),
+    );
     const nextGroups = jobState.groupBoxes || [];
     setGroupBoxes(nextGroups);
     setManualGroupBaseline(nextGroups.filter((box) => !box.id.startsWith("ai-")));
@@ -1795,6 +2050,28 @@ function App() {
     setAiAssistVisible(true);
     setAiCompareMode(mode);
     return nextBoxes.length;
+  };
+
+  const applyQwenPlatePlan = () => {
+    const proposal = qwenPlatePlan?.plate_stack_proposal;
+    if (!proposal?.plates?.length) return 0;
+    const nextPlates = normalizeImportedPlateStack(
+      proposal.plates as Plate[],
+      getDefaultPlateStack(sampleId, focus),
+    );
+    setPlateStack(nextPlates);
+    return nextPlates.length;
+  };
+
+  const applyQwenPlateGate = () => {
+    const proposal = qwenPlateGate?.gated_plate_stack;
+    if (!proposal?.plates?.length) return 0;
+    const nextPlates = normalizeImportedPlateStack(
+      proposal.plates as Plate[],
+      getDefaultPlateStack(sampleId, focus),
+    );
+    setPlateStack(nextPlates);
+    return nextPlates.length;
   };
 
   const restoreManualGroups = () => {
@@ -1972,6 +2249,12 @@ function App() {
         groupMode,
         groupBoxCount: groupBoxes.length,
         plateCount: plateStack.length,
+        workflowRoutingMode: workflowRouting.mode,
+        workflowRoutingReasons: workflowRouting.reasons,
+        cameraSafe: plateLayout.cameraSafe.ok,
+        cameraSafeWarning: plateLayout.cameraSafe.warning,
+        riskyPlateCount: plateLayout.cameraSafe.riskyPlateIds.length,
+        worstTransitionRisk: plateLayout.cameraSafe.worstTransitionRisk,
         matteSeedMode,
         matteSeedCount: matteSeeds.length,
         debugOpen,
@@ -2017,6 +2300,8 @@ function App() {
         setStageTool(mode);
         return mode;
       },
+      hydrateSourceRasterFromStage: () => hydrateSourceRasterFromStage(),
+      hydrateSourceRasterFromAsset: () => hydrateSourceRasterFromAsset(),
       setBrushMode: (mode: BrushMode) => {
         setBrushMode(mode);
         return mode;
@@ -2082,7 +2367,12 @@ function App() {
             const nextSample = findSample(nextState.sampleId);
             setSampleId(nextSample.id);
           }
-          setPlateStack(nextState.plates || []);
+          setPlateStack(
+            normalizeImportedPlateStack(
+              nextState.plates,
+              getDefaultPlateStack(sampleId, focus),
+            ),
+          );
           return true;
         } catch (error) {
           console.warn("MARKER_180.PARALLAX.PLATES.IMPORT_FAILED", error);
@@ -2171,6 +2461,8 @@ function App() {
       },
       applyAiAssistSuggestion: () => applyAiAssistSuggestion(),
       applyRecommendedPreset,
+      applyQwenPlatePlan,
+      applyQwenPlateGate,
     };
 
     window.vetkaParallaxLab = api;
@@ -2182,13 +2474,14 @@ function App() {
     return () => {
       if (window.vetkaParallaxLab === api) delete window.vetkaParallaxLab;
     };
-  }, [sampleId, focus, motion, manual, stageTool, brushMode, brushSize, hintStrokes.length, groupMode, groupBoxes.length, plateStack, matteSeeds.length, debugOpen, guidedHintsVisible, aiAssistVisible, snapshot, aiAssistSuggestion, matteSettings.visible, aiCompareMode]);
+  }, [sampleId, focus, motion, manual, stageTool, brushMode, brushSize, hintStrokes.length, groupMode, groupBoxes.length, plateStack, matteSeeds.length, debugOpen, guidedHintsVisible, aiAssistVisible, snapshot, aiAssistSuggestion, matteSettings.visible, aiCompareMode, qwenPlatePlan, qwenPlateGate]);
 
   const sourceUrl = `/samples/${sample.fileName}`;
   const hintUrl = `/sample_hints/${sample.id}.png`;
   const depthMaskImage = `url("${proxyMaps.selectionMaskUrl}")`;
   const backgroundMaskImage = `url("${plateCompositeMaps.backgroundMaskUrl}")`;
   const backgroundRgbaUrl = plateCompositeMaps.backgroundRgbaUrl;
+  const effectiveBackgroundSourceUrl = sourceRaster ? backgroundRgbaUrl || sourceUrl : sourceUrl;
   const groupDraftBox = groupDraft ? normalizeBox(groupDraft.start, groupDraft.end) : null;
   const midMaskImage = `url("${proxyMaps.midgroundMaskUrl}")`;
   const showSelectionOverlays = manual.previewMode === "selection";
@@ -2201,6 +2494,69 @@ function App() {
     top: `${(focus.y - focus.height / 2) * 100}%`,
     width: `${focus.width * 100}%`,
     height: `${focus.height * 100}%`,
+  };
+
+  const captureSourceRasterFromImage = (image: HTMLImageElement) => {
+    if (sourceRaster || image.naturalWidth <= 0 || image.naturalHeight <= 0) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(image, 0, 0);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    setSourceRaster({
+      sampleId,
+      width: canvas.width,
+      height: canvas.height,
+      values: imageData.data,
+    });
+  };
+
+  const hydrateSourceRasterFromStage = () => {
+    const candidates = [
+      stageRef.current?.querySelector(".background-plane img") as HTMLImageElement | null,
+      ...(Array.from(document.querySelectorAll("img")) as HTMLImageElement[]),
+    ].filter((image): image is HTMLImageElement => Boolean(image));
+    const image = candidates.find(
+      (entry) =>
+        entry.complete &&
+        entry.naturalWidth > 0 &&
+        entry.naturalHeight > 0 &&
+        entry.currentSrc.includes(sample.fileName),
+    );
+    if (!image) return false;
+    captureSourceRasterFromImage(image);
+    return true;
+  };
+
+  const hydrateSourceRasterFromAsset = async () => {
+    try {
+      const response = await fetch(`/samples/${sample.fileName}`, { cache: "no-store" });
+      if (!response.ok) return false;
+      const blob = await response.blob();
+      const bitmap = await createImageBitmap(blob);
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        bitmap.close();
+        return false;
+      }
+      ctx.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      setSourceRaster({
+        sampleId,
+        width: canvas.width,
+        height: canvas.height,
+        values: imageData.data,
+      });
+      return true;
+    } catch {
+      return false;
+    }
   };
   const exportTargets = [
     { label: "Depth BW", value: "PNG 16/8-bit" },
@@ -2583,7 +2939,15 @@ function App() {
                   maskSize: effectivePreviewPlateLayers.length > 0 && !backgroundRgbaUrl ? "100% 100%" : undefined,
                 }}
               >
-                <img src={backgroundRgbaUrl || sourceUrl} alt={sample.title} />
+                <img
+                  src={effectiveBackgroundSourceUrl}
+                  alt={sample.title}
+                  onLoad={(event) => {
+                    if (!sourceRaster && event.currentTarget.currentSrc.endsWith(sample.fileName)) {
+                      captureSourceRasterFromImage(event.currentTarget);
+                    }
+                  }}
+                />
               </div>
               {effectivePreviewPlateLayers.length > 0 ? (
                 effectivePreviewPlateLayers.map((plate) => {
@@ -3033,6 +3397,45 @@ function App() {
                   </li>
                 ))}
               </ul>
+            </article>
+            <article className="info-card">
+              <div className="eyebrow">Qwen Plate Plan</div>
+              <h3>Automatic object-layer proposal</h3>
+              {qwenPlatePlan ? (
+                <>
+                  <div className="mini-stat-grid">
+                    <MiniStat label="model" value={qwenPlatePlan.model || "offline"} />
+                    <MiniStat label="plates" value={`${qwenPlatePlan.recommended_plate_count || 0}`} />
+                    <MiniStat label="confidence" value={`${Math.round((qwenPlatePlan.confidence || 0) * 100)}%`} />
+                    <MiniStat label="special clean" value={`${qwenPlatePlan.special_clean_plates?.length || 0}`} />
+                  </div>
+                  <p>
+                    {qwenPlatePlan.scene_summary || "No scene summary yet."}
+                  </p>
+                  <div className="action-row">
+                    <button className="ghost-button" type="button" onClick={applyQwenPlatePlan}>
+                      apply qwen plan
+                    </button>
+                    {qwenPlateGate ? (
+                      <button className="ghost-button" type="button" onClick={applyQwenPlateGate}>
+                        apply gated stack
+                      </button>
+                    ) : null}
+                  </div>
+                  {qwenPlateGate ? (
+                    <>
+                      <div className="mini-stat-grid">
+                        <MiniStat label="gate" value={qwenPlateGate.decision} />
+                        <MiniStat label="overlap" value={`${Math.round(qwenPlateGate.metrics.visible_overlap_ratio * 100)}%`} />
+                        <MiniStat label="added clean" value={`${qwenPlateGate.added_special_clean_variants.length}`} />
+                      </div>
+                      <p>{qwenPlateGate.reasons[0] || "No gate rationale yet."}</p>
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <p>No cached Qwen plate plan found for this sample.</p>
+              )}
             </article>
           </section>
         ) : null}

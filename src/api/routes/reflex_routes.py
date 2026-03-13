@@ -56,6 +56,7 @@ async def reflex_stats() -> Dict[str, Any]:
     try:
         from src.services.reflex_feedback import get_reflex_feedback
         from src.services.reflex_registry import get_reflex_registry
+        from src.services.reflex_tool_memory import list_reflex_tool_memory
 
         fb = get_reflex_feedback()
         registry = get_reflex_registry()
@@ -71,6 +72,10 @@ async def reflex_stats() -> Dict[str, Any]:
 
         # Registry info
         all_tools = registry.get_all_tools()
+        remembered_all = list_reflex_tool_memory(only_active=False, exclude_stale=False)
+        remembered_active = list_reflex_tool_memory(only_active=True, exclude_stale=False)
+        remembered_fresh = list_reflex_tool_memory(only_active=True, exclude_stale=True)
+        overlay_applied = registry.get_memory_overlay_tools()
 
         return {
             "enabled": True,
@@ -87,6 +92,14 @@ async def reflex_stats() -> Dict[str, Any]:
                     "fix": scores_fix,
                     "build": scores_build,
                 },
+            },
+            "memory_overlay": {
+                "remembered_total": remembered_all.get("count", 0),
+                "remembered_active": remembered_active.get("count", 0),
+                "remembered_fresh": remembered_fresh.get("count", 0),
+                "stale_count": max(0, remembered_all.get("count", 0) - remembered_fresh.get("count", 0)),
+                "overlay_applied_count": len(overlay_applied),
+                "overlay_applied_tools": [row.get("tool_id", "") for row in overlay_applied],
             },
             "timestamp": time.time(),
         }
@@ -143,19 +156,30 @@ async def reflex_recommend(
         tools = registry.get_tools_for_role(role)
 
         scored = scorer.recommend(ctx, tools, top_n=top_n)
+        overlay_rank_changes = scorer.overlay_rank_changes(ctx, tools)
         duration_ms = round((time.time() - t0) * 1000, 1)
 
         recommendations = []
         for s in scored:
             # Get full signal breakdown
             tool_entry = registry.get_tool(s.tool_id)
-            signals = scorer.score_signals(ctx, tool_entry) if tool_entry else {}
+            signals = scorer.score_signals(tool_entry, ctx) if tool_entry else {}
+            overlay = scorer.overlay_effect(tool_entry, ctx) if tool_entry else {"applied": False}
+            overlay_rank = overlay_rank_changes.get(s.tool_id, {})
 
             recommendations.append({
                 "tool_id": s.tool_id,
                 "score": s.score,
                 "reason": s.reason,
                 "signals": signals,
+                "overlay": {
+                    **overlay,
+                    "current_rank": overlay_rank.get("current_rank"),
+                    "baseline_rank": overlay_rank.get("baseline_rank"),
+                    "rank_delta": overlay_rank.get("rank_delta", 0),
+                    "order_changed": overlay_rank.get("order_changed", False),
+                    "baseline_score": overlay_rank.get("baseline_score"),
+                },
             })
 
         return {
@@ -171,6 +195,51 @@ async def reflex_recommend(
 
     except Exception as e:
         logger.error("[REFLEX API] Recommend error: %s", e)
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e), "enabled": True},
+        )
+
+
+@router.get("/memory")
+async def reflex_memory(
+    include_stale: bool = Query(True, description="Include stale remembered entries"),
+    only_active: bool = Query(False, description="Limit remembered entries to active ones"),
+) -> Dict[str, Any]:
+    """MARKER_177.REFLEX.TOOL_MEMORY.DEBUG_API — Inspect remembered and overlay-applied tools."""
+    if not _is_reflex_enabled():
+        return {
+            "enabled": False,
+            "message": "REFLEX is disabled. Set REFLEX_ENABLED=1 to activate.",
+        }
+
+    try:
+        from src.services.reflex_registry import get_reflex_registry
+        from src.services.reflex_tool_memory import list_reflex_tool_memory
+
+        registry = get_reflex_registry()
+        remembered = list_reflex_tool_memory(
+            only_active=only_active,
+            exclude_stale=not include_stale,
+        )
+        all_rows = list_reflex_tool_memory(only_active=only_active, exclude_stale=False)
+        stale_rows = [row for row in all_rows.get("tools", []) if row.get("stale")]
+        overlay_applied = registry.get_memory_overlay_tools()
+
+        return {
+            "enabled": True,
+            "remembered": remembered,
+            "stale_entries": stale_rows,
+            "overlay_applied_tools": overlay_applied,
+            "counts": {
+                "remembered": remembered.get("count", 0),
+                "stale": len(stale_rows),
+                "overlay_applied": len(overlay_applied),
+            },
+            "timestamp": time.time(),
+        }
+    except Exception as e:
+        logger.error("[REFLEX API] Memory debug error: %s", e)
         return JSONResponse(
             status_code=500,
             content={"error": str(e), "enabled": True},

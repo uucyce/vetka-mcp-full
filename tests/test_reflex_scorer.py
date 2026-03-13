@@ -210,6 +210,31 @@ class TestRecommend:
         tool_ids = [r.tool_id for r in results]
         assert "inactive_tool" not in tool_ids
 
+    def test_recommend_reports_overlay_effect_in_reason(self, scorer):
+        overlay_tool = _make_tool(
+            "seed_mcc_playwright_fixture",
+            intent_tags=["general"],
+            keywords=["seed"],
+        )
+        overlay_tool.overlay_hints = {
+            "overlay_applied": True,
+            "origin": "catalog",
+            "catalog_source": "src/agents/tools.py",
+            "path": "scripts/mcc_seed_playwright_fixture.py",
+            "base_intent_tags": ["general"],
+            "base_keywords": ["seed"],
+            "added_intent_tags": ["playwright"],
+            "added_keywords": ["visual_regression"],
+        }
+        overlay_tool.intent_tags = ["general", "playwright"]
+        overlay_tool.trigger_patterns["keywords"] = ["seed", "visual_regression"]
+        context = ReflexContext(task_text="need playwright visual_regression coverage")
+        with patch("src.services.reflex_scorer.REFLEX_ENABLED", True):
+            results = scorer.recommend(context, [overlay_tool], top_n=5)
+        assert results
+        assert "overlay:+" in results[0].reason
+        assert results[0].overlay["applied"] is True
+
 
 # ─── T2.3: Semantic match prefers relevant tools ────────────────
 
@@ -228,6 +253,34 @@ class TestSemanticMatch:
         with patch("src.services.reflex_scorer.REFLEX_ENABLED", True):
             signals = scorer.score_signals(search_tool, context)
         assert signals["semantic"] == 0.0
+
+    def test_overlay_effect_compares_against_canonical_metadata(self, scorer):
+        tool = _make_tool(
+            "remember_reflex_tool",
+            kind="memory",
+            intent_tags=["memory"],
+            keywords=["remember"],
+        )
+        tool.overlay_hints = {
+            "overlay_applied": True,
+            "origin": "catalog",
+            "catalog_source": "src/agents/tools.py",
+            "path": "src/agents/tools.py",
+            "base_intent_tags": ["memory"],
+            "base_keywords": ["remember"],
+            "added_intent_tags": ["playwright"],
+            "added_keywords": ["visual_regression"],
+        }
+        tool.intent_tags = ["memory", "playwright"]
+        tool.trigger_patterns["keywords"] = ["remember", "visual_regression"]
+        context = ReflexContext(task_text="playwright visual_regression debugging")
+        with patch("src.services.reflex_scorer.REFLEX_ENABLED", True):
+            overlay = scorer.overlay_effect(tool, context)
+            current = scorer.score(tool, context)
+            baseline = scorer.score_without_overlay(tool, context)
+        assert overlay["applied"] is True
+        assert overlay["score_delta"] > 0
+        assert current > baseline
 
 
 # ─── T2.4: Phase match — fix vs build ───────────────────────────

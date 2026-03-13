@@ -30,8 +30,8 @@ Part of VETKA OS:
 import logging
 import os
 import time
-from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Optional, Any, Set
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +209,7 @@ class ScoredTool:
     score: float                          # 0.0 - 1.0
     reason: str                           # Human-readable: "semantic: 0.89, phase: 1.0"
     source_signals: Dict[str, float]      # Per-signal breakdown
+    overlay: Dict[str, Any] = field(default_factory=dict)
 
 
 class ReflexScorer:
@@ -258,30 +259,22 @@ class ReflexScorer:
         if not available_tools or not context:
             return []
 
-        # Model capability filter
-        capability = self._model_capability(context)
-
         scored: List[ScoredTool] = []
-        for tool in available_tools:
-            if not getattr(tool, "active", True):
-                continue
-
-            # Skip heavy tools for small models
-            if capability == "small":
-                risk = getattr(tool, "cost", {}).get("risk_level", "read_only")
-                if risk in ("execute", "external"):
-                    continue
-
+        for tool in self._eligible_tools(context, available_tools):
             signals = self.score_signals(tool, context)
             total = self._weighted_sum(signals)
 
             if total >= min_score:
                 reason_parts = [f"{k}: {v:.2f}" for k, v in signals.items() if v > 0]
+                overlay = self.overlay_effect(tool, context)
+                if overlay["applied"] and overlay["score_delta"] > 0:
+                    reason_parts.append(f"overlay:+{overlay['score_delta']:.2f}")
                 scored.append(ScoredTool(
                     tool_id=getattr(tool, "tool_id", str(tool)),
                     score=round(total, 4),
                     reason=", ".join(reason_parts),
                     source_signals=signals,
+                    overlay=overlay,
                 ))
 
         # Sort descending by score
@@ -316,6 +309,122 @@ class ReflexScorer:
             total += value * weight
         return min(1.0, max(0.0, total))
 
+    def overlay_effect(self, tool: Any, context: ReflexContext) -> Dict[str, Any]:
+        """MARKER_177.REFLEX.TOOL_MEMORY.OVERLAY_EFFECT — Explain overlay impact on ranking."""
+        hints = dict(getattr(tool, "overlay_hints", {}) or {})
+        if not hints.get("overlay_applied"):
+            return {
+                "applied": False,
+                "score_delta": 0.0,
+                "signal_deltas": {},
+                "added_intent_tags": [],
+                "added_keywords": [],
+            }
+
+        base_intent_tags = list(hints.get("base_intent_tags", []) or [])
+        base_keywords = list(hints.get("base_keywords", []) or [])
+        current_semantic = self._semantic_match(tool, context)
+        current_stm = self._stm_relevance(tool, context)
+        base_semantic = self._semantic_match_values(context.task_text, base_intent_tags, base_keywords)
+        base_stm = self._stm_relevance_values(
+            getattr(tool, "tool_id", ""),
+            base_intent_tags,
+            context.stm_items,
+        )
+
+        semantic_delta = round(current_semantic - base_semantic, 4)
+        stm_delta = round(current_stm - base_stm, 4)
+        score_delta = round(
+            (semantic_delta * self._weights.get("semantic", 0.0))
+            + (stm_delta * self._weights.get("stm", 0.0)),
+            4,
+        )
+
+        return {
+            "applied": True,
+            "origin": str(hints.get("origin", "")),
+            "catalog_source": str(hints.get("catalog_source", "")),
+            "path": str(hints.get("path", "")),
+            "trigger_hint": str(hints.get("trigger_hint", "")),
+            "aliases": list(hints.get("aliases", []) or []),
+            "added_intent_tags": list(hints.get("added_intent_tags", []) or []),
+            "added_keywords": list(hints.get("added_keywords", []) or []),
+            "signal_deltas": {
+                "semantic": semantic_delta,
+                "stm": stm_delta,
+            },
+            "score_delta": score_delta,
+        }
+
+    def score_without_overlay(self, tool: Any, context: ReflexContext) -> float:
+        """Return the tool score using canonical catalog metadata only."""
+        if not REFLEX_ENABLED:
+            return 0.0
+        current_total = self._weighted_sum(self.score_signals(tool, context))
+        overlay = self.overlay_effect(tool, context)
+        return round(min(1.0, max(0.0, current_total - overlay["score_delta"])), 4)
+
+    def overlay_rank_changes(
+        self,
+        context: ReflexContext,
+        available_tools: List[Any],
+        min_score: float = 0.1,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Compare current ranks with canonical-only ranks for overlay-aware tools."""
+        if not REFLEX_ENABLED:
+            return {}
+
+        ranked_current: List[tuple[str, float]] = []
+        ranked_baseline: List[tuple[str, float]] = []
+        diagnostics: Dict[str, Dict[str, Any]] = {}
+
+        for tool in self._eligible_tools(context, available_tools):
+            tool_id = getattr(tool, "tool_id", str(tool))
+            current_score = round(self._weighted_sum(self.score_signals(tool, context)), 4)
+            baseline_score = self.score_without_overlay(tool, context)
+            overlay = self.overlay_effect(tool, context)
+            diagnostics[tool_id] = {
+                "current_score": current_score,
+                "baseline_score": baseline_score,
+                "score_delta": overlay["score_delta"],
+                "applied": overlay["applied"],
+            }
+            if current_score >= min_score:
+                ranked_current.append((tool_id, current_score))
+            if baseline_score >= min_score:
+                ranked_baseline.append((tool_id, baseline_score))
+
+        ranked_current.sort(key=lambda item: item[1], reverse=True)
+        ranked_baseline.sort(key=lambda item: item[1], reverse=True)
+        current_ranks = {tool_id: index + 1 for index, (tool_id, _) in enumerate(ranked_current)}
+        baseline_ranks = {tool_id: index + 1 for index, (tool_id, _) in enumerate(ranked_baseline)}
+
+        for tool_id, row in diagnostics.items():
+            current_rank = current_ranks.get(tool_id)
+            baseline_rank = baseline_ranks.get(tool_id)
+            rank_delta = 0
+            if current_rank is not None and baseline_rank is not None:
+                rank_delta = baseline_rank - current_rank
+            row["current_rank"] = current_rank
+            row["baseline_rank"] = baseline_rank
+            row["rank_delta"] = rank_delta
+            row["order_changed"] = bool(row["applied"] and rank_delta != 0)
+
+        return diagnostics
+
+    def _eligible_tools(self, context: ReflexContext, available_tools: List[Any]) -> List[Any]:
+        capability = self._model_capability(context)
+        eligible: List[Any] = []
+        for tool in available_tools:
+            if not getattr(tool, "active", True):
+                continue
+            if capability == "small":
+                risk = getattr(tool, "cost", {}).get("risk_level", "read_only")
+                if risk in ("execute", "external"):
+                    continue
+            eligible.append(tool)
+        return eligible
+
     # --- 8 Signal Scorers ---
 
     def _semantic_match(self, tool: Any, context: ReflexContext) -> float:
@@ -327,26 +436,12 @@ class ReflexScorer:
         if not context.task_text:
             return 0.0
 
-        tool_id = getattr(tool, "tool_id", "")
-        text = context.task_text.lower()
-
-        # Score from ToolEntry.matches_keywords (trigger_patterns.keywords)
-        kw_score = 0.0
-        if hasattr(tool, "matches_keywords"):
-            kw_score = tool.matches_keywords(context.task_text)
-
-        # Score from intent_tags overlap with task words
-        intent_tags = getattr(tool, "intent_tags", [])
-        if intent_tags:
-            task_words = set(text.split())
-            tag_set = set(t.lower() for t in intent_tags)
-            overlap = task_words & tag_set
-            intent_score = len(overlap) / len(tag_set) if tag_set else 0.0
-        else:
-            intent_score = 0.0
-
-        # Combine: max of keyword match and intent overlap
-        return min(1.0, max(kw_score, intent_score))
+        trigger_patterns = getattr(tool, "trigger_patterns", {}) or {}
+        return self._semantic_match_values(
+            context.task_text,
+            getattr(tool, "intent_tags", []),
+            trigger_patterns.get("keywords", []),
+        )
 
     def _cam_relevance(self, tool: Any, context: ReflexContext) -> float:
         """Signal 2: CAM surprise boost.
@@ -395,22 +490,11 @@ class ReflexScorer:
 
         If any STM item mentions this tool's domain, boost it.
         """
-        if not context.stm_items:
-            return 0.0
-
-        tool_id = getattr(tool, "tool_id", "")
-        intent_tags = getattr(tool, "intent_tags", [])
-
-        # Check if tool_id or any intent_tag appears in recent STM items
-        search_terms = {tool_id.lower()}
-        search_terms.update(t.lower() for t in intent_tags)
-
-        stm_text = " ".join(context.stm_items).lower()
-        hits = sum(1 for term in search_terms if term and term in stm_text)
-
-        if hits == 0:
-            return 0.0
-        return min(1.0, hits / max(1, len(search_terms)))
+        return self._stm_relevance_values(
+            getattr(tool, "tool_id", ""),
+            getattr(tool, "intent_tags", []),
+            context.stm_items,
+        )
 
     def _phase_match(self, tool: Any, context: ReflexContext) -> float:
         """Signal 6: Phase type alignment.
@@ -484,6 +568,48 @@ class ReflexScorer:
         elif ctx_len <= _MEDIUM_MODEL_CONTEXT:
             return "medium"
         return "large"
+
+    def _semantic_match_values(
+        self,
+        task_text: str,
+        intent_tags: List[str],
+        keywords: List[str],
+    ) -> float:
+        if not task_text:
+            return 0.0
+        text = task_text.lower()
+        keyword_values = [str(value).strip() for value in (keywords or []) if str(value).strip()]
+        kw_score = 0.0
+        if keyword_values:
+            hits = sum(1 for kw in keyword_values if kw.lower() in text)
+            kw_score = hits / len(keyword_values)
+
+        intent_values = [str(value).strip() for value in (intent_tags or []) if str(value).strip()]
+        if intent_values:
+            task_words = set(text.split())
+            tag_set = set(value.lower() for value in intent_values)
+            overlap = task_words & tag_set
+            intent_score = len(overlap) / len(tag_set) if tag_set else 0.0
+        else:
+            intent_score = 0.0
+
+        return min(1.0, max(kw_score, intent_score))
+
+    def _stm_relevance_values(
+        self,
+        tool_id: str,
+        intent_tags: List[str],
+        stm_items: List[str],
+    ) -> float:
+        if not stm_items:
+            return 0.0
+        search_terms = {str(tool_id or "").lower()}
+        search_terms.update(str(tag).lower() for tag in (intent_tags or []) if str(tag).strip())
+        stm_text = " ".join(stm_items).lower()
+        hits = sum(1 for term in search_terms if term and term in stm_text)
+        if hits == 0:
+            return 0.0
+        return min(1.0, hits / max(1, len(search_terms)))
 
     # --- Convenience methods ---
 

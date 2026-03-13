@@ -109,7 +109,7 @@ async def create_task(body: Dict[str, Any], request: Request) -> Dict[str, Any]:
     - title: str (required)
     - description: str
     - priority: int (1-5, default 3)
-    - phase_type: str (build/fix/research)
+    - phase_type: str (build/fix/research/test)
     - preset: str (dragon_silver, titan_core, etc.)
     - tags: list[str]
 
@@ -126,25 +126,28 @@ async def create_task(body: Dict[str, Any], request: Request) -> Dict[str, Any]:
     created_by = request.headers.get("X-Agent-ID", "unknown")
 
     board = get_task_board()
-    task_id = board.add_task(
-        title=title,
-        description=body.get("description", ""),
-        priority=body.get("priority", 3),
-        phase_type=body.get("phase_type", "build"),
-        preset=body.get("preset"),
-        tags=body.get("tags", []),
-        source=body.get("source", "api"),
-        created_by=created_by,  # MARKER_133.C33D
-        project_id=body.get("project_id"),
-        project_lane=body.get("project_lane"),
-        parent_task_id=body.get("parent_task_id"),
-        architecture_docs=body.get("architecture_docs", []),
-        recon_docs=body.get("recon_docs", []),
-        protocol_version=body.get("protocol_version"),
-        require_closure_proof=body.get("require_closure_proof", False),
-        closure_tests=body.get("closure_tests", []),
-        closure_files=body.get("closure_files", []),
-    )
+    try:
+        task_id = board.add_task(
+            title=title,
+            description=body.get("description", ""),
+            priority=body.get("priority", 3),
+            phase_type=body.get("phase_type", "build"),
+            preset=body.get("preset"),
+            tags=body.get("tags", []),
+            source=body.get("source", "api"),
+            created_by=created_by,  # MARKER_133.C33D
+            project_id=body.get("project_id"),
+            project_lane=body.get("project_lane"),
+            parent_task_id=body.get("parent_task_id"),
+            architecture_docs=body.get("architecture_docs", []),
+            recon_docs=body.get("recon_docs", []),
+            protocol_version=body.get("protocol_version"),
+            require_closure_proof=body.get("require_closure_proof", False),
+            closure_tests=body.get("closure_tests", []),
+            closure_files=body.get("closure_files", []),
+        )
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
 
     logger.info(f"[TaskAPI] Created task {task_id}: {title[:50]} (by {created_by})")
     return {"success": True, "task_id": task_id}
@@ -431,7 +434,7 @@ async def cleanup_stale_tasks(body: Dict[str, Any] = None) -> Dict[str, Any]:
 @router.get("/claimable")
 async def get_claimable_tasks(
     limit: int = Query(5, description="Max tasks to return"),
-    phase_type: Optional[str] = Query(None, description="Filter by phase: build/fix/research"),
+    phase_type: Optional[str] = Query(None, description="Filter by phase: build/fix/research/test"),
 ) -> Dict[str, Any]:
     """Get pending tasks ready for claiming by external agents (Cursor, etc).
 
@@ -490,7 +493,7 @@ async def take_next_task(body: Dict[str, Any] = None) -> Dict[str, Any]:
     Body params:
     - agent_name: str (required - e.g., "cursor", "opus")
     - agent_type: str (optional, default "cursor")
-    - phase_type: str (optional - filter to build/fix/research only)
+    - phase_type: str (optional - filter to build/fix/research/test only)
 
     Returns:
     - task: The full task object you claimed

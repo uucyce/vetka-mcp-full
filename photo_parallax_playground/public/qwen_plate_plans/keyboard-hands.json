@@ -1,0 +1,208 @@
+{
+  "sample_id": "keyboard-hands",
+  "title": "Keyboard hands",
+  "model": "qwen2.5vl:3b",
+  "scene_summary": "A person typing on an old keyboard with their hands and tattoos visible. The scene includes two computer monitors displaying graphs and data.",
+  "recommended_plate_count": 5,
+  "plates": [
+    {
+      "id": "proposal_plate_01",
+      "name": "hands+note",
+      "role": "foreground-subject",
+      "depth_order": 1,
+      "objects": [
+        "hands",
+        "tattoos",
+        "note"
+      ],
+      "reason": "The hands and tattoos are the main focus of the foreground, with the note providing additional context.",
+      "box": {
+        "x": 0.14,
+        "y": 0.26,
+        "width": 0.54,
+        "height": 0.52
+      },
+      "needs_clean_plate": false,
+      "suggested_clean_variant": null
+    },
+    {
+      "id": "proposal_plate_02",
+      "name": "keyboard",
+      "role": "environment-mid",
+      "depth_order": 2,
+      "objects": [
+        "keyboard"
+      ],
+      "reason": "The keyboard is the central element in the mid-ground, providing a stable base for the scene.",
+      "box": {
+        "x": 0.28,
+        "y": 0.42,
+        "width": 0.44,
+        "height": 0.34
+      },
+      "needs_clean_plate": false,
+      "suggested_clean_variant": null
+    },
+    {
+      "id": "proposal_plate_03",
+      "name": "monitors+background",
+      "role": "background-far",
+      "depth_order": 3,
+      "objects": [
+        "monitors",
+        "background"
+      ],
+      "reason": "The monitors and background provide context and depth to the scene, with the monitors being the most prominent elements in the background.",
+      "box": {
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96
+      },
+      "needs_clean_plate": false,
+      "suggested_clean_variant": null
+    },
+    {
+      "id": "proposal_plate_04",
+      "name": "no hands",
+      "role": "special-clean",
+      "depth_order": 4,
+      "objects": [
+        "hands"
+      ],
+      "reason": "The hands are the main focus of the foreground, but the scene can be made more dynamic by removing them.",
+      "box": {
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96
+      },
+      "needs_clean_plate": true,
+      "suggested_clean_variant": "no-hands"
+    },
+    {
+      "id": "proposal_plate_05",
+      "name": "no hands",
+      "role": "special-clean",
+      "depth_order": 4,
+      "objects": [
+        "keyboard"
+      ],
+      "reason": "The keyboard is the central element in the mid-ground, but the scene can be made more dynamic by removing it.",
+      "box": {
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96
+      },
+      "needs_clean_plate": true,
+      "suggested_clean_variant": "no-keyboard"
+    }
+  ],
+  "special_clean_plates": [
+    {
+      "name": "no hands",
+      "target_plate": "plate_01",
+      "clean_variant": "no-hands",
+      "reason": "The hands are the main focus of the foreground, but the scene can be made more dynamic by removing them."
+    },
+    {
+      "name": "no keyboard",
+      "target_plate": "plate_02",
+      "clean_variant": "no-keyboard",
+      "reason": "The keyboard is the central element in the mid-ground, but the scene can be made more dynamic by removing it."
+    }
+  ],
+  "notes": [
+    "The scene includes a person typing on an old keyboard with their hands and tattoos visible. The scene includes two computer monitors displaying graphs and data.",
+    "The recommended plate count is 5, with 2 special clean plates to remove the hands and keyboard for a more dynamic scene.",
+    "The plates are ordered from closest to farthest, with the hands and tattoos in the foreground, the keyboard in the mid-ground, and the monitors and background in the background.",
+    "The special clean plates are used to remove the hands and keyboard for a more dynamic scene.",
+    "The confidence is 0.95, as the scene is clear and well-defined."
+  ],
+  "confidence": 0.5,
+  "plate_stack_proposal": {
+    "sampleId": "keyboard-hands",
+    "plates": [
+      {
+        "id": "plate_01",
+        "label": "hands+note",
+        "role": "foreground-subject",
+        "source": "qwen-plan",
+        "x": 0.14,
+        "y": 0.26,
+        "width": 0.54,
+        "height": 0.52,
+        "z": 28,
+        "depthPriority": 0.88,
+        "visible": true,
+        "depthOrder": 3,
+        "cleanVariant": "no-hands"
+      },
+      {
+        "id": "plate_02",
+        "label": "keyboard",
+        "role": "environment-mid",
+        "source": "qwen-plan",
+        "x": 0.28,
+        "y": 0.42,
+        "width": 0.44,
+        "height": 0.34,
+        "z": 12,
+        "depthPriority": 0.7,
+        "visible": true,
+        "depthOrder": 2,
+        "cleanVariant": "no-keyboard"
+      },
+      {
+        "id": "plate_03",
+        "label": "monitors+background",
+        "role": "background-far",
+        "source": "qwen-plan",
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96,
+        "z": -4,
+        "depthPriority": 0.52,
+        "visible": true,
+        "depthOrder": 1,
+        "cleanVariant": null
+      },
+      {
+        "id": "plate_04",
+        "label": "no hands",
+        "role": "special-clean",
+        "source": "qwen-plan",
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96,
+        "z": -30,
+        "depthPriority": 0.08,
+        "visible": false,
+        "depthOrder": 99,
+        "cleanVariant": "no-hands",
+        "targetPlate": "plate_01"
+      },
+      {
+        "id": "plate_05",
+        "label": "no keyboard",
+        "role": "special-clean",
+        "source": "qwen-plan",
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96,
+        "z": -34,
+        "depthPriority": 0.08,
+        "visible": false,
+        "depthOrder": 99,
+        "cleanVariant": "no-keyboard",
+        "targetPlate": "plate_02"
+      }
+    ]
+  },
+  "raw_response": "{\n  \"scene_summary\": \"A person typing on an old keyboard with their hands and tattoos visible. The scene includes two computer monitors displaying graphs and data.\",\n  \"recommended_plate_count\": 5,\n  \"plates\": [\n    {\n      \"name\": \"hands+note\",\n      \"role\": \"foreground-subject\",\n      \"depth_order\": 1,\n      \"objects\": [\"hands\", \"tattoos\", \"note\"],\n      \"reason\": \"The hands and tattoos are the main focus of the foreground, with the note providing additional context.\",\n      \"box\": {\"x\": 0.14, \"y\": 0.26, \"width\": 0.54, \"height\": 0.52},\n      \"needs_clean_plate\": false,\n      \"suggested_clean_variant\": null\n    },\n    {\n      \"name\": \"keyboard\",\n      \"role\": \"environment-mid\",\n      \"depth_order\": 2,\n      \"objects\": [\"keyboard\"],\n      \"reason\": \"The keyboard is the central element in the mid-ground, providing a stable base for the scene.\",\n      \"box\": {\"x\": 0.28, \"y\": 0.42, \"width\": 0.44, \"height\": 0.34},\n      \"needs_clean_plate\": false,\n      \"suggested_clean_variant\": null\n    },\n    {\n      \"name\": \"monitors+background\",\n      \"role\": \"background-far\",\n      \"depth_order\": 3,\n      \"objects\": [\"monitors\", \"background\"],\n      \"reason\": \"The monitors and background provide context and depth to the scene, with the monitors being the most prominent elements in the background.\",\n      \"box\": {\"x\": 0.02, \"y\": 0.02, \"width\": 0.96, \"height\": 0.96},\n      \"needs_clean_plate\": false,\n      \"suggested_clean_variant\": null\n    },\n    {\n      \"name\": \"no hands\",\n      \"role\": \"special-clean\",\n      \"depth_order\": 4,\n      \"objects\": [\"hands\"],\n      \"reason\": \"The hands are the main focus of the foreground, but the scene can be made more dynamic by removing them.\",\n      \"box\": {\"x\": 0.02, \"y\": 0.02, \"width\": 0.96, \"height\": 0.96},\n      \"needs_clean_plate\": true,\n      \"suggested_clean_variant\": \"no-hands\"\n    },\n    {\n      \"name\": \"no hands\",\n      \"role\": \"special-clean\",\n      \"depth_order\": 4,\n      \"objects\": [\"keyboard\"],\n      \"reason\": \"The keyboard is the central element in the mid-ground, but the scene can be made more dynamic by removing it.\",\n      \"box\": {\"x\": 0.02, \"y\": 0.02, \"width\": 0.96, \"height\": 0.96},\n      \"needs_clean_plate\": true,\n      \"suggested_clean_variant\": \"no-keyboard\"\n    }\n  ],\n  \"special_clean_plates\": [\n    {\n      \"name\": \"no hands\",\n      \"target_plate\": \"plate_01\",\n      \"reason\": \"The hands are the main focus of the foreground, but the scene can be made more dynamic by removing them.\"\n    },\n    {\n      \"name\": \"no keyboard\",\n      \"target_plate\": \"plate_02\",\n      \"reason\": \"The keyboard is the central element in the mid-ground, but the scene can be made more dynamic by removing it.\"\n    }\n  ],\n  \"notes\": [\"The scene includes a person typing on an old keyboard with their hands and tattoos visible. The scene includes two computer monitors displaying graphs and data.\", \"The recommended plate count is 5, with 2 special clean plates to remove the hands and keyboard for a more dynamic scene.\", \"The plates are ordered from closest to farthest, with the hands and tattoos in the foreground, the keyboard in the mid-ground, and the monitors and background in the background.\", \"The special clean plates are used to remove the hands and keyboard for a more dynamic scene.\", \"The confidence is 0.95, as the scene is clear and well-defined.\"]\n}",
+  "error": null
+}

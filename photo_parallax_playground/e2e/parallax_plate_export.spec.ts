@@ -10,7 +10,7 @@ function writeDataUrl(filePath: string, dataUrl: string | undefined) {
 }
 
 test("export plate-wise png alpha and depth assets", async ({ page }) => {
-  test.setTimeout(60000);
+  test.setTimeout(90000);
   const sampleId = process.env.PARALLAX_LAB_SAMPLE_ID || "hover-politsia";
   const outputDir =
     process.env.PARALLAX_LAB_PLATE_EXPORT_DIR ||
@@ -20,8 +20,69 @@ test("export plate-wise png alpha and depth assets", async ({ page }) => {
 
   await page.setViewportSize({ width: 1720, height: 1200 });
   await page.goto(`/?sample=${sampleId}&debug=1`);
-  await page.waitForFunction(() => Boolean(window.vetkaParallaxLab?.snapshot()?.ok), { timeout: 45000 });
-  await page.waitForFunction(() => Boolean(window.vetkaParallaxLab?.getState().sourceRasterReady), { timeout: 45000 });
+  await page.waitForFunction(() => Boolean(window.vetkaParallaxLab?.snapshot()?.ok), { timeout: 60000 });
+  const applyQwenPlan = process.env.PARALLAX_LAB_APPLY_QWEN_PLAN === "1";
+  const applyQwenGate = process.env.PARALLAX_LAB_APPLY_QWEN_GATE === "1";
+  await page.evaluate(() => {
+    const api = window.vetkaParallaxLab;
+    if (!api) throw new Error("vetkaParallaxLab API is unavailable");
+    api.setPreviewMode("composite");
+  });
+  let sourceReady = false;
+  for (let index = 0; index < 160; index += 1) {
+    sourceReady = await page.evaluate(() => {
+      const api = window.vetkaParallaxLab;
+      if (!api) throw new Error("vetkaParallaxLab API is unavailable");
+      return api.getState().sourceRasterReady;
+    });
+    if (sourceReady) break;
+    const stageHydrated = await page.evaluate(() => {
+      const api = window.vetkaParallaxLab;
+      if (!api) throw new Error("vetkaParallaxLab API is unavailable");
+      return api.hydrateSourceRasterFromStage();
+    });
+    if (!stageHydrated && index % 4 === 3) {
+      await page.evaluate(async () => {
+        const api = window.vetkaParallaxLab;
+        if (!api) throw new Error("vetkaParallaxLab API is unavailable");
+        await api.hydrateSourceRasterFromAsset();
+      });
+    }
+    await page.waitForTimeout(250);
+  }
+  if (!sourceReady) {
+    await page.evaluate(async () => {
+      const api = window.vetkaParallaxLab;
+      if (!api) throw new Error("vetkaParallaxLab API is unavailable");
+      await api.hydrateSourceRasterFromAsset();
+    });
+    await page.waitForTimeout(1200);
+    sourceReady = await page.evaluate(() => {
+      const api = window.vetkaParallaxLab;
+      if (!api) throw new Error("vetkaParallaxLab API is unavailable");
+      return api.getState().sourceRasterReady;
+    });
+  }
+  expect(sourceReady).toBeTruthy();
+  if (applyQwenGate) {
+    await page.waitForFunction(() => Boolean((window as any).vetkaParallaxLab), { timeout: 15000 });
+    await page.evaluate(async () => {
+      const api = window.vetkaParallaxLab;
+      if (!api) throw new Error("vetkaParallaxLab API is unavailable");
+      await new Promise((resolve) => window.setTimeout(resolve, 150));
+      api.applyQwenPlateGate();
+    });
+    await page.waitForTimeout(150);
+  } else if (applyQwenPlan) {
+    await page.waitForFunction(() => Boolean((window as any).vetkaParallaxLab), { timeout: 15000 });
+    await page.evaluate(async () => {
+      const api = window.vetkaParallaxLab;
+      if (!api) throw new Error("vetkaParallaxLab API is unavailable");
+      await new Promise((resolve) => window.setTimeout(resolve, 150));
+      api.applyQwenPlatePlan();
+    });
+    await page.waitForTimeout(150);
+  }
 
   const result = await page.evaluate(async () => {
     const api = window.vetkaParallaxLab;

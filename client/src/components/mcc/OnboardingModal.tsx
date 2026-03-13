@@ -56,6 +56,8 @@ export function OnboardingModal({ onComplete }: Props) {
   const [projectId, setProjectId] = useState('');
 
   const initMCC = useMCCStore((s) => s.initMCC);
+  const refreshProjectTabs = useMCCStore((s) => s.refreshProjectTabs);
+  const announceProjectRegistryChanged = useMCCStore((s) => s.announceProjectRegistryChanged);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -153,7 +155,9 @@ export function OnboardingModal({ onComplete }: Props) {
       if (data.success) {
         setProjectId(data.project_id);
         setStep('ready');
-        await initMCC();
+        await initMCC(String(data.project_id || ''));
+        await refreshProjectTabs();
+        announceProjectRegistryChanged(String(data.project_id || ''), 'create');
       } else {
         setError(data.errors?.join(', ') || 'Project setup failed');
         setStep('error');
@@ -162,7 +166,7 @@ export function OnboardingModal({ onComplete }: Props) {
       setError(`Connection error: ${err instanceof Error ? err.message : 'unknown'}`);
       setStep('error');
     }
-  }, [sourcePath, sandboxPath, sourceType, quotaGb, initMCC]);
+  }, [sourcePath, sandboxPath, sourceType, quotaGb, initMCC, refreshProjectTabs, announceProjectRegistryChanged]);
 
   const handleRetry = useCallback(() => {
     setStep('source');

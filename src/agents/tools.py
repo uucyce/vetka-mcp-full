@@ -26,6 +26,7 @@ This module provides:
 """
 
 import os
+import asyncio
 import subprocess
 import json
 import sys
@@ -48,6 +49,8 @@ from src.services.reflex_tool_memory import (
     list_reflex_tool_memory,
     remember_reflex_tool,
 )
+from src.services.reflex_registry import reset_reflex_registry
+from src.services.local_qwen_model_selector import get_best_local_qwen_model
 
 # Project root
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -1233,6 +1236,58 @@ class SeedMCCPlaywrightFixtureTool(BaseTool):
             return ToolResult(success=False, result=None, error=str(e))
 
 
+class SelectBestLocalQwenModelTool(BaseTool):
+    """
+    Inspect local Ollama tags and pick the strongest available Qwen model.
+    Uses the HTTP tags API instead of `ollama list` for better local stability.
+    """
+
+    @property
+    def definition(self) -> ToolDefinition:
+        return ToolDefinition(
+            name="select_best_local_qwen_model",
+            description="Inspect local Ollama models and choose the strongest available Qwen for local tool-capable work.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "ollama_url": {
+                        "type": "string",
+                        "description": "Optional Ollama base URL. Default: http://127.0.0.1:11434",
+                    },
+                    "timeout": {
+                        "type": "number",
+                        "description": "HTTP timeout in seconds for the Ollama tags request.",
+                        "default": 3.0,
+                    },
+                },
+                "required": [],
+            },
+            permission_level=PermissionLevel.READ,
+            needs_user_approval=False,
+        )
+
+    async def execute(
+        self,
+        ollama_url: str = "http://127.0.0.1:11434",
+        timeout: float = 3.0,
+    ) -> ToolResult:
+        try:
+            result = await asyncio.to_thread(
+                get_best_local_qwen_model,
+                ollama_url,
+                float(timeout),
+            )
+            if not result.get("best_model"):
+                return ToolResult(
+                    success=False,
+                    result=result,
+                    error="No local Qwen models found in Ollama tags",
+                )
+            return ToolResult(success=True, result=result)
+        except Exception as e:
+            return ToolResult(success=False, result=None, error=str(e))
+
+
 class RememberReflexToolTool(BaseTool):
     """
     Persist a reminder about a local script/tool/skill so REFLEX can surface it later.
@@ -1257,6 +1312,10 @@ class RememberReflexToolTool(BaseTool):
                     "path": {
                         "type": "string",
                         "description": "Project-relative or absolute path for the remembered entry.",
+                    },
+                    "tool_id": {
+                        "type": "string",
+                        "description": "Optional canonical tool_id if this entry already maps to a catalog tool.",
                     },
                     "notes": {
                         "type": "string",
@@ -1293,6 +1352,7 @@ class RememberReflexToolTool(BaseTool):
         tool_name: str,
         entry_type: str,
         path: str,
+        tool_id: str = "",
         notes: str = "",
         intent_tags: List[str] = None,
         trigger_hint: str = "",
@@ -1304,12 +1364,14 @@ class RememberReflexToolTool(BaseTool):
                 tool_name=tool_name,
                 entry_type=entry_type,
                 path=path,
+                tool_id=tool_id,
                 notes=notes,
                 intent_tags=intent_tags or [],
                 trigger_hint=trigger_hint,
                 aliases=aliases or [],
                 active=active,
             )
+            reset_reflex_registry()
             return ToolResult(success=True, result=result)
         except Exception as e:
             return ToolResult(success=False, result=None, error=str(e))
@@ -1341,6 +1403,11 @@ class ListReflexToolMemoryTool(BaseTool):
                         "description": "Whether to return only active remembered entries.",
                         "default": True,
                     },
+                    "exclude_stale": {
+                        "type": "boolean",
+                        "description": "Whether to filter remembered entries whose path or catalog mapping is stale.",
+                        "default": True,
+                    },
                 },
                 "required": [],
             },
@@ -1353,12 +1420,14 @@ class ListReflexToolMemoryTool(BaseTool):
         entry_type: str = "",
         query: str = "",
         only_active: bool = True,
+        exclude_stale: bool = True,
     ) -> ToolResult:
         try:
             result = list_reflex_tool_memory(
                 entry_type=entry_type,
                 query=query,
                 only_active=only_active,
+                exclude_stale=exclude_stale,
             )
             return ToolResult(success=True, result=result)
         except Exception as e:
@@ -1371,6 +1440,7 @@ registry.register(LearnAPIKeyTool())
 registry.register(GetAPIKeyStatusTool())
 registry.register(AnalyzeUnknownKeyTool())
 registry.register(SeedMCCPlaywrightFixtureTool())
+registry.register(SelectBestLocalQwenModelTool())
 registry.register(RememberReflexToolTool())
 registry.register(ListReflexToolMemoryTool())
 
@@ -1406,6 +1476,7 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         # ARC for creative suggestions
         "arc_suggest",
         "list_reflex_tool_memory",
+        "select_best_local_qwen_model",
     ],
     "PM": [
         "read_code_file",
@@ -1422,6 +1493,7 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "arc_suggest",  # Get creative workflow suggestions when planning
         "list_reflex_tool_memory",
         "remember_reflex_tool",
+        "select_best_local_qwen_model",
     ],
     "Dev": [
         "read_code_file",
@@ -1440,6 +1512,7 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "seed_mcc_playwright_fixture",
         "list_reflex_tool_memory",
         "remember_reflex_tool",
+        "select_best_local_qwen_model",
     ],
     "QA": [
         "read_code_file",
@@ -1469,6 +1542,7 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "seed_mcc_playwright_fixture",
         "list_reflex_tool_memory",
         "remember_reflex_tool",
+        "select_best_local_qwen_model",
     ],
     # Phase 57.8: Researcher Agent - Knowledge Investigator (Full CAM access)
     "Researcher": [
@@ -1487,12 +1561,14 @@ AGENT_TOOL_PERMISSIONS: Dict[str, List[str]] = {
         "seed_mcc_playwright_fixture",
         "list_reflex_tool_memory",
         "remember_reflex_tool",
+        "select_best_local_qwen_model",
     ],
     "Hostess": [
         "vetka_search_semantic",  # MARKER_114.1: was "search_semantic"
         "get_tree_context",
         "list_files",
         "vetka_camera_focus",  # MARKER_114.1: was "camera_focus"
+        "select_best_local_qwen_model",
         "save_api_key",  # Phase 57.1: Accept API keys via chat
         "learn_api_key",  # Phase 57.9: Learn new key types
         "get_api_key_status",  # Phase 57.9: Check key status

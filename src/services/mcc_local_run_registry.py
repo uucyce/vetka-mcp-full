@@ -34,6 +34,32 @@ def _parse_iso_ts(value: str) -> Optional[datetime]:
         return None
 
 
+def _clean_string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        raw = [value]
+    elif isinstance(value, (list, tuple, set)):
+        raw = list(value)
+    else:
+        raw = []
+    out: list[str] = []
+    for item in raw:
+        text = str(item or "").strip()
+        if text and text not in out:
+            out.append(text)
+    return out
+
+
+def _normalize_telemetry(value: Any, *, default_target: str = "") -> Dict[str, Any]:
+    row = dict(value) if isinstance(value, dict) else {}
+    return {
+        "recommended_tools": _clean_string_list(row.get("recommended_tools")),
+        "filtered_tool_schemas": _clean_string_list(row.get("filtered_tool_schemas")),
+        "idle_turn_count": max(0, int(row.get("idle_turn_count") or 0)),
+        "verification_passed": bool(row.get("verification_passed")),
+        "verification_target": str(row.get("verification_target") or default_target or "").strip(),
+    }
+
+
 class LocalguysRunRegistry:
     def __init__(
         self,
@@ -162,6 +188,15 @@ class LocalguysRunRegistry:
         if not isinstance(manifest, dict):
             manifest = {}
         hydrated["artifact_manifest"] = self._refresh_manifest(manifest)
+        metadata = hydrated.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        hydrated["metadata"] = metadata
+        telemetry = _normalize_telemetry(
+            hydrated.get("telemetry"),
+            default_target=str(metadata.get("verification_target") or ""),
+        )
+        hydrated["telemetry"] = telemetry
         created_at = _parse_iso_ts(str(hydrated.get("created_at") or ""))
         updated_at = _parse_iso_ts(str(hydrated.get("updated_at") or ""))
         runtime_ms = 0
@@ -178,6 +213,11 @@ class LocalguysRunRegistry:
             "event_count": len(list(hydrated.get("events") or [])),
             "run_status": str(hydrated.get("status") or ""),
             "workflow_family": str(hydrated.get("workflow_family") or ""),
+            "recommended_tool_count": len(telemetry["recommended_tools"]),
+            "filtered_tool_schema_count": len(telemetry["filtered_tool_schemas"]),
+            "idle_turn_count": int(telemetry["idle_turn_count"] or 0),
+            "verification_passed": bool(telemetry["verification_passed"]),
+            "verification_target": str(telemetry["verification_target"] or ""),
         }
         return hydrated
 
@@ -209,6 +249,11 @@ class LocalguysRunRegistry:
             "artifact_manifest": manifest,
             "contract_version": str(contract.get("version") or "v1"),
             "task_snapshot": dict(task_snapshot or {}),
+            "metadata": {},
+            "telemetry": _normalize_telemetry(
+                {"verification_target": str(contract.get("verification_target") or "")},
+                default_target=str(contract.get("verification_target") or ""),
+            ),
             "created_at": now,
             "updated_at": now,
             "events": [
@@ -270,6 +315,31 @@ class LocalguysRunRegistry:
                 meta = {}
             meta.update(updates["metadata"])
             run["metadata"] = meta
+            telemetry_updates = {
+                key: meta.get(key)
+                for key in [
+                    "recommended_tools",
+                    "filtered_tool_schemas",
+                    "idle_turn_count",
+                    "verification_passed",
+                    "verification_target",
+                ]
+                if key in meta
+            }
+            if telemetry_updates:
+                run["telemetry"] = _normalize_telemetry(
+                    {
+                        **dict(run.get("telemetry") or {}),
+                        **telemetry_updates,
+                    },
+                    default_target=str(meta.get("verification_target") or ""),
+                )
+                event["telemetry"] = {
+                    "recommended_tool_count": len(run["telemetry"]["recommended_tools"]),
+                    "filtered_tool_schema_count": len(run["telemetry"]["filtered_tool_schemas"]),
+                    "idle_turn_count": int(run["telemetry"]["idle_turn_count"] or 0),
+                    "verification_passed": bool(run["telemetry"]["verification_passed"]),
+                }
         events = run.get("events")
         if not isinstance(events, list):
             events = []
@@ -363,6 +433,10 @@ class LocalguysRunRegistry:
         runtime_total = 0
         missing_total = 0
         required_total = 0
+        idle_turn_total = 0
+        verification_passed_total = 0
+        runs_with_recommended_tools = 0
+        runs_with_filtered_tool_schemas = 0
         completed = 0
         for row in rows:
             metrics = dict(row.get("metrics") or {})
@@ -374,6 +448,13 @@ class LocalguysRunRegistry:
             runtime_total += int(metrics.get("runtime_ms") or 0)
             missing_total += int(metrics.get("artifact_missing_count") or 0)
             required_total += int(metrics.get("required_artifact_count") or 0)
+            idle_turn_total += int(metrics.get("idle_turn_count") or 0)
+            if bool(metrics.get("verification_passed")):
+                verification_passed_total += 1
+            if int(metrics.get("recommended_tool_count") or 0) > 0:
+                runs_with_recommended_tools += 1
+            if int(metrics.get("filtered_tool_schema_count") or 0) > 0:
+                runs_with_filtered_tool_schemas += 1
             if status == "done":
                 completed += 1
 
@@ -388,6 +469,10 @@ class LocalguysRunRegistry:
             "avg_runtime_ms": int(runtime_total / count) if count else 0,
             "avg_artifact_missing_count": round(missing_total / count, 2) if count else 0.0,
             "avg_required_artifact_count": round(required_total / count, 2) if count else 0.0,
+            "avg_idle_turn_count": round(idle_turn_total / count, 2) if count else 0.0,
+            "verification_pass_rate": round((verification_passed_total / count) * 100.0, 2) if count else 0.0,
+            "runs_with_recommended_tools": runs_with_recommended_tools,
+            "runs_with_filtered_tool_schemas": runs_with_filtered_tool_schemas,
             "success_rate": success_rate,
             "recent_runs": rows,
         }

@@ -23,6 +23,11 @@ const PREVIEW_QUALITY_OPTIONS: { key: PreviewQualityKey; label: string; scale: n
 ];
 
 type PlayerMarkerKind = "favorite" | "comment";
+type PlayerLabImportPreview = {
+  markers: PlayerTimeMarker[];
+  provisionalEvents: ProvisionalCaptureEvent[];
+  kindCounts: Record<string, number>;
+};
 
 type ProvisionalEventType = "vetka_logo_capture";
 
@@ -66,6 +71,7 @@ interface PlayerTimeMarker {
 const MARKERS_STORAGE_KEY = "vetka_player_lab_markers_v1";
 const PROVISIONAL_EVENTS_STORAGE_KEY = "vetka_player_lab_provisional_events_v1";
 const VETKA_STATUS_STORAGE_KEY = "vetka_player_lab_in_vetka_v1";
+const DEFAULT_PLAYER_LAB_API_BASE = (import.meta.env.VITE_API_BASE || "/api").replace(/\/$/, "");
 
 declare global {
   interface Window {
@@ -97,6 +103,41 @@ function readQuery() {
     mockHeight: Number(params.get("mockHeight") || 0),
     applySuggestedShell: params.get("applySuggestedShell") === "1",
     debug: params.get("debug") === "1",
+    apiBase: params.get("apiBase") || "",
+    sandboxRoot: params.get("sandboxRoot") || "",
+    projectId: params.get("projectId") || "",
+    timelineId: params.get("timelineId") || "main",
+  };
+}
+
+function resolvePlayerLabApiBase(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return DEFAULT_PLAYER_LAB_API_BASE;
+  return trimmed.replace(/\/$/, "");
+}
+
+function normalizePlayerLabImportPayload(raw: unknown): PlayerLabImportPreview {
+  const record = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const markers = Array.isArray(record.markers)
+    ? record.markers
+    : Array.isArray(raw)
+      ? raw
+      : [];
+  const provisionalEvents = Array.isArray(record.provisionalEvents)
+    ? record.provisionalEvents
+    : Array.isArray(record.provisional_events)
+      ? record.provisional_events
+      : [];
+  const kindCounts: Record<string, number> = {};
+  for (const marker of markers) {
+    if (!marker || typeof marker !== "object") continue;
+    const kind = String((marker as Record<string, unknown>).kind || "favorite");
+    kindCounts[kind] = (kindCounts[kind] || 0) + 1;
+  }
+  return {
+    markers: markers.filter((item): item is PlayerTimeMarker => Boolean(item && typeof item === "object")),
+    provisionalEvents: provisionalEvents.filter((item): item is ProvisionalCaptureEvent => Boolean(item && typeof item === "object")),
+    kindCounts,
   };
 }
 
@@ -299,12 +340,20 @@ function App() {
   const [markers, setMarkers] = useState<PlayerTimeMarker[]>(readStoredMarkers);
   const [provisionalEvents, setProvisionalEvents] = useState<ProvisionalCaptureEvent[]>(readStoredProvisionalEvents);
   const [contextToast, setContextToast] = useState("");
+  const [playerLabApiBase, setPlayerLabApiBase] = useState(resolvePlayerLabApiBase(initialQuery.apiBase));
+  const [importSandboxRoot, setImportSandboxRoot] = useState(initialQuery.sandboxRoot);
+  const [importProjectId, setImportProjectId] = useState(initialQuery.projectId);
+  const [importTimelineId, setImportTimelineId] = useState(initialQuery.timelineId);
+  const [importPreview, setImportPreview] = useState<PlayerLabImportPreview | null>(null);
+  const [importStatus, setImportStatus] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const topbarRef = useRef<HTMLElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const autoSizedKeyRef = useRef("");
   const transportTimerRef = useRef<number | null>(null);
   const firstFramePrimedRef = useRef(false);
@@ -759,6 +808,63 @@ function App() {
     setContextToast("Moment saved as a favorite marker.");
   }
 
+  async function handleImportJsonFile(file: File | null) {
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      const preview = normalizePlayerLabImportPayload(parsed);
+      setImportPreview(preview);
+      setImportStatus(
+        `Loaded ${preview.markers.length} markers and ${preview.provisionalEvents.length} provisional events from ${file.name}.`,
+      );
+    } catch (error) {
+      setImportPreview(null);
+      setImportStatus(error instanceof Error ? error.message : "Player Lab JSON parse failed.");
+    }
+  }
+
+  async function handleImportIntoCut() {
+    if (!importPreview) {
+      setImportStatus("Choose a Player Lab JSON export first.");
+      return;
+    }
+    if (!importSandboxRoot.trim() || !importProjectId.trim()) {
+      setImportStatus("Sandbox root and project id are required for CUT import.");
+      return;
+    }
+    setImportBusy(true);
+    try {
+      const response = await fetch(`${resolvePlayerLabApiBase(playerLabApiBase)}/cut/markers/import-player-lab`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sandbox_root: importSandboxRoot.trim(),
+          project_id: importProjectId.trim(),
+          timeline_id: importTimelineId.trim() || "main",
+          markers: importPreview.markers,
+          provisional_events: importPreview.provisionalEvents,
+        }),
+      });
+      const payload = await response.json() as {
+        success?: boolean;
+        imported_count?: number;
+        skipped_duplicates?: number;
+        error?: { message?: string } | null;
+      };
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error?.message || `CUT import failed: HTTP ${response.status}`);
+      }
+      const importedCount = Number(payload.imported_count || 0);
+      const skippedDuplicates = Number(payload.skipped_duplicates || 0);
+      setImportStatus(`Imported ${importedCount} markers into CUT. Skipped duplicates: ${skippedDuplicates}.`);
+      setContextToast(`CUT import complete: ${importedCount} markers.`);
+    } catch (error) {
+      setImportStatus(error instanceof Error ? error.message : "CUT import failed.");
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
   return (
     <main
       className={`player-app ${isDebugVisible ? "debug-open" : ""} ${isPureMode ? "pure-mode" : ""}`}
@@ -1166,6 +1272,59 @@ function App() {
                 synthetic mode
               </button>
             </div>
+          </div>
+
+          <div className="metrics-block">
+            <h2>CUT Import</h2>
+            <input
+              ref={importFileInputRef}
+              type="file"
+              accept="application/json,.json"
+              style={{ display: "none" }}
+              onChange={(event) => {
+                void handleImportJsonFile(event.target.files?.[0] || null);
+              }}
+            />
+            <div className="import-grid">
+              <label className="import-field">
+                API base
+                <input value={playerLabApiBase} onChange={(event) => setPlayerLabApiBase(event.target.value)} />
+              </label>
+              <label className="import-field">
+                Sandbox root
+                <input value={importSandboxRoot} onChange={(event) => setImportSandboxRoot(event.target.value)} />
+              </label>
+              <label className="import-field">
+                Project id
+                <input value={importProjectId} onChange={(event) => setImportProjectId(event.target.value)} />
+              </label>
+              <label className="import-field">
+                Timeline id
+                <input value={importTimelineId} onChange={(event) => setImportTimelineId(event.target.value)} />
+              </label>
+            </div>
+            <div className="player-controls metrics-row">
+              <button className="pill" type="button" onClick={() => importFileInputRef.current?.click()}>
+                Open Player Lab JSON
+              </button>
+              <button className="pill" type="button" disabled={importBusy || !importPreview} onClick={() => void handleImportIntoCut()}>
+                {importBusy ? "Importing..." : "Import markers"}
+              </button>
+            </div>
+            <div className="small import-status">{importStatus || "Load a JSON export, preview counts, then import into CUT."}</div>
+            {importPreview ? (
+              <div className="import-preview">
+                <div className="import-preview-row">
+                  <span className="inline-token">{importPreview.markers.length} markers</span>
+                  <span className="inline-token">{importPreview.provisionalEvents.length} provisional</span>
+                </div>
+                <div className="import-preview-row">
+                  {Object.entries(importPreview.kindCounts).map(([kind, count]) => (
+                    <span key={kind} className="import-preview-badge">{kind}: {count}</span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </aside>
       ) : null}

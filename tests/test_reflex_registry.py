@@ -16,6 +16,7 @@ Tests:
 import json
 import pytest
 from pathlib import Path
+from unittest.mock import patch
 
 # Project root
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -124,6 +125,7 @@ class TestMCPToolsCovered:
         """Phase 177: Playwright seed + REFLEX memory tools are cataloged."""
         key_internal = [
             "seed_mcc_playwright_fixture",
+            "select_best_local_qwen_model",
             "remember_reflex_tool",
             "list_reflex_tool_memory",
         ]
@@ -193,6 +195,115 @@ class TestIntentTagSearch:
         """T1.6b: Empty intent tags return no results."""
         results = registry.get_tools_by_intent([])
         assert len(results) == 0
+
+    def test_memory_overlay_augments_intent_and_keywords(self, tmp_path):
+        """Phase 177: remembered overlay should augment canonical ranking metadata."""
+        catalog_path = tmp_path / "tool_catalog.json"
+        catalog_path.write_text(
+            json.dumps(
+                {
+                    "tools": [
+                        {
+                            "tool_id": "seed_mcc_playwright_fixture",
+                            "namespace": "internal",
+                            "kind": "visualization",
+                            "description": "Seed fixture",
+                            "intent_tags": ["general"],
+                            "trigger_patterns": {"file_types": ["*"], "phase_types": ["*"], "keywords": ["seed"]},
+                            "cost": {"latency_ms": 100, "tokens": 0, "risk_level": "execute"},
+                            "permission": "EXECUTE",
+                            "roles": ["Dev"],
+                            "deprecated_aliases": [],
+                            "active": True,
+                        }
+                    ]
+                }
+            )
+        )
+
+        overlay = {
+            "count": 1,
+            "tools": [
+                {
+                    "tool_id": "seed_mcc_playwright_fixture",
+                    "tool_name": "seed_mcc_playwright_fixture",
+                    "path": "scripts/mcc_seed_playwright_fixture.py",
+                    "intent_tags": ["playwright", "visual_regression"],
+                    "aliases": ["mcc seed"],
+                    "trigger_hint": "seed browser fixture before graph inspection",
+                    "origin": "catalog",
+                    "catalog_source": "agents/tools.py",
+                }
+            ],
+        }
+
+        with patch("src.services.reflex_registry.list_reflex_tool_memory", return_value=overlay):
+            reg = ReflexRegistry(catalog_path).load()
+
+        tool = reg.get_tool("seed_mcc_playwright_fixture")
+        assert tool is not None
+        assert "playwright" in tool.intent_tags
+        assert "visual_regression" in tool.intent_tags
+        assert "mcc seed" in tool.trigger_patterns.get("keywords", [])
+        results = reg.get_tools_by_intent(["playwright"])
+        assert results and results[0].tool_id == "seed_mcc_playwright_fixture"
+
+    def test_memory_overlay_snapshot_exposes_applied_overlay_details(self, tmp_path):
+        catalog_path = tmp_path / "tool_catalog.json"
+        catalog_path.write_text(
+            json.dumps(
+                {
+                    "tools": [
+                        {
+                            "tool_id": "remember_reflex_tool",
+                            "namespace": "internal",
+                            "kind": "memory",
+                            "description": "Remember tool metadata",
+                            "intent_tags": ["memory"],
+                            "trigger_patterns": {"file_types": ["*"], "phase_types": ["*"], "keywords": ["remember"]},
+                            "cost": {"latency_ms": 20, "tokens": 0, "risk_level": "write"},
+                            "permission": "WRITE",
+                            "roles": ["Dev"],
+                            "deprecated_aliases": [],
+                            "active": True,
+                        }
+                    ]
+                }
+            )
+        )
+
+        overlay = {
+            "count": 1,
+            "tools": [
+                {
+                    "tool_id": "remember_reflex_tool",
+                    "tool_name": "remember_reflex_tool",
+                    "path": "src/agents/tools.py",
+                    "intent_tags": ["playwright"],
+                    "aliases": ["tool memory"],
+                    "trigger_hint": "remember playwright helpers for reuse",
+                    "origin": "catalog",
+                    "catalog_source": "src/agents/tools.py",
+                }
+            ],
+        }
+
+        with patch("src.services.reflex_registry.list_reflex_tool_memory", return_value=overlay):
+            reg = ReflexRegistry(catalog_path).load()
+
+        snapshot = reg.get_memory_overlay_tools()
+        assert snapshot == [
+            {
+                "tool_id": "remember_reflex_tool",
+                "path": "src/agents/tools.py",
+                "origin": "catalog",
+                "catalog_source": "src/agents/tools.py",
+                "trigger_hint": "remember playwright helpers for reuse",
+                "aliases": ["tool memory"],
+                "added_intent_tags": ["playwright"],
+                "added_keywords": ["playwright", "tool memory", "helpers", "for", "reuse"],
+            }
+        ]
 
 
 # ─── T1.7: No duplicates ─────────────────────────────────────────────

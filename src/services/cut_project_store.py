@@ -123,6 +123,10 @@ class CutProjectPaths:
         return os.path.join(self.runtime_state_dir, "audio_sync_result.latest.json")
 
     @property
+    def music_sync_result_path(self) -> str:
+        return os.path.join(self.runtime_state_dir, "music_sync_result.latest.json")
+
+    @property
     def slice_bundle_path(self) -> str:
         return os.path.join(self.runtime_state_dir, "slice_bundle.latest.json")
 
@@ -137,6 +141,10 @@ class CutProjectPaths:
     @property
     def time_marker_edit_log_path(self) -> str:
         return os.path.join(self.runtime_state_dir, "time_marker_edit_log.jsonl")
+
+    @property
+    def montage_state_path(self) -> str:
+        return os.path.join(self.runtime_state_dir, "montage_state.latest.json")
 
 
 class CutProjectStore:
@@ -262,6 +270,18 @@ class CutProjectStore:
             raise ValueError("Invalid cut_audio_sync_result_v1 payload")
         self._atomic_write_json(self.paths.audio_sync_result_path, payload)
 
+    def load_music_sync_result(self) -> dict[str, Any] | None:
+        payload = self._load_json(self.paths.music_sync_result_path, expected_schema="cut_music_sync_result_v1")
+        if payload is None or not self._validate_music_sync_result_payload(payload):
+            return None
+        return payload
+
+    def save_music_sync_result(self, result: dict[str, Any]) -> None:
+        payload = dict(result or {})
+        if not self._validate_music_sync_result_payload(payload):
+            raise ValueError("Invalid cut_music_sync_result_v1 payload")
+        self._atomic_write_json(self.paths.music_sync_result_path, payload)
+
     def load_slice_bundle(self) -> dict[str, Any] | None:
         payload = self._load_json(self.paths.slice_bundle_path, expected_schema="cut_slice_bundle_v1")
         if payload is None or not self._validate_slice_bundle_payload(payload):
@@ -297,6 +317,18 @@ class CutProjectStore:
         if not self._validate_time_marker_bundle_payload(payload):
             raise ValueError("Invalid cut_time_marker_bundle_v1 payload")
         self._atomic_write_json(self.paths.time_marker_bundle_path, payload)
+
+    def load_montage_state(self) -> dict[str, Any] | None:
+        payload = self._load_json(self.paths.montage_state_path, expected_schema="cut_montage_state_v1")
+        if payload is None or not self._validate_montage_state_payload(payload):
+            return None
+        return payload
+
+    def save_montage_state(self, state: dict[str, Any]) -> None:
+        payload = dict(state or {})
+        if not self._validate_montage_state_payload(payload):
+            raise ValueError("Invalid cut_montage_state_v1 payload")
+        self._atomic_write_json(self.paths.montage_state_path, payload)
 
     def append_time_marker_edit_event(self, event: dict[str, Any]) -> None:
         payload = dict(event or {})
@@ -639,6 +671,48 @@ class CutProjectStore:
                 return False
         return True
 
+    def _validate_music_sync_result_payload(self, payload: dict[str, Any]) -> bool:
+        required = [
+            "schema_version",
+            "project_id",
+            "revision",
+            "music_path",
+            "tempo",
+            "downbeats",
+            "phrases",
+            "cue_points",
+            "derived_from",
+            "generated_at",
+        ]
+        if any(key not in payload for key in required):
+            return False
+        if str(payload.get("schema_version")) != "cut_music_sync_result_v1":
+            return False
+        if not isinstance(payload.get("tempo"), dict):
+            return False
+        if not isinstance(payload.get("downbeats"), list):
+            return False
+        if not isinstance(payload.get("phrases"), list):
+            return False
+        if not isinstance(payload.get("cue_points"), list):
+            return False
+        tempo_required = ["bpm", "confidence"]
+        if any(key not in payload["tempo"] for key in tempo_required):
+            return False
+        for phrase in payload.get("phrases", []):
+            if not isinstance(phrase, dict):
+                return False
+            phrase_required = ["phrase_id", "start_sec", "end_sec", "label", "energy"]
+            if any(key not in phrase for key in phrase_required):
+                return False
+        for cue in payload.get("cue_points", []):
+            if not isinstance(cue, dict):
+                return False
+            cue_required = ["cue_id", "start_sec", "end_sec", "label", "cue_type", "confidence", "energy"]
+            if any(key not in cue for key in cue_required):
+                return False
+        return True
+
     def _validate_slice_bundle_payload(self, payload: dict[str, Any]) -> bool:
         required = [
             "schema_version",
@@ -759,6 +833,122 @@ class CutProjectStore:
         if not str(payload.get("timeline_id") or "").strip():
             return False
         if not str(payload.get("media_path") or "").strip():
+            return False
+        return True
+
+    def _validate_montage_state_payload(self, payload: dict[str, Any]) -> bool:
+        required = [
+            "schema_version",
+            "project_id",
+            "revision",
+            "source_bundle_revisions",
+            "accepted_decisions",
+            "rejected_decisions",
+            "updated_at",
+            "updated_by",
+        ]
+        if any(key not in payload for key in required):
+            return False
+        if str(payload.get("schema_version")) != "cut_montage_state_v1":
+            return False
+        if not isinstance(payload.get("project_id"), str) or not str(payload.get("project_id")).strip():
+            return False
+        revision = payload.get("revision")
+        if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
+            return False
+        source_bundle_revisions = payload.get("source_bundle_revisions")
+        if not isinstance(source_bundle_revisions, dict):
+            return False
+        if not all(isinstance(key, str) and key.strip() for key in source_bundle_revisions):
+            return False
+        if not all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in source_bundle_revisions.values()):
+            return False
+        for field in ("updated_at",):
+            if not isinstance(payload.get(field), str) or not self._is_iso_datetime(str(payload.get(field))):
+                return False
+        if not isinstance(payload.get("updated_by"), str) or not str(payload.get("updated_by")).strip():
+            return False
+        for field, expected_status in (
+            ("accepted_decisions", "accepted"),
+            ("rejected_decisions", "rejected"),
+        ):
+            decisions = payload.get(field)
+            if not isinstance(decisions, list):
+                return False
+            decision_ids: set[str] = set()
+            for item in decisions:
+                if not self._validate_montage_decision_payload(item, expected_status=expected_status):
+                    return False
+                decision_id = str(item.get("decision_id") or "")
+                if decision_id in decision_ids:
+                    return False
+                decision_ids.add(decision_id)
+        return True
+
+    def _validate_montage_decision_payload(self, payload: dict[str, Any], *, expected_status: str) -> bool:
+        required = [
+            "decision_id",
+            "source_family",
+            "cue_provenance_ids",
+            "confidence",
+            "score",
+            "editorial_intent",
+            "status",
+            "timeline_id",
+            "lane_id",
+            "anchor_sec",
+            "start_sec",
+            "end_sec",
+            "source_bundle_id",
+            "source_bundle_revision",
+            "created_at",
+            "updated_at",
+            "author",
+        ]
+        if any(key not in payload for key in required):
+            return False
+        if not isinstance(payload.get("decision_id"), str) or not str(payload.get("decision_id")).strip():
+            return False
+        if str(payload.get("source_family") or "") not in {
+            "transcript",
+            "pause_slice",
+            "music",
+            "sync",
+            "scene_graph",
+            "manual_note",
+            "marker",
+        }:
+            return False
+        provenance_ids = payload.get("cue_provenance_ids")
+        if not isinstance(provenance_ids, list) or not all(isinstance(item, str) and item.strip() for item in provenance_ids):
+            return False
+        if str(payload.get("status") or "") != expected_status:
+            return False
+        if not isinstance(payload.get("timeline_id"), str) or not str(payload.get("timeline_id")).strip():
+            return False
+        if not isinstance(payload.get("lane_id"), str) or not str(payload.get("lane_id")).strip():
+            return False
+        if not isinstance(payload.get("editorial_intent"), str) or not str(payload.get("editorial_intent")).strip():
+            return False
+        if not isinstance(payload.get("source_bundle_id"), str) or not str(payload.get("source_bundle_id")).strip():
+            return False
+        source_bundle_revision = payload.get("source_bundle_revision")
+        if not isinstance(source_bundle_revision, int) or isinstance(source_bundle_revision, bool) or source_bundle_revision < 0:
+            return False
+        for key in ("confidence", "score"):
+            value = payload.get(key)
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0 or value > 1:
+                return False
+        for key in ("anchor_sec", "start_sec", "end_sec"):
+            value = payload.get(key)
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+                return False
+        if float(payload.get("end_sec")) < float(payload.get("start_sec")):
+            return False
+        for field in ("created_at", "updated_at"):
+            if not isinstance(payload.get(field), str) or not self._is_iso_datetime(str(payload.get(field))):
+                return False
+        if not isinstance(payload.get("author"), str) or not str(payload.get("author")).strip():
             return False
         return True
 

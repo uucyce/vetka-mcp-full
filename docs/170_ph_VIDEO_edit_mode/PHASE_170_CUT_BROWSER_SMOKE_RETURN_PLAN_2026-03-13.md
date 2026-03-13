@@ -7,10 +7,10 @@ Prepare the return path for browser smoke once the runner lane is stable again.
 ## Next smoke targets
 
 ### MARKER_170.BROWSER_RETURN.NODE_CLICK
-Re-enable the loaded-state node-click smoke and prove:
-- DAG node click triggers `/api/cut/timeline/apply`
-- `focus source` remains coherent
-- `Selected Shot` keeps semantic links after click
+Split and stabilized as `cut_scene_graph_node_click_smoke.spec.cjs`:
+- Scene Graph focus handler triggers `/api/cut/timeline/apply`
+- status changes to `Graph focus -> timeline: Take A`
+- remaining gap is direct DOM click actionability in the shared DAG canvas
 
 ### MARKER_170.BROWSER_RETURN.EDGE_FILTER
 Covered by `cut_scene_graph_edge_filter_minicard_smoke.spec.cjs`:
@@ -33,3 +33,5 @@ The current code path is ahead of the browser runner stability. This note keeps 
 
 - Stable now: edge filter + Selected Shot mini-card smoke
 - Still isolated: DAG node click round-trip
+
+- Stable now: handler-verified node-click lane

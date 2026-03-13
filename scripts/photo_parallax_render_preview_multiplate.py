@@ -137,7 +137,7 @@ def build_filter_complex(
     internal_fps: int,
     tmix_frames: int,
     asset_scale: float,
-) -> tuple[str, list[dict[str, Any]]]:
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
     profile = motion_profile(layout)
     source_w = profile["source_width"]
     source_h = profile["source_height"]
@@ -147,25 +147,51 @@ def build_filter_complex(
     working_fps = internal_fps if internal_fps > 0 else profile["fps"]
 
     visible_rgba = [plate for plate in manifest["exportedPlates"] if plate.get("visible") and "rgba" in plate.get("files", {})]
+    special_clean = [plate for plate in manifest["exportedPlates"] if "clean" in plate.get("files", {})]
     layout_by_id = {plate["id"]: plate for plate in layout["plates"]}
     ordered = sorted(visible_rgba, key=lambda plate: layout_by_id.get(plate["id"], {}).get("order", 999))
+    ordered_clean = sorted(special_clean, key=lambda plate: layout_by_id.get(plate["id"], {}).get("order", 999))
+
+    clean_by_variant = {
+        plate.get("cleanVariant"): plate for plate in ordered_clean if plate.get("cleanVariant")
+    }
 
     chain: list[str] = []
     chain.append(f"color=c=black@0.0:s={internal_w}x{internal_h}:r={working_fps}:d={profile['duration']}[base]")
+    clean_inputs = len(ordered_clean)
+    background_index = clean_inputs
+    for clean_index, _clean in enumerate(ordered_clean):
+        chain.append(
+            f"[{clean_index}:v]"
+            "format=rgba,"
+            f"scale=w='iw*{asset_scale:.6f}*{supersample:.3f}':h='ih*{asset_scale:.6f}*{supersample:.3f}':flags=lanczos:eval=frame,"
+            "setsar=1"
+            f"[clean{clean_index}]"
+        )
     chain.append(
-        "[0:v]"
+        f"[{background_index}:v]"
         "format=rgba,"
         f"scale=w='iw*{asset_scale:.6f}*{supersample:.3f}':h='ih*{asset_scale:.6f}*{supersample:.3f}':flags=lanczos:eval=frame,"
         "setsar=1[bg]"
     )
     chain.append("[base][bg]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame:format=auto[layer0]")
 
-    for index, plate in enumerate(ordered, start=1):
+    for index, plate in enumerate(ordered, start=background_index + 1):
         layout_plate = layout_by_id[plate["id"]]
         strength = float(layout_plate["parallaxStrength"])
         x_motion = f"({plate_motion_expr(profile, layout_plate, 'x')})*{motion_scale:.6f}"
         y_motion = f"({plate_motion_expr(profile, layout_plate, 'y')})*{motion_scale:.6f}"
         zoom_expr = plate_zoom_expr(profile, strength)
+        layer_input = f"layer{index-background_index-1}"
+        clean_variant = layout_plate.get("cleanVariant")
+        clean_plate = clean_by_variant.get(clean_variant) if clean_variant else None
+        if clean_plate:
+            clean_input_index = ordered_clean.index(clean_plate)
+            chain.append(
+                f"[{layer_input}][clean{clean_input_index}]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame:format=auto"
+                f"[cleanunderlay{index-background_index}]"
+            )
+            layer_input = f"cleanunderlay{index-background_index}"
         chain.append(
             f"[{index}:v]"
             "format=rgba,"
@@ -174,10 +200,10 @@ def build_filter_complex(
             f"[plate{index}]"
         )
         chain.append(
-            f"[layer{index-1}][plate{index}]"
+            f"[{layer_input}][plate{index}]"
             f"overlay=x='(W-w)/2-({x_motion})':"
             f"y='(H-h)/2-({y_motion})':eval=frame:format=auto"
-            f"[layer{index}]"
+            f"[layer{index-background_index}]"
         )
 
     last = f"[layer{len(ordered)}]"
@@ -189,7 +215,7 @@ def build_filter_complex(
         chain.append(f"[composite]tmix=frames={tmix_frames}:weights='{weights}',fps={profile['fps']}[v]")
     else:
         chain.append(f"[composite]fps={profile['fps']}[v]")
-    return ";".join(chain), ordered
+    return ";".join(chain), ordered_clean, ordered
 
 
 def render_case(sample_dir: Path, out_dir: Path, codec: str, crf: int, supersample: float, internal_fps: int, tmix_frames: int) -> dict[str, Any]:
@@ -200,10 +226,19 @@ def render_case(sample_dir: Path, out_dir: Path, codec: str, crf: int, supersamp
     report_path = out_dir / "preview_multiplate_report.json"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    inputs = [sample_dir / manifest["files"]["backgroundRgba"]]
-    background_meta = ffprobe_stream(inputs[0])
+    clean_inputs = [sample_dir / plate["files"]["clean"] for plate in manifest["exportedPlates"] if "clean" in plate.get("files", {})]
+    inputs = [*clean_inputs, sample_dir / manifest["files"]["backgroundRgba"]]
+    background_meta = ffprobe_stream(inputs[-1])
     asset_scale = float(layout["source"]["width"]) / max(1.0, float(background_meta["width"]))
-    filter_complex, ordered = build_filter_complex(layout, manifest, supersample, internal_fps, tmix_frames, asset_scale)
+    filter_complex, ordered_clean, ordered = build_filter_complex(layout, manifest, supersample, internal_fps, tmix_frames, asset_scale)
+    routed_clean_count = sum(
+        1
+        for plate in layout["plates"]
+        if plate.get("visible")
+        and plate.get("role") != "special-clean"
+        and plate.get("cleanVariant")
+        and any(clean.get("cleanVariant") == plate.get("cleanVariant") for clean in manifest["exportedPlates"])
+    )
     for plate in ordered:
         inputs.append(sample_dir / plate["files"]["rgba"])
 
@@ -252,6 +287,11 @@ def render_case(sample_dir: Path, out_dir: Path, codec: str, crf: int, supersamp
         "plate_manifest_path": str(sample_dir / "plate_export_manifest.json"),
         "video": video,
         "rendered_plate_count": len(ordered),
+        "special_clean_count": len(ordered_clean),
+        "routed_clean_count": routed_clean_count,
+        "camera_safe": layout.get("cameraSafe", {}),
+        "routing": layout.get("routing", {}),
+        "transition_count": len(layout.get("transitions", [])),
         "internal_fps": internal_fps,
         "tmix_frames": tmix_frames,
         "supersample": supersample,

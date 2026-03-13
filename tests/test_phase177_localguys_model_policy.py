@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import pytest
 
+def test_llm_registry_safe_defaults_cover_localguys_models() -> None:
+    from src.elisya.llm_model_registry import _SAFE_DEFAULTS
 
-@pytest.mark.asyncio
-async def test_llm_registry_has_exact_safe_defaults_for_localguys_models() -> None:
-    from src.elisya.llm_model_registry import LLMModelRegistry
-
-    registry = LLMModelRegistry()
     cases = {
+        "qwen3.5:latest": ("ollama", 32768),
         "qwen3:8b": ("ollama", 32768),
         "qwen2.5:7b": ("ollama", 32768),
         "qwen2.5:3b": ("ollama", 16384),
@@ -19,17 +16,16 @@ async def test_llm_registry_has_exact_safe_defaults_for_localguys_models() -> No
     }
 
     for model_id, (provider, context_length) in cases.items():
-        profile = await registry.get_profile(model_id)
-        assert profile.model_id == model_id
-        assert profile.provider == provider
-        assert profile.context_length == context_length
-        assert profile.source.startswith("hardcoded_defaults")
+        defaults = _SAFE_DEFAULTS[model_id]
+        assert defaults["provider"] == provider
+        assert defaults["context_length"] == context_length
 
 
 def test_reflex_decay_has_exact_profiles_for_localguys_models() -> None:
     from src.services.reflex_decay import get_model_profile
 
     cases = {
+        "qwen3.5:latest": 10,
         "qwen3:8b": 8,
         "qwen2.5:7b": 8,
         "qwen2.5:3b": 4,

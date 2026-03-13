@@ -336,5 +336,8 @@ A test is useful if it validates one of these:
 - project directory/file/code-aggregate nodes differently from task/workflow nodes
 - support descendant browsing across children, grandchildren, and great-grandchildren, then `+1 deeper` on request
 - apply fractal scale to descendant levels with minimum clickable-size guardrails
+- split mini-node floors and spacing by generation band so depth-2 and depth-3+ do not inherit depth-1 sizing
+- add a Playwright-friendly MCC graph replay/hydration path so visual hierarchy can be regression-checked in browser, not only by code contracts
+- prefer a reusable seeded MCC graph fixture and URL boot activation over one-off browser setup
 - add code-first MiniContext ordering and breadcrumb header
 - add a clearer docked code viewer path from MiniContext

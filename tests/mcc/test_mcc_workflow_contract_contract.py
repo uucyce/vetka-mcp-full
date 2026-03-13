@@ -55,6 +55,15 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(routes, "_get_task_board_instance", lambda: board)
 
     profiles = {
+        "qwen3.5:latest": SimpleNamespace(
+            model_id="qwen3.5:latest",
+            context_length=32768,
+            output_tokens_per_second=46.0,
+            input_tokens_per_second=120.0,
+            ttft_ms=620.0,
+            provider="ollama",
+            source="test_fixture",
+        ),
         "qwen3:8b": SimpleNamespace(
             model_id="qwen3:8b",
             context_length=32768,
@@ -130,6 +139,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
             capabilities=[SimpleNamespace(value=value) for value in caps],
         )
         for model_id, caps in {
+            "qwen3.5:latest": ["chat", "code"],
             "qwen3:8b": ["chat", "code"],
             "qwen2.5:7b": ["chat", "code"],
             "qwen2.5:3b": ["chat", "code"],
@@ -160,10 +170,22 @@ def test_workflow_contract_fetch_returns_g3_localguys_with_exact_local_model_pol
     assert contract["workflow_family"] == "g3_localguys"
     assert contract["roles"] == ["coder", "verifier"]
     assert contract["steps"] == ["recon", "plan", "execute", "verify", "review", "finalize"]
+    assert contract["execution_mode"] == "staged_state_machine"
     assert contract["sandbox_policy"]["mode"] == "playground_only"
+    assert contract["write_opt_ins"] == {
+        "task_board": False,
+        "edit_file": True,
+        "playground_artifacts": True,
+        "main_tree_write": False,
+    }
     assert contract["completion_policy"]["requires_verifier_pass"] is True
+    assert contract["verification_target"] == "targeted_tests"
+    assert contract["max_turns"] == 13
+    assert "playground" in contract["idle_nudge_template"].lower()
     assert contract["operator_method"]["method"] == "g3"
     assert contract["operator_method"]["command_template"] == "localguys run g3 --task {task_id}"
+    assert contract["stage_tool_policy"]["recon"] == ["context", "search", "artifacts", "stats"]
+    assert contract["stage_tool_policy"]["verify"] == ["context", "tests", "artifacts", "git_diff", "stats"]
 
     coder_models = contract["model_policy"]["coder"]["preferred_models"]
     assert [row["model_id"] for row in coder_models] == ["qwen3:8b", "qwen2.5:7b"]
@@ -179,6 +201,7 @@ def test_workflow_contract_fetch_returns_g3_localguys_with_exact_local_model_pol
 
     catalog = {row["model_id"]: row for row in contract["local_model_catalog"]}
     assert set(catalog) == {
+        "qwen3.5:latest",
         "qwen3:8b",
         "qwen2.5:7b",
         "qwen2.5:3b",
@@ -201,6 +224,7 @@ def test_task_workflow_contract_resolution_uses_task_binding(client: TestClient)
     assert data["task_id"] == "tb_local_1"
     assert data["binding"]["workflow_family"] == "g3_localguys"
     assert data["contract"]["workflow_family"] == "g3_localguys"
+    assert data["contract"]["write_opt_ins"]["edit_file"] is True
     assert data["contract"]["artifact_contract"]["required"] == [
         "facts.json",
         "plan.json",
@@ -209,6 +233,52 @@ def test_task_workflow_contract_resolution_uses_task_binding(client: TestClient)
         "review.json",
         "final_report.json",
     ]
+
+
+def test_workflow_contract_fetch_returns_patchchain_localguys_playbook_contract(client: TestClient) -> None:
+    resp = client.get("/api/mcc/workflow-contract/patchchain_localguys")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["success"] is True
+    assert data["workflow_family"] == "patchchain_localguys"
+    contract = data["contract"]
+    assert contract["roles"] == ["coder"]
+    assert contract["steps"] == ["recon", "execute", "verify", "finalize"]
+    assert contract["allowed_tools"] == ["context", "artifacts", "tests", "git_diff"]
+    assert contract["direct_allowed_tools"] == [
+        "vetka_read_file",
+        "vetka_edit_file",
+        "vetka_run_tests",
+    ]
+    assert contract["expected_sequence"] == [
+        "vetka_read_file",
+        "vetka_edit_file",
+        "vetka_run_tests",
+    ]
+    assert contract["reflex_policy"] == {
+        "enabled": True,
+        "inject_system_hint": True,
+        "reorder_tools": True,
+        "normalize_native_tool_calls": True,
+        "rehydrate_tool_arguments": True,
+        "idle_nudge_loop": True,
+    }
+    assert contract["stage_tool_policy"]["recon"] == ["context", "artifacts"]
+    assert contract["stage_tool_policy"]["verify"] == ["context", "tests", "artifacts", "git_diff"]
+    assert contract["write_opt_ins"] == {
+        "task_board": False,
+        "edit_file": True,
+        "playground_artifacts": True,
+        "main_tree_write": False,
+    }
+    assert contract["completion_policy"]["requires_expected_sequence"] is True
+    assert contract["verification_target"] == "targeted_tests"
+    assert contract["operator_method"]["method"] == "patchchain"
+    assert contract["operator_method"]["source_family"] == "local_patch_chain"
+    coder_models = contract["model_policy"]["coder"]["preferred_models"]
+    assert [row["model_id"] for row in coder_models] == ["qwen3.5:latest", "qwen3:8b"]
+    assert coder_models[0]["ttft_ms"] == 620.0
 
 
 def test_unknown_workflow_contract_returns_404(client: TestClient) -> None:
@@ -223,11 +293,15 @@ def test_localguys_operator_methods_catalog_is_deterministic(client: TestClient)
     data = resp.json()
 
     assert data["success"] is True
-    assert data["count"] == 9
+    assert data["count"] == 11
     methods = {row["workflow_family"]: row for row in data["methods"]}
     assert methods["dragons_localguys"]["method"] == "dragons"
     assert methods["dragons_localguys"]["command_template"] == "localguys run dragons --task {task_id}"
     assert methods["refactor_localguys"]["method"] == "refactor"
+    assert methods["patchchain_localguys"]["method"] == "patchchain"
+    assert methods["patchchain_localguys"]["source_family"] == "local_patch_chain"
+    assert methods["ownership_localguys"]["method"] == "ownership"
+    assert methods["ownership_localguys"]["source_family"] == "local_task_ownership"
     assert methods["bmad_localguys"]["roles"] == [
         "scout",
         "researcher",

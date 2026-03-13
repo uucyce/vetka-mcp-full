@@ -23,7 +23,7 @@ import { initBrowserAgentBridge } from './utils/browserAgentBridge'; // Phase 80
 initBrowserAgentBridge();
 
 // MARKER_134.FIX_ROUTER: Pathname-based routing (no react-router needed)
-const pathname = window.location.pathname;
+const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
 
 function Root() {
   if (pathname === '/mycelium') {

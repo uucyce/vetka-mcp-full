@@ -45,6 +45,14 @@ export interface HeartbeatSettings {
   last_tick: number;
   total_ticks: number;
   tasks_dispatched: number;
+  monitor_all?: boolean;
+  profile_mode?: 'global' | 'project' | 'workflow' | 'task' | string;
+  project_id?: string;
+  workflow_family?: string;
+  task_id?: string;
+  localguys_enabled?: boolean;
+  localguys_idle_sec?: number;
+  localguys_action?: 'auto' | 'nudge' | 'resume_task' | string;
 }
 
 export interface AgentStatus {
@@ -66,6 +74,25 @@ export interface TaskCreateOptions {
   source?: string;
 }
 
+export interface AttachedTaskCreateOptions {
+  title?: string;
+  description?: string;
+  preset?: string;
+  phase_type?: string;
+  priority?: number;
+  node_id: string;
+  node_label?: string;
+  node_path?: string;
+  node_graph_kind?: string;
+  roadmap_node_id?: string;
+  project_id?: string;
+  project_lane?: string;
+  tags?: string[];
+  affected_node_ids?: string[];
+  architecture_docs?: string[];
+  closure_files?: string[];
+}
+
 export interface PresetConfig {
   description: string;
   provider: string;
@@ -76,8 +103,11 @@ export interface MCCProjectTab {
   project_id: string;
   display_name?: string;
   source_type: string;
+  execution_mode?: string;
   source_path: string;
   sandbox_path: string;
+  workspace_path?: string;
+  context_scope_path?: string;
   quota_gb?: number;
   created_at?: string;
   last_opened_at?: string;
@@ -109,6 +139,8 @@ const MYCO_HELPER_MODE_STORAGE_KEY = 'mcc_myco_helper_mode_v1';
 const MCC_SELECTED_KEY_STORAGE_KEY = 'mcc_selected_key';
 const MCC_FAVORITE_KEYS_STORAGE_KEY = 'mcc_favorite_keys';
 const MCC_TASK_FILTERS_STORAGE_KEY = 'mcc_task_filters';
+const MCC_WINDOW_SESSION_STORAGE_KEY = 'mcc_window_session_id_v1';
+export const MCC_PROJECT_REGISTRY_SYNC_KEY = 'mcc_project_registry_sync_v1';
 
 const DEFAULT_TASK_FILTERS: MCCTaskFilters = {
   status: 'all',
@@ -256,6 +288,41 @@ function saveTaskFilters(filters: MCCTaskFilters): void {
   }
 }
 
+function broadcastProjectRegistrySync(projectId: string, windowSessionId: string, reason: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      MCC_PROJECT_REGISTRY_SYNC_KEY,
+      JSON.stringify({
+        project_id: String(projectId || ''),
+        window_session_id: String(windowSessionId || ''),
+        reason: String(reason || 'refresh'),
+        ts: Date.now(),
+      }),
+    );
+  } catch {
+    // ignore storage sync errors
+  }
+}
+
+function createWindowSessionId(): string {
+  const randomPart = Math.random().toString(36).slice(2, 10);
+  return `mccwin_${Date.now().toString(36)}_${randomPart}`;
+}
+
+function loadWindowSessionId(): string {
+  if (typeof window === 'undefined') return 'mccwin_server';
+  try {
+    const existing = window.sessionStorage.getItem(MCC_WINDOW_SESSION_STORAGE_KEY);
+    if (existing) return existing;
+    const next = createWindowSessionId();
+    window.sessionStorage.setItem(MCC_WINDOW_SESSION_STORAGE_KEY, next);
+    return next;
+  } catch {
+    return createWindowSessionId();
+  }
+}
+
 // ── Store ──
 
 // MARKER_153.1C: Navigation level type for Matryoshka drill-down
@@ -384,8 +451,10 @@ interface MCCState {
   // MARKER_161.7.MULTIPROJECT.UI.ACTIVE_PROJECT_STATE.V1:
   // Current store is single-project; future tab-shell extends this into activeProjectId + projectTabs[].
   activeProjectId: string;
+  windowSessionId: string;
   projectTabs: MCCProjectTab[];
   projectTabsLoading: boolean;
+  projectTabsUpdatedAt: string;
 
   // MARKER_155.4: Camera position for zoom-based navigation
   cameraPosition: { x: number; y: number; zoom: number } | null;
@@ -400,6 +469,8 @@ interface MCCState {
   // Actions
   fetchTasks: () => Promise<void>;
   addTask: (title: string, preset: string, phaseType: string, tags: string[], selectedKey?: any, options?: TaskCreateOptions) => Promise<string | null>;
+  addAttachedTask: (options: AttachedTaskCreateOptions) => Promise<string | null>;
+  attachTaskToNode: (taskId: string, options: AttachedTaskCreateOptions) => Promise<boolean>;
   dispatchTask: (taskId: string, preset?: string, selectedKey?: any) => Promise<void>;
   dispatchNext: (selectedKey?: any) => Promise<void>;
   selectTask: (taskId: string | null) => void;
@@ -430,6 +501,7 @@ interface MCCState {
   initMCC: (projectIdOverride?: string) => Promise<void>;
   refreshProjectTabs: () => Promise<void>;
   activateProjectTab: (projectId: string) => Promise<boolean>;
+  announceProjectRegistryChanged: (projectId?: string, reason?: string) => void;
   drillDown: (level: NavLevel, context?: { roadmapNodeId?: string; taskId?: string }) => void;
   goBack: () => void;
   // MARKER_154.1B: Direct level jump (no history push — used by breadcrumb clicks)
@@ -454,6 +526,7 @@ const MAX_STREAM_EVENTS = 30;
 const INITIAL_SELECTED_KEY = loadSelectedKey();
 const INITIAL_FAVORITE_KEYS = loadFavoriteKeys();
 const INITIAL_TASK_FILTERS = loadTaskFilters();
+const INITIAL_WINDOW_SESSION_ID = loadWindowSessionId();
 
 if (INITIAL_SELECTED_KEY) {
   useStore.getState().setSelectedKey(INITIAL_SELECTED_KEY);
@@ -467,11 +540,16 @@ let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 const _persistState = (state: { level: NavLevel; roadmapNodeId: string; taskId: string; history: NavLevel[] }) => {
   if (_saveTimer) clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
-    const selectedKey = useMCCStore.getState().selectedKey;
+    const store = useMCCStore.getState();
+    const selectedKey = store.selectedKey;
+    const activeProjectId = String(store.activeProjectId || '');
+    if (!activeProjectId) return;
     fetch(`${API_BASE}/mcc/state`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        project_id: activeProjectId,
+        window_session_id: String(store.windowSessionId || ''),
         level: state.level,
         roadmap_node_id: state.roadmapNodeId,
         task_id: state.taskId,
@@ -507,8 +585,10 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   hasProject: false,
   projectConfig: null,
   activeProjectId: '',
+  windowSessionId: INITIAL_WINDOW_SESSION_ID,
   projectTabs: [],
   projectTabsLoading: false,
+  projectTabsUpdatedAt: '',
 
   // MARKER_155.4: Camera position initial state
   cameraPosition: null,
@@ -524,9 +604,11 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   fetchTasks: async () => {
     set({ tasksLoading: true });
     try {
+      const activeProjectId = String(get().activeProjectId || '');
+      const taskQs = activeProjectId ? `?project_id=${encodeURIComponent(activeProjectId)}` : '';
       const [tasksRes, agentsRes, hbRes] = await Promise.all([
-        fetch(`${API_DEBUG}/task-board`).catch(() => null),
-        fetch(`${API_DEBUG}/task-board/active-agents`).catch(() => null),
+        fetch(`${API_DEBUG}/task-board${taskQs}`).catch(() => null),
+        fetch(`${API_DEBUG}/task-board/active-agents${taskQs}`).catch(() => null),
         fetch(`${API_DEBUG}/heartbeat/settings`).catch(() => null),
       ]);
 
@@ -552,7 +634,11 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   // ── Add task ──
   addTask: async (title, preset, phaseType, tags, selectedKey, options) => {
     try {
-      const res = await fetch(`${API_DEBUG}/task-board/add`, {
+      const activeProjectId = String(get().activeProjectId || '');
+      const roadmapNodeId = String(get().navRoadmapNodeId || '');
+      const nodeId = String(options?.primary_node_id || roadmapNodeId || activeProjectId || '').trim();
+      const nodePath = String(options?.module || '').trim();
+      const res = await fetch(`${API_BASE}/mcc/tasks/create-attached`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -560,13 +646,13 @@ export const useMCCStore = create<MCCState>((set, get) => ({
           preset,
           phase_type: phaseType,
           tags,
-          module: options?.module,
-          primary_node_id: options?.primary_node_id,
-          affected_nodes: options?.affected_nodes,
-          workflow_id: options?.workflow_id,
-          team_profile: options?.team_profile,
-          task_origin: options?.task_origin,
-          source: options?.source,
+          node_id: nodeId,
+          node_label: title,
+          node_path: nodePath,
+          roadmap_node_id: roadmapNodeId,
+          project_id: activeProjectId,
+          project_lane: roadmapNodeId || activeProjectId || nodePath || nodeId,
+          affected_node_ids: options?.affected_nodes,
         }),
       });
       if (res.ok) {
@@ -578,6 +664,55 @@ export const useMCCStore = create<MCCState>((set, get) => ({
       console.error('[MCC] Add task failed:', err);
     }
     return null;
+  },
+
+  addAttachedTask: async (options) => {
+    try {
+      const activeProjectId = String(get().activeProjectId || '');
+      const roadmapNodeId = String(get().navRoadmapNodeId || '');
+      const res = await fetch(`${API_BASE}/mcc/tasks/create-attached`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: activeProjectId,
+          roadmap_node_id: roadmapNodeId || options.roadmap_node_id,
+          project_lane: options.project_lane || roadmapNodeId || activeProjectId,
+          ...options,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        get().fetchTasks();
+        return data.task_id || data.task?.id || null;
+      }
+    } catch (err) {
+      console.error('[MCC] Add attached task failed:', err);
+    }
+    return null;
+  },
+
+  attachTaskToNode: async (taskId, options) => {
+    try {
+      const activeProjectId = String(get().activeProjectId || '');
+      const roadmapNodeId = String(get().navRoadmapNodeId || '');
+      const res = await fetch(`${API_BASE}/mcc/tasks/${encodeURIComponent(taskId)}/attach-node`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project_id: activeProjectId,
+          roadmap_node_id: roadmapNodeId || options.roadmap_node_id,
+          project_lane: options.project_lane || roadmapNodeId || activeProjectId,
+          ...options,
+        }),
+      });
+      if (res.ok) {
+        await get().fetchTasks();
+        return true;
+      }
+    } catch (err) {
+      console.error('[MCC] Attach task to node failed:', err);
+    }
+    return false;
   },
 
   // ── Dispatch specific task ──
@@ -675,9 +810,8 @@ export const useMCCStore = create<MCCState>((set, get) => ({
           set(state => ({
             heartbeat: state.heartbeat ? {
               ...state.heartbeat,
-              enabled: data.enabled ?? updates.enabled ?? state.heartbeat.enabled,
-              interval: data.interval ?? updates.interval ?? state.heartbeat.interval,
-            } : null,
+              ...data,
+            } : data,
           }));
         }
       }
@@ -781,8 +915,8 @@ export const useMCCStore = create<MCCState>((set, get) => ({
     try {
       const projectId = String(projectIdOverride || '').trim();
       const initUrl = projectId
-        ? `${API_BASE}/mcc/init?project_id=${encodeURIComponent(projectId)}`
-        : `${API_BASE}/mcc/init`;
+        ? `${API_BASE}/mcc/init?project_id=${encodeURIComponent(projectId)}&window_session_id=${encodeURIComponent(get().windowSessionId)}`
+        : `${API_BASE}/mcc/init?window_session_id=${encodeURIComponent(get().windowSessionId)}`;
       const res = await fetch(initUrl);
       if (!res.ok) {
         // No backend → first_run
@@ -791,6 +925,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
           projectConfig: null,
           activeProjectId: '',
           projectTabs: [],
+          projectTabsUpdatedAt: '',
           navLevel: 'first_run',
           navHistory: [],
         });
@@ -798,7 +933,8 @@ export const useMCCStore = create<MCCState>((set, get) => ({
       }
       const data = await res.json();
       const tabs = Array.isArray(data.projects) ? data.projects : [];
-      const activeProjectId = String(data.active_project_id || '');
+      const activeProjectId = String(data.active_project_id || projectId || '');
+      const windowSessionId = String(data.window_session_id || get().windowSessionId || INITIAL_WINDOW_SESSION_ID);
 
       if (data.has_project && data.session_state) {
         const ss = data.session_state || {};
@@ -820,7 +956,9 @@ export const useMCCStore = create<MCCState>((set, get) => ({
           hasProject: true,
           projectConfig: data.project_config,
           activeProjectId: activeProjectId || String(data?.project_config?.project_id || ''),
+          windowSessionId,
           projectTabs: tabs,
+          projectTabsUpdatedAt: String(data.updated_at || ''),
           selectedKey: savedSelectedKey,
           navLevel: 'roadmap',
           navRoadmapNodeId: '',
@@ -833,7 +971,9 @@ export const useMCCStore = create<MCCState>((set, get) => ({
           hasProject: false,
           projectConfig: null,
           activeProjectId: activeProjectId,
+          windowSessionId,
           projectTabs: tabs,
+          projectTabsUpdatedAt: String(data.updated_at || ''),
           navLevel: 'first_run',
           navHistory: [],
         });
@@ -844,7 +984,9 @@ export const useMCCStore = create<MCCState>((set, get) => ({
         hasProject: false,
         projectConfig: null,
         activeProjectId: '',
+        windowSessionId: get().windowSessionId || INITIAL_WINDOW_SESSION_ID,
         projectTabs: [],
+        projectTabsUpdatedAt: '',
         navLevel: 'first_run',
         navHistory: [],
       });
@@ -859,9 +1001,12 @@ export const useMCCStore = create<MCCState>((set, get) => ({
       const data = await res.json();
       const tabs = Array.isArray(data?.projects) ? data.projects : [];
       const active = String(data?.active_project_id || '');
+      const current = String(get().activeProjectId || '');
+      const hasCurrent = !!current && tabs.some((tab: MCCProjectTab) => String(tab?.project_id || '') === current);
       set({
         projectTabs: tabs,
-        activeProjectId: active || get().activeProjectId,
+        projectTabsUpdatedAt: String(data?.updated_at || ''),
+        activeProjectId: hasCurrent ? current : (active || current),
       });
     } catch (err) {
       console.error('[MCC] refreshProjectTabs failed:', err);
@@ -880,12 +1025,23 @@ export const useMCCStore = create<MCCState>((set, get) => ({
         body: JSON.stringify({ project_id: pid }),
       });
       if (!res.ok) return false;
-      await get().initMCC();
+      set({ activeProjectId: pid });
+      await get().initMCC(pid);
+      get().announceProjectRegistryChanged(pid, 'activate');
       return true;
     } catch (err) {
       console.error('[MCC] activateProjectTab failed:', err);
       return false;
     }
+  },
+
+  announceProjectRegistryChanged: (projectId, reason = 'refresh') => {
+    const store = get();
+    broadcastProjectRegistrySync(
+      String(projectId || store.activeProjectId || ''),
+      String(store.windowSessionId || ''),
+      String(reason || 'refresh'),
+    );
   },
 
   // ── MARKER_153.1C: Drill down into next level ──

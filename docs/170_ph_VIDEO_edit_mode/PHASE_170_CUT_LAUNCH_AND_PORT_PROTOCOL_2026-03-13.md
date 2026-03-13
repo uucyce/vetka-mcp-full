@@ -18,6 +18,8 @@ Without a launch protocol:
 Human review lane:
 - reserved port: `3011`
 - purpose: manual CUT review only
+- script: `scripts/cut_dev_human.sh`
+- tauri config: `client/src-tauri/tauri.human.conf.json`
 
 ### MARKER_170.LAUNCH.OPUS_SANDBOX
 Claude Opus packaging sandbox:
@@ -64,7 +66,30 @@ scripts/cut_dev_opus.sh tauri-dev
 scripts/cut_dev_opus.sh tauri-build
 ```
 
+## Exact Human review entrypoints
+
+### Port check
+```bash
+scripts/cut_dev_human.sh check-port
+```
+
+### Browser-only CUT review on reserved port
+```bash
+scripts/cut_dev_human.sh web
+```
+
+### Tauri dev review lane
+```bash
+scripts/cut_dev_human.sh tauri-dev
+```
+
+### Tauri build using the CUT-only packaging gate
+```bash
+scripts/cut_dev_human.sh tauri-build
+```
+
 ## Fail-fast rule
 
 - if `3111` is already occupied, the Opus script must exit instead of choosing another port
+- if `3011` is already occupied, the human-review script must exit instead of choosing another port
 - no shared live browser lane should be reused for packaging smoke or Tauri dev

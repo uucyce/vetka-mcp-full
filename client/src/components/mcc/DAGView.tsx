@@ -640,8 +640,6 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           if (!parent) continue;
           const centerX = parent.position.x + Number(parent.width || 160) / 2;
           const parentTopY = parent.position.y;
-          const xGap = 62;
-          const yGap = 42;
           const byDepth = new Map<number, Node[]>();
           for (const n of group) {
             const d = Math.max(1, Number((n.data as any)?.rd_depth || 1));
@@ -650,17 +648,42 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
             byDepth.set(d, row);
           }
           const depthKeys = Array.from(byDepth.keys()).sort((a, b) => a - b);
+          let accumulatedYOffset = 0;
           for (const d of depthKeys) {
             const row = (byDepth.get(d) || []).sort((a, b) => a.id.localeCompare(b.id));
+            const rowDepthTotal = Math.max(1, Number((row[0]?.data as any)?.rd_depth_total || d));
+            const generationBand = rowDepthTotal <= 1 ? 1 : rowDepthTotal === 2 ? 2 : 3;
+            const rowScale = generationBand === 1
+              ? Math.max(0.48, 1 / Math.pow(1.6, Math.max(0, rowDepthTotal - 1)))
+              : generationBand === 2
+                ? Math.max(0.32, 1 / Math.pow(1.6, Math.max(0, rowDepthTotal - 1)))
+                : Math.max(0.18, 1 / Math.pow(1.6, Math.max(0, rowDepthTotal - 1)));
+            const baseYOffset = generationBand === 1
+              ? Math.max(28, Math.round(54 * rowScale))
+              : generationBand === 2
+                ? Math.max(18, Math.round(44 * rowScale))
+                : Math.max(10, Math.round(34 * rowScale));
+            const xGap = generationBand === 1
+              ? Math.max(22, Math.round(64 * rowScale))
+              : generationBand === 2
+                ? Math.max(14, Math.round(48 * rowScale))
+                : Math.max(8, Math.round(34 * rowScale));
+            const yGap = generationBand === 1
+              ? Math.max(18, Math.round(44 * rowScale))
+              : generationBand === 2
+                ? Math.max(12, Math.round(32 * rowScale))
+                : Math.max(8, Math.round(22 * rowScale));
             const rowWidth = Math.max(0, row.length - 1) * xGap;
             const rowStartX = centerX - rowWidth / 2;
-            const rowY = parentTopY - 54 - (d - 1) * yGap;
+            accumulatedYOffset += baseYOffset;
+            const rowY = parentTopY - accumulatedYOffset;
             row.forEach((n, idx) => {
               n.position = {
                 x: rowStartX + idx * xGap,
                 y: rowY,
               };
             });
+            accumulatedYOffset += yGap;
           }
         }
       }

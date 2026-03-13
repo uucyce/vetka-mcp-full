@@ -165,13 +165,23 @@ const TRACK_BUTTON: CSSProperties = {
 };
 
 const TRACK_SLIDER: CSSProperties = {
-  width: 40,
-  height: 3,
+  width: 44,
+  height: 16,
   appearance: 'none' as const,
   background: '#333',
   borderRadius: 2,
   outline: 'none',
   cursor: 'pointer',
+  transform: 'rotate(-90deg)',
+  transformOrigin: 'center',
+};
+
+const TRACK_SLIDER_WRAP: CSSProperties = {
+  width: 18,
+  height: 52,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
 };
 
 type ClipDragMode = 'move' | 'trim_left' | 'trim_right';
@@ -274,12 +284,13 @@ function collectSnapCandidates(args: {
   markOutSec?: number | null;
   markerTimes?: number[];
 }): number[] {
-  const lane = args.lanes.find((entry) => entry.lane_id === args.laneId);
   const candidates: number[] = [];
 
-  for (const clip of lane?.clips || []) {
-    if (clip.clip_id === args.clipId) continue;
-    candidates.push(clip.start_sec, clip.start_sec + clip.duration_sec);
+  for (const lane of args.lanes) {
+    for (const clip of lane.clips || []) {
+      if (clip.clip_id === args.clipId) continue;
+      candidates.push(clip.start_sec, clip.start_sec + clip.duration_sec);
+    }
   }
 
   if (args.playheadSec != null) candidates.push(args.playheadSec);
@@ -507,6 +518,7 @@ export default function TimelineTrackView() {
     markOutRef.current = markOut;
   }, [markOut]);
   useEffect(() => {
+    // MARKER_173.18.NLE.BEAT_SNAP: music_sync markers enter the generic snap target pool as beat cues.
     markerTimesRef.current = markers.map((marker) => marker.start_sec);
   }, [markers]);
   useEffect(() => {
@@ -908,7 +920,7 @@ export default function TimelineTrackView() {
         setDragState((current) => {
           if (!current) return current;
           const rawStartSec = roundTimeline(Math.max(0, pointerTime - current.grabOffsetSec));
-          if (!snapEnabledRef.current) {
+          if (!snapEnabledRef.current || event.altKey) {
             setSnapIndicator(null);
             return {
               ...current,
@@ -945,7 +957,7 @@ export default function TimelineTrackView() {
         if (current.mode === 'trim_left') {
           const clipEnd = current.originalStartSec + current.originalDurationSec;
           const nextStart = clamp(pointerTime, 0, clipEnd - MIN_CLIP_DURATION_SEC);
-          if (!snapEnabledRef.current) {
+          if (!snapEnabledRef.current || event.altKey) {
             setSnapIndicator(null);
             return {
               ...current,
@@ -973,7 +985,7 @@ export default function TimelineTrackView() {
           };
         }
         const nextEnd = Math.max(current.originalStartSec + MIN_CLIP_DURATION_SEC, pointerTime);
-        if (!snapEnabledRef.current) {
+        if (!snapEnabledRef.current || event.altKey) {
           setSnapIndicator(null);
           return {
             ...current,
@@ -1223,21 +1235,27 @@ export default function TimelineTrackView() {
                     M
                   </button>
                 </div>
-                {/* MARKER_170.NLE.TRACK_VOLUME: compact per-lane volume control for timeline headers. */}
-                <input
-                  type="range"
-                  min={0}
-                  max={150}
-                  step={1}
-                  value={Math.round((laneVolumes[lane.lane_id] ?? 1) * 100)}
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onChange={(event) => {
-                    event.stopPropagation();
-                    setLaneVolume(lane.lane_id, Number(event.target.value) / 100);
-                  }}
-                  style={TRACK_SLIDER}
-                  title={`Lane volume ${Math.round((laneVolumes[lane.lane_id] ?? 1) * 100)}%`}
-                />
+                {/* MARKER_173.16.NLE.TRACK_VOLUME: vertical per-lane volume control with double-click reset. */}
+                <div style={TRACK_SLIDER_WRAP} title="Double-click reset lane volume to 100%">
+                  <input
+                    type="range"
+                    min={0}
+                    max={150}
+                    step={1}
+                    value={Math.round((laneVolumes[lane.lane_id] ?? 1) * 100)}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onDoubleClick={(event) => {
+                      event.stopPropagation();
+                      setLaneVolume(lane.lane_id, 1);
+                    }}
+                    onChange={(event) => {
+                      event.stopPropagation();
+                      setLaneVolume(lane.lane_id, Number(event.target.value) / 100);
+                    }}
+                    style={TRACK_SLIDER}
+                    title={`Lane volume ${Math.round((laneVolumes[lane.lane_id] ?? 1) * 100)}%`}
+                  />
+                </div>
               </div>
 
               <div

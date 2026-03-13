@@ -117,19 +117,24 @@ def test_cut_project_state_returns_project_bootstrap_timeline_and_graph(tmp_path
     assert payload["transcript_bundle"] is None
     assert payload["thumbnail_bundle"] is None
     assert payload["audio_sync_result"] is None
+    assert payload["music_sync_result"] is None
+    assert payload["music_cue_summary"] is None
     assert payload["slice_bundle"] is None
     assert payload["timecode_sync_result"] is None
     assert payload["sync_surface"]["schema_version"] == "cut_sync_surface_v1"
     assert payload["sync_surface"]["items"] == []
     assert payload["time_marker_bundle"] is None
+    assert payload["montage_state"] is None
     assert payload["waveform_ready"] is False
     assert payload["transcript_ready"] is False
     assert payload["thumbnail_ready"] is False
     assert payload["audio_sync_ready"] is False
+    assert payload["music_cues_ready"] is False
     assert payload["slice_ready"] is False
     assert payload["timecode_sync_ready"] is False
     assert payload["sync_surface_ready"] is False
     assert payload["time_markers_ready"] is False
+    assert payload["montage_ready"] is False
     assert len(payload["recent_jobs"]) == 1
     assert payload["recent_jobs"][0]["job_id"] == job_id
     assert payload["recent_jobs"][0]["job_type"] == "scene_assembly"
@@ -250,18 +255,22 @@ def test_cut_project_state_returns_worker_bundles_when_ready(tmp_path: Path, mon
     assert payload["transcript_bundle"]["schema_version"] == "cut_transcript_bundle_v1"
     assert payload["thumbnail_bundle"]["schema_version"] == "cut_thumbnail_bundle_v1"
     assert payload["audio_sync_result"]["schema_version"] == "cut_audio_sync_result_v1"
+    assert payload["music_sync_result"] is None
     assert payload["slice_bundle"]["schema_version"] == "cut_slice_bundle_v1"
     assert payload["timecode_sync_result"]["schema_version"] == "cut_timecode_sync_result_v1"
     assert payload["sync_surface"]["schema_version"] == "cut_sync_surface_v1"
     assert payload["time_marker_bundle"]["schema_version"] == "cut_time_marker_bundle_v1"
+    assert payload["montage_state"] is None
     assert payload["waveform_ready"] is True
     assert payload["transcript_ready"] is True
     assert payload["thumbnail_ready"] is True
     assert payload["audio_sync_ready"] is True
+    assert payload["music_cues_ready"] is False
     assert payload["slice_ready"] is True
     assert payload["timecode_sync_ready"] is True
     assert payload["sync_surface_ready"] is True
     assert payload["time_markers_ready"] is True
+    assert payload["montage_ready"] is False
     assert len(payload["waveform_bundle"]["items"]) == 2
     assert len(payload["transcript_bundle"]["items"]) == 2
     assert len(payload["thumbnail_bundle"]["items"]) == 2
@@ -333,3 +342,293 @@ def test_cut_project_state_surfaces_berlin_fixture_profile_metadata(tmp_path: Pa
     assert profile["sandbox_hint"] == "codex54_cut_fixture_sandbox"
     assert profile["reserved_port"] == 3211
     assert profile["music_track"]["relative_path"] == "250623_vanpticdanyana_berlin_Punch.m4a"
+
+
+def test_cut_project_state_surfaces_music_cue_summary(tmp_path: Path):
+    source_dir = tmp_path / "berlin"
+    source_dir.mkdir()
+    punch = source_dir / "250623_vanpticdanyana_berlin_Punch.m4a"
+    punch.write_bytes(b"00")
+
+    sandbox_root = tmp_path / "sandbox"
+    _bootstrap_sandbox(sandbox_root)
+    client = _make_client()
+
+    bootstrap = client.post(
+        "/api/cut/bootstrap",
+        json={
+            "source_path": str(source_dir),
+            "sandbox_root": str(sandbox_root),
+            "project_name": "Berlin Cue Demo",
+            "bootstrap_profile": "berlin_fixture_v1",
+        },
+    )
+    project_id = bootstrap.json()["project"]["project_id"]
+
+    store = cut_module.CutProjectStore(str(sandbox_root))
+    store.save_music_sync_result(
+        {
+            "schema_version": "cut_music_sync_result_v1",
+            "project_id": project_id,
+            "revision": 1,
+            "music_path": str(punch),
+            "tempo": {
+                "bpm": 124.0,
+                "confidence": 0.89,
+            },
+            "downbeats": [0.0, 1.94, 3.88, 5.82],
+            "phrases": [
+                {
+                    "phrase_id": "phrase_intro",
+                    "start_sec": 0.0,
+                    "end_sec": 15.52,
+                    "label": "Intro",
+                    "energy": 0.61,
+                }
+            ],
+            "cue_points": [
+                {
+                    "cue_id": "cue_drop_01",
+                    "start_sec": 5.82,
+                    "end_sec": 6.18,
+                    "label": "Drop lead",
+                    "cue_type": "drop",
+                    "confidence": 0.94,
+                    "energy": 0.88,
+                },
+                {
+                    "cue_id": "cue_phrase_02",
+                    "start_sec": 15.52,
+                    "end_sec": 15.9,
+                    "label": "Phrase turn",
+                    "cue_type": "phrase_turn",
+                    "confidence": 0.91,
+                    "energy": 0.79,
+                },
+            ],
+            "derived_from": "music_sync_transient_v1",
+            "generated_at": "2026-03-13T00:00:00+00:00",
+        }
+    )
+
+    response = client.get(
+        "/api/cut/project-state",
+        params={"sandbox_root": str(sandbox_root), "project_id": project_id},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    summary = payload["music_cue_summary"]
+    assert payload["success"] is True
+    assert payload["music_sync_result"]["schema_version"] == "cut_music_sync_result_v1"
+    assert payload["music_cues_ready"] is True
+    assert summary["schema_version"] == "cut_music_cue_summary_v1"
+    assert summary["track_label"] == "250623_vanpticdanyana_berlin_Punch.m4a"
+    assert summary["cue_point_count"] == 2
+    assert summary["phrase_count"] == 1
+    assert summary["downbeat_count"] == 4
+    assert summary["tempo_bpm"] == 124.0
+    assert summary["top_cues"][0]["cue_id"] == "cue_drop_01"
+
+
+def test_cut_project_state_surfaces_rhythm_surface(tmp_path: Path):
+    source_dir = tmp_path / "berlin"
+    source_dir.mkdir()
+    punch = source_dir / "250623_vanpticdanyana_berlin_Punch.m4a"
+    punch.write_bytes(b"00")
+    (source_dir / "take_01.mov").write_bytes(b"00")
+
+    sandbox_root = tmp_path / "sandbox"
+    _bootstrap_sandbox(sandbox_root)
+    client = _make_client()
+
+    bootstrap = client.post(
+        "/api/cut/bootstrap",
+        json={
+            "source_path": str(source_dir),
+            "sandbox_root": str(sandbox_root),
+            "project_name": "Berlin Rhythm Demo",
+            "bootstrap_profile": "berlin_fixture_v1",
+        },
+    )
+    project_id = bootstrap.json()["project"]["project_id"]
+
+    store = cut_module.CutProjectStore(str(sandbox_root))
+    store.save_timeline_state(
+        {
+            "schema_version": "cut_timeline_state_v1",
+            "project_id": project_id,
+            "timeline_id": "main",
+            "revision": 2,
+            "fps": 25,
+            "lanes": [
+                {
+                    "lane_id": "video_main",
+                    "lane_type": "video_main",
+                    "clips": [
+                        {"clip_id": "clip_01", "start_sec": 0.0, "duration_sec": 1.1, "source_path": str(source_dir / "take_01.mov")},
+                        {"clip_id": "clip_02", "start_sec": 1.2, "duration_sec": 0.9, "source_path": str(source_dir / "take_01.mov")},
+                        {"clip_id": "clip_03", "start_sec": 2.3, "duration_sec": 1.0, "source_path": str(source_dir / "take_01.mov")},
+                        {"clip_id": "clip_04", "start_sec": 3.6, "duration_sec": 1.1, "source_path": str(source_dir / "take_01.mov")},
+                    ],
+                }
+            ],
+            "selection": {"clip_ids": [], "scene_ids": []},
+            "view": {"zoom": 1.0, "scroll_sec": 0.0, "active_lane_id": "video_main"},
+            "updated_at": "2026-03-13T00:00:00+00:00",
+        }
+    )
+    store.save_music_sync_result(
+        {
+            "schema_version": "cut_music_sync_result_v1",
+            "project_id": project_id,
+            "revision": 1,
+            "music_path": str(punch),
+            "tempo": {
+                "bpm": 124.0,
+                "confidence": 0.89,
+            },
+            "downbeats": [0.0, 1.94, 3.88, 5.82, 7.76, 9.7, 11.64, 13.58],
+            "phrases": [
+                {
+                    "phrase_id": "phrase_intro",
+                    "start_sec": 0.0,
+                    "end_sec": 7.76,
+                    "label": "Intro",
+                    "energy": 0.61,
+                }
+            ],
+            "cue_points": [
+                {
+                    "cue_id": "cue_drop_01",
+                    "start_sec": 5.82,
+                    "end_sec": 6.18,
+                    "label": "Drop lead",
+                    "cue_type": "drop",
+                    "confidence": 0.94,
+                    "energy": 0.88,
+                },
+                {
+                    "cue_id": "cue_phrase_02",
+                    "start_sec": 7.76,
+                    "end_sec": 8.12,
+                    "label": "Phrase turn",
+                    "cue_type": "phrase_turn",
+                    "confidence": 0.9,
+                    "energy": 0.77,
+                },
+            ],
+            "derived_from": "music_sync_transient_v1",
+            "generated_at": "2026-03-13T00:00:00+00:00",
+        }
+    )
+
+    response = client.get(
+        "/api/cut/project-state",
+        params={"sandbox_root": str(sandbox_root), "project_id": project_id},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    rhythm_surface = payload["rhythm_surface"]
+    assert payload["success"] is True
+    assert payload["rhythm_surface_ready"] is True
+    assert rhythm_surface["schema_version"] == "cut_rhythm_surface_v1"
+    assert rhythm_surface["music_path"] == str(punch)
+    assert rhythm_surface["music_tempo_bpm"] == 124.0
+    assert rhythm_surface["scene_target_bpm"] >= 72.0
+    assert rhythm_surface["source_engine"] == "pulse_scene_proxy_v1"
+    assert rhythm_surface["items"][0]["cue_type"] == "drop"
+    assert rhythm_surface["items"][0]["recommendation"] == "accent_cut"
+
+
+def test_cut_project_state_surfaces_montage_state(tmp_path: Path):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "clip_a.mp4").write_bytes(b"00")
+
+    sandbox_root = tmp_path / "sandbox"
+    _bootstrap_sandbox(sandbox_root)
+    client = _make_client()
+
+    bootstrap = client.post(
+        "/api/cut/bootstrap",
+        json={
+            "source_path": str(source_dir),
+            "sandbox_root": str(sandbox_root),
+            "project_name": "Montage State Demo",
+        },
+    )
+    project_id = bootstrap.json()["project"]["project_id"]
+
+    store = cut_module.CutProjectStore(str(sandbox_root))
+    store.save_montage_state(
+        {
+            "schema_version": "cut_montage_state_v1",
+            "project_id": project_id,
+            "revision": 2,
+            "source_bundle_revisions": {
+                "time_marker_bundle": 3,
+                "music_sync_result": 1,
+            },
+            "accepted_decisions": [
+                {
+                    "decision_id": "decision_accept_01",
+                    "source_family": "marker",
+                    "cue_provenance_ids": ["marker_demo_01"],
+                    "confidence": 0.91,
+                    "score": 0.94,
+                    "editorial_intent": "accent_cut",
+                    "status": "accepted",
+                    "timeline_id": "main",
+                    "lane_id": "V1",
+                    "anchor_sec": 1.5,
+                    "start_sec": 1.25,
+                    "end_sec": 2.1,
+                    "source_bundle_id": "time_marker_bundle",
+                    "source_bundle_revision": 3,
+                    "created_at": "2026-03-13T00:00:00+00:00",
+                    "updated_at": "2026-03-13T00:00:00+00:00",
+                    "author": "tester",
+                }
+            ],
+            "rejected_decisions": [
+                {
+                    "decision_id": "decision_reject_01",
+                    "source_family": "music",
+                    "cue_provenance_ids": ["cue_drop_01"],
+                    "confidence": 0.52,
+                    "score": 0.4,
+                    "editorial_intent": "phrase_hold",
+                    "status": "rejected",
+                    "timeline_id": "main",
+                    "lane_id": "V1",
+                    "anchor_sec": 3.84,
+                    "start_sec": 3.84,
+                    "end_sec": 4.32,
+                    "source_bundle_id": "music_sync_result",
+                    "source_bundle_revision": 1,
+                    "created_at": "2026-03-13T00:00:00+00:00",
+                    "updated_at": "2026-03-13T00:00:00+00:00",
+                    "author": "tester",
+                }
+            ],
+            "updated_at": "2026-03-13T00:00:00+00:00",
+            "updated_by": "tester",
+        }
+    )
+
+    response = client.get(
+        "/api/cut/project-state",
+        params={"sandbox_root": str(sandbox_root), "project_id": project_id},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    montage_state = payload["montage_state"]
+    assert payload["success"] is True
+    assert payload["montage_ready"] is True
+    assert montage_state["schema_version"] == "cut_montage_state_v1"
+    assert montage_state["revision"] == 2
+    assert montage_state["accepted_decisions"][0]["editorial_intent"] == "accent_cut"
+    assert montage_state["rejected_decisions"][0]["status"] == "rejected"

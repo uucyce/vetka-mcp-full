@@ -86,7 +86,9 @@ def _find_registry_path_conflict(candidate_path: str) -> tuple[bool, str]:
             pname = str(row.get("display_name") or pid or "project").strip()
             existing_sandbox = str(row.get("sandbox_path") or "").strip()
             existing_source = str(row.get("source_path") or "").strip()
-            for existing in (existing_sandbox, existing_source):
+            existing_workspace = str(row.get("workspace_path") or "").strip()
+            existing_scope = str(row.get("context_scope_path") or "").strip()
+            for existing in (existing_sandbox, existing_workspace, existing_scope, existing_source):
                 if not existing:
                     continue
                 if _paths_overlap_or_nested(candidate, existing):
@@ -130,13 +132,28 @@ def _load_active_project_config() -> Optional["ProjectConfig"]:
     return ProjectConfig.load()
 
 
-def _load_active_session_state(project_id: str) -> "SessionState":
-    # MARKER_161.7.MULTIPROJECT.API.ACTIVE_SESSION_RESOLVE.V1:
-    # Session state is stored per active project when registry is available.
+def _resolve_project_config(project_id: str = "") -> Optional["ProjectConfig"]:
+    requested = str(project_id or "").strip()
+    if requested:
+        try:
+            from src.services.mcc_project_registry import get_project
+
+            cfg = get_project(requested)
+            if cfg is not None:
+                return cfg
+        except Exception:
+            pass
+        return None
+    return _load_active_project_config()
+
+
+def _load_session_state(project_id: str, window_session_id: str = "") -> "SessionState":
+    # MARKER_181.MCC.PROJECT_ID.STATE.WINDOW_SCOPE.V1:
+    # Session state is stored per project and optionally per window session.
     try:
         from src.services.mcc_project_registry import load_session_for_project
 
-        return load_session_for_project(project_id)
+        return load_session_for_project(project_id, window_session_id=window_session_id)
     except Exception:
         return SessionState.load()
 
@@ -144,12 +161,9 @@ def _load_active_session_state(project_id: str) -> "SessionState":
 def _active_project_scope_root(config: Optional["ProjectConfig"]) -> str:
     if config is None:
         return ""
-    sandbox_scope = _norm_abs(str(config.sandbox_path or "").strip()) if str(config.sandbox_path or "").strip() else ""
-    source_scope = _norm_abs(str(config.source_path or "").strip()) if str(config.source_path or "").strip() else ""
-    if sandbox_scope and os.path.isdir(sandbox_scope):
-        return sandbox_scope
-    if source_scope and os.path.isdir(source_scope):
-        return source_scope
+    resolved_scope = str(config.resolved_context_scope_path() or "").strip()
+    if resolved_scope:
+        return _norm_abs(resolved_scope)
     return ""
 
 
@@ -428,6 +442,24 @@ def _resolve_task_workflow_binding(task: Dict[str, Any]) -> Dict[str, Any]:
 
 
 _LOCALGUYS_MODEL_MATRIX: Dict[str, Dict[str, Any]] = {
+    "qwen3.5:latest": {
+        "role_fit": ["coder", "architect", "researcher"],
+        "prompt_style": "coder_compact_v1",
+        "tool_budget_class": "medium",
+        "workflow_usage": [
+            "g3_localguys",
+            "ralph_localguys",
+            "quickfix_localguys",
+            "testonly_localguys",
+            "docs_localguys",
+            "research_localguys",
+            "dragons_localguys",
+            "refactor_localguys",
+            "bmad_localguys",
+            "patchchain_localguys",
+            "ownership_localguys",
+        ],
+    },
     "qwen3:8b": {
         "role_fit": ["coder", "architect", "researcher"],
         "prompt_style": "coder_compact_v1",
@@ -442,6 +474,8 @@ _LOCALGUYS_MODEL_MATRIX: Dict[str, Dict[str, Any]] = {
             "dragons_localguys",
             "refactor_localguys",
             "bmad_localguys",
+            "patchchain_localguys",
+            "ownership_localguys",
         ],
     },
     "qwen2.5:7b": {
@@ -458,6 +492,8 @@ _LOCALGUYS_MODEL_MATRIX: Dict[str, Dict[str, Any]] = {
             "dragons_localguys",
             "refactor_localguys",
             "bmad_localguys",
+            "patchchain_localguys",
+            "ownership_localguys",
         ],
     },
     "qwen2.5:3b": {
@@ -474,6 +510,8 @@ _LOCALGUYS_MODEL_MATRIX: Dict[str, Dict[str, Any]] = {
             "dragons_localguys",
             "refactor_localguys",
             "bmad_localguys",
+            "patchchain_localguys",
+            "ownership_localguys",
         ],
     },
     "deepseek-r1:8b": {
@@ -489,6 +527,8 @@ _LOCALGUYS_MODEL_MATRIX: Dict[str, Dict[str, Any]] = {
             "dragons_localguys",
             "refactor_localguys",
             "bmad_localguys",
+            "patchchain_localguys",
+            "ownership_localguys",
         ],
     },
     "phi4-mini:latest": {
@@ -505,6 +545,7 @@ _LOCALGUYS_MODEL_MATRIX: Dict[str, Dict[str, Any]] = {
             "dragons_localguys",
             "refactor_localguys",
             "bmad_localguys",
+            "patchchain_localguys",
         ],
     },
     "qwen2.5vl:3b": {
@@ -539,6 +580,7 @@ _LOCALGUYS_MODEL_MATRIX: Dict[str, Dict[str, Any]] = {
 }
 
 _LOCALGUYS_CATALOG_IDS = [
+    "qwen3.5:latest",
     "qwen3:8b",
     "qwen2.5:7b",
     "qwen2.5:3b",
@@ -593,6 +635,16 @@ _LOCALGUYS_OPERATOR_METHODS: Dict[str, Dict[str, str]] = {
         "method": "bmad",
         "source_family": "bmad_default",
         "command_template": "localguys run bmad --task {task_id}",
+    },
+    "patchchain_localguys": {
+        "method": "patchchain",
+        "source_family": "local_patch_chain",
+        "command_template": "localguys run patchchain --task {task_id}",
+    },
+    "ownership_localguys": {
+        "method": "ownership",
+        "source_family": "local_task_ownership",
+        "command_template": "localguys run ownership --task {task_id}",
     },
 }
 
@@ -662,6 +714,48 @@ async def _build_model_group(model_ids: List[str]) -> List[Dict[str, Any]]:
     return [await _build_local_model_descriptor(model_id) for model_id in model_ids]
 
 
+def _build_stage_tool_policy(
+    steps: List[str],
+    allowed_tools: List[str],
+) -> Dict[str, List[str]]:
+    allowed = list(dict.fromkeys(str(tool).strip() for tool in allowed_tools if str(tool).strip()))
+    default_map = {
+        "recon": ["context", "search", "artifacts", "stats"],
+        "research": ["context", "search", "artifacts", "stats"],
+        "plan": ["context", "tasks", "artifacts", "stats"],
+        "execute": allowed,
+        "verify": ["context", "tests", "artifacts", "git_diff", "stats"],
+        "review": ["context", "artifacts", "git_diff", "stats"],
+        "approve": ["context", "artifacts", "stats", "tasks"],
+        "finalize": ["artifacts", "stats", "git_diff"],
+    }
+    policy: Dict[str, List[str]] = {}
+    for step in steps:
+        step_key = str(step).strip()
+        candidates = default_map.get(step_key, allowed)
+        policy[step_key] = [tool for tool in candidates if tool in allowed]
+    return policy
+
+
+def _derive_verification_target(completion_policy: Dict[str, Any]) -> str:
+    if bool(completion_policy.get("requires_targeted_tests")):
+        return "targeted_tests"
+    if bool(completion_policy.get("requires_verifier_pass")):
+        return "verifier_review"
+    return "artifact_review"
+
+
+def _derive_max_turns(
+    steps: List[str],
+    tool_budget: Dict[str, Dict[str, int]],
+) -> int:
+    turn_count = 0
+    for step in steps:
+        budget = dict(tool_budget.get(step) or {})
+        turn_count += max(1, int(budget.get("max_retries") or 0) + 1)
+    return max(4, turn_count)
+
+
 async def _build_localguys_contract(
     *,
     workflow_family: str,
@@ -674,21 +768,46 @@ async def _build_localguys_contract(
     allowed_tools: Optional[List[str]] = None,
     allowed_files: Optional[List[str]] = None,
     failure_stop_on: Optional[List[str]] = None,
+    expected_sequence: Optional[List[str]] = None,
+    direct_allowed_tools: Optional[List[str]] = None,
+    reflex_policy: Optional[Dict[str, Any]] = None,
+    write_opt_ins: Optional[Dict[str, bool]] = None,
 ) -> Dict[str, Any]:
     operator_method = dict(_LOCALGUYS_OPERATOR_METHODS.get(workflow_family, {}))
+    effective_allowed_tools = allowed_tools or ["context", "tasks", "artifacts", "stats", "search", "tests", "git_diff"]
+    effective_write_opt_ins = {
+        "task_board": False,
+        "edit_file": True,
+        "playground_artifacts": True,
+        "main_tree_write": False,
+    }
+    if isinstance(write_opt_ins, dict):
+        effective_write_opt_ins.update({str(key): bool(value) for key, value in write_opt_ins.items()})
     return {
         "workflow_family": workflow_family,
         "version": "v1",
         "roles": roles,
         "steps": steps,
+        "execution_mode": "staged_state_machine",
         "model_policy": model_policy,
         "tool_budget": tool_budget,
-        "allowed_tools": allowed_tools or ["context", "tasks", "artifacts", "stats", "search", "tests", "git_diff"],
+        "allowed_tools": effective_allowed_tools,
+        "stage_tool_policy": _build_stage_tool_policy(steps, effective_allowed_tools),
         "allowed_files": allowed_files or [],
+        "expected_sequence": list(expected_sequence or []),
+        "direct_allowed_tools": list(direct_allowed_tools or []),
+        "reflex_policy": dict(reflex_policy or {}),
+        "write_opt_ins": effective_write_opt_ins,
         "artifact_contract": {
             "required": required_artifacts,
             "base_path": "artifacts/mcc_local/{task_id}/",
         },
+        "verification_target": _derive_verification_target(completion_policy),
+        "max_turns": _derive_max_turns(steps, tool_budget),
+        "idle_nudge_template": (
+            "Continue the current localguys step inside the playground. "
+            "If blocked, write the blocker into artifacts and stop instead of widening scope."
+        ),
         "failure_policy": {
             "stop_on": failure_stop_on or [
                 "budget_exhausted",
@@ -1105,6 +1224,113 @@ async def _resolve_refactor_localguys_contract() -> Dict[str, Any]:
     )
 
 
+async def _resolve_patchchain_localguys_contract() -> Dict[str, Any]:
+    return await _build_localguys_contract(
+        workflow_family="patchchain_localguys",
+        roles=["coder"],
+        steps=["recon", "execute", "verify", "finalize"],
+        model_policy={
+            "coder": {
+                "preferred_models": await _build_model_group(["qwen3.5:latest", "qwen3:8b"]),
+                "fallback_models": await _build_model_group(["qwen2.5:7b", "qwen2.5:3b"]),
+                "prompt_style": "coder_compact_v1",
+                "max_context_chars": 20000,
+            },
+        },
+        tool_budget={
+            "recon": {"max_tool_calls": 4, "max_retries": 1},
+            "execute": {"max_tool_calls": 5, "max_retries": 1},
+            "verify": {"max_tool_calls": 3, "max_retries": 1},
+            "finalize": {"max_tool_calls": 1, "max_retries": 1},
+        },
+        required_artifacts=[
+            "facts.json",
+            "patch.diff",
+            "test_output.txt",
+            "final_report.json",
+        ],
+        completion_policy={
+            "requires_verifier_pass": False,
+            "requires_required_artifacts": True,
+            "requires_targeted_tests": True,
+            "requires_final_report": True,
+            "requires_expected_sequence": True,
+        },
+        allowed_tools=["context", "artifacts", "tests", "git_diff"],
+        expected_sequence=["vetka_read_file", "vetka_edit_file", "vetka_run_tests"],
+        direct_allowed_tools=["vetka_read_file", "vetka_edit_file", "vetka_run_tests"],
+        reflex_policy={
+            "enabled": True,
+            "inject_system_hint": True,
+            "reorder_tools": True,
+            "normalize_native_tool_calls": True,
+            "rehydrate_tool_arguments": True,
+            "idle_nudge_loop": True,
+        },
+        failure_stop_on=[
+            "budget_exhausted",
+            "required_artifact_missing",
+            "required_test_failed",
+            "idle_stall",
+        ],
+    )
+
+
+async def _resolve_ownership_localguys_contract() -> Dict[str, Any]:
+    return await _build_localguys_contract(
+        workflow_family="ownership_localguys",
+        roles=["operator"],
+        steps=["recon", "execute", "verify", "finalize"],
+        model_policy={
+            "operator": {
+                "preferred_models": await _build_model_group(["qwen3.5:latest", "phi4-mini:latest"]),
+                "fallback_models": await _build_model_group(["qwen2.5:7b"]),
+                "prompt_style": "router_tiny_v1",
+                "max_context_chars": 12000,
+            },
+        },
+        tool_budget={
+            "recon": {"max_tool_calls": 3, "max_retries": 1},
+            "execute": {"max_tool_calls": 3, "max_retries": 1},
+            "verify": {"max_tool_calls": 2, "max_retries": 1},
+            "finalize": {"max_tool_calls": 1, "max_retries": 1},
+        },
+        required_artifacts=[
+            "facts.json",
+            "final_report.json",
+        ],
+        completion_policy={
+            "requires_verifier_pass": False,
+            "requires_required_artifacts": True,
+            "requires_targeted_tests": False,
+            "requires_final_report": True,
+            "requires_task_claim": True,
+        },
+        allowed_tools=["context", "tasks", "stats"],
+        expected_sequence=["mycelium_task_board"],
+        direct_allowed_tools=["mycelium_task_board"],
+        reflex_policy={
+            "enabled": True,
+            "inject_system_hint": True,
+            "reorder_tools": True,
+            "normalize_native_tool_calls": True,
+            "rehydrate_tool_arguments": True,
+            "allow_task_board_writes": True,
+        },
+        write_opt_ins={
+            "task_board": True,
+            "edit_file": False,
+            "playground_artifacts": False,
+            "main_tree_write": False,
+        },
+        failure_stop_on=[
+            "budget_exhausted",
+            "task_board_write_denied",
+            "required_artifact_missing",
+        ],
+    )
+
+
 async def _resolve_bmad_localguys_contract() -> Dict[str, Any]:
     return await _build_localguys_contract(
         workflow_family="bmad_localguys",
@@ -1195,16 +1421,141 @@ async def _resolve_workflow_contract(workflow_family: str) -> Dict[str, Any] | N
         return await _resolve_dragons_localguys_contract()
     if family == "refactor_localguys":
         return await _resolve_refactor_localguys_contract()
+    if family == "patchchain_localguys":
+        return await _resolve_patchchain_localguys_contract()
+    if family == "ownership_localguys":
+        return await _resolve_ownership_localguys_contract()
     if family == "bmad_localguys":
         return await _resolve_bmad_localguys_contract()
     return None
 
 
-def _save_active_session_state(project_id: str, state: "SessionState") -> bool:
+def _normalize_str_list(value: Any) -> List[str]:
+    return [str(item).strip() for item in list(value or []) if str(item).strip()]
+
+
+def _merge_unique_lists(*rows: Any) -> List[str]:
+    merged: List[str] = []
+    for row in rows:
+        for item in _normalize_str_list(row):
+            if item not in merged:
+                merged.append(item)
+    return merged
+
+
+def _get_roadmap_node_snapshot(node_id: str) -> Dict[str, Any]:
+    from src.services.roadmap_generator import RoadmapDAG
+
+    target = str(node_id or "").strip()
+    if not target:
+        return {}
+    dag = RoadmapDAG.load()
+    if dag is None:
+        return {}
+    for node in list(dag.nodes or []):
+        if isinstance(node, dict) and str(node.get("id") or "").strip() == target:
+            return {
+                **node,
+                "_roadmap_project_id": str(getattr(dag, "project_id", "") or ""),
+            }
+    return {}
+
+
+def _derive_attached_task_payload(body: Dict[str, Any], *, existing_task: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    requested_project_id = str(body.get("project_id") or "").strip()
+    active_config = _resolve_project_config(requested_project_id)
+    active_project_id = str(getattr(active_config, "project_id", "") or "").strip()
+    node_id = str(body.get("node_id") or body.get("roadmap_node_id") or active_project_id or "").strip()
+    node_label = str(body.get("node_label") or node_id or "Attached task").strip()
+    node_path = str(body.get("node_path") or "").strip()
+    graph_kind = str(body.get("node_graph_kind") or "").strip().lower()
+    roadmap_node_id = str(body.get("roadmap_node_id") or node_id).strip()
+    roadmap_node = _get_roadmap_node_snapshot(roadmap_node_id)
+
+    roadmap_id = str(roadmap_node.get("_roadmap_project_id") or "").strip()
+    roadmap_lane = str(roadmap_node.get("layer") or "").strip()
+    roadmap_title = str(roadmap_node.get("label") or node_label).strip()
+    lane = str(
+        body.get("project_lane")
+        or roadmap_node_id
+        or body.get("project_id")
+        or node_path
+        or node_id
+    ).strip()
+    docs = _merge_unique_lists(body.get("architecture_docs"), roadmap_node.get("docs"))
+    closure_files = _merge_unique_lists(
+        body.get("closure_files"),
+        [node_path] if node_path else [],
+        roadmap_node.get("file_patterns"),
+        roadmap_node.get("files"),
+    )
+    affected_nodes = _merge_unique_lists(body.get("affected_node_ids"), [node_id] if node_id else [])
+    tags = _merge_unique_lists(body.get("tags"), ["anchored_task"], [f"roadmap:{roadmap_node_id}"] if roadmap_node_id else [])
+
+    explicit_phase = str(body.get("phase_type") or "").strip().lower()
+    if explicit_phase:
+        phase_type = explicit_phase
+    elif roadmap_lane == "docs":
+        phase_type = "research"
+    elif roadmap_lane == "test":
+        phase_type = "test"
+    elif graph_kind in {"project_file", "project_task"}:
+        phase_type = "fix"
+    else:
+        phase_type = "build"
+
+    title = str(body.get("title") or "").strip() or f"Attached: {roadmap_title or node_label}"[:100]
+    description = str(body.get("description") or "").strip() or f"Attached to {roadmap_title or node_label}"
+    preset = str(body.get("preset") or "").strip()
+    if not preset and isinstance(existing_task, dict):
+        preset = str(existing_task.get("preset") or "").strip()
+    if not preset:
+        preset = "dragon_silver"
+    project_id = str(
+        body.get("project_id")
+        or (existing_task or {}).get("project_id")
+        or active_project_id
+        or roadmap_id
+        or lane
+    ).strip()
+
+    payload = {
+        "title": title,
+        "description": description,
+        "priority": int(body.get("priority", existing_task.get("priority", 3) if isinstance(existing_task, dict) else 3) or 3),
+        "phase_type": phase_type,
+        "preset": preset,
+        "tags": tags,
+        "module": node_path or roadmap_node_id or node_id,
+        "primary_node_id": node_id,
+        "affected_nodes": affected_nodes,
+        "workflow_id": str(body.get("workflow_id") or f"wf_attach_{int(time.time() * 1000)}").strip(),
+        "team_profile": preset,
+        "task_origin": str(body.get("task_origin") or "mcc_attached").strip() or "mcc_attached",
+        "source": str(body.get("source") or "mcc_attached").strip() or "mcc_attached",
+        "workflow_selection_origin": str(body.get("workflow_selection_origin") or "mcc_attached").strip() or "mcc_attached",
+        "project_id": project_id,
+        "project_lane": lane or project_id,
+        "roadmap_id": roadmap_id,
+        "roadmap_node_id": roadmap_node_id,
+        "roadmap_lane": roadmap_lane,
+        "roadmap_title": roadmap_title,
+        "architecture_docs": docs,
+        "closure_files": closure_files,
+    }
+    if isinstance(existing_task, dict):
+        payload["architecture_docs"] = _merge_unique_lists(existing_task.get("architecture_docs"), docs)
+        payload["closure_files"] = _merge_unique_lists(existing_task.get("closure_files"), closure_files)
+        payload["affected_nodes"] = _merge_unique_lists(existing_task.get("affected_nodes"), affected_nodes)
+        payload["tags"] = _merge_unique_lists(existing_task.get("tags"), tags)
+    return payload
+
+
+def _save_session_state(project_id: str, state: "SessionState", window_session_id: str = "") -> bool:
     try:
         from src.services.mcc_project_registry import save_session_for_project
 
-        return bool(save_session_for_project(project_id, state))
+        return bool(save_session_for_project(project_id, state, window_session_id=window_session_id))
     except Exception:
         return bool(state.save())
 
@@ -1218,11 +1569,14 @@ class InitResponse(BaseModel):
     project_config: Optional[dict] = None
     session_state: Optional[dict] = None
     active_project_id: str = ""
+    window_session_id: str = ""
+    updated_at: str = ""
     projects: List[Dict[str, Any]] = []
 
 class ProjectInitRequest(BaseModel):
     source_type: str       # "local" | "git" | "empty"
     source_path: str       # absolute path or git URL
+    execution_mode: str = "playground"
     sandbox_path: str = "" # optional absolute path for playground/sandbox root
     # MARKER_161.9.MULTIPROJECT.NAMING.API_CONTRACT.V1
     project_name: str = "" # optional user-facing project name (tab + display)
@@ -1233,6 +1587,7 @@ class ProjectInitResponse(BaseModel):
     project_id: str = ""
     # MARKER_161.9.MULTIPROJECT.NAMING.API_CONTRACT.V1
     project_name: str = ""
+    execution_mode: str = ""
     sandbox_path: str = ""
     errors: list[str] = []
 
@@ -1244,6 +1599,8 @@ class StateRequest(BaseModel):
     level: str = "roadmap"
     roadmap_node_id: str = ""
     task_id: str = ""
+    project_id: str = ""
+    window_session_id: str = ""
     selected_key: Optional[Dict[str, Any]] = None
     history: list[str] = []
 
@@ -1256,6 +1613,13 @@ class MCCTaskUpdateRequest(BaseModel):
     priority: Optional[int] = None
     tags: Optional[List[str]] = None
     workflow_family: Optional[str] = None  # MARKER_175B: User-selected workflow template
+    project_id: Optional[str] = None
+    project_lane: Optional[str] = None
+    architecture_docs: Optional[List[str]] = None
+    recon_docs: Optional[List[str]] = None
+    closure_tests: Optional[List[str]] = None
+    closure_files: Optional[List[str]] = None
+    require_closure_proof: Optional[bool] = None
 
 
 class MCCTaskFeedbackRequest(BaseModel):
@@ -1263,12 +1627,34 @@ class MCCTaskFeedbackRequest(BaseModel):
     action: str = "redo"
 
 
+class MCCAttachedTaskRequest(BaseModel):
+    title: str = ""
+    description: str = ""
+    preset: str = "dragon_silver"
+    phase_type: str = ""
+    priority: int = 3
+    node_id: str = ""
+    node_label: str = ""
+    node_path: str = ""
+    node_graph_kind: str = ""
+    roadmap_node_id: str = ""
+    project_id: str = ""
+    project_lane: str = ""
+    tags: List[str] = []
+    affected_node_ids: List[str] = []
+    architecture_docs: List[str] = []
+    closure_files: List[str] = []
+
+
 # ──────────────────────────────────────────────────────────────
 # GET /api/mcc/init — Load project config + session state
 # ──────────────────────────────────────────────────────────────
 
 @router.get("/init", response_model=InitResponse)
-async def mcc_init(project_id: str = Query("", description="Optional project_id to activate before init")):
+async def mcc_init(
+    project_id: str = Query("", description="Optional project_id to resolve for this window"),
+    window_session_id: str = Query("", description="Optional per-window MCC session id"),
+):
     """
     Called on frontend mount. Returns:
     - has_project: bool — whether a project is configured
@@ -1278,39 +1664,35 @@ async def mcc_init(project_id: str = Query("", description="Optional project_id 
     MARKER_161.7.MULTIPROJECT.API.INIT_ACTIVE_PROJECT.V1:
     Migration point for active project tab context in MCC.
     """
+    requested_project_id = str(project_id or "").strip()
+    requested_window_session_id = str(window_session_id or "").strip()
     try:
-        from src.services.mcc_project_registry import (
-            activate_project,
-            ensure_registry_bootstrap,
-            list_projects,
-        )
+        from src.services.mcc_project_registry import ensure_registry_bootstrap, list_projects
 
         ensure_registry_bootstrap()
-        if str(project_id or "").strip():
-            try:
-                activate_project(str(project_id).strip())
-            except Exception:
-                # Ignore invalid activation in init path; fallback below.
-                pass
         listing = list_projects()
     except Exception:
         listing = {"active_project_id": "", "projects": []}
 
-    config = _load_active_project_config()
+    config = _resolve_project_config(requested_project_id)
     if config is None:
         return InitResponse(
             has_project=False,
-            active_project_id=str(listing.get("active_project_id", "")),
+            active_project_id=requested_project_id or str(listing.get("active_project_id", "")),
+            window_session_id=requested_window_session_id,
+            updated_at=str(listing.get("updated_at", "")),
             projects=list(listing.get("projects") or []),
         )
 
-    state = _load_active_session_state(config.project_id)
+    state = _load_session_state(config.project_id, requested_window_session_id)
     from dataclasses import asdict
     return InitResponse(
         has_project=True,
         project_config=asdict(config),
         session_state=asdict(state),
-        active_project_id=str(listing.get("active_project_id", "") or config.project_id),
+        active_project_id=str(config.project_id),
+        window_session_id=requested_window_session_id,
+        updated_at=str(listing.get("updated_at", "")),
         projects=list(listing.get("projects") or []),
     )
 
@@ -1325,10 +1707,8 @@ async def save_state(req: StateRequest):
     Called on every navigation change. Persists current level + selection.
     Survives server restart.
     """
-    config = _load_active_project_config()
-    if config is None:
-        raise HTTPException(status_code=404, detail="No project configured")
-
+    project_id = str(req.project_id or "").strip()
+    config = _resolve_project_config(project_id)
     state = SessionState(
         level=req.level,
         roadmap_node_id=req.roadmap_node_id,
@@ -1336,7 +1716,12 @@ async def save_state(req: StateRequest):
         selected_key=req.selected_key,
         history=req.history,
     )
-    if not _save_active_session_state(config.project_id, state):
+    if config is None:
+        if not state.save():
+            raise HTTPException(status_code=500, detail="Failed to save session state")
+        return {"ok": True}
+
+    if not _save_session_state(config.project_id, state, str(req.window_session_id or "").strip()):
         raise HTTPException(status_code=500, detail="Failed to save session state")
     return {"ok": True}
 
@@ -1346,13 +1731,16 @@ async def save_state(req: StateRequest):
 # ──────────────────────────────────────────────────────────────
 
 @router.get("/state")
-async def get_state():
+async def get_state(
+    project_id: str = Query("", description="Optional explicit project_id for state resolution"),
+    window_session_id: str = Query("", description="Optional per-window MCC session id"),
+):
     """Get current session state for Zustand hydration."""
-    config = _load_active_project_config()
+    config = _resolve_project_config(project_id)
     if config is None:
-        state = SessionState()
+        state = SessionState.load()
     else:
-        state = _load_active_session_state(config.project_id)
+        state = _load_session_state(config.project_id, str(window_session_id or "").strip())
     from dataclasses import asdict
     return asdict(state)
 
@@ -1380,6 +1768,7 @@ async def project_init(req: ProjectInitRequest):
     # Support "skip source" flow by creating an empty temporary source folder.
     req_source_type = str(req.source_type or "").strip().lower()
     req_source_path = str(req.source_path or "").strip()
+    req_execution_mode = str(req.execution_mode or "playground").strip().lower() or "playground"
     effective_source_type = req_source_type
     effective_source_path = req_source_path
 
@@ -1398,6 +1787,7 @@ async def project_init(req: ProjectInitRequest):
         source_type=effective_source_type,
         source_path=effective_source_path,
         quota_gb=req.quota_gb,
+        execution_mode=req_execution_mode,
         sandbox_path=str(req.sandbox_path or ""),
         project_name=str(req.project_name or ""),
     )
@@ -1405,18 +1795,21 @@ async def project_init(req: ProjectInitRequest):
     # Validate
     errors = config.validate()
 
+    if req_execution_mode not in {"playground", "oauth_agent", "local_workspace"}:
+        errors.append(f"Invalid execution_mode: {req_execution_mode}")
+
     # Validate source exists
     if effective_source_type == "local":
         if not os.path.exists(effective_source_path):
             errors.append(f"Source path not found: {effective_source_path}")
         elif not os.path.isdir(effective_source_path):
             errors.append(f"Source path is not a directory: {effective_source_path}")
-        elif _paths_overlap_or_nested(effective_source_path, config.sandbox_path):
+        elif config.execution_mode == "playground" and _paths_overlap_or_nested(effective_source_path, config.sandbox_path):
             errors.append(
                 "sandbox_path must be isolated from source_path (no equal/nested paths)"
             )
     has_conflict, conflict_reason = _find_registry_path_conflict(config.sandbox_path)
-    if has_conflict:
+    if config.sandbox_path and has_conflict:
         errors.append(
             f"sandbox_path must be isolated from existing projects ({conflict_reason})"
         )
@@ -1426,10 +1819,12 @@ async def project_init(req: ProjectInitRequest):
 
     # Create sandbox directory
     skipped_copy_sources: list[str] = []
+    materialize_playground = str(config.execution_mode or "playground") == "playground"
     try:
-        os.makedirs(config.sandbox_path, exist_ok=True)
+        if materialize_playground:
+            os.makedirs(config.sandbox_path, exist_ok=True)
 
-        if effective_source_type == "local":
+        if materialize_playground and effective_source_type == "local":
             # Copy project to sandbox
             # shutil.copytree needs dst to not exist, so remove first
             if os.path.exists(config.sandbox_path):
@@ -1455,7 +1850,7 @@ async def project_init(req: ProjectInitRequest):
                 ignore_dangling_symlinks=True,
                 symlinks=True,
             )
-        elif effective_source_type == "git":
+        elif materialize_playground and effective_source_type == "git":
             # Git clone — shallow
             import subprocess
             result = subprocess.run(
@@ -1510,7 +1905,7 @@ async def project_init(req: ProjectInitRequest):
         pass
 
     # Initialize default session state
-    _save_active_session_state(config.project_id, SessionState())
+    _save_session_state(config.project_id, SessionState())
 
     if skipped_copy_sources:
         try:
@@ -1525,6 +1920,7 @@ async def project_init(req: ProjectInitRequest):
         success=True,
         project_id=config.project_id,
         project_name=str(config.display_name or ""),
+        execution_mode=str(config.execution_mode or "playground"),
         sandbox_path=config.sandbox_path,
     )
 
@@ -1564,7 +1960,7 @@ async def activate_project(req: ProjectActivateRequest):
 # ──────────────────────────────────────────────────────────────
 
 @router.delete("/project")
-async def delete_project():
+async def delete_project(project_id: str = Query("", description="Optional explicit project_id")):
     """
     Delete project config. Does NOT delete sandbox (use DELETE /api/mcc/sandbox).
     Allows reconfiguring with a new project.
@@ -1572,7 +1968,7 @@ async def delete_project():
     from src.services.project_config import CONFIG_PATH, SESSION_STATE_PATH
 
     deleted = []
-    config = _load_active_project_config()
+    config = _resolve_project_config(project_id)
 
     if config is not None:
         try:
@@ -1607,12 +2003,12 @@ class SandboxStatusResponse(BaseModel):
 
 
 @router.get("/sandbox/status", response_model=SandboxStatusResponse)
-async def sandbox_status():
+async def sandbox_status(project_id: str = Query("", description="Optional explicit project_id")):
     """
     Get sandbox disk usage and quota status.
     Used by SandboxDropdown to show [Sandbox ✓ 2.1/10GB] or [No Sandbox].
     """
-    config = _load_active_project_config()
+    config = _resolve_project_config(project_id)
     if config is None:
         return SandboxStatusResponse(exists=False)
     status = await _get_sandbox_status_cached(config)
@@ -1621,6 +2017,7 @@ async def sandbox_status():
 
 class SandboxRecreateRequest(BaseModel):
     force: bool = False  # Force recreate even if exists
+    project_id: str = ""
 
 
 @router.post("/sandbox/recreate")
@@ -1629,7 +2026,7 @@ async def sandbox_recreate(req: SandboxRecreateRequest):
     Delete and recreate sandbox from source.
     Used when sandbox gets corrupted or user wants a fresh copy.
     """
-    config = _load_active_project_config()
+    config = _resolve_project_config(req.project_id)
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -1689,12 +2086,12 @@ async def sandbox_recreate(req: SandboxRecreateRequest):
 
 
 @router.delete("/sandbox")
-async def delete_sandbox():
+async def delete_sandbox(project_id: str = Query("", description="Optional explicit project_id")):
     """
     Delete sandbox directory (but keep project config).
     Sandbox can be recreated via POST /api/mcc/sandbox/recreate.
     """
-    config = _load_active_project_config()
+    config = _resolve_project_config(project_id)
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -1710,12 +2107,12 @@ async def delete_sandbox():
 
 
 @router.patch("/sandbox/quota")
-async def update_quota(quota_gb: int):
+async def update_quota(quota_gb: int, project_id: str = Query("", description="Optional explicit project_id")):
     """Update project quota (1-100 GB)."""
     if quota_gb < 1 or quota_gb > 100:
         raise HTTPException(status_code=400, detail="quota_gb must be 1-100")
 
-    config = _load_active_project_config()
+    config = _resolve_project_config(project_id)
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -1735,18 +2132,18 @@ async def update_quota(quota_gb: int):
 # ──────────────────────────────────────────────────────────────
 
 @router.get("/roadmap")
-async def get_roadmap():
+async def get_roadmap(project_id: str = Query("", description="Optional explicit project_id")):
     """
     Get the project roadmap DAG.
     Returns the saved roadmap or generates one if absent.
     """
     from src.services.roadmap_generator import RoadmapDAG, RoadmapGenerator
 
-    config = _load_active_project_config()
+    config = _resolve_project_config(project_id)
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
-    dag = RoadmapDAG.load()
+    dag = RoadmapDAG.load_for_project(config.project_id)
     if dag is None:
         # Auto-generate on first request
         dag = await RoadmapGenerator.analyze_project(config)
@@ -1756,6 +2153,7 @@ async def get_roadmap():
 
 @router.get("/graph/condensed")
 async def get_condensed_graph(
+    project_id: str = Query("", description="Optional explicit project_id"),
     scope_path: str = Query("", description="Optional absolute/relative scope path"),
     max_nodes: int = Query(600, ge=50, le=5000, description="L2 node budget"),
     include_artifacts: bool = Query(False, description="Include artifact/chat in L0"),
@@ -1770,7 +2168,7 @@ async def get_condensed_graph(
     """
     from src.services.mcc_scc_graph import build_condensed_graph
 
-    config = _load_active_project_config()
+    config = _resolve_project_config(project_id)
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -1799,11 +2197,11 @@ async def get_condensed_graph(
 
 
 @router.post("/roadmap/generate")
-async def generate_roadmap():
+async def generate_roadmap(project_id: str = Query("", description="Optional explicit project_id")):
     """Regenerate roadmap from current sandbox state."""
     from src.services.roadmap_generator import RoadmapGenerator
 
-    config = _load_active_project_config()
+    config = _resolve_project_config(project_id)
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -1842,7 +2240,11 @@ async def update_mcc_task(task_id: str, body: MCCTaskUpdateRequest):
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
     updates = body.model_dump(exclude_none=True)
-    allowed_fields = {"title", "description", "preset", "phase_type", "priority", "tags", "workflow_family"}
+    allowed_fields = {
+        "title", "description", "preset", "phase_type", "priority", "tags", "workflow_family",
+        "project_id", "project_lane", "architecture_docs", "recon_docs",
+        "closure_tests", "closure_files", "require_closure_proof",
+    }
     updates = {key: value for key, value in updates.items() if key in allowed_fields}
     if not updates:
         raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -1851,6 +2253,37 @@ async def update_mcc_task(task_id: str, body: MCCTaskUpdateRequest):
     if not ok:
         raise HTTPException(status_code=500, detail=f"Failed to update task '{task_id}'")
 
+    return {
+        "success": True,
+        "task_id": task_id,
+        "task": board.get_task(task_id) or {**task, **updates},
+    }
+
+
+@router.post("/tasks/create-attached")
+async def create_mcc_attached_task(body: MCCAttachedTaskRequest):
+    board = _get_task_board_instance()
+    payload = _derive_attached_task_payload(body.model_dump())
+    task_id = board.add_task(**payload)
+    task = board.get_task(task_id)
+    return {
+        "success": True,
+        "task_id": task_id,
+        "task": task or {"id": task_id, **payload},
+    }
+
+
+@router.post("/tasks/{task_id}/attach-node")
+async def attach_mcc_task_to_node(task_id: str, body: MCCAttachedTaskRequest):
+    board = _get_task_board_instance()
+    task = board.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+
+    updates = _derive_attached_task_payload(body.model_dump(), existing_task=task)
+    ok = board.update_task(task_id, **updates)
+    if not ok:
+        raise HTTPException(status_code=500, detail=f"Failed to attach task '{task_id}'")
     return {
         "success": True,
         "task_id": task_id,
@@ -1923,7 +2356,10 @@ async def reject_task_result(task_id: str, body: dict = Body(...)):
 
 # MARKER_176.1B: Create tasks from roadmap node
 @router.post("/roadmap/{node_id}/create-tasks")
-async def create_tasks_from_roadmap_node(node_id: str):
+async def create_tasks_from_roadmap_node(
+    node_id: str,
+    project_id: str = Query("", description="Optional explicit project_id"),
+):
     """
     Generate task board entries from a specific roadmap module node.
     Users click a roadmap node → drill to tasks → 'Create Tasks' button calls this.
@@ -1931,7 +2367,9 @@ async def create_tasks_from_roadmap_node(node_id: str):
     from src.services.roadmap_generator import RoadmapDAG
     from src.services.roadmap_task_sync import generate_task_payloads_from_roadmap_node
 
-    dag = RoadmapDAG.load()
+    config = _resolve_project_config(project_id)
+    resolved_project_id = str(getattr(config, "project_id", "") or str(project_id or "").strip())
+    dag = RoadmapDAG.load_for_project(resolved_project_id)
     if dag is None:
         raise HTTPException(status_code=404, detail="No roadmap found. Generate roadmap first.")
 
@@ -1947,6 +2385,7 @@ async def create_tasks_from_roadmap_node(node_id: str):
     if not target_node:
         raise HTTPException(status_code=404, detail=f"Roadmap node '{node_id}' not found")
 
+    active_project_id = str(resolved_project_id or getattr(dag, "project_id", "") or "")
     board = _get_task_board_instance()
     created_tasks = []
     module_name = target_node.get("label", target_node.get("id", node_id))
@@ -1960,6 +2399,8 @@ async def create_tasks_from_roadmap_node(node_id: str):
         payload.setdefault("preset", "dragon_silver")
         payload.setdefault("priority", target_node.get("priority", 5))
         payload["tags"] = list(payload.get("tags") or []) + [f"roadmap:{node_id}"]
+        payload["project_id"] = str(payload.get("project_id") or active_project_id)
+        payload["project_lane"] = str(payload.get("project_lane") or node_id)
         task_id = board.add_task(**payload)
         created_tasks.append(task_id)
         if not main_task_id:
@@ -1976,6 +2417,8 @@ async def create_tasks_from_roadmap_node(node_id: str):
             phase_type="build",
             preset="dragon_silver",
             tags=[f"roadmap:{node_id}", f"parent:{main_task_id}"],
+            project_id=active_project_id,
+            project_lane=str(sub.get("id") or node_id),
             roadmap_id=str(getattr(dag, "project_id", "") or ""),
             roadmap_node_id=str(sub.get("id") or node_id),
             roadmap_lane=str(sub.get("layer") or target_node.get("layer") or "core"),
@@ -2209,6 +2652,68 @@ def _validate_localguys_run_update(
         raise HTTPException(status_code=400, detail="invalid localguys run role")
 
 
+def _build_localguys_runtime_guard(run: Dict[str, Any], contract: Dict[str, Any]) -> Dict[str, Any]:
+    current_step = str(run.get("current_step") or "").strip()
+    metadata = dict(run.get("metadata") or {})
+    stage_tool_policy = dict(contract.get("stage_tool_policy") or {})
+    write_opt_ins = dict(contract.get("write_opt_ins") or {})
+    max_turns = int(contract.get("max_turns") or 0)
+    turn_count = max(0, int(metadata.get("turn_count") or 0))
+    return {
+        "workflow_family": str(contract.get("workflow_family") or run.get("workflow_family") or "").strip(),
+        "current_step": current_step,
+        "allowed_tools": list(stage_tool_policy.get(current_step) or contract.get("allowed_tools") or []),
+        "write_opt_ins": write_opt_ins,
+        "verification_target": str(contract.get("verification_target") or "").strip(),
+        "sandbox_mode": str((contract.get("sandbox_policy") or {}).get("mode") or "").strip(),
+        "max_turns": max_turns,
+        "turn_count": turn_count,
+        "remaining_turns": max(0, max_turns - turn_count) if max_turns > 0 else 0,
+        "idle_nudge_template": str(contract.get("idle_nudge_template") or "").strip(),
+    }
+
+
+def _prepare_localguys_runtime_metadata(
+    body: "LocalguysRunUpdateRequest",
+    *,
+    run: Dict[str, Any],
+    contract: Dict[str, Any],
+) -> Dict[str, Any]:
+    incoming = dict(body.metadata or {})
+    metadata = dict(run.get("metadata") or {})
+    current_step = str(body.current_step or run.get("current_step") or "").strip()
+    stage_tool_policy = dict(contract.get("stage_tool_policy") or {})
+    allowed_tools = _normalize_str_list(stage_tool_policy.get(current_step) or contract.get("allowed_tools") or [])
+    used_tools = _normalize_str_list(incoming.get("used_tools"))
+    disallowed_tools = [tool for tool in used_tools if tool not in allowed_tools]
+    if disallowed_tools:
+        raise HTTPException(
+            status_code=400,
+            detail=f"disallowed_tools_for_step:{current_step}:{', '.join(disallowed_tools)}",
+        )
+
+    write_opt_ins = dict(contract.get("write_opt_ins") or {})
+    write_attempts = _normalize_str_list(incoming.get("write_attempts"))
+    disallowed_writes = [scope for scope in write_attempts if not bool(write_opt_ins.get(scope))]
+    if disallowed_writes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"write_scope_not_allowed:{', '.join(disallowed_writes)}",
+        )
+
+    turn_increment = max(0, int(incoming.get("turn_increment") or 0))
+    turn_count = max(0, int(metadata.get("turn_count") or 0)) + turn_increment
+    max_turns = int(contract.get("max_turns") or 0)
+    if max_turns > 0 and turn_count > max_turns:
+        raise HTTPException(status_code=400, detail=f"max_turns_exceeded:{turn_count}/{max_turns}")
+
+    if turn_increment > 0:
+        incoming["turn_count"] = turn_count
+    elif "turn_count" not in incoming and "turn_count" in metadata:
+        incoming["turn_count"] = int(metadata.get("turn_count") or 0)
+    return incoming
+
+
 @router.post("/tasks/{task_id}/localguys-run")
 async def start_localguys_run(task_id: str, body: "LocalguysRunStartRequest" = Body(default=None)):
     board = _get_task_board_instance()
@@ -2255,6 +2760,7 @@ async def start_localguys_run(task_id: str, body: "LocalguysRunStartRequest" = B
         "task_id": task_id,
         "binding": binding,
         "contract": contract,
+        "runtime_guard": _build_localguys_runtime_guard(run, contract),
         "run": run,
     }
 
@@ -2270,9 +2776,11 @@ async def get_latest_localguys_run(task_id: str):
     run = registry.get_latest_for_task(task_id)
     if run is None:
         raise HTTPException(status_code=404, detail=f"No localguys run found for task '{task_id}'")
+    contract = await _resolve_workflow_contract(str(run.get("workflow_family") or ""))
     return {
         "success": True,
         "task_id": task_id,
+        "runtime_guard": _build_localguys_runtime_guard(run, contract or {}),
         "run": run,
     }
 
@@ -2283,8 +2791,10 @@ async def get_localguys_run(run_id: str):
     run = registry.get_run(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail=f"Localguys run '{run_id}' not found")
+    contract = await _resolve_workflow_contract(str(run.get("workflow_family") or ""))
     return {
         "success": True,
+        "runtime_guard": _build_localguys_runtime_guard(run, contract or {}),
         "run": run,
     }
 
@@ -2300,6 +2810,7 @@ async def update_localguys_run(run_id: str, body: "LocalguysRunUpdateRequest"):
     if contract is None:
         raise HTTPException(status_code=404, detail="Workflow contract for localguys run not found")
     _validate_localguys_run_update(body, contract)
+    update_metadata = _prepare_localguys_runtime_metadata(body, run=run, contract=contract)
 
     updated = registry.update_run(
         run_id,
@@ -2308,7 +2819,7 @@ async def update_localguys_run(run_id: str, body: "LocalguysRunUpdateRequest"):
         active_role=body.active_role,
         model_id=body.model_id,
         failure_reason=body.failure_reason,
-        metadata=body.metadata,
+        metadata=update_metadata,
     )
     if updated is None:
         raise HTTPException(status_code=404, detail=f"Localguys run '{run_id}' not found")
@@ -2330,6 +2841,7 @@ async def update_localguys_run(run_id: str, body: "LocalguysRunUpdateRequest"):
 
     return {
         "success": True,
+        "runtime_guard": _build_localguys_runtime_guard(updated, contract),
         "run": updated,
     }
 
@@ -2341,6 +2853,14 @@ async def write_localguys_artifact(
     body: "LocalguysArtifactWriteRequest",
 ):
     registry = _get_localguys_run_registry()
+    run = registry.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Localguys run '{run_id}' not found")
+    contract = await _resolve_workflow_contract(str(run.get("workflow_family") or ""))
+    if contract is None:
+        raise HTTPException(status_code=404, detail="Workflow contract for localguys run not found")
+    if not bool((contract.get("write_opt_ins") or {}).get("playground_artifacts", True)):
+        raise HTTPException(status_code=400, detail="write_scope_not_allowed:playground_artifacts")
     artifact = registry.write_artifact(
         run_id,
         artifact_name,
@@ -2353,6 +2873,7 @@ async def write_localguys_artifact(
     return {
         "success": True,
         "artifact": artifact,
+        "runtime_guard": _build_localguys_runtime_guard(run, contract),
         "run": run,
     }
 
@@ -2371,6 +2892,7 @@ class PrefetchRequest(BaseModel):
     task_description: str
     task_type: str = ""
     complexity: int = 5
+    project_id: str = ""
 
 
 class WorkflowBindingRequest(BaseModel):
@@ -2430,6 +2952,7 @@ class WorkflowMycoHintRequest(BaseModel):
 
 
 class PredictGraphRequest(BaseModel):
+    project_id: str = ""
     scope_path: str = ""
     max_nodes: int = 600
     max_predicted_edges: int = 120
@@ -2455,6 +2978,7 @@ class PredictRuntimeHealthResponse(BaseModel):
 class BuildDesignGraphRequest(BaseModel):
     # MARKER_161.TRM.API.BUILD_DESIGN_INPUT.V1:
     # Phase-161 extension point for TRM policy/config payload (kept disabled by default).
+    project_id: str = ""
     scope_path: str = ""
     max_nodes: int = 600
     include_artifacts: bool = False
@@ -2488,6 +3012,7 @@ class BuildDesignFromArrayRequest(BaseModel):
 
 class MCCScopedFileSearchRequest(BaseModel):
     query: str
+    project_id: str = ""
     limit: int = 20
     mode: str = "keyword"  # keyword|filename
     scope_path: str = ""
@@ -2506,6 +3031,7 @@ class MycoHiddenReindexRequest(BaseModel):
 
 class MycoContextRequest(BaseModel):
     user_id: str = "danila"
+    project_id: str = ""
     focus: Dict[str, Any] = {}
 
 
@@ -2514,6 +3040,7 @@ class CreateDagVersionRequest(BaseModel):
     MARKER_155.ARCHITECT_BUILD.DAG_VERSIONS.API.V1
     Persist DAG build variant for compare/select workflow.
     """
+    project_id: str = ""
     dag_payload: Dict[str, Any]
     name: str = ""
     author: str = "architect"
@@ -2524,6 +3051,7 @@ class CreateDagVersionRequest(BaseModel):
 
 
 class SetPrimaryDagVersionRequest(BaseModel):
+    project_id: str = ""
     set_primary: bool = True
 
 
@@ -2546,6 +3074,7 @@ class DagAutoCompareRequest(BaseModel):
     MARKER_155.ARCHITECT_BUILD.DAG_COMPARE.API.V1
     Auto-run several DAG variants and rank them by scorecard.
     """
+    project_id: str = ""
     source_kind: str = "scope"  # scope|array
     scope_path: str = ""
     include_artifacts: bool = False
@@ -2637,10 +3166,13 @@ def _with_trm_contract_meta(result: Dict[str, Any], trm_profile: str, trm_policy
     return out
 
 
-def _resolve_project_id_for_versions() -> str:
-    config = _load_active_project_config()
+def _resolve_project_id_for_versions(project_id: str = "") -> str:
+    requested = str(project_id or "").strip()
+    config = _resolve_project_config(requested)
     if config and config.project_id:
         return str(config.project_id)
+    if requested:
+        return requested
     return "default_project"
 
 
@@ -2653,7 +3185,7 @@ async def run_prefetch(req: PrefetchRequest):
     from src.services.architect_prefetch import ArchitectPrefetch
     from dataclasses import asdict
 
-    config = _load_active_project_config()
+    config = _resolve_project_config(req.project_id)
     ctx = ArchitectPrefetch.prepare(
         task_description=req.task_description,
         task_type=req.task_type,
@@ -2685,7 +3217,7 @@ async def mcc_scoped_file_search(req: MCCScopedFileSearchRequest):
     """
     from src.search.file_search_service import search_files
 
-    config = _load_active_project_config()
+    config = _resolve_project_config(req.project_id)
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -2753,11 +3285,12 @@ async def mcc_scoped_file_search(req: MCCScopedFileSearchRequest):
 
 @router.get("/directory-tree")
 async def get_mcc_directory_tree(
+    project_id: str = Query("", description="Optional explicit project_id"),
     path: str = Query("", description="Directory path relative to active project scope"),
     depth: int = Query(4, ge=1, le=8),
     limit: int = Query(200, ge=1, le=1000),
 ):
-    config = _load_active_project_config()
+    config = _resolve_project_config(project_id)
     base_scope = _active_project_scope_root(config)
     if not base_scope:
         raise HTTPException(status_code=400, detail="No active project scope available")
@@ -2787,7 +3320,7 @@ async def predict_graph_overlay(req: PredictGraphRequest):
     from src.services.mcc_predictive_overlay import build_predictive_overlay
     from src.services.mcc_jepa_adapter import JepaRuntimeUnavailableError
 
-    config = _load_active_project_config()
+    config = _resolve_project_config(req.project_id)
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -2876,7 +3409,7 @@ async def build_design_graph(req: BuildDesignGraphRequest):
     """
     from src.services.mcc_architect_builder import build_design_dag
 
-    config = _load_active_project_config()
+    config = _resolve_project_config(req.project_id)
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
@@ -2957,7 +3490,7 @@ async def create_dag_version(req: CreateDagVersionRequest):
     """
     from src.services.mcc_dag_versions import create_dag_version as _create
 
-    project_id = _resolve_project_id_for_versions()
+    project_id = _resolve_project_id_for_versions(req.project_id)
     try:
         result = await asyncio.to_thread(
             _create,
@@ -2976,14 +3509,14 @@ async def create_dag_version(req: CreateDagVersionRequest):
 
 
 @router.get("/dag-versions/list")
-async def list_dag_versions():
+async def list_dag_versions(project_id: str = Query("", description="Optional explicit project_id")):
     """
     MARKER_155.ARCHITECT_BUILD.DAG_VERSIONS.API.V1
     List DAG version summaries for current project.
     """
     from src.services.mcc_dag_versions import list_dag_versions as _list
 
-    project_id = _resolve_project_id_for_versions()
+    project_id = _resolve_project_id_for_versions(project_id)
     try:
         result = await asyncio.to_thread(_list, project_id)
         return {"success": True, **result}
@@ -2992,14 +3525,14 @@ async def list_dag_versions():
 
 
 @router.get("/dag-versions/{version_id}")
-async def get_dag_version(version_id: str):
+async def get_dag_version(version_id: str, project_id: str = Query("", description="Optional explicit project_id")):
     """
     MARKER_155.ARCHITECT_BUILD.DAG_VERSIONS.API.V1
     Get full DAG version payload by ID for current project.
     """
     from src.services.mcc_dag_versions import get_dag_version as _get
 
-    project_id = _resolve_project_id_for_versions()
+    project_id = _resolve_project_id_for_versions(project_id)
     try:
         result = await asyncio.to_thread(_get, project_id, str(version_id))
         if not result:
@@ -3021,7 +3554,7 @@ async def set_primary_dag_version(version_id: str, req: SetPrimaryDagVersionRequ
 
     if not req.set_primary:
         raise HTTPException(status_code=400, detail="set_primary must be true")
-    project_id = _resolve_project_id_for_versions()
+    project_id = _resolve_project_id_for_versions(req.project_id)
     try:
         result = await asyncio.to_thread(_set_primary, project_id, str(version_id))
         return {"success": True, **result}
@@ -3040,9 +3573,9 @@ async def auto_compare_dag_versions(req: DagAutoCompareRequest):
     from src.services.mcc_dag_compare import run_dag_auto_compare
 
     source_kind = str(req.source_kind or "scope").strip().lower()
-    project_id = _resolve_project_id_for_versions()
+    project_id = _resolve_project_id_for_versions(req.project_id)
 
-    config = _load_active_project_config()
+    config = _resolve_project_config(req.project_id)
     resolved_scope = str(req.scope_path or "").strip()
     if source_kind == "scope":
         if not resolved_scope and config is not None:
@@ -3205,7 +3738,7 @@ async def myco_context(req: MycoContextRequest):
     """
     from src.services.myco_memory_bridge import build_myco_memory_payload
 
-    config = _load_active_project_config()
+    config = _resolve_project_config(req.project_id)
     project_id = str(config.project_id) if config else ""
 
     try:

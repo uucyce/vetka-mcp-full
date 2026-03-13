@@ -68,7 +68,7 @@ export interface MCCDiagnosticsState {
   eventLog: DiagnosticsEvent[];
 }
 
-export function useMCCDiagnostics() {
+export function useMCCDiagnostics(projectId: string = '') {
   const [state, setState] = useState<MCCDiagnosticsState>({
     loading: true,
     error: null,
@@ -149,6 +149,7 @@ export function useMCCDiagnostics() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              project_id: projectId,
               scope_path: '',
               max_nodes: 260,
               include_artifacts: false,
@@ -198,7 +199,7 @@ export function useMCCDiagnostics() {
         void doFetch(source, false, false);
       }
     }
-  }, [pushEvent]);
+  }, [pushEvent, projectId]);
 
   useEffect(() => {
     aliveRef.current = true;

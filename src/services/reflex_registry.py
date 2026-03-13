@@ -18,6 +18,8 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+from src.services.reflex_tool_memory import list_reflex_tool_memory
+
 logger = logging.getLogger(__name__)
 
 # Canonical location for the auto-generated tool catalog
@@ -61,6 +63,7 @@ class ToolEntry:
     roles: List[str] = field(default_factory=list)   # which agent roles can use this
     deprecated_aliases: List[str] = field(default_factory=list)
     active: bool = True
+    overlay_hints: Dict = field(default_factory=dict)
 
     def matches_intent(self, query_tags: List[str]) -> float:
         """Fuzzy match: fraction of query_tags found in this tool's intent_tags."""
@@ -124,8 +127,11 @@ class ReflexRegistry:
                     roles=entry.get("roles", []),
                     deprecated_aliases=entry.get("deprecated_aliases", []),
                     active=entry.get("active", True),
+                    overlay_hints=entry.get("overlay_hints", {}),
                 )
                 self._tools[tool.tool_id] = tool
+
+            self._apply_memory_overlay()
 
             self._loaded = True
             logger.info(f"[REFLEX] Loaded {len(self._tools)} tools from catalog")
@@ -135,6 +141,61 @@ class ReflexRegistry:
             self._loaded = True
 
         return self
+
+    def _apply_memory_overlay(self) -> None:
+        """Augment canonical tools with remembered aliases, tags, and trigger hints."""
+        try:
+            overlay = list_reflex_tool_memory(only_active=True, exclude_stale=True)
+        except Exception as e:
+            logger.warning(f"[REFLEX] Failed to load remembered tool overlay: {e}")
+            return
+
+        applied = 0
+        for row in overlay.get("tools", []):
+            tool_id = self.resolve_alias(str(row.get("tool_id", "")).strip())
+            if not tool_id:
+                continue
+            tool = self._tools.get(tool_id)
+            if tool is None:
+                continue
+
+            base_intent_tags = list(tool.intent_tags or [])
+            remembered_tags = [str(t).strip() for t in (row.get("intent_tags") or []) if str(t).strip()]
+            aliases = [str(a).strip() for a in (row.get("aliases") or []) if str(a).strip()]
+            trigger_hint = str(row.get("trigger_hint", "")).strip()
+            trigger_patterns = dict(tool.trigger_patterns or {})
+            base_keywords = list(trigger_patterns.get("keywords", []) or [])
+            overlay_keywords = (
+                remembered_tags
+                + aliases
+                + [part for part in trigger_hint.split() if len(part) > 2]
+            )
+
+            tool.intent_tags = _dedupe_preserve_order(base_intent_tags + remembered_tags)
+            trigger_patterns["keywords"] = _dedupe_preserve_order(base_keywords + overlay_keywords)
+            tool.trigger_patterns = trigger_patterns
+            tool.overlay_hints = {
+                "overlay_applied": True,
+                "origin": row.get("origin", ""),
+                "catalog_source": row.get("catalog_source", ""),
+                "path": row.get("path", ""),
+                "trigger_hint": trigger_hint,
+                "aliases": aliases,
+                "base_intent_tags": base_intent_tags,
+                "base_keywords": base_keywords,
+                "added_intent_tags": [
+                    value for value in tool.intent_tags
+                    if value.lower() not in {item.lower() for item in base_intent_tags}
+                ],
+                "added_keywords": [
+                    value for value in trigger_patterns.get("keywords", [])
+                    if value.lower() not in {item.lower() for item in base_keywords}
+                ],
+            }
+            applied += 1
+
+        if applied:
+            logger.info(f"[REFLEX] Applied remembered tool overlay to {applied} tools")
 
     @property
     def tool_count(self) -> int:
@@ -186,6 +247,30 @@ class ReflexRegistry:
             if t.active and t.matches_phase(phase_type)
         ]
 
+    def get_memory_overlay_tools(self) -> List[Dict[str, object]]:
+        """MARKER_177.REFLEX.TOOL_MEMORY.OVERLAY — Debug view of overlay-applied catalog tools."""
+        rows: List[Dict[str, object]] = []
+        for tool in self._tools.values():
+            if not tool.active:
+                continue
+            hints = dict(tool.overlay_hints or {})
+            if not hints.get("overlay_applied"):
+                continue
+            rows.append(
+                {
+                    "tool_id": tool.tool_id,
+                    "path": str(hints.get("path", "")),
+                    "origin": str(hints.get("origin", "")),
+                    "catalog_source": str(hints.get("catalog_source", "")),
+                    "trigger_hint": str(hints.get("trigger_hint", "")),
+                    "aliases": list(hints.get("aliases", []) or []),
+                    "added_intent_tags": list(hints.get("added_intent_tags", []) or []),
+                    "added_keywords": list(hints.get("added_keywords", []) or []),
+                }
+            )
+        rows.sort(key=lambda row: str(row.get("tool_id", "")))
+        return rows
+
     def resolve_alias(self, name: str) -> str:
         """Resolve deprecated tool name to canonical."""
         return DEPRECATED_ALIASES.get(name, name)
@@ -220,3 +305,18 @@ def reset_reflex_registry():
     """Reset singleton (for testing)."""
     global _registry_instance
     _registry_instance = None
+
+
+def _dedupe_preserve_order(items: List[str]) -> List[str]:
+    seen = set()
+    out: List[str] = []
+    for item in items:
+        value = str(item or "").strip()
+        if not value:
+            continue
+        lowered = value.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        out.append(value)
+    return out

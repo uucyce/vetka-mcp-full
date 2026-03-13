@@ -139,11 +139,15 @@ Important constraint:
 - fractal scaling should be applied to code-topology exploration
 - it should not make active task/workflow nodes too tiny to operate
 - interaction targets must keep a minimum clickable size even when visual chrome shrinks
+- generation bands should not share one global mini-floor; daughters, grandchildren, and great-grandchildren need separate floor policies
+- layout geometry should also scale by generation band so spacing reads as nested, not flat
 
 So the right MCC rule is:
 
 - semantic hierarchy follows fractal scaling
 - interaction affordances keep minimum usability bounds
+- depth bands (`1`, `2`, `3+`) get separate floor policies for node size, font, handles, and edges
+- depth bands (`1`, `2`, `3+`) get separate spacing policy for `xGap/yGap`
 
 ## Layer 3 - Make descendant browsing first-class
 
@@ -166,6 +170,155 @@ The model should be:
 - each deeper level follows the MCC fractal scale rule instead of staying visually flat
 
 This is better than eager recursive dumping and better than a fixed depth cap pretending to be full navigation.
+
+### Infinite fractal zoom rule
+
+This should not be implemented as hardcoded `depth1/depth2/depth3`.
+
+The correct model is:
+
+- click on a node -> one deeper level is born for that branch
+- click on a child -> one deeper level is born under that child
+- the system can continue recursively without a fixed upper depth bound
+
+So MCC should support:
+
+- logically unbounded descendant depth
+- visually bounded rendering
+- branch-local lazy expansion
+
+That means:
+
+- the graph does **not** render "infinite nodes at once"
+- the graph **does** support infinite recursive inspection on demand
+- one expand gesture should materialize one generation, not children+grandchildren together
+- deeper levels follow the same fractal rule (`1 / 1.6^n`) until usable floors are reached
+- after that, the UI switches to condensed/inspection/viewer modes instead of shrinking forever
+
+This is the key path to "any folder or document is reachable if the user wants to zoom in enough".
+
+## Layer 3B - Balance symbolic MCC vs full VETKA visualization
+
+VETKA solves some of this through fuller 3D presence and stronger visual ontology.
+
+MCC should not try to copy that literally. It should keep a symbolic/lightweight graph, but the symbolic layer must still make these classes visually distinct:
+
+- project root
+- directory
+- file
+- document
+- task
+- workflow
+
+Current `DIR/FILE/ROOT` labels are not enough by themselves.
+
+Recommended balance:
+
+- keep cards lightweight and symbolic
+- use stronger semantics in border style, chrome weight, header treatment, and metadata ordering
+- do not make directories and files read as the same "pending task card"
+- let `DOC` and `CODE` diverge chromatically without turning MCC into a full 3D object scene
+- let geometry also express generation band so deeper descendants cluster more tightly than daughters
+
+The user should be able to distinguish "folder vs document vs task" without reading multiple metadata lines.
+
+Recommended symbolic split for MCC graph cards:
+
+- `ROOT` - project or branch root
+- `DIR` - directory/module container
+- `DOC` - human-facing document
+- `CODE` - source file / implementation file
+- task/workflow nodes keep their own operational styling
+
+This keeps MCC lighter than full VETKA 3D while still preserving semantic readability.
+
+## Layer 3C - Avoid projection echo and duplicate truth
+
+When a node already exists in the upper projection, deeper drill should not create a second "truth copy"
+that reads like a separate object at another scale.
+
+The rule should be:
+
+- the graph keeps one canonical semantic node identity
+- drill adds descendant context, not a second authoritative duplicate
+- if the same entity is already visible at a larger layer, deeper expansion should reference/focus it rather
+  than create a contradictory clone
+- overlays may be used for local descendant context, but their lineage must stay branch-local and visually secondary
+
+In practice this means MCC should avoid:
+
+- one large node and one tiny node pretending to be the same entity in parallel
+- a child projection appearing under the wrong open branch
+- two open branches fighting over the same inline descendants
+
+Recommended rule:
+
+- when a semantic node is represented by an active inline descendant projection, the duplicate canonical node
+  should be suppressed or visually demoted in that view
+- the overlay remains branch-local
+- only the current branch root may stay as the dominant canonical anchor while descendants are projected inline
+- the canonical identity remains the same through `rd_origin_id`
+
+## Layer 3D - Branch ownership and expansion correctness
+
+Branch drill must be local and deterministic.
+
+Correct behavior:
+
+- clicking a root or top-level node opens that node's descendants
+- clicking another top-level node switches branch ownership to that node
+- clicking a child inside the currently open branch deepens that same branch
+- clicking an ancestor truncates only its descendants
+- clicking the current deepest node may collapse only that branch
+
+Incorrect behavior:
+
+- clicking node B while node A is open causes descendants to appear under node A
+- one shared expansion chain appends unrelated top-level anchors as if they were descendants
+
+So the drill chain model must distinguish:
+
+- branch switch
+- ancestor truncation
+- inline descendant deepen
+
+These are different operations and should not share one fallback append rule.
+
+## Layer 3C - Avoid projection echo / duplicated hierarchy
+
+Another required rule:
+
+- if a node is already present as a large/top-level graph entity,
+- and the user opens a deeper drill,
+- the system must not create a confusing second projection of the same semantic entity in a way that looks like duplicate truth
+
+This "projection echo" was already observed in recent behavior.
+
+Policy:
+
+- one semantic node may have multiple projections
+- but only one projection should be visually dominant at a time
+- inline descendants must read as descendants of the currently drilled branch, not as parallel competing copies
+
+This requires explicit projection discipline in the graph engine.
+
+## Layer 3D - Branch ownership and expansion correctness
+
+Current expansion must respect branch ownership:
+
+- clicking one branch must expand that branch
+- clicking another top-level branch must switch branch ownership cleanly
+- descendants must not accidentally be born under the previously expanded branch
+
+This is not only a UI bug; it is a graph-state contract bug.
+
+The drill state must therefore be:
+
+- branch-local
+- ancestor-aware
+- root-switch safe
+
+If the user clicks a different top-level branch, MCC should not append it as a child of the existing chain unless there is a real ancestry relation.
 
 ## Layer 4 - Separate inspection modes inside MiniContext
 

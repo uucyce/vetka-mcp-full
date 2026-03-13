@@ -64,6 +64,8 @@ export function FirstRunView() {
   const inputRef = useRef<HTMLInputElement>(null);
   const drillDown = useMCCStore((s) => s.drillDown);
   const initMCC = useMCCStore((s) => s.initMCC);
+  const refreshProjectTabs = useMCCStore((s) => s.refreshProjectTabs);
+  const announceProjectRegistryChanged = useMCCStore((s) => s.announceProjectRegistryChanged);
   const projectTabs = useMCCStore((s) => s.projectTabs);
 
   useEffect(() => {
@@ -162,7 +164,9 @@ export function FirstRunView() {
         return;
       }
 
-      await initMCC();
+      await initMCC(String(data?.project_id || ''));
+      await refreshProjectTabs();
+      announceProjectRegistryChanged(String(data?.project_id || ''), 'create');
       drillDown('roadmap');
     } catch (err) {
       // MARKER_176.18: Surface backend/network failures instead of silent create dead-ends.
@@ -172,7 +176,7 @@ export function FirstRunView() {
         : message);
       setStep('error');
     }
-  }, [workspacePath, sourceMode, sourcePath, projectTabs, initMCC, drillDown]);
+  }, [workspacePath, sourceMode, sourcePath, projectTabs, initMCC, refreshProjectTabs, announceProjectRegistryChanged, drillDown]);
 
   if (step === 'hidden') return null;
 

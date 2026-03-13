@@ -24,11 +24,14 @@ def test_dag_edges_scale_by_fractal_depth_total():
 
 def test_roadmap_node_scales_handles_and_border_with_visual_scale():
     text = NODE.read_text()
-    assert "const visualScale = isMini ? Math.max(0.02, compactScale * fractalScale) : fractalScale;" in text
-    assert "const edgeScale = Math.max(0.08, visualScale);" in text
+    assert 'type MiniGenerationPolicy = {' in text
+    assert 'function getMiniGenerationPolicy(depth: number): MiniGenerationPolicy {' in text
+    assert "const generationPolicy = getMiniGenerationPolicy(fractalDepth);" in text
+    assert "const visualScale = isMini ? Math.max(generationPolicy.visualFloor, compactScale * fractalScale) : fractalScale;" in text
+    assert "const edgeScale = Math.max(generationPolicy.edgeFloor, visualScale);" in text
     assert "border: `${scalePx(2, edgeScale, 1)}px solid ${semanticBorderColor}`" in text
-    assert "minWidth: isMini ? scalePx(160, visualScale, 10) : scalePx(isCodeScope ? 180 : 160, visualScale, 120)" in text
-    assert "maxWidth: isMini ? scalePx(200, visualScale, 14) : scalePx(isCodeScope ? 220 : 200, visualScale, 140)" in text
-    assert "width: isMini ? scalePx(8, edgeScale, 1) : scalePx(8, edgeScale, 4)" in text
-    assert "height: isMini ? scalePx(8, edgeScale, 1) : scalePx(8, edgeScale, 4)" in text
-    assert "fontSize: isMini ? scalePx(11, visualScale, 3) : scalePx(isCodeScope ? 12 : 11, visualScale, 9)" in text
+    assert "minWidth: isMini ? scalePx(160, visualScale, generationPolicy.minWidthFloor) : scalePx(isCodeScope ? 180 : 160, visualScale, 120)" in text
+    assert "maxWidth: isMini ? scalePx(200, visualScale, generationPolicy.maxWidthFloor) : scalePx(isCodeScope ? 220 : 200, visualScale, 140)" in text
+    assert "width: isMini ? scalePx(8, edgeScale, generationPolicy.handleFloor) : scalePx(8, edgeScale, 4)" in text
+    assert "height: isMini ? scalePx(8, edgeScale, generationPolicy.handleFloor) : scalePx(8, edgeScale, 4)" in text
+    assert "fontSize: isMini ? scalePx(11, visualScale, generationPolicy.labelFontFloor) : scalePx(isCodeScope ? 12 : 11, visualScale, 9)" in text

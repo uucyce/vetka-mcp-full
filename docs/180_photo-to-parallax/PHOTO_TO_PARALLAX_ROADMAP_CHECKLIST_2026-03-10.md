@@ -280,17 +280,18 @@ Portrait Base canonical path:
   - environment mid
   - background far
   - special clean plate
-- [ ] определить minimal `qwen_plate_plan.json` contract:
+- [x] определить minimal `qwen_plate_plan.json` contract:
   - `recommended_plate_count`
   - `plates[]`
   - `special_clean_plates[]`
   - `notes[]`
-- [ ] заставить `Qwen` возвращать JSON, а не prose.
-- [ ] подключить `source + depth_preview_bw.png` как минимальный input pair для planner.
-- [ ] определить sanitizing gate для planner output.
-- [ ] определить, когда scene должна маршрутизироваться в `Multi-Plate` mode вместо `Portrait Base`.
+- [x] заставить `Qwen` возвращать JSON, а не prose.
+- [x] подключить `source + depth_preview_bw.png` как минимальный input pair для planner.
+- [x] определить sanitizing gate для planner output.
+- [x] определить, когда scene должна маршрутизироваться в `Multi-Plate` mode вместо `Portrait Base`.
 - [ ] собрать plate-oriented sample set из сложных сцен.
-- [ ] ввести compare `2-layer base vs multi-plate`.
+- [x] ввести compare `2-layer base vs multi-plate`.
+- [x] ввести compare `manual multiplate vs qwen multiplate`.
 
 Решение на `2026-03-13`:
 
@@ -304,15 +305,15 @@ Portrait Base canonical path:
 - [x] Ввести plate-specific amplitude damping.
 - [x] Ввести plate-specific parallax strength.
 - [ ] Ввести plate-specific blur / atmosphere / degradation controls.
-- [ ] Ввести per-plate overscan risk.
+- [x] Ввести per-plate overscan risk.
 
 Подшаги:
 
 - [x] сделать `layout.json` plate-aware;
 - [x] заменить прямоугольные proxy plate preview на mask-based plate composition;
 - [x] перевести stage preview c `mask-only` на `background_rgba + plate_rgba[]`;
-- [ ] добавить `camera-safe` validation для plate stack;
-- [ ] считать disocclusion risk по plate transitions, а не только по whole-frame mask.
+- [x] добавить `camera-safe` validation для plate stack;
+- [x] считать disocclusion risk по plate transitions, а не только по whole-frame mask.
 
 ## Phase 6. Render and Export
 
@@ -366,8 +367,8 @@ Portrait Base canonical path:
 - [x] читать render не из sandbox state, а из exported plate assets;
 - [x] использовать `plate_layout.json` как camera/layout input;
 - [x] сохранить `preview_multiplate_report.json`;
-- [ ] собрать compare `2-layer base vs multi-plate final render`;
-- [ ] расширить multiplate render на `special-clean` aware comp decisions.
+- [x] собрать compare `2-layer base vs multi-plate final render` для первых complex scenes.
+- [x] расширить multiplate render на `special-clean` aware comp decisions.
 - [ ] `camera_layout.json`
 - [ ] `preview_multiplate.mp4`
 
@@ -382,10 +383,11 @@ Portrait Base canonical path:
 
 
 - [x] Прототипировать `Qwen2.5-VL` как semantic judge/refiner.
-- [ ] Прототипировать `Qwen2.5-VL` как `Plate Planner`.
+- [x] Прототипировать `Qwen2.5-VL` как `Plate Planner`.
 - [ ] Проверить стабильность интерпретации color hints.
 - [x] Ввести JSON contract для semantic guidance.
-- [ ] Ввести JSON contract для `qwen_plate_plan.json`.
+- [x] Ввести JSON contract для `qwen_plate_plan.json`.
+- [x] Ввести hidden apply path из `qwen_plate_plan.json` в `plateStack`.
 - [ ] Прототипировать `V-JEPA 2` только как future temporal auxiliary.
 
 Подшаги:
@@ -394,13 +396,20 @@ Portrait Base canonical path:
   - перепутанный foreground/background
   - object ordering
   - multiple salient objects
-- [ ] определить, какие scene planning задачи реально может закрывать `Qwen2.5-VL`:
+- [x] определить, какие scene planning задачи реально может закрывать `Qwen2.5-VL`:
   - plate count
   - plate naming
   - near/far ordering
   - special clean plate recommendation
 - [ ] не пускать semantic judge напрямую в final mask без compare gate;
-- [ ] не пускать `Qwen Plate Planner` напрямую в final mask / final render без deterministic validation;
+- [x] не пускать `Qwen Plate Planner` напрямую в final mask / final render без deterministic validation;
+- [x] ввести `proposal quality gate` для `Qwen plate plan`:
+  - keep current stack
+  - enrich current stack
+  - replace current stack
+- [x] прогнать `gate-aware qwen flow`:
+  - `manual -> gate -> export -> render -> compare`
+  - подтверждено на `3/3` complex scenes
 - [x] отложить `V-JEPA 2` до появления sequence/video режима;
 - [ ] зафиксировать это как luxury track, а не MVP dependency.
 
@@ -410,6 +419,8 @@ Portrait Base canonical path:
 - ближайший `AI Assist` path должен строиться вокруг semantic grouping, а не temporal smoothing;
 - первым кандидатом остаётся `Qwen2.5-VL`, а не `V-JEPA 2`.
 - `Qwen2.5-VL` должен развиваться прежде всего как `scene decomposition planner`, а не как попытка заменить segmentation/inpaint.
+- raw `Qwen Plate Planner` не должен идти в export/render;
+- в final path должен использоваться только `gated_plate_stack`.
 
 ## Phase 6B. Algorithmic Matte and Roto Assist
 

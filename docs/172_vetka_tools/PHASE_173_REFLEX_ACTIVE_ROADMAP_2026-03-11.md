@@ -205,6 +205,66 @@ MODEL_PROFILES = {
 
 ---
 
+## P6 — Local Model Behavior Validation
+
+**Goal:** Prove that local Ollama Qwen models do useful tool work with REFLEX, instead of only receiving passive recommendations.
+
+### P6.1 — Direct local tool-use path
+- Wire REFLEX recommendations into the direct `vetka_call_model` / `mycelium_call_model` Ollama path.
+- Add `select_best_local_qwen_model` to the MCP function-calling allowlist.
+- Keep the tool path non-recursive: no nested LLM call inside any helper tool.
+- Prefer low-cost read-only helpers for local-model recall (`vetka_search_files`, `vetka_read_file`, `mycelium_task_board`, `select_best_local_qwen_model`).
+- Implementation marker: `MARKER_173.P6.DIRECT_LOCAL_TOOL_PATH`
+
+### P6.2 — Search/read behavior test
+- Local Qwen receives a coding question about the repo.
+- Expected behavior: it uses `vetka_search_files` or `vetka_search_semantic`, then `vetka_read_file`, then answers.
+- Pass condition: tool usage is observable and final answer references fetched repo context.
+
+### P6.3 — Task-board ownership test
+- Seed a task assigned to local Qwen in task board.
+- Expected behavior: model reads or claims the task via task-board tool, updates status, and uses task context instead of hallucinating a plan.
+- Pass condition: task-board state changes are recorded and consistent with the run.
+
+### P6.4 — Remembered coding workflow recall
+- Seed `remember_reflex_tool` with a coding workflow hint for local-model tasks.
+- Expected behavior: on a similar request, REFLEX raises the remembered tool path and the local model actually chooses the matching tool chain.
+- Pass condition: remembered overlay changes ranking and the chosen tools match the remembered workflow.
+
+### P6.5 — Read/edit/test chain
+- Give local Qwen a small patch task.
+- Expected behavior: read file → edit file → run tests or equivalent validation.
+- Pass condition: no recursive LLM calls, tool chain is sensible, and target regression tests pass.
+
+### P6.6 — MYCELIUM local patch preset
+- Materialize the proven local-model patch loop as a dedicated MYCELIUM workflow preset/contract.
+- Encode `expected_sequence`, direct tool surface, and REFLEX preflight rules in the contract instead of leaving them only in prose.
+- Pass condition: the preset is discoverable through MCC workflow-contract/operator-method APIs and covered by template + contract tests.
+- Implementation marker: `MARKER_173.P6.MYCELIUM_LOCAL_PATCH_PRESET`
+
+### P6.7 — MYCELIUM ownership preset
+- Materialize the controlled task-ownership flow as a dedicated MYCELIUM local preset with explicit task-board write opt-in.
+- Keep the direct tool surface narrow (`mycelium_task_board`) and prove that the contract advertises task-board writes without opening edit/file writes.
+- Pass condition: the preset is discoverable through MCC workflow-contract/operator-method APIs and covered by template + contract tests.
+- Implementation marker: `MARKER_173.P6.MYCELIUM_LOCAL_OWNERSHIP_PRESET`
+
+### Tests: ~12
+- Local Qwen uses VETKA search/read tools for code context
+- Local Qwen claims or updates its task-board task
+- Local Qwen follows remembered REFLEX coding workflow
+- Local Qwen completes read/edit/test tool chain
+- No recursive tool path (`vetka_call_model` inside helper tool) is introduced
+- Local-tool allowlist remains read-safe by default
+
+### Marker
+- `MARKER_173.P6.LOCAL_QWEN_VALIDATION`
+- `MARKER_173.P6.DIRECT_LOCAL_TOOL_PATH`
+- `MARKER_173.P6.LIVE_LOCAL_QWEN_BEHAVIOR`
+- `MARKER_173.P6.MYCELIUM_LOCAL_PATCH_PRESET`
+- `MARKER_173.P6.MYCELIUM_LOCAL_OWNERSHIP_PRESET`
+
+---
+
 ## Summary
 
 | Part | Name | Deliverables | Tests |
@@ -214,21 +274,26 @@ MODEL_PROFILES = {
 | P3 | Ecosystem Streaming | WS events, MCC/DevPanel/Jarvis UI | ~10 |
 | P4 | A/B Testing Framework | Experiment config, metrics, dashboard | ~8 |
 | P5 | Score Decay & Model Tuning | Enhanced decay, model profiles | ~12 |
-| **Total** | | | **~65** |
+| P6 | Local Model Behavior Validation | direct Ollama path, live tests, MYCELIUM patch + ownership presets | ~12 |
+| **Total** | | | **~73** |
 
 ### Execution Order
 ```
 P1 (Schema Filter) → P2 (User Prefs) → P3 (Streaming) → P4 (A/B) → P5 (Tuning)
+                                                     ↘
+                                                       P6 (Local model validation)
 ```
 
 P1 is the core — everything else builds on it.
 P3 can start in parallel with P2 since streaming doesn't depend on preferences.
 P4 and P5 are polish/optimization — can defer to Phase 174 if needed.
+P6 starts after the direct Ollama path can see REFLEX recommendations and safe tool allowlists.
 
 ### Risk Assessment
 - **P1 is safest** — worst case, fallback to full schemas (current behavior)
 - **P3 is most work** — touches MCC, DevPanel, Jarvis (3 UI surfaces)
 - **P4 is optional** — nice to have but not critical for launch
+- **P6 is mandatory before trusting local-model recall** — recommendations alone are not enough; behavior must be observed
 - **Feature flag:** `REFLEX_ACTIVE=1` (default: False) — active filtering OFF until validated
 
 ---

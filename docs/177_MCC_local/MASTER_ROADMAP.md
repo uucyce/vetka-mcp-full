@@ -219,5 +219,8 @@ Goal: stop false agent blocks in dirty trees by making lane ownership machine-re
 - distinguish code scope nodes from task/workflow nodes visually and semantically
 - make descendant browsing support children, grandchildren, and great-grandchildren on demand, with `+1 deeper` beyond that
 - apply MCC fractal scale rule so each deeper level is visually smaller but remains operable
+- split fractal render policy by generation band (`depth1`, `depth2`, `depth3+`) instead of one shared mini-layer floor
+- verify generation bands through Playwright against a hydrated or replayed MCC graph state; a blank browser shell is not enough
+- use a reusable MCC graph fixture + `project_id` boot override so browser verification does not depend on manual desktop state
 - add code-first MiniContext mode with breadcrumbs and direct code viewing actions
 - treat task packet as supporting context for code nodes, not the default headline

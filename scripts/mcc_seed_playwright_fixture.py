@@ -18,7 +18,7 @@ from urllib import error, parse, request
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_ROOT = ROOT / "tests" / "mcc" / "fixtures" / "playwright_mcc_graph_repo"
 DEFAULT_API_BASE = "http://127.0.0.1:5001/api/mcc"
-DEFAULT_BROWSER_BASE = "http://127.0.0.1:3002/"
+DEFAULT_BROWSER_BASE = "http://127.0.0.1:3002/mycelium"
 FIXTURE_NAME = "mcc_playwright_graph_fixture"
 
 

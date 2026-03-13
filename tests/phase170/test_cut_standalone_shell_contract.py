@@ -146,6 +146,36 @@ def test_cut_scene_graph_viewport_adapter_contract_present():
     assert "cardByNodeId" in adapter
 
 
+def test_cut_timeline_volume_and_snap_hooks_present():
+    timeline = _read("client/src/components/cut/TimelineTrackView.tsx")
+    store = _read("client/src/store/useCutEditorStore.ts")
+    audio_engine = _read("client/src/hooks/useAudioEngine.ts")
+    layout = _read("client/src/components/cut/CutEditorLayout.tsx")
+
+    assert "laneVolumes" in store
+    assert "setLaneVolume" in store
+    assert "snapEnabled" in store
+    assert "toggleSnap" in store
+    assert "TRACK_SLIDER_WRAP" in timeline
+    assert "rotate(-90deg)" in timeline
+    assert "Double-click reset lane volume to 100%" in timeline
+    assert "MARKER_173.16.NLE.TRACK_VOLUME" in timeline
+    assert "MARKER_170.NLE.SNAP_GRID" in timeline
+    assert "MARKER_173.18.NLE.BEAT_SNAP" in timeline
+    assert "playheadSec: currentTimeRef.current" in timeline
+    assert "markerTimes: markerTimesRef.current" in timeline
+    assert "event.altKey" in timeline
+    assert "for (const lane of args.lanes)" in timeline
+    assert "export default function useAudioEngine()" in audio_engine
+    assert "MediaElementAudioSourceNode" in audio_engine
+    assert "gainNode" in audio_engine
+    assert "laneVolumes" in audio_engine
+    assert "mutedLanes" in audio_engine
+    assert "soloLanes" in audio_engine
+    assert "clipLocalTime" in audio_engine
+    assert "useAudioEngine();" in layout
+
+
 def test_cut_nle_scene_graph_promotion_hooks_present():
     shell = _read("client/src/CutStandalone.tsx")
     store = _read("client/src/store/useCutEditorStore.ts")
@@ -157,6 +187,14 @@ def test_cut_nle_scene_graph_promotion_hooks_present():
     assert "editorSetSceneGraphSurfaceMode" in shell
     assert "nle_ready" in shell
     assert "Graph Ready" in transport
+    assert "cut-undo-button" in transport
+    assert "cut-redo-button" in transport
+    assert "cut-undo-toast" in transport
+    assert "/cut/undo-stack" in transport
+    assert "runUndoAction('undo')" in transport
+    assert "runUndoAction('redo')" in transport
+    assert "Cmd/Ctrl+Z" in transport
+    assert "Cmd/Ctrl+Shift+Z" in transport
     assert "Scene Graph peer pane ready" in layout
     assert "sceneGraphSurface={nleSceneGraphSurface}" in shell
     assert "Shared DAG viewport mounted inside NLE pane." in shell

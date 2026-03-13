@@ -24,6 +24,16 @@ logger = logging.getLogger(__name__)
 
 # Roadmap persistence
 ROADMAP_PATH = os.path.join(DATA_DIR, "roadmap_dag.json")
+ROADMAPS_DIR = os.path.join(DATA_DIR, "roadmaps")
+
+
+def _safe_project_segment(project_id: str) -> str:
+    safe = "".join(ch for ch in str(project_id or "").strip() if ch.isalnum() or ch in ("-", "_", "."))
+    return safe or "default_project"
+
+
+def roadmap_path_for_project(project_id: str) -> str:
+    return os.path.join(ROADMAPS_DIR, f"{_safe_project_segment(project_id)}.roadmap_dag.json")
 
 
 @dataclass
@@ -82,6 +92,22 @@ class RoadmapDAG:
             return dag
         except (json.JSONDecodeError, TypeError):
             return None
+
+    @classmethod
+    def load_for_project(cls, project_id: str) -> Optional['RoadmapDAG']:
+        requested = str(project_id or "").strip()
+        paths: List[str] = []
+        if requested:
+            paths.append(roadmap_path_for_project(requested))
+        if ROADMAP_PATH not in paths:
+            paths.append(ROADMAP_PATH)
+        for candidate in paths:
+            dag = cls.load(path=candidate)
+            if dag is None:
+                continue
+            if not requested or str(dag.project_id or "").strip() in {"", requested}:
+                return dag
+        return None
 
     def to_frontend_format(self) -> dict:
         """Convert to format expected by DAGView component."""
@@ -643,5 +669,6 @@ class RoadmapGenerator:
             scan_path = config.source_path
         scan = cls.scan_project_structure(scan_path)
         dag = cls.generate_static_roadmap(scan, config.project_id)
+        dag.save(path=roadmap_path_for_project(config.project_id))
         dag.save()
         return dag

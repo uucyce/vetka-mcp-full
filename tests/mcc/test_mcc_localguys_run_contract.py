@@ -52,6 +52,7 @@ def _localguys_profiles() -> dict[str, object]:
             source="test_fixture",
         )
         for model_id in [
+            "qwen3.5:latest",
             "qwen3:8b",
             "qwen2.5:7b",
             "qwen2.5:3b",
@@ -86,6 +87,7 @@ def _install_localguys_client(
             capabilities=[SimpleNamespace(value=value) for value in caps],
         )
         for model_id, caps in {
+            "qwen3.5:latest": ["chat", "code"],
             "qwen3:8b": ["chat", "code"],
             "qwen2.5:7b": ["chat", "code"],
             "qwen2.5:3b": ["chat", "code"],
@@ -158,7 +160,10 @@ def _start_run(client: TestClient):
 
 
 def test_localguys_run_start_creates_playground_binding_and_artifact_layout(client: TestClient) -> None:
-    run = _start_run(client)
+    resp = client.post("/api/mcc/tasks/tb_local_1/localguys-run")
+    assert resp.status_code == 200
+    payload = resp.json()
+    run = payload["run"]
 
     assert run["task_id"] == "tb_local_1"
     assert run["workflow_family"] == "g3_localguys"
@@ -179,6 +184,9 @@ def test_localguys_run_start_creates_playground_binding_and_artifact_layout(clie
     assert run["metrics"]["artifact_present_count"] == 0
     assert run["metrics"]["run_status"] == "queued"
     assert Path(run["artifact_manifest"]["artifact_root_abs"]).is_dir()
+    assert payload["runtime_guard"]["current_step"] == "recon"
+    assert payload["runtime_guard"]["allowed_tools"] == ["context", "search", "artifacts", "stats"]
+    assert payload["runtime_guard"]["write_opt_ins"]["task_board"] is False
 
 
 def test_localguys_run_done_is_blocked_until_required_artifacts_exist(client: TestClient) -> None:
@@ -271,6 +279,116 @@ def test_localguys_benchmark_summary_reports_status_and_metrics(client: TestClie
     assert len(summary["recent_runs"]) == 2
 
 
+def test_localguys_run_metadata_surfaces_playbook_telemetry_and_summary(client: TestClient) -> None:
+    run = _start_run(client)
+
+    resp = client.patch(
+        f"/api/mcc/localguys-runs/{run['run_id']}",
+        json={
+            "status": "running",
+            "current_step": "verify",
+            "active_role": "verifier",
+            "metadata": {
+                "recommended_tools": ["pytest", "rg", "pytest"],
+                "filtered_tool_schemas": ["edit_file", "task_board"],
+                "idle_turn_count": 2,
+                "verification_passed": True,
+                "verification_target": "targeted_tests",
+            },
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    telemetry = data["run"]["telemetry"]
+
+    assert telemetry["recommended_tools"] == ["pytest", "rg"]
+    assert telemetry["filtered_tool_schemas"] == ["edit_file", "task_board"]
+    assert telemetry["idle_turn_count"] == 2
+    assert telemetry["verification_passed"] is True
+    assert telemetry["verification_target"] == "targeted_tests"
+    assert data["run"]["metrics"]["recommended_tool_count"] == 2
+    assert data["run"]["metrics"]["filtered_tool_schema_count"] == 2
+    assert data["run"]["metrics"]["idle_turn_count"] == 2
+    assert data["run"]["metrics"]["verification_passed"] is True
+
+    summary_resp = client.get("/api/mcc/localguys/benchmark-summary", params={"workflow_family": "g3_localguys"})
+    assert summary_resp.status_code == 200
+    summary = summary_resp.json()["summary"]
+
+    assert summary["count"] == 1
+    assert summary["avg_idle_turn_count"] == 2.0
+    assert summary["verification_pass_rate"] == 100.0
+    assert summary["runs_with_recommended_tools"] == 1
+    assert summary["runs_with_filtered_tool_schemas"] == 1
+
+
+def test_localguys_run_rejects_tools_not_allowed_for_current_step(client: TestClient) -> None:
+    run = _start_run(client)
+
+    resp = client.patch(
+        f"/api/mcc/localguys-runs/{run['run_id']}",
+        json={
+            "status": "running",
+            "current_step": "recon",
+            "metadata": {
+                "used_tools": ["tasks"],
+            },
+        },
+    )
+    assert resp.status_code == 400
+    assert "disallowed_tools_for_step:recon:tasks" == resp.json()["detail"]
+
+
+def test_localguys_run_rejects_write_attempts_outside_contract(client: TestClient) -> None:
+    run = _start_run(client)
+
+    resp = client.patch(
+        f"/api/mcc/localguys-runs/{run['run_id']}",
+        json={
+            "status": "running",
+            "current_step": "execute",
+            "metadata": {
+                "write_attempts": ["task_board"],
+            },
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "write_scope_not_allowed:task_board"
+
+
+def test_localguys_run_tracks_turn_budget_and_runtime_guard(client: TestClient) -> None:
+    run = _start_run(client)
+
+    resp = client.patch(
+        f"/api/mcc/localguys-runs/{run['run_id']}",
+        json={
+            "status": "running",
+            "current_step": "execute",
+            "metadata": {
+                "turn_increment": 2,
+                "used_tools": ["context", "tests"],
+            },
+        },
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["run"]["metadata"]["turn_count"] == 2
+    assert payload["runtime_guard"]["current_step"] == "execute"
+    assert payload["runtime_guard"]["turn_count"] == 2
+    assert payload["runtime_guard"]["remaining_turns"] == 11
+
+    exceeded = client.patch(
+        f"/api/mcc/localguys-runs/{run['run_id']}",
+        json={
+            "metadata": {
+                "turn_increment": 20,
+            },
+        },
+    )
+    assert exceeded.status_code == 400
+    assert exceeded.json()["detail"] == "max_turns_exceeded:22/13"
+
+
 def test_localguys_run_start_returns_503_when_playground_creation_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -310,6 +428,7 @@ def test_localguys_run_start_returns_503_when_playground_creation_fails(
             source="test_fixture",
         )
         for model_id in [
+            "qwen3.5:latest",
             "qwen3:8b",
             "qwen2.5:7b",
             "qwen2.5:3b",

@@ -27,6 +27,13 @@ import json
 from pathlib import Path
 
 from .base_async_tool import BaseAsyncMCPTool
+from .llm_call_reflex import (
+    extend_safe_tool_allowlist,
+    filter_tool_calls,
+    get_effective_allowed_tool_names,
+    is_opted_in_write_tool,
+    maybe_apply_reflex_to_direct_tools,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +126,7 @@ async def resilient_llm_call(
     raise last_exc or RuntimeError("All providers failed")
 
 # MARKER_129.2_START: Security allowlists (same as llm_call_tool.py)
-SAFE_FUNCTION_CALLING_TOOLS = {
+SAFE_FUNCTION_CALLING_TOOLS = extend_safe_tool_allowlist({
     "vetka_search_semantic",
     "vetka_read_file",
     "vetka_list_files",
@@ -147,7 +154,7 @@ SAFE_FUNCTION_CALLING_TOOLS = {
     "vetka_arc_suggest",
     "vetka_web_search",
     "vetka_library_docs",
-}
+})
 
 WRITE_TOOLS_REQUIRING_APPROVAL = {
     "vetka_edit_file",
@@ -553,13 +560,24 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
         tools = arguments.get('tools')
         inject_context = arguments.get('inject_context')
         model_source = arguments.get('model_source')
+        allow_task_board_writes = bool(arguments.get("_allow_task_board_writes"))
+        allow_edit_file_writes = bool(arguments.get("_allow_edit_file_writes"))
+        effective_allowed_tools = get_effective_allowed_tool_names(
+            SAFE_FUNCTION_CALLING_TOOLS,
+            allow_edit_file_writes=allow_edit_file_writes,
+        )
 
         # MARKER_129.2A: Security — filter tools by allowlist
         if tools:
             filtered_tools = []
             for tool_def in tools:
                 tool_func_name = tool_def.get('function', {}).get('name', '') if isinstance(tool_def, dict) else ''
-                if tool_func_name in SAFE_FUNCTION_CALLING_TOOLS:
+                if tool_func_name in effective_allowed_tools:
+                    filtered_tools.append(tool_def)
+                elif is_opted_in_write_tool(
+                    tool_func_name,
+                    allow_edit_file_writes=allow_edit_file_writes,
+                ):
                     filtered_tools.append(tool_def)
                 elif tool_func_name in WRITE_TOOLS_REQUIRING_APPROVAL:
                     logger.warning(f"[SECURITY] Blocked write tool '{tool_func_name}' from function calling")
@@ -634,28 +652,12 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
             logger.info(f"[MYCELIUM LLM] Calling {model} via {provider_name}{source_info}")
 
             # MARKER_178.4.8: Universal REFLEX pre-hook for ALL LLM calls (async)
-            _reflex_recs = []
-            try:
-                from src.services.reflex_integration import reflex_pre_fc, _is_enabled
-                if _is_enabled():
-                    _messages = arguments.get("messages", [])
-                    _task_text = ""
-                    for m in reversed(_messages):
-                        if m.get("role") == "user":
-                            _task_text = str(m.get("content", ""))[:200]
-                            break
-
-                    class _RefSubtask:
-                        def __init__(self, desc, ctx):
-                            self.description = desc
-                            self.context = ctx
-
-                    _phase = arguments.get("_reflex_phase", "research")
-                    _role = arguments.get("_reflex_role", "coder")
-                    _sub = _RefSubtask(_task_text, {"phase_type": _phase, "agent_role": _role})
-                    _reflex_recs = reflex_pre_fc(_sub, phase_type=_phase, agent_role=_role)
-            except Exception:
-                pass
+            messages, tools, _reflex_recs, reflex_meta = maybe_apply_reflex_to_direct_tools(
+                arguments=arguments,
+                messages=messages,
+                tools=tools,
+                provider_name=provider_name,
+            )
 
             # MARKER_133.C33A: Use resilient wrapper with retry + fallback
             response = await resilient_llm_call(
@@ -690,15 +692,18 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
 
             # Security: filter response tool_calls
             if tool_calls:
-                filtered_calls = []
-                for tc in tool_calls:
-                    tc_name = tc.get('function', {}).get('name', '') if isinstance(tc, dict) else ''
-                    if tc_name in SAFE_FUNCTION_CALLING_TOOLS:
-                        filtered_calls.append(tc)
-                    else:
-                        logger.warning(f"[SECURITY] Filtered out tool_call '{tc_name}' from LLM response")
+                filtered_calls = filter_tool_calls(
+                    tool_calls,
+                    allowed_tool_names=effective_allowed_tools,
+                    allow_task_board_writes=allow_task_board_writes,
+                )
+                dropped_calls = len(tool_calls) - len(filtered_calls)
+                if dropped_calls:
+                    logger.warning("[SECURITY] Filtered %d unsafe tool_call(s) from LLM response", dropped_calls)
                 if filtered_calls:
                     result['tool_calls'] = filtered_calls
+            if reflex_meta.get("enabled"):
+                result["reflex"] = reflex_meta
 
             # Track usage
             self._track_usage_for_balance(provider_name, model, result.get('usage'))

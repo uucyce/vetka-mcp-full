@@ -51,6 +51,7 @@ export interface TaskData {
   // MARKER_130.C18B: Agent coordination fields
   assigned_to?: string;
   agent_type?: string;
+  closed_by?: string;
   commit_hash?: string;
   commit_message?: string;
   completed_at?: string;
@@ -521,7 +522,7 @@ export const TaskCard = memo(function TaskCard({ task, isSelected, onPriorityCha
             borderRadius: 2,
             fontFamily: 'monospace',
           }}>
-            {task.assigned_to}
+            {task.assigned_to}{task.agent_type ? `:${task.agent_type}` : ''}
           </span>
         )}
 
@@ -592,6 +593,9 @@ export const TaskCard = memo(function TaskCard({ task, isSelected, onPriorityCha
           {/* Meta info */}
           <div style={{ fontSize: 10, color: '#555', marginBottom: 6, fontFamily: 'monospace' }}>
             {task.source && `src:${task.source}`}
+            {task.assigned_to && ` · owner:${task.assigned_to}`}
+            {task.agent_type && ` · type:${task.agent_type}`}
+            {task.closed_by && ` · closed:${task.closed_by}`}
             {task.preset && ` · ${task.preset}`}
             {task.created_at && ` · ${new Date(task.created_at).toLocaleTimeString()}`}
           </div>

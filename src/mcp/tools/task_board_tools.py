@@ -38,12 +38,19 @@ TASK_BOARD_SCHEMA = {
         # For "add":
         "title": {"type": "string", "description": "Task title (required for add)"},
         "description": {"type": "string", "description": "Detailed task description"},
+        "profile": {"type": "string", "enum": ["p6"], "description": "Task intake profile with protocol defaults"},
         "priority": {"type": "number", "description": "1=critical, 2=high, 3=medium, 4=low, 5=someday"},
-        "phase_type": {"type": "string", "enum": ["build", "fix", "research"], "description": "Task type"},
+        "phase_type": {"type": "string", "enum": ["build", "fix", "research", "test"], "description": "Task type"},
         "complexity": {"type": "string", "enum": ["low", "medium", "high"], "description": "Estimated complexity"},
         "preset": {"type": "string", "description": "Pipeline preset override"},
         "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for categorization"},
         "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Task IDs that must complete first"},
+        "project_id": {"type": "string", "description": "Logical project ID for lane-aware multitask routing"},
+        "project_lane": {"type": "string", "description": "Specific multitask lane/MCC tab identifier"},
+        "architecture_docs": {"type": "array", "items": {"type": "string"}, "description": "Architecture docs linked to the task"},
+        "recon_docs": {"type": "array", "items": {"type": "string"}, "description": "Recon docs linked to the task"},
+        "closure_tests": {"type": "array", "items": {"type": "string"}, "description": "Commands required for closure proof"},
+        "closure_files": {"type": "array", "items": {"type": "string"}, "description": "Files allowed for scoped auto-commit"},
         # MARKER_130.C16B: Agent assignment fields
         "assigned_to": {"type": "string", "description": "Agent name: opus, cursor, dragon, grok"},
         "agent_type": {"type": "string", "description": "Agent type: claude_code, cursor, mycelium, grok, human"},
@@ -67,6 +74,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     CRUD + list + summary operations on the task board.
     """
     from src.orchestration.task_board import get_task_board
+    from src.services.roadmap_task_sync import apply_task_profile_defaults
 
     action = arguments.get("action")
     if not action:
@@ -78,18 +86,38 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         title = arguments.get("title")
         if not title:
             return {"success": False, "error": "title is required for add"}
-
-        task_id = board.add_task(
-            title=title,
-            description=arguments.get("description", ""),
-            priority=int(arguments.get("priority", 3)),
-            phase_type=arguments.get("phase_type", "build"),
-            complexity=arguments.get("complexity", "medium"),
-            preset=arguments.get("preset"),
-            tags=arguments.get("tags"),
-            dependencies=arguments.get("dependencies"),
-            source="mcp"
-        )
+        payload = dict(arguments)
+        payload["source"] = "mcp"
+        try:
+            payload = apply_task_profile_defaults(payload)
+        except ValueError as exc:
+            return {"success": False, "error": str(exc)}
+        try:
+            task_id = board.add_task(
+                title=title,
+                description=payload.get("description", ""),
+                priority=int(payload.get("priority", 3)),
+                phase_type=payload.get("phase_type", "build"),
+                complexity=payload.get("complexity", "medium"),
+                preset=payload.get("preset"),
+                tags=payload.get("tags"),
+                dependencies=payload.get("dependencies"),
+                source=payload.get("source", "mcp"),
+                project_id=payload.get("project_id"),
+                project_lane=payload.get("project_lane"),
+                architecture_docs=payload.get("architecture_docs"),
+                recon_docs=payload.get("recon_docs"),
+                protocol_version=payload.get("protocol_version"),
+                require_closure_proof=bool(payload.get("require_closure_proof")),
+                closure_tests=payload.get("closure_tests"),
+                closure_files=payload.get("closure_files"),
+                task_origin=payload.get("task_origin"),
+                workflow_selection_origin=payload.get("workflow_selection_origin"),
+                completion_contract=payload.get("completion_contract"),
+                depends_on_docs=payload.get("depends_on_docs"),
+            )
+        except ValueError as exc:
+            return {"success": False, "error": str(exc)}
         return {"success": True, "task_id": task_id, "message": f"Task '{title}' added"}
 
     elif action == "list":
@@ -130,7 +158,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # Collect updatable fields
         updates = {}
         for field in ["title", "description", "priority", "phase_type", "complexity",
-                       "preset", "status", "tags", "dependencies"]:
+                       "preset", "status", "tags", "dependencies", "project_id",
+                       "project_lane", "architecture_docs", "recon_docs",
+                       "closure_tests", "closure_files"]:
             if field in arguments and arguments[field] is not None:
                 updates[field] = arguments[field]
 

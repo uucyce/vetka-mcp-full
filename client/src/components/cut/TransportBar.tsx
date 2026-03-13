@@ -3,7 +3,7 @@
  * Play/Pause, timecode display, playback rate, zoom slider.
  * Keyboard shortcuts: Space=play/pause, J/K/L=shuttle, Left/Right=step.
  */
-import { useState, useEffect, useCallback, type CSSProperties } from 'react';
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 
@@ -89,6 +89,56 @@ const LABEL_STYLE: CSSProperties = {
   letterSpacing: 1,
 };
 
+const UNDO_BADGE_STYLE: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: 16,
+  height: 16,
+  padding: '0 4px',
+  borderRadius: 999,
+  background: '#111',
+  color: '#9ca3af',
+  border: '1px solid #2a2a2a',
+  fontSize: 9,
+  lineHeight: 1,
+};
+
+const TOAST_STYLE: CSSProperties = {
+  position: 'absolute',
+  top: 42,
+  left: 12,
+  zIndex: 20,
+  padding: '8px 10px',
+  borderRadius: 6,
+  background: 'rgba(10,10,10,0.94)',
+  border: '1px solid #262626',
+  color: '#d1d5db',
+  fontSize: 11,
+  boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+  pointerEvents: 'none',
+  maxWidth: 280,
+};
+
+type UndoStackLabel = {
+  index?: number;
+  label?: string;
+  timestamp?: string;
+};
+
+type UndoStackInfo = {
+  undo_depth: number;
+  redo_depth: number;
+  can_undo: boolean;
+  can_redo: boolean;
+  labels: UndoStackLabel[];
+};
+
+type ToastState = {
+  tone: 'info' | 'success' | 'error';
+  text: string;
+} | null;
+
 function formatTimecode(seconds: number, fps = 25): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -126,6 +176,77 @@ export default function TransportBar() {
   const pause = useCutEditorStore((s) => s.pause);
   const [exportStatus, setExportStatus] = useState<'idle' | 'exporting' | 'done' | 'error'>('idle');
   const [exportFormat, setExportFormat] = useState<'premiere' | 'fcpxml'>('premiere');
+  const [undoStack, setUndoStack] = useState<UndoStackInfo>({
+    undo_depth: 0,
+    redo_depth: 0,
+    can_undo: false,
+    can_redo: false,
+    labels: [],
+  });
+  const [undoToast, setUndoToast] = useState<ToastState>(null);
+  const undoToastTimeoutRef = useRef<number | null>(null);
+
+  const showUndoToast = useCallback((tone: 'info' | 'success' | 'error', text: string) => {
+    if (undoToastTimeoutRef.current != null) {
+      window.clearTimeout(undoToastTimeoutRef.current);
+    }
+    setUndoToast({ tone, text });
+    undoToastTimeoutRef.current = window.setTimeout(() => {
+      setUndoToast(null);
+      undoToastTimeoutRef.current = null;
+    }, 2200);
+  }, []);
+
+  const refreshUndoStack = useCallback(async () => {
+    if (!sandboxRoot || !projectId) {
+      setUndoStack({
+        undo_depth: 0,
+        redo_depth: 0,
+        can_undo: false,
+        can_redo: false,
+        labels: [],
+      });
+      return;
+    }
+    try {
+      const response = await fetch(
+        `${API_BASE}/cut/undo-stack?sandbox_root=${encodeURIComponent(sandboxRoot)}&project_id=${encodeURIComponent(projectId)}&timeline_id=${encodeURIComponent(timelineId || 'main')}`
+      );
+      if (!response.ok) {
+        throw new Error(`undo stack failed: HTTP ${response.status}`);
+      }
+      const payload = (await response.json()) as { success?: boolean } & Partial<UndoStackInfo>;
+      if (!payload.success) {
+        throw new Error('undo stack request failed');
+      }
+      setUndoStack({
+        undo_depth: Number(payload.undo_depth || 0),
+        redo_depth: Number(payload.redo_depth || 0),
+        can_undo: Boolean(payload.can_undo),
+        can_redo: Boolean(payload.can_redo),
+        labels: Array.isArray(payload.labels) ? payload.labels : [],
+      });
+    } catch (error) {
+      console.warn('[CUT] undo stack refresh failed:', error);
+    }
+  }, [projectId, sandboxRoot, timelineId]);
+
+  useEffect(() => {
+    void refreshUndoStack();
+  }, [refreshUndoStack]);
+
+  useEffect(() => {
+    if (!sandboxRoot || !projectId) return;
+    void refreshUndoStack();
+  }, [lanes, projectId, refreshUndoStack, sandboxRoot]);
+
+  useEffect(() => {
+    return () => {
+      if (undoToastTimeoutRef.current != null) {
+        window.clearTimeout(undoToastTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // MARKER_170.NLE.EXPORT_UI: Export timeline to Premiere XML or FCPXML
   const handleExport = useCallback(async () => {
@@ -250,6 +371,45 @@ export default function TransportBar() {
     await refreshProjectState?.();
   }, [projectId, refreshProjectState, sandboxRoot, selectedClipId, timelineId]);
 
+  const runUndoAction = useCallback(
+    async (mode: 'undo' | 'redo') => {
+      if (!sandboxRoot || !projectId) return;
+      const response = await fetch(`${API_BASE}/cut/${mode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId || 'main',
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`${mode} failed: HTTP ${response.status}`);
+      }
+      const payload = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        undo_depth?: number;
+        redo_depth?: number;
+        undone_label?: string;
+        redone_label?: string;
+      };
+      if (!payload.success) {
+        const knownError = payload.error === 'nothing_to_undo' || payload.error === 'nothing_to_redo';
+        showUndoToast(knownError ? 'info' : 'error', knownError ? payload.error.replaceAll('_', ' ') : payload.error || `${mode} failed`);
+        return;
+      }
+      await refreshProjectState?.();
+      await refreshUndoStack();
+      if (mode === 'undo') {
+        showUndoToast('success', `Undo: ${payload.undone_label || 'timeline edit'}`);
+      } else {
+        showUndoToast('success', `Redo: ${payload.redone_label || 'timeline edit'}`);
+      }
+    },
+    [projectId, refreshProjectState, refreshUndoStack, sandboxRoot, showUndoToast, timelineId]
+  );
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -258,6 +418,12 @@ export default function TransportBar() {
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
       const run = async () => {
+        if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
+          e.preventDefault();
+          e.stopPropagation();
+          await runUndoAction(e.shiftKey ? 'redo' : 'undo');
+          return;
+        }
         switch (e.code) {
         case 'Space':
           e.preventDefault();
@@ -340,6 +506,7 @@ export default function TransportBar() {
     duration,
     pause,
     removeSelectedClip,
+    runUndoAction,
     seek,
     setMarkIn,
     setMarkOut,
@@ -349,7 +516,21 @@ export default function TransportBar() {
   ]);
 
   return (
-    <div data-testid="cut-transport-bar" style={BAR_STYLE}>
+    <div data-testid="cut-transport-bar" style={{ ...BAR_STYLE, position: 'relative' }}>
+      {undoToast && (
+        <div
+          data-testid="cut-undo-toast"
+          style={{
+            ...TOAST_STYLE,
+            borderColor:
+              undoToast.tone === 'success' ? '#14532d' : undoToast.tone === 'error' ? '#7f1d1d' : '#262626',
+            color:
+              undoToast.tone === 'success' ? '#86efac' : undoToast.tone === 'error' ? '#fca5a5' : '#d1d5db',
+          }}
+        >
+          {undoToast.text}
+        </div>
+      )}
       {/* Skip to start */}
       <button style={BTN_STYLE} onClick={() => seek(0)} title="Go to start (Home)">
         ⏮
@@ -404,6 +585,34 @@ export default function TransportBar() {
       >
         {playbackRate}x
       </span>
+
+      <div style={SEPARATOR} />
+
+      <button
+        data-testid="cut-undo-button"
+        style={undoStack.can_undo ? BTN_STYLE : { ...BTN_STYLE, opacity: 0.35, cursor: 'default' }}
+        onClick={() => void runUndoAction('undo')}
+        disabled={!undoStack.can_undo}
+        title={
+          undoStack.can_undo
+            ? `Undo ${undoStack.labels[0]?.label || 'edit'} (Cmd/Ctrl+Z)`
+            : 'Nothing to undo'
+        }
+      >
+        ↶
+        <span style={UNDO_BADGE_STYLE}>{undoStack.undo_depth}</span>
+      </button>
+
+      <button
+        data-testid="cut-redo-button"
+        style={undoStack.can_redo ? BTN_STYLE : { ...BTN_STYLE, opacity: 0.35, cursor: 'default' }}
+        onClick={() => void runUndoAction('redo')}
+        disabled={!undoStack.can_redo}
+        title={undoStack.can_redo ? 'Redo last undone edit (Cmd/Ctrl+Shift+Z)' : 'Nothing to redo'}
+      >
+        ↷
+        <span style={UNDO_BADGE_STYLE}>{undoStack.redo_depth}</span>
+      </button>
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />

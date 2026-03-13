@@ -25,3 +25,27 @@ def test_mcc_truncates_chain_only_when_ancestor_is_clicked():
     assert "const hasDescendantsExpanded = existingIndex >= 0 && existingIndex < roadmapDrillNodeChain.length - 1;" in text
     assert "return prev.slice(0, idx + 1);" in text
     assert "return prev.length === 1 ? [] : prev;" in text
+
+
+def test_mcc_switches_branch_when_new_top_level_anchor_is_clicked():
+    text = MCC.read_text()
+    assert "const isInlineRoadmapDescendant = Boolean(" in text
+    assert "nodeId.startsWith('rd_')" in text
+    assert "if (!isInlineRoadmapDescendant) {" in text
+    assert "return [anchorId];" in text
+
+
+def test_mcc_roadmap_drill_materializes_one_generation_per_expand():
+    text = MCC.read_text()
+    assert "MARKER_177.MCC.INFINITE_DRILL.ONE_LEVEL" in text
+    assert "depth1.forEach((id) => pushNode(id, 1));" in text
+    assert "depth2.forEach((id) => pushNode(id, 2));" not in text
+    assert "pushOverflowNode(2, depth2Overflow);" not in text
+
+
+def test_mcc_roadmap_drill_uses_directed_children_not_undirected_neighbors():
+    text = MCC.read_text()
+    assert "const childrenByParent = new Map<string, Set<string>>();" in text
+    assert "connectChild(String(e.source || ''), String(e.target || ''));" in text
+    assert "connect(e.target, e.source);" not in text
+    assert "Array.from(childrenByParent.get(parentAnchorId) || [])" in text

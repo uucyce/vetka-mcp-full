@@ -1,0 +1,29 @@
+{
+  "model": "qwen2.5vl:3b",
+  "plans": [
+    {
+      "sample_id": "keyboard-hands",
+      "title": "Keyboard hands",
+      "path": "/qwen_plate_plans/keyboard-hands.json",
+      "recommended_plate_count": 5,
+      "confidence": 0.5,
+      "error": null
+    },
+    {
+      "sample_id": "hover-politsia",
+      "title": "Hover Politsia street",
+      "path": "/qwen_plate_plans/hover-politsia.json",
+      "recommended_plate_count": 5,
+      "confidence": 0.9,
+      "error": null
+    },
+    {
+      "sample_id": "truck-driver",
+      "title": "Truck driver",
+      "path": "/qwen_plate_plans/truck-driver.json",
+      "recommended_plate_count": 4,
+      "confidence": 0.9,
+      "error": null
+    }
+  ]
+}

@@ -7,10 +7,15 @@ MINI_CONTEXT = ROOT / 'client/src/components/mcc/MiniContext.tsx'
 
 def test_code_scope_cards_do_not_render_task_like_pending_semantics():
     text = ROADMAP_NODE.read_text()
-    assert "const semanticBorderColor = isCodeScope ? 'rgba(180,190,205,0.38)' : borderColor;" in text
+    assert "const isDocumentScope = isProjectFile && (scopeLower.startsWith('docs/') || DOCUMENT_EXTENSIONS.has(scopeExt));" in text
+    assert "const isCodeFileScope = isProjectFile && !isDocumentScope;" in text
+    assert "const codeKindLabel = isProjectRoot ? 'ROOT' : isProjectDir ? 'DIR' : isDocumentScope ? 'DOC' : isCodeFileScope ? 'CODE' : '';" in text
+    assert "const codeScopeDescriptor = isProjectRoot ? 'project root' : isProjectDir ? 'directory' : isDocumentScope ? 'document' : isCodeFileScope ? 'source file' : 'code scope';" in text
+    assert "const codeScopeBackground = isProjectRoot" in text
+    assert "const codeScopePillBackground = isProjectRoot" in text
     assert "borderStyle: isCodeScope ? 'solid' : (isSuggested ? 'dashed' : 'solid')" in text
     assert "opacity: isCodeScope ? 1 : (isSuggested ? 0.58 : 1)" in text
-    assert "{isCodeScope ? 'code scope' : data.status}" in text
+    assert "{isCodeScope ? codeScopeDescriptor : data.status}" in text
     assert "inside ${data.description}" in text
 
 

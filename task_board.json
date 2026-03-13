@@ -2,9 +2,390 @@
   "_meta": {
     "version": "1.0",
     "phase": "121",
-    "updated": "2026-03-12T20:19:23.631434"
+    "updated": "2026-03-13T12:42:00+00:00"
   },
   "tasks": {
+    "tb_1773375166_1": {
+      "id": "tb_1773375166_1",
+      "title": "Strengthen MCC localguys workflow contract with playbook-safe fields",
+      "description": "Add explicit write opt-ins, verification target, max_turns, idle nudge template, and stage tool policy to dynamic localguys workflow contracts in MCC.",
+      "priority": 1,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "done",
+      "source": "manual",
+      "tags": [
+        "mcc",
+        "localguys",
+        "safety",
+        "workflow-contract"
+      ],
+      "dependencies": [],
+      "created_at": "2026-03-13T12:19:26+00:00",
+      "started_at": "2026-03-13T12:20:00+00:00",
+      "completed_at": "2026-03-13T12:27:00+00:00",
+      "pipeline_task_id": null,
+      "result_summary": "Dynamic localguys workflow contracts now expose explicit execution_mode, write_opt_ins, verification_target, max_turns, idle_nudge_template, and stage_tool_policy while preserving playground-only sandbox policy.",
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "codex",
+      "source_chat_id": null,
+      "source_group_id": null,
+      "module": "mcc_localguys",
+      "primary_node_id": null,
+      "affected_nodes": [],
+      "workflow_id": "quickfix_localguys",
+      "workflow_bank": "core",
+      "workflow_family": "quickfix_localguys",
+      "workflow_selection_origin": "manual_localguys_recon",
+      "team_profile": "dragon_silver",
+      "task_origin": "manual_localguys_recon",
+      "roadmap_id": null,
+      "roadmap_node_id": null,
+      "roadmap_lane": null,
+      "roadmap_title": null,
+      "project_id": null,
+      "project_lane": null,
+      "parent_task_id": null,
+      "architecture_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/172_vetka_tools/LOCAL_MODELS_PLAYBOOK_FOR_MYCELIUM_2026-03-13.md",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/172_vetka_tools/MCC_LOCALGUYS_RECON_2026-03-13.md"
+      ],
+      "recon_docs": [],
+      "protocol_version": null,
+      "require_closure_proof": true,
+      "closure_tests": [
+        "tests/mcc/test_mcc_workflow_contract_contract.py"
+      ],
+      "closure_files": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/mcc_routes.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tests/mcc/test_mcc_workflow_contract_contract.py"
+      ],
+      "ownership_scope": "mcc_localguys_contract",
+      "allowed_paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/mcc_routes.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tests/mcc/**",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/172_vetka_tools/**"
+      ],
+      "owner_agent": "codex",
+      "completion_contract": [
+        "workflow contract carries explicit playbook-safe execution fields",
+        "existing localguys contract tests pass",
+        "new contract fields remain playground-only and do not weaken sandbox policy"
+      ],
+      "verification_agent": "claude",
+      "blocked_paths": [],
+      "forbidden_scopes": [],
+      "worktree_hint": "",
+      "touch_policy": "backend_contract_only",
+      "overlap_risk": "medium",
+      "depends_on_docs": [],
+      "closure_subtask": {
+        "status": "done",
+        "tests": [
+          "tests/mcc/test_mcc_workflow_contract_contract.py"
+        ],
+        "finished_at": "2026-03-13T12:27:00+00:00"
+      },
+      "closed_by": null,
+      "closed_at": null,
+      "closure_proof": null,
+      "status_history": [
+        {
+          "ts": "2026-03-13T12:19:26+00:00",
+          "event": "created",
+          "status": "pending",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "task created",
+          "extra": {
+            "project_lane": "",
+            "parent_task_id": "",
+            "protocol_version": ""
+          }
+        },
+        {
+          "ts": "2026-03-13T12:20:00+00:00",
+          "event": "status_running",
+          "status": "running",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "implementation started"
+        },
+        {
+          "ts": "2026-03-13T12:27:00+00:00",
+          "event": "status_done",
+          "status": "done",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "contract fields implemented and targeted tests green"
+        }
+      ]
+    },
+    "tb_1773375166_2": {
+      "id": "tb_1773375166_2",
+      "title": "Add playbook-grade telemetry to MCC localguys run registry",
+      "description": "Extend localguys run storage with recommended tools, filtered schemas, idle turn count, and verification result so MCC can diagnose local-model behavior structurally.",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "done",
+      "source": "manual",
+      "tags": [
+        "mcc",
+        "localguys",
+        "telemetry",
+        "safety"
+      ],
+      "dependencies": [
+        "tb_1773375166_1"
+      ],
+      "created_at": "2026-03-13T12:19:27+00:00",
+      "started_at": "2026-03-13T12:28:00+00:00",
+      "completed_at": "2026-03-13T12:33:00+00:00",
+      "pipeline_task_id": null,
+      "result_summary": "Localguys run registry now stores structured telemetry derived from PATCH metadata and benchmark summary aggregates idle turns, verification pass rate, and tool/schema coverage.",
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "codex",
+      "source_chat_id": null,
+      "source_group_id": null,
+      "module": "mcc_localguys",
+      "primary_node_id": null,
+      "affected_nodes": [],
+      "workflow_id": "quickfix_localguys",
+      "workflow_bank": "core",
+      "workflow_family": "quickfix_localguys",
+      "workflow_selection_origin": "manual_localguys_recon",
+      "team_profile": "dragon_silver",
+      "task_origin": "manual_localguys_recon",
+      "roadmap_id": null,
+      "roadmap_node_id": null,
+      "roadmap_lane": null,
+      "roadmap_title": null,
+      "project_id": null,
+      "project_lane": null,
+      "parent_task_id": null,
+      "architecture_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/172_vetka_tools/LOCAL_MODELS_PLAYBOOK_FOR_MYCELIUM_2026-03-13.md",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/172_vetka_tools/MCC_LOCALGUYS_RECON_2026-03-13.md"
+      ],
+      "recon_docs": [],
+      "protocol_version": null,
+      "require_closure_proof": true,
+      "closure_tests": [
+        "tests/mcc/test_mcc_localguys_run_contract.py"
+      ],
+      "closure_files": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/mcc_local_run_registry.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tests/mcc/test_mcc_localguys_run_contract.py"
+      ],
+      "ownership_scope": "mcc_localguys_registry",
+      "allowed_paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/mcc_local_run_registry.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tests/mcc/**",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/172_vetka_tools/**"
+      ],
+      "owner_agent": "codex",
+      "completion_contract": [
+        "registry stores structured telemetry for localguys runs",
+        "benchmark summary remains backward compatible",
+        "tests cover new telemetry fields"
+      ],
+      "verification_agent": "claude",
+      "blocked_paths": [],
+      "forbidden_scopes": [],
+      "worktree_hint": "",
+      "touch_policy": "backend_contract_only",
+      "overlap_risk": "medium",
+      "depends_on_docs": [],
+      "closure_subtask": {
+        "status": "done",
+        "tests": [
+          "tests/mcc/test_mcc_localguys_run_contract.py"
+        ],
+        "finished_at": "2026-03-13T12:33:00+00:00"
+      },
+      "closed_by": null,
+      "closed_at": null,
+      "closure_proof": null,
+      "status_history": [
+        {
+          "ts": "2026-03-13T12:19:27+00:00",
+          "event": "created",
+          "status": "pending",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "task created",
+          "extra": {
+            "project_lane": "",
+            "parent_task_id": "",
+            "protocol_version": ""
+          }
+        },
+        {
+          "ts": "2026-03-13T12:28:00+00:00",
+          "event": "status_running",
+          "status": "running",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "registry telemetry implementation started"
+        },
+        {
+          "ts": "2026-03-13T12:33:00+00:00",
+          "event": "status_done",
+          "status": "done",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "telemetry fields implemented and targeted tests green"
+        }
+      ]
+    },
+    "tb_1773375166_3": {
+      "id": "tb_1773375166_3",
+      "title": "Expose MCC localguys contract compliance in UI and task context",
+      "description": "Show localguys safety/compliance fields in MiniStats and context packet so users can inspect stage policy, verification target, and sandbox semantics per run.",
+      "priority": 3,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "done",
+      "source": "manual",
+      "tags": [
+        "mcc",
+        "localguys",
+        "ui",
+        "context"
+      ],
+      "dependencies": [
+        "tb_1773375166_1",
+        "tb_1773375166_2"
+      ],
+      "created_at": "2026-03-13T12:19:28+00:00",
+      "started_at": "2026-03-13T12:34:00+00:00",
+      "completed_at": "2026-03-13T12:42:00+00:00",
+      "pipeline_task_id": null,
+      "result_summary": "Task context packet now exposes localguys_compliance, and MiniStats renders sandbox mode, write gates, verification target, max turns, active step tools, and telemetry state for localguys runs.",
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "codex",
+      "source_chat_id": null,
+      "source_group_id": null,
+      "module": "mcc_localguys",
+      "primary_node_id": null,
+      "affected_nodes": [],
+      "workflow_id": "quickfix_localguys",
+      "workflow_bank": "core",
+      "workflow_family": "quickfix_localguys",
+      "workflow_selection_origin": "manual_localguys_recon",
+      "team_profile": "dragon_silver",
+      "task_origin": "manual_localguys_recon",
+      "roadmap_id": null,
+      "roadmap_node_id": null,
+      "roadmap_lane": null,
+      "roadmap_title": null,
+      "project_id": null,
+      "project_lane": null,
+      "parent_task_id": null,
+      "architecture_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/172_vetka_tools/LOCAL_MODELS_PLAYBOOK_FOR_MYCELIUM_2026-03-13.md",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/172_vetka_tools/MCC_LOCALGUYS_RECON_2026-03-13.md"
+      ],
+      "recon_docs": [],
+      "protocol_version": null,
+      "require_closure_proof": true,
+      "closure_tests": [],
+      "closure_files": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/mcc/MiniStats.tsx",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/roadmap_task_sync.py"
+      ],
+      "ownership_scope": "mcc_localguys_ui",
+      "allowed_paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/mcc/MiniStats.tsx",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/services/roadmap_task_sync.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/172_vetka_tools/**"
+      ],
+      "owner_agent": "codex",
+      "completion_contract": [
+        "localguys contract safety fields are inspectable in MCC UI",
+        "task context packet includes compliance data needed by downstream consumers"
+      ],
+      "verification_agent": "claude",
+      "blocked_paths": [],
+      "forbidden_scopes": [],
+      "worktree_hint": "",
+      "touch_policy": "frontend_backend_split",
+      "overlap_risk": "medium",
+      "depends_on_docs": [],
+      "closure_subtask": {
+        "status": "done",
+        "tests": [],
+        "finished_at": "2026-03-13T12:42:00+00:00"
+      },
+      "closed_by": null,
+      "closed_at": null,
+      "closure_proof": null,
+      "status_history": [
+        {
+          "ts": "2026-03-13T12:19:28+00:00",
+          "event": "created",
+          "status": "pending",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "task created",
+          "extra": {
+            "project_lane": "",
+            "parent_task_id": "",
+            "protocol_version": ""
+          }
+        },
+        {
+          "ts": "2026-03-13T12:34:00+00:00",
+          "event": "status_running",
+          "status": "running",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "UI and context compliance exposure started"
+        },
+        {
+          "ts": "2026-03-13T12:42:00+00:00",
+          "event": "status_done",
+          "status": "done",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "context packet and MiniStats now expose localguys compliance with builds and targeted tests green"
+        }
+      ]
+    },
     "tb_1773294107_1": {
       "id": "tb_1773294107_1",
       "title": "Debug MCC chat send path: message not persisted and model unavailable",
@@ -122,7 +503,7 @@
       "phase_type": "design",
       "preset": null,
       "assigned_tier": null,
-      "status": "pending",
+      "status": "done",
       "source": "manual",
       "tags": [
         "mcc",
@@ -133,9 +514,9 @@
       "dependencies": [],
       "created_at": "2026-03-12T19:42:10.477242",
       "started_at": null,
-      "completed_at": null,
+      "completed_at": "2026-03-13T09:12:00+00:00",
       "pipeline_task_id": null,
-      "result_summary": null,
+      "result_summary": "Added a reusable MCC graph fixture, a seed script that reuses or creates the fixture project, and a browser project_id boot override so Playwright can open a hydrated graph state deterministically.",
       "stats": null,
       "result": null,
       "assigned_to": null,
@@ -2270,6 +2651,566 @@
           "agent_type": "",
           "source": "task_board",
           "reason": ""
+        }
+      ]
+    },
+    "tb_1773391800_1": {
+      "id": "tb_1773391800_1",
+      "title": "Document MCC generation-band split markers and verification path",
+      "description": "Capture the generation-band gap explicitly: one shared mini render family, need for depth1/depth2/depth3+ policy split, geometry scaling, and Playwright verification requirements.",
+      "priority": 1,
+      "complexity": "small",
+      "phase_type": "research",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "done",
+      "source": "manual",
+      "tags": [
+        "mcc",
+        "dag",
+        "ux",
+        "architecture",
+        "fractal-scale"
+      ],
+      "dependencies": [],
+      "created_at": "2026-03-13T08:30:00+00:00",
+      "started_at": null,
+      "completed_at": "2026-03-13T08:34:00+00:00",
+      "pipeline_task_id": null,
+      "result_summary": "Added explicit generation-band recon markers and a Playwright verification path note so the next visual passes are grounded in the real renderer gap.",
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "codex",
+      "source_chat_id": null,
+      "source_group_id": null,
+      "module": "frontend_components",
+      "primary_node_id": null,
+      "affected_nodes": [],
+      "workflow_id": null,
+      "workflow_bank": null,
+      "workflow_family": "quickfix_localguys",
+      "workflow_selection_origin": null,
+      "team_profile": null,
+      "task_origin": null,
+      "roadmap_id": null,
+      "roadmap_node_id": null,
+      "roadmap_lane": null,
+      "roadmap_title": null,
+      "project_id": null,
+      "project_lane": null,
+      "parent_task_id": null,
+      "architecture_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MARKER_177_MCC_GENERATION_BAND_RECON.md"
+      ],
+      "recon_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MARKER_177_MCC_GENERATION_BAND_RECON.md"
+      ],
+      "protocol_version": null,
+      "require_closure_proof": false,
+      "closure_tests": [],
+      "closure_files": [],
+      "ownership_scope": "mcc",
+      "allowed_paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/mcc/**",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/**"
+      ],
+      "owner_agent": "codex",
+      "completion_contract": [
+        "markers written",
+        "roadmap updated"
+      ],
+      "verification_agent": "claude",
+      "blocked_paths": [],
+      "forbidden_scopes": [],
+      "worktree_hint": "",
+      "touch_policy": "frontend_cut_only",
+      "overlap_risk": "medium",
+      "depends_on_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MCC_CODE_CONTEXT_INSPECTION_ARCHITECTURE.md"
+      ],
+      "closure_subtask": {
+        "status": "not_required",
+        "tests": [],
+        "finished_at": null
+      },
+      "closed_by": null,
+      "closed_at": null,
+      "closure_proof": null,
+      "status_history": [
+        {
+          "ts": "2026-03-13T08:30:00+00:00",
+          "event": "created",
+          "status": "pending",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "task created",
+          "extra": {
+            "project_lane": "",
+            "parent_task_id": "",
+            "protocol_version": ""
+          }
+        },
+        {
+          "ts": "2026-03-13T08:34:00+00:00",
+          "event": "status_done",
+          "status": "done",
+          "agent_name": "",
+          "agent_type": "",
+          "source": "task_board",
+          "reason": ""
+        }
+      ]
+    },
+    "tb_1773391800_2": {
+      "id": "tb_1773391800_2",
+      "title": "Split MCC code-scope visual policy by generation band",
+      "description": "Replace one shared mini-node floor with explicit depth1/depth2/depth3+ floors for node size, text, handles, border, and related visual channels.",
+      "priority": 1,
+      "complexity": "small",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "done",
+      "source": "manual",
+      "tags": [
+        "mcc",
+        "dag",
+        "ux",
+        "fractal-scale"
+      ],
+      "dependencies": [
+        "tb_1773391800_1"
+      ],
+      "created_at": "2026-03-13T08:35:00+00:00",
+      "started_at": null,
+      "completed_at": "2026-03-13T08:44:00+00:00",
+      "pipeline_task_id": null,
+      "result_summary": "RoadmapTaskNode now applies separate depth-band floors so daughters, grandchildren, and deeper descendants no longer share one visual clamp family.",
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "codex",
+      "source_chat_id": null,
+      "source_group_id": null,
+      "module": "frontend_components",
+      "primary_node_id": null,
+      "affected_nodes": [],
+      "workflow_id": null,
+      "workflow_bank": null,
+      "workflow_family": "quickfix_localguys",
+      "workflow_selection_origin": null,
+      "team_profile": null,
+      "task_origin": null,
+      "roadmap_id": null,
+      "roadmap_node_id": null,
+      "roadmap_lane": null,
+      "roadmap_title": null,
+      "project_id": null,
+      "project_lane": null,
+      "parent_task_id": null,
+      "architecture_docs": [],
+      "recon_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MARKER_177_MCC_GENERATION_BAND_RECON.md"
+      ],
+      "protocol_version": null,
+      "require_closure_proof": false,
+      "closure_tests": [],
+      "closure_files": [],
+      "ownership_scope": "mcc",
+      "allowed_paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/mcc/nodes/RoadmapTaskNode.tsx",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tests/**"
+      ],
+      "owner_agent": "codex",
+      "completion_contract": [
+        "depth1 depth2 depth3+ policy exists",
+        "targeted tests pass"
+      ],
+      "verification_agent": "claude",
+      "blocked_paths": [],
+      "forbidden_scopes": [],
+      "worktree_hint": "",
+      "touch_policy": "frontend_cut_only",
+      "overlap_risk": "medium",
+      "depends_on_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MCC_CODE_CONTEXT_INSPECTION_ARCHITECTURE.md"
+      ],
+      "closure_subtask": {
+        "status": "not_required",
+        "tests": [],
+        "finished_at": null
+      },
+      "closed_by": null,
+      "closed_at": null,
+      "closure_proof": null,
+      "status_history": [
+        {
+          "ts": "2026-03-13T08:35:00+00:00",
+          "event": "created",
+          "status": "pending",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "task created",
+          "extra": {
+            "project_lane": "",
+            "parent_task_id": "",
+            "protocol_version": ""
+          }
+        },
+        {
+          "ts": "2026-03-13T08:44:00+00:00",
+          "event": "status_done",
+          "status": "done",
+          "agent_name": "",
+          "agent_type": "",
+          "source": "task_board",
+          "reason": ""
+        }
+      ]
+    },
+    "tb_1773391800_3": {
+      "id": "tb_1773391800_3",
+      "title": "Split MCC descendant spacing by generation band",
+      "description": "Apply generation-aware xGap and yGap in inline code-scope drill layout so deeper generations read as nested, not flat.",
+      "priority": 1,
+      "complexity": "small",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "done",
+      "source": "manual",
+      "tags": [
+        "mcc",
+        "dag",
+        "ux",
+        "fractal-scale",
+        "layout"
+      ],
+      "dependencies": [
+        "tb_1773391800_1",
+        "tb_1773391800_2"
+      ],
+      "created_at": "2026-03-13T08:45:00+00:00",
+      "started_at": null,
+      "completed_at": "2026-03-13T08:52:00+00:00",
+      "pipeline_task_id": null,
+      "result_summary": "DAGView inline drill layout now scales spacing by cumulative generation depth instead of keeping one flat spacing band for all descendants.",
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "codex",
+      "source_chat_id": null,
+      "source_group_id": null,
+      "module": "frontend_components",
+      "primary_node_id": null,
+      "affected_nodes": [],
+      "workflow_id": null,
+      "workflow_bank": null,
+      "workflow_family": "quickfix_localguys",
+      "workflow_selection_origin": null,
+      "team_profile": null,
+      "task_origin": null,
+      "roadmap_id": null,
+      "roadmap_node_id": null,
+      "roadmap_lane": null,
+      "roadmap_title": null,
+      "project_id": null,
+      "project_lane": null,
+      "parent_task_id": null,
+      "architecture_docs": [],
+      "recon_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MARKER_177_MCC_GENERATION_BAND_RECON.md"
+      ],
+      "protocol_version": null,
+      "require_closure_proof": false,
+      "closure_tests": [],
+      "closure_files": [],
+      "ownership_scope": "mcc",
+      "allowed_paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src/components/mcc/DAGView.tsx",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tests/**"
+      ],
+      "owner_agent": "codex",
+      "completion_contract": [
+        "generation-aware spacing exists",
+        "targeted tests pass"
+      ],
+      "verification_agent": "claude",
+      "blocked_paths": [],
+      "forbidden_scopes": [],
+      "worktree_hint": "",
+      "touch_policy": "frontend_cut_only",
+      "overlap_risk": "medium",
+      "depends_on_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MCC_CODE_CONTEXT_INSPECTION_ARCHITECTURE.md"
+      ],
+      "closure_subtask": {
+        "status": "not_required",
+        "tests": [],
+        "finished_at": null
+      },
+      "closed_by": null,
+      "closed_at": null,
+      "closure_proof": null,
+      "status_history": [
+        {
+          "ts": "2026-03-13T08:45:00+00:00",
+          "event": "created",
+          "status": "pending",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "task created",
+          "extra": {
+            "project_lane": "",
+            "parent_task_id": "",
+            "protocol_version": ""
+          }
+        },
+        {
+          "ts": "2026-03-13T08:52:00+00:00",
+          "event": "status_done",
+          "status": "done",
+          "agent_name": "",
+          "agent_type": "",
+          "source": "task_board",
+          "reason": ""
+        }
+      ]
+    },
+    "tb_1773391800_4": {
+      "id": "tb_1773391800_4",
+      "title": "Seed Playwright-friendly MCC graph state for visual regression",
+      "description": "Fresh browser sessions open with no project context yet. Add a replay or hydration path so Playwright can verify descendant hierarchy on a real graph state.",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "build",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "manual",
+      "tags": [
+        "mcc",
+        "playwright",
+        "ux",
+        "testing"
+      ],
+      "dependencies": [
+        "tb_1773391800_1"
+      ],
+      "created_at": "2026-03-13T08:53:00+00:00",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "codex",
+      "source_chat_id": null,
+      "source_group_id": null,
+      "module": "frontend_components",
+      "primary_node_id": null,
+      "affected_nodes": [],
+      "workflow_id": null,
+      "workflow_bank": null,
+      "workflow_family": "quickfix_localguys",
+      "workflow_selection_origin": null,
+      "team_profile": null,
+      "task_origin": null,
+      "roadmap_id": null,
+      "roadmap_node_id": null,
+      "roadmap_lane": null,
+      "roadmap_title": null,
+      "project_id": null,
+      "project_lane": null,
+      "parent_task_id": null,
+      "architecture_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MARKER_177_MCC_GENERATION_BAND_RECON.md"
+      ],
+      "recon_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MARKER_177_MCC_GENERATION_BAND_RECON.md"
+      ],
+      "protocol_version": null,
+      "require_closure_proof": false,
+      "closure_tests": [],
+      "closure_files": [],
+      "ownership_scope": "mcc",
+      "allowed_paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/**",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tests/**"
+      ],
+      "owner_agent": "codex",
+      "completion_contract": [
+        "browser can open hydrated graph state",
+        "Playwright can verify descendant hierarchy"
+      ],
+      "verification_agent": "claude",
+      "blocked_paths": [],
+      "forbidden_scopes": [],
+      "worktree_hint": "",
+      "touch_policy": "frontend_cut_only",
+      "overlap_risk": "medium",
+      "depends_on_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MARKER_177_MCC_GENERATION_BAND_RECON.md"
+      ],
+      "closure_subtask": {
+        "status": "not_required",
+        "tests": [],
+        "finished_at": null
+      },
+      "closed_by": null,
+      "closed_at": null,
+      "closure_proof": null,
+      "status_history": [
+        {
+          "ts": "2026-03-13T08:53:00+00:00",
+          "event": "created",
+          "status": "pending",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "task created",
+          "extra": {
+            "project_lane": "",
+            "parent_task_id": "",
+            "protocol_version": ""
+          }
+        },
+        {
+          "ts": "2026-03-13T09:12:00+00:00",
+          "event": "status_done",
+          "status": "done",
+          "agent_name": "",
+          "agent_type": "",
+          "source": "task_board",
+          "reason": ""
+        }
+      ]
+    },
+    "tb_1773391800_5": {
+      "id": "tb_1773391800_5",
+      "title": "Capture Playwright visual regression for MCC descendant hierarchy",
+      "description": "Use the seeded MCC graph fixture to run browser-side verification for daughter, grandchild, and deeper generation scaling on a live graph.",
+      "priority": 2,
+      "complexity": "medium",
+      "phase_type": "verify",
+      "preset": null,
+      "assigned_tier": null,
+      "status": "pending",
+      "source": "manual",
+      "tags": [
+        "mcc",
+        "playwright",
+        "ux",
+        "testing",
+        "fractal-scale"
+      ],
+      "dependencies": [
+        "tb_1773391800_4"
+      ],
+      "created_at": "2026-03-13T09:13:00+00:00",
+      "started_at": null,
+      "completed_at": null,
+      "pipeline_task_id": null,
+      "result_summary": null,
+      "stats": null,
+      "result": null,
+      "assigned_to": null,
+      "assigned_at": null,
+      "agent_type": null,
+      "commit_hash": null,
+      "commit_message": null,
+      "created_by": "codex",
+      "source_chat_id": null,
+      "source_group_id": null,
+      "module": "frontend_components",
+      "primary_node_id": null,
+      "affected_nodes": [],
+      "workflow_id": null,
+      "workflow_bank": null,
+      "workflow_family": "quickfix_localguys",
+      "workflow_selection_origin": null,
+      "team_profile": null,
+      "task_origin": null,
+      "roadmap_id": null,
+      "roadmap_node_id": null,
+      "roadmap_lane": null,
+      "roadmap_title": null,
+      "project_id": null,
+      "project_lane": null,
+      "parent_task_id": null,
+      "architecture_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MARKER_177_MCC_GENERATION_BAND_RECON.md"
+      ],
+      "recon_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MARKER_177_MCC_GENERATION_BAND_RECON.md"
+      ],
+      "protocol_version": null,
+      "require_closure_proof": false,
+      "closure_tests": [],
+      "closure_files": [],
+      "ownership_scope": "mcc",
+      "allowed_paths": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/**",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/mcc_seed_playwright_fixture.py",
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/tests/**"
+      ],
+      "owner_agent": "codex",
+      "completion_contract": [
+        "Playwright opens seeded graph URL",
+        "visual hierarchy verified on live graph"
+      ],
+      "verification_agent": "claude",
+      "blocked_paths": [],
+      "forbidden_scopes": [],
+      "worktree_hint": "",
+      "touch_policy": "frontend_cut_only",
+      "overlap_risk": "medium",
+      "depends_on_docs": [
+        "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/MARKER_177_MCC_GENERATION_BAND_RECON.md"
+      ],
+      "closure_subtask": {
+        "status": "not_required",
+        "tests": [],
+        "finished_at": null
+      },
+      "closed_by": null,
+      "closed_at": null,
+      "closure_proof": null,
+      "status_history": [
+        {
+          "ts": "2026-03-13T09:13:00+00:00",
+          "event": "created",
+          "status": "pending",
+          "agent_name": "codex",
+          "agent_type": "unknown",
+          "source": "manual",
+          "reason": "task created",
+          "extra": {
+            "project_lane": "",
+            "parent_task_id": "",
+            "protocol_version": ""
+          }
         }
       ]
     }

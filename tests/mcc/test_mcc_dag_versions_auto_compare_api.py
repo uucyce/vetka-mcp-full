@@ -90,3 +90,27 @@ def test_auto_compare_api_rejects_empty_variants(client: TestClient) -> None:
     resp = client.post("/api/mcc/dag-versions/auto-compare", json=bad)
     assert resp.status_code == 400
     assert "variants array is empty" in resp.text
+
+
+def test_dag_versions_are_project_scoped_by_explicit_project_id(client: TestClient) -> None:
+    payload_a = _payload()
+    payload_a["project_id"] = "proj_alpha"
+    payload_b = _payload()
+    payload_b["project_id"] = "proj_beta"
+
+    resp_a = client.post("/api/mcc/dag-versions/auto-compare", json=payload_a)
+    resp_b = client.post("/api/mcc/dag-versions/auto-compare", json=payload_b)
+
+    assert resp_a.status_code == 200
+    assert resp_b.status_code == 200
+
+    list_a = client.get("/api/mcc/dag-versions/list?project_id=proj_alpha")
+    list_b = client.get("/api/mcc/dag-versions/list?project_id=proj_beta")
+    assert list_a.status_code == 200
+    assert list_b.status_code == 200
+
+    ids_a = {row["version_id"] for row in list_a.json()["versions"]}
+    ids_b = {row["version_id"] for row in list_b.json()["versions"]}
+    assert ids_a
+    assert ids_b
+    assert ids_a.isdisjoint(ids_b)

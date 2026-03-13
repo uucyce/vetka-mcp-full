@@ -70,16 +70,24 @@ class TestStatsEndpoint:
         mock_tool.active = True
         mock_tool.namespace = "vetka"
         mock_reg.get_all_tools.return_value = [mock_tool]
+        mock_reg.get_memory_overlay_tools.return_value = [{"tool_id": "remember_reflex_tool"}]
 
         with patch("src.api.routes.reflex_routes._is_reflex_enabled", return_value=True), \
              patch("src.services.reflex_feedback.get_reflex_feedback", return_value=mock_fb), \
-             patch("src.services.reflex_registry.get_reflex_registry", return_value=mock_reg):
+             patch("src.services.reflex_registry.get_reflex_registry", return_value=mock_reg), \
+             patch("src.services.reflex_tool_memory.list_reflex_tool_memory", side_effect=[
+                 {"count": 3, "tools": [{}, {}, {}]},
+                 {"count": 2, "tools": [{}, {}]},
+                 {"count": 1, "tools": [{}]},
+             ]):
             result = await reflex_stats()
 
         assert result["enabled"] == True
         assert result["registry"]["total_tools"] == 1
         assert result["feedback"]["total_entries"] == 42
         assert "scores" in result
+        assert result["memory_overlay"]["remembered_total"] == 3
+        assert result["memory_overlay"]["overlay_applied_count"] == 1
         assert "timestamp" in result
 
 
@@ -105,6 +113,16 @@ class TestRecommendEndpoint:
             MockScoredTool("vetka_search_semantic", 0.72, "search"),
         ]
         mock_scorer.score_signals.return_value = {"semantic": 0.8, "phase": 1.0}
+        mock_scorer.overlay_rank_changes.return_value = {
+            "vetka_read_file": {
+                "current_rank": 1,
+                "baseline_rank": 2,
+                "rank_delta": 1,
+                "order_changed": True,
+                "baseline_score": 0.71,
+            }
+        }
+        mock_scorer.overlay_effect.return_value = {"applied": True, "score_delta": 0.14}
 
         mock_reg = MagicMock()
         mock_reg.get_tools_for_role.return_value = [MagicMock(), MagicMock()]
@@ -124,7 +142,44 @@ class TestRecommendEndpoint:
         assert len(result["recommendations"]) == 2
         assert result["recommendations"][0]["tool_id"] == "vetka_read_file"
         assert "signals" in result["recommendations"][0]
+        assert result["recommendations"][0]["overlay"]["applied"] == True
+        assert result["recommendations"][0]["overlay"]["order_changed"] == True
         assert "duration_ms" in result
+
+    @pytest.mark.asyncio
+    async def test_memory_debug_surface_returns_remembered_and_stale_entries(self):
+        from src.api.routes.reflex_routes import reflex_memory
+
+        mock_reg = MagicMock()
+        mock_reg.get_memory_overlay_tools.return_value = [
+            {"tool_id": "remember_reflex_tool", "path": "src/agents/tools.py"}
+        ]
+
+        with patch("src.api.routes.reflex_routes._is_reflex_enabled", return_value=True), \
+             patch("src.services.reflex_registry.get_reflex_registry", return_value=mock_reg), \
+             patch("src.services.reflex_tool_memory.list_reflex_tool_memory", side_effect=[
+                 {
+                     "count": 2,
+                     "tools": [
+                         {"tool_id": "remember_reflex_tool", "stale": False},
+                         {"tool_id": "missing_tool", "stale": True},
+                     ],
+                 },
+                 {
+                     "count": 2,
+                     "tools": [
+                         {"tool_id": "remember_reflex_tool", "stale": False},
+                         {"tool_id": "missing_tool", "stale": True},
+                     ],
+                 },
+             ]):
+            result = await reflex_memory(include_stale=True, only_active=False)
+
+        assert result["enabled"] == True
+        assert result["counts"]["remembered"] == 2
+        assert result["counts"]["stale"] == 1
+        assert result["counts"]["overlay_applied"] == 1
+        assert result["overlay_applied_tools"][0]["tool_id"] == "remember_reflex_tool"
 
 
 # ─── T5.3: Pipeline stats includes reflex section ────────────────

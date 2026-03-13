@@ -10,6 +10,10 @@ function fmtInterval(s: number): string {
 
 export function HeartbeatChip() {
   const { heartbeat, updateHeartbeat } = useMCCStore();
+  const tasks = useMCCStore((s) => s.tasks);
+  const activeProjectId = useMCCStore((s) => s.activeProjectId);
+  const selectedTaskId = useMCCStore((s) => s.selectedTaskId);
+  const navTaskId = useMCCStore((s) => s.navTaskId);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [nextTickIn, setNextTickIn] = useState<number | null>(null);
@@ -68,6 +72,31 @@ export function HeartbeatChip() {
     setCustomMinutes('');
   }, [customMinutes, updateHeartbeat]);
 
+  const focusedTaskId = navTaskId || selectedTaskId || '';
+  const focusedTask = tasks.find((task) => task.id === focusedTaskId) || null;
+  const focusedWorkflowFamily = String(focusedTask?.workflow_family || focusedTask?.workflow_id || '').trim();
+  const profileMode = String(heartbeat?.profile_mode || 'global');
+
+  const applyScope = useCallback(async (mode: 'global' | 'project' | 'workflow' | 'task') => {
+    const payload: Record<string, any> = {
+      profile_mode: mode,
+      project_id: '',
+      workflow_family: '',
+      task_id: '',
+    };
+    if (mode === 'project') {
+      payload.project_id = activeProjectId || '';
+    } else if (mode === 'workflow') {
+      payload.project_id = activeProjectId || '';
+      payload.workflow_family = focusedWorkflowFamily || '';
+    } else if (mode === 'task') {
+      payload.project_id = activeProjectId || '';
+      payload.workflow_family = focusedWorkflowFamily || '';
+      payload.task_id = focusedTaskId || '';
+    }
+    await updateHeartbeat(payload);
+  }, [activeProjectId, focusedTaskId, focusedWorkflowFamily, updateHeartbeat]);
+
   if (!heartbeat) return null;
 
   const isActive = heartbeat.enabled;
@@ -76,6 +105,14 @@ export function HeartbeatChip() {
   const nextTickTs = heartbeat.last_tick ? (heartbeat.last_tick + heartbeat.interval) * 1000 : null;
   const nextTickLabel = nextTickTs ? new Date(nextTickTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
   const remainingLabel = nextTickIn !== null ? `${Math.max(0, Math.round(nextTickIn / 60))}m remaining` : '--';
+  const scopeLabel =
+    profileMode === 'task'
+      ? `task:${heartbeat.task_id || focusedTaskId || '-'}`
+      : profileMode === 'workflow'
+        ? `workflow:${heartbeat.workflow_family || focusedWorkflowFamily || '-'}`
+        : profileMode === 'project'
+          ? `project:${heartbeat.project_id || activeProjectId || '-'}`
+          : 'global';
 
   return (
     <div
@@ -146,6 +183,47 @@ export function HeartbeatChip() {
           </button>
 
           <div style={{ padding: '6px 8px' }}>
+            <div style={{ color: '#7f8893', fontSize: 9, textTransform: 'uppercase', marginBottom: 6 }}>
+              Scope
+            </div>
+            {([
+              { key: 'global', label: 'Global', disabled: false },
+              { key: 'project', label: 'Project', disabled: !activeProjectId },
+              { key: 'workflow', label: 'Workflow', disabled: !focusedWorkflowFamily },
+              { key: 'task', label: 'Task', disabled: !focusedTaskId },
+            ] as const).map((item) => {
+              const selected = profileMode === item.key;
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => { void applyScope(item.key); }}
+                  disabled={item.disabled}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    background: 'transparent',
+                    border: 'none',
+                    color: item.disabled ? '#666' : (selected ? '#e8f8f6' : '#bbb'),
+                    padding: '4px 2px',
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    cursor: item.disabled ? 'default' : 'pointer',
+                    opacity: item.disabled ? 0.5 : 1,
+                  }}
+                >
+                  <span style={{ color: selected ? '#4ecdc4' : '#666' }}>{selected ? '●' : '○'}</span>
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ padding: '6px 8px', borderTop: '1px solid #2a2a2a' }}>
+            <div style={{ color: '#7f8893', fontSize: 9, textTransform: 'uppercase', marginBottom: 6 }}>
+              Interval
+            </div>
             {PRESETS.map((preset) => {
               const selected = heartbeat.interval === preset.value;
               return (
@@ -233,6 +311,12 @@ export function HeartbeatChip() {
               {' | '}
               Last: {heartbeat.last_tick ? 'OK' : '--'}
               {selectedPreset ? ` | ${selectedPreset.label}` : ''}
+            </div>
+            <div>Scope: {scopeLabel}</div>
+            <div>
+              localguys: {heartbeat.localguys_enabled === false ? 'off' : (heartbeat.localguys_action || 'auto')}
+              {' | '}
+              idle: {Math.max(1, Math.round(Number(heartbeat.localguys_idle_sec || 900) / 60))}m
             </div>
           </div>
         </div>

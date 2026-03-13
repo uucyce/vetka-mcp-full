@@ -63,14 +63,11 @@
 
 То есть multi-plate ветка теперь дошла до реального видео-рендера.
 
-## Ограничения
+## Обновление
 
-- текущий renderer использует `plate_XX_rgba.png`, но ещё не принимает специальных compositing rules для `special-clean`;
-- пока нет compare-sheet между `2-layer base` и `multiplate final render`;
-- plate-local clean decisions ещё не участвуют в comp logic автоматически.
+После этого первого шага renderer был расширен:
 
-## Следующий шаг
-
-- сделать compare `2-layer base vs multi-plate final render`;
-- ввести `special-clean aware` comp decisions в renderer;
-- затем связывать это с пользовательским mode-routing.
+- hidden `special-clean` / `cleanVariant` plate-ы теперь используются как clean underlay в multi-plate render path;
+- собран отдельный compare `2-layer base vs multi-plate final render`;
+- подробности вынесены в:
+  [MULTIPLATE_COMPARE_AND_SPECIAL_CLEAN_RESULTS_2026-03-13.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/MULTIPLATE_COMPARE_AND_SPECIAL_CLEAN_RESULTS_2026-03-13.md)

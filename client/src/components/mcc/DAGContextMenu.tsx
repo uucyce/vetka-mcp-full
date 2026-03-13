@@ -164,7 +164,7 @@ function DAGContextMenuComponent({
               }}
             >
               <span style={{ width: 14, textAlign: 'center' }}>+</span>
-              <span>Create Task Here</span>
+              <span>Create Attached Task</span>
             </div>
           )}
           {onApproveSuggestedAnchor && target.nodeId.startsWith('task_overlay_') && (

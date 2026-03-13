@@ -262,6 +262,11 @@ function TasksCompact() {
               >
                 {task.title}
               </span>
+              {task.assigned_to && (
+                <span style={{ color: '#8d8d8d', fontSize: 7, flexShrink: 0 }}>
+                  {task.assigned_to}
+                </span>
+              )}
               <span style={{ color: '#666', fontSize: 7, flexShrink: 0 }}>{task.status}</span>
             </div>
           );
@@ -397,6 +402,10 @@ function TasksExpanded() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
                 <span style={{ color: '#6f6f6f', fontSize: 8 }}>{task.status}</span>
                 <span style={{ color: '#555', fontSize: 8 }}>{task.preset || '-'}</span>
+                {task.assigned_to && <span style={{ color: '#8d8d8d', fontSize: 8 }}>{task.assigned_to}</span>}
+                {task.agent_type && <span style={{ color: '#6a6a6a', fontSize: 8 }}>{task.agent_type}</span>}
+                {task.closed_by && <span style={{ color: '#7d7d7d', fontSize: 8 }}>closed:{task.closed_by}</span>}
+                {task.source && <span style={{ color: '#575757', fontSize: 8 }}>src:{task.source}</span>}
               </div>
             </div>
           );

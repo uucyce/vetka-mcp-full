@@ -9,9 +9,12 @@ def test_cut_contract_schemas_parse_as_json():
         Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_bootstrap_state_v1.schema.json'),
         Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_bootstrap_v1.schema.json'),
         Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_audio_sync_result_v1.schema.json'),
+        Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_montage_state_v1.schema.json'),
+        Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_music_sync_result_v1.schema.json'),
         Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_meta_sync_result_v1.schema.json'),
         Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_project_state_v1.schema.json'),
         Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_project_v1.schema.json'),
+        Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_rhythm_surface_v1.schema.json'),
         Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_slice_bundle_v1.schema.json'),
         Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_sync_surface_v1.schema.json'),
         Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_timecode_sync_result_v1.schema.json'),
@@ -73,3 +76,13 @@ def test_cut_scene_graph_view_schema_exposes_focus_and_layout_hints():
     assert "overlay_edges" in payload["required"]
     assert "dag_projection" in payload["required"]
     assert "inspector" in payload["required"]
+
+
+def test_cut_project_state_schema_exposes_montage_state():
+    schema_path = Path('/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/contracts/cut_project_state_v1.schema.json')
+    payload = json.loads(schema_path.read_text(encoding='utf-8'))
+
+    assert "montage_state" in payload["properties"]
+    assert "montage_ready" in payload["properties"]
+    assert "rhythm_surface" in payload["properties"]
+    assert "rhythm_surface_ready" in payload["properties"]

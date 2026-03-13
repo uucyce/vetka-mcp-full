@@ -564,6 +564,53 @@
       "source": "agents/tools.py"
     },
     {
+      "tool_id": "select_best_local_qwen_model",
+      "namespace": "internal",
+      "kind": "search",
+      "description": "Inspect local Ollama models and choose the strongest available Qwen for local tool-capable work.",
+      "intent_tags": [
+        "ollama",
+        "qwen",
+        "local",
+        "model",
+        "select",
+        "strongest",
+        "tooling"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "ollama",
+          "qwen",
+          "local",
+          "model",
+          "select"
+        ]
+      },
+      "cost": {
+        "latency_ms": 150,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Default",
+        "Dev",
+        "Researcher",
+        "Architect",
+        "Hostess",
+        "PM"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
       "tool_id": "remember_reflex_tool",
       "namespace": "internal",
       "kind": "orchestration",

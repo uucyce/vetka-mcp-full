@@ -52,12 +52,49 @@ class ProjectConfig:
     project_id: str = ""
     source_type: str = "local"          # "local" | "git"
     source_path: str = ""               # absolute path or git URL
+    execution_mode: str = "playground"  # playground | oauth_agent | local_workspace
     sandbox_path: str = ""              # /data/playgrounds/{project_id}/
     quota_gb: int = 10
     created_at: str = ""
     qdrant_collection: str = ""
     # MARKER_161.9.MULTIPROJECT.NAMING.CONFIG_PERSIST.V1
     display_name: str = ""
+
+    def resolved_workspace_path(self) -> str:
+        """
+        Canonical workspace root for this project.
+
+        playground       -> sandbox_path
+        local_workspace  -> source_path
+        oauth_agent      -> source_path when local, else sandbox_path fallback
+        """
+        mode = str(self.execution_mode or "playground").strip().lower() or "playground"
+        sandbox = str(self.sandbox_path or "").strip()
+        source = str(self.source_path or "").strip()
+
+        if mode == "playground":
+            return sandbox or source
+        if self.source_type == "local" and source:
+            return source
+        return sandbox or source
+
+    def resolved_context_scope_path(self) -> str:
+        """
+        Canonical readable scope for MCC graph/search/task context.
+        Prefer the writable workspace when it exists on disk; otherwise fall back
+        to the best available local project root.
+        """
+        workspace = str(self.resolved_workspace_path() or "").strip()
+        if workspace and os.path.isdir(workspace):
+            return workspace
+        sandbox = str(self.sandbox_path or "").strip()
+        if sandbox and os.path.isdir(sandbox):
+            return sandbox
+        if self.source_type == "local":
+            source = str(self.source_path or "").strip()
+            if source and os.path.isdir(source):
+                return source
+        return workspace
 
     @classmethod
     def load(cls, path: Optional[str] = None) -> Optional['ProjectConfig']:
@@ -89,6 +126,7 @@ class ProjectConfig:
         source_type: str,
         source_path: str,
         quota_gb: int = 10,
+        execution_mode: str = "playground",
         sandbox_path: str = "",
         project_name: str = "",
     ) -> 'ProjectConfig':
@@ -103,15 +141,24 @@ class ProjectConfig:
 
         slug = _slug_from_name(name)
         project_id = f"{slug}_{uuid.uuid4().hex[:8]}"
+        mode = str(execution_mode or "playground").strip().lower() or "playground"
         resolved_sandbox = os.path.abspath(os.path.expanduser(sandbox_path.strip())) if str(sandbox_path or "").strip() else ""
-        sandbox_path_final = resolved_sandbox or os.path.join(DATA_DIR, "playgrounds", project_id)
+        sandbox_path_final = (
+            resolved_sandbox or os.path.join(DATA_DIR, "playgrounds", project_id)
+            if mode == "playground"
+            else resolved_sandbox
+        )
         if not display_name:
-            display_name = _normalize_display_name(os.path.basename(sandbox_path_final.rstrip("/")) or slug)
+            fallback_name = os.path.basename(sandbox_path_final.rstrip("/")) if sandbox_path_final else ""
+            if not fallback_name:
+                fallback_name = os.path.basename(source_path.rstrip("/")) or slug
+            display_name = _normalize_display_name(fallback_name or slug)
 
         return cls(
             project_id=project_id,
             source_type=source_type,
             source_path=source_path,
+            execution_mode=mode,
             sandbox_path=sandbox_path_final,
             quota_gb=quota_gb,
             created_at=datetime.now(timezone.utc).isoformat(),
@@ -126,6 +173,8 @@ class ProjectConfig:
             errors.append("project_id is required")
         if self.source_type not in ("local", "git"):
             errors.append(f"Invalid source_type: {self.source_type}")
+        if self.execution_mode not in ("playground", "oauth_agent", "local_workspace"):
+            errors.append(f"Invalid execution_mode: {self.execution_mode}")
         if not self.source_path:
             errors.append("source_path is required")
         if self.source_type == "local" and not os.path.isabs(self.source_path):

@@ -1801,13 +1801,41 @@ async def notify_mcp_agent(
 
 
 @router.get("/task-board")
-async def get_task_board_api() -> Dict[str, Any]:
+async def get_task_board_api(project_id: str = "") -> Dict[str, Any]:
     """Get all tasks and settings from Task Board."""
     from src.orchestration.task_board import get_task_board
 
     board = get_task_board()
     tasks = board.get_queue()  # All tasks, sorted by priority
-    summary = board.get_board_summary()
+    scoped_project_id = str(project_id or "").strip()
+    if scoped_project_id:
+        tasks = [
+            task for task in tasks
+            if str(task.get("project_id") or task.get("roadmap_id") or "").strip() == scoped_project_id
+        ]
+        summary = {
+            "total": len(tasks),
+            "pending": sum(1 for task in tasks if str(task.get("status") or "") in {"pending", "queued", "hold"}),
+            "running": sum(1 for task in tasks if str(task.get("status") or "") in {"running", "claimed"}),
+            "done": sum(1 for task in tasks if str(task.get("status") or "") == "done"),
+            "failed": sum(1 for task in tasks if str(task.get("status") or "") in {"failed", "cancelled"}),
+            "active_agents": len({
+                str(task.get("assigned_to") or "").strip()
+                for task in tasks
+                if str(task.get("status") or "") in {"running", "claimed"} and str(task.get("assigned_to") or "").strip()
+            }),
+            "next_task": next((
+                {
+                    "id": str(task.get("id") or ""),
+                    "title": str(task.get("title") or ""),
+                    "priority": int(task.get("priority") or 3),
+                }
+                for task in tasks
+                if str(task.get("status") or "") in {"pending", "queued", "hold"}
+            ), None),
+        }
+    else:
+        summary = board.get_board_summary()
 
     # MARKER_151.12C: Enrich tasks with adjusted_stats (blended verifier + user feedback)
     for task in tasks:
@@ -1822,6 +1850,7 @@ async def get_task_board_api() -> Dict[str, Any]:
         "tasks": tasks,
         "settings": board.settings,
         "summary": summary,
+        "integrity_warning": getattr(board, "integrity_warning", ""),
     }
 
 
@@ -2328,7 +2357,7 @@ async def complete_task_api(body: Dict[str, Any] = None) -> Dict[str, Any]:
 
 
 @router.get("/task-board/active-agents")
-async def get_active_agents_api() -> Dict[str, Any]:
+async def get_active_agents_api(project_id: str = "") -> Dict[str, Any]:
     """Get list of agents with claimed/running tasks.
 
     Returns agents with their current task and elapsed time.
@@ -2337,6 +2366,14 @@ async def get_active_agents_api() -> Dict[str, Any]:
 
     board = get_task_board()
     agents = board.get_active_agents()
+    scoped_project_id = str(project_id or "").strip()
+    if scoped_project_id:
+        allowed_task_ids = {
+            str(task.get("id") or "")
+            for task in board.get_queue()
+            if str(task.get("project_id") or task.get("roadmap_id") or "").strip() == scoped_project_id
+        }
+        agents = [agent for agent in agents if str(agent.get("task_id") or "") in allowed_task_ids]
     return {"success": True, "agents": agents, "count": len(agents)}
 
 
@@ -2871,31 +2908,63 @@ async def get_watcher_stats() -> Dict[str, Any]:
 HEARTBEAT_CONFIG_FILE = Path(__file__).parent.parent.parent.parent / "data" / "heartbeat_config.json"
 
 
+def _default_heartbeat_config() -> Dict[str, Any]:
+    return {
+        "enabled": False,
+        "interval": 60,
+        "monitor_all": True,
+        "profile_mode": "global",
+        "project_id": "",
+        "workflow_family": "",
+        "task_id": "",
+        "localguys_enabled": True,
+        "localguys_idle_sec": 900,
+        "localguys_action": "auto",
+    }
+
+
+def _normalize_heartbeat_config(raw: Dict[str, Any]) -> Dict[str, Any]:
+    base = _default_heartbeat_config()
+    row = dict(raw or {})
+    base["enabled"] = bool(row.get("enabled", base["enabled"]))
+    base["interval"] = max(10, min(int(row.get("interval", base["interval"]) or base["interval"]), 604800))
+    base["monitor_all"] = bool(row.get("monitor_all", base["monitor_all"]))
+    profile_mode = str(row.get("profile_mode", base["profile_mode"]) or base["profile_mode"]).strip().lower()
+    if profile_mode not in {"global", "project", "workflow", "task"}:
+        profile_mode = "global"
+    base["profile_mode"] = profile_mode
+    base["project_id"] = str(row.get("project_id", "") or "").strip()
+    base["workflow_family"] = str(row.get("workflow_family", "") or "").strip()
+    base["task_id"] = str(row.get("task_id", "") or "").strip()
+    base["localguys_enabled"] = bool(row.get("localguys_enabled", base["localguys_enabled"]))
+    base["localguys_idle_sec"] = max(60, min(int(row.get("localguys_idle_sec", base["localguys_idle_sec"]) or base["localguys_idle_sec"]), 604800))
+    action = str(row.get("localguys_action", base["localguys_action"]) or base["localguys_action"]).strip().lower()
+    if action not in {"auto", "nudge", "resume_task"}:
+        action = "auto"
+    base["localguys_action"] = action
+    return base
+
+
 def _load_heartbeat_config() -> Dict[str, Any]:
     """Load heartbeat config from disk, with env var fallback."""
     if HEARTBEAT_CONFIG_FILE.exists():
         try:
-            return json.loads(HEARTBEAT_CONFIG_FILE.read_text())
+            return _normalize_heartbeat_config(json.loads(HEARTBEAT_CONFIG_FILE.read_text()))
         except Exception:
             pass
-    # Default: OFF to prevent token burn; monitor_all scans all chats
-    return {"enabled": False, "interval": 60, "monitor_all": True}
+    return _normalize_heartbeat_config({})
 
 
-def _save_heartbeat_config(enabled: bool, interval: int, monitor_all: bool = True):
+def _save_heartbeat_config(config: Dict[str, Any]):
     """Persist heartbeat config to disk."""
     from datetime import datetime
-    config = {
-        "enabled": enabled,
-        "interval": interval,
-        "monitor_all": monitor_all,
-        "updated_at": datetime.utcnow().isoformat()
-    }
+    normalized = _normalize_heartbeat_config(config)
+    normalized["updated_at"] = datetime.utcnow().isoformat()
     HEARTBEAT_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    HEARTBEAT_CONFIG_FILE.write_text(json.dumps(config, indent=2))
+    HEARTBEAT_CONFIG_FILE.write_text(json.dumps(normalized, indent=2))
     # Also sync to env for current session
-    os.environ["VETKA_HEARTBEAT_ENABLED"] = "true" if enabled else "false"
-    os.environ["VETKA_HEARTBEAT_INTERVAL"] = str(interval)
+    os.environ["VETKA_HEARTBEAT_ENABLED"] = "true" if normalized["enabled"] else "false"
+    os.environ["VETKA_HEARTBEAT_INTERVAL"] = str(normalized["interval"])
 
 
 @router.get("/heartbeat/settings")
@@ -2933,6 +3002,14 @@ async def get_heartbeat_settings() -> Dict[str, Any]:
         "success": True,
         "enabled": enabled,
         "interval": interval,
+        "monitor_all": bool(config.get("monitor_all", True)),
+        "profile_mode": str(config.get("profile_mode", "global")),
+        "project_id": str(config.get("project_id", "")),
+        "workflow_family": str(config.get("workflow_family", "")),
+        "task_id": str(config.get("task_id", "")),
+        "localguys_enabled": bool(config.get("localguys_enabled", True)),
+        "localguys_idle_sec": int(config.get("localguys_idle_sec", 900) or 900),
+        "localguys_action": str(config.get("localguys_action", "auto")),
         "last_tick": last_tick,
         "total_ticks": total_ticks,
         "tasks_dispatched": tasks_dispatched,
@@ -2961,6 +3038,13 @@ async def update_heartbeat_settings(body: Dict[str, Any]) -> Dict[str, Any]:
     enabled = config.get("enabled", False)
     interval = config.get("interval", 60)
     monitor_all = config.get("monitor_all", True)
+    profile_mode = str(config.get("profile_mode", "global"))
+    project_id = str(config.get("project_id", "") or "")
+    workflow_family = str(config.get("workflow_family", "") or "")
+    task_id = str(config.get("task_id", "") or "")
+    localguys_enabled = bool(config.get("localguys_enabled", True))
+    localguys_idle_sec = int(config.get("localguys_idle_sec", 900) or 900)
+    localguys_action = str(config.get("localguys_action", "auto") or "auto")
 
     # Apply updates
     if "enabled" in body:
@@ -2973,14 +3057,39 @@ async def update_heartbeat_settings(body: Dict[str, Any]) -> Dict[str, Any]:
     if "monitor_all" in body:
         monitor_all = bool(body["monitor_all"])
 
-    # Persist to disk + sync to env
-    _save_heartbeat_config(enabled, interval, monitor_all)
+    if "profile_mode" in body:
+        profile_mode = str(body["profile_mode"] or "").strip().lower() or profile_mode
+    if "project_id" in body:
+        project_id = str(body["project_id"] or "").strip()
+    if "workflow_family" in body:
+        workflow_family = str(body["workflow_family"] or "").strip()
+    if "task_id" in body:
+        task_id = str(body["task_id"] or "").strip()
+    if "localguys_enabled" in body:
+        localguys_enabled = bool(body["localguys_enabled"])
+    if "localguys_idle_sec" in body:
+        localguys_idle_sec = max(60, min(int(body["localguys_idle_sec"] or localguys_idle_sec), 604800))
+    if "localguys_action" in body:
+        localguys_action = str(body["localguys_action"] or "").strip().lower() or localguys_action
 
-    return {
-        "success": True,
+    # Persist to disk + sync to env
+    config = _normalize_heartbeat_config({
         "enabled": enabled,
         "interval": interval,
         "monitor_all": monitor_all,
+        "profile_mode": profile_mode,
+        "project_id": project_id,
+        "workflow_family": workflow_family,
+        "task_id": task_id,
+        "localguys_enabled": localguys_enabled,
+        "localguys_idle_sec": localguys_idle_sec,
+        "localguys_action": localguys_action,
+    })
+    _save_heartbeat_config(config)
+
+    return {
+        "success": True,
+        **config,
         "message": "Settings saved to disk. Persists across restarts.",
         "config_file": str(HEARTBEAT_CONFIG_FILE),
     }

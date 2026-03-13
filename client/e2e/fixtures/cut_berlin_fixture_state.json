@@ -119,6 +119,91 @@
     "generated_at": "2026-03-13T00:00:00+00:00"
   },
   "audio_sync_result": null,
+  "music_sync_result": {
+    "schema_version": "cut_music_sync_result_v1",
+    "project_id": "cut_berlin_fixture_demo",
+    "revision": 1,
+    "music_path": "/Users/danilagulin/work/teletape_temp/albom/250623_vanpticdanyana_berlin_Punch.m4a",
+    "tempo": {
+      "bpm": 124.0,
+      "confidence": 0.89
+    },
+    "downbeats": [0.0, 1.94, 3.88, 5.82],
+    "phrases": [
+      {
+        "phrase_id": "phrase_intro",
+        "start_sec": 0.0,
+        "end_sec": 15.52,
+        "label": "Intro",
+        "energy": 0.61
+      },
+      {
+        "phrase_id": "phrase_main",
+        "start_sec": 15.52,
+        "end_sec": 31.04,
+        "label": "Main lift",
+        "energy": 0.86
+      }
+    ],
+    "cue_points": [
+      {
+        "cue_id": "cue_drop_01",
+        "start_sec": 5.82,
+        "end_sec": 6.18,
+        "label": "Drop lead",
+        "cue_type": "drop",
+        "confidence": 0.94,
+        "energy": 0.88
+      },
+      {
+        "cue_id": "cue_turn_02",
+        "start_sec": 15.52,
+        "end_sec": 15.9,
+        "label": "Phrase turn",
+        "cue_type": "phrase_turn",
+        "confidence": 0.91,
+        "energy": 0.79
+      },
+      {
+        "cue_id": "cue_hit_03",
+        "start_sec": 23.28,
+        "end_sec": 23.64,
+        "label": "Hit accent",
+        "cue_type": "accent",
+        "confidence": 0.87,
+        "energy": 0.83
+      }
+    ],
+    "derived_from": "music_sync_transient_v1",
+    "generated_at": "2026-03-13T00:00:00+00:00"
+  },
+  "music_cue_summary": {
+    "schema_version": "cut_music_cue_summary_v1",
+    "track_label": "250623_vanpticdanyana_berlin_Punch.m4a",
+    "music_path": "/Users/danilagulin/work/teletape_temp/albom/250623_vanpticdanyana_berlin_Punch.m4a",
+    "primary_candidate": true,
+    "cue_point_count": 3,
+    "phrase_count": 2,
+    "downbeat_count": 4,
+    "tempo_bpm": 124.0,
+    "tempo_confidence": 0.89,
+    "top_cues": [
+      {
+        "cue_id": "cue_drop_01",
+        "label": "Drop lead",
+        "start_sec": 5.82,
+        "cue_type": "drop",
+        "confidence": 0.94
+      },
+      {
+        "cue_id": "cue_turn_02",
+        "label": "Phrase turn",
+        "start_sec": 15.52,
+        "cue_type": "phrase_turn",
+        "confidence": 0.91
+      }
+    ]
+  },
   "slice_bundle": null,
   "timecode_sync_result": null,
   "sync_surface": {
@@ -138,6 +223,7 @@
   "transcript_ready": false,
   "thumbnail_ready": true,
   "audio_sync_ready": false,
+  "music_cues_ready": true,
   "slice_ready": false,
   "timecode_sync_ready": false,
   "sync_surface_ready": false,

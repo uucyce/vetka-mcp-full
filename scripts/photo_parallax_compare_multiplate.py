@@ -158,6 +158,7 @@ def main() -> int:
 
     summary = load_json(multiplate_root / "render_preview_multiplate_summary.json")
     entries: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
     batch_sheet_paths: list[Path] = []
 
     for item in summary["entries"]:
@@ -166,11 +167,22 @@ def main() -> int:
             continue
         source_candidates = list(sample_root.glob(f"{sample_id}.*"))
         if not source_candidates:
+            skipped.append({"sample": sample_id, "reason": "missing-source"})
             continue
         source_path = source_candidates[0]
         base_video = base_root / sample_id / "preview.mp4"
         multiplate_video = Path(item["preview_path"])
         if not base_video.exists() or not multiplate_video.exists():
+            skipped.append(
+                {
+                    "sample": sample_id,
+                    "reason": "missing-render-input",
+                    "base_exists": base_video.exists(),
+                    "multiplate_exists": multiplate_video.exists(),
+                    "base_preview_path": str(base_video),
+                    "multiplate_preview_path": str(multiplate_video),
+                }
+            )
             continue
 
         case_out = outdir / sample_id
@@ -209,6 +221,8 @@ def main() -> int:
         "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "entries": entries,
         "count": len(entries),
+        "skipped": skipped,
+        "skipped_count": len(skipped),
         "batch_sheet_path": str(batch_path),
     }
     save_json(outdir / "render_compare_multiplate_summary.json", payload)

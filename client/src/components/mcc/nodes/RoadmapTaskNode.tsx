@@ -27,6 +27,21 @@ const TEAM_BADGE: Record<string, { label: string; color: string }> = {
   dragon_gold: { label: 'G', color: '#ffd700' },
 };
 
+const DOCUMENT_EXTENSIONS = new Set([
+  'md',
+  'mdx',
+  'txt',
+  'pdf',
+  'doc',
+  'docx',
+  'rtf',
+  'ppt',
+  'pptx',
+  'xls',
+  'xlsx',
+  'csv',
+]);
+
 interface RoadmapTaskNodeProps {
   data: {
     label: string;
@@ -112,16 +127,54 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
   const visualScale = isMini ? Math.max(generationPolicy.visualFloor, compactScale * fractalScale) : fractalScale;
   const edgeScale = Math.max(generationPolicy.edgeFloor, visualScale);
   const graphKind = String(data.graphKind || '');
-  const isCodeScope = graphKind === 'project_dir' || graphKind === 'project_file' || graphKind === 'project_root';
-  const codeKindLabel = graphKind === 'project_dir' ? 'DIR' : graphKind === 'project_file' ? 'FILE' : graphKind === 'project_root' ? 'ROOT' : '';
+  const scopeLabel = String(data.label || '');
+  const scopeLower = scopeLabel.toLowerCase();
+  const scopeExt = scopeLower.includes('.') ? scopeLower.split('.').pop() || '' : '';
+  const isProjectRoot = graphKind === 'project_root';
+  const isProjectDir = graphKind === 'project_dir';
+  const isProjectFile = graphKind === 'project_file';
+  const isDocumentScope = isProjectFile && (scopeLower.startsWith('docs/') || DOCUMENT_EXTENSIONS.has(scopeExt));
+  const isCodeFileScope = isProjectFile && !isDocumentScope;
+  const isCodeScope = isProjectDir || isProjectFile || isProjectRoot;
+  const codeKindLabel = isProjectRoot ? 'ROOT' : isProjectDir ? 'DIR' : isDocumentScope ? 'DOC' : isCodeFileScope ? 'CODE' : '';
+  const codeScopeDescriptor = isProjectRoot ? 'project root' : isProjectDir ? 'directory' : isDocumentScope ? 'document' : isCodeFileScope ? 'source file' : 'code scope';
+  const codeScopeTint = isProjectRoot
+    ? 'rgba(214,221,230,0.78)'
+    : isProjectDir
+      ? 'rgba(180,190,205,0.68)'
+      : isDocumentScope
+        ? 'rgba(128,170,255,0.72)'
+        : 'rgba(138,214,176,0.72)';
+  const codeScopeBackground = isProjectRoot
+    ? 'rgba(255,255,255,0.025)'
+    : isProjectDir
+      ? 'rgba(255,255,255,0.02)'
+      : isDocumentScope
+        ? 'rgba(80,118,196,0.095)'
+        : 'rgba(58,124,94,0.085)';
+  const codeScopePillBackground = isProjectRoot
+    ? 'rgba(214,221,230,0.1)'
+    : isProjectDir
+      ? 'rgba(180,190,205,0.12)'
+      : isDocumentScope
+        ? 'rgba(128,170,255,0.16)'
+        : 'rgba(138,214,176,0.14)';
   const badge = TEAM_BADGE[data.preset || ''];
-  const semanticBorderColor = isCodeScope ? 'rgba(180,190,205,0.38)' : borderColor;
+  const semanticBorderColor = isCodeScope
+    ? (isDocumentScope ? 'rgba(128,170,255,0.42)' : isCodeFileScope ? 'rgba(138,214,176,0.34)' : 'rgba(180,190,205,0.38)')
+    : borderColor;
   const progressPct = data.subtasksTotal
     ? Math.round((data.subtasksDone || 0) / data.subtasksTotal * 100)
     : 0;
 
   return (
     <div
+      data-testid="mcc-roadmap-node"
+      data-node-label={data.label}
+      data-graph-kind={graphKind || ''}
+      data-scope-kind={isProjectRoot ? 'root' : isProjectDir ? 'directory' : isDocumentScope ? 'document' : isCodeFileScope ? 'code' : 'task'}
+      data-rd-depth-total={String(fractalDepth)}
+      data-node-task-id={data.taskId || ''}
       style={{
         border: `${scalePx(2, edgeScale, 1)}px solid ${semanticBorderColor}`,
         borderStyle: isCodeScope ? 'solid' : (isSuggested ? 'dashed' : 'solid'),
@@ -146,7 +199,7 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
         animation: isRunning ? 'nodePulse 2s ease-in-out infinite' : 'none',
         transition: 'all 0.2s ease',
         opacity: isCodeScope ? 1 : (isSuggested ? 0.58 : 1),
-        background: isCodeScope ? 'rgba(255,255,255,0.02)' : NOLAN_PALETTE.bgLight,
+        background: isCodeScope ? codeScopeBackground : NOLAN_PALETTE.bgLight,
       }}
     >
       {/* Target handle */}
@@ -174,8 +227,9 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
             style={{
               padding: `${scalePx(1, visualScale, 1)}px ${scalePx(5, visualScale, 1)}px`,
               borderRadius: scalePx(4, visualScale, 1),
-              border: '1px solid rgba(255,255,255,0.14)',
-              color: '#c5cfda',
+              border: `1px solid ${codeScopeTint}`,
+              background: codeScopePillBackground,
+              color: codeScopeTint,
               fontSize: isMini ? scalePx(8, visualScale, generationPolicy.metaFontFloor) : scalePx(8, visualScale, 6),
               letterSpacing: 0.6,
               flexShrink: 0,
@@ -280,19 +334,19 @@ function RoadmapTaskNodeComponent({ data, selected }: RoadmapTaskNodeProps) {
             width: isMini ? scalePx(5, visualScale, 1) : scalePx(5, visualScale, 3),
             height: isMini ? scalePx(5, visualScale, 1) : scalePx(5, visualScale, 3),
             borderRadius: '50%',
-            background: isCodeScope ? 'rgba(180,190,205,0.68)' : borderColor,
+            background: isCodeScope ? codeScopeTint : borderColor,
             flexShrink: 0,
           }}
         />
         <span
           style={{
-            color: isCodeScope && data.status === 'pending' ? '#6f7c8b' : NOLAN_PALETTE.textDim,
+            color: isCodeScope ? '#7b8897' : NOLAN_PALETTE.textDim,
             fontSize: isMini ? scalePx(8, visualScale, generationPolicy.metaFontFloor) : scalePx(8, visualScale, 6),
             textTransform: isCodeScope ? 'none' : 'uppercase',
             letterSpacing: isCodeScope ? 0.4 : 1,
           }}
         >
-          {isCodeScope ? 'code scope' : data.status}
+          {isCodeScope ? codeScopeDescriptor : data.status}
         </span>
 
         {/* Subtask counter */}

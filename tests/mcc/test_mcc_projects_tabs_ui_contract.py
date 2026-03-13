@@ -8,6 +8,10 @@ def test_store_has_project_tabs_contract() -> None:
     assert "activeProjectId" in code
     assert "projectTabs" in code
     assert "display_name?: string;" in code
+    assert "workspace_path?: string;" in code
+    assert "context_scope_path?: string;" in code
+    assert "MCC_PROJECT_REGISTRY_SYNC_KEY" in code
+    assert "announceProjectRegistryChanged" in code
     assert "refreshProjectTabs" in code
     assert "activateProjectTab" in code
     assert "/mcc/projects/list" in code
@@ -18,8 +22,14 @@ def test_mcc_renders_project_tab_shell_marker() -> None:
     code = Path("client/src/components/mcc/MyceliumCommandCenter.tsx").read_text(encoding="utf-8")
     assert "MARKER_161.7.MULTIPROJECT.UI.TAB_SHELL_RENDER.V1" in code
     assert "display_name" in code
+    assert "projectWorkspacePath" in code
+    assert "workspace_path" in code
+    assert "execution_mode" in code
+    assert "window.addEventListener('storage', onStorage)" in code
     assert "const explicitName" in code
     assert "+ project" in code
+    assert "window.setInterval(syncTabs, 15000)" in code
+    assert "window.history.replaceState(null, '', nextUrl)" in code
 
 
 def test_onboarding_modal_has_local_source_picker_contract() -> None:
@@ -29,6 +39,9 @@ def test_onboarding_modal_has_local_source_picker_contract() -> None:
     assert "MARKER_161.7.MULTIPROJECT.UI.SANDBOX_PICKER.V1" in code
     assert "Browse Sandbox in Finder" in code
     assert "MARKER_161.8.MULTIPROJECT.UI.GRANDMA_FLOW_SOURCE_STEP.V1" in code
+    assert "await initMCC(String(data.project_id || ''))" in code
+    assert "await refreshProjectTabs()" in code
+    assert "announceProjectRegistryChanged(String(data.project_id || ''), 'create')" in code
 
 
 def test_tauri_detection_hardened_for_dialogs() -> None:
@@ -49,3 +62,6 @@ def test_first_run_has_isolation_precheck_contract() -> None:
     code = Path("client/src/components/mcc/FirstRunView.tsx").read_text(encoding="utf-8")
     assert "MARKER_161.9.MULTIPROJECT.ISOLATION.UI_REGISTRY_PRECHECK.V1" in code
     assert "Workspace overlaps existing project" in code
+    assert "await initMCC(String(data?.project_id || ''))" in code
+    assert "await refreshProjectTabs()" in code
+    assert "announceProjectRegistryChanged(String(data?.project_id || ''), 'create')" in code

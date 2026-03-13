@@ -121,6 +121,41 @@ def test_cut_project_store_roundtrip_and_bootstrap_state(tmp_path: Path):
             "generated_at": project["created_at"],
         }
     )
+    store.save_music_sync_result(
+        {
+            "schema_version": "cut_music_sync_result_v1",
+            "project_id": project["project_id"],
+            "revision": 1,
+            "music_path": str(source_dir / "audio_a.wav"),
+            "tempo": {
+                "bpm": 124.0,
+                "confidence": 0.88,
+            },
+            "downbeats": [0.0, 1.92, 3.84],
+            "phrases": [
+                {
+                    "phrase_id": "phrase_intro",
+                    "start_sec": 0.0,
+                    "end_sec": 7.68,
+                    "label": "Intro",
+                    "energy": 0.58,
+                }
+            ],
+            "cue_points": [
+                {
+                    "cue_id": "cue_drop_01",
+                    "start_sec": 3.84,
+                    "end_sec": 4.32,
+                    "label": "Drop",
+                    "cue_type": "drop",
+                    "confidence": 0.93,
+                    "energy": 0.86,
+                }
+            ],
+            "derived_from": "music_sync_transient_v1",
+            "generated_at": project["created_at"],
+        }
+    )
     store.save_slice_bundle(
         {
             "schema_version": "cut_slice_bundle_v1",
@@ -170,14 +205,71 @@ def test_cut_project_store_roundtrip_and_bootstrap_state(tmp_path: Path):
             "generated_at": project["created_at"],
         }
     )
+    store.save_montage_state(
+        {
+            "schema_version": "cut_montage_state_v1",
+            "project_id": project["project_id"],
+            "revision": 1,
+            "source_bundle_revisions": {
+                "time_marker_bundle": 1,
+                "music_sync_result": 1,
+            },
+            "accepted_decisions": [
+                {
+                    "decision_id": "decision_accept_01",
+                    "source_family": "marker",
+                    "cue_provenance_ids": ["marker_demo_01", "cue_drop_01"],
+                    "confidence": 0.92,
+                    "score": 0.96,
+                    "editorial_intent": "accent_cut",
+                    "status": "accepted",
+                    "timeline_id": "main",
+                    "lane_id": "V1",
+                    "anchor_sec": 1.5,
+                    "start_sec": 1.25,
+                    "end_sec": 2.1,
+                    "source_bundle_id": "time_marker_bundle",
+                    "source_bundle_revision": 1,
+                    "created_at": project["created_at"],
+                    "updated_at": project["created_at"],
+                    "author": "tester",
+                }
+            ],
+            "rejected_decisions": [
+                {
+                    "decision_id": "decision_reject_01",
+                    "source_family": "music",
+                    "cue_provenance_ids": ["cue_drop_01"],
+                    "confidence": 0.51,
+                    "score": 0.44,
+                    "editorial_intent": "phrase_hold",
+                    "status": "rejected",
+                    "timeline_id": "main",
+                    "lane_id": "V1",
+                    "anchor_sec": 3.84,
+                    "start_sec": 3.84,
+                    "end_sec": 4.32,
+                    "source_bundle_id": "music_sync_result",
+                    "source_bundle_revision": 1,
+                    "created_at": project["created_at"],
+                    "updated_at": project["created_at"],
+                    "author": "tester",
+                }
+            ],
+            "updated_at": project["created_at"],
+            "updated_by": "tester",
+        }
+    )
 
     loaded_project = store.load_project()
     loaded_bootstrap = store.load_bootstrap_state()
     loaded_graph = store.load_scene_graph()
     loaded_markers = store.load_time_marker_bundle()
     loaded_audio_sync = store.load_audio_sync_result()
+    loaded_music_sync = store.load_music_sync_result()
     loaded_slice_bundle = store.load_slice_bundle()
     loaded_timecode_sync = store.load_timecode_sync_result()
+    loaded_montage_state = store.load_montage_state()
     assert loaded_project is not None
     assert loaded_project["project_id"] == project["project_id"]
     assert loaded_bootstrap is not None
@@ -188,10 +280,65 @@ def test_cut_project_store_roundtrip_and_bootstrap_state(tmp_path: Path):
     assert loaded_markers["schema_version"] == "cut_time_marker_bundle_v1"
     assert loaded_audio_sync is not None
     assert loaded_audio_sync["schema_version"] == "cut_audio_sync_result_v1"
+    assert loaded_music_sync is not None
+    assert loaded_music_sync["schema_version"] == "cut_music_sync_result_v1"
     assert loaded_slice_bundle is not None
     assert loaded_slice_bundle["schema_version"] == "cut_slice_bundle_v1"
     assert loaded_timecode_sync is not None
     assert loaded_timecode_sync["schema_version"] == "cut_timecode_sync_result_v1"
+    assert loaded_montage_state is not None
+    assert loaded_montage_state["schema_version"] == "cut_montage_state_v1"
+    assert loaded_montage_state["accepted_decisions"][0]["status"] == "accepted"
+    assert loaded_montage_state["rejected_decisions"][0]["status"] == "rejected"
+
+
+def test_cut_project_store_rejects_invalid_montage_state_payload(tmp_path: Path):
+    sandbox_root = tmp_path / "sandbox"
+    _bootstrap_sandbox(sandbox_root)
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+
+    store = CutProjectStore(str(sandbox_root))
+    project = store.create_project(
+        source_path=str(source_dir),
+        display_name="Montage Demo",
+        bootstrap_profile="default",
+        use_core_mirror=True,
+    )
+
+    with pytest.raises(ValueError, match="cut_montage_state_v1"):
+        store.save_montage_state(
+            {
+                "schema_version": "cut_montage_state_v1",
+                "project_id": project["project_id"],
+                "revision": 1,
+                "source_bundle_revisions": {"music_sync_result": 1},
+                "accepted_decisions": [
+                    {
+                        "decision_id": "decision_bad_01",
+                        "source_family": "music",
+                        "cue_provenance_ids": ["cue_01"],
+                        "confidence": 0.8,
+                        "score": 0.9,
+                        "editorial_intent": "accent_cut",
+                        "status": "rejected",
+                        "timeline_id": "main",
+                        "lane_id": "V1",
+                        "anchor_sec": 1.0,
+                        "start_sec": 1.0,
+                        "end_sec": 1.4,
+                        "source_bundle_id": "music_sync_result",
+                        "source_bundle_revision": 1,
+                        "created_at": project["created_at"],
+                        "updated_at": project["created_at"],
+                        "author": "tester",
+                    }
+                ],
+                "rejected_decisions": [],
+                "updated_at": project["created_at"],
+                "updated_by": "tester",
+            }
+        )
 
 
 def test_cut_project_store_resolve_create_or_open_distinguishes_source_path(tmp_path: Path):

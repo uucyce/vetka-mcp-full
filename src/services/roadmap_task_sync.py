@@ -20,6 +20,59 @@ ROADMAP_BINDING_FIELDS = {
 }
 
 
+def _normalize_str_list(value: Any) -> List[str]:
+    return [str(item).strip() for item in list(value or []) if str(item).strip()]
+
+
+def apply_task_profile_defaults(payload: Dict[str, Any]) -> Dict[str, Any]:
+    row = deepcopy(payload or {})
+    profile = str(row.pop("profile", "") or "").strip().lower()
+    if not profile:
+        return row
+    if profile != "p6":
+        raise ValueError(f"Unsupported task profile: {profile}")
+
+    lane = str(row.get("project_lane") or row.get("project_id") or row.get("roadmap_lane") or "").strip()
+    docs = _normalize_str_list(row.get("architecture_docs"))
+    tests = _normalize_str_list(row.get("closure_tests"))
+    allowed_paths = _normalize_str_list(row.get("allowed_paths"))
+    closure_files = _normalize_str_list(row.get("closure_files")) or allowed_paths
+    tags = _normalize_str_list(row.get("tags"))
+    completion_contract = _normalize_str_list(row.get("completion_contract"))
+
+    missing: List[str] = []
+    if not lane:
+        missing.append("project_lane")
+    if not docs:
+        missing.append("architecture_docs")
+    if not tests:
+        missing.append("closure_tests")
+    if missing:
+        raise ValueError(f"p6 profile requires: {', '.join(missing)}")
+
+    if "p6" not in tags:
+        tags.append("p6")
+    if "closure_proof" not in tags:
+        tags.append("closure_proof")
+    for rule in ["result_summary required", "closure proof required"]:
+        if rule not in completion_contract:
+            completion_contract.append(rule)
+
+    row["project_lane"] = row.get("project_lane") or lane
+    row["phase_type"] = str(row.get("phase_type") or "test").strip() or "test"
+    row["architecture_docs"] = docs
+    row["closure_tests"] = tests
+    row["closure_files"] = closure_files
+    row["require_closure_proof"] = True
+    row["protocol_version"] = str(row.get("protocol_version") or "multitask_mcp_v1").strip() or "multitask_mcp_v1"
+    row["task_origin"] = str(row.get("task_origin") or "p6_profile").strip() or "p6_profile"
+    row["workflow_selection_origin"] = str(row.get("workflow_selection_origin") or "p6_profile").strip() or "p6_profile"
+    row["completion_contract"] = completion_contract
+    row["depends_on_docs"] = _normalize_str_list(row.get("depends_on_docs")) or docs
+    row["tags"] = tags
+    return row
+
+
 def _node_id(node: Dict[str, Any]) -> str:
     return str(node.get("id") or node.get("node_id") or "").strip()
 
@@ -37,6 +90,42 @@ def _derive_packet_gaps(*, docs: List[str], recon_docs: List[str], closure_files
     if not closure_tests:
         gaps.append("missing_tests")
     return gaps
+
+
+def _build_localguys_compliance(
+    *,
+    workflow_contract: Optional[Dict[str, Any]] = None,
+    localguys_run: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    contract = dict(workflow_contract or {})
+    run = dict(localguys_run or {})
+    workflow_family = str(contract.get("workflow_family") or run.get("workflow_family") or "").strip()
+    if workflow_family and not workflow_family.endswith("_localguys"):
+        return {}
+    sandbox_policy = dict(contract.get("sandbox_policy") or {})
+    write_opt_ins = dict(contract.get("write_opt_ins") or {})
+    stage_tool_policy = dict(contract.get("stage_tool_policy") or {})
+    telemetry = dict(run.get("telemetry") or {})
+    active_step = str(run.get("current_step") or "").strip()
+    return {
+        "workflow_family": workflow_family,
+        "execution_mode": str(contract.get("execution_mode") or "").strip(),
+        "sandbox_mode": str(sandbox_policy.get("mode") or "").strip(),
+        "requires_playground": bool(sandbox_policy.get("requires_playground")),
+        "write_opt_ins": write_opt_ins,
+        "verification_target": str(contract.get("verification_target") or telemetry.get("verification_target") or "").strip(),
+        "max_turns": int(contract.get("max_turns") or 0),
+        "idle_nudge_template": str(contract.get("idle_nudge_template") or "").strip(),
+        "stage_tool_policy": stage_tool_policy,
+        "active_step": active_step,
+        "active_step_allowed_tools": list(stage_tool_policy.get(active_step) or []),
+        "telemetry": {
+            "recommended_tools": list(telemetry.get("recommended_tools") or []),
+            "filtered_tool_schemas": list(telemetry.get("filtered_tool_schemas") or []),
+            "idle_turn_count": int(telemetry.get("idle_turn_count") or 0),
+            "verification_passed": bool(telemetry.get("verification_passed")),
+        },
+    }
 
 
 def _recent_task_artifacts(task: Dict[str, Any]) -> Dict[str, Any]:
@@ -136,6 +225,10 @@ def build_task_context_packet(
         "task": row,
         "workflow_binding": dict(workflow_binding or {}),
         "workflow_contract": dict(workflow_contract or {}),
+        "localguys_compliance": _build_localguys_compliance(
+            workflow_contract=workflow_contract,
+            localguys_run=localguys_run,
+        ),
         "roadmap_binding": roadmap_binding,
         "governance": {
             "ownership_scope": str(row.get("ownership_scope") or "").strip(),
@@ -185,6 +278,7 @@ def build_role_context_slice(
         "task": dict(row.get("task") or {}),
         "workflow_binding": dict(row.get("workflow_binding") or {}),
         "workflow_contract": dict(row.get("workflow_contract") or {}),
+        "localguys_compliance": dict(row.get("localguys_compliance") or {}),
         "governance": dict(row.get("governance") or {}),
         "gaps": list(row.get("gaps") or []),
     }

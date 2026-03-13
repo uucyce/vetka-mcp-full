@@ -1,0 +1,30 @@
+{
+  "created_at": "2026-03-13T02:39:40.834191+00:00",
+  "entries": [
+    {
+      "sample_id": "hover-politsia",
+      "decision": "enrich-current-stack",
+      "confidence": 0.9,
+      "added_special_clean_variants": [
+        "no-people"
+      ],
+      "path": "/qwen_plate_gates/hover-politsia.json"
+    },
+    {
+      "sample_id": "keyboard-hands",
+      "decision": "keep-current-stack",
+      "confidence": 0.5,
+      "added_special_clean_variants": [
+        "no-keyboard"
+      ],
+      "path": "/qwen_plate_gates/keyboard-hands.json"
+    },
+    {
+      "sample_id": "truck-driver",
+      "decision": "keep-current-stack",
+      "confidence": 0.9,
+      "added_special_clean_variants": [],
+      "path": "/qwen_plate_gates/truck-driver.json"
+    }
+  ]
+}

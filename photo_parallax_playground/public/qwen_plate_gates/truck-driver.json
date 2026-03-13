@@ -1,0 +1,81 @@
+{
+  "sample_id": "truck-driver",
+  "decision": "keep-current-stack",
+  "confidence": 0.9,
+  "metrics": {
+    "manual_visible_count": 3,
+    "qwen_visible_count": 3,
+    "manual_special_clean_count": 1,
+    "qwen_special_clean_count": 1,
+    "visible_overlap_ratio": 1.0
+  },
+  "added_special_clean_variants": [],
+  "visible_overlap_labels": [
+    "driver",
+    "roadside",
+    "truck-cabin"
+  ],
+  "reasons": [
+    "Qwen does not add enough reliable structure beyond the current manual/default stack."
+  ],
+  "gated_plate_stack": {
+    "sampleId": "truck-driver",
+    "plates": [
+      {
+        "id": "plate_01",
+        "label": "driver",
+        "role": "foreground-subject",
+        "source": "auto",
+        "x": 0.31000000000000005,
+        "y": 0.17000000000000004,
+        "width": 0.5,
+        "height": 0.58,
+        "z": 18,
+        "depthPriority": 0.74,
+        "visible": true,
+        "cleanVariant": "no-driver"
+      },
+      {
+        "id": "plate_02",
+        "label": "truck cabin",
+        "role": "environment-mid",
+        "source": "manual",
+        "x": 0.24,
+        "y": 0.18,
+        "width": 0.56,
+        "height": 0.64,
+        "z": 8,
+        "depthPriority": 0.44,
+        "visible": true
+      },
+      {
+        "id": "plate_03",
+        "label": "roadside",
+        "role": "background-far",
+        "source": "auto",
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96,
+        "z": -22,
+        "depthPriority": 0.16,
+        "visible": true
+      },
+      {
+        "id": "plate_04",
+        "label": "no driver",
+        "role": "special-clean",
+        "source": "special-clean",
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96,
+        "z": -26,
+        "depthPriority": 0.08,
+        "visible": false,
+        "cleanVariant": "no-driver"
+      }
+    ]
+  },
+  "created_at": "2026-03-13T02:39:40.833903+00:00"
+}
