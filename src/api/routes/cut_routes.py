@@ -38,6 +38,7 @@ from src.services.cut_marker_bundle_service import (
 )
 from src.services.cut_mcp_job_store import get_cut_mcp_job_store
 from src.services.cut_montage_ranker import MontageRanker, ScoredClip
+from src.services.cut_proxy_worker import ProxyWorker, ProxyResult
 from src.services.cut_scene_detector import (
     SceneBoundary,
     detect_scene_boundaries,
@@ -4995,3 +4996,115 @@ async def cut_montage_suggestions(
         "marker_count": len(markers),
         "decision_count": len(decisions),
     }
+
+
+class CutProxyGenerateRequest(BaseModel):
+    """MARKER_173.6 — Proxy generation request."""
+    sandbox_root: str
+    project_id: str
+    source_paths: list[str] = Field(default_factory=list, description="Media files to proxy. If empty, uses all clips from timeline.")
+    resolution: str = Field(default="720p", description="Proxy resolution: 720p, 480p, 360p")
+    force: bool = Field(default=False, description="Force regeneration even if proxy exists")
+
+
+@router.post("/proxy/generate")
+async def cut_proxy_generate(body: CutProxyGenerateRequest) -> dict[str, Any]:
+    """
+    MARKER_173.6 — Generate proxy files for timeline clips.
+
+    Creates lightweight 720p/480p/360p H.264 proxies for faster scrubbing.
+    Skips if fresh proxy already exists. Stores in cut_runtime/proxies/.
+    """
+    from src.services.cut_proxy_worker import PROXY_480P, PROXY_360P
+
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    # Select resolution preset
+    spec_map = {"720p": None, "480p": PROXY_480P, "360p": PROXY_360P}
+    spec = spec_map.get(body.resolution)
+
+    # Discover source paths
+    source_paths = list(body.source_paths)
+    if not source_paths:
+        timeline_state = store.load_timeline_state()
+        if timeline_state:
+            seen: set[str] = set()
+            for lane in timeline_state.get("lanes", []):
+                for clip in lane.get("clips", []):
+                    sp = str(clip.get("source_path") or "").strip()
+                    if sp and sp not in seen:
+                        source_paths.append(sp)
+                        seen.add(sp)
+
+    if not source_paths:
+        return {"success": False, "error": "no_source_media"}
+
+    # Resolve relative paths
+    resolved: list[str] = []
+    for sp in source_paths:
+        p = Path(sp)
+        if not p.is_absolute():
+            p = Path(body.sandbox_root) / sp
+        resolved.append(str(p))
+
+    worker = ProxyWorker(body.sandbox_root, spec=spec, force=body.force)
+    results = worker.generate_batch(resolved)
+
+    proxy_results = []
+    for r in results:
+        proxy_results.append({
+            "source_path": r.source_path,
+            "proxy_path": r.proxy_path,
+            "success": r.success,
+            "skipped": r.skipped,
+            "error": r.error,
+            "duration_sec": r.duration_sec,
+            "source_size_bytes": r.source_size_bytes,
+            "proxy_size_bytes": r.proxy_size_bytes,
+        })
+
+    return {
+        "success": True,
+        "schema_version": "cut_proxy_generate_v1",
+        "results": proxy_results,
+        "total": len(proxy_results),
+        "generated": sum(1 for r in results if r.success and not r.skipped),
+        "skipped": sum(1 for r in results if r.skipped),
+        "failed": sum(1 for r in results if not r.success),
+        "resolution": body.resolution,
+    }
+
+
+@router.get("/proxy/list")
+async def cut_proxy_list(sandbox_root: str, project_id: str) -> dict[str, Any]:
+    """
+    MARKER_173.6 — List generated proxy files.
+    """
+    store = CutProjectStore(sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    worker = ProxyWorker(sandbox_root)
+    proxies = worker.list_proxies()
+    return {
+        "success": True,
+        "schema_version": "cut_proxy_list_v1",
+        "proxies": proxies,
+        "total": len(proxies),
+    }
+
+
+@router.get("/proxy/path")
+async def cut_proxy_path(sandbox_root: str, source_path: str) -> dict[str, Any]:
+    """
+    MARKER_173.6 — Get proxy path for a source file (if exists).
+    """
+    worker = ProxyWorker(sandbox_root)
+    proxy = worker.get_proxy_path(source_path)
+    if proxy:
+        return {"success": True, "proxy_path": proxy, "exists": True}
+    return {"success": True, "proxy_path": None, "exists": False}
