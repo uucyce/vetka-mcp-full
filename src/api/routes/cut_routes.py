@@ -11,7 +11,8 @@ from types import SimpleNamespace
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from src.api.routes.artifact_routes import (
@@ -3690,3 +3691,123 @@ async def cut_export_markers_srt(
         "srt_content": srt_content,
         "marker_count": len(active),
     }
+
+
+# ─── Media Proxy ───
+
+
+_MIME_MAP: dict[str, str] = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".avi": "video/x-msvideo",
+    ".mkv": "video/x-matroska",
+    ".webm": "video/webm",
+    ".m4v": "video/x-m4v",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".tiff": "image/tiff",
+    ".tif": "image/tiff",
+    ".bmp": "image/bmp",
+}
+
+
+def _resolve_mime(file_path: str) -> str:
+    ext = os.path.splitext(file_path)[1].lower()
+    return _MIME_MAP.get(ext, "application/octet-stream")
+
+
+def _is_safe_subpath(sandbox_root: str, target: str) -> bool:
+    """Ensure target resolves strictly inside sandbox_root (no path traversal)."""
+    root = os.path.realpath(sandbox_root)
+    resolved = os.path.realpath(target)
+    return resolved.startswith(root + os.sep) or resolved == root
+
+
+@router.get("/media-proxy")
+async def cut_media_proxy(request: Request, sandbox_root: str, path: str) -> Response:
+    """
+    MARKER_172.1.MEDIA_PROXY
+    Serve media files from within sandbox_root with range-request support.
+    Security: validates path is inside sandbox_root, rejects traversal.
+    """
+    if not sandbox_root or not path:
+        raise HTTPException(status_code=400, detail="sandbox_root and path are required")
+
+    # Path may be absolute or relative to sandbox
+    if os.path.isabs(path):
+        file_path = path
+    else:
+        file_path = os.path.join(sandbox_root, path)
+
+    # Security: reject path traversal
+    if not _is_safe_subpath(sandbox_root, file_path):
+        raise HTTPException(status_code=403, detail="Path outside sandbox boundary")
+
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail=f"Media file not found: {os.path.basename(file_path)}")
+
+    file_size = os.path.getsize(file_path)
+    mime = _resolve_mime(file_path)
+
+    # CORS headers for cross-origin media loading
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "Range",
+        "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=3600",
+    }
+
+    # Handle Range requests (HTTP 206 Partial Content)
+    range_header = request.headers.get("range")
+    if range_header:
+        range_match = re.match(r"bytes=(\d+)-(\d*)", range_header)
+        if not range_match:
+            raise HTTPException(status_code=416, detail="Invalid Range header")
+        start = int(range_match.group(1))
+        end_str = range_match.group(2)
+        end = int(end_str) if end_str else file_size - 1
+        end = min(end, file_size - 1)
+        if start > end or start >= file_size:
+            raise HTTPException(
+                status_code=416,
+                detail="Range not satisfiable",
+                headers={"Content-Range": f"bytes */{file_size}"},
+            )
+        content_length = end - start + 1
+        with open(file_path, "rb") as f:
+            f.seek(start)
+            data = f.read(content_length)
+        return Response(
+            content=data,
+            status_code=206,
+            media_type=mime,
+            headers={
+                **cors_headers,
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Content-Length": str(content_length),
+            },
+        )
+
+    # Full file response (small files or no Range header)
+    with open(file_path, "rb") as f:
+        data = f.read()
+    return Response(
+        content=data,
+        status_code=200,
+        media_type=mime,
+        headers={
+            **cors_headers,
+            "Content-Length": str(file_size),
+        },
+    )
