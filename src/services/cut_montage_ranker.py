@@ -1,7 +1,8 @@
 """
 MARKER_173.5 — Montage Decision Ranking Engine.
+MARKER_179.8 — PULSE rhythm & mood signals added.
 
-Scores cues from all sources (transcript, pause, music, scene, manual)
+Scores cues from all sources (transcript, pause, music, scene, manual, PULSE)
 using weighted signal fusion. Pure math — no LLM, <5ms execution.
 
 Architecture mirrors ReflexScorer (Phase 172.P2):
@@ -10,11 +11,13 @@ Architecture mirrors ReflexScorer (Phase 172.P2):
 - Final score = weighted sum × recency_decay × user_boost
 
 Signals:
-  1. transcript_confidence (0.30) — pause detection from transcript
-  2. energy_confidence   (0.25) — energy-based pause detection
-  3. sync_confidence     (0.20) — audio sync quality
-  4. marker_score        (0.15) — user-assigned or auto-scored marker
-  5. intent_weight       (0.10) — editorial intent importance
+  1. transcript_confidence (0.25) — pause detection from transcript
+  2. energy_confidence   (0.20) — energy-based pause detection
+  3. sync_confidence     (0.15) — audio sync quality
+  4. marker_score        (0.12) — user-assigned or auto-scored marker
+  5. intent_weight       (0.08) — editorial intent importance
+  6. rhythm_confidence   (0.12) — PULSE: scene rhythm match quality
+  7. mood_alignment      (0.08) — PULSE: pendulum-based mood fit
 
 Usage:
     from src.services.cut_montage_ranker import MontageRanker
@@ -34,11 +37,13 @@ from typing import Any
 # ── Signal weights ────────────────────────────────────────
 
 DEFAULT_WEIGHTS = {
-    "transcript_confidence": 0.30,
-    "energy_confidence": 0.25,
-    "sync_confidence": 0.20,
-    "marker_score": 0.15,
-    "intent_weight": 0.10,
+    "transcript_confidence": 0.25,
+    "energy_confidence": 0.20,
+    "sync_confidence": 0.15,
+    "marker_score": 0.12,
+    "intent_weight": 0.08,
+    "rhythm_confidence": 0.12,  # MARKER_179.8 — PULSE scene rhythm
+    "mood_alignment": 0.08,    # MARKER_179.8 — PULSE pendulum mood
 }
 
 # ── Editorial intent importance (higher = more important) ─
@@ -69,6 +74,9 @@ class MontageSignals:
     editorial_intent: str = "unknown"
     created_at: float = 0.0             # epoch seconds
     is_pinned: bool = False             # user pinned this cue
+    # MARKER_179.8 — PULSE signals
+    rhythm_confidence: float = 0.0     # 0.0–1.0: how well clip rhythm matches scene rhythm
+    mood_alignment: float = 0.0        # 0.0–1.0: how well clip mood matches pendulum target
 
 
 @dataclass
@@ -131,15 +139,20 @@ class MontageRanker:
         sc = max(0.0, min(1.0, signals.sync_confidence))
         ms = max(0.0, min(1.0, signals.marker_score))
         iw = self._compute_intent_weight(signals.editorial_intent)
+        # MARKER_179.8 — PULSE signals
+        rc = max(0.0, min(1.0, signals.rhythm_confidence))
+        ma = max(0.0, min(1.0, signals.mood_alignment))
 
         # Weighted confidence (before decay)
         w = self.weights
         confidence = (
-            w.get("transcript_confidence", 0.30) * tc
-            + w.get("energy_confidence", 0.25) * ec
-            + w.get("sync_confidence", 0.20) * sc
-            + w.get("marker_score", 0.15) * ms
-            + w.get("intent_weight", 0.10) * iw
+            w.get("transcript_confidence", 0.25) * tc
+            + w.get("energy_confidence", 0.20) * ec
+            + w.get("sync_confidence", 0.15) * sc
+            + w.get("marker_score", 0.12) * ms
+            + w.get("intent_weight", 0.08) * iw
+            + w.get("rhythm_confidence", 0.12) * rc
+            + w.get("mood_alignment", 0.08) * ma
         )
 
         # Recency decay
@@ -162,6 +175,11 @@ class MontageRanker:
         if ms > 0:
             parts.append(f"marker:{ms:.2f}")
         parts.append(f"intent({signals.editorial_intent}):{iw:.2f}")
+        # MARKER_179.8 — PULSE reasoning
+        if rc > 0:
+            parts.append(f"rhythm:{rc:.2f}")
+        if ma > 0:
+            parts.append(f"mood:{ma:.2f}")
         if recency < 0.99:
             parts.append(f"recency:{recency:.2f}")
         if signals.is_pinned:
@@ -179,6 +197,8 @@ class MontageRanker:
                 "sync_confidence": round(sc, 4),
                 "marker_score": round(ms, 4),
                 "intent_weight": round(iw, 4),
+                "rhythm_confidence": round(rc, 4),
+                "mood_alignment": round(ma, 4),
                 "recency_decay": round(recency, 4),
             },
         )
@@ -274,6 +294,10 @@ class MontageRanker:
             except (ValueError, TypeError):
                 pass
 
+        # MARKER_179.8 — PULSE signals from context_slice
+        rc = float(ctx.get("rhythm_confidence") or 0.0)
+        ma = float(ctx.get("mood_alignment") or 0.0)
+
         return MontageSignals(
             transcript_confidence=tc,
             energy_confidence=ec,
@@ -282,6 +306,8 @@ class MontageRanker:
             editorial_intent=editorial_intent,
             created_at=created_at,
             is_pinned=bool(marker.get("is_pinned") or marker.get("pinned")),
+            rhythm_confidence=rc,
+            mood_alignment=ma,
         )
 
     def _signals_from_decision(self, dec: dict[str, Any]) -> MontageSignals:
@@ -294,4 +320,7 @@ class MontageRanker:
             editorial_intent=str(dec.get("editorial_intent") or "unknown"),
             created_at=float(dec.get("created_at_epoch") or 0.0),
             is_pinned=bool(dec.get("is_pinned")),
+            # MARKER_179.8 — PULSE signals
+            rhythm_confidence=float(dec.get("rhythm_confidence") or 0.0),
+            mood_alignment=float(dec.get("mood_alignment") or 0.0),
         )

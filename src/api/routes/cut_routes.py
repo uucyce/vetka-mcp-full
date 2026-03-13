@@ -46,6 +46,16 @@ from src.services.cut_scene_detector import (
 )
 from src.services.cut_timeline_events import CutTimelineEventEmitter
 from src.services.cut_undo_redo import CutUndoRedoService, build_op_label
+from src.services.pulse_cinema_matrix import get_cinema_matrix
+from src.services.pulse_camelot_engine import get_camelot_engine
+from src.services.pulse_conductor import (
+    get_pulse_conductor,
+    NarrativeBPM,
+    VisualBPM,
+    AudioBPM,
+)
+from src.services.pulse_script_analyzer import get_script_analyzer
+from src.services.pulse_energy_critics import compute_all_energies
 from src.services.cut_project_store import (
     CutProjectStore,
     build_cut_bootstrap_profile,
@@ -5108,3 +5118,428 @@ async def cut_proxy_path(sandbox_root: str, source_path: str) -> dict[str, Any]:
     if proxy:
         return {"success": True, "proxy_path": proxy, "exists": True}
     return {"success": True, "proxy_path": None, "exists": False}
+
+
+# ===================================================================
+# PULSE Conductor endpoints — Phase 179 Sprint 1
+# MARKER_179.5_PULSE_ENDPOINTS
+# ===================================================================
+
+
+class CutPulseScoreSceneRequest(BaseModel):
+    """Request to score a single scene via PULSE conductor."""
+    scene_id: str = "sc_0"
+    # Narrative signal (optional)
+    script_text: str | None = None
+    dramatic_function: str | None = None
+    pendulum_position: float | None = None
+    suggested_scale: str | None = None
+    # Visual signal (optional)
+    cuts_per_minute: float | None = None
+    motion_intensity: float | None = None
+    # Audio signal (optional)
+    audio_bpm: float | None = None
+    audio_key: str | None = None
+    audio_camelot_key: str | None = None
+
+
+class CutPulseScoreFilmRequest(BaseModel):
+    """Request to score an entire film from script text."""
+    script_text: str
+    # Optional audio context for the whole film
+    audio_bpm: float | None = None
+    audio_key: str | None = None
+    audio_camelot_key: str | None = None
+
+
+class CutPulseCamelotPathRequest(BaseModel):
+    """Request to analyze a Camelot key path."""
+    keys: list[str]  # e.g. ["8A", "9A", "3B", "8A"]
+
+
+class CutPulseCamelotSuggestRequest(BaseModel):
+    """Request to suggest next Camelot key."""
+    current_key: str
+    target_pendulum: float = 0.0
+    prefer_dramatic: bool = False
+
+
+@router.get("/pulse/matrix")
+async def cut_pulse_matrix() -> dict[str, Any]:
+    """
+    MARKER_179.5 — Get the full cinema matrix (Scale → Genre → Cinema Scene).
+    """
+    matrix = get_cinema_matrix()
+    return {
+        "success": True,
+        "schema_version": "pulse_cinema_matrix_v1",
+        "scales": matrix.to_dict_list(),
+        "total": len(matrix.all_scales()),
+    }
+
+
+@router.get("/pulse/matrix/{scale_name}")
+async def cut_pulse_matrix_by_scale(scale_name: str) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Get a single row from the cinema matrix by scale name.
+    """
+    matrix = get_cinema_matrix()
+    row = matrix.get_by_scale(scale_name)
+    if not row:
+        raise HTTPException(404, f"Scale '{scale_name}' not found in cinema matrix")
+    return {
+        "success": True,
+        "scale": row.scale,
+        "cinema_genre": row.cinema_genre,
+        "cinema_scene_types": row.cinema_scene_types,
+        "dramatic_function": row.dramatic_function,
+        "pendulum_position": row.pendulum_position,
+        "counterpoint_pair": row.counterpoint_pair,
+        "energy_profile": row.energy_profile,
+        "itten_colors": row.itten_colors,
+        "music_genres": row.music_genres,
+        "confidence": row.confidence,
+        "camelot_region": row.camelot_region,
+    }
+
+
+@router.post("/pulse/score-scene")
+async def cut_pulse_score_scene(req: CutPulseScoreSceneRequest) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Score a single scene via PULSE conductor.
+
+    Accepts narrative, visual, and/or audio signals.
+    If script_text provided, runs script analyzer first.
+    """
+    conductor = get_pulse_conductor()
+
+    # Build narrative signal
+    narrative = None
+    if req.script_text:
+        analyzer = get_script_analyzer()
+        narrative = analyzer.analyze_single(req.script_text, req.scene_id)
+    elif req.dramatic_function or req.pendulum_position is not None:
+        narrative = NarrativeBPM(
+            scene_id=req.scene_id,
+            dramatic_function=req.dramatic_function or "Unknown",
+            pendulum_position=req.pendulum_position or 0.0,
+            estimated_energy=0.5,
+            suggested_scale=req.suggested_scale or "",
+            confidence=0.7,
+        )
+
+    # Build visual signal
+    visual = None
+    if req.cuts_per_minute is not None or req.motion_intensity is not None:
+        visual = VisualBPM(
+            scene_id=req.scene_id,
+            cuts_per_minute=req.cuts_per_minute or 0.0,
+            motion_intensity=req.motion_intensity or 0.5,
+            confidence=0.6,
+        )
+
+    # Build audio signal
+    audio = None
+    if req.audio_bpm is not None or req.audio_camelot_key:
+        engine = get_camelot_engine()
+        camelot = req.audio_camelot_key or ""
+        if not camelot and req.audio_key:
+            camelot = engine.key_from_musical(req.audio_key) or ""
+        audio = AudioBPM(
+            bpm=req.audio_bpm or 120.0,
+            key=req.audio_key or "",
+            camelot_key=camelot,
+            confidence=0.8,
+        )
+
+    score = conductor.score_scene(req.scene_id, narrative, visual, audio)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_score_v1",
+        "score": score.to_dict(),
+    }
+
+
+@router.post("/pulse/score-film")
+async def cut_pulse_score_film(req: CutPulseScoreFilmRequest) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Score an entire film from script text.
+
+    Parses script into scenes, runs PULSE conductor on each,
+    returns the full partiture with Camelot path analysis.
+    """
+    analyzer = get_script_analyzer()
+    conductor = get_pulse_conductor()
+
+    narrative_bpms = analyzer.analyze(req.script_text)
+
+    # Build audio context if provided
+    audio = None
+    if req.audio_bpm is not None or req.audio_camelot_key:
+        engine = get_camelot_engine()
+        camelot = req.audio_camelot_key or ""
+        if not camelot and req.audio_key:
+            camelot = engine.key_from_musical(req.audio_key) or ""
+        audio = AudioBPM(
+            bpm=req.audio_bpm or 120.0,
+            key=req.audio_key or "",
+            camelot_key=camelot,
+            confidence=0.8,
+        )
+
+    scenes = []
+    for nbpm in narrative_bpms:
+        scenes.append({
+            "scene_id": nbpm.scene_id,
+            "narrative": nbpm,
+            "audio": audio,  # same audio context for whole film
+        })
+
+    partiture = conductor.score_film(scenes)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_partiture_v1",
+        "partiture": partiture.to_dict(),
+    }
+
+
+@router.post("/pulse/analyze-script")
+async def cut_pulse_analyze_script(
+    script_text: str = "",
+) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Analyze script text and extract NarrativeBPM for each scene.
+
+    Returns scene breakdown with dramatic functions, pendulum positions,
+    and suggested scales.
+    """
+    if not script_text:
+        raise HTTPException(400, "script_text is required")
+
+    analyzer = get_script_analyzer()
+    results = analyzer.analyze(script_text)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_narrative_v1",
+        "scenes": [
+            {
+                "scene_id": r.scene_id,
+                "dramatic_function": r.dramatic_function,
+                "pendulum_position": r.pendulum_position,
+                "estimated_energy": r.estimated_energy,
+                "keywords": r.keywords,
+                "suggested_scale": r.suggested_scale,
+                "confidence": r.confidence,
+            }
+            for r in results
+        ],
+        "total_scenes": len(results),
+    }
+
+
+@router.post("/pulse/camelot/path")
+async def cut_pulse_camelot_path(req: CutPulseCamelotPathRequest) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Analyze a Camelot key path for harmonic smoothness.
+    """
+    engine = get_camelot_engine()
+    try:
+        path = engine.plan_path(req.keys)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    return {
+        "success": True,
+        "schema_version": "pulse_camelot_path_v1",
+        "keys": path.keys,
+        "total_distance": path.total_distance,
+        "max_jump": path.max_jump,
+        "smoothness": round(path.smoothness, 3),
+        "transitions": [
+            {
+                "from": t.from_key,
+                "to": t.to_key,
+                "distance": t.distance,
+                "quality": t.quality,
+            }
+            for t in path.transitions
+        ],
+    }
+
+
+@router.get("/pulse/camelot/distance")
+async def cut_pulse_camelot_distance(key_a: str, key_b: str) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Get harmonic distance between two Camelot keys.
+    """
+    engine = get_camelot_engine()
+    try:
+        d = engine.distance(key_a, key_b)
+        c = engine.compatibility(key_a, key_b)
+        q = engine.transition_quality(key_a, key_b)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    return {
+        "success": True,
+        "key_a": key_a,
+        "key_b": key_b,
+        "distance": d,
+        "compatibility": c,
+        "quality": q,
+    }
+
+
+@router.get("/pulse/camelot/neighbors")
+async def cut_pulse_camelot_neighbors(key: str) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Get harmonically compatible neighbors for a key.
+    """
+    engine = get_camelot_engine()
+    try:
+        nbrs = engine.neighbors(key)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    return {
+        "success": True,
+        "key": key,
+        "neighbors": nbrs,
+        "musical_key": engine.musical_from_key(key),
+    }
+
+
+@router.post("/pulse/camelot/suggest-next")
+async def cut_pulse_camelot_suggest_next(
+    req: CutPulseCamelotSuggestRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Suggest next Camelot key based on target pendulum.
+    """
+    engine = get_camelot_engine()
+    try:
+        suggestions = engine.suggest_next(
+            req.current_key,
+            req.target_pendulum,
+            prefer_dramatic=req.prefer_dramatic,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    return {
+        "success": True,
+        "current_key": req.current_key,
+        "target_pendulum": req.target_pendulum,
+        "suggestions": [
+            {"key": k, "score": s, "musical_key": engine.musical_from_key(k)}
+            for k, s in suggestions
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_179.6_ENERGY_CRITICS_ENDPOINT
+# ---------------------------------------------------------------------------
+
+
+class CutPulseEnergyCriticsRequest(BaseModel):
+    """Request to compute energy critics for a film from script text."""
+    script_text: str
+    # Optional per-scene audio overrides
+    audio_bpm: float | None = None
+    audio_key: str | None = None
+    audio_camelot_key: str | None = None
+
+
+@router.post("/pulse/energy-critics")
+async def cut_pulse_energy_critics(req: CutPulseEnergyCriticsRequest) -> dict[str, Any]:
+    """
+    MARKER_179.6 — Compute all 5 energy critics for a film.
+
+    Takes script text, scores each scene via PULSE conductor,
+    then runs all energy critics on the resulting PulseScore sequence.
+
+    Returns individual critic energies + weighted total.
+    Lower total = better overall montage compatibility.
+    """
+    if not req.script_text:
+        raise HTTPException(400, "script_text is required")
+
+    conductor = get_pulse_conductor()
+    analyzer = get_script_analyzer()
+
+    # Analyze script into scenes
+    narrative_scenes = analyzer.analyze(req.script_text)
+
+    # Score each scene
+    scores = []
+    for nbpm in narrative_scenes:
+        # Build optional audio signal
+        audio = None
+        if req.audio_bpm is not None or req.audio_camelot_key:
+            engine = get_camelot_engine()
+            camelot = req.audio_camelot_key or ""
+            if not camelot and req.audio_key:
+                camelot = engine.key_from_musical(req.audio_key) or ""
+            audio = AudioBPM(
+                bpm=req.audio_bpm or 120.0,
+                key=req.audio_key or "",
+                camelot_key=camelot,
+                confidence=0.6,
+            )
+
+        score = conductor.score_scene(
+            scene_id=nbpm.scene_id,
+            narrative=nbpm,
+            audio=audio,
+        )
+        scores.append(score)
+
+    # Compute energy critics
+    energies = compute_all_energies(scores)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_energy_critics_v1",
+        "energies": energies,
+        "scene_count": len(scores),
+        "interpretation": {
+            "total_label": _energy_label(energies["total"]),
+            "advice": _energy_advice(energies),
+        },
+    }
+
+
+def _energy_label(total: float) -> str:
+    """Human-readable label for total energy."""
+    if total < 0.2:
+        return "excellent_harmony"
+    elif total < 0.35:
+        return "good_balance"
+    elif total < 0.5:
+        return "moderate_tension"
+    elif total < 0.7:
+        return "high_tension"
+    else:
+        return "extreme_conflict"
+
+
+def _energy_advice(energies: Dict[str, float]) -> list[str]:
+    """Generate actionable advice based on individual critic values."""
+    advice = []
+    if energies.get("pendulum_balance", 0) > 0.6:
+        advice.append("Pendulum is monotonous — consider adding scenes with opposite emotional charge")
+    if energies.get("camelot_proximity", 0) > 0.5:
+        advice.append("Key transitions are jarring — try inserting bridge scenes with adjacent Camelot keys")
+    if energies.get("music_scene_sync", 0) > 0.5:
+        advice.append("Music-scene alignment shows frequent counterpoint — verify it's intentional")
+    if energies.get("script_visual_match", 0) > 0.5:
+        advice.append("Visual pacing doesn't match script energy — check cut density and motion intensity")
+    if energies.get("energy_contour", 0) > 0.5:
+        advice.append("Energy contour is spiky — smooth transitions between high/low energy scenes")
+    if not advice:
+        advice.append("Montage rhythm looks healthy — energy distribution is balanced")
+    return advice

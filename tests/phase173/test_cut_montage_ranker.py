@@ -102,6 +102,8 @@ class TestScoreClip:
             marker_score=1.0,
             editorial_intent="dialogue_anchor",
             created_at=time.time(),
+            rhythm_confidence=1.0,   # MARKER_179.8
+            mood_alignment=1.0,      # MARKER_179.8
         )
         result = ranker.score_clip(signals)
         assert result.score > 0.9
