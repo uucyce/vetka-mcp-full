@@ -11,6 +11,7 @@ import { useCutEditorStore } from '../../store/useCutEditorStore';
 import TransportBar from './TransportBar';
 import VideoPreview from './VideoPreview';
 import TimelineTrackView from './TimelineTrackView';
+import TimelineTabBar from './TimelineTabBar';
 import ClipInspector from './ClipInspector';
 import MarkerNode from './nodes/MarkerNode';
 import { IconMusicNote } from './icons/CutIcons';
@@ -545,6 +546,7 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
 
       {/* Timeline (bottom) */}
       <div style={{ ...TIMELINE_PANEL, height: timelineResize.size }}>
+        <TimelineTabBar />
         <TimelineTrackView />
       </div>
     </div>

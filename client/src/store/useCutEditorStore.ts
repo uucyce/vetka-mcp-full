@@ -98,6 +98,10 @@ interface CutEditorState {
   timelineId: string;
   refreshProjectState: (() => Promise<void>) | null;
 
+  // === Multi-timeline tabs (MARKER_170.12) ===
+  timelineTabs: Array<{ id: string; label: string }>;
+  activeTimelineTabIndex: number;
+
   // === Media status ===
   mediaError: string | null;
   mediaLoading: boolean;
@@ -141,6 +145,12 @@ interface CutEditorState {
     timelineId?: string;
     refreshProjectState?: (() => Promise<void>) | null;
   }) => void;
+
+  // Multi-timeline tab actions (MARKER_170.12)
+  addTimelineTab: (id: string, label: string) => void;
+  removeTimelineTab: (index: number) => void;
+  setActiveTimelineTab: (index: number) => void;
+  renameTimelineTab: (index: number, label: string) => void;
 }
 
 export const useCutEditorStore = create<CutEditorState>((set) => ({
@@ -178,6 +188,10 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   projectId: null,
   timelineId: 'main',
   refreshProjectState: null,
+
+  // Multi-timeline defaults
+  timelineTabs: [{ id: 'main', label: 'Main' }],
+  activeTimelineTabIndex: 0,
 
   // Media status
   mediaError: null,
@@ -242,4 +256,30 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
       refreshProjectState:
         session.refreshProjectState === undefined ? state.refreshProjectState : session.refreshProjectState,
     })),
+
+  // MARKER_170.12: Multi-timeline tab management
+  addTimelineTab: (id, label) =>
+    set((state) => ({
+      timelineTabs: [...state.timelineTabs, { id, label }],
+      activeTimelineTabIndex: state.timelineTabs.length, // switch to new tab
+      timelineId: id,
+    })),
+  removeTimelineTab: (index) =>
+    set((state) => {
+      if (state.timelineTabs.length <= 1) return state; // keep at least one
+      const tabs = state.timelineTabs.filter((_, i) => i !== index);
+      const newIndex = Math.min(state.activeTimelineTabIndex, tabs.length - 1);
+      return { timelineTabs: tabs, activeTimelineTabIndex: newIndex, timelineId: tabs[newIndex].id };
+    }),
+  setActiveTimelineTab: (index) =>
+    set((state) => {
+      if (index < 0 || index >= state.timelineTabs.length) return state;
+      return { activeTimelineTabIndex: index, timelineId: state.timelineTabs[index].id };
+    }),
+  renameTimelineTab: (index, label) =>
+    set((state) => {
+      const tabs = [...state.timelineTabs];
+      if (tabs[index]) tabs[index] = { ...tabs[index], label };
+      return { timelineTabs: tabs };
+    }),
 }));
