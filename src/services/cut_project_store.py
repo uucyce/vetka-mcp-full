@@ -131,6 +131,10 @@ class CutProjectPaths:
         return os.path.join(self.runtime_state_dir, "timecode_sync_result.latest.json")
 
     @property
+    def music_sync_result_path(self) -> str:
+        return os.path.join(self.runtime_state_dir, "music_sync_result.latest.json")
+
+    @property
     def time_marker_bundle_path(self) -> str:
         return os.path.join(self.runtime_state_dir, "time_marker_bundle.latest.json")
 
@@ -285,6 +289,18 @@ class CutProjectStore:
         if not self._validate_timecode_sync_result_payload(payload):
             raise ValueError("Invalid cut_timecode_sync_result_v1 payload")
         self._atomic_write_json(self.paths.timecode_sync_result_path, payload)
+
+    def load_music_sync_result(self) -> dict[str, Any] | None:
+        payload = self._load_json(self.paths.music_sync_result_path, expected_schema="cut_music_sync_result_v1")
+        if payload is None or not self._validate_music_sync_result_payload(payload):
+            return None
+        return payload
+
+    def save_music_sync_result(self, result: dict[str, Any]) -> None:
+        payload = dict(result or {})
+        if not self._validate_music_sync_result_payload(payload):
+            raise ValueError("Invalid cut_music_sync_result_v1 payload")
+        self._atomic_write_json(self.paths.music_sync_result_path, payload)
 
     def load_time_marker_bundle(self) -> dict[str, Any] | None:
         payload = self._load_json(self.paths.time_marker_bundle_path, expected_schema="cut_time_marker_bundle_v1")
@@ -701,6 +717,34 @@ class CutProjectStore:
                 "degraded_reason",
             ]
             if any(key not in item for key in item_required):
+                return False
+        return True
+
+    def _validate_music_sync_result_payload(self, payload: dict[str, Any]) -> bool:
+        required = ["schema_version", "project_id", "music_path", "tempo",
+                     "downbeats", "phrases", "cue_points", "derived_from", "generated_at"]
+        if any(key not in payload for key in required):
+            return False
+        if str(payload.get("schema_version")) != "cut_music_sync_result_v1":
+            return False
+        tempo = payload.get("tempo")
+        if not isinstance(tempo, dict) or "bpm" not in tempo or "confidence" not in tempo:
+            return False
+        if not isinstance(payload.get("downbeats"), list):
+            return False
+        if not isinstance(payload.get("phrases"), list):
+            return False
+        for phrase in payload.get("phrases", []):
+            if not isinstance(phrase, dict):
+                return False
+            if any(k not in phrase for k in ("phrase_id", "start_sec", "end_sec", "energy", "label")):
+                return False
+        if not isinstance(payload.get("cue_points"), list):
+            return False
+        for cue in payload.get("cue_points", []):
+            if not isinstance(cue, dict):
+                return False
+            if any(k not in cue for k in ("cue_id", "time_sec", "kind", "strength")):
                 return False
         return True
 

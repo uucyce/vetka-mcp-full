@@ -3033,6 +3033,7 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
     audio_sync_result = store.load_audio_sync_result()
     slice_bundle = store.load_slice_bundle()
     timecode_sync_result = store.load_timecode_sync_result()
+    music_sync_result = store.load_music_sync_result()
     time_marker_bundle = store.load_time_marker_bundle()
     sync_surface = _build_sync_surface(
         project_id=str(project.get("project_id") or ""),
@@ -3063,6 +3064,7 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         "audio_sync_result": audio_sync_result,
         "slice_bundle": slice_bundle,
         "timecode_sync_result": timecode_sync_result,
+        "music_sync_result": music_sync_result,
         "sync_surface": sync_surface,
         "time_marker_bundle": time_marker_bundle,
         "recent_jobs": recent_jobs,
@@ -3077,6 +3079,7 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         "slice_ready": slice_bundle is not None,
         "timecode_sync_ready": timecode_sync_result is not None,
         "sync_surface_ready": bool(sync_surface.get("items")),
+        "music_sync_ready": music_sync_result is not None,
         "time_markers_ready": time_marker_bundle is not None,
     }
 
