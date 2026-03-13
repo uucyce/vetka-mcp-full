@@ -157,11 +157,101 @@ Phase 171 added montage intelligence: music cues, rhythm surface, marker promoti
 
 ---
 
+## Workstream C — Integration & UX (Codex + Opus)
+
+### 173.20 Player Lab Integration UI
+- Import button in TransportBar / Source Browser → file picker for Player Lab JSON
+- Calls existing `POST /api/cut/markers/import-player-lab`
+- Show import preview: how many markers, types, timecodes
+- After import → markers appear on timeline + toast "Imported 42 markers"
+- Backend already exists (Phase 170), this is UI wiring
+
+### 173.21 Media Import Panel
+- "Import Media" button in Source Browser (left panel)
+- Supports: drag-and-drop files, folder picker, URL paste
+- On import → triggers bootstrap-async → shows progress
+- After bootstrap: clips populate Source Browser with thumbnails
+- Calls existing `POST /api/cut/bootstrap-async`
+- Import history sidebar (recent imports)
+
+### 173.22 Program Monitor (Preview Window)
+- Right panel: dedicated Program Monitor (Premiere-style)
+- Shows current playhead frame from active timeline
+- Independent from Source Browser video preview
+- Scope: waveform scope, vectorscope, histogram (future)
+- Full-screen toggle (double-click or F key)
+- Timecode overlay with frame-accurate display
+- Mark In/Out directly on monitor
+
+### 173.23 Dual Timeline — Assembly + Final Cut
+- **Upper timeline:** Auto-montage assembly lane (synced, ranked clips from montage engine)
+  - Read-only, auto-populated from montage suggestions + sync results
+  - Clips color-coded by source: 🎵 music-aligned, ⏸ pause-cut, 📝 transcript-driven
+  - Acts as a "palette" — user drags clips FROM here
+- **Lower timeline:** Final Cut lane (user's edit)
+  - Standard interactive timeline (all 173.x editing ops)
+  - User drags/copies clips from upper → lower
+  - This IS the export source
+- Backend: `POST /api/cut/assembly-timeline/generate` — auto-build assembly from ranked montage decisions
+- Store: `activeTimeline: 'assembly' | 'final'` toggle
+- Drag-between: cross-timeline drag-and-drop with auto-ripple-insert
+
+### 173.24 VETKA Chat + Agent Phonebook Window
+- Floating MiniChat (from Phase 154 MiniChat component) embedded in CUT
+- Agent phonebook panel: list of available agents with status (online/busy/offline)
+  - Dragon teams (Bronze/Silver/Gold)
+  - Codex agents
+  - Grok researcher
+- Direct chat with agents: "@dragon analyze this timeline for pacing"
+- Chat context: current project_id + timeline_id auto-injected
+- History: conversation per project, persisted
+
+### 173.25 VETKA Core Memory + MCC TaskBoard Panel
+- Panel in CUT sidebar: project memory view
+  - Key decisions, architecture notes, montage preferences
+  - Pulled from VETKA Qdrant knowledge base
+- MCC TaskBoard mini-view (from Phase 154 MiniTasks)
+  - Show tasks for current CUT project_id
+  - Create/claim/complete tasks inline
+  - Filter by phase, agent, status
+
+### 173.26 Video Export + Social Cross-Post
+- Export menu in TransportBar:
+  - "Export Video" → FFmpeg render: final timeline → H.264/ProRes output
+  - Resolution presets: 1080p, 4K, Instagram (1:1), TikTok (9:16), YouTube (16:9)
+  - Progress bar with ETA
+- Cross-post panel (after export):
+  - One-click publish to: YouTube, Instagram, TikTok, Telegram, VK
+  - Title, description, tags per platform
+  - Thumbnail selector (from scene boundaries)
+  - Schedule publish (now / date+time)
+- Backend: `POST /api/cut/export/render-video-async` (FFmpeg render job)
+- Backend: `POST /api/cut/export/cross-post` (social API integrations)
+
+---
+
+## Vision Horizon
+
+| Task | Horizon | Notes |
+|------|---------|-------|
+| 173.1-173.6 | **Now** | Backend foundation — this session |
+| 173.10-173.18 | **Now** | Core editing UX — Codex |
+| 173.20-173.21 | **Next sprint** | Import/Player Lab — small but needed |
+| 173.22-173.23 | **Next sprint** | Monitor + Dual Timeline — the killer feature |
+| 173.24-173.25 | **Phase 174+** | VETKA integration — deep ecosystem |
+| 173.26 | **Phase 175+** | Export + social — requires social API keys |
+
+---
+
 ## Exit Criteria
 
 - [ ] User can split, trim, delete, move clips with undo/redo
 - [ ] Audio plays in sync with video across lanes
 - [ ] Smart cut suggestions appear from montage engine
 - [ ] Scenes auto-detected and visualized
+- [ ] Media can be imported via UI (drag-and-drop / file picker)
+- [ ] Player Lab markers importable with preview
+- [ ] Program Monitor shows current frame independently
+- [ ] Dual timeline: assembly palette → final cut drag workflow
 - [ ] Export to Premiere/FCPXML includes all edits
 - [ ] 90%+ test coverage on new endpoints
