@@ -23,6 +23,7 @@ from src.api.routes.artifact_routes import (
 )
 from src.services.converters.fcpxml_converter import build_fcpxml
 from src.services.converters.premiere_xml_converter import build_premiere_xml
+from src.services.cut_ffmpeg_audio_sync import extract_signal_with_fallback, sync_two_files_ffmpeg
 from src.services.cut_ffmpeg_waveform import build_waveform_with_fallback
 from src.services.cut_audio_intel_eval import (
     derive_pause_windows_from_silence,
@@ -2246,7 +2247,7 @@ def _run_cut_audio_sync_job(job_id: str, body: CutAudioSyncRequest) -> None:
             return
 
         reference_path = media_paths[0]
-        reference_signal, reference_degraded, reference_reason = _build_signal_proxy_from_bytes(
+        reference_signal, ref_sample_rate, reference_degraded, reference_reason = extract_signal_with_fallback(
             reference_path, int(body.sample_bytes)
         )
         if reference_degraded:
@@ -2258,15 +2259,16 @@ def _run_cut_audio_sync_job(job_id: str, body: CutAudioSyncRequest) -> None:
             if current_job and bool(current_job.get("cancel_requested")):
                 job_store.update_job(job_id, state="cancelled", progress=1.0)
                 return
-            candidate_signal, degraded_mode, degraded_reason = _build_signal_proxy_from_bytes(
+            candidate_signal, cand_sample_rate, degraded_mode, degraded_reason = extract_signal_with_fallback(
                 media_path, int(body.sample_bytes)
             )
+            effective_rate = min(ref_sample_rate, cand_sample_rate)
             if reference_degraded or degraded_mode or not reference_signal or not candidate_signal:
                 degraded_mode = True
                 degraded_reason = degraded_reason or reference_reason or "signal_proxy_unavailable"
                 sync_result = detect_offset_hybrid([], [], 1000)
             else:
-                sync_result = _run_audio_sync_method(str(body.method), reference_signal, candidate_signal, 1000)
+                sync_result = _run_audio_sync_method(str(body.method), reference_signal, candidate_signal, effective_rate)
             if degraded_mode:
                 degraded_count += 1
             items.append(
@@ -2416,7 +2418,7 @@ def _run_cut_pause_slice_job(job_id: str, body: CutPauseSliceRequest) -> None:
             if current_job and bool(current_job.get("cancel_requested")):
                 job_store.update_job(job_id, state="cancelled", progress=1.0)
                 return
-            signal, degraded_mode, degraded_reason = _build_signal_proxy_from_bytes(media_path, int(body.sample_bytes))
+            signal, sig_sample_rate, degraded_mode, degraded_reason = extract_signal_with_fallback(media_path, int(body.sample_bytes))
             if signal:
                 windows = _build_slice_windows_from_signal(
                     signal,
