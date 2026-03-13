@@ -3418,3 +3418,186 @@ async def cut_bootstrap_job_status(job_id: str) -> dict[str, Any]:
     MARKER_170.MCP.BOOTSTRAP_JOB_STATUS_V1
     """
     return await cut_job_status(job_id)
+
+
+# ─── MARKER_170.9: Player Lab → CUT marker bridge ───
+
+
+class CutPlayerLabImportItem(BaseModel):
+    """One provisional event from Player Lab."""
+    start_sec: float = Field(ge=0.0)
+    end_sec: float = Field(ge=0.0)
+    text: str = ""
+    kind: Literal["favorite", "comment"] = "comment"
+    export_mode: str = "srt_comment"
+    migration_status: str = "local_only"
+    cam_payload: dict[str, Any] | None = None
+    anchor_sec: float | None = None
+    label: str = ""
+    author: str = "player_lab"
+
+
+class CutPlayerLabImportRequest(BaseModel):
+    """Import batch of Player Lab provisional events as CUT time markers."""
+    sandbox_root: str
+    project_id: str
+    timeline_id: str = "main"
+    media_path: str = ""
+    events: list[CutPlayerLabImportItem] = Field(min_length=1)
+    source_engine: str = "player_lab_srt"
+
+
+@router.post("/markers/import-player-lab")
+async def cut_import_player_lab_markers(body: CutPlayerLabImportRequest) -> dict[str, Any]:
+    """
+    MARKER_170.9.PLAYER_LAB_IMPORT
+    Batch-import Player Lab provisional events as CUT time markers.
+    Bridges the gap between Player Lab local storage and CUT marker bundle.
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _time_marker_error("project_not_found", "CUT project not found for player lab import.")
+
+    timeline_state = store.load_timeline_state()
+    resolved_timeline_id = str((timeline_state or {}).get("timeline_id") or body.timeline_id or "main")
+
+    marker_bundle = store.load_time_marker_bundle()
+    if marker_bundle is None:
+        marker_bundle = {
+            "schema_version": "cut_time_marker_bundle_v1",
+            "project_id": str(project.get("project_id") or ""),
+            "timeline_id": resolved_timeline_id,
+            "revision": 0,
+            "items": [],
+            "ranking_summary": _compute_time_marker_ranking_summary([]),
+            "generated_at": _utc_now_iso(),
+        }
+
+    items = [deepcopy(item) for item in marker_bundle.get("items", [])]
+    imported: list[dict[str, Any]] = []
+
+    for ev in body.events:
+        marker_id = f"plb_{uuid4().hex[:12]}"
+        marker = {
+            "marker_id": marker_id,
+            "schema_version": "cut_time_marker_v1",
+            "project_id": str(project.get("project_id") or ""),
+            "timeline_id": resolved_timeline_id,
+            "media_path": body.media_path,
+            "kind": ev.kind,
+            "start_sec": ev.start_sec,
+            "end_sec": ev.end_sec,
+            "anchor_sec": ev.anchor_sec if ev.anchor_sec is not None else ev.start_sec,
+            "score": 1.0,
+            "label": ev.label or ev.text[:40] if ev.text else "",
+            "text": ev.text,
+            "author": ev.author,
+            "context_slice": {
+                "source": "player_lab",
+                "export_mode": ev.export_mode,
+                "migration_status": "migrated",
+            },
+            "cam_payload": deepcopy(ev.cam_payload) if ev.cam_payload else None,
+            "chat_thread_id": None,
+            "comment_thread_id": None,
+            "source_engine": body.source_engine,
+            "status": "active",
+            "created_at": _utc_now_iso(),
+            "updated_at": _utc_now_iso(),
+        }
+        items.append(marker)
+        imported.append(marker)
+
+    updated_bundle = {
+        "schema_version": "cut_time_marker_bundle_v1",
+        "project_id": str(project.get("project_id") or ""),
+        "timeline_id": resolved_timeline_id,
+        "revision": int(marker_bundle.get("revision") or 0) + 1,
+        "items": items,
+        "ranking_summary": _compute_time_marker_ranking_summary(items),
+        "generated_at": _utc_now_iso(),
+    }
+    store.save_time_marker_bundle(updated_bundle)
+
+    edit_event = {
+        "event_id": f"player_lab_import_{uuid4().hex[:12]}",
+        "project_id": str(project.get("project_id") or ""),
+        "timeline_id": resolved_timeline_id,
+        "author": "player_lab_bridge",
+        "revision": int(updated_bundle.get("revision") or 0),
+        "op": "batch_import",
+        "imported_count": len(imported),
+        "source_engine": body.source_engine,
+        "created_at": _utc_now_iso(),
+    }
+    store.append_time_marker_edit_event(edit_event)
+
+    return {
+        "success": True,
+        "schema_version": "cut_player_lab_import_v1",
+        "imported_count": len(imported),
+        "imported_markers": imported,
+        "marker_bundle": updated_bundle,
+        "edit_event": edit_event,
+        "error": None,
+    }
+
+
+def _srt_timecode(seconds: float) -> str:
+    """Convert seconds to SRT timecode: HH:MM:SS,mmm"""
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int((seconds % 1) * 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+@router.get("/markers/export-srt")
+async def cut_export_markers_srt(
+    sandbox_root: str,
+    project_id: str = "",
+    timeline_id: str = "",
+    kind: str = "",
+) -> dict[str, Any]:
+    """
+    MARKER_170.9.SRT_EXPORT
+    Export active time markers as SRT subtitle text.
+    Optionally filter by marker kind (e.g. 'comment', 'favorite', 'music_sync').
+    """
+    store = CutProjectStore(sandbox_root)
+    marker_bundle = store.load_time_marker_bundle()
+    if marker_bundle is None:
+        return {
+            "success": True,
+            "schema_version": "cut_srt_export_v1",
+            "srt_content": "",
+            "marker_count": 0,
+        }
+
+    items = marker_bundle.get("items", [])
+    active = [m for m in items if str(m.get("status") or "active") == "active"]
+    if kind:
+        active = [m for m in active if str(m.get("kind") or "") == kind]
+
+    # Sort by start_sec
+    active.sort(key=lambda m: float(m.get("start_sec") or 0))
+
+    lines: list[str] = []
+    for idx, marker in enumerate(active, start=1):
+        start = float(marker.get("start_sec") or 0)
+        end = float(marker.get("end_sec") or start + 1)
+        text = str(marker.get("text") or marker.get("label") or f"Marker {idx}")
+        lines.append(str(idx))
+        lines.append(f"{_srt_timecode(start)} --> {_srt_timecode(end)}")
+        lines.append(text)
+        lines.append("")  # blank line separator
+
+    srt_content = "\n".join(lines)
+
+    return {
+        "success": True,
+        "schema_version": "cut_srt_export_v1",
+        "srt_content": srt_content,
+        "marker_count": len(active),
+    }

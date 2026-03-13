@@ -742,7 +742,7 @@ class CutProjectStore:
             return False
         if str(payload.get("schema_version")) != "cut_time_marker_v1":
             return False
-        if str(payload.get("kind") or "") not in {"favorite", "comment", "cam", "insight", "chat"}:
+        if str(payload.get("kind") or "") not in {"favorite", "comment", "cam", "insight", "chat", "music_sync"}:
             return False
         start_sec = float(payload.get("start_sec") or 0.0)
         end_sec = float(payload.get("end_sec") or 0.0)
