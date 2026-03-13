@@ -37,6 +37,11 @@ from src.services.cut_marker_bundle_service import (
     hybrid_merge_slices,
 )
 from src.services.cut_mcp_job_store import get_cut_mcp_job_store
+from src.services.cut_scene_detector import (
+    SceneBoundary,
+    detect_scene_boundaries,
+    group_clips_into_scenes,
+)
 from src.services.cut_undo_redo import CutUndoRedoService, build_op_label
 from src.services.cut_project_store import (
     CutProjectStore,
@@ -205,6 +210,19 @@ class CutApplyWithMarkersRequest(BaseModel):
     track_id: str = ""
     media_path: str = ""
     slice_config: CutMusicSyncSliceConfig = Field(default_factory=CutMusicSyncSliceConfig)
+
+
+class CutSceneDetectApplyRequest(BaseModel):
+    """MARKER_173.3 — Request model for scene-detect-and-apply."""
+    sandbox_root: str
+    project_id: str
+    timeline_id: str = "main"
+    source_paths: list[str] = Field(default_factory=list, description="Media files to run scene detection on. If empty, uses all clips from the timeline.")
+    threshold: float = Field(default=0.3, ge=0.05, le=0.95, description="Histogram diff threshold for scene boundary detection (lower = more sensitive)")
+    interval_sec: float = Field(default=1.0, ge=0.1, le=10.0, description="Sampling interval in seconds")
+    max_duration_sec: float = Field(default=300.0, ge=10.0, le=3600.0, description="Max duration per file to analyse")
+    lane_id: str = Field(default="scenes", description="Lane to create detected scene clips on")
+    update_scene_graph: bool = Field(default=True, description="Also update the scene graph with detected scenes")
 
 
 def _cut_state_error(code: str, message: str, *, recoverable: bool = True) -> dict[str, Any]:
@@ -4661,4 +4679,209 @@ async def cut_undo_stack(
     return {
         "success": True,
         **undo_service.get_stack_info(),
+    }
+
+
+@router.post("/scene-detect-and-apply")
+async def cut_scene_detect_and_apply(body: CutSceneDetectApplyRequest) -> dict[str, Any]:
+    """
+    MARKER_173.3 — Scene detection → timeline auto-apply.
+
+    Runs histogram-based scene boundary detection on source media files,
+    creates clips at detected boundary points on a dedicated lane,
+    and optionally updates the scene graph with detected scenes.
+
+    Returns detected boundaries, created clips, and updated scene graph.
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    timeline_state = store.load_timeline_state()
+    if timeline_state is None:
+        return {"success": False, "error": "timeline_not_ready"}
+
+    # ── Discover source media paths ──────────────────────────
+    source_paths: list[str] = list(body.source_paths) if body.source_paths else []
+    if not source_paths:
+        # Collect all unique source_path values from existing clips
+        seen: set[str] = set()
+        for lane in timeline_state.get("lanes", []):
+            for clip in lane.get("clips", []):
+                sp = str(clip.get("source_path") or "").strip()
+                if sp and sp not in seen:
+                    source_paths.append(sp)
+                    seen.add(sp)
+    if not source_paths:
+        return {"success": False, "error": "no_source_media", "detail": "No media files to analyse."}
+
+    # Resolve relative paths against sandbox_root
+    resolved_paths: list[str] = []
+    for sp in source_paths:
+        p = Path(sp)
+        if not p.is_absolute():
+            p = Path(body.sandbox_root) / sp
+        resolved_paths.append(str(p))
+
+    # ── Run scene detection on each source ───────────────────
+    all_boundaries: list[dict[str, Any]] = []
+    for media_path in resolved_paths:
+        if not os.path.isfile(media_path):
+            logger.warning("Scene detect: skipping missing file %s", media_path)
+            continue
+        boundaries = detect_scene_boundaries(
+            media_path,
+            interval_sec=body.interval_sec,
+            threshold=body.threshold,
+            max_duration_sec=body.max_duration_sec,
+        )
+        for b in boundaries:
+            all_boundaries.append({
+                "time_sec": b.time_sec,
+                "diff_score": b.diff_score,
+                "method": b.method,
+                "source_path": media_path,
+            })
+
+    # Sort boundaries by time
+    all_boundaries.sort(key=lambda b: b["time_sec"])
+
+    # ── Create clips on the target lane ──────────────────────
+    lane_id = body.lane_id or "scenes"
+    target_lane: dict[str, Any] | None = None
+    for lane in timeline_state.get("lanes", []):
+        if str(lane.get("lane_id") or "") == lane_id:
+            target_lane = lane
+            break
+
+    if target_lane is None:
+        # Create the lane if it doesn't exist
+        target_lane = {
+            "lane_id": lane_id,
+            "type": "scene_detect",
+            "clips": [],
+        }
+        timeline_state.setdefault("lanes", []).append(target_lane)
+
+    # Build clip segments from boundaries
+    # Each source file gets its own set of scene clips
+    created_clips: list[dict[str, Any]] = []
+    scene_counter = 0
+    for media_path in resolved_paths:
+        if not os.path.isfile(media_path):
+            continue
+        # Get boundaries for this source file
+        file_boundaries = [b for b in all_boundaries if b["source_path"] == media_path]
+        boundary_times = [b["time_sec"] for b in file_boundaries]
+
+        # Determine total duration from existing clips or probe
+        total_dur = 0.0
+        for lane in timeline_state.get("lanes", []):
+            for clip in lane.get("clips", []):
+                if str(clip.get("source_path") or "") == media_path or str(clip.get("source_path") or "").endswith(os.path.basename(media_path)):
+                    clip_end = float(clip.get("start_sec") or 0) + float(clip.get("duration_sec") or 0)
+                    total_dur = max(total_dur, clip_end)
+        if total_dur <= 0:
+            total_dur = body.max_duration_sec  # fallback
+
+        # Create scene segments: [0, b1), [b1, b2), ... [bN, total)
+        seg_starts = [0.0] + boundary_times
+        seg_ends = boundary_times + [total_dur]
+
+        for i in range(len(seg_starts)):
+            scene_counter += 1
+            seg_start = seg_starts[i]
+            seg_end = seg_ends[i]
+            seg_dur = round(seg_end - seg_start, 4)
+            if seg_dur <= 0:
+                continue
+            clip_id = f"scene_{scene_counter:03d}"
+            new_clip = {
+                "clip_id": clip_id,
+                "source_path": media_path,
+                "start_sec": round(seg_start, 4),
+                "duration_sec": seg_dur,
+                "scene_id": f"scene_{scene_counter:02d}",
+                "auto_detected": True,
+            }
+            target_lane["clips"].append(new_clip)
+            created_clips.append(new_clip)
+
+    # Sort clips on target lane by start_sec
+    target_lane["clips"] = sorted(
+        target_lane.get("clips", []),
+        key=lambda c: float(c.get("start_sec") or 0),
+    )
+
+    # ── Update scene graph ───────────────────────────────────
+    scene_graph_updates: list[dict[str, Any]] = []
+    if body.update_scene_graph:
+        scene_graph = store.load_scene_graph()
+        if scene_graph is None:
+            scene_graph = {
+                "schema_version": "cut_scene_graph_v1",
+                "project_id": str(body.project_id),
+                "graph_id": "main",
+                "nodes": [],
+                "edges": [],
+                "updated_at": _utc_now_iso(),
+            }
+        existing_node_ids = {
+            str(n.get("node_id") or "") for n in scene_graph.get("nodes", [])
+        }
+        prev_scene_node_id: str | None = None
+        for clip in created_clips:
+            scene_id = str(clip.get("scene_id") or "")
+            if scene_id and scene_id not in existing_node_ids:
+                scene_node = {
+                    "node_id": scene_id,
+                    "node_type": SCENE_GRAPH_NODE_SCENE,
+                    "label": scene_id.replace("_", " ").title(),
+                    "record_ref": None,
+                    "metadata": {
+                        "timeline_id": str(body.timeline_id),
+                        "lane_id": lane_id,
+                        "clip_id": str(clip.get("clip_id") or ""),
+                        "source_path": str(clip.get("source_path") or ""),
+                        "start_sec": clip.get("start_sec", 0.0),
+                        "duration_sec": clip.get("duration_sec", 0.0),
+                        "auto_detected": True,
+                    },
+                }
+                scene_graph["nodes"].append(scene_node)
+                existing_node_ids.add(scene_id)
+                scene_graph_updates.append({"added_node": scene_id})
+
+                # Add "follows" edge from previous scene
+                if prev_scene_node_id:
+                    edge = {
+                        "source": prev_scene_node_id,
+                        "target": scene_id,
+                        "edge_type": SCENE_GRAPH_EDGE_FOLLOWS,
+                        "metadata": {"auto_detected": True},
+                    }
+                    scene_graph.setdefault("edges", []).append(edge)
+                prev_scene_node_id = scene_id
+
+        scene_graph["updated_at"] = _utc_now_iso()
+        store.save_scene_graph(scene_graph)
+
+    # ── Bump revision and save timeline ──────────────────────
+    timeline_state["revision"] = int(timeline_state.get("revision") or 0) + 1
+    timeline_state["updated_at"] = _utc_now_iso()
+    store.save_timeline_state(timeline_state)
+
+    return {
+        "success": True,
+        "schema_version": "cut_scene_detect_v1",
+        "boundaries": all_boundaries,
+        "boundary_count": len(all_boundaries),
+        "created_clips": created_clips,
+        "clip_count": len(created_clips),
+        "lane_id": lane_id,
+        "scene_graph_updates": scene_graph_updates,
+        "source_paths_analysed": [p for p in resolved_paths if os.path.isfile(p)],
+        "threshold": body.threshold,
+        "interval_sec": body.interval_sec,
     }
