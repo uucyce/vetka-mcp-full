@@ -55,7 +55,11 @@ from src.services.pulse_conductor import (
     AudioBPM,
 )
 from src.services.pulse_script_analyzer import get_script_analyzer
-from src.services.pulse_energy_critics import compute_all_energies
+from src.services.pulse_energy_critics import (
+    compute_all_energies,
+    compute_calibrated_energies,
+    list_genre_profiles,
+)
 from src.services.pulse_timeline_bridge import get_pulse_timeline_bridge
 from src.services.cut_project_store import (
     CutProjectStore,
@@ -5678,4 +5682,81 @@ async def cut_pulse_scene_summary(timeline_id: str) -> dict[str, Any]:
         "schema_version": "pulse_scene_summary_v1",
         "scenes": summary,
         "total": len(summary),
+    }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_179.12_GENRE_CALIBRATION_ENDPOINTS
+# ---------------------------------------------------------------------------
+
+
+@router.get("/pulse/genre-profiles")
+async def cut_pulse_genre_profiles() -> dict[str, Any]:
+    """
+    MARKER_179.12 — List all available genre calibration profiles.
+    """
+    return {
+        "success": True,
+        "profiles": list_genre_profiles(),
+        "total": len(list_genre_profiles()),
+    }
+
+
+class CutPulseCalibratedRequest(BaseModel):
+    """Request for genre-calibrated energy critics."""
+    script_text: str
+    genre: str = "drama"
+    audio_bpm: float | None = None
+    audio_key: str | None = None
+    audio_camelot_key: str | None = None
+
+
+@router.post("/pulse/energy-critics-calibrated")
+async def cut_pulse_energy_critics_calibrated(
+    req: CutPulseCalibratedRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.12 — Genre-aware energy critics with calibration.
+
+    Same as /pulse/energy-critics but applies genre-specific multipliers.
+    High raw scores that are normal for the genre get reduced.
+
+    Validated on: Nights of Cabiria (art_house), Mad Max (action),
+    Mulholland Drive (surreal) — Grok 179.0A research.
+    """
+    if not req.script_text:
+        raise HTTPException(400, "script_text is required")
+
+    conductor = get_pulse_conductor()
+    analyzer = get_script_analyzer()
+
+    narrative_scenes = analyzer.analyze(req.script_text)
+    scores = []
+    for nbpm in narrative_scenes:
+        audio = None
+        if req.audio_bpm is not None or req.audio_camelot_key:
+            engine = get_camelot_engine()
+            camelot = req.audio_camelot_key or ""
+            if not camelot and req.audio_key:
+                camelot = engine.key_from_musical(req.audio_key) or ""
+            audio = AudioBPM(
+                bpm=req.audio_bpm or 120.0,
+                key=req.audio_key or "",
+                camelot_key=camelot,
+                confidence=0.6,
+            )
+        score = conductor.score_scene(
+            scene_id=nbpm.scene_id,
+            narrative=nbpm,
+            audio=audio,
+        )
+        scores.append(score)
+
+    result = compute_calibrated_energies(scores, genre=req.genre)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_energy_critics_calibrated_v1",
+        "scene_count": len(scores),
+        **result,
     }
