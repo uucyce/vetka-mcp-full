@@ -56,6 +56,7 @@ from src.services.pulse_conductor import (
 )
 from src.services.pulse_script_analyzer import get_script_analyzer
 from src.services.pulse_energy_critics import compute_all_energies
+from src.services.pulse_timeline_bridge import get_pulse_timeline_bridge
 from src.services.cut_project_store import (
     CutProjectStore,
     build_cut_bootstrap_profile,
@@ -5543,3 +5544,138 @@ def _energy_advice(energies: Dict[str, float]) -> list[str]:
     if not advice:
         advice.append("Montage rhythm looks healthy — energy distribution is balanced")
     return advice
+
+
+# ---------------------------------------------------------------------------
+# MARKER_179.10_PULSE_TIMELINE_BRIDGE
+# ---------------------------------------------------------------------------
+
+
+class CutPulseEnrichScriptRequest(BaseModel):
+    """Enrich scene graph from script text."""
+    timeline_id: str
+    script_text: str
+
+
+@router.post("/pulse/enrich-from-script/{timeline_id}")
+async def cut_pulse_enrich_from_script(
+    timeline_id: str,
+    script_text: str = "",
+) -> dict[str, Any]:
+    """
+    MARKER_179.10 — Analyze script and attach PULSE data to scene graph nodes.
+
+    Matches script scenes to scene graph nodes by index.
+    Returns enriched scene count and partiture summary.
+    """
+    if not script_text:
+        raise HTTPException(400, "script_text is required")
+
+    store = CutProjectStore.current()
+    if not store:
+        raise HTTPException(400, "No CUT project loaded")
+
+    scene_graph = store.get_scene_graph(timeline_id)
+    if not scene_graph:
+        raise HTTPException(404, f"No scene graph for timeline {timeline_id}")
+
+    bridge = get_pulse_timeline_bridge()
+    enriched = bridge.enrich_from_script(scene_graph, script_text)
+
+    # Save back
+    store.set_scene_graph(timeline_id, enriched)
+
+    # Compute partiture
+    partiture = bridge.compute_partiture(enriched)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_enrich_v1",
+        "enriched_scenes": partiture["scene_count"],
+        "tonic_key": partiture["tonic_key"],
+        "tonic_musical": partiture["tonic_musical"],
+        "energy_critics": partiture["energy_critics"],
+        "camelot_path": partiture["camelot_path"],
+    }
+
+
+@router.post("/pulse/enrich-from-timeline/{timeline_id}")
+async def cut_pulse_enrich_from_timeline(timeline_id: str) -> dict[str, Any]:
+    """
+    MARKER_179.10 — Extract visual signals from timeline clips and enrich scene graph.
+
+    Computes cuts_per_minute and motion_intensity from clip data.
+    """
+    store = CutProjectStore.current()
+    if not store:
+        raise HTTPException(400, "No CUT project loaded")
+
+    scene_graph = store.get_scene_graph(timeline_id)
+    timeline_state = store.get_timeline_state(timeline_id)
+    if not scene_graph:
+        raise HTTPException(404, f"No scene graph for timeline {timeline_id}")
+    if not timeline_state:
+        raise HTTPException(404, f"No timeline state for {timeline_id}")
+
+    bridge = get_pulse_timeline_bridge()
+    enriched = bridge.enrich_from_timeline(scene_graph, timeline_state)
+
+    store.set_scene_graph(timeline_id, enriched)
+    partiture = bridge.compute_partiture(enriched)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_enrich_v1",
+        "enriched_scenes": partiture["scene_count"],
+        "energy_critics": partiture["energy_critics"],
+    }
+
+
+@router.get("/pulse/partiture/{timeline_id}")
+async def cut_pulse_partiture(timeline_id: str) -> dict[str, Any]:
+    """
+    MARKER_179.10 — Get full film partiture from enriched scene graph.
+
+    Returns scores, camelot path, energy critics, tonic key.
+    """
+    store = CutProjectStore.current()
+    if not store:
+        raise HTTPException(400, "No CUT project loaded")
+
+    scene_graph = store.get_scene_graph(timeline_id)
+    if not scene_graph:
+        raise HTTPException(404, f"No scene graph for timeline {timeline_id}")
+
+    bridge = get_pulse_timeline_bridge()
+    partiture = bridge.compute_partiture(scene_graph)
+
+    return {
+        "success": True,
+        **partiture,
+    }
+
+
+@router.get("/pulse/scene-summary/{timeline_id}")
+async def cut_pulse_scene_summary(timeline_id: str) -> dict[str, Any]:
+    """
+    MARKER_179.10 — Compact PULSE summary for all scenes.
+
+    Returns per-scene camelot_key, pendulum, dramatic_function for frontend overlay.
+    """
+    store = CutProjectStore.current()
+    if not store:
+        raise HTTPException(400, "No CUT project loaded")
+
+    scene_graph = store.get_scene_graph(timeline_id)
+    if not scene_graph:
+        raise HTTPException(404, f"No scene graph for timeline {timeline_id}")
+
+    bridge = get_pulse_timeline_bridge()
+    summary = bridge.get_scene_pulse_summary(scene_graph)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_scene_summary_v1",
+        "scenes": summary,
+        "total": len(summary),
+    }
