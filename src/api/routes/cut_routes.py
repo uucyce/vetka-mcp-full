@@ -26,6 +26,10 @@ from src.services.cut_audio_intel_eval import (
     detect_offset_via_correlation,
     detect_peak_offset,
 )
+from src.services.cut_marker_bundle_service import (
+    create_marker_bundle_from_slices,
+    hybrid_merge_slices,
+)
 from src.services.cut_mcp_job_store import get_cut_mcp_job_store
 from src.services.cut_project_store import (
     CutProjectStore,
@@ -155,6 +159,26 @@ class CutTimecodeSyncRequest(BaseModel):
     project_id: str
     limit: int = Field(default=6, ge=2, le=16)
     fps: int = Field(default=25, ge=1, le=120)
+
+
+class CutMusicSyncSliceConfig(BaseModel):
+    method: Literal["transcript_only", "energy_only", "hybrid_merge"] = "hybrid_merge"
+    use_sync: bool = True
+    sync_method: Literal["peaks+correlation", "correlation", "peak_only"] = "peaks+correlation"
+    frame_ms: int = Field(default=20, ge=10, le=100)
+    silence_threshold: float = Field(default=0.08, gt=0.0, le=1.0)
+    min_silence_ms: int = Field(default=250, ge=80, le=2000)
+    keep_silence_ms: int = Field(default=80, ge=0, le=1000)
+    sample_bytes: int = Field(default=8192, ge=1024, le=65536)
+
+
+class CutApplyWithMarkersRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    timeline_id: str = "main"
+    track_id: str = ""
+    media_path: str = ""
+    slice_config: CutMusicSyncSliceConfig = Field(default_factory=CutMusicSyncSliceConfig)
 
 
 def _cut_state_error(code: str, message: str, *, recoverable: bool = True) -> dict[str, Any]:
@@ -3117,6 +3141,195 @@ async def cut_time_marker_apply(body: CutTimeMarkerApplyRequest) -> dict[str, An
         "edit_event": edit_event,
         "error": None,
     }
+
+
+@router.post("/timeline/apply-with-markers")
+async def cut_timeline_apply_with_markers(body: CutApplyWithMarkersRequest) -> dict[str, Any]:
+    """
+    MARKER_170.8.MUSIC_SYNC_INTEGRATION
+    Wire energy_pause_v1 + audio_sync_v1 → TimeMarkerBundle → store.
+    Creates music-sync markers from slice windows and optional audio sync.
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _time_marker_error("project_not_found", "CUT project not found for music-sync markers.")
+
+    timeline_state = store.load_timeline_state()
+    resolved_timeline_id = str((timeline_state or {}).get("timeline_id") or body.timeline_id or "main")
+
+    # Resolve media path — find audio/music tracks from timeline
+    media_path = str(body.media_path or "").strip()
+    track_id = str(body.track_id or "").strip()
+    if not media_path:
+        # Try to find a music track from timeline lanes
+        if timeline_state:
+            for lane in timeline_state.get("lanes", []):
+                if lane.get("lane_type") == "audio_sync":
+                    clips = lane.get("clips", [])
+                    if clips:
+                        media_path = str(clips[0].get("source_path", ""))
+                        if not track_id:
+                            track_id = str(clips[0].get("clip_id", ""))
+                        break
+    if not media_path:
+        return _time_marker_error("media_not_found", "No media_path provided and no music track found in timeline.")
+    if not track_id:
+        track_id = f"track_{uuid4().hex[:8]}"
+
+    # Step 1: Run pause-slice (energy_pause_v1) on the audio signal
+    # Load audio signal from project store
+    audio_signal = _load_audio_signal_for_media(store, media_path, body.slice_config.sample_bytes)
+    if audio_signal is None:
+        return _time_marker_error("audio_signal_unavailable", "Could not load audio signal for music track.")
+
+    signal_data, sample_rate = audio_signal
+    slice_windows = derive_pause_windows_from_silence(
+        signal_data,
+        sample_rate,
+        frame_ms=body.slice_config.frame_ms,
+        silence_threshold=body.slice_config.silence_threshold,
+        min_silence_ms=body.slice_config.min_silence_ms,
+        keep_silence_ms=body.slice_config.keep_silence_ms,
+    )
+
+    # Step 2: Run audio sync (optional)
+    sync_result = None
+    if body.slice_config.use_sync:
+        ref_signal = _load_reference_audio_signal(store, body.slice_config.sample_bytes)
+        if ref_signal is not None:
+            ref_data, ref_rate = ref_signal
+            method = body.slice_config.sync_method
+            if method == "peaks+correlation":
+                sync_result = detect_offset_hybrid(signal_data, ref_data, min(sample_rate, ref_rate))
+            elif method == "correlation":
+                sync_result = detect_offset_via_correlation(signal_data, ref_data, min(sample_rate, ref_rate))
+            else:
+                sync_result = detect_peak_offset(signal_data, ref_data, min(sample_rate, ref_rate))
+
+    # Step 3: Create marker bundle
+    marker_bundle = create_marker_bundle_from_slices(
+        project_id=str(project.get("project_id") or body.project_id),
+        timeline_id=resolved_timeline_id,
+        track_id=track_id,
+        media_path=media_path,
+        slice_windows=slice_windows,
+        sync_result=sync_result,
+        slice_method=body.slice_config.method,
+    )
+
+    # Step 4: Merge into existing bundle or save as new
+    existing_bundle = store.load_time_marker_bundle()
+    if existing_bundle and existing_bundle.get("items"):
+        # Append music markers to existing bundle
+        all_items = list(existing_bundle.get("items", [])) + marker_bundle.get("items", [])
+        existing_bundle["items"] = all_items
+        existing_bundle["revision"] = int(existing_bundle.get("revision", 0)) + 1
+        existing_bundle["music_sync_meta"] = marker_bundle.get("music_sync_meta")
+        existing_bundle["generated_at"] = _utc_now_iso()
+        store.save_time_marker_bundle(existing_bundle)
+        final_bundle = existing_bundle
+    else:
+        store.save_time_marker_bundle(marker_bundle)
+        final_bundle = marker_bundle
+
+    # Edit event
+    edit_event = {
+        "event_id": f"music_sync_markers_{uuid4().hex[:12]}",
+        "project_id": str(project.get("project_id") or ""),
+        "timeline_id": resolved_timeline_id,
+        "author": "music_sync_engine",
+        "revision": int(final_bundle.get("revision", 0)),
+        "op": "music_sync_create",
+        "marker_count": len(marker_bundle.get("items", [])),
+        "sync_method": sync_result.method if sync_result else None,
+        "sync_confidence": sync_result.confidence if sync_result else None,
+        "created_at": _utc_now_iso(),
+    }
+    store.append_time_marker_edit_event(edit_event)
+
+    return {
+        "success": True,
+        "schema_version": "cut_time_marker_apply_v1",
+        "timeline_applied": True,
+        "marker_bundle": final_bundle,
+        "music_sync_meta": marker_bundle.get("music_sync_meta"),
+        "edit_event": edit_event,
+        "error": None,
+    }
+
+
+def _load_audio_signal_for_media(
+    store: CutProjectStore, media_path: str, sample_bytes: int
+) -> tuple[list[float], int] | None:
+    """Load audio signal proxy from a media file via project store."""
+    import struct
+
+    # Check if waveform data exists in project state
+    project_state = store.load_project()
+    if project_state is None:
+        return None
+
+    # Try to read raw audio bytes from the media file
+    full_path = media_path
+    if not os.path.isabs(full_path):
+        source_path = str(project_state.get("source_path", ""))
+        if source_path:
+            full_path = os.path.join(source_path, media_path)
+
+    if not os.path.exists(full_path):
+        return None
+
+    try:
+        with open(full_path, "rb") as f:
+            raw = f.read(sample_bytes)
+        if len(raw) < 4:
+            return None
+        # Build 16-bit PCM signal proxy
+        signal = []
+        for i in range(0, len(raw) - 1, 2):
+            val = struct.unpack_from("<h", raw, i)[0]
+            signal.append(val / 32768.0)
+        return signal, 1000  # Approximate sample rate for proxy
+    except Exception:
+        return None
+
+
+def _load_reference_audio_signal(
+    store: CutProjectStore, sample_bytes: int
+) -> tuple[list[float], int] | None:
+    """Load a reference audio signal for sync (first video clip audio)."""
+    import struct
+
+    timeline_state = store.load_timeline_state()
+    if timeline_state is None:
+        return None
+
+    project = store.load_project()
+    source_path = str((project or {}).get("source_path", ""))
+
+    # Find first video lane clip as reference
+    for lane in timeline_state.get("lanes", []):
+        if lane.get("lane_type") in ("video", "camera"):
+            clips = lane.get("clips", [])
+            if clips:
+                ref_path = str(clips[0].get("source_path", ""))
+                if ref_path:
+                    full_path = ref_path if os.path.isabs(ref_path) else os.path.join(source_path, ref_path)
+                    if os.path.exists(full_path):
+                        try:
+                            with open(full_path, "rb") as f:
+                                raw = f.read(sample_bytes)
+                            if len(raw) < 4:
+                                continue
+                            signal = []
+                            for i in range(0, len(raw) - 1, 2):
+                                val = struct.unpack_from("<h", raw, i)[0]
+                                signal.append(val / 32768.0)
+                            return signal, 1000
+                        except Exception:
+                            continue
+    return None
 
 
 @router.post("/timeline/apply")

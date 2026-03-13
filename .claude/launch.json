@@ -15,8 +15,8 @@
     },
     {
       "name": "vetka-client",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "3001"],
       "cwd": "client",
       "port": 3001
     },

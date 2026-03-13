@@ -12,6 +12,7 @@ import TransportBar from './TransportBar';
 import VideoPreview from './VideoPreview';
 import TimelineTrackView from './TimelineTrackView';
 import ClipInspector from './ClipInspector';
+import MarkerNode from './nodes/MarkerNode';
 
 // ─── Styles ───
 const ROOT_STYLE: CSSProperties = {
@@ -228,8 +229,16 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
   const setActiveMedia = useCutEditorStore((s) => s.setActiveMedia);
   const setSelectedClip = useCutEditorStore((s) => s.setSelectedClip);
   const syncSurface = useCutEditorStore((s) => s.syncSurface);
+  const markers = useCutEditorStore((s) => s.markers);
   const sceneGraphSurfaceMode = useCutEditorStore((s) => s.sceneGraphSurfaceMode);
   const [timelineHeight] = useState(300);
+
+  // MARKER_170.8.SCENE_GRAPH_MARKERS: Music-sync marker stats
+  const musicMarkers = markers.filter((m) => m.kind === 'music_sync');
+  const musicMarkerCount = musicMarkers.length;
+  const avgMusicScore = musicMarkerCount > 0
+    ? musicMarkers.reduce((sum, m) => sum + (m.score ?? 0), 0) / musicMarkerCount
+    : 0;
 
   // If debug mode, show legacy view
   if (viewMode === 'debug') {
@@ -434,6 +443,20 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
               {sceneGraphSurfaceMode === 'nle_ready' ? (
                 <span style={{ color: '#22c55e', fontSize: 9 }}>Scene Graph peer pane ready</span>
               ) : null}
+              {musicMarkerCount > 0 ? (
+                <span
+                  data-testid="music-marker-badge"
+                  style={{
+                    ...SOURCE_BADGE,
+                    color: '#d8b4fe',
+                    borderColor: '#7c3aed',
+                    background: '#1e1033',
+                    fontSize: 9,
+                  }}
+                >
+                  🎵 {musicMarkerCount} markers (Sync {(avgMusicScore * 100).toFixed(0)}%)
+                </span>
+              ) : null}
               {statusText ? (
                 <span style={{ fontSize: 10, color: '#555' }}>{statusText}</span>
               ) : null}
@@ -451,8 +474,31 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
               {sceneGraphSurface || (
                 <>
                   <div style={{ color: '#22c55e', fontSize: 10 }}>NLE pane insertion active</div>
-                  <div>Scene Graph is now promoted beyond shell-only readiness.</div>
-                  <div>Next step: replace this placeholder with the shared DAG viewport using the same promoted state.</div>
+                  {musicMarkerCount > 0 ? (
+                    <div data-testid="scene-graph-markers" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+                      <div style={{ fontSize: 9, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Music Markers ({musicMarkerCount})
+                      </div>
+                      {musicMarkers.map((m) => (
+                        <MarkerNode
+                          key={m.marker_id}
+                          data={{
+                            markerId: m.marker_id,
+                            label: m.text || `${m.start_sec.toFixed(1)}s`,
+                            startSec: m.start_sec,
+                            endSec: m.end_sec,
+                            source: (m.kind === 'music_sync' ? 'energy_pause' : 'transcript_pause') as 'energy_pause',
+                            confidence: m.score ?? 0.8,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      <div>Scene Graph is now promoted beyond shell-only readiness.</div>
+                      <div>Next step: replace this placeholder with the shared DAG viewport using the same promoted state.</div>
+                    </>
+                  )}
                 </>
               )}
             </div>
